@@ -47,10 +47,10 @@ async function describePath({
   brief,
   outputMode,
 }: {
-  context: WeshCommandContext;
-  path: string;
-  brief: boolean;
-  outputMode: 'description' | 'mime';
+  context: WeshCommandContext,
+  path: string,
+  brief: boolean,
+  outputMode: 'description' | 'mime',
 }): Promise<{ ok: true } | { ok: false }> {
   try {
     const target = await statFileTarget({

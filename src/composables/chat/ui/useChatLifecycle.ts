@@ -21,11 +21,11 @@ import {
 import { useChatNavigation } from './useChatNavigation';
 
 export interface AddToastOptions {
-  message: string;
-  actionLabel?: string;
-  onAction?: () => void | Promise<void>;
-  onClose?: ({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>;
-  duration?: number;
+  message: string,
+  actionLabel?: string,
+  onAction?: () => void | Promise<void>,
+  onClose?: ({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>,
+  duration?: number,
 }
 
 export type ChatLifecycleAdapter = {
@@ -34,22 +34,22 @@ export type ChatLifecycleAdapter = {
     modelId,
     systemPrompt,
   }: {
-    groupId: ChatGroupId | undefined;
-    modelId: string | undefined;
-    systemPrompt: SystemPrompt | undefined;
-  }): Promise<Chat | null>;
+    groupId: ChatGroupId | undefined,
+    modelId: string | undefined,
+    systemPrompt: SystemPrompt | undefined,
+  }): Promise<Chat | null>,
 
   deleteChat({
     id,
     injectAddToast,
   }: {
-    id: ChatId;
-    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
-  }): Promise<void>;
+    id: ChatId,
+    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined,
+  }): Promise<void>,
 
-  deleteAllChats(): Promise<void>;
+  deleteAllChats(): Promise<void>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatLifecycle(): ChatLifecycleAdapter {
@@ -62,9 +62,9 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     modelId,
     systemPrompt,
   }: {
-    groupId: ChatGroupId | undefined;
-    modelId: string | undefined;
-    systemPrompt: SystemPrompt | undefined;
+    groupId: ChatGroupId | undefined,
+    modelId: string | undefined,
+    systemPrompt: SystemPrompt | undefined,
   }): Promise<Chat | null> {
     if (creatingChat.value) {
       return null;
@@ -124,8 +124,8 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     id,
     injectAddToast,
   }: {
-    id: ChatId;
-    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
+    id: ChatId,
+    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined,
   }): Promise<void> {
     const chat = await storageService.loadChat({ id });
     if (chat === null) {

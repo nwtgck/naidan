@@ -1,1 +1,1 @@
-export { createFileExplorerWorkerClient } from './client-hosted'
+export { createFileExplorerWorkerClient } from './client-hosted';

@@ -33,8 +33,8 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: toMessageId({ raw: 'v3' })
-      }
+        currentMessageId: toMessageId({ raw: 'v3' }),
+      },
     });
 
     const labels = wrapper.findAll('.tracking-widest').map(b => b.text().toLowerCase());
@@ -52,8 +52,8 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: toMessageId({ raw: 'v3' })
-      }
+        currentMessageId: toMessageId({ raw: 'v3' }),
+      },
     });
 
     // Find "Base" button for v1
@@ -84,8 +84,8 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: toMessageId({ raw: 'v3' })
-      }
+        currentMessageId: toMessageId({ raw: 'v3' }),
+      },
     });
 
     // Select Base for v1
@@ -116,8 +116,8 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: toMessageId({ raw: 'v3' })
-      }
+        currentMessageId: toMessageId({ raw: 'v3' }),
+      },
     });
 
     const copyButtons = wrapper.findAll('button[title="Copy this version"]');
@@ -141,8 +141,8 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: toMessageId({ raw: 'v3' })
-      }
+        currentMessageId: toMessageId({ raw: 'v3' }),
+      },
     });
 
     // Default: Diff On (check for a sequential diff highlight)
@@ -169,8 +169,8 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: toMessageId({ raw: 'v3' })
-      }
+        currentMessageId: toMessageId({ raw: 'v3' }),
+      },
     });
 
     // v3 sequential diff is normally against v2.

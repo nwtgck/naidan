@@ -9,7 +9,7 @@ import {
 async function collect<T>({
   values,
 }: {
-  values: AsyncIterable<T>;
+  values: AsyncIterable<T>,
 }): Promise<T[]> {
   const collected: T[] = [];
   for await (const value of values) {
@@ -21,7 +21,7 @@ async function collect<T>({
 async function* iterateValues<T>({
   values,
 }: {
-  values: readonly T[];
+  values: readonly T[],
 }): AsyncIterable<T> {
   for (const value of values) {
     yield value;

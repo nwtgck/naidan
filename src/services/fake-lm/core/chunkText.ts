@@ -1,10 +1,10 @@
 import { randomInt, type SeededNonCryptoPseudoRandom } from '@/services/fake-lm/core/random';
 
 export function* chunkText({ text, random, minChars, maxChars }: {
-  text: string;
-  random: SeededNonCryptoPseudoRandom;
-  minChars: number;
-  maxChars: number;
+  text: string,
+  random: SeededNonCryptoPseudoRandom,
+  minChars: number,
+  maxChars: number,
 }): Iterable<string> {
   const chars = Array.from(text);
   let index = 0;

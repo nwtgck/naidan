@@ -23,7 +23,7 @@ describe('RecipeImportTab.vue', () => {
     const recipe = {
       type: 'chat_group_recipe',
       name: 'Test Recipe',
-      models: [{ type: 'regex', pattern: 'llama3', flags: ['i'] }]
+      models: [{ type: 'regex', pattern: 'llama3', flags: ['i'] }],
     };
 
     await textarea.setValue(JSON.stringify(recipe));
@@ -55,7 +55,7 @@ describe('RecipeImportTab.vue', () => {
     const recipe = {
       type: 'chat_group_recipe',
       name: 'Test Recipe',
-      models: []
+      models: [],
     };
 
     await textarea.setValue(JSON.stringify(recipe));
@@ -69,7 +69,7 @@ describe('RecipeImportTab.vue', () => {
     expect(emitted[0]![0]).toEqual([{
       newName: 'Test Recipe',
       matchedModelId: undefined,
-      recipe: expect.objectContaining({ name: 'Test Recipe' })
+      recipe: expect.objectContaining({ name: 'Test Recipe' }),
     }]);
 
     // Should clear input after import
@@ -85,7 +85,7 @@ describe('RecipeImportTab.vue', () => {
     await textarea.setValue(JSON.stringify({
       type: 'chat_group_recipe',
       name: 'Original',
-      models: []
+      models: [],
     }));
     await nextTick();
 

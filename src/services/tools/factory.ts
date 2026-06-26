@@ -29,15 +29,15 @@ export async function getEnabledTools({
   tmpHandle,
   requestChoice,
 }: {
-  enabledNames: LmToolName[];
-  settings: Settings;
-  chatGroupMounts?: Mount[];
-  chatMounts?: Mount[];
-  chatId: ChatId | undefined;
-  chatGroupId: ChatGroupId | undefined;
-  naidanSysfsAccessScope: NaidanSysfsAccessScope;
-  tmpHandle: FileSystemDirectoryHandle | undefined;
-  requestChoice: RequestChoice | undefined;
+  enabledNames: LmToolName[],
+  settings: Settings,
+  chatGroupMounts?: Mount[],
+  chatMounts?: Mount[],
+  chatId: ChatId | undefined,
+  chatGroupId: ChatGroupId | undefined,
+  naidanSysfsAccessScope: NaidanSysfsAccessScope,
+  tmpHandle: FileSystemDirectoryHandle | undefined,
+  requestChoice: RequestChoice | undefined,
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
   const canExposeWikipediaTools = canExposeWikipediaToolsForGeneration({
@@ -47,7 +47,7 @@ export async function getEnabledTools({
     chatGroupId,
     naidanSysfsAccessScope,
     tmpHandle,
-  })
+  });
 
   for (const name of enabledNames) {
     switch (name) {
@@ -67,14 +67,14 @@ export async function getEnabledTools({
 
     case 'wikipedia_search':
       if (!canExposeWikipediaTools) {
-        break
+        break;
       }
       tools.push(new WikipediaSearchTool());
       break;
 
     case 'wikipedia_get_page':
       if (!canExposeWikipediaTools) {
-        break
+        break;
       }
       tools.push(new WikipediaGetPageTool());
       break;
@@ -93,7 +93,7 @@ export async function getEnabledTools({
       }
       switch (naidanSysfsAccessScope) {
       case 'none':
-        break
+        break;
       case 'current_chat_only':
       case 'current_chat_with_chat_group':
       case 'main_chats': {
@@ -105,13 +105,13 @@ export async function getEnabledTools({
           currentChatGroupId: chatGroupId,
         });
         if (naidanSysfsMount !== undefined) {
-          resolvedMounts.push(naidanSysfsMount)
+          resolvedMounts.push(naidanSysfsMount);
         }
-        break
+        break;
       }
       default: {
-        const _ex: never = naidanSysfsAccessScope
-        throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`)
+        const _ex: never = naidanSysfsAccessScope;
+        throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`);
       }
       }
       const volumeHandles = new Map<VolumeId, FileSystemDirectoryHandle>();
@@ -175,14 +175,14 @@ function canCreateShellTool({
   settings,
   tmpHandle,
 }: {
-  settings: Settings;
-  tmpHandle: FileSystemDirectoryHandle | undefined;
+  settings: Settings,
+  tmpHandle: FileSystemDirectoryHandle | undefined,
 }): boolean {
-  const shouldMountTmp = shouldIncludeWritableTmpMount({ storageType: settings.storageType })
+  const shouldMountTmp = shouldIncludeWritableTmpMount({ storageType: settings.storageType });
   if (shouldMountTmp && tmpHandle === undefined) {
-    return false
+    return false;
   }
-  return true
+  return true;
 }
 
 function hasEnabledNaidanSysfsMount({
@@ -191,14 +191,14 @@ function hasEnabledNaidanSysfsMount({
   chatGroupId,
   naidanSysfsAccessScope,
 }: {
-  settings: Settings;
-  chatId: ChatId | undefined;
-  chatGroupId: ChatGroupId | undefined;
-  naidanSysfsAccessScope: NaidanSysfsAccessScope;
+  settings: Settings,
+  chatId: ChatId | undefined,
+  chatGroupId: ChatGroupId | undefined,
+  naidanSysfsAccessScope: NaidanSysfsAccessScope,
 }): boolean {
   switch (naidanSysfsAccessScope) {
   case 'none':
-    return false
+    return false;
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
   case 'main_chats':
@@ -208,10 +208,10 @@ function hasEnabledNaidanSysfsMount({
       binaryObjectAccess: 'data',
       currentChatId: chatId,
       currentChatGroupId: chatGroupId,
-    }) !== undefined
+    }) !== undefined;
   default: {
-    const _ex: never = naidanSysfsAccessScope
-    throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`)
+    const _ex: never = naidanSysfsAccessScope;
+    throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`);
   }
   }
 }
@@ -224,18 +224,18 @@ function canExposeWikipediaToolsForGeneration({
   naidanSysfsAccessScope,
   tmpHandle,
 }: {
-  enabledNames: LmToolName[];
-  settings: Settings;
-  chatId: ChatId | undefined;
-  chatGroupId: ChatGroupId | undefined;
-  naidanSysfsAccessScope: NaidanSysfsAccessScope;
-  tmpHandle: FileSystemDirectoryHandle | undefined;
+  enabledNames: LmToolName[],
+  settings: Settings,
+  chatId: ChatId | undefined,
+  chatGroupId: ChatGroupId | undefined,
+  naidanSysfsAccessScope: NaidanSysfsAccessScope,
+  tmpHandle: FileSystemDirectoryHandle | undefined,
 }): boolean {
   if (!enabledNames.includes('shell_execute')) {
-    return false
+    return false;
   }
   if (!canCreateShellTool({ settings, tmpHandle })) {
-    return false
+    return false;
   }
   if (!hasEnabledNaidanSysfsMount({
     settings,
@@ -243,7 +243,7 @@ function canExposeWikipediaToolsForGeneration({
     chatGroupId,
     naidanSysfsAccessScope,
   })) {
-    return false
+    return false;
   }
-  return true
+  return true;
 }

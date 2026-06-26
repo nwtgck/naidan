@@ -15,17 +15,17 @@ import type {
 import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 type FindExpression =
-  | { kind: 'and'; left: FindExpression; right: FindExpression }
-  | { kind: 'or'; left: FindExpression; right: FindExpression }
-  | { kind: 'not'; expr: FindExpression }
-  | { kind: 'name'; pattern: string; caseInsensitive: boolean; compiledPattern: RegExp }
-  | { kind: 'path'; pattern: string; compiledPattern: RegExp }
-  | { kind: 'regex'; pattern: RegExp }
-  | { kind: 'type'; expected: WeshFileType }
+  | { kind: 'and', left: FindExpression, right: FindExpression }
+  | { kind: 'or', left: FindExpression, right: FindExpression }
+  | { kind: 'not', expr: FindExpression }
+  | { kind: 'name', pattern: string, caseInsensitive: boolean, compiledPattern: RegExp }
+  | { kind: 'path', pattern: string, compiledPattern: RegExp }
+  | { kind: 'regex', pattern: RegExp }
+  | { kind: 'type', expected: WeshFileType }
   | { kind: 'empty' }
-  | { kind: 'size'; comparison: 'eq' | 'lt' | 'gt'; sizeInBytes: number }
-  | { kind: 'perm'; matchMode: 'exact' | 'all' | 'any'; mode: number }
-  | { kind: 'newer'; referencePath: string; referenceMtime: number }
+  | { kind: 'size', comparison: 'eq' | 'lt' | 'gt', sizeInBytes: number }
+  | { kind: 'perm', matchMode: 'exact' | 'all' | 'any', mode: number }
+  | { kind: 'newer', referencePath: string, referenceMtime: number }
   | { kind: 'print' }
   | { kind: 'print0' }
   | { kind: 'prune' }
@@ -33,45 +33,45 @@ type FindExpression =
   | { kind: 'quit' }
   | { kind: 'true' }
   | { kind: 'false' }
-  | { kind: 'exec'; id: number; mode: 'single' | 'batch'; command: string; args: string[] };
+  | { kind: 'exec', id: number, mode: 'single' | 'batch', command: string, args: string[] };
 
 interface FindEntry {
-  entryRef: WeshEntryRef;
-  fullPath: string;
-  displayPath: string;
-  type: WeshFileType;
-  name: string;
-  size: number;
-  mtime: number;
+  entryRef: WeshEntryRef,
+  fullPath: string,
+  displayPath: string,
+  type: WeshFileType,
+  name: string,
+  size: number,
+  mtime: number,
 }
 
 interface FindEvaluationResult {
-  matched: boolean;
-  actionInvoked: boolean;
-  shouldPrune: boolean;
-  shouldQuit: boolean;
-  exitCode: number;
+  matched: boolean,
+  actionInvoked: boolean,
+  shouldPrune: boolean,
+  shouldQuit: boolean,
+  exitCode: number,
 }
 
 const EVAL_MATCHED: FindEvaluationResult = { matched: true, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
 const EVAL_NOT_MATCHED: FindEvaluationResult = { matched: false, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
 
 interface PendingExecBatchEntry {
-  path: string;
-  entryRef: WeshEntryRef;
+  path: string,
+  entryRef: WeshEntryRef,
 }
 
 interface PendingExecBatch {
-  id: number;
-  command: string;
-  argsTemplate: string[];
-  entries: PendingExecBatchEntry[];
-  argumentBytes: number;
+  id: number,
+  command: string,
+  argsTemplate: string[],
+  entries: PendingExecBatchEntry[],
+  argumentBytes: number,
 }
 
 interface ExecInvocation {
-  args: string[];
-  argumentEntryRefs: Array<WeshEntryRef | undefined>;
+  args: string[],
+  argumentEntryRefs: Array<WeshEntryRef | undefined>,
 }
 
 type FindOutputWriter = ReturnType<typeof createBufferedTextWriter>;
@@ -81,16 +81,16 @@ const MAX_EXEC_BATCH_ARGUMENT_BYTES = 128 * 1024;
 const utf8Encoder = new TextEncoder();
 
 interface FindTraversalOptions {
-  maxDepth: number | undefined;
-  minDepth: number;
-  depthFirst: boolean;
-  symlinkMode: 'physical' | 'command-line' | 'logical';
+  maxDepth: number | undefined,
+  minDepth: number,
+  depthFirst: boolean,
+  symlinkMode: 'physical' | 'command-line' | 'logical',
 }
 
 function canEvaluateWithoutFullStat({
   expr,
 }: {
-  expr: FindExpression;
+  expr: FindExpression,
 }): boolean {
   switch (expr.kind) {
   case 'and':
@@ -136,7 +136,7 @@ const findHelpArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   if (path.startsWith('/')) {
     return path;
   }
@@ -154,8 +154,8 @@ function globToRegExp({
   pattern,
   caseInsensitive,
 }: {
-  pattern: string;
-  caseInsensitive: boolean;
+  pattern: string,
+  caseInsensitive: boolean,
 }): RegExp {
   let source = '^';
 
@@ -193,9 +193,9 @@ function parseNonNegativeInteger({
   value,
   optionName,
 }: {
-  value: string;
-  optionName: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+  optionName: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   if (!/^\d+$/.test(value)) {
     return { ok: false, message: `invalid argument to ${optionName}: ${value}` };
   }
@@ -206,8 +206,8 @@ function parseNonNegativeInteger({
 function parseFindRegex({
   value,
 }: {
-  value: string;
-}): { ok: true; value: RegExp } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, value: RegExp } | { ok: false, message: string } {
   try {
     return { ok: true, value: new RegExp(value) };
   } catch (error: unknown) {
@@ -219,8 +219,8 @@ function parseFindRegex({
 function parseFindSize({
   value,
 }: {
-  value: string;
-}): { ok: true; comparison: 'eq' | 'lt' | 'gt'; sizeInBytes: number } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, comparison: 'eq' | 'lt' | 'gt', sizeInBytes: number } | { ok: false, message: string } {
   const match = value.match(/^([+-]?)(\d+)([ckMGT]?)$/);
   if (match === null) {
     return { ok: false, message: `invalid argument to -size: ${value}` };
@@ -257,8 +257,8 @@ function parseFindSize({
 function parseFindPerm({
   value,
 }: {
-  value: string;
-}): { ok: true; matchMode: 'exact' | 'all' | 'any'; mode: number } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, matchMode: 'exact' | 'all' | 'any', mode: number } | { ok: false, message: string } {
   const match = value.match(/^([-/]?)([0-7]+)$/);
   if (match === null) {
     return { ok: false, message: `invalid argument to -perm: ${value}` };
@@ -278,10 +278,10 @@ function parseFindPerm({
 function splitFindLeadingOptions({
   args,
 }: {
-  args: string[];
+  args: string[],
 }): {
-  leadingOptions: string[];
-  remainingArgs: string[];
+  leadingOptions: string[],
+  remainingArgs: string[],
 } {
   const leadingOptions: string[] = [];
   let index = 0;
@@ -304,15 +304,15 @@ function splitFindLeadingOptions({
 function tokenizeFindExpression({
   tokens,
 }: {
-  tokens: string[];
+  tokens: string[],
 }): {
-  ok: true;
-  traversal: FindTraversalOptions;
-  expr: FindExpression;
-  hasAction: boolean;
+  ok: true,
+  traversal: FindTraversalOptions,
+  expr: FindExpression,
+  hasAction: boolean,
 } | {
-  ok: false;
-  message: string;
+  ok: false,
+  message: string,
 } {
   let index = 0;
   let nextExecId = 1;
@@ -661,8 +661,8 @@ async function resolveFindExpressionReferences({
   expr,
   context,
 }: {
-  expr: FindExpression;
-  context: WeshCommandContext;
+  expr: FindExpression,
+  context: WeshCommandContext,
 }): Promise<FindExpression> {
   switch (expr.kind) {
   case 'and':
@@ -725,11 +725,11 @@ async function evaluateExpression({
   pendingExecBatches,
   stdout,
 }: {
-  expr: FindExpression;
-  entry: FindEntry;
-  context: WeshCommandContext;
-  pendingExecBatches: Map<number, PendingExecBatch>;
-  stdout: FindOutputWriter;
+  expr: FindExpression,
+  entry: FindEntry,
+  context: WeshCommandContext,
+  pendingExecBatches: Map<number, PendingExecBatch>,
+  stdout: FindOutputWriter,
 }): Promise<FindEvaluationResult> {
   switch (expr.kind) {
   case 'and': {
@@ -964,8 +964,8 @@ function getStaticBatchExecArgumentBytes({
   command,
   argsTemplate,
 }: {
-  command: string;
-  argsTemplate: readonly string[];
+  command: string,
+  argsTemplate: readonly string[],
 }): number {
   let bytes = utf8Encoder.encode(command).byteLength + 1;
   for (const arg of argsTemplate) {
@@ -980,8 +980,8 @@ function getPathBatchExecArgumentBytes({
   argsTemplate,
   path,
 }: {
-  argsTemplate: readonly string[];
-  path: string;
+  argsTemplate: readonly string[],
+  path: string,
 }): number {
   let bytes = 0;
   for (const arg of argsTemplate) {
@@ -996,11 +996,11 @@ function buildExecArgument({
   template,
   entry,
 }: {
-  template: string;
-  entry: PendingExecBatchEntry;
+  template: string,
+  entry: PendingExecBatchEntry,
 }): {
-  value: string;
-  entryRef: WeshEntryRef | undefined;
+  value: string,
+  entryRef: WeshEntryRef | undefined,
 } {
   return {
     value: template.replace(/\{\}/g, entry.path),
@@ -1012,8 +1012,8 @@ function buildSingleExecInvocation({
   argsTemplate,
   entry,
 }: {
-  argsTemplate: string[];
-  entry: PendingExecBatchEntry;
+  argsTemplate: string[],
+  entry: PendingExecBatchEntry,
 }): ExecInvocation {
   const args: string[] = [];
   const argumentEntryRefs: Array<WeshEntryRef | undefined> = [];
@@ -1031,8 +1031,8 @@ function buildBatchExecInvocation({
   argsTemplate,
   entries,
 }: {
-  argsTemplate: string[];
-  entries: PendingExecBatchEntry[];
+  argsTemplate: string[],
+  entries: PendingExecBatchEntry[],
 }): ExecInvocation {
   const args: string[] = [];
   const argumentEntryRefs: Array<WeshEntryRef | undefined> = [];
@@ -1057,7 +1057,7 @@ function buildBatchExecInvocation({
 function asDirectoryEntryRef({
   entry,
 }: {
-  entry: WeshEntryRef;
+  entry: WeshEntryRef,
 }): WeshEntryRef<'directory'> {
   switch (entry.type) {
   case 'directory':
@@ -1078,8 +1078,8 @@ async function flushPendingExecBatch({
   pending,
   context,
 }: {
-  pending: PendingExecBatch;
-  context: WeshCommandContext;
+  pending: PendingExecBatch,
+  context: WeshCommandContext,
 }): Promise<number> {
   if (pending.entries.length === 0) return 0;
 
@@ -1104,7 +1104,7 @@ async function flushPendingExecBatch({
 function hasDeleteAction({
   expr,
 }: {
-  expr: FindExpression;
+  expr: FindExpression,
 }): boolean {
   switch (expr.kind) {
   case 'and':
@@ -1215,8 +1215,8 @@ export const findCommandDefinition: WeshCommandDefinition = {
       path,
       isCommandLineArgument,
     }: {
-      path: string;
-      isCommandLineArgument: boolean;
+      path: string,
+      isCommandLineArgument: boolean,
     }): Promise<WeshEntryRef> => {
       const finalSymlinkTreatment = (() => {
         switch (traversal.symlinkMode) {
@@ -1245,10 +1245,10 @@ export const findCommandDefinition: WeshCommandDefinition = {
       displayPath,
       name,
     }: {
-      entryRef: WeshEntryRef;
-      operationPath: string;
-      displayPath: string;
-      name: string;
+      entryRef: WeshEntryRef,
+      operationPath: string,
+      displayPath: string,
+      name: string,
     }): Promise<FindEntry> => {
       if (canSkipFullStat) {
         return {
@@ -1281,11 +1281,11 @@ export const findCommandDefinition: WeshCommandDefinition = {
       name,
       depth,
     }: {
-      entryRef: WeshEntryRef;
-      operationPath: string;
-      displayPath: string;
-      name: string;
-      depth: number;
+      entryRef: WeshEntryRef,
+      operationPath: string,
+      displayPath: string,
+      name: string,
+      depth: number,
     }): Promise<void> => {
       if (shouldQuit) return;
 

@@ -1,15 +1,15 @@
-import { z } from 'zod'
-import { PRIVACY_FETCH_PROTOCOL } from './protocol'
+import { z } from 'zod';
+import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 
-const privacyFetchHeaderEntrySchema = z.tuple([z.string(), z.string()])
+const privacyFetchHeaderEntrySchema = z.tuple([z.string(), z.string()]);
 
-export const privacyFetchHeaderEntriesSchema = z.array(privacyFetchHeaderEntrySchema)
+export const privacyFetchHeaderEntriesSchema = z.array(privacyFetchHeaderEntrySchema);
 
 export const privacyFetchValidationAcceptedResultSchema = z.object({
   ok: z.literal(true),
   policyName: z.string().min(1),
   normalizedUrl: z.string().url(),
-}).strict()
+}).strict();
 
 export const privacyFetchValidationRejectedCodeSchema = z.enum([
   'invalid_url',
@@ -23,26 +23,26 @@ export const privacyFetchValidationRejectedCodeSchema = z.enum([
   'duplicate_query_parameter',
   'invalid_query_parameter_value',
   'unsupported_policy',
-])
+]);
 
 export const privacyFetchValidationRejectedResultSchema = z.object({
   ok: z.literal(false),
   code: privacyFetchValidationRejectedCodeSchema,
   message: z.string().min(1),
-}).strict()
+}).strict();
 
 export const privacyFetchRequestMessageSchema = z.object({
   protocol: z.literal(PRIVACY_FETCH_PROTOCOL),
   type: z.literal('request'),
   requestId: z.string().min(1),
   url: z.string().url(),
-}).strict()
+}).strict();
 
 export const privacyFetchCancelMessageSchema = z.object({
   protocol: z.literal(PRIVACY_FETCH_PROTOCOL),
   type: z.literal('cancel'),
   requestId: z.string().min(1),
-}).strict()
+}).strict();
 
 export const privacyFetchReadyMessageSchema = z.object({
   protocol: z.literal(PRIVACY_FETCH_PROTOCOL),
@@ -52,13 +52,13 @@ export const privacyFetchReadyMessageSchema = z.object({
     transferArrayBuffer: z.literal(true),
     headers: z.literal('entries'),
   }).strict(),
-}).strict()
+}).strict();
 
 function isArrayBuffer(value: unknown): value is ArrayBuffer {
-  return Object.prototype.toString.call(value) === '[object ArrayBuffer]'
+  return Object.prototype.toString.call(value) === '[object ArrayBuffer]';
 }
 
-const arrayBufferSchema = z.custom<ArrayBuffer>((value) => isArrayBuffer(value))
+const arrayBufferSchema = z.custom<ArrayBuffer>((value) => isArrayBuffer(value));
 
 export const privacyFetchResponseMessageSchema = z.object({
   protocol: z.literal(PRIVACY_FETCH_PROTOCOL),
@@ -75,7 +75,7 @@ export const privacyFetchResponseMessageSchema = z.object({
   body: arrayBufferSchema,
   bodyByteLength: z.number().int().nonnegative(),
   validationResult: privacyFetchValidationAcceptedResultSchema,
-}).strict()
+}).strict();
 
 export const privacyFetchRejectedMessageSchema = z.object({
   protocol: z.literal(PRIVACY_FETCH_PROTOCOL),
@@ -83,7 +83,7 @@ export const privacyFetchRejectedMessageSchema = z.object({
   requestId: z.string().min(1),
   ok: z.literal(false),
   validationResult: privacyFetchValidationRejectedResultSchema,
-}).strict()
+}).strict();
 
 export const privacyFetchErrorMessageSchema = z.object({
   protocol: z.literal(PRIVACY_FETCH_PROTOCOL),
@@ -96,16 +96,16 @@ export const privacyFetchErrorMessageSchema = z.object({
     'duplicate_request_id',
   ]),
   message: z.string().min(1),
-}).strict()
+}).strict();
 
 export const privacyFetchParentToBrokerMessageSchema = z.union([
   privacyFetchRequestMessageSchema,
   privacyFetchCancelMessageSchema,
-])
+]);
 
 export const privacyFetchBrokerToParentMessageSchema = z.union([
   privacyFetchReadyMessageSchema,
   privacyFetchResponseMessageSchema,
   privacyFetchRejectedMessageSchema,
   privacyFetchErrorMessageSchema,
-])
+]);

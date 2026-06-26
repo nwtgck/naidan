@@ -81,7 +81,7 @@ class MockExplorerDirectory implements ExplorerDirectory {
     return fh as unknown as FileSystemFileHandle;
   }
 
-  async remove({ name }: { name: string; recursive: boolean }): Promise<void> {
+  async remove({ name }: { name: string, recursive: boolean }): Promise<void> {
     this._entries.delete(name);
   }
 
@@ -132,11 +132,11 @@ async function resolveDirectory(path: string): Promise<MockExplorerDirectory> {
 }
 
 async function listDirectory(path: string): Promise<{
-  directoryName: string;
-  directoryPath: string;
-  readOnly: boolean;
-  pathSegments: Array<{ name: string; path: string }>;
-  entries: FileExplorerEntry[];
+  directoryName: string,
+  directoryPath: string,
+  readOnly: boolean,
+  pathSegments: Array<{ name: string, path: string }>,
+  entries: FileExplorerEntry[],
 }> {
   const directory = await resolveDirectory(path);
   const entries: FileExplorerEntry[] = [];
@@ -343,8 +343,8 @@ function setListViewportHeight({
   wrapper,
   rows,
 }: {
-  wrapper: ReturnType<typeof mount>;
-  rows: number;
+  wrapper: ReturnType<typeof mount>,
+  rows: number,
 }): HTMLElement {
   const container = wrapper.get('[data-testid="list-scroll-container"]').element as HTMLElement;
   Object.defineProperty(container, 'clientHeight', {

@@ -1,81 +1,120 @@
-import { createApp } from 'vue'
-import './style.css'
-import App from './App.vue'
-import { createRouter, createWebHashHistory } from 'vue-router'
-import { routes } from 'vue-router/auto-routes'
-import { useSettings } from './composables/useSettings'
-import { useChatBootstrap } from './composables/chat/ui/useChatBootstrap'
-import { warmStandaloneWorkerCacheAtIdle } from './services/standalone-worker-cache'
+import { createApp } from 'vue';
+import './style.css';
+import App from './App.vue';
+import { createRouter, createWebHashHistory } from 'vue-router';
+import { routes } from 'vue-router/auto-routes';
+import { useSettings } from './composables/useSettings';
+import { useChatBootstrap } from './composables/chat/ui/useChatBootstrap';
+import { scheduleFileProtocolStandaloneWorkerHubWarmup } from './services/worker-hub-standalone-loader';
+import { scheduleAppStartup } from './services/app-startup';
+import { reportAppStartupFailure } from './services/app-startup-failure';
+import {
+  debugRecordFileProtocolStandaloneStartupCheckpoint,
+} from './services/debug-file-protocol-standalone/startup';
 
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
-})
+});
 
-const app = createApp(App)
+const app = createApp(App);
+// Keep this assignment visible: it reports unhandled Vue rendering and
+// lifecycle errors in both hosted and standalone builds.
+app.config.errorHandler = (error, instance, info) => {
+  console.error('Vue Error:', error);
+  console.error('Vue Instance:', instance);
+  console.error('Error Info:', info);
+};
 
-/**
- * Global Vue error handler.
- * This is essential for catching and logging rendering errors that might otherwise
- * fail silently, particularly in the restrictive 'file:///' environment.
- * It helps identify which component and lifecycle hook caused the issue.
- */
-app.config.errorHandler = (err, instance, info) => {
-  console.error('Vue Error:', err)
-  console.error('Vue Instance:', instance)
-  console.error('Error Info:', info)
-}
+app.use(router);
 
-app.use(router)
+async function bootstrapApp(): Promise<void> {
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'bootstrapping',
+    details: undefined,
+  });
 
-/**
- * IMPORTANT FOR file:/// PROTOCOL:
- * We must wait for both the DOM to be fully loaded and the Router to be ready.
- * In a local file environment (especially with IIFE builds), mounting the app
- * prematurely can lead to silent failures or white screens.
- */
-window.addEventListener('DOMContentLoaded', async () => {
-  const appElement = document.querySelector('#app')
-  if (!appElement) return
+  const appElement = document.querySelector('#app');
+  if (appElement === null) {
+    throw new Error('The #app mount element is missing.');
+  }
 
-  // Initialize global state (storage, settings, chat list)
-  // BEFORE the router processes the initial URL.
-  // This prevents race conditions where a child component (like a chat page)
-  // tries to load data before the storage provider is correctly initialized.
-  const settingsStore = useSettings()
-  const chatBootstrap = useChatBootstrap()
+  // Initialize global state (storage, settings, chat list) before rendering a
+  // route component that may access those stores during setup.
+  const settingsStore = useSettings();
+  const chatBootstrap = useChatBootstrap();
 
-  // Wait for the router to be ready before accessing query parameters.
-  // This ensures that the initial URL (even on root path '/') is correctly parsed.
-  await router.isReady()
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'waiting-router',
+    details: undefined,
+  });
+  await router.isReady();
 
   const storageTypeQuery = router.currentRoute.value.query['storage-type'];
   const storageTypeOverride = Array.isArray(storageTypeQuery) ? storageTypeQuery[0] : storageTypeQuery;
 
-  // Use a block scope to ensure dataZipBase64 can be GC'd as soon as init is done
+  // Use a block scope to ensure dataZipBase64 can be GC'd as soon as init is done.
   {
     const dataZipQuery = router.currentRoute.value.query['data-zip'];
     const dataZipBase64 = Array.isArray(dataZipQuery) ? dataZipQuery[0] : dataZipQuery;
 
-    // Clear the large data-zip parameter from the URL after extraction to keep it clean and help with GC.
-    // We preserve 'storage-type' as it might be useful for the user to see/bookmark.
+    // Clear the large data-zip parameter from the URL after extraction to keep
+    // it clean and help with GC. Preserve storage-type because it remains useful
+    // when the URL is inspected or bookmarked.
     if (dataZipBase64) {
       const newQuery = { ...router.currentRoute.value.query };
       delete newQuery['data-zip'];
-      router.replace({ query: newQuery });
+      void router.replace({ query: newQuery });
     }
 
+    debugRecordFileProtocolStandaloneStartupCheckpoint({
+      checkpoint: 'initializing-settings',
+      details: {
+        hasStorageTypeOverride: storageTypeOverride !== undefined,
+        hasDataZip: dataZipBase64 !== undefined,
+      },
+    });
     await settingsStore.init({
       storageTypeOverride: storageTypeOverride || undefined,
-      dataZipBase64: dataZipBase64 || undefined
-    })
+      dataZipBase64: dataZipBase64 || undefined,
+    });
   }
 
-  await chatBootstrap.loadChats()
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'loading-chats',
+    details: undefined,
+  });
+  await chatBootstrap.loadChats();
 
-  app.mount('#app')
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'mounting-vue',
+    details: undefined,
+  });
+  app.mount(appElement);
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'mounted',
+    details: undefined,
+  });
 
   if (__BUILD_MODE_IS_STANDALONE__) {
-    warmStandaloneWorkerCacheAtIdle()
+    scheduleFileProtocolStandaloneWorkerHubWarmup();
   }
-})
+}
+
+debugRecordFileProtocolStandaloneStartupCheckpoint({
+  checkpoint: 'entry-evaluated',
+  details: undefined,
+});
+scheduleAppStartup({
+  document,
+  bootstrap: bootstrapApp,
+  onWaitingForDom: () => {
+    debugRecordFileProtocolStandaloneStartupCheckpoint({
+      checkpoint: 'waiting-dom',
+      details: undefined,
+    });
+  },
+  onFailure: ({ error }) => {
+    reportAppStartupFailure({ document, error });
+  },
+});

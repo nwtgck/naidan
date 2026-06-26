@@ -20,8 +20,8 @@ if (!shared[STORAGE_KEY]) resetSharedStorage();
 const getShared = () => shared[STORAGE_KEY];
 
 type TestHierarchyNode =
-  | { type: 'chat'; id: string }
-  | { type: 'chat_group'; id: string; chat_ids?: string[] };
+  | { type: 'chat', id: string }
+  | { type: 'chat_group', id: string, chat_ids?: string[] };
 
 // --- Mock BroadcastChannel to bridge the "tabs" ---
 class MockBroadcastChannel {
@@ -102,8 +102,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
                   items: (node.chat_ids || []).map((cid: string) => {
                     const c = s.chats.get(cid);
                     return { id: `chat:${cid}`, type: 'chat', chat: { id: toChatId({ raw: cid }), title: c?.title || null, updatedAt: c?.updatedAt || 0, groupId: toChatGroupId({ raw: node.id }) } };
-                  })
-                }
+                  }),
+                },
               };
             }
             return node;
@@ -166,7 +166,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
           // Immediately notify all listeners in all simulated tabs
           void Promise.all(Array.from(getShared().listeners, (l: any) => l({ event })));
         }),
-      }
+      },
     }));
 
     vi.doMock('./useSettings', () => ({
@@ -197,7 +197,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
               await new Promise(r => setTimeout(r, 100));
             }
           }),
-          listModels: vi.fn().mockResolvedValue(['gpt-4'])
+          listModels: vi.fn().mockResolvedValue(['gpt-4']),
         };
       },
     }));

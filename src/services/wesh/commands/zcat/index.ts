@@ -3,7 +3,7 @@ import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
 
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   if (path.startsWith('/')) {
     return path;
   }

@@ -551,7 +551,7 @@ describe('MessageItem Attachment Rendering', () => {
       originalName: 'mem.png',
       mimeType: 'image/png',
       size: 10,
-      uploadedAt: Date.now()
+      uploadedAt: Date.now(),
     }]);
 
     const wrapper = mount(MessageItem, { props: { message } });
@@ -575,7 +575,7 @@ describe('MessageItem Attachment Rendering', () => {
       originalName: 'persisted.png',
       mimeType: 'image/png',
       size: 20,
-      uploadedAt: Date.now()
+      uploadedAt: Date.now(),
     }]);
 
     const wrapper = mount(MessageItem, { props: { message } });
@@ -595,7 +595,7 @@ describe('MessageItem Attachment Rendering', () => {
       originalName: 'missing.png',
       mimeType: 'image/png',
       size: 30,
-      uploadedAt: Date.now()
+      uploadedAt: Date.now(),
     }]);
 
     const wrapper = mount(MessageItem, { props: { message } });
@@ -615,7 +615,7 @@ describe('MessageItem Attachment Rendering', () => {
       originalName: 'mem.png',
       mimeType: 'image/png',
       size: 10,
-      uploadedAt: Date.now()
+      uploadedAt: Date.now(),
     }]);
 
     const wrapper = mount(MessageItem, { props: { message } });
@@ -709,7 +709,7 @@ describe('MessageItem Edit Labels', () => {
       id: generateId<MessageId>(),
       content: 'Some content',
       timestamp: Date.now(),
-      replies: { items: [] }
+      replies: { items: [] },
     };
     if (role === 'user') {
       return {
@@ -719,7 +719,7 @@ describe('MessageItem Edit Labels', () => {
         thinking: undefined,
         error: undefined,
         modelId: undefined,
-        lmParameters: EMPTY_LM_PARAMETERS
+        lmParameters: EMPTY_LM_PARAMETERS,
       } as UserMessageNode;
     }
     return {
@@ -729,7 +729,7 @@ describe('MessageItem Edit Labels', () => {
       thinking: undefined,
       error: undefined,
       modelId: 'test-model',
-      lmParameters: EMPTY_LM_PARAMETERS
+      lmParameters: EMPTY_LM_PARAMETERS,
     } as AssistantMessageNode;
   };
 
@@ -790,7 +790,7 @@ describe('MessageItem Edit Labels', () => {
       content: 'Original content',
       timestamp: Date.now(),
       replies: { items: [] },
-      lmParameters
+      lmParameters,
     };
     const wrapper = mount(MessageItem, { props: { message } });
 
@@ -814,7 +814,7 @@ describe('MessageItem Action Visibility', () => {
       id: generateId<MessageId>(),
       content: 'Some content',
       timestamp: Date.now(),
-      replies: { items: [] }
+      replies: { items: [] },
     };
     if (role === 'user') {
       return {
@@ -824,7 +824,7 @@ describe('MessageItem Action Visibility', () => {
         thinking: undefined,
         error: undefined,
         modelId: undefined,
-        lmParameters: EMPTY_LM_PARAMETERS
+        lmParameters: EMPTY_LM_PARAMETERS,
       } as UserMessageNode;
     }
     return {
@@ -834,7 +834,7 @@ describe('MessageItem Action Visibility', () => {
       thinking: undefined,
       error: undefined,
       modelId: 'test-model',
-      lmParameters: EMPTY_LM_PARAMETERS
+      lmParameters: EMPTY_LM_PARAMETERS,
     } as AssistantMessageNode;
   };
 
@@ -868,7 +868,7 @@ describe('MessageItem Touch Support', () => {
         originalName: 'mem.png',
         mimeType: 'image/png',
         size: 10,
-        uploadedAt: Date.now()
+        uploadedAt: Date.now(),
       }],
       replies: { items: [] },
     };
@@ -1070,10 +1070,10 @@ describe('MessageItem Actions Menu', () => {
       global: {
         stubs: {
           MessageDiffModal: {
-            template: '<div data-testid="message-diff-modal"></div>'
-          }
-        }
-      }
+            template: '<div data-testid="message-diff-modal"></div>',
+          },
+        },
+      },
     });
 
     // Open menu

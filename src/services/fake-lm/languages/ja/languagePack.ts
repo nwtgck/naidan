@@ -45,8 +45,8 @@ export function makeJaHeading({ ctx }: { ctx: FakeLmContext }): Inline[] {
 }
 
 export function makeJaOpeningParagraph({ ctx, sentenceCount }: {
-  ctx: FakeLmContext;
-  sentenceCount: number;
+  ctx: FakeLmContext,
+  sentenceCount: number,
 }): Inline[] {
   return joinInlineSentences({
     sentences: [
@@ -58,8 +58,8 @@ export function makeJaOpeningParagraph({ ctx, sentenceCount }: {
 }
 
 export function makeJaParagraph({ ctx, sentenceCount }: {
-  ctx: FakeLmContext;
-  sentenceCount: number;
+  ctx: FakeLmContext,
+  sentenceCount: number,
 }): Inline[] {
   return joinInlineSentences({
     sentences: Array.from({ length: sentenceCount }, () => makeJaSentence({ ctx })),
@@ -72,9 +72,9 @@ export function makeJaClosingParagraph({ ctx }: { ctx: FakeLmContext }): Inline[
 }
 
 export function makeJaThinkingText({ ctx, sentenceCount, paragraphBreakEvery }: {
-  ctx: FakeLmContext;
-  sentenceCount: number;
-  paragraphBreakEvery: number | undefined;
+  ctx: FakeLmContext,
+  sentenceCount: number,
+  paragraphBreakEvery: number | undefined,
 }): string {
   const sentences = Array.from({ length: sentenceCount }, () => makeJaPatternText({ ctx, category: 'thinking' }));
 
@@ -107,8 +107,8 @@ export function makeJaTableCell({ ctx }: { ctx: FakeLmContext }): Inline[] {
 }
 
 function makeJaPatternText({ ctx, category }: {
-  ctx: FakeLmContext;
-  category: 'opening' | 'body' | 'thinking' | 'closing';
+  ctx: FakeLmContext,
+  category: 'opening' | 'body' | 'thinking' | 'closing',
 }): string {
   const patterns = (() => {
     switch (category) {
@@ -133,8 +133,8 @@ function makeJaPatternText({ ctx, category }: {
 }
 
 function renderJaTextPatternSlot({ slot, ctx }: {
-  slot: TextPatternSlot;
-  ctx: FakeLmContext;
+  slot: TextPatternSlot,
+  ctx: FakeLmContext,
 }): string {
   const d = ctx.lexicons;
   const r = ctx.random;
@@ -172,7 +172,7 @@ function renderJaTextPatternSlot({ slot, ctx }: {
 }
 
 function makeJaInputGreeting({ ctx }: {
-  ctx: FakeLmContext;
+  ctx: FakeLmContext,
 }): string {
   switch (ctx.inputAnalysis.greeting) {
   case 'morning':
@@ -196,7 +196,7 @@ function makeJaInputGreeting({ ctx }: {
 }
 
 function pickJaInputKeyword({ ctx }: {
-  ctx: FakeLmContext;
+  ctx: FakeLmContext,
 }): string {
   if (ctx.inputAnalysis.keywords.length === 0) {
     return makeJaNounPhrase({ ctx });
@@ -213,7 +213,7 @@ function pickJaInputKeyword({ ctx }: {
 }
 
 function makeJaInputKeywordPhrase({ ctx }: {
-  ctx: FakeLmContext;
+  ctx: FakeLmContext,
 }): string {
   const keyword = pickJaInputKeyword({ ctx });
   return oneOf({
@@ -228,8 +228,8 @@ function makeJaInputKeywordPhrase({ ctx }: {
 }
 
 function maybeBoldInline({ text, ctx }: {
-  text: string;
-  ctx: FakeLmContext;
+  text: string,
+  ctx: FakeLmContext,
 }): Inline[] {
   if (ctx.random() > 0.28) {
     return [{ kind: 'text', text }];
@@ -243,8 +243,8 @@ function maybeBoldInline({ text, ctx }: {
 }
 
 function joinInlineSentences({ sentences, separator }: {
-  sentences: Inline[][];
-  separator: string;
+  sentences: Inline[][],
+  separator: string,
 }): Inline[] {
   return sentences.flatMap((sentence, index) => (
     index === 0 ? sentence : [{ kind: 'text' as const, text: separator }, ...sentence]

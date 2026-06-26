@@ -16,7 +16,7 @@ describe('RecipeExportModal.vue', () => {
     groupName: 'Test Group',
     systemPrompt: { content: 'System instruction', behavior: 'override' as const },
     lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.7, reasoning: { effort: undefined } },
-    initialModelId: 'llama3:8b'
+    initialModelId: 'llama3:8b',
   };
 
   it('renders correctly when open', () => {
@@ -123,7 +123,7 @@ describe('RecipeExportModal.vue', () => {
     // Mock clipboard API
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', {
-      clipboard: { writeText }
+      clipboard: { writeText },
     });
 
     const wrapper = mount(RecipeExportModal, {

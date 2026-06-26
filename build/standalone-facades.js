@@ -43,7 +43,7 @@ export const STANDALONE_FACADES = [
     facadePath: '@/services/fake-lm',
     standalonePath: 'src/services/fake-lm/index-standalone.ts',
   },
-]
+];
 
 export const STANDALONE_WORKER_CLIENT_FACADES = [
   '@/services/advanced-text-editor-v3/worker/client',
@@ -53,14 +53,14 @@ export const STANDALONE_WORKER_CLIENT_FACADES = [
   '@/services/file-explorer/worker/client',
   '@/services/transformers-js/worker/client',
   '@/services/transformers-js/scanner/worker/client',
-]
+];
 
 function escapeRegExp({ value }) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function createExactAliasFindRegExp({ facadePath }) {
-  return new RegExp(`^${escapeRegExp({ value: facadePath })}$`)
+  return new RegExp(`^${escapeRegExp({ value: facadePath })}$`);
 }
 
 export function createStandaloneFacadeAliases({ resolvePath }) {
@@ -70,5 +70,5 @@ export function createStandaloneFacadeAliases({ resolvePath }) {
   }) => ({
     find: createExactAliasFindRegExp({ facadePath }),
     replacement: resolvePath(standalonePath),
-  }))
+  }));
 }

@@ -5,12 +5,12 @@ import type { WeshMount } from '@/services/wesh/types';
 import type { WeshWorkerClient } from '@/services/wesh/worker/types';
 
 export interface WeshToolOptions {
-  client: WeshWorkerClient;
-  mounts: WeshMount[];
-  name: string;
-  description: string | undefined;
-  defaultStdoutLimit: number;
-  defaultStderrLimit: number;
+  client: WeshWorkerClient,
+  mounts: WeshMount[],
+  name: string,
+  description: string | undefined,
+  defaultStdoutLimit: number,
+  defaultStderrLimit: number,
 }
 
 /**
@@ -70,10 +70,10 @@ export function createWeshTool({
       onEvent,
       approvalContext: _approvalContext,
     }: {
-      args: unknown;
-      signal?: AbortSignal;
-      onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
-      approvalContext?: ToolApprovalContext;
+      args: unknown,
+      signal?: AbortSignal,
+      onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>,
+      approvalContext?: ToolApprovalContext,
     }) {
       let abortHandler: (() => void) | undefined;
       let abortPromiseCleanup: (() => void) | undefined;
@@ -89,10 +89,10 @@ export function createWeshTool({
         let cancellationRequested = false;
 
         const streamState: Record<'stdout' | 'stderr', {
-          limit: number;
-          bytes: number;
-          truncated: boolean;
-          decoder: TextDecoder;
+          limit: number,
+          bytes: number,
+          truncated: boolean,
+          decoder: TextDecoder,
         }> = {
           stdout: {
             limit: validated.stdout_limit,
@@ -108,7 +108,7 @@ export function createWeshTool({
           },
         };
 
-        const appendOutput = ({ stream, text }: { stream: 'stdout' | 'stderr'; text: string }) => {
+        const appendOutput = ({ stream, text }: { stream: 'stdout' | 'stderr', text: string }) => {
           switch (stream) {
           case 'stdout':
             stdoutText += text;
@@ -143,8 +143,8 @@ export function createWeshTool({
         };
 
         const consumeOutputChunk = async ({ stream, chunk }: {
-          stream: 'stdout' | 'stderr';
-          chunk: Uint8Array;
+          stream: 'stdout' | 'stderr',
+          chunk: Uint8Array,
         }) => {
           const state = streamState[stream];
           if (state.truncated) {

@@ -31,47 +31,47 @@ import type { WorkerToolDefinition } from './types';
 type ModelOutput = Record<string, unknown>;
 
 interface GenerationResult {
-  past_key_values: unknown;
-  sequences?: unknown;
+  past_key_values: unknown,
+  sequences?: unknown,
 }
 
 interface TextGenerationModel extends PreTrainedModel {
-  generate(inputs: Record<string, unknown>): Promise<GenerationResult & (ModelOutput | Tensor)>;
+  generate(inputs: Record<string, unknown>): Promise<GenerationResult & (ModelOutput | Tensor)>,
 }
 
 export interface WorkerGenerationRuntimeState {
-  activeModelId: string | null;
-  gemma4Processor: Gemma4ProcessorLike | null;
+  activeModelId: string | null,
+  gemma4Processor: Gemma4ProcessorLike | null,
   qwen3_5Processor: {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Transformers processor signature.
-    (text: string): Promise<Record<string, unknown>>;
+    (text: string): Promise<Record<string, unknown>>,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the Transformers tokenizer signature.
-    batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[];
-  } | null;
-  gptOssPastKeyValues: unknown;
-  qwen3_5PastKeyValues: unknown;
-  qwen3_5ConversationState: Qwen3_5ConversationState | undefined;
+    batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[],
+  } | null,
+  gptOssPastKeyValues: unknown,
+  qwen3_5PastKeyValues: unknown,
+  qwen3_5ConversationState: Qwen3_5ConversationState | undefined,
 }
 
 interface GenerationStrategyContext {
-  model: PreTrainedModel;
-  tokenizer: PreTrainedTokenizer;
-  messages: ChatMessage[];
-  onChunk: ({ chunk }: { chunk: string }) => void;
-  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void;
-  params: LmParameters | undefined;
-  tools: WorkerToolDefinition[] | undefined;
-  runtimeState: WorkerGenerationRuntimeState;
+  model: PreTrainedModel,
+  tokenizer: PreTrainedTokenizer,
+  messages: ChatMessage[],
+  onChunk: ({ chunk }: { chunk: string }) => void,
+  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void,
+  params: LmParameters | undefined,
+  tools: WorkerToolDefinition[] | undefined,
+  runtimeState: WorkerGenerationRuntimeState,
   stoppingCriteria: {
-    reset(): void;
-    interrupt(): void;
-  };
-  debugLog: ({ event, details }: { event: string; details: Record<string, unknown> }) => void;
+    reset(): void,
+    interrupt(): void,
+  },
+  debugLog: ({ event, details }: { event: string, details: Record<string, unknown> }) => void,
 }
 
 interface GenerationStrategy {
-  kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4';
-  generate({ model, tokenizer, messages, onChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog }: GenerationStrategyContext): Promise<void>;
+  kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4',
+  generate({ model, tokenizer, messages, onChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog }: GenerationStrategyContext): Promise<void>,
 }
 
 export function selectGenerationStrategy({
@@ -79,9 +79,9 @@ export function selectGenerationStrategy({
   activeModelId,
   hasTools,
 }: {
-  modelType: string | undefined;
-  activeModelId: string | null;
-  hasTools: boolean;
+  modelType: string | undefined,
+  activeModelId: string | null,
+  hasTools: boolean,
 }): GenerationStrategy {
   const isGptOss = activeModelId?.toLowerCase().includes('gpt-oss') ?? false;
   if (isGptOss && hasTools) {
@@ -222,7 +222,7 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       prompt,
       images.length > 0 ? images : null,
       null,
-      { add_special_tokens: false }
+      { add_special_tokens: false },
     );
     let rawChunkIndex = 0;
     let rawStreamOutput = '';
@@ -387,15 +387,15 @@ async function generateWithModel({
   streamer,
   stoppingCriteria,
 }: {
-  model: PreTrainedModel;
-  inputs: Record<string, unknown>;
-  pastKeyValues: unknown;
-  params: LmParameters | undefined;
-  streamer: TextStreamer;
+  model: PreTrainedModel,
+  inputs: Record<string, unknown>,
+  pastKeyValues: unknown,
+  params: LmParameters | undefined,
+  streamer: TextStreamer,
   stoppingCriteria: {
-    reset(): void;
-    interrupt(): void;
-  };
+    reset(): void,
+    interrupt(): void,
+  },
 }): Promise<GenerationResult & (ModelOutput | Tensor)> {
   const stoppingCriteriaList = new StoppingCriteriaList();
   stoppingCriteriaList.push(stoppingCriteria as never);
@@ -416,7 +416,7 @@ async function generateWithModel({
 function getQwen3_5ReasoningMode({
   params,
 }: {
-  params: LmParameters | undefined;
+  params: LmParameters | undefined,
 }): Qwen3_5ReasoningMode {
   const effort = params?.reasoning?.effort;
   switch (effort) {

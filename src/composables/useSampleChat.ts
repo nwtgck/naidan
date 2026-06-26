@@ -30,9 +30,9 @@ const assistantAngles = [
 ] as const;
 
 function paragraphFromParts({ seed, role, topic }: {
-  seed: number;
-  role: 'user' | 'assistant';
-  topic: string;
+  seed: number,
+  role: 'user' | 'assistant',
+  topic: string,
 }) {
   const goal = userGoals[seed % userGoals.length];
   const angle = assistantAngles[seed % assistantAngles.length];
@@ -52,8 +52,8 @@ function paragraphFromParts({ seed, role, topic }: {
 }
 
 function longMessageContent({ turnIndex, role }: {
-  turnIndex: number;
-  role: 'user' | 'assistant';
+  turnIndex: number,
+  role: 'user' | 'assistant',
 }) {
   const topic = longSampleTopics[turnIndex % longSampleTopics.length]!;
   const paragraphCount = (() => {
@@ -87,13 +87,13 @@ function longMessageContent({ turnIndex, role }: {
 }
 
 async function persistSampleChat({ chat, loadChats, openChat }: {
-  chat: Chat;
-  loadChats: () => Promise<void>;
-  openChat: ({ id }: { id: ChatId }) => Promise<unknown>;
+  chat: Chat,
+  loadChats: () => Promise<void>,
+  openChat: ({ id }: { id: ChatId }) => Promise<unknown>,
 }) {
   await storageService.updateChatContent({ id: chat.id, updater: () => ({
     root: chat.root,
-    currentLeafId: chat.currentLeafId
+    currentLeafId: chat.currentLeafId,
   }) });
   await storageService.updateChatMeta({ id: chat.id, updater: () => chat });
   await storageService.updateHierarchy({ updater: ({ current: curr }) => {

@@ -38,7 +38,7 @@ async function loadData() {
 
 // --- VolumeCreator event handler ---
 
-async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: VolumeId; mountPath: string; readOnly: boolean }) {
+async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: VolumeId, mountPath: string, readOnly: boolean }) {
   try {
     await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     await loadData();
@@ -49,7 +49,7 @@ async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId
 
 // --- VolumeMountList event handlers ---
 
-async function handleMountAdd({ volumeId, mountPath, readOnly }: { volumeId: VolumeId; mountPath: string; readOnly: boolean }) {
+async function handleMountAdd({ volumeId, mountPath, readOnly }: { volumeId: VolumeId, mountPath: string, readOnly: boolean }) {
   try {
     await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     const vol = volumes.value.find(v => v.id === volumeId);
@@ -71,10 +71,10 @@ async function handleMountRemove({ volumeId }: { volumeId: VolumeId }) {
   }
 }
 
-async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: VolumeId; mountPath: string; readOnly: boolean }) {
+async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: VolumeId, mountPath: string, readOnly: boolean }) {
   try {
     const isCollision = mounts.value.some(m =>
-      m.mountPath === mountPath && !(m.type === 'volume' && m.volumeId === volumeId)
+      m.mountPath === mountPath && !(m.type === 'volume' && m.volumeId === volumeId),
     );
     if (isCollision) {
       addToast({ message: 'Mount path already in use' });
@@ -118,7 +118,7 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
   }
 }
 
-async function handleVolumeRename({ volumeId, name }: { volumeId: VolumeId; name: string }) {
+async function handleVolumeRename({ volumeId, name }: { volumeId: VolumeId, name: string }) {
   try {
     await storageService.renameVolume({ volumeId: volumeId, name });
     await loadData();
@@ -184,7 +184,7 @@ onMounted(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

@@ -3,15 +3,15 @@ import { computed, ref, watch } from 'vue';
 import { XIcon, BrainIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
-  isOpen: boolean;
-  totalMessages: number;
-  initialKeepCount: number;
-  initialInstruction: string;
+  isOpen: boolean,
+  totalMessages: number,
+  initialKeepCount: number,
+  initialInstruction: string,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'confirm', value: { keepCount: number; instruction: string }): void;
+  (e: 'close'): void,
+  (e: 'confirm', value: { keepCount: number, instruction: string }): void,
 }>();
 
 const keepCount = ref(props.initialKeepCount);
@@ -52,7 +52,7 @@ function handleConfirm() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

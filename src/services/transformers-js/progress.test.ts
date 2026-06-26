@@ -37,8 +37,8 @@ describe('transformersJsService progress logic', () => {
     // Clear navigator mock
     vi.stubGlobal('navigator', {
       storage: {
-        getDirectory: vi.fn().mockRejectedValue(new Error('No storage'))
-      }
+        getDirectory: vi.fn().mockRejectedValue(new Error('No storage')),
+      },
     });
   });
 
@@ -55,7 +55,7 @@ describe('transformersJsService progress logic', () => {
         cb({ status: 'done', name: 'tokenizer.json', loaded: 50000, total: 50000 });
 
         return { device: 'wasm' };
-      })
+      }),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -87,7 +87,7 @@ describe('transformersJsService progress logic', () => {
         cb({ status: 'progress', name: 'model.onnx', loaded: 50000000, total: 100000000 }); // 50MB of 100MB (50%)
 
         return { device: 'wasm' };
-      })
+      }),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -130,7 +130,7 @@ describe('transformersJsService progress logic', () => {
         cb({ status: 'progress', name: 'model.onnx', loaded: half + 1, total: floor / 2 });
 
         return { device: 'wasm' };
-      })
+      }),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -174,7 +174,7 @@ describe('transformersJsService progress logic', () => {
         // (100MB / 1.2GB) is ~8%, which is less than 50%
 
         return { device: 'wasm' };
-      })
+      }),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -206,7 +206,7 @@ describe('transformersJsService progress logic', () => {
         cb({ status: 'done', name: 'model.onnx', loaded: 1000000000, total: 1000000000 });
 
         return { device: 'wasm' };
-      })
+      }),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });

@@ -9,19 +9,19 @@ import {
 export type ResolvableLmParameters = Readonly<
   Partial<Omit<LmParameters, 'reasoning' | 'stop'>>
 > & Readonly<{
-  stop?: readonly string[];
-  reasoning: Reasoning;
+  stop?: readonly string[],
+  reasoning: Reasoning,
 }>;
 
 export interface ResolvableSettings {
-  endpointType: EndpointType;
-  endpointUrl?: string;
-  endpointHttpHeaders?: readonly (readonly [string, string])[];
-  defaultModelId?: string;
-  titleModelId?: string;
-  autoTitleEnabled?: boolean;
-  systemPrompt?: string;
-  lmParameters?: ResolvableLmParameters;
+  endpointType: EndpointType,
+  endpointUrl?: string,
+  endpointHttpHeaders?: readonly (readonly [string, string])[],
+  defaultModelId?: string,
+  titleModelId?: string,
+  autoTitleEnabled?: boolean,
+  systemPrompt?: string,
+  lmParameters?: ResolvableLmParameters,
 }
 
 
@@ -29,8 +29,8 @@ function applyLmParameterOverrides({
   target,
   source,
 }: {
-  target: LmParameters;
-  source: ResolvableLmParameters | LmParameters | undefined;
+  target: LmParameters,
+  source: ResolvableLmParameters | LmParameters | undefined,
 }): void {
   if (source === undefined) return;
 
@@ -137,7 +137,7 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
 
   const lmParameters: LmParameters = {
     ...EMPTY_LM_PARAMETERS,
-    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning }
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
   };
 
   for (const source of [globalSettings.lmParameters, group?.lmParameters, chat.lmParameters]) {
@@ -161,15 +161,15 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
  */
 export function hasChatOverrides({ chat }: {
   chat: {
-    endpointType?: EndpointType;
-    endpointUrl?: string;
-    endpointHttpHeaders?: readonly (readonly [string, string])[];
-    modelId?: string;
-    autoTitleEnabled?: boolean;
-    titleModelId?: string;
-    systemPrompt?: SystemPrompt;
-    lmParameters?: ResolvableLmParameters;
-  }
+    endpointType?: EndpointType,
+    endpointUrl?: string,
+    endpointHttpHeaders?: readonly (readonly [string, string])[],
+    modelId?: string,
+    autoTitleEnabled?: boolean,
+    titleModelId?: string,
+    systemPrompt?: SystemPrompt,
+    lmParameters?: ResolvableLmParameters,
+  },
 }): boolean {
   return !!(
     chat.endpointType ||
@@ -189,17 +189,17 @@ export function hasChatOverrides({ chat }: {
 export function hasGroupOverrides({ group }: {
   group: {
     endpoint?: {
-      type: EndpointType;
-      url?: string;
-      httpHeaders?: readonly (readonly [string, string])[];
-    };
-    modelId?: string;
-    autoTitleEnabled?: boolean;
-    titleModelId?: string;
-    systemPrompt?: SystemPrompt;
-    lmParameters?: ResolvableLmParameters;
-    mounts?: readonly { type: string }[];
-  }
+      type: EndpointType,
+      url?: string,
+      httpHeaders?: readonly (readonly [string, string])[],
+    },
+    modelId?: string,
+    autoTitleEnabled?: boolean,
+    titleModelId?: string,
+    systemPrompt?: SystemPrompt,
+    lmParameters?: ResolvableLmParameters,
+    mounts?: readonly { type: string }[],
+  },
 }): boolean {
   return !!(
     group.endpoint ||

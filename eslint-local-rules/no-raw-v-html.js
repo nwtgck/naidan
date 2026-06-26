@@ -1,9 +1,9 @@
 function normalizePath(filePath) {
-  return filePath.replace(/\\/g, '/')
+  return filePath.replace(/\\/g, '/');
 }
 
 function isAllowedHtmlViewFile({ filePath }) {
-  return normalizePath(filePath).endsWith('/src/components/common/AllowedHtmlView.vue')
+  return normalizePath(filePath).endsWith('/src/components/common/AllowedHtmlView.vue');
 }
 
 export const rule = {
@@ -19,21 +19,21 @@ export const rule = {
   },
   create(context) {
     if (isAllowedHtmlViewFile({ filePath: context.filename ?? context.getFilename?.() ?? '' })) {
-      return {}
+      return {};
     }
 
-    const parserServices = context.sourceCode?.parserServices ?? context.parserServices
+    const parserServices = context.sourceCode?.parserServices ?? context.parserServices;
     if (!parserServices?.defineTemplateBodyVisitor) {
-      return {}
+      return {};
     }
 
     return parserServices.defineTemplateBodyVisitor({
       "VAttribute[directive=true][key.name.name='html']"(node) {
-        context.report({ node, messageId: 'noRawVHtml' })
+        context.report({ node, messageId: 'noRawVHtml' });
       },
-    })
+    });
   },
-}
+};
 
 export default {
   files: ['src/**/*.vue'],
@@ -48,4 +48,4 @@ export default {
   rules: {
     'local-rules-allowed-html/no-raw-v-html': 'error',
   },
-}
+};

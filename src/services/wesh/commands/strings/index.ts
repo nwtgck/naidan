@@ -10,8 +10,8 @@ type StringsRadix = 'octal' | 'decimal' | 'hex';
 function parseMinimumLength({
   value,
 }: {
-  value: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   if (!/^[1-9]\d*$/u.test(value)) {
     return { ok: false, message: `invalid minimum string length: '${value}'` };
   }
@@ -23,8 +23,8 @@ function isPrintableByte({
   byte,
   includeAllWhitespace,
 }: {
-  byte: number;
-  includeAllWhitespace: boolean;
+  byte: number,
+  includeAllWhitespace: boolean,
 }): boolean {
   if (byte >= 0x20 && byte <= 0x7e) {
     return true;
@@ -50,8 +50,8 @@ function formatOffset({
   offset,
   radix,
 }: {
-  offset: number;
-  radix: StringsRadix;
+  offset: number,
+  radix: StringsRadix,
 }): string {
   switch (radix) {
   case 'octal':
@@ -70,7 +70,7 @@ function formatOffset({
 function printableFragmentsToString({
   fragments,
 }: {
-  fragments: readonly Uint8Array[];
+  fragments: readonly Uint8Array[],
 }): string {
   const parts: string[] = [];
   for (const fragment of fragments) {

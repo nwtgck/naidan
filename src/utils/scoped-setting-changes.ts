@@ -21,7 +21,7 @@ export { normalizeLmParameters };
 export function createSystemPromptSettingChange({
   systemPrompt,
 }: {
-  systemPrompt: SystemPrompt | undefined;
+  systemPrompt: SystemPrompt | undefined,
 }): ScopedSettingChange {
   if (systemPrompt === undefined) {
     return { field: 'system_prompt', behavior: 'inherit' };
@@ -44,7 +44,7 @@ export function createSystemPromptSettingChange({
 export function createLmParameterSettingChanges({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined;
+  lmParameters: LmParameters | undefined,
 }): LmParameterSettingChange[] {
   const current = lmParameters ?? EMPTY_LM_PARAMETERS;
   const changes: LmParameterSettingChange[] = [];
@@ -129,8 +129,8 @@ function areStringArraysEqual({
   left,
   right,
 }: {
-  left: readonly string[] | undefined;
-  right: readonly string[] | undefined;
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
 }): boolean {
   if (left === right) return true;
   if (left === undefined || right === undefined || left.length !== right.length) return false;
@@ -141,8 +141,8 @@ export function createChangedLmParameterSettingChanges({
   previous,
   next,
 }: {
-  previous: LmParameters | undefined;
-  next: LmParameters | undefined;
+  previous: LmParameters | undefined,
+  next: LmParameters | undefined,
 }): LmParameterSettingChange[] {
   const previousLmParameters = previous ?? EMPTY_LM_PARAMETERS;
   const nextLmParameters = next ?? EMPTY_LM_PARAMETERS;
@@ -241,7 +241,7 @@ export function createChangedLmParameterSettingChanges({
 export function cloneScopedSettingChanges({
   changes,
 }: {
-  changes: readonly ScopedSettingChange[];
+  changes: readonly ScopedSettingChange[],
 }): ScopedSettingChange[] {
   // Snapshot queued commands through an exhaustive switch. TypeScript readonly
   // modifiers do not prevent runtime mutation by a caller, and a new field must
@@ -323,7 +323,7 @@ function normalizeEndpointOverride({ endpoint }: { endpoint: Endpoint }): Endpoi
 function assertUniqueFields({
   changes,
 }: {
-  changes: readonly ScopedSettingChange[];
+  changes: readonly ScopedSettingChange[],
 }): void {
   const fields = new Set<ScopedSettingChange['field']>();
   for (const change of changes) {
@@ -335,20 +335,20 @@ function assertUniqueFields({
 }
 
 type ScopedSettingsState = {
-  endpoint: Endpoint | undefined;
-  modelId: string | undefined;
-  autoTitleEnabled: boolean | undefined;
-  titleModelId: string | undefined;
-  systemPrompt: SystemPrompt | undefined;
-  lmParameters: LmParameters | undefined;
+  endpoint: Endpoint | undefined,
+  modelId: string | undefined,
+  autoTitleEnabled: boolean | undefined,
+  titleModelId: string | undefined,
+  systemPrompt: SystemPrompt | undefined,
+  lmParameters: LmParameters | undefined,
 };
 
 function applyChanges({
   current,
   changes,
 }: {
-  current: ScopedSettingsState;
-  changes: readonly ScopedSettingChange[];
+  current: ScopedSettingsState,
+  changes: readonly ScopedSettingChange[],
 }): ScopedSettingsState {
   assertUniqueFields({ changes });
 
@@ -624,9 +624,9 @@ export function applyScopedSettingChangesToChat({
   changes,
   updatedAt,
 }: {
-  current: Chat;
-  changes: readonly ScopedSettingChange[];
-  updatedAt: number;
+  current: Chat,
+  changes: readonly ScopedSettingChange[],
+  updatedAt: number,
 }): Chat {
   if (changes.length === 0) return current;
 
@@ -671,9 +671,9 @@ export function applyScopedSettingChangesToChatMeta({
   changes,
   updatedAt,
 }: {
-  current: ChatMeta;
-  changes: readonly ScopedSettingChange[];
-  updatedAt: number;
+  current: ChatMeta,
+  changes: readonly ScopedSettingChange[],
+  updatedAt: number,
 }): ChatMeta {
   if (changes.length === 0) return current;
 
@@ -701,9 +701,9 @@ export function applyScopedSettingChangesToChatGroup({
   changes,
   updatedAt,
 }: {
-  current: ChatGroup;
-  changes: readonly ScopedSettingChange[];
-  updatedAt: number;
+  current: ChatGroup,
+  changes: readonly ScopedSettingChange[],
+  updatedAt: number,
 }): ChatGroup {
   if (changes.length === 0) return current;
 

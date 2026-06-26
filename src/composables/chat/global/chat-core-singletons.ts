@@ -23,7 +23,7 @@ export const creatingChat = ref(false);
 export function isTaskRunning({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }) {
   return chatRuntimeStore.isTaskRunning({ chatId });
 }
@@ -31,7 +31,7 @@ export function isTaskRunning({
 export function isProcessing({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }) {
   return chatRuntimeStore.isProcessing({ chatId });
 }
@@ -40,8 +40,8 @@ export function setContextCompactProgress({
   chatId,
   progress,
 }: {
-  chatId: ChatId;
-  progress: ContextCompactProgress;
+  chatId: ChatId,
+  progress: ContextCompactProgress,
 }) {
   contextCompactRuntime.setProgress({ chatId, progress });
 }
@@ -49,7 +49,7 @@ export function setContextCompactProgress({
 export function getContextCompactProgress({
   chatId,
 }: {
-  chatId: ChatId | undefined;
+  chatId: ChatId | undefined,
 }): ContextCompactProgress {
   return contextCompactRuntime.getProgress({ chatId });
 }
@@ -92,7 +92,7 @@ export const updateChatScopedSettings = chatDataStore.updateChatScopedSettings;
 export function getChatTargetByOptionalId({
   chatId,
 }: {
-  chatId: ChatId | undefined;
+  chatId: ChatId | undefined,
 }) {
   if (chatId === undefined) {
     return null;
@@ -104,7 +104,7 @@ export function getChatTargetByOptionalId({
 export function triggerCurrentChat({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }) {
   if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
     triggerRef(currentChatRef);

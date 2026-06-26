@@ -6,14 +6,14 @@ import type {
   WeshListNode,
   WeshRedirection,
   WeshSubshellNode,
-  WeshProcessSubstitutionNode
+  WeshProcessSubstitutionNode,
 } from './types';
 
 export function parseCommandLine({
   commandLine,
 }: {
-  commandLine: string;
-  env: Map<string, string>;
+  commandLine: string,
+  env: Map<string, string>,
 }): WeshASTNode {
   const lexer = new Lexer({ input: commandLine });
   const parser = new Parser({ lexer });
@@ -31,10 +31,10 @@ const KEYWORDS = new Set([
 function parseHereDocDelimiter({
   raw,
 }: {
-  raw: string;
+  raw: string,
 }): {
-  delimiter: string;
-  contentExpansion: 'literal' | 'variables';
+  delimiter: string,
+  contentExpansion: 'literal' | 'variables',
 } {
   let delimiter = '';
   let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
@@ -120,7 +120,7 @@ class Parser {
   private parseProcessSubstitution({
     tokenType,
   }: {
-    tokenType: 'PROC_SUB_IN' | 'PROC_SUB_OUT';
+    tokenType: 'PROC_SUB_IN' | 'PROC_SUB_OUT',
   }): WeshProcessSubstitutionNode {
     this.eat({ type: tokenType });
 
@@ -313,8 +313,8 @@ class Parser {
           kind: 'list',
           parts: [
             { node, operator },
-            { node: nextNode, operator: ';' }
-          ]
+            { node: nextNode, operator: ';' },
+          ],
         };
         break;
       default: {
@@ -444,7 +444,7 @@ class Parser {
     }
     }
 
-    const assignments: { key: string; value: string }[] = [];
+    const assignments: { key: string, value: string }[] = [];
     const args: Array<string | WeshProcessSubstitutionNode> = [];
     const redirections: WeshRedirection[] = [];
     let commandName: string | null = null;
@@ -553,7 +553,7 @@ class Parser {
       name: commandName,
       args,
       assignments,
-      redirections
+      redirections,
     };
   }
 
@@ -613,7 +613,7 @@ class Parser {
   private parseTrailingCompoundRedirections({
     node,
   }: {
-    node: WeshASTNode;
+    node: WeshASTNode,
   }): WeshASTNode {
     const redirections: WeshRedirection[] = [];
     while (this.isRedirectionStart()) {
@@ -662,7 +662,7 @@ class Parser {
     case 'subshell':
       listNode = {
         kind: 'list',
-        parts: [{ node: list, operator: ';' }]
+        parts: [{ node: list, operator: ';' }],
       };
       break;
     default: {
@@ -673,7 +673,7 @@ class Parser {
 
     return {
       kind: 'subshell',
-      list: listNode
+      list: listNode,
     };
   }
 
@@ -789,7 +789,7 @@ class Parser {
         kind: 'if',
         condition,
         thenBody,
-        elseBody
+        elseBody,
       };
     }
 
@@ -802,7 +802,7 @@ class Parser {
       kind: 'if',
       condition,
       thenBody,
-      elseBody
+      elseBody,
     };
   }
 
@@ -857,7 +857,7 @@ class Parser {
       kind: 'for',
       variable,
       items,
-      body
+      body,
     };
   }
 
@@ -890,7 +890,7 @@ class Parser {
   private parseFunctionDefinition({
     usedFunctionKeyword,
   }: {
-    usedFunctionKeyword: boolean;
+    usedFunctionKeyword: boolean,
   }): WeshASTNode {
     if (usedFunctionKeyword) {
       this.eat({ type: 'WORD' });
@@ -1236,7 +1236,7 @@ class Parser {
   private expectKeyword({
     keyword,
   }: {
-    keyword: string;
+    keyword: string,
   }): void {
     if (this.currentToken.type !== 'WORD' || this.currentToken.value !== keyword) {
       throw new Error(`Expected '${keyword}'`);

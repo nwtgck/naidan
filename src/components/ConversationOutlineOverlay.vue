@@ -13,15 +13,15 @@ type OutlineRole = MessageNode['role'];
 type ScrollHintVisibility = 'hidden' | 'visible';
 
 const props = defineProps<{
-  chatId: ChatId;
-  visibility: OutlineVisibility;
-  flowItems: ChatFlowItem[];
-  initialMessageId?: MessageId;
+  chatId: ChatId,
+  visibility: OutlineVisibility,
+  flowItems: ChatFlowItem[],
+  initialMessageId?: MessageId,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'select-message', messageId: MessageId): void;
+  (e: 'close'): void,
+  (e: 'select-message', messageId: MessageId): void,
 }>();
 
 const peekMessageId = ref<MessageId | undefined>(undefined);
@@ -145,7 +145,7 @@ function roleClass({ role }: { role: OutlineRole }) {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

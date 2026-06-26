@@ -66,6 +66,6 @@ export function usePrint() {
     TEST_ONLY: {
       setActivePrintMode,
       waitForPrintReady,
-    }
+    },
   };
 }

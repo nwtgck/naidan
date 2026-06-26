@@ -18,19 +18,19 @@ describe('chat-search AND logic', () => {
               role: 'assistant',
               content: 'I see your test message about the world',
               timestamp: Date.now(),
-              replies: { items: [] }
-            } as MessageNode
-          ]
-        }
+              replies: { items: [] },
+            } as MessageNode,
+          ],
+        },
       } as MessageNode,
       {
         id: toMessageId({ raw: '3' }),
         role: 'user',
         content: 'Another unrelated message',
         timestamp: Date.now(),
-        replies: { items: [] }
-      } as MessageNode
-    ]
+        replies: { items: [] },
+      } as MessageNode,
+    ],
   };
 
   describe('searchChatTree', () => {
@@ -38,7 +38,7 @@ describe('chat-search AND logic', () => {
       const results = searchChatTree({
         root: mockRoot,
         query: 'test world',
-        chatId: toChatId({ raw: 'chat1' })
+        chatId: toChatId({ raw: 'chat1' }),
       });
 
       expect(results).toHaveLength(2); // Both message 1 and 2 have both words
@@ -50,7 +50,7 @@ describe('chat-search AND logic', () => {
       const results = searchChatTree({
         root: mockRoot,
         query: 'test　world', // IDEographic space
-        chatId: toChatId({ raw: 'chat1' })
+        chatId: toChatId({ raw: 'chat1' }),
       });
 
       expect(results).toHaveLength(2);
@@ -60,7 +60,7 @@ describe('chat-search AND logic', () => {
       const results = searchChatTree({
         root: mockRoot,
         query: 'test missing',
-        chatId: toChatId({ raw: 'chat1' })
+        chatId: toChatId({ raw: 'chat1' }),
       });
 
       expect(results).toHaveLength(0);
@@ -70,7 +70,7 @@ describe('chat-search AND logic', () => {
       const results = searchChatTree({
         root: mockRoot,
         query: 'TEST WORLD',
-        chatId: toChatId({ raw: 'chat1' })
+        chatId: toChatId({ raw: 'chat1' }),
       });
 
       expect(results).toHaveLength(2);
@@ -85,7 +85,7 @@ describe('chat-search AND logic', () => {
       const results = searchLinearBranch({
         branch,
         query: 'message world',
-        chatId: toChatId({ raw: 'chat1' })
+        chatId: toChatId({ raw: 'chat1' }),
       });
 
       expect(results).toHaveLength(2);

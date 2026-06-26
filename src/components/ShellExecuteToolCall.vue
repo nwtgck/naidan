@@ -5,9 +5,9 @@ import { ChevronDownIcon, ChevronRightIcon, WrapTextIcon } from 'lucide-vue-next
 import type { ToolExecutionResult } from '@/services/tools/types';
 
 const props = defineProps<{
-  args: string;
-  result: ToolExecutionResult;
-  liveOutput?: string;
+  args: string,
+  result: ToolExecutionResult,
+  liveOutput?: string,
 }>();
 
 // IMPORTANT: These schemas are intentionally local to this component and MUST NOT
@@ -68,7 +68,7 @@ const liveOutputText = computed((): string | null => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

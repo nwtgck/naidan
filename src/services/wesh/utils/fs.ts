@@ -7,19 +7,19 @@ import type {
 } from '@/services/wesh/types';
 
 interface WeshFileCapabilities {
-  open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
-  stat({ path }: { path: string }): Promise<unknown>;
-  tryReadBlobEfficiently?({ path }: { path: string }): Promise<WeshEfficientBlobReadResult>;
+  open({ path, flags, mode }: { path: string, flags: WeshOpenFlags, mode?: number }): Promise<WeshFileHandle>,
+  stat({ path }: { path: string }): Promise<unknown>,
+  tryReadBlobEfficiently?({ path }: { path: string }): Promise<WeshEfficientBlobReadResult>,
   tryCreateFileWriterEfficiently?({ path, mode }: {
-    path: string;
-    mode: 'truncate' | 'append';
-  }): Promise<WeshEfficientFileWriteResult>;
+    path: string,
+    mode: 'truncate' | 'append',
+  }): Promise<WeshEfficientFileWriteResult>,
 }
 
 /**
  * Read the entire content of a file as a Uint8Array.
  */
-export async function readAllFileBytes({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<Uint8Array> {
+export async function readAllFileBytes({ files, path }: { files: WeshFileCapabilities, path: string }): Promise<Uint8Array> {
   if (files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await files.tryReadBlobEfficiently({ path });
     switch (blobResult.kind) {
@@ -63,7 +63,7 @@ export async function readAllFileBytes({ files, path }: { files: WeshFileCapabil
 /**
  * Read the entire content of a file as a UTF-8 string.
  */
-export async function readAllFileText({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<string> {
+export async function readAllFileText({ files, path }: { files: WeshFileCapabilities, path: string }): Promise<string> {
   if (files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await files.tryReadBlobEfficiently({ path });
     switch (blobResult.kind) {
@@ -87,8 +87,8 @@ export async function openFileReadStream({
   files,
   path,
 }: {
-  files: WeshFileCapabilities;
-  path: string;
+  files: WeshFileCapabilities,
+  path: string,
 }): Promise<ReadableStream<Uint8Array>> {
   if (files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await files.tryReadBlobEfficiently({ path });
@@ -118,8 +118,8 @@ export async function writeAllBytesToHandle({
   handle,
   data,
 }: {
-  handle: WeshFileHandle;
-  data: Uint8Array;
+  handle: WeshFileHandle,
+  data: Uint8Array,
 }): Promise<void> {
   let totalWritten = 0;
   while (totalWritten < data.byteLength) {
@@ -143,9 +143,9 @@ export async function writeAllFileBytes({
   path,
   data,
 }: {
-  files: WeshFileCapabilities;
-  path: string;
-  data: Uint8Array;
+  files: WeshFileCapabilities,
+  path: string,
+  data: Uint8Array,
 }): Promise<void> {
   const flags: WeshOpenFlags = {
     access: 'write',
@@ -175,7 +175,7 @@ export async function writeAllFileBytes({
 /**
  * Check if a file or directory exists.
  */
-export async function checkFileExists({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<boolean> {
+export async function checkFileExists({ files, path }: { files: WeshFileCapabilities, path: string }): Promise<boolean> {
   try {
     await files.stat({ path });
     return true;
@@ -191,8 +191,8 @@ export function openHandleReadStream({
   handle,
   chunkSize = 64 * 1024,
 }: {
-  handle: WeshFileHandle;
-  chunkSize?: number;
+  handle: WeshFileHandle,
+  chunkSize?: number,
 }): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async pull(controller) {
@@ -224,9 +224,9 @@ export async function writeAllStreamToHandle({
   handle,
   closeHandle,
 }: {
-  stream: ReadableStream<Uint8Array>;
-  handle: WeshFileHandle;
-  closeHandle: boolean;
+  stream: ReadableStream<Uint8Array>,
+  handle: WeshFileHandle,
+  closeHandle: boolean,
 }): Promise<void> {
   const reader = stream.getReader();
   try {
@@ -268,10 +268,10 @@ export async function writeAllStreamToFile({
   stream,
   mode,
 }: {
-  files: WeshFileCapabilities;
-  path: string;
-  stream: ReadableStream<Uint8Array>;
-  mode: 'truncate' | 'append';
+  files: WeshFileCapabilities,
+  path: string,
+  stream: ReadableStream<Uint8Array>,
+  mode: 'truncate' | 'append',
 }): Promise<void> {
   const efficientWriterResult = files.tryCreateFileWriterEfficiently === undefined
     ? undefined

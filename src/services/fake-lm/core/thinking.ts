@@ -4,11 +4,11 @@ import { pickWeighted } from '@/services/fake-lm/core/weighted';
 export type FakeLmThinkingEffort = 'off' | 'low' | 'medium' | 'high';
 
 export type FakeLmStreamItem =
-  | { type: 'thinking'; chunk: string }
-  | { type: 'content'; chunk: string };
+  | { type: 'thinking', chunk: string }
+  | { type: 'content', chunk: string };
 
 export function normalizeFakeLmThinkingEffort({ value }: {
-  value: unknown;
+  value: unknown,
 }): FakeLmThinkingEffort {
   if (value === undefined || value === null || value === false) {
     return 'off';
@@ -48,8 +48,8 @@ export function normalizeFakeLmThinkingEffort({ value }: {
 }
 
 export function makeFakeLmThinkingSentenceCount({ effort, random }: {
-  effort: FakeLmThinkingEffort;
-  random: SeededNonCryptoPseudoRandom;
+  effort: FakeLmThinkingEffort,
+  random: SeededNonCryptoPseudoRandom,
 }): number {
   switch (effort) {
   case 'off':
@@ -89,7 +89,7 @@ export function makeFakeLmThinkingSentenceCount({ effort, random }: {
 }
 
 export function makeFakeLmThinkingParagraphBreakEvery({ effort }: {
-  effort: FakeLmThinkingEffort;
+  effort: FakeLmThinkingEffort,
 }): number | undefined {
   switch (effort) {
   case 'off':
@@ -107,8 +107,8 @@ export function makeFakeLmThinkingParagraphBreakEvery({ effort }: {
 }
 
 export function makeFakeLmThinkingChunking({ effort }: {
-  effort: FakeLmThinkingEffort;
-}): { minChars: number; maxChars: number; delayMs: number } {
+  effort: FakeLmThinkingEffort,
+}): { minChars: number, maxChars: number, delayMs: number } {
   switch (effort) {
   case 'off':
     return { minChars: 0, maxChars: 0, delayMs: 0 };

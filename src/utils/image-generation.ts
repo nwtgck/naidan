@@ -102,7 +102,7 @@ export function parseImageRequest({ content }: { content: string }): ImageReques
       count: data.count ?? 1,
       persistAs: data.persistAs ?? 'original',
       steps: data.steps,
-      seed: data.seed
+      seed: data.seed,
     };
   } catch (e) {
     console.warn('Failed to parse image request params JSON', e);
@@ -124,7 +124,7 @@ export function parseImageResponse({ content }: { content: string }): ImageRespo
     }
     const data = result.data;
     return {
-      count: data.count ?? 1
+      count: data.count ?? 1,
     };
   } catch (e) {
     console.warn('Failed to parse image response params JSON', e);
@@ -170,17 +170,17 @@ export function getDisplayDimensions({ width, height, displayWidth, displayHeigh
   width?: number,
   height?: number,
   displayWidth?: number,
-  displayHeight?: number
+  displayHeight?: number,
 }): { width: number, height: number } {
   if (width !== undefined && height !== undefined) {
     return {
       width: Math.round(width * 0.8),
-      height: Math.round(height * 0.8)
+      height: Math.round(height * 0.8),
     };
   }
   return {
     width: displayWidth ?? 512,
-    height: displayHeight ?? 512
+    height: displayHeight ?? 512,
   };
 }
 
@@ -189,13 +189,13 @@ export function getDisplayDimensions({ width, height, displayWidth, displayHeigh
  */
 export function getImageStats({ content }: { content: string }): {
   generatedCount: number,
-  totalCount: number | undefined
+  totalCount: number | undefined,
 } {
   const response = parseImageResponse({ content });
   const generatedCount = countGeneratedImages({ content });
   return {
     generatedCount,
-    totalCount: response?.count
+    totalCount: response?.count,
   };
 }
 
@@ -207,7 +207,7 @@ export function getImageGenerationProgress({ content }: { content: string }): {
   totalCount: number | undefined,
   remainingCount: number | undefined,
   currentStep: number | undefined,
-  totalSteps: number | undefined
+  totalSteps: number | undefined,
 } {
   const response = parseImageResponse({ content });
 
@@ -236,6 +236,6 @@ export function getImageGenerationProgress({ content }: { content: string }): {
     totalCount,
     remainingCount: Math.max(0, totalCount - processedCount),
     currentStep,
-    totalSteps
+    totalSteps,
   };
 }

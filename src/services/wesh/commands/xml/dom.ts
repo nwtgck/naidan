@@ -5,8 +5,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -18,7 +18,7 @@ function resolvePath({
 async function readTextStream({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -42,11 +42,11 @@ export async function readXmlInputs({
   context,
   inputs,
 }: {
-  context: WeshCommandContext;
-  inputs: string[];
-}): Promise<Array<{ label: string; text: string }>> {
+  context: WeshCommandContext,
+  inputs: string[],
+}): Promise<Array<{ label: string, text: string }>> {
   const effectiveInputs = inputs.length === 0 ? ['-'] : inputs;
-  const results: Array<{ label: string; text: string }> = [];
+  const results: Array<{ label: string, text: string }> = [];
   let stdinText: string | undefined;
 
   for (const input of effectiveInputs) {
@@ -85,8 +85,8 @@ export async function readXmlInputs({
 export function parseXmlDocument({
   xmlText,
 }: {
-  xmlText: string;
-}): { ok: true; document: Document } | { ok: false; message: string } {
+  xmlText: string,
+}): { ok: true, document: Document } | { ok: false, message: string } {
   const parser = new DOMParser();
   const document = parser.parseFromString(xmlText, 'application/xml');
   const parserErrors = document.getElementsByTagName('parsererror');
@@ -107,7 +107,7 @@ export function parseXmlDocument({
 export function serializeXmlNode({
   node,
 }: {
-  node: Node;
+  node: Node,
 }): string {
   return new XMLSerializer().serializeToString(node);
 }
@@ -115,7 +115,7 @@ export function serializeXmlNode({
 function escapeXPathLiteral({
   value,
 }: {
-  value: string;
+  value: string,
 }): string {
   return `'${value.replaceAll('\'', `', "'", '`)}'`;
 }
@@ -124,8 +124,8 @@ function rewriteNamespacedXPath({
   expression,
   namespaces,
 }: {
-  expression: string;
-  namespaces: Map<string, string>;
+  expression: string,
+  namespaces: Map<string, string>,
 }): string {
   let rewritten = expression;
 
@@ -145,16 +145,16 @@ function rewriteNamespacedXPath({
 }
 
 type SimpleXPathStep =
-  | { kind: 'element'; prefix: string | undefined; localName: string; axis: 'child' | 'descendant' }
-  | { kind: 'attribute'; prefix: string | undefined; localName: string }
+  | { kind: 'element', prefix: string | undefined, localName: string, axis: 'child' | 'descendant' }
+  | { kind: 'attribute', prefix: string | undefined, localName: string }
   | { kind: 'text' };
 
 function resolveNamespaceUri({
   namespaces,
   prefix,
 }: {
-  namespaces: Map<string, string>;
-  prefix: string | undefined;
+  namespaces: Map<string, string>,
+  prefix: string | undefined,
 }): string | undefined {
   if (prefix === undefined) {
     return undefined;
@@ -165,8 +165,8 @@ function resolveNamespaceUri({
 function parseSimpleXPath({
   expression,
 }: {
-  expression: string;
-}): { ok: true; steps: SimpleXPathStep[] } | { ok: false } {
+  expression: string,
+}): { ok: true, steps: SimpleXPathStep[] } | { ok: false } {
   let remaining = expression.trim();
   if (remaining.length === 0) {
     return { ok: false };
@@ -245,9 +245,9 @@ function elementMatchesStep({
   step,
   namespaces,
 }: {
-  element: Element;
-  step: Extract<SimpleXPathStep, { kind: 'element' }>;
-  namespaces: Map<string, string>;
+  element: Element,
+  step: Extract<SimpleXPathStep, { kind: 'element' }>,
+  namespaces: Map<string, string>,
 }): boolean {
   if (element.localName !== step.localName) {
     return false;
@@ -275,9 +275,9 @@ function attributeMatchesStep({
   step,
   namespaces,
 }: {
-  attribute: Attr;
-  step: Extract<SimpleXPathStep, { kind: 'attribute' }>;
-  namespaces: Map<string, string>;
+  attribute: Attr,
+  step: Extract<SimpleXPathStep, { kind: 'attribute' }>,
+  namespaces: Map<string, string>,
 }): boolean {
   if (attribute.localName !== step.localName) {
     return false;
@@ -297,9 +297,9 @@ function evaluateSimpleXPathNodes({
   expression,
   namespaces,
 }: {
-  document: Document;
-  expression: string;
-  namespaces: Map<string, string>;
+  document: Document,
+  expression: string,
+  namespaces: Map<string, string>,
 }): Node[] | undefined {
   const parsed = parseSimpleXPath({ expression });
   if (!parsed.ok) {
@@ -392,8 +392,8 @@ function createNamespaceResolver({
   document,
   namespaces,
 }: {
-  document: Document;
-  namespaces: Map<string, string>;
+  document: Document,
+  namespaces: Map<string, string>,
 }): XPathNSResolver | null {
   const builtInResolver = document.createNSResolver?.(document.documentElement ?? document);
 
@@ -418,9 +418,9 @@ export function evaluateXPathNodes({
   expression,
   namespaces,
 }: {
-  document: Document;
-  expression: string;
-  namespaces: Map<string, string>;
+  document: Document,
+  expression: string,
+  namespaces: Map<string, string>,
 }): Array<Node> {
   const result = document.evaluate(
     rewriteNamespacedXPath({ expression, namespaces }),
@@ -452,9 +452,9 @@ export function evaluateXPathString({
   expression,
   namespaces,
 }: {
-  document: Document;
-  expression: string;
-  namespaces: Map<string, string>;
+  document: Document,
+  expression: string,
+  namespaces: Map<string, string>,
 }): string {
   const result = document.evaluate(
     rewriteNamespacedXPath({ expression, namespaces }),

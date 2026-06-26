@@ -39,8 +39,8 @@ export function renderChoicesResult({
   index,
   choice,
 }: {
-  index: number;
-  choice: string;
+  index: number,
+  choice: string,
 }): string {
   return `\
 Selected:
@@ -52,8 +52,8 @@ export function createChoicesTool({
   chatId,
   requestChoice,
 }: {
-  chatId: ChatId;
-  requestChoice: RequestChoice;
+  chatId: ChatId,
+  requestChoice: RequestChoice,
 }): Tool {
   return {
     name: 'choices',
@@ -69,13 +69,13 @@ Provide between 2 and 10 concise, distinct, single-line choices.`,
       onEvent: _onEvent,
       approvalContext: _approvalContext,
     }: {
-      args: unknown;
-      signal?: AbortSignal;
-      onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
-      approvalContext?: ToolApprovalContext;
+      args: unknown,
+      signal?: AbortSignal,
+      onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>,
+      approvalContext?: ToolApprovalContext,
     }): Promise<
-      | { status: 'success'; content: string }
-      | { status: 'error'; code: ToolExecutionErrorCode; message: string }
+      | { status: 'success', content: string }
+      | { status: 'error', code: ToolExecutionErrorCode, message: string }
     > {
       if (signal?.aborted === true) {
         throw new Error('Generation aborted');

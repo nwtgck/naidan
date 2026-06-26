@@ -1,6 +1,7 @@
 import { toRaw } from 'vue';
 import { generateId } from '@/utils/id';
 import type { ChatGroupId, ChatId } from '@/models/ids';
+import { cloneToolConfigs } from '@/services/tools/tool-config';
 import type { ChatGroup, HierarchyChatGroupNode, HierarchyNode } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useSettings } from '@/composables/useSettings';
@@ -17,53 +18,53 @@ export type ChatOrganizationAdapter = {
     name,
     options,
   }: {
-    name: string;
-    options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>;
-  }): Promise<ChatGroupId>;
+    name: string,
+    options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>,
+  }): Promise<ChatGroupId>,
 
   deleteChatGroup({
     id,
   }: {
-    id: ChatGroupId;
-  }): Promise<void>;
+    id: ChatGroupId,
+  }): Promise<void>,
 
   duplicateChatGroup({
     groupId,
   }: {
-    groupId: ChatGroupId;
-  }): Promise<ChatGroupId | undefined>;
+    groupId: ChatGroupId,
+  }): Promise<ChatGroupId | undefined>,
 
   renameChatGroup({
     groupId,
     newName,
   }: {
-    groupId: ChatGroupId;
-    newName: string;
-  }): Promise<void>;
+    groupId: ChatGroupId,
+    newName: string,
+  }): Promise<void>,
 
   updateChatGroupMetadata({
     id,
     updates,
   }: {
-    id: ChatGroupId;
-    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
-  }): Promise<void>;
+    id: ChatGroupId,
+    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>,
+  }): Promise<void>,
 
   moveChatToGroup({
     chatId,
     targetGroupId,
   }: {
-    chatId: ChatId;
-    targetGroupId: ChatGroupId | null;
-  }): Promise<void>;
+    chatId: ChatId,
+    targetGroupId: ChatGroupId | null,
+  }): Promise<void>,
 
   reorderSidebarChatAfterSend({
     chatId,
   }: {
-    chatId: ChatId;
-  }): Promise<void>;
+    chatId: ChatId,
+  }): Promise<void>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatOrganization(): ChatOrganizationAdapter {
@@ -75,8 +76,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     name,
     options,
   }: {
-    name: string;
-    options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>;
+    name: string,
+    options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>,
   }): Promise<ChatGroupId> {
     const id = generateId<ChatGroupId>();
     const newGroup: ChatGroup = {
@@ -100,7 +101,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
   async function deleteChatGroup({
     id,
   }: {
-    id: ChatGroupId;
+    id: ChatGroupId,
   }): Promise<void> {
     const group = chatGroups.value.find((item) => item.id === id);
     if (group === undefined) {
@@ -140,7 +141,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
   async function duplicateChatGroup({
     groupId,
   }: {
-    groupId: ChatGroupId;
+    groupId: ChatGroupId,
   }): Promise<ChatGroupId | undefined> {
     const originalGroup = chatGroups.value.find((group) => group.id === groupId);
     if (originalGroup === undefined) {
@@ -153,6 +154,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       id: newId,
       name: `Copy of ${originalGroup.name}`,
       items: [],
+      toolConfigs: cloneToolConfigs({ toolConfigs: originalGroup.toolConfigs }),
       updatedAt: Date.now(),
       isCollapsed: false,
     };
@@ -176,8 +178,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     groupId,
     newName,
   }: {
-    groupId: ChatGroupId;
-    newName: string;
+    groupId: ChatGroupId,
+    newName: string,
   }): Promise<void> {
     if (currentChatGroupRef.value?.id === groupId) {
       currentChatGroupRef.value.name = newName;
@@ -199,8 +201,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     id,
     updates,
   }: {
-    id: ChatGroupId;
-    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
+    id: ChatGroupId,
+    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>,
   }): Promise<void> {
     if (currentChatGroupRef.value?.id === id) {
       Object.assign(currentChatGroupRef.value, updates);
@@ -220,8 +222,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     chatId,
     targetGroupId,
   }: {
-    chatId: ChatId;
-    targetGroupId: ChatGroupId | null;
+    chatId: ChatId,
+    targetGroupId: ChatGroupId | null,
   }): Promise<void> {
     if (currentChatRef.value?.id === chatId) {
       currentChatRef.value.groupId = targetGroupId;
@@ -283,7 +285,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
   async function reorderSidebarChatAfterSend({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }): Promise<void> {
     const reorderSetting = settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled';
     switch (reorderSetting) {
@@ -355,8 +357,8 @@ function insertTopLevelChat({
   current,
   node,
 }: {
-  current: import('@/models/types').Hierarchy;
-  node: HierarchyNode;
+  current: import('@/models/types').Hierarchy,
+  node: HierarchyNode,
 }) {
   const firstChatIndex = current.items.findIndex((item) => item.type === 'chat');
   const insertIndex = firstChatIndex !== -1 ? firstChatIndex : current.items.length;

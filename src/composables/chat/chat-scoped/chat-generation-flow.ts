@@ -76,17 +76,17 @@ import {
 } from '@/composables/chat/ui/useChatOrganization';
 
 type PersistedToolContent =
-  | { type: 'text'; text: string }
-  | { type: 'binary_object'; id: BinaryObjectId };
+  | { type: 'text', text: string }
+  | { type: 'binary_object', id: BinaryObjectId };
 
 type ResolvedGenerationSettings = {
-  endpointType: EndpointType;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
-  modelId: string;
-  lmParameters: LmParameters | undefined;
-  systemPromptMessages: string[];
-  autoTitleEnabled: boolean;
+  endpointType: EndpointType,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
+  modelId: string,
+  lmParameters: LmParameters | undefined,
+  systemPromptMessages: string[],
+  autoTitleEnabled: boolean,
 };
 
 export async function sendMessageForChat({
@@ -96,11 +96,11 @@ export async function sendMessageForChat({
   attachments,
   lmParameters,
 }: {
-  chatId: ChatId;
-  content: string;
-  parentId: MessageId | null | undefined;
-  attachments: Attachment[] | undefined;
-  lmParameters: LmParameters | undefined;
+  chatId: ChatId,
+  content: string,
+  parentId: MessageId | null | undefined,
+  attachments: Attachment[] | undefined,
+  lmParameters: LmParameters | undefined,
 }): Promise<boolean> {
   const targetChat = getLiveChatById({ chatId });
   return await sendMessageToTargetChat({
@@ -118,10 +118,10 @@ export async function sendMessageToCurrentChat({
   attachments,
   lmParameters,
 }: {
-  content: string;
-  parentId: MessageId | null | undefined;
-  attachments: Attachment[] | undefined;
-  lmParameters: LmParameters | undefined;
+  content: string,
+  parentId: MessageId | null | undefined,
+  attachments: Attachment[] | undefined,
+  lmParameters: LmParameters | undefined,
 }): Promise<boolean> {
   return await sendMessageToTargetChat({
     targetChat: currentChatRef.value,
@@ -139,11 +139,11 @@ export async function sendMessageToTargetChat({
   attachments,
   lmParameters,
 }: {
-  targetChat: Chat | Readonly<Chat> | null;
-  content: string;
-  parentId: MessageId | null | undefined;
-  attachments: Attachment[] | undefined;
-  lmParameters: LmParameters | undefined;
+  targetChat: Chat | Readonly<Chat> | null,
+  content: string,
+  parentId: MessageId | null | undefined,
+  attachments: Attachment[] | undefined,
+  lmParameters: LmParameters | undefined,
 }): Promise<boolean> {
   if (targetChat === null) {
     return false;
@@ -340,10 +340,10 @@ export async function generateResponseForAssistant({
   lmParameters,
   onReady,
 }: {
-  chat: Chat | Readonly<Chat>;
-  assistantId: MessageId;
-  lmParameters: LmParameters | undefined;
-  onReady: (() => void) | undefined;
+  chat: Chat | Readonly<Chat>,
+  assistantId: MessageId,
+  lmParameters: LmParameters | undefined,
+  onReady: (() => void) | undefined,
 }): Promise<void> {
   let didSignalReady = false;
   const signalReady = () => {
@@ -749,8 +749,8 @@ export async function regenerateMessageForChat({
   chatId,
   failedMessageId,
 }: {
-  chatId: ChatId;
-  failedMessageId: MessageId;
+  chatId: ChatId,
+  failedMessageId: MessageId,
 }): Promise<void> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -766,7 +766,7 @@ export async function regenerateMessageForChat({
 export async function regenerateMessageForCurrentChat({
   failedMessageId,
 }: {
-  failedMessageId: MessageId;
+  failedMessageId: MessageId,
 }): Promise<void> {
   if (currentChatRef.value === null) {
     return;
@@ -782,8 +782,8 @@ async function regenerateMessageForTarget({
   targetChat,
   failedMessageId,
 }: {
-  targetChat: Chat | Readonly<Chat>;
-  failedMessageId: MessageId;
+  targetChat: Chat | Readonly<Chat>,
+  failedMessageId: MessageId,
 }): Promise<void> {
   const chatId = targetChat.id;
   if (isProcessing({ chatId })) {
@@ -867,7 +867,7 @@ async function regenerateMessageForTarget({
 function resolveGenerationSettings({
   chat,
 }: {
-  chat: Chat;
+  chat: Chat,
 }): ResolvedGenerationSettings {
   const { settings } = useSettings();
   const resolved = resolveChatSettings({
@@ -889,7 +889,7 @@ function resolveGenerationSettings({
 function collectChatGroups({
   items,
 }: {
-  items: typeof rootItems.value;
+  items: typeof rootItems.value,
 }): ChatGroup[] {
   return items.flatMap((item) => {
     switch (item.type) {
@@ -922,7 +922,7 @@ async function confirmTemporaryAttachments(): Promise<boolean> {
 async function persistAttachment({
   attachment,
 }: {
-  attachment: Attachment;
+  attachment: Attachment,
 }): Promise<Attachment> {
   switch (attachment.status) {
   case 'memory':
@@ -950,9 +950,9 @@ function showOnboardingDraft({
   type,
   models,
 }: {
-  url: string | undefined;
-  type: EndpointType;
-  models: string[];
+  url: string | undefined,
+  type: EndpointType,
+  models: string[],
 }): void {
   const settings = useSettings();
   settings.setOnboardingDraft?.({
@@ -966,9 +966,9 @@ function createGenerationProvider({
   endpointUrl,
   endpointHttpHeaders,
 }: {
-  endpointType: EndpointType;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
+  endpointType: EndpointType,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
 }): LmProvider {
   if (endpointUrl === undefined && endpointType !== 'transformers_js') {
     throw new Error(`${endpointType} generation requires an endpoint URL`);
@@ -988,9 +988,9 @@ async function buildGenerationMessages({
   assistantId,
   systemPromptMessages,
 }: {
-  chat: Chat;
-  assistantId: MessageId;
-  systemPromptMessages: string[];
+  chat: Chat,
+  assistantId: MessageId,
+  systemPromptMessages: string[],
 }): Promise<ChatMessage[]> {
   const messages: ChatMessage[] = [];
   systemPromptMessages.forEach((content) => {
@@ -1058,7 +1058,7 @@ async function buildGenerationMessages({
 async function getToolResultText({
   result,
 }: {
-  result: ToolMessageNode['results'][number];
+  result: ToolMessageNode['results'][number],
 }): Promise<string> {
   switch (result.status) {
   case 'success':
@@ -1100,7 +1100,7 @@ async function getToolResultText({
 async function resolveAttachmentBlob({
   attachment,
 }: {
-  attachment: Attachment;
+  attachment: Attachment,
 }): Promise<Blob | null> {
   switch (attachment.status) {
   case 'memory':
@@ -1119,14 +1119,11 @@ async function resolveAttachmentBlob({
 async function getEnabledToolsForChat({
   chat,
 }: {
-  chat: Chat;
+  chat: Chat,
 }): Promise<Tool[]> {
   const { settings } = useSettings();
   const { requestChoice } = useChoices();
-  const toolConfigs = getEffectiveToolConfigsForChat({
-    chatId: chat.id,
-    persistedToolConfigs: chat.toolConfigs,
-  });
+  const toolConfigs = getEffectiveToolConfigsForChat({ chat });
   const enabledNames = lmToolNamesFromToolConfigs({ toolConfigs });
   const shellExecuteEnabled = enabledNames.includes('shell_execute');
   const weshToolConfig = findLastToolConfigByKey({ toolConfigs, key: 'builtin.wesh' });
@@ -1166,18 +1163,18 @@ async function handleImageGenerationWithDefaults({
   model,
   signal,
 }: {
-  chatId: ChatId;
-  assistantId: MessageId;
-  prompt: string;
-  width: number;
-  height: number;
-  count: number;
-  steps: number | undefined;
-  seed: number | 'browser_random' | undefined;
-  persistAs: ImageRequestParams['persistAs'];
-  images: { blob: Blob }[];
-  model: string | undefined;
-  signal: AbortSignal | undefined;
+  chatId: ChatId,
+  assistantId: MessageId,
+  prompt: string,
+  width: number,
+  height: number,
+  count: number,
+  steps: number | undefined,
+  seed: number | 'browser_random' | undefined,
+  persistAs: ImageRequestParams['persistAs'],
+  images: { blob: Blob }[],
+  model: string | undefined,
+  signal: AbortSignal | undefined,
 }): Promise<void> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -1237,9 +1234,9 @@ async function persistToolContent({
   type,
   toolCallId,
 }: {
-  text: string;
-  type: 'result' | 'error';
-  toolCallId: ToolCallId;
+  text: string,
+  type: 'result' | 'error',
+  toolCallId: ToolCallId,
 }): Promise<PersistedToolContent> {
   const binaryThreshold = 100 * 1024;
   if (text.length > binaryThreshold) {
@@ -1255,7 +1252,7 @@ async function persistToolContent({
 async function showGenerationFailedToast({
   chat,
 }: {
-  chat: Chat;
+  chat: Chat,
 }): Promise<void> {
   if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === chat.id) {
     return;

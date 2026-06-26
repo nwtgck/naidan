@@ -1,8 +1,8 @@
 import type { RecipeModel } from '@/models/recipe';
 
 export interface MatchResult {
-  modelId?: string;
-  error?: string;
+  modelId?: string,
+  error?: string,
 }
 
 /**
@@ -10,7 +10,7 @@ export interface MatchResult {
  * Returns the first matching model ID and any error encountered.
  */
 export function matchRecipeModels(
-  { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] }
+  { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] },
 ): MatchResult {
   for (const recipeModel of recipeModels) {
     switch (recipeModel.type) {
@@ -35,15 +35,15 @@ export function matchRecipeModels(
 }
 
 export interface MultiMatchResult {
-  matches: string[];
-  errors: string[];
+  matches: string[],
+  errors: string[],
 }
 
 /**
  * Checks all recipe patterns and returns all matching model IDs and errors.
  */
 export function getAllMatchingModels(
-  { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] }
+  { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] },
 ): MultiMatchResult {
   const matches = new Set<string>();
   const errors: string[] = [];

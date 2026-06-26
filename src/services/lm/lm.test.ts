@@ -35,7 +35,7 @@ describe('OpenAIProvider', () => {
     await provider.chat({
       messages: [],
       model: 'gpt-3.5',
-      onChunk
+      onChunk,
     });
 
     expect(onChunk).toHaveBeenCalledWith({ chunk: 'Hello' });
@@ -59,14 +59,14 @@ describe('OpenAIProvider', () => {
     await customProvider.chat({
       messages: [],
       model: 'gpt-3.5',
-      onChunk: vi.fn()
+      onChunk: vi.fn(),
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/chat/completions'),
       expect.objectContaining({
         headers: expect.arrayContaining([['X-Custom-Header', 'test-value']]),
-      })
+      }),
     );
   });
 
@@ -85,7 +85,7 @@ describe('OpenAIProvider', () => {
       expect.stringContaining('/models'),
       expect.objectContaining({
         headers: headers,
-      })
+      }),
     );
   });
 });
@@ -124,7 +124,7 @@ describe('OllamaProvider', () => {
     await provider.chat({
       messages: [],
       model: 'llama3',
-      onChunk
+      onChunk,
     });
 
     expect(onChunk).toHaveBeenCalledTimes(2);
@@ -154,7 +154,7 @@ describe('OllamaProvider', () => {
     await provider.chat({
       messages: [],
       model: 'llama3',
-      onChunk
+      onChunk,
     });
 
     expect(onChunk).toHaveBeenCalledWith({ chunk: 'valid' });
@@ -182,7 +182,7 @@ describe('OllamaProvider', () => {
               value: new TextEncoder().encode(
                 '{"message":{"thinking":"I am thinking"}}\n' +
                 '{"message":{"thinking":" more"}}\n' +
-                '{"message":{"content":"Final answer"}}\n'
+                '{"message":{"content":"Final answer"}}\n',
               ),
             })
             .mockResolvedValueOnce({ done: true }),
@@ -195,7 +195,7 @@ describe('OllamaProvider', () => {
     await provider.chat({
       messages: [],
       model: 'llama3',
-      onChunk
+      onChunk,
     });
 
     const calls = onChunk.mock.calls.map(c => c[0].chunk);
@@ -222,7 +222,7 @@ describe('OllamaProvider', () => {
     await provider.chat({
       messages: [],
       model: 'llama3',
-      onChunk
+      onChunk,
     });
 
     const calls = onChunk.mock.calls.map(c => c[0].chunk);
@@ -247,14 +247,14 @@ describe('OllamaProvider', () => {
     await customProvider.chat({
       messages: [],
       model: 'llama3',
-      onChunk: vi.fn()
+      onChunk: vi.fn(),
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/api/chat'),
       expect.objectContaining({
         headers: expect.arrayContaining([['X-Custom', 'ollama-test']]),
-      })
+      }),
     );
   });
 
@@ -273,7 +273,7 @@ describe('OllamaProvider', () => {
       expect.stringContaining('/api/tags'),
       expect.objectContaining({
         headers: headers,
-      })
+      }),
     );
   });
 
@@ -282,7 +282,7 @@ describe('OllamaProvider', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')));
 
     await expect(provider.listModels({})).rejects.toThrow(
-      /OLLAMA_ORIGINS='\*' ollama serve/
+      /OLLAMA_ORIGINS='\*' ollama serve/,
     );
 
     expect(errorCount.value).toBe(1);
@@ -301,7 +301,7 @@ describe('OllamaProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(provider.listModels({})).rejects.toThrow(
-      /Failed to fetch models \(400\): Specific API Error Message/
+      /Failed to fetch models \(400\): Specific API Error Message/,
     );
 
     expect(errorCount.value).toBe(1);

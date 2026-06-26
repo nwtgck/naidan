@@ -1,7 +1,7 @@
 export function stripTrailingSlashes({
   path,
 }: {
-  path: string;
+  path: string,
 }): string {
   if (path.length === 0) {
     return '';
@@ -22,7 +22,7 @@ export function stripTrailingSlashes({
 export function dirnamePath({
   path,
 }: {
-  path: string;
+  path: string,
 }): string {
   const normalized = stripTrailingSlashes({ path });
   if (normalized.length === 0) {
@@ -49,8 +49,8 @@ export function basenamePath({
   path,
   suffix,
 }: {
-  path: string;
-  suffix: string | undefined;
+  path: string,
+  suffix: string | undefined,
 }): string {
   if (path.length === 0) {
     return '';

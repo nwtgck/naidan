@@ -93,7 +93,7 @@ describe('ModelSelector.vue', () => {
       props: {
         modelValue: 'model-a',
       },
-      attachTo: document.body
+      attachTo: document.body,
     });
 
     const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
@@ -132,7 +132,7 @@ describe('ModelSelector.vue', () => {
       'anthropic/claude-3-5-sonnet',
       'openai/gpt-4o',
       'openai/gpt-3.5-turbo',
-      'google/gemini-1.5-pro'
+      'google/gemini-1.5-pro',
     ];
     const wrapper = mount(ModelSelector, {
       props: {
@@ -375,7 +375,7 @@ describe('ModelSelector.vue', () => {
       const addSpy = vi.spyOn(document, 'addEventListener');
       const wrapper = mount(ModelSelector, {
         props: { modelValue: 'model-a' },
-        attachTo: document.body
+        attachTo: document.body,
       });
 
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
@@ -412,7 +412,7 @@ describe('ModelSelector.vue', () => {
     it('remains open when search input is focused and triggers height change (keyboard regression)', async () => {
       const wrapper = mount(ModelSelector, {
         props: { modelValue: 'model-a' },
-        attachTo: document.body
+        attachTo: document.body,
       });
 
       // 1. Open dropdown
@@ -448,8 +448,8 @@ describe('ModelSelector.vue', () => {
       const wrapper = mount(ModelSelector, {
         props: {
           modelValue: 'model-a',
-          allowClear: true // index 0: Inherit, index 1: model-a, index 2: model-b, index 3: model-c
-        }
+          allowClear: true, // index 0: Inherit, index 1: model-a, index 2: model-b, index 3: model-c
+        },
       });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
 

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { validateWikipediaPrivacyFetchUrl } from './wikipedia'
+import { describe, expect, it } from 'vitest';
+import { validateWikipediaPrivacyFetchUrl } from './wikipedia';
 
 describe('validateWikipediaPrivacyFetchUrl', () => {
   it('accepts a supported search URL', () => {
@@ -8,8 +8,8 @@ describe('validateWikipediaPrivacyFetchUrl', () => {
     })).toMatchObject({
       ok: true,
       policyName: 'wikipedia_api',
-    })
-  })
+    });
+  });
 
   it('rejects unsupported hostnames', () => {
     expect(validateWikipediaPrivacyFetchUrl({
@@ -17,8 +17,8 @@ describe('validateWikipediaPrivacyFetchUrl', () => {
     })).toMatchObject({
       ok: false,
       code: 'invalid_hostname',
-    })
-  })
+    });
+  });
 
   it('rejects malformed language labels', () => {
     for (const hostname of [
@@ -31,9 +31,9 @@ describe('validateWikipediaPrivacyFetchUrl', () => {
       })).toMatchObject({
         ok: false,
         code: 'invalid_hostname',
-      })
+      });
     }
-  })
+  });
 
   it('rejects unsupported query parameters like callback', () => {
     expect(validateWikipediaPrivacyFetchUrl({
@@ -41,8 +41,8 @@ describe('validateWikipediaPrivacyFetchUrl', () => {
     })).toMatchObject({
       ok: false,
       code: 'invalid_query_parameter',
-    })
-  })
+    });
+  });
 
   it('rejects srsearch values longer than 120 characters', () => {
     expect(validateWikipediaPrivacyFetchUrl({
@@ -50,6 +50,6 @@ describe('validateWikipediaPrivacyFetchUrl', () => {
     })).toMatchObject({
       ok: false,
       code: 'invalid_query_parameter_value',
-    })
-  })
-})
+    });
+  });
+});

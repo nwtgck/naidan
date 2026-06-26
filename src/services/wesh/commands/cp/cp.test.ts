@@ -20,8 +20,8 @@ describe('wesh cp', () => {
     path,
     data,
   }: {
-    path: string;
-    data: string;
+    path: string,
+    data: string,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -43,7 +43,7 @@ describe('wesh cp', () => {
   async function mkdir({
     path,
   }: {
-    path: string;
+    path: string,
   }) {
     const segments = path.split('/').filter(Boolean);
     let dir = rootHandle;
@@ -55,7 +55,7 @@ describe('wesh cp', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

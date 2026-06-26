@@ -12,7 +12,7 @@ const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
   mockScrollIntoViewSafe: vi.fn(),
 }));
 
-const mockCurrentChat = ref<Chat | { id: string; groupId?: string | null; title?: string } | null>(null);
+const mockCurrentChat = ref<Chat | { id: string, groupId?: string | null, title?: string } | null>(null);
 const mockCurrentChatGroup = ref<ChatGroup | { id: string } | null>(null);
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -127,7 +127,7 @@ const TestHarness = defineComponent({
       <Sidebar />
       <CurrentChatPane />
     </div>
-  `
+  `,
 });
 
 describe('Sidebar Focus Sync', () => {
@@ -167,20 +167,20 @@ describe('Sidebar Focus Sync', () => {
       if (this.dataset.testid === 'sidebar-nav') {
         return {
           top: 0, bottom: 100, left: 0, right: 100, width: 100, height: 100,
-          x: 0, y: 0, toJSON: () => ({})
+          x: 0, y: 0, toJSON: () => ({}),
         };
       }
 
       if (this.dataset.sidebarChatId === 'chat-1' || this.dataset.sidebarGroupId === 'g1') {
         return {
           top: 180, bottom: 220, left: 0, right: 100, width: 100, height: 40,
-          x: 0, y: 180, toJSON: () => ({})
+          x: 0, y: 180, toJSON: () => ({}),
         };
       }
 
       return {
         top: 0, bottom: 40, left: 0, right: 100, width: 100, height: 40,
-        x: 0, y: 0, toJSON: () => ({})
+        x: 0, y: 0, toJSON: () => ({}),
       };
     });
   });
@@ -202,7 +202,7 @@ describe('Sidebar Focus Sync', () => {
           ChatSettingsPanel: true,
           Logo: true,
           ModelSelector: true,
-        }
+        },
       },
     });
     await nextTick();
@@ -239,7 +239,7 @@ describe('Sidebar Focus Sync', () => {
           Logo: true,
           ThemeToggle: true,
           ModelSelector: true,
-        }
+        },
       },
     });
     await nextTick();

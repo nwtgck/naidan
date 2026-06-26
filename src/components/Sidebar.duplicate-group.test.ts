@@ -132,7 +132,7 @@ describe('Sidebar Duplicate Group Feature', () => {
           'Logo': true,
           'ThemeToggle': true,
           'ModelSelector': true,
-          'ChatGroupActions': ChatGroupActions
+          'ChatGroupActions': ChatGroupActions,
         },
       },
     });

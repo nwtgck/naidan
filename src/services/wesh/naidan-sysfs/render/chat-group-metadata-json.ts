@@ -1,17 +1,17 @@
-import type { ChatGroup, Endpoint, Mount } from '@/models/types'
+import type { ChatGroup, Endpoint, Mount } from '@/models/types';
 
 function maskEndpoint({ endpoint }: { endpoint: Endpoint | undefined }): Endpoint | undefined {
   if (endpoint === undefined) {
-    return undefined
+    return undefined;
   }
   return {
     ...endpoint,
     httpHeaders: endpoint.httpHeaders?.map(([name]) => [name, '[masked]']),
-  }
+  };
 }
 
 function cloneMounts({ mounts }: { mounts: Mount[] | undefined }): Mount[] | undefined {
-  return mounts?.map(mount => ({ ...mount }))
+  return mounts?.map(mount => ({ ...mount }));
 }
 
 // Sensitive fields must be masked before rendering. Do not emit raw secret values here.
@@ -29,5 +29,5 @@ export function renderChatGroupMetadataJson({ chatGroup }: { chatGroup: ChatGrou
     lmParameters: chatGroup.lmParameters,
     mounts: cloneMounts({ mounts: chatGroup.mounts }),
     items: chatGroup.items.map(item => item.chat.id),
-  }, null, 2)
+  }, null, 2);
 }

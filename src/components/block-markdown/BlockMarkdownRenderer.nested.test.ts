@@ -6,7 +6,7 @@ import { normalizeDom } from './test-utils';
 describe('BlockMarkdownRenderer: Nested Structures', () => {
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 
@@ -21,7 +21,7 @@ describe('BlockMarkdownRenderer: Nested Structures', () => {
       element: wrapper.element,
       trimWhitespaceNodes: true,
       preserveAttributes: undefined,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     // Loose list (multiple tokens) should still use wrapper div
     expect(dom).toContain('<li><div><p><span>item 1, para 1</span></p><p><span>item 1, para 2</span></p></div></li>');
@@ -37,7 +37,7 @@ describe('BlockMarkdownRenderer: Nested Structures', () => {
       element: wrapper.element,
       trimWhitespaceNodes: true,
       preserveAttributes: undefined,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     expect(dom).toContain('<blockquote><ul><li><span>nested list item 1</span></li><li><span>nested list item 2</span></li></ul></blockquote>');
   });
@@ -54,7 +54,7 @@ describe('BlockMarkdownRenderer: Nested Structures', () => {
       element: wrapper.element,
       trimWhitespaceNodes: true,
       preserveAttributes: undefined,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     // Code block inside list item
     expect(dom).toContain('<li><div><span>step 1:</span>');
@@ -71,7 +71,7 @@ describe('BlockMarkdownRenderer: Nested Structures', () => {
       element: wrapper.element,
       trimWhitespaceNodes: true,
       preserveAttributes: undefined,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     expect(dom).toBe('<div><blockquote><p><span>level 1</span></p><blockquote><p><span>level 2</span></p></blockquote></blockquote></div>');
   });

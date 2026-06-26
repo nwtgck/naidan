@@ -36,7 +36,7 @@ function hasHan({ text }: { text: string }) {
 function normalizeSupportedWikipediaLanguage({
   lang,
 }: {
-  lang: string | undefined;
+  lang: string | undefined,
 }): WikipediaLanguageCode | undefined {
   if (lang === undefined) {
     // This currently has no tool-driven callers because wikipedia_search requires lang,
@@ -55,7 +55,7 @@ function normalizeSupportedWikipediaLanguage({
 function dedupeLanguages({
   languages,
 }: {
-  languages: WikipediaLanguageCode[];
+  languages: WikipediaLanguageCode[],
 }): WikipediaSearchLanguages {
   const deduped: WikipediaLanguageCode[] = [];
   for (const lang of languages) {
@@ -94,8 +94,8 @@ export function resolveWikipediaSearchLanguages({
   query,
   contextLanguage,
 }: {
-  query: string;
-  contextLanguage: string | undefined;
+  query: string,
+  contextLanguage: string | undefined,
 }): WikipediaSearchLanguages {
   if (hasKana({ text: query })) return ['ja', 'en'];
   if (hasHangul({ text: query })) return ['ko', 'en'];

@@ -20,7 +20,7 @@ describe('wesh sleep', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -50,7 +50,7 @@ describe('wesh sleep', () => {
     wesh.kernel.waitForSignalOrTimeout = async ({
       timeoutMs,
     }: {
-      timeoutMs: number;
+      timeoutMs: number,
     }) => {
       recordedTimeouts.push(timeoutMs);
       return undefined;

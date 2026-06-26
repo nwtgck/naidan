@@ -19,7 +19,7 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
 HTMLCanvasElement.prototype.toBlob = function(
   callback: (blob: Blob | null) => void,
   mimeType?: string,
-  quality?: any
+  quality?: any,
 ) {
   mockToBlob(mimeType, quality);
   callback(new Blob(['converted'], { type: mimeType }));

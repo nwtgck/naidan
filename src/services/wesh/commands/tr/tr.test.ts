@@ -26,8 +26,8 @@ describe('wesh tr', () => {
     script,
     stdinText,
   }: {
-    script: string;
-    stdinText: string | undefined;
+    script: string,
+    stdinText: string | undefined,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

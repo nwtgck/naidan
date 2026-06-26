@@ -13,8 +13,8 @@ export function useFileExplorerContextMenu() {
     event,
     target,
   }: {
-    event: MouseEvent;
-    target: ContextMenuTarget;
+    event: MouseEvent,
+    target: ContextMenuTarget,
   }): void {
     event.preventDefault();
     event.stopPropagation();

@@ -8,13 +8,13 @@ function mountPanel({
   preview,
 }: {
   preview: {
-    type: 'wikipedia_search';
-    keyword: string;
+    type: 'wikipedia_search',
+    keyword: string,
   } | {
-    type: 'wikipedia_get_page';
-    title: string | undefined;
-    pageId: string;
-  };
+    type: 'wikipedia_get_page',
+    title: string | undefined,
+    pageId: string,
+  },
 }) {
   return mount(ChatApprovalPanel, {
     props: {

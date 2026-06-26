@@ -31,35 +31,35 @@ type State = (typeof State)[keyof typeof State];
 
 export interface HarmonyMessage {
     /** "assistant", "user", "system", "developer", "tool", or tool name */
-    role: string;
+    role: string,
     /** "final" | "analysis" | "commentary" | "" */
-    channel: string;
+    channel: string,
     /** accumulated textual content */
-    content: string;
+    content: string,
     /** e.g. "functions.get_current_weather" */
-    recipient?: string;
+    recipient?: string,
     /** e.g. "<|constrain|>json" */
-    contentType?: string;
+    contentType?: string,
     /** how the message ended */
-    endReason: "end" | "return" | "call" | "pending";
+    endReason: "end" | "return" | "call" | "pending",
 }
 
 export type HarmonyDelta =
     | {
-        type: "new_message";
-        messageIndex: number;
-        message: HarmonyMessage;
+        type: "new_message",
+        messageIndex: number,
+        message: HarmonyMessage,
     }
     | {
-        type: "content";
-        messageIndex: number;
-        textDelta: string;
+        type: "content",
+        messageIndex: number,
+        textDelta: string,
     }
     | {
-        type: "done";
-        messageIndex: number;
-        endReason: "end" | "return" | "call";
-        isDone: boolean;
+        type: "done",
+        messageIndex: number,
+        endReason: "end" | "return" | "call",
+        isDone: boolean,
     };
 
 export class HarmonyStreamParser {
@@ -200,7 +200,7 @@ export class HarmonyStreamParser {
     return deltas;
   }
 
-  getResult(): { messages: HarmonyMessage[]; done: boolean } {
+  getResult(): { messages: HarmonyMessage[], done: boolean } {
     return {
       messages: this.messages,
       done: this._done,

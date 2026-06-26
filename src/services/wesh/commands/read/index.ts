@@ -45,7 +45,7 @@ const readArgvSpec: StandardArgvParserSpec = {
 function isIfsWhitespace({
   char,
 }: {
-  char: string;
+  char: string,
 }): boolean {
   return char === ' ' || char === '\t' || char === '\n';
 }
@@ -55,9 +55,9 @@ function assignReadValues({
   ifs,
   namesCount,
 }: {
-  line: string;
-  ifs: string;
-  namesCount: number;
+  line: string,
+  ifs: string,
+  namesCount: number,
 }): string[] {
   if (namesCount <= 0) {
     return [];

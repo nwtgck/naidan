@@ -9,9 +9,9 @@ declare module '*?raw' {
 
 // Global constants defined in vite.config.ts for conditional compilation
 declare global {
-  const __BUILD_MODE_IS_STANDALONE__: boolean
-  const __BUILD_MODE_IS_HOSTED__: boolean
-  const __APP_VERSION__: string
+  const __BUILD_MODE_IS_STANDALONE__: boolean;
+  const __BUILD_MODE_IS_HOSTED__: boolean;
+  const __APP_VERSION__: string;
 }
 
-export {}
+export {};

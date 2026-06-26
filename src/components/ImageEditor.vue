@@ -6,20 +6,20 @@ import {
   RotateCcwIcon, RefreshCcwIcon, Undo2Icon, Redo2Icon,
   CropIcon, EraserIcon, SquareIcon, CircleIcon,
   LinkIcon, Link2OffIcon, PanelRightIcon, ZoomInIcon, ZoomOutIcon,
-  PipetteIcon
+  PipetteIcon,
 } from 'lucide-vue-next';
 
 interface ImageEditorProps {
-  imageUrl: string;
-  fileName: string;
-  originalMimeType: string;
+  imageUrl: string,
+  fileName: string,
+  originalMimeType: string,
 }
 
 const props = defineProps<ImageEditorProps>();
 
 const emit = defineEmits<{
-  (e: 'save', payload: { blob: Blob }): void;
-  (e: 'cancel'): void;
+  (e: 'save', payload: { blob: Blob }): void,
+  (e: 'cancel'): void,
 }>();
 
 const TRANSPARENT = Symbol('transparent');
@@ -43,9 +43,9 @@ const isSidebarOpen = ref(true);
 const showCloseConfirm = ref(false);
 
 interface SelectionState {
-  rect: { x: number; y: number; w: number; h: number };
-  status: 'none' | 'active';
-  shape: 'rectangle' | 'ellipse';
+  rect: { x: number, y: number, w: number, h: number },
+  status: 'none' | 'active',
+  shape: 'rectangle' | 'ellipse',
 }
 
 const selection = ref<SelectionState>({
@@ -101,8 +101,8 @@ const displayScale = ref(1);
 
 // History Management
 interface HistoryEntry {
-  imageData: ImageData;
-  selection: SelectionState;
+  imageData: ImageData,
+  selection: SelectionState,
 }
 const history = ref<HistoryEntry[]>([]);
 const historyIndex = ref(-1);
@@ -150,7 +150,7 @@ async function initEditor() {
   const initialImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   history.value = [{
     imageData: initialImageData,
-    selection: JSON.parse(JSON.stringify(selection.value)) // Deep copy
+    selection: JSON.parse(JSON.stringify(selection.value)), // Deep copy
   }];
   historyIndex.value = 0;
 
@@ -183,7 +183,7 @@ function handleWheel({ event }: { event: WheelEvent }) {
   const ratio = clampedZoom / oldZoom;
   panOffset.value = {
     x: mouseX - rect.width / 2 - relativeX * ratio,
-    y: mouseY - rect.height / 2 - relativeY * ratio
+    y: mouseY - rect.height / 2 - relativeY * ratio,
   };
 
   zoom.value = clampedZoom;
@@ -212,7 +212,7 @@ function onPanning({ event }: { event: MouseEvent }) {
   const dy = event.clientY - lastMousePos.value.y;
   panOffset.value = {
     x: panOffset.value.x + dx,
-    y: panOffset.value.y + dy
+    y: panOffset.value.y + dy,
   };
   lastMousePos.value = { x: event.clientX, y: event.clientY };
 }
@@ -226,7 +226,7 @@ function stopPanning() {
   window.removeEventListener('mouseup', stopPanning);
 }
 
-function updateResizeInputs({ w, h }: { w: number; h: number }) {
+function updateResizeInputs({ w, h }: { w: number, h: number }) {
   resizeW.value = w;
   resizeH.value = h;
   currentCanvasAspect.value = w / h;
@@ -284,7 +284,7 @@ function commitHistory() {
 
   history.value.push({
     imageData,
-    selection: JSON.parse(JSON.stringify(selection.value))
+    selection: JSON.parse(JSON.stringify(selection.value)),
   });
   historyIndex.value++;
 
@@ -431,7 +431,7 @@ function executeAction({ action }: { action: ActionType }) {
   /**
    * Helper to create path based on current shape
    */
-  const createSelectionPath = ({ context, x, y, w, h }: { context: CanvasRenderingContext2D; x: number; y: number; w: number; h: number }) => {
+  const createSelectionPath = ({ context, x, y, w, h }: { context: CanvasRenderingContext2D, x: number, y: number, w: number, h: number }) => {
     context.beginPath();
     switch (shape) {
     case 'rectangle':
@@ -609,7 +609,7 @@ function startNewSelection({ event }: { event: MouseEvent }) {
   window.addEventListener('mouseup', onMouseUp);
 }
 
-function startDragging({ event, handle }: { event: MouseEvent; handle: string }) {
+function startDragging({ event, handle }: { event: MouseEvent, handle: string }) {
   event.preventDefault();
 
   editorMode.value = handle === 'center' ? 'moving' : 'resizing';
@@ -748,8 +748,8 @@ defineExpose({
     isSidebarOpen,
     zoom,
     panOffset,
-    showCloseConfirm
-  }
+    showCloseConfirm,
+  },
 });
 </script>
 

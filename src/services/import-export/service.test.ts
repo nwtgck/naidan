@@ -26,17 +26,17 @@ const UUID_M6 = '018d476a-7b3a-73fd-8000-00000000000e';
 const NEW_UUID = '018d476a-7b3a-73fd-8000-ffffffffffff';
 
 vi.mock('../../utils/id', () => ({
-  generateId: vi.fn(() => NEW_UUID)
+  generateId: vi.fn(() => NEW_UUID),
 }));
 
 vi.stubGlobal('crypto', {
-  randomUUID: vi.fn(() => NEW_UUID)
+  randomUUID: vi.fn(() => NEW_UUID),
 });
 
 vi.mock('../../composables/useGlobalEvents', () => ({
   useGlobalEvents: () => ({
-    addErrorEvent: vi.fn()
-  })
+    addErrorEvent: vi.fn(),
+  }),
 }));
 
 describe('ImportExportService', () => {
@@ -146,13 +146,13 @@ describe('ImportExportService', () => {
             endpointUrl: '',
             autoTitleEnabled: true,
             storageType: 'local',
-            providerProfiles: []
+            providerProfiles: [],
           } as any,
           hierarchy: { items: [] },
           chatMetas: [],
-          chatGroups: []
+          chatGroups: [],
         },
-        contentStream: (async function* () {})()
+        contentStream: (async function* () {})(),
       });
       const { filename } = await service.exportData({});
       expect(filename).toMatch(/^naidan-data-\d{4}-\d{2}-\d{2}\.zip$/);
@@ -167,25 +167,25 @@ describe('ImportExportService', () => {
             endpointUrl: '',
             autoTitleEnabled: true,
             storageType: 'local',
-            providerProfiles: []
+            providerProfiles: [],
           } as any,
           hierarchy: {
             items: [
               { type: 'chat_group', id: toChatGroupId({ raw: UUID_G1}), chat_ids: [toChatId({ raw: UUID_C1 })] },
-              { type: 'chat', id: toChatId({ raw: UUID_C2 })}
-            ]
+              { type: 'chat', id: toChatId({ raw: UUID_C2 })},
+            ],
           },
           chatMetas: [
             { id: toChatId({ raw: UUID_C1 }), title: 'Test 1', updatedAt: 1000, createdAt: 1000, debugEnabled: false },
-            { id: toChatId({ raw: UUID_C2 }), title: 'Test 2', updatedAt: 1000, createdAt: 1000, debugEnabled: false }
+            { id: toChatId({ raw: UUID_C2 }), title: 'Test 2', updatedAt: 1000, createdAt: 1000, debugEnabled: false },
           ],
-          chatGroups: [{ id: toChatGroupId({ raw: UUID_G1 }), name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }]
+          chatGroups: [{ id: toChatGroupId({ raw: UUID_G1 }), name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }],
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test 1', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
           yield { type: 'chat', data: { id: UUID_C2, title: 'Test 2', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
           yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
-        })()
+        })(),
       });
 
       const { stream } = await service.exportData({ exclude: ['chat', 'binary_object'] });
@@ -229,16 +229,16 @@ describe('ImportExportService', () => {
             endpointUrl: '',
             autoTitleEnabled: true,
             storageType: 'local',
-            providerProfiles: []
+            providerProfiles: [],
           } as any,
           hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
           chatMetas: [{ id: toChatId({ raw: UUID_C1 }), title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
-          chatGroups: []
+          chatGroups: [],
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
           yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
-        })()
+        })(),
       });
 
       const { stream } = await service.exportData({ exclude: ['binary_object'] });
@@ -272,16 +272,16 @@ describe('ImportExportService', () => {
             endpointUrl: '',
             autoTitleEnabled: true,
             storageType: 'local',
-            providerProfiles: []
+            providerProfiles: [],
           } as any,
           hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
           chatMetas: [{ id: toChatId({ raw: UUID_C1 }), title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
-          chatGroups: []
+          chatGroups: [],
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
           yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
-        })()
+        })(),
       });
 
       const { stream } = await service.exportData({ exclude: ['chat'] });
@@ -654,16 +654,16 @@ ${JSON.stringify({
             endpointUrl: 'http://localhost:11434',
             autoTitleEnabled: true,
             storageType: 'local',
-            providerProfiles: []
+            providerProfiles: [],
           } as any,
           hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
           chatMetas: [{ id: toChatId({ raw: UUID_C1 }), title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
-          chatGroups: [{ id: toChatGroupId({ raw: UUID_G1 }), name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }]
+          chatGroups: [{ id: toChatGroupId({ raw: UUID_G1 }), name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }],
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
           yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
-        })()
+        })(),
       });
 
       const { stream } = await service.exportData({});
@@ -709,12 +709,12 @@ ${JSON.stringify({
                   role: 'tool',
                   results: [{ toolCallId: 'tc-1', status: 'success', content: { type: 'text', text: 'Sunny' } }],
                   timestamp: 1100,
-                  replies: { items: [] }
-                }]
-              }
-            }
-          ]
-        }
+                  replies: { items: [] },
+                }],
+              },
+            },
+          ],
+        },
       };
 
       mockStorage.dumpWithoutLock.mockResolvedValue({
@@ -724,15 +724,15 @@ ${JSON.stringify({
             endpointUrl: 'http://localhost:11434',
             autoTitleEnabled: true,
             storageType: 'local',
-            providerProfiles: []
+            providerProfiles: [],
           } as any,
           hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
           chatMetas: [createValidChatMeta({ id: toChatId({ raw: UUID_C1 }) })],
-          chatGroups: []
+          chatGroups: [],
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: complexChat as any };
-        })()
+        })(),
       });
 
       const { stream } = await service.exportData({});
@@ -760,13 +760,13 @@ ${JSON.stringify({
             endpointType: 'transformers_js',
             autoTitleEnabled: true,
             storageType: 'local',
-            providerProfiles: []
+            providerProfiles: [],
           } as any,
           hierarchy: { items: [] },
           chatMetas: [],
-          chatGroups: []
+          chatGroups: [],
         },
-        contentStream: (async function* () {})()
+        contentStream: (async function* () {})(),
       });
 
       const { stream } = await service.exportData({});
@@ -790,9 +790,9 @@ ${JSON.stringify({
           settings: createValidSettings(),
           hierarchy: { items: [] },
           chatMetas: [],
-          chatGroups: []
+          chatGroups: [],
         },
-        contentStream: (async function* () {})()
+        contentStream: (async function* () {})(),
       });
 
       const longName = 'A'.repeat(300); // Exceeds typical OS limits
@@ -819,29 +819,29 @@ ${JSON.stringify({
               {
                 toolCallId: 'tc-err',
                 status: 'error',
-                error: { code: 'execution_failed', message: { type: 'text', text: 'Crash' } }
+                error: { code: 'execution_failed', message: { type: 'text', text: 'Crash' } },
               },
               {
                 toolCallId: 'tc-bin',
                 status: 'success',
-                content: { type: 'binary_object', id: UUID_A1 }
-              }
+                content: { type: 'binary_object', id: UUID_A1 },
+              },
             ],
             timestamp: 1000,
-            replies: { items: [] }
-          }]
-        }
+            replies: { items: [] },
+          }],
+        },
       };
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: createValidSettings(),
           hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
           chatMetas: [createValidChatMeta({ id: toChatId({ raw: UUID_C1 }) })],
-          chatGroups: []
+          chatGroups: [],
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: toolChat as any };
-        })()
+        })(),
       });
 
       const { stream } = await service.exportData({});
@@ -872,7 +872,7 @@ ${JSON.stringify({
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const config: ImportConfig = {
         data: { mode: 'replace' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       };
 
       mockStorage.loadSettings.mockResolvedValue(null);
@@ -981,13 +981,13 @@ ${JSON.stringify({
               items: [{
                 id: UUID_M2, role: 'user', content: 'response', timestamp: now + 100,
                 attachments: [{
-                  id: UUID_A1, binaryObjectId: UUID_A1, name: 'img.png', status: 'persisted'
+                  id: UUID_A1, binaryObjectId: UUID_A1, name: 'img.png', status: 'persisted',
                 }],
-                replies: { items: [] }
-              }]
-            }
-          }]
-        }
+                replies: { items: [] },
+              }],
+            },
+          }],
+        },
       };
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify(content));
 
@@ -996,13 +996,13 @@ ${JSON.stringify({
       binFolder!.file(`${UUID_A1}.bin`, new Blob(['...']));
       binFolder!.file('index.json', JSON.stringify({
         objects: {
-          [UUID_A1]: { id: UUID_A1, mimeType: 'image/png', size: 100, createdAt: now, name: 'img.png' }
-        }
+          [UUID_A1]: { id: UUID_A1, mimeType: 'image/png', size: 100, createdAt: now, name: 'img.png' },
+        },
       }));
 
       await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       } });
 
       const calls = mockStorage.restore.mock.calls;
@@ -1037,11 +1037,11 @@ ${JSON.stringify({
               mimeType: 'image/png',
               size: 50,
               uploadedAt: 1000,
-              status: 'persisted'
+              status: 'persisted',
             }],
-            replies: { items: [] }
-          }]
-        }
+            replies: { items: [] },
+          }],
+        },
       };
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify(content));
 
@@ -1051,13 +1051,13 @@ ${JSON.stringify({
       binFolder!.file(`${UUID_A1}.bin`, new Blob(['...']));
       binFolder!.file('index.json', JSON.stringify({
         objects: {
-          [UUID_A1]: { id: UUID_A1, mimeType: 'image/png', size: 50, createdAt: 1000, name: 'old.png' }
-        }
+          [UUID_A1]: { id: UUID_A1, mimeType: 'image/png', size: 50, createdAt: 1000, name: 'old.png' },
+        },
       }));
 
       await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       } });
 
       const calls = mockStorage.restore.mock.calls;
@@ -1091,7 +1091,7 @@ ${JSON.stringify({
         id: ORIGINAL_CHAT_ID,
         currentLeafId: ORIGINAL_MSG_ID,
         originChatId: ORIGINAL_CHAT_ID,
-        originMessageId: ORIGINAL_MSG_ID
+        originMessageId: ORIGINAL_MSG_ID,
       });
       zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
 
@@ -1099,15 +1099,15 @@ ${JSON.stringify({
         root: {
           items: [{
             id: ORIGINAL_MSG_ID, role: 'user', content: 'hello', timestamp: 1000,
-            replies: { items: [] }
-          }]
-        }
+            replies: { items: [] },
+          }],
+        },
       };
       zip.folder('chat-contents')!.file(`${ORIGINAL_CHAT_ID}.json`, JSON.stringify(content));
 
       await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       } });
 
       const calls = mockStorage.restore.mock.calls;
@@ -1152,7 +1152,7 @@ ${JSON.stringify({
 
       await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append', chatTitlePrefix: '[Chat] ', chatGroupNamePrefix: '[Group] ' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       } });
 
       const calls = mockStorage.restore.mock.calls;
@@ -1178,7 +1178,7 @@ ${JSON.stringify({
 
       await service.executeImport({ zipFile: zipBlob, config: {
         data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       } });
 
       expect(mockStorage.clearAll).not.toHaveBeenCalled();
@@ -1197,7 +1197,7 @@ ${JSON.stringify({
 
       await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       } });
 
       const snapshot = mockStorage.restore.mock.calls[0]![0].snapshot;
@@ -1211,20 +1211,20 @@ ${JSON.stringify({
       zip.file('export-manifest.json', '{}');
       const chatMeta = createValidChatMetaDto({
         id: UUID_C1,
-        systemPrompt: { behavior: 'append', content: 'Extra context' }
+        systemPrompt: { behavior: 'append', content: 'Extra context' },
       });
       zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
 
       await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       } });
 
       const snapshot = mockStorage.restore.mock.calls[0]![0].snapshot;
       expect(snapshot.structure.chatMetas[0]!.systemPrompt).toEqual({
         behavior: 'append',
-        content: 'Extra context'
+        content: 'Extra context',
       });
     });
   });
@@ -1242,18 +1242,18 @@ ${JSON.stringify({
           presencePenalty: undefined,
           frequencyPenalty: undefined,
           reasoning: undefined,
-        }
+        },
       })));
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       mockStorage.loadSettings.mockResolvedValue({
         endpointType: 'ollama',
-        lmParameters: { temperature: 0.9, maxCompletionTokens: 500, stop: ['OLD'] }
+        lmParameters: { temperature: 0.9, maxCompletionTokens: 500, stop: ['OLD'] },
       } as any);
 
       const config: ImportConfig = {
         data: { mode: 'append' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'replace', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'replace', providerProfiles: 'none' },
       };
 
       await service.executeImport({ zipFile: zipBlob, config });
@@ -1265,8 +1265,8 @@ ${JSON.stringify({
         lmParameters: {
           temperature: 0.1,
           stop: ['ZIP'],
-          reasoning: { effort: undefined }
-        }
+          reasoning: { effort: undefined },
+        },
       }));
     });
 
@@ -1276,18 +1276,18 @@ ${JSON.stringify({
       zip.file('settings.json', JSON.stringify(createValidSettingsDto({
         lmParameters: {
           temperature: 0.7,
-          reasoning: { effort: 'high' }
-        } as any
+          reasoning: { effort: 'high' },
+        } as any,
       })));
 
       mockStorage.loadSettings.mockResolvedValue(createValidSettingsDto({
-        lmParameters: { reasoning: { effort: undefined } } as any
+        lmParameters: { reasoning: { effort: undefined } } as any,
       }) as any);
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const config: ImportConfig = {
         data: { mode: 'replace' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'replace', providerProfiles: 'none' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'replace', providerProfiles: 'none' },
       };
 
       await service.executeImport({ zipFile: zipBlob, config });
@@ -1297,7 +1297,7 @@ ${JSON.stringify({
       const result = await updater({ current: await mockStorage.loadSettings() });
       expect(result.lmParameters).toEqual({
         temperature: 0.7,
-        reasoning: { effort: 'high' }
+        reasoning: { effort: 'high' },
       });
     });
 
@@ -1306,7 +1306,7 @@ ${JSON.stringify({
       zip.file('export-manifest.json', '{}');
       zip.file('settings.json', JSON.stringify(createValidSettingsDto({
         heavyContentAlertDismissed: true,
-        endpoint: { type: 'openai', url: 'http://imported', httpHeaders: [['X-Test', 'imported']] }
+        endpoint: { type: 'openai', url: 'http://imported', httpHeaders: [['X-Test', 'imported']] },
       })));
 
       mockStorage.loadSettings.mockResolvedValue(createValidSettings());
@@ -1314,7 +1314,7 @@ ${JSON.stringify({
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const config: ImportConfig = {
         data: { mode: 'replace' },
-        settings: { endpoint: 'replace', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+        settings: { endpoint: 'replace', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
       };
 
       await service.executeImport({ zipFile: zipBlob, config });
@@ -1331,18 +1331,18 @@ ${JSON.stringify({
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
       zip.file('settings.json', JSON.stringify(createValidSettingsDto({
-        providerProfiles: [{ id: UUID_G1, name: 'Imported', endpoint: { type: 'ollama', url: 'http://localhost:11434' } } as any]
+        providerProfiles: [{ id: UUID_G1, name: 'Imported', endpoint: { type: 'ollama', url: 'http://localhost:11434' } } as any],
       })));
 
       mockStorage.loadSettings.mockResolvedValue({
         endpointType: 'ollama',
         storageType: 'local',
-        providerProfiles: [{ id: '018d476a-7b3a-73fd-8000-000000000009', name: 'Existing', endpointType: 'openai', endpointUrl: '' }]
+        providerProfiles: [{ id: '018d476a-7b3a-73fd-8000-000000000009', name: 'Existing', endpointType: 'openai', endpointUrl: '' }],
       } as any);
 
       await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'replace' },
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'append' }
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'append' },
       } });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
@@ -1351,8 +1351,8 @@ ${JSON.stringify({
       expect(result).toEqual(expect.objectContaining({
         providerProfiles: [
           expect.objectContaining({ id: '018d476a-7b3a-73fd-8000-000000000009' }),
-          expect.objectContaining({ id: NEW_UUID, name: 'Imported' })
-        ]
+          expect.objectContaining({ id: NEW_UUID, name: 'Imported' }),
+        ],
       }));
     });
   });
@@ -1395,7 +1395,7 @@ ${JSON.stringify({
       zip.file('chat-metas.json', JSON.stringify({ entries: [
         { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: now, createdAt: now },
         { id: UUID_C2, title: 'C2', groupId: null, updatedAt: now, createdAt: now },
-        { id: 'invalid-uuid', title: 'Broken' }
+        { id: 'invalid-uuid', title: 'Broken' },
       ] }));
 
       // Add a binary object in a shard
@@ -1420,7 +1420,7 @@ ${JSON.stringify({
       // No hierarchy.json
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: 1000, isCollapsed: false }));
       zip.file('chat-metas.json', JSON.stringify({ entries: [
-        { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: 1000, createdAt: 1000 }
+        { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: 1000, createdAt: 1000 },
       ] }));
 
       const preview = await service.analyze({ zipFile: await zip.generateAsync({ type: 'blob' }) });

@@ -1,13 +1,13 @@
-import { getPrivacyFetchBrokerClient } from './broker-client'
+import { getPrivacyFetchBrokerClient } from './broker-client';
 import type {
   PrivacyFetchRequest,
   PrivacyFetchResponse,
-} from './types'
+} from './types';
 
 export async function privacyFetch({
   request,
 }: {
-  request: PrivacyFetchRequest;
+  request: PrivacyFetchRequest,
 }): Promise<PrivacyFetchResponse> {
-  return getPrivacyFetchBrokerClient().fetch({ request })
+  return getPrivacyFetchBrokerClient().fetch({ request });
 }

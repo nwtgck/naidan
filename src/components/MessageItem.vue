@@ -42,21 +42,21 @@ import {
 } from '@/utils/image-generation';
 
 const props = withDefaults(defineProps<{
-  chatId: ChatId;
-  message: MessageNode;
-  siblings?: MessageNode[];
-  canGenerateImage?: boolean;
-  isProcessing?: boolean;
-  isGenerating?: boolean;
-  availableImageModels?: string[];
-  endpointType?: EndpointType;
-  flow?: FlowMetadata;
-  mode?: MessageMode;
-  partContent?: string;
-  isFirstInNode?: boolean;
-  isLastInNode?: boolean;
-  isFirstInTurn?: boolean;
-  showGeneratingIndicator?: boolean;
+  chatId: ChatId,
+  message: MessageNode,
+  siblings?: MessageNode[],
+  canGenerateImage?: boolean,
+  isProcessing?: boolean,
+  isGenerating?: boolean,
+  availableImageModels?: string[],
+  endpointType?: EndpointType,
+  flow?: FlowMetadata,
+  mode?: MessageMode,
+  partContent?: string,
+  isFirstInNode?: boolean,
+  isLastInNode?: boolean,
+  isFirstInTurn?: boolean,
+  showGeneratingIndicator?: boolean,
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
   isGenerating: false,
@@ -64,15 +64,15 @@ const props = withDefaults(defineProps<{
   isFirstInNode: true,
   isLastInNode: true,
   isFirstInTurn: false,
-  showGeneratingIndicator: false
+  showGeneratingIndicator: false,
 });
 
 const emit = defineEmits<{
-  (e: 'fork', messageId: MessageId): void;
-  (e: 'edit', messageId: MessageId, newContent: string, lmParameters: LmParameters | undefined): void;
-  (e: 'switch-version', messageId: MessageId): void;
-  (e: 'regenerate', messageId: MessageId): void;
-  (e: 'abort'): void;
+  (e: 'fork', messageId: MessageId): void,
+  (e: 'edit', messageId: MessageId, newContent: string, lmParameters: LmParameters | undefined): void,
+  (e: 'switch-version', messageId: MessageId): void,
+  (e: 'regenerate', messageId: MessageId): void,
+  (e: 'abort'): void,
 }>();
 
 const isEditing = ref(false);
@@ -96,7 +96,7 @@ const editImageParams = ref({
   count: 1,
   steps: undefined as number | undefined,
   seed: undefined as number | 'browser_random' | undefined,
-  persistAs: 'original' as 'original' | 'webp' | 'jpeg' | 'png'
+  persistAs: 'original' as 'original' | 'webp' | 'jpeg' | 'png',
 });
 
 const attachmentUrls = ref(new Map<AttachmentId, string>());
@@ -158,7 +158,7 @@ async function handlePreviewImage({ id }: { id: BinaryObjectId }) {
 
     openPreview({
       objects: allImages.length > 0 ? allImages : [obj],
-      initialId: id
+      initialId: id,
     });
   }
 }
@@ -237,7 +237,7 @@ watch(isEditing, (editing) => {
           count: parsed.count ?? 1,
           steps: parsed.steps,
           seed: parsed.seed,
-          persistAs: parsed.persistAs ?? 'original'
+          persistAs: parsed.persistAs ?? 'original',
         };
       }
     } else {
@@ -282,14 +282,14 @@ function handleSaveEdit() {
         count: editImageParams.value.count,
         steps: editImageParams.value.steps,
         seed: editImageParams.value.seed,
-        persistAs: editImageParams.value.persistAs
+        persistAs: editImageParams.value.persistAs,
       });
       finalContent = marker + '\n' + finalContent;
     }
     const lmParameters: LmParameters = {
       ...(settings.value.lmParameters || EMPTY_LM_PARAMETERS),
       stop: settings.value.lmParameters?.stop ? [...settings.value.lmParameters.stop] : undefined,
-      reasoning: { effort: editReasoningEffort.value }
+      reasoning: { effort: editReasoningEffort.value },
     };
     emit('edit', props.message.id, finalContent, lmParameters);
   }
@@ -471,7 +471,7 @@ defineExpose({
   TEST_ONLY: {
     openAdvancedEditor,
     handleAdvancedEditorModeUpdate,
-  }
+  },
 });
 </script>
 

@@ -5,25 +5,25 @@ import { useOverlay } from './useOverlay';
 import type { ChatSummary } from '@/models/types';
 
 export interface RecentChatEntry {
-  id: ChatId;
-  accessedAt: number;
+  id: ChatId,
+  accessedAt: number,
 }
 
 export interface RecentChatWithAccess extends ChatSummary {
-  accessedAt: number;
+  accessedAt: number,
 }
 
 export interface UseRecentChatsResult {
-  isRecentOpen: ComputedRef<boolean>;
-  recentChats: ComputedRef<RecentChatWithAccess[]>;
-  openRecent: () => void;
-  closeRecent: () => void;
-  toggleRecent: () => void;
-  addRecentChat: ({ id }: { id: ChatId }) => void;
+  isRecentOpen: ComputedRef<boolean>,
+  recentChats: ComputedRef<RecentChatWithAccess[]>,
+  openRecent: () => void,
+  closeRecent: () => void,
+  toggleRecent: () => void,
+  addRecentChat: ({ id }: { id: ChatId }) => void,
   TEST_ONLY: {
-    recentChatEntries: Ref<RecentChatEntry[]>;
-    allRecentChats: ComputedRef<RecentChatWithAccess[]>;
-  };
+    recentChatEntries: Ref<RecentChatEntry[]>,
+    allRecentChats: ComputedRef<RecentChatWithAccess[]>,
+  },
 }
 
 const activeOverlay = useOverlay().activeOverlay;

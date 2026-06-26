@@ -76,8 +76,8 @@ vi.mock('./composables/useSettings', async () => {
         settings.value = { endpointUrl: '', endpointType: 'openai', defaultModelId: '' };
         manualDismiss.value = false;
         initialized.value = true;
-      }
-    })
+      },
+    }),
   };
 });
 
@@ -179,7 +179,7 @@ vi.mock('./components/GlobalSearchModal.vue', () => ({ __esModule: true, default
 
 vi.mock('./components/OnboardingModal.vue', () => ({
   __esModule: true,
-  default: { template: '<div data-testid="onboarding-modal"></div>' }
+  default: { template: '<div data-testid="onboarding-modal"></div>' },
 }));
 
 import App from './App.vue';
@@ -194,7 +194,7 @@ describe('App Global Settings Sync', () => {
 
     router = createRouter({
       history: createWebHistory(),
-      routes: [{ path: '/', component: { template: '<div></div>' } }]
+      routes: [{ path: '/', component: { template: '<div></div>' } }],
     });
 
     await router.push('/');
@@ -209,8 +209,8 @@ describe('App Global Settings Sync', () => {
           'transition': true,
           'OnboardingModal': false,
           'DebugWeshTerminalModal': true,
-        }
-      }
+        },
+      },
     });
 
     await flushPromises();
@@ -224,8 +224,8 @@ describe('App Global Settings Sync', () => {
       query: {
         'global-endpoint-type': 'ollama',
         'global-endpoint-url': 'http://localhost:11434',
-        'global-model': 'llama3'
-      }
+        'global-model': 'llama3',
+      },
     });
 
     await flushPromises();
@@ -243,8 +243,8 @@ describe('App Global Settings Sync', () => {
           'transition': true,
           'OnboardingModal': false,
           'DebugWeshTerminalModal': true,
-        }
-      }
+        },
+      },
     });
 
     await flushPromises();
@@ -253,8 +253,8 @@ describe('App Global Settings Sync', () => {
       path: '/',
       query: {
         'global-endpoint-type': 'ollama',
-        'global-endpoint-url': 'http://localhost:11434'
-      }
+        'global-endpoint-url': 'http://localhost:11434',
+      },
     });
 
     await flushPromises();
@@ -268,16 +268,16 @@ describe('App Global Settings Sync', () => {
     mount(App, {
       global: {
         plugins: [router],
-        stubs: { 'transition': true, 'DebugWeshTerminalModal': true }
-      }
+        stubs: { 'transition': true, 'DebugWeshTerminalModal': true },
+      },
     });
 
     await router.push({
       path: '/',
       query: {
         'global-endpoint-type': 'ollama',
-        'global-endpoint-url': 'http://localhost:11434'
-      }
+        'global-endpoint-url': 'http://localhost:11434',
+      },
     });
     await flushPromises();
 
@@ -290,15 +290,15 @@ describe('App Global Settings Sync', () => {
     mount(App, {
       global: {
         plugins: [router],
-        stubs: { 'transition': true, 'DebugWeshTerminalModal': true }
-      }
+        stubs: { 'transition': true, 'DebugWeshTerminalModal': true },
+      },
     });
 
     await router.push({
       path: '/',
       query: {
-        'global-model': 'llama3'
-      }
+        'global-model': 'llama3',
+      },
     });
     await flushPromises();
 
@@ -310,8 +310,8 @@ describe('App Global Settings Sync', () => {
     mount(App, {
       global: {
         plugins: [router],
-        stubs: { 'transition': true, 'DebugWeshTerminalModal': true }
-      }
+        stubs: { 'transition': true, 'DebugWeshTerminalModal': true },
+      },
     });
 
     await router.push({
@@ -319,8 +319,8 @@ describe('App Global Settings Sync', () => {
       query: {
         'global-endpoint-type': 'openai',
         'global-endpoint-url': 'https://api.openai.com/v1',
-        'global-model': 'gpt-4'
-      }
+        'global-model': 'gpt-4',
+      },
     });
     await flushPromises();
 

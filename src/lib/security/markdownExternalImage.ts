@@ -11,7 +11,7 @@ export type ExternalImagePayload = z.infer<typeof ExternalImagePayloadSchema>;
 export function encodeExternalImagePayload({
   payload,
 }: {
-  payload: ExternalImagePayload;
+  payload: ExternalImagePayload,
 }): string {
   return btoa(encodeURIComponent(JSON.stringify(payload)));
 }
@@ -19,7 +19,7 @@ export function encodeExternalImagePayload({
 export function decodeExternalImagePayload({
   encodedPayload,
 }: {
-  encodedPayload: string;
+  encodedPayload: string,
 }): ExternalImagePayload | undefined {
   try {
     const payloadJson = decodeURIComponent(atob(encodedPayload));

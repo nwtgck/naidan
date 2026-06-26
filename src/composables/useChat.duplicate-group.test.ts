@@ -47,7 +47,12 @@ describe('useChat.duplicateChatGroup', () => {
       updatedAt: 123,
       isCollapsed: false,
       modelId: 'gpt-4',
-      systemPrompt: { behavior: 'override', content: 'You are a bot' }
+      systemPrompt: { behavior: 'override', content: 'You are a bot' },
+      toolConfigs: [{
+        key: 'builtin.wesh',
+        status: 'enabled',
+        naidanSysfs: { accessScope: 'main_chats' },
+      }],
     };
 
     // Inject mock data into rootItems (which is internal but exposed via sidebarItems/rootItems in useChat)
@@ -65,6 +70,10 @@ describe('useChat.duplicateChatGroup', () => {
     expect(newGroup.name).toBe('Copy of Original');
     expect(newGroup.modelId).toBe('gpt-4');
     expect(newGroup.systemPrompt).toEqual({ behavior: 'override', content: 'You are a bot' });
+    expect(newGroup.toolConfigs).toEqual(originalGroup.toolConfigs);
+    expect(newGroup.toolConfigs).not.toBe(originalGroup.toolConfigs);
+    expect(newGroup.toolConfigs[0]).not.toBe(originalGroup.toolConfigs[0]);
+    expect(newGroup.toolConfigs[0].naidanSysfs).not.toBe(originalGroup.toolConfigs[0]!.naidanSysfs);
     expect(newGroup.items).toEqual([]); // Should be empty
     expect(newGroup.id).not.toBe('g1');
   });

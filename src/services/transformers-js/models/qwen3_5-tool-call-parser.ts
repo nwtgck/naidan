@@ -12,8 +12,8 @@ const toolCallPayloadSchema = z.object({
 });
 
 function buildToolCall({ name, parameters }: {
-  name: string;
-  parameters: Record<string, unknown>;
+  name: string,
+  parameters: Record<string, unknown>,
 }): ToolCall {
   return {
     id: generateId<ToolCallId>(),
@@ -26,7 +26,7 @@ function buildToolCall({ name, parameters }: {
 }
 
 function tryParseQwen3_5ToolCall({ content }: {
-  content: string;
+  content: string,
 }): ToolCall | null {
   const trimmed = content.trim();
   const jsonToolCall = tryParseJsonLikeToolCall({ content: trimmed });

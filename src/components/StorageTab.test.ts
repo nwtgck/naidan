@@ -201,7 +201,7 @@ describe('StorageTab.vue Tests', () => {
         removeEntry: vi.fn().mockResolvedValue(undefined),
       };
       vi.stubGlobal('navigator', {
-        storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) }
+        storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) },
       });
 
       // Ensure useSettings.save will call switchProvider
@@ -217,7 +217,7 @@ describe('StorageTab.vue Tests', () => {
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: globalMocks
+        global: globalMocks,
       });
       await wait();
 
@@ -255,7 +255,7 @@ describe('StorageTab.vue Tests', () => {
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: globalMocks
+        global: globalMocks,
       });
       await wait();
 
@@ -269,7 +269,7 @@ describe('StorageTab.vue Tests', () => {
       await flushPromises();
 
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Attachments will be inaccessible'
+        title: 'Attachments will be inaccessible',
       }));
     });
 
@@ -277,13 +277,13 @@ describe('StorageTab.vue Tests', () => {
       // Mock failure of getDirectory which would happen in insecure contexts or certain environments
       vi.stubGlobal('navigator', {
         storage: {
-          getDirectory: vi.fn().mockRejectedValue(new Error('Security Error'))
-        }
+          getDirectory: vi.fn().mockRejectedValue(new Error('Security Error')),
+        },
       });
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -304,12 +304,12 @@ describe('StorageTab.vue Tests', () => {
           persist: persistMock,
           persisted: persistedMock,
           getDirectory: vi.fn(),
-        }
+        },
       });
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -342,7 +342,7 @@ describe('StorageTab.vue Tests', () => {
       const wrapper = mount(StorageTab, {
         props: { storageType: 'local' },
         mounts: [],
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -359,7 +359,7 @@ describe('StorageTab.vue Tests', () => {
     it('highlights ephemeral provider when active', async () => {
       const wrapper = mount(StorageTab, {
         props: { storageType: 'memory' },
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -373,7 +373,7 @@ describe('StorageTab.vue Tests', () => {
       const wrapper = mount(StorageTab, {
         props: { storageType: 'local' },
         mounts: [],
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -382,7 +382,7 @@ describe('StorageTab.vue Tests', () => {
       await flushPromises();
 
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Confirm Storage Switch'
+        title: 'Confirm Storage Switch',
       }));
       expect(wrapper.emitted('update:storageType')?.[0]).toEqual(['opfs']);
     });
@@ -421,7 +421,7 @@ describe('StorageTab.vue Tests', () => {
       const wrapper = mount(StorageTab, {
         props: { storageType: 'local' },
         mounts: [],
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -430,7 +430,7 @@ describe('StorageTab.vue Tests', () => {
       await flushPromises();
 
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Clear History'
+        title: 'Clear History',
       }));
       expect(wrapper.emitted('close')).toBeTruthy();
       expect(mockPush).toHaveBeenCalledWith('/');
@@ -444,7 +444,7 @@ describe('StorageTab.vue Tests', () => {
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -463,13 +463,13 @@ describe('StorageTab.vue Tests', () => {
     it('should disable OPFS option if not in secure context', async () => {
       vi.stubGlobal('navigator', {
         storage: {
-          getDirectory: vi.fn().mockRejectedValue(new Error('Security Error'))
-        }
+          getDirectory: vi.fn().mockRejectedValue(new Error('Security Error')),
+        },
       });
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -495,14 +495,14 @@ describe('StorageTab.vue Tests', () => {
       };
       vi.stubGlobal('navigator', {
         storage: {
-          getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle)
-        }
+          getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle),
+        },
       });
       vi.stubGlobal('isSecureContext', true);
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
       await vi.dynamicImportSettled();
@@ -533,6 +533,7 @@ describe('StorageTab.vue Tests', () => {
       vi.mocked(useSettings).mockReturnValue({
         settings: { value: { storageType: 'local', providerProfiles: [], endpointUrl: '' } } as any,
         save: mockSaveFail,
+        updateExperimental: vi.fn(),
         updateProviderProfiles: vi.fn(),
         initialized: { value: true } as any,
         isOnboardingDismissed: { value: true } as any,
@@ -556,12 +557,12 @@ describe('StorageTab.vue Tests', () => {
         TEST_ONLY: {
           __testOnlyReset: vi.fn(),
           __testOnlySetSettings: vi.fn(),
-        }
+        },
       });
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: globalMocks
+        global: globalMocks,
       });
       await flushPromises();
 

@@ -1,36 +1,36 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { toChatGroupId, toChatId, toVolumeId } from '@/models/ids'
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toChatGroupId, toChatId, toVolumeId } from '@/models/ids';
 
-const mockCreateClient = vi.fn()
-const mockGetVolumeDirectoryHandle = vi.fn()
-const mockAbortOngoingScans = vi.fn()
-const mockGetVolumeExtensions = vi.fn()
-const mockIsVolumeScanned = vi.fn()
-const mockStartVolumeExtensionScan = vi.fn()
+const mockCreateClient = vi.fn();
+const mockGetVolumeDirectoryHandle = vi.fn();
+const mockAbortOngoingScans = vi.fn();
+const mockGetVolumeExtensions = vi.fn();
+const mockIsVolumeScanned = vi.fn();
+const mockStartVolumeExtensionScan = vi.fn();
 
 vi.mock('@/services/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mockCreateClient,
-}))
+}));
 
 vi.mock('@/services/storage', () => ({
   storageService: {
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
   },
-}))
+}));
 
 vi.mock('./wesh/volume-extension-cache', () => ({
   abortOngoingScans: mockAbortOngoingScans,
   getVolumeExtensions: mockGetVolumeExtensions,
   isVolumeScanned: mockIsVolumeScanned,
   startVolumeExtensionScan: mockStartVolumeExtensionScan,
-}))
+}));
 
 function setupStandardMocks({
   volumeHandle,
 }: {
-  volumeHandle: FileSystemDirectoryHandle
+  volumeHandle: FileSystemDirectoryHandle,
 }) {
-  mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle)
+  mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle);
   mockCreateClient.mockResolvedValue({
     startExecution: vi.fn(),
     awaitExecution: vi.fn(),
@@ -40,25 +40,25 @@ function setupStandardMocks({
     execute: vi.fn(),
     interrupt: vi.fn(),
     dispose: vi.fn(),
-  })
+  });
 }
 
 describe('getEnabledTools shell_execute', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockGetVolumeExtensions.mockReturnValue(new Set<string>())
-    mockIsVolumeScanned.mockReturnValue(false)
-  })
+    vi.clearAllMocks();
+    mockGetVolumeExtensions.mockReturnValue(new Set<string>());
+    mockIsVolumeScanned.mockReturnValue(false);
+  });
 
   it('creates a fresh Wesh worker client with resolved mounts and a per-session /tmp', async () => {
-    const tmpHandleA = { kind: 'directory', name: 'chat-1-id-a' } as FileSystemDirectoryHandle
-    const tmpHandleB = { kind: 'directory', name: 'chat-1-id-b' } as FileSystemDirectoryHandle
-    const volumeHandleA = { kind: 'directory', name: 'vol-a' } as FileSystemDirectoryHandle
-    const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle
+    const tmpHandleA = { kind: 'directory', name: 'chat-1-id-a' } as FileSystemDirectoryHandle;
+    const tmpHandleB = { kind: 'directory', name: 'chat-1-id-b' } as FileSystemDirectoryHandle;
+    const volumeHandleA = { kind: 'directory', name: 'vol-a' } as FileSystemDirectoryHandle;
+    const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle;
 
     mockGetVolumeDirectoryHandle
       .mockResolvedValueOnce(volumeHandleA)
-      .mockResolvedValueOnce(volumeHandleB)
+      .mockResolvedValueOnce(volumeHandleB);
     mockCreateClient.mockResolvedValue({
       startExecution: vi.fn(),
       awaitExecution: vi.fn(),
@@ -68,9 +68,9 @@ describe('getEnabledTools shell_execute', () => {
       execute: vi.fn(),
       interrupt: vi.fn(),
       dispose: vi.fn(),
-    })
+    });
 
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     const [toolA] = await getEnabledTools({
       enabledNames: ['shell_execute'],
@@ -83,7 +83,7 @@ describe('getEnabledTools shell_execute', () => {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'a' }), mountPath: '/mnt/a', readOnly: false }],
       } as never,
-    })
+    });
     const [toolB] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleB,
@@ -95,7 +95,7 @@ describe('getEnabledTools shell_execute', () => {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'b' }), mountPath: '/mnt/b', readOnly: true }],
       } as never,
-    })
+    });
 
     expect(mockCreateClient).toHaveBeenNthCalledWith(1, {
       rootHandle: 'readonly',
@@ -116,7 +116,7 @@ describe('getEnabledTools shell_execute', () => {
       user: 'user',
       initialEnv: {},
       initialCwd: undefined,
-    })
+    });
     expect(mockCreateClient).toHaveBeenNthCalledWith(2, {
       rootHandle: 'readonly',
       mounts: [
@@ -136,7 +136,7 @@ describe('getEnabledTools shell_execute', () => {
       user: 'user',
       initialEnv: {},
       initialCwd: undefined,
-    })
+    });
 
     // /tmp (read-write) appears in the description because it is in resolvedMounts
     expect(toolA?.description).toEqual(`\
@@ -145,23 +145,23 @@ Execute shell scripts to perform file operations, system exploration, and data p
 Mounted directories:
 - /tmp (read-write)
 - /sys/fs/naidan (read-only)
-- /mnt/a (read-write)`)
+- /mnt/a (read-write)`);
     expect(toolB?.description).toEqual(`\
 Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). Run \`help\` to see available utilities.
 
 Mounted directories:
 - /tmp (read-write)
 - /sys/fs/naidan (read-only)
-- /mnt/b (read-only)`)
-  }, 15000)
+- /mnt/b (read-only)`);
+  }, 15000);
 
   it('sets initialCwd to /home/user when a mount lives under /home/user/', async () => {
-    const tmpHandle = { kind: 'directory', name: 'chat-1-id-x' } as FileSystemDirectoryHandle
-    const volumeHandle = { kind: 'directory', name: 'vol-x' } as FileSystemDirectoryHandle
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-x' } as FileSystemDirectoryHandle;
+    const volumeHandle = { kind: 'directory', name: 'vol-x' } as FileSystemDirectoryHandle;
 
-    setupStandardMocks({ volumeHandle })
+    setupStandardMocks({ volumeHandle });
 
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
@@ -174,17 +174,17 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'x', mountPath: '/home/user/myproject', readOnly: false }],
       } as never,
-    })
+    });
 
     expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
       initialCwd: '/home/user',
-    }))
-  })
+    }));
+  });
 
   it('creates the shell tool for local storage without /tmp', async () => {
-    const volumeHandle = { kind: 'directory', name: 'vol-local-only' } as FileSystemDirectoryHandle
-    setupStandardMocks({ volumeHandle })
-    const { getEnabledTools } = await import('./factory')
+    const volumeHandle = { kind: 'directory', name: 'vol-local-only' } as FileSystemDirectoryHandle;
+    setupStandardMocks({ volumeHandle });
+    const { getEnabledTools } = await import('./factory');
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: undefined,
@@ -196,9 +196,9 @@ Mounted directories:
         storageType: 'local',
         mounts: [{ type: 'volume', volumeId: 'vol-local-only', mountPath: '/mnt/local-only', readOnly: true }],
       } as never,
-    })
+    });
 
-    expect(tools).toHaveLength(1)
+    expect(tools).toHaveLength(1);
     expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
       mounts: [
         {
@@ -213,16 +213,16 @@ Mounted directories:
         },
         { type: 'directory', path: '/mnt/local-only', handle: volumeHandle, readOnly: true },
       ],
-    }))
-  })
+    }));
+  });
 
   it('does not add a naidan sysfs mount when selection is none', async () => {
-    const tmpHandle = { kind: 'directory', name: 'chat-1-id-none' } as FileSystemDirectoryHandle
-    const volumeHandle = { kind: 'directory', name: 'vol-none' } as FileSystemDirectoryHandle
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-none' } as FileSystemDirectoryHandle;
+    const volumeHandle = { kind: 'directory', name: 'vol-none' } as FileSystemDirectoryHandle;
 
-    setupStandardMocks({ volumeHandle })
+    setupStandardMocks({ volumeHandle });
 
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
@@ -235,18 +235,18 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-none', mountPath: '/mnt/none', readOnly: true }],
       } as never,
-    })
+    });
 
     expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
       mounts: [
         { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
         { type: 'directory', path: '/mnt/none', handle: volumeHandle, readOnly: true },
       ],
-    }))
-  })
+    }));
+  });
 
   it('does not expose wikipedia tools when shell_execute is disabled', async () => {
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     const tools = await getEnabledTools({
       enabledNames: ['wikipedia_search', 'wikipedia_get_page'],
@@ -259,14 +259,14 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [],
       } as never,
-    })
+    });
 
-    expect(tools).toHaveLength(0)
-  })
+    expect(tools).toHaveLength(0);
+  });
 
   it('does not expose wikipedia tools when sysfs Naidan is disabled', async () => {
-    const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle
-    const { getEnabledTools } = await import('./factory')
+    const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle;
+    const { getEnabledTools } = await import('./factory');
 
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
@@ -279,13 +279,13 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [],
       } as never,
-    })
+    });
 
-    expect(tools.map(({ name }) => name)).toEqual(['shell_execute'])
-  })
+    expect(tools.map(({ name }) => name)).toEqual(['shell_execute']);
+  });
 
   it('does not expose wikipedia tools when shell_execute cannot be created', async () => {
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
@@ -298,13 +298,13 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [],
       } as never,
-    })
+    });
 
-    expect(tools).toHaveLength(0)
-  })
+    expect(tools).toHaveLength(0);
+  });
 
   it('exposes wikipedia tools only when shell_execute and sysfs Naidan are both usable', async () => {
-    const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle
+    const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle;
     mockCreateClient.mockResolvedValue({
       startExecution: vi.fn(),
       awaitExecution: vi.fn(),
@@ -314,8 +314,8 @@ Mounted directories:
       execute: vi.fn(),
       interrupt: vi.fn(),
       dispose: vi.fn(),
-    })
-    const { getEnabledTools } = await import('./factory')
+    });
+    const { getEnabledTools } = await import('./factory');
 
     const tools = await getEnabledTools({
       enabledNames: ['wikipedia_search', 'shell_execute', 'wikipedia_get_page'],
@@ -328,21 +328,21 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [],
       } as never,
-    })
+    });
 
     expect(tools.map(({ name }) => name)).toEqual([
       'wikipedia_search',
       'shell_execute',
       'wikipedia_get_page',
-    ])
-  })
+    ]);
+  });
 
   it('creates a local-storage naidan sysfs mount when selected', async () => {
-    const volumeHandle = { kind: 'directory', name: 'vol-local' } as FileSystemDirectoryHandle
+    const volumeHandle = { kind: 'directory', name: 'vol-local' } as FileSystemDirectoryHandle;
 
-    setupStandardMocks({ volumeHandle })
+    setupStandardMocks({ volumeHandle });
 
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
@@ -355,7 +355,7 @@ Mounted directories:
         storageType: 'local',
         mounts: [{ type: 'volume', volumeId: 'vol-local', mountPath: '/mnt/local', readOnly: true }],
       } as never,
-    })
+    });
 
     expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
       mounts: [
@@ -371,17 +371,17 @@ Mounted directories:
         },
         { type: 'directory', path: '/mnt/local', handle: volumeHandle, readOnly: true },
       ],
-    }))
-  })
+    }));
+  });
 
   it('starts a background scan for volumes not yet scanned', async () => {
-    const tmpHandle = { kind: 'directory', name: 'chat-1-id-s' } as FileSystemDirectoryHandle
-    const volumeHandle = { kind: 'directory', name: 'vol-s' } as FileSystemDirectoryHandle
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-s' } as FileSystemDirectoryHandle;
+    const volumeHandle = { kind: 'directory', name: 'vol-s' } as FileSystemDirectoryHandle;
 
-    setupStandardMocks({ volumeHandle })
-    mockIsVolumeScanned.mockReturnValue(false)
+    setupStandardMocks({ volumeHandle });
+    mockIsVolumeScanned.mockReturnValue(false);
 
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
@@ -394,22 +394,22 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-s', mountPath: '/mnt/s', readOnly: true }],
       } as never,
-    })
+    });
 
     expect(mockStartVolumeExtensionScan).toHaveBeenCalledWith({
       volumeId: 'vol-s',
       handle: volumeHandle,
-    })
-  })
+    });
+  });
 
   it('does not start a scan for volumes already scanned', async () => {
-    const tmpHandle = { kind: 'directory', name: 'chat-1-id-r' } as FileSystemDirectoryHandle
-    const volumeHandle = { kind: 'directory', name: 'vol-r' } as FileSystemDirectoryHandle
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-r' } as FileSystemDirectoryHandle;
+    const volumeHandle = { kind: 'directory', name: 'vol-r' } as FileSystemDirectoryHandle;
 
-    setupStandardMocks({ volumeHandle })
-    mockIsVolumeScanned.mockReturnValue(true)
+    setupStandardMocks({ volumeHandle });
+    mockIsVolumeScanned.mockReturnValue(true);
 
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
@@ -422,19 +422,19 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-r', mountPath: '/mnt/r', readOnly: true }],
       } as never,
-    })
+    });
 
-    expect(mockStartVolumeExtensionScan).not.toHaveBeenCalled()
-  })
+    expect(mockStartVolumeExtensionScan).not.toHaveBeenCalled();
+  });
 
   it('includes file type hints in the description for detected extensions', async () => {
-    const tmpHandle = { kind: 'directory', name: 'chat-1-id-d' } as FileSystemDirectoryHandle
-    const volumeHandle = { kind: 'directory', name: 'vol-d' } as FileSystemDirectoryHandle
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-d' } as FileSystemDirectoryHandle;
+    const volumeHandle = { kind: 'directory', name: 'vol-d' } as FileSystemDirectoryHandle;
 
-    setupStandardMocks({ volumeHandle })
-    mockGetVolumeExtensions.mockReturnValue(new Set(['.docx', '.xlsx']))
+    setupStandardMocks({ volumeHandle });
+    mockGetVolumeExtensions.mockReturnValue(new Set(['.docx', '.xlsx']));
 
-    const { getEnabledTools } = await import('./factory')
+    const { getEnabledTools } = await import('./factory');
 
     const [tool] = await getEnabledTools({
       enabledNames: ['shell_execute'],
@@ -447,10 +447,10 @@ Mounted directories:
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-d', mountPath: '/mnt/d', readOnly: true }],
       } as never,
-    })
+    });
 
-    expect(tool?.description).toContain('To read .docx and .xlsx files in the mounts, unzip them to /tmp first:')
-    expect(tool?.description).toContain('  unzip example.docx -d /tmp/example')
-    expect(tool?.description).toContain('  unzip example.xlsx -d /tmp/example')
-  })
-})
+    expect(tool?.description).toContain('To read .docx and .xlsx files in the mounts, unzip them to /tmp first:');
+    expect(tool?.description).toContain('  unzip example.docx -d /tmp/example');
+    expect(tool?.description).toContain('  unzip example.xlsx -d /tmp/example');
+  });
+});

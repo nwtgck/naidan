@@ -9,9 +9,9 @@ function parseNonNegativeInteger({
   value,
   label,
 }: {
-  value: string;
-  label: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+  label: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   const normalized = value.trim();
   if (!/^(?:0x[0-9a-fA-F]+|0[0-7]+|\d+)$/u.test(normalized)) {
     return { ok: false, message: `invalid ${label}: '${value}'` };
@@ -34,9 +34,9 @@ function toHex({
   uppercase,
   width,
 }: {
-  value: number;
-  uppercase: boolean;
-  width: number | undefined;
+  value: number,
+  uppercase: boolean,
+  width: number | undefined,
 }): string {
   const raw = value.toString(16);
   const formatted = width === undefined ? raw : raw.padStart(width, '0');
@@ -46,7 +46,7 @@ function toHex({
 function renderAscii({
   bytes,
 }: {
-  bytes: Uint8Array;
+  bytes: Uint8Array,
 }): string {
   let result = '';
   for (const byte of bytes) {
@@ -59,8 +59,8 @@ function getHexColumnWidth({
   columns,
   groupSize,
 }: {
-  columns: number;
-  groupSize: number;
+  columns: number,
+  groupSize: number,
 }): number {
   let width = 0;
   let remaining = columns;
@@ -81,10 +81,10 @@ function renderHexSection({
   groupSize,
   uppercase,
 }: {
-  bytes: Uint8Array;
-  columns: number;
-  groupSize: number;
-  uppercase: boolean;
+  bytes: Uint8Array,
+  columns: number,
+  groupSize: number,
+  uppercase: boolean,
 }): string {
   const parts: string[] = [];
   for (let index = 0; index < bytes.length; index += groupSize) {
@@ -101,11 +101,11 @@ function renderNormalLine({
   uppercase,
   displayOffset,
 }: {
-  bytes: Uint8Array;
-  columns: number;
-  groupSize: number;
-  uppercase: boolean;
-  displayOffset: number;
+  bytes: Uint8Array,
+  columns: number,
+  groupSize: number,
+  uppercase: boolean,
+  displayOffset: number,
 }): string {
   return `${toHex({ value: displayOffset, uppercase, width: 8 })}: ${renderHexSection({
     bytes,
@@ -119,8 +119,8 @@ function renderPlainLine({
   bytes,
   uppercase,
 }: {
-  bytes: Uint8Array;
-  uppercase: boolean;
+  bytes: Uint8Array,
+  uppercase: boolean,
 }): string {
   return `${Array.from(bytes, byte => toHex({
     value: byte,
@@ -135,10 +135,10 @@ async function* iterateXxdRows({
   seek,
   length,
 }: {
-  stream: ReadableStream<Uint8Array>;
-  columns: number;
-  seek: number;
-  length: number | undefined;
+  stream: ReadableStream<Uint8Array>,
+  columns: number,
+  seek: number,
+  length: number | undefined,
 }): AsyncIterable<Uint8Array> {
   let bytesToSkip = seek;
   let bytesRemaining = length;

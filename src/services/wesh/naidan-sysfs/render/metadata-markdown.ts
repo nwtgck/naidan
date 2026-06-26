@@ -1,17 +1,17 @@
-import { idToRaw } from '@/models/ids'
-import type { ChatMeta } from '@/models/types'
+import { idToRaw } from '@/models/ids';
+import type { ChatMeta } from '@/models/types';
 
 function formatValue({ value }: { value: unknown }): string {
   if (value === undefined) {
-    return 'undefined'
+    return 'undefined';
   }
   if (value === null) {
-    return 'null'
+    return 'null';
   }
   if (typeof value === 'string') {
-    return value
+    return value;
   }
-  return JSON.stringify(value)
+  return JSON.stringify(value);
 }
 
 // Sensitive fields must be masked before rendering. Do not emit raw secret values here.
@@ -38,5 +38,5 @@ endpoint: ${formatValue({ value: metadata.endpoint ? {
     httpHeaders: metadata.endpoint.httpHeaders?.map(([name]) => [name, '[masked]']),
   } : undefined })}
 mounts: ${formatValue({ value: metadata.mounts })}
-`
+`;
 }

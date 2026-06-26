@@ -3,30 +3,30 @@ import type { Chat, ChatGroup } from '@/models/types';
 import type { ChatId } from '@/models/ids';
 
 export type ChatCurrentBridge = {
-  currentChat: ComputedRef<Chat | null>;
-  currentChatGroup: ComputedRef<ChatGroup | null>;
+  currentChat: ComputedRef<Chat | null>,
+  currentChatGroup: ComputedRef<ChatGroup | null>,
 
-  getCurrentChat(): Chat | null;
+  getCurrentChat(): Chat | null,
 
-  getCurrentChatId(): ChatId | null;
+  getCurrentChatId(): ChatId | null,
 
   getChatTargetById({
     id,
   }: {
-    id: ChatId;
-  }): Chat | null;
+    id: ChatId,
+  }): Chat | null,
 
   getChatTargetByOptionalId({
     chatId,
   }: {
-    chatId: ChatId | undefined;
-  }): Chat | null;
+    chatId: ChatId | undefined,
+  }): Chat | null,
 
   triggerCurrentChat({
     chatId,
   }: {
-    chatId: ChatId;
-  }): void;
+    chatId: ChatId,
+  }): void,
 };
 
 export function createChatCurrentBridge({
@@ -35,10 +35,10 @@ export function createChatCurrentBridge({
   liveChatRegistry,
   getLiveChat,
 }: {
-  currentChatRef: Ref<Chat | null>;
-  currentChatGroupRef: Ref<ChatGroup | null>;
-  liveChatRegistry: Map<ChatId, Chat>;
-  getLiveChat: ({ chat }: { chat: Chat }) => Chat;
+  currentChatRef: Ref<Chat | null>,
+  currentChatGroupRef: Ref<ChatGroup | null>,
+  liveChatRegistry: Map<ChatId, Chat>,
+  getLiveChat: ({ chat }: { chat: Chat }) => Chat,
 }): ChatCurrentBridge {
   const currentChat = computed(() => currentChatRef.value ? readonly(currentChatRef.value) as Chat : null);
   const currentChatGroup = computed(() => currentChatGroupRef.value ? readonly(currentChatGroupRef.value) as ChatGroup : null);
@@ -60,7 +60,7 @@ export function createChatCurrentBridge({
   function getChatTargetById({
     id,
   }: {
-    id: ChatId;
+    id: ChatId,
   }) {
     const liveChat = liveChatRegistry.get(id);
     if (liveChat) return liveChat;
@@ -73,7 +73,7 @@ export function createChatCurrentBridge({
   function getChatTargetByOptionalId({
     chatId,
   }: {
-    chatId: ChatId | undefined;
+    chatId: ChatId | undefined,
   }) {
     if (chatId) {
       return liveChatRegistry.get(chatId) || null;
@@ -84,7 +84,7 @@ export function createChatCurrentBridge({
   function triggerCurrentChat({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
       triggerRef(currentChatRef);

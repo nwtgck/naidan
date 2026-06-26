@@ -1,16 +1,16 @@
 
-import type { ScanOptions, TransformersJsScannerWorkerClient, ScannedModelFile } from '@/services/transformers-js/types'
+import type { ScanOptions, TransformersJsScannerWorkerClient, ScannedModelFile } from '@/services/transformers-js/types';
 
 function createUnsupportedError(): Error {
-  return new Error('Transformers.js is not available in standalone mode')
+  return new Error('Transformers.js is not available in standalone mode');
 }
 
 export function createTransformersJsScannerWorkerClient(): TransformersJsScannerWorkerClient {
   return {
     async scanModel({ tasks: _tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
-      throw createUnsupportedError()
+      throw createUnsupportedError();
     },
     async dispose(): Promise<void> {
     },
-  }
+  };
 }

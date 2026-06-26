@@ -1,1 +1,1 @@
-export { privacyFetch } from './client-hosted'
+export { privacyFetch } from './client-hosted';

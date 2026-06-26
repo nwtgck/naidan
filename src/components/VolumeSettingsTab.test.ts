@@ -48,7 +48,7 @@ function setupStorageMock(volumes: Volume[], mounts: Mount[]) {
   vi.mocked(storageService.listVolumes).mockReturnValue(
     (async function* () {
       yield* volumes;
-    })()
+    })(),
   );
   vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts } as any);
 }
@@ -235,7 +235,7 @@ function makeFileList(files: File[]): FileList {
   return fileList as unknown as FileList;
 }
 
-function makeFolderFile({ name, folderName }: { name: string; folderName: string }): File {
+function makeFolderFile({ name, folderName }: { name: string, folderName: string }): File {
   const file = new File(['content'], name, { type: 'text/plain' });
   Object.defineProperty(file, 'webkitRelativePath', { value: `${folderName}/${name}` });
   return file;
@@ -342,7 +342,7 @@ describe('VolumeSettingsTab - Copy Folder / Copy File', () => {
   });
 
   it('passes entries (not FileList) to createVolumeFromFiles when copying a folder', async () => {
-    let capturedEntries: Array<{ file: File; relativePath: string }> | undefined;
+    let capturedEntries: Array<{ file: File, relativePath: string }> | undefined;
     vi.mocked(storageService.createVolumeFromFiles).mockImplementation(({ entries, signal }) => {
       capturedEntries = entries;
       return new Promise((_, reject) => {

@@ -10,7 +10,7 @@ import {
 function buildHelpScript({
   commandName,
 }: {
-  commandName: string;
+  commandName: string,
 }): string {
   switch (commandName) {
   case '[':
@@ -33,7 +33,7 @@ describe('wesh builtin help coverage', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

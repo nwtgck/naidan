@@ -2,29 +2,29 @@
 import { generateOpaqueId } from '@/utils/id';
 import { ref, computed, watch } from 'vue';
 import {
-  XIcon, ChefHatIcon, CopyIcon, CheckIcon, PlusIcon, Trash2Icon, InfoIcon, GlobeIcon, AlertCircleIcon, MessageSquareQuoteIcon
+  XIcon, ChefHatIcon, CopyIcon, CheckIcon, PlusIcon, Trash2Icon, InfoIcon, GlobeIcon, AlertCircleIcon, MessageSquareQuoteIcon,
 } from 'lucide-vue-next';
 import type { ChatGroupRecipe, RecipeSystemPrompt } from '@/models/recipe';
 import type { LmParameters, SystemPrompt } from '@/models/types';
 import { generateDefaultModelPatterns } from '@/utils/recipe-matcher';
 
 const props = defineProps<{
-  isOpen: boolean;
-  groupName: string;
-  systemPrompt?: SystemPrompt;
-  lmParameters?: LmParameters;
-  initialModelId?: string;
+  isOpen: boolean,
+  groupName: string,
+  systemPrompt?: SystemPrompt,
+  lmParameters?: LmParameters,
+  initialModelId?: string,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: 'close'): void,
 }>();
 
 const recipeForm = ref({
   name: props.groupName,
   description: '',
   systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '' as string | null, behavior: 'override' as const },
-  models: [] as { id: string; pattern: string; caseSensitive: boolean }[],
+  models: [] as { id: string, pattern: string, caseSensitive: boolean }[],
 });
 
 function initForm() {
@@ -105,7 +105,7 @@ async function copyToClipboard() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

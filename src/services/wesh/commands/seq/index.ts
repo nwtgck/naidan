@@ -4,24 +4,24 @@ import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/comman
 import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 interface SeqParsedArgs {
-  help: boolean;
-  separator: string;
-  equalWidth: boolean;
-  format: string | undefined;
-  positionals: string[];
-  diagnostic: string | undefined;
+  help: boolean,
+  separator: string,
+  equalWidth: boolean,
+  format: string | undefined,
+  positionals: string[],
+  diagnostic: string | undefined,
 }
 
 type SeqPrintfConversion = 'f' | 'F' | 'e' | 'E' | 'g' | 'G' | 'd' | 'i';
 
 interface SeqPrintfSpec {
-  kind: 'printf';
-  prefix: string;
-  suffix: string;
-  conversion: SeqPrintfConversion;
-  width: number | undefined;
-  zeroPad: boolean;
-  precision: number | undefined;
+  kind: 'printf',
+  prefix: string,
+  suffix: string,
+  conversion: SeqPrintfConversion,
+  width: number | undefined,
+  zeroPad: boolean,
+  precision: number | undefined,
 }
 
 type SeqFormatSpec =
@@ -44,7 +44,7 @@ const seqArgvSpec: StandardArgvParserSpec = {
 function isNumericOperand({
   value,
 }: {
-  value: string;
+  value: string,
 }): boolean {
   return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value);
 }
@@ -52,7 +52,7 @@ function isNumericOperand({
 function isFixedPointDecimal({
   value,
 }: {
-  value: string;
+  value: string,
 }): boolean {
   return /^[+-]?(?:\d+|\d+\.\d+|\.\d+)$/.test(value);
 }
@@ -60,8 +60,8 @@ function isFixedPointDecimal({
 function parseSeqNumber({
   value,
 }: {
-  value: string;
-}): { ok: true; number: number } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, number: number } | { ok: false, message: string } {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return { ok: false, message: `invalid floating point argument: '${value}'` };
@@ -73,7 +73,7 @@ function parseSeqNumber({
 function parseSeqArgs({
   args,
 }: {
-  args: string[];
+  args: string[],
 }): SeqParsedArgs {
   const parsed: SeqParsedArgs = {
     help: false,
@@ -178,8 +178,8 @@ function parseSeqArgs({
 function parseSeqFormatSpec({
   format,
 }: {
-  format: string;
-}): { ok: true; spec: SeqFormatSpec } | { ok: false; message: string } {
+  format: string,
+}): { ok: true, spec: SeqFormatSpec } | { ok: false, message: string } {
   if (format.length === 0) {
     return { ok: true, spec: { kind: 'plain' } };
   }
@@ -276,8 +276,8 @@ function formatSeqValue({
   value,
   spec,
 }: {
-  value: number;
-  spec: SeqFormatSpec;
+  value: number,
+  spec: SeqFormatSpec,
 }): string {
   switch (spec.kind) {
   case 'plain':
@@ -338,7 +338,7 @@ function formatSeqValue({
 function computeDefaultPrecision({
   operands,
 }: {
-  operands: string[];
+  operands: string[],
 }): number | undefined {
   if (!operands.every((operand) => isFixedPointDecimal({ value: operand }))) {
     return undefined;
@@ -357,8 +357,8 @@ function formatDefaultNumber({
   value,
   precision,
 }: {
-  value: number;
-  precision: number | undefined;
+  value: number,
+  precision: number | undefined,
 }): string {
   if (precision !== undefined) {
     return value.toFixed(precision);
@@ -371,8 +371,8 @@ function padEqualWidth({
   value,
   width,
 }: {
-  value: string;
-  width: number;
+  value: string,
+  width: number,
 }): string {
   if (value.length >= width) {
     return value;
@@ -390,9 +390,9 @@ function* iterateSeqValues({
   increment,
   last,
 }: {
-  first: number;
-  increment: number;
-  last: number;
+  first: number,
+  increment: number,
+  last: number,
 }): Iterable<number> {
   const epsilon = 1e-12;
   const maximumValues = 1_000_001;

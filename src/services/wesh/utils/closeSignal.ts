@@ -27,8 +27,8 @@ export class WeshHandleCloseSignal {
   }
 
   async raceWithClose<T>({ operation, buildClosedResult }: {
-    operation: Promise<T>;
-    buildClosedResult: () => T;
+    operation: Promise<T>,
+    buildClosedResult: () => T,
   }): Promise<T> {
     if (this.isClosed) {
       return buildClosedResult();

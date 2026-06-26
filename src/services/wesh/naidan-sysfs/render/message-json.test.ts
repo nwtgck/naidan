@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { renderMessageJson } from './message-json'
-import type { ToolMessageNode } from '@/models/types'
+import { describe, expect, it } from 'vitest';
+import { renderMessageJson } from './message-json';
+import type { ToolMessageNode } from '@/models/types';
 import { toMessageId, toToolCallId } from '@/models/ids';
 
 describe('renderMessageJson', () => {
   it('truncates long text tool results with an exact marker', () => {
-    const longText = 'y'.repeat(4001)
+    const longText = 'y'.repeat(4001);
     const node: ToolMessageNode = {
       id: toMessageId({ raw: 'tool-1' }),
       role: 'tool',
@@ -26,7 +26,7 @@ describe('renderMessageJson', () => {
           text: longText,
         },
       }],
-    }
+    };
 
     expect(renderMessageJson({ node })).toBe(`\
 {
@@ -43,6 +43,6 @@ describe('renderMessageJson', () => {
       }
     }
   ]
-}`)
-  })
-})
+}`);
+  });
+});

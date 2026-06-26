@@ -10,9 +10,9 @@ import type {
 type PsColumnKey = 'user' | 'pid' | 'ppid' | 'pgid' | 'stat' | 'args' | 'cwd';
 
 interface PsColumnDefinition {
-  key: PsColumnKey;
-  header: string;
-  getValue({ process }: { process: WeshProcessSnapshot }): string;
+  key: PsColumnKey,
+  header: string,
+  getValue({ process }: { process: WeshProcessSnapshot }): string,
 }
 
 const psArgvSpec: StandardArgvParserSpec = {
@@ -132,8 +132,8 @@ function isStringValue(value: unknown): value is string {
 function parsePidList({
   raw,
 }: {
-  raw: string;
-}): { kind: 'ok'; pids: number[] } | { kind: 'error'; message: string } {
+  raw: string,
+}): { kind: 'ok', pids: number[] } | { kind: 'error', message: string } {
   const tokens = raw.split(',').map(part => part.trim()).filter(part => part.length > 0);
   if (tokens.length === 0) {
     return {
@@ -162,8 +162,8 @@ function parsePidList({
 function parseFormatList({
   raw,
 }: {
-  raw: string;
-}): { kind: 'ok'; columns: PsColumnDefinition[] } | { kind: 'error'; message: string } {
+  raw: string,
+}): { kind: 'ok', columns: PsColumnDefinition[] } | { kind: 'error', message: string } {
   const tokens = raw.split(/[,\s]+/u).map(part => part.trim()).filter(part => part.length > 0);
   if (tokens.length === 0) {
     return {
@@ -245,8 +245,8 @@ function defaultProcessSelection({
   context,
   processes,
 }: {
-  context: WeshCommandContext;
-  processes: WeshProcessSnapshot[];
+  context: WeshCommandContext,
+  processes: WeshProcessSnapshot[],
 }): WeshProcessSnapshot[] {
   return processes.filter((process) => (
     process.state !== 'terminated' &&
@@ -258,8 +258,8 @@ function formatProcesses({
   columns,
   processes,
 }: {
-  columns: PsColumnDefinition[];
-  processes: WeshProcessSnapshot[];
+  columns: PsColumnDefinition[],
+  processes: WeshProcessSnapshot[],
 }): string {
   const rows = processes.map((process) => columns.map((column) => column.getValue({ process })));
   const widths = columns.map((column, index) => (

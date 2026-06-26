@@ -7,12 +7,12 @@ import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
 import ToolCallItem from './ToolCallItem.vue';
 
 const props = withDefaults(defineProps<{
-  toolCalls: CombinedToolCall[];
-  flow?: FlowMetadata;
-  isFirstInTurn?: boolean;
+  toolCalls: CombinedToolCall[],
+  flow?: FlowMetadata,
+  isFirstInTurn?: boolean,
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
-  isFirstInTurn: false
+  isFirstInTurn: false,
 });
 
 const inSequence = inject<boolean>('inSequence', false);
@@ -42,8 +42,8 @@ const isNested = computed(() => props.flow.nesting === 'inside-group');
 defineExpose({
   TEST_ONLY: {
     isExpanded,
-    toggleExpand
-  }
+    toggleExpand,
+  },
 });
 </script>
 

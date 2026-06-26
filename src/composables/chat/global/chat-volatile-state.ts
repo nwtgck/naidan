@@ -9,56 +9,56 @@ export type ChatVolatileState = {
     messageId,
     error,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-    error: string;
-  }): void;
+    chatId: ChatId,
+    messageId: MessageId,
+    error: string,
+  }): void,
 
   clearVolatileAssistantError({
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-  }): void;
+    chatId: ChatId,
+    messageId: MessageId,
+  }): void,
 
   applyVolatileAssistantErrorsToChat({
     chat,
   }: {
-    chat: Chat;
-  }): void;
+    chat: Chat,
+  }): void,
 
   setVolatileToolOutput({
     toolCallId,
     output,
   }: {
-    toolCallId: ToolCallId;
-    output: string;
-  }): void;
+    toolCallId: ToolCallId,
+    output: string,
+  }): void,
 
   appendVolatileToolOutput({
     toolCallId,
     text,
   }: {
-    toolCallId: ToolCallId;
-    text: string;
-  }): void;
+    toolCallId: ToolCallId,
+    text: string,
+  }): void,
 
   deleteVolatileToolOutput({
     toolCallId,
   }: {
-    toolCallId: ToolCallId;
-  }): void;
+    toolCallId: ToolCallId,
+  }): void,
 
   getVolatileToolOutput({
     toolCallId,
   }: {
-    toolCallId: ToolCallId;
-  }): string | undefined;
+    toolCallId: ToolCallId,
+  }): string | undefined,
 
   TEST_ONLY: {
-    volatileToolOutputs: Map<ToolCallId, string>;
-  };
+    volatileToolOutputs: Map<ToolCallId, string>,
+  },
 };
 
 export function createChatVolatileState(): ChatVolatileState {
@@ -70,9 +70,9 @@ export function createChatVolatileState(): ChatVolatileState {
     messageId,
     error,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-    error: string;
+    chatId: ChatId,
+    messageId: MessageId,
+    error: string,
   }) {
     const existing = volatileAssistantErrors.get(chatId);
     if (existing) {
@@ -86,8 +86,8 @@ export function createChatVolatileState(): ChatVolatileState {
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
+    chatId: ChatId,
+    messageId: MessageId,
   }) {
     const existing = volatileAssistantErrors.get(chatId);
     if (!existing) return;
@@ -101,7 +101,7 @@ export function createChatVolatileState(): ChatVolatileState {
   function applyVolatileAssistantErrorsToChat({
     chat,
   }: {
-    chat: Chat;
+    chat: Chat,
   }) {
     const errors = volatileAssistantErrors.get(chat.id);
     if (!errors || errors.size === 0) return;
@@ -117,8 +117,8 @@ export function createChatVolatileState(): ChatVolatileState {
     toolCallId,
     output,
   }: {
-    toolCallId: ToolCallId;
-    output: string;
+    toolCallId: ToolCallId,
+    output: string,
   }) {
     volatileToolOutputs.set(toolCallId, output);
   }
@@ -127,8 +127,8 @@ export function createChatVolatileState(): ChatVolatileState {
     toolCallId,
     text,
   }: {
-    toolCallId: ToolCallId;
-    text: string;
+    toolCallId: ToolCallId,
+    text: string,
   }) {
     const previous = volatileToolOutputs.get(toolCallId) || '';
     volatileToolOutputs.set(toolCallId, previous + text);
@@ -137,7 +137,7 @@ export function createChatVolatileState(): ChatVolatileState {
   function deleteVolatileToolOutput({
     toolCallId,
   }: {
-    toolCallId: ToolCallId;
+    toolCallId: ToolCallId,
   }) {
     volatileToolOutputs.delete(toolCallId);
   }
@@ -145,7 +145,7 @@ export function createChatVolatileState(): ChatVolatileState {
   function getVolatileToolOutput({
     toolCallId,
   }: {
-    toolCallId: ToolCallId;
+    toolCallId: ToolCallId,
   }) {
     return volatileToolOutputs.get(toolCallId);
   }

@@ -42,11 +42,11 @@ export default {
   plugins: {
     'local-rules-lucide': {
       rules: {
-        'require-icon-suffix': rule
-      }
-    }
+        'require-icon-suffix': rule,
+      },
+    },
   },
   rules: {
-    'local-rules-lucide/require-icon-suffix': 'error'
-  }
+    'local-rules-lucide/require-icon-suffix': 'error',
+  },
 };

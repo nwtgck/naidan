@@ -47,7 +47,7 @@ vi.mock('../services/transformers-js', () => ({
     downloadModel: vi.fn(),
     deleteModel: vi.fn(),
     importFile: vi.fn(),
-  }
+  },
 }));
 
 // Mock Lucide icons used in OnboardingModal and TransformersJsManager
@@ -141,12 +141,12 @@ describe('Transformers.js Onboarding Integration', () => {
           TransformersJsManager: {
             name: 'TransformersJsManager',
             template: '<div class="transformers-js-manager-stub"><button class="mock-load-btn" @click="$emit(\'model-loaded\', \'downloaded-model\')">Mock Load</button></div>',
-            emits: ['model-loaded']
-          }
+            emits: ['model-loaded'],
+          },
         },
-        ...((options as any).global || {})
+        ...((options as any).global || {}),
       },
-      ...options
+      ...options,
     });
   };
 
@@ -206,7 +206,7 @@ describe('Transformers.js Onboarding Integration', () => {
     // Mock engine becoming ready with a model
     (transformersJsService.getState as any).mockReturnValue({
       status: 'ready',
-      activeModelId: 'some-model-id'
+      activeModelId: 'some-model-id',
     });
     // Trigger the callback that service would trigger
     subscriberCallback({ status: 'ready', progress: 100, error: null, isCached: true, isLoadingFromCache: true });
@@ -268,7 +268,7 @@ describe('Transformers.js Onboarding Integration', () => {
 
     expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
       endpointType: 'transformers_js',
-      defaultModelId: 'downloaded-model'
+      defaultModelId: 'downloaded-model',
     }) });
   });
 

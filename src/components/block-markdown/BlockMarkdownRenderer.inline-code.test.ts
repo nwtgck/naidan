@@ -6,7 +6,7 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
   it('renders inline code with a <code> tag inside a paragraph', () => {
     const content = 'The result is `1 + 2`.';
     const wrapper = mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
 
     const p = wrapper.find('p');
@@ -24,7 +24,7 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
   it('renders inline code at the block level (tight lists etc) correctly', () => {
     const content = '- `item code`';
     const wrapper = mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
 
     const code = wrapper.find('code');
@@ -38,7 +38,7 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
     // This happens in tight lists or other nested structures.
     const content = '`item code`'; // If this were a top-level token, it should still work.
     const wrapper = mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
 
     // In a normal paragraph, it's wrapped in <p>
@@ -52,7 +52,7 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
   it('renders complex inline code with spaces correctly', () => {
     const content = 'Test `1 + 2` here.';
     const wrapper = mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
 
     const code = wrapper.find('code');
@@ -66,7 +66,7 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
 console.log(1);
 \`\`\``;
     const wrapper = mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
 
     const pre = wrapper.find('pre');
@@ -85,7 +85,7 @@ Use \`inline\` or:
 block();
 \`\`\``;
     const wrapper = mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
 
     const allCodes = wrapper.findAll('code');

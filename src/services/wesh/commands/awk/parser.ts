@@ -11,7 +11,7 @@ import type {
 function isIdentifierStart({
   char,
 }: {
-  char: string;
+  char: string,
 }): boolean {
   return /[A-Za-z_]/.test(char);
 }
@@ -19,7 +19,7 @@ function isIdentifierStart({
 function isIdentifierPart({
   char,
 }: {
-  char: string;
+  char: string,
 }): boolean {
   return /[A-Za-z0-9_]/.test(char);
 }
@@ -27,7 +27,7 @@ function isIdentifierPart({
 function decodeStringEscape({
   char,
 }: {
-  char: string;
+  char: string,
 }): string {
   switch (char) {
   case 'n':
@@ -48,8 +48,8 @@ function decodeStringEscape({
 export function tokenizeAwkProgram({
   script,
 }: {
-  script: string;
-}): { ok: true; tokens: AwkToken[] } | { ok: false; message: string } {
+  script: string,
+}): { ok: true, tokens: AwkToken[] } | { ok: false, message: string } {
   const tokens: AwkToken[] = [];
   let index = 0;
 
@@ -216,7 +216,7 @@ class AwkParser {
     this.tokens = tokens;
   }
 
-  parse(): { ok: true; program: AwkProgram } | { ok: false; message: string } {
+  parse(): { ok: true, program: AwkProgram } | { ok: false, message: string } {
     const rules: AwkRule[] = [];
 
     while (!this.isEof()) {
@@ -232,7 +232,7 @@ class AwkParser {
     return { ok: true, program: { rules } };
   }
 
-  private parseRule(): { ok: true; rule: AwkRule } | { ok: false; message: string } {
+  private parseRule(): { ok: true, rule: AwkRule } | { ok: false, message: string } {
     const token = this.peek();
 
     let pattern: AwkPattern;
@@ -270,7 +270,7 @@ class AwkParser {
     };
   }
 
-  private parseBlock(): { ok: true; statements: AwkStatement[] } | { ok: false; message: string } {
+  private parseBlock(): { ok: true, statements: AwkStatement[] } | { ok: false, message: string } {
     const open = this.consumePunctuation({ value: '{' });
     if (!open.ok) return open;
 
@@ -301,7 +301,7 @@ class AwkParser {
     return { ok: true, statements };
   }
 
-  private parseStatement(): { ok: true; statement: AwkStatement } | { ok: false; message: string } {
+  private parseStatement(): { ok: true, statement: AwkStatement } | { ok: false, message: string } {
     const token = this.peek();
     if (token.kind === 'identifier' && token.value === 'print') {
       this.index += 1;
@@ -528,7 +528,7 @@ class AwkParser {
   }
 
   private parseAssignmentTarget():
-    | { ok: true; target: { kind: 'variable'; name: string } | { kind: 'indexed'; name: string; index: AwkExpression }; startIndex: number }
+    | { ok: true, target: { kind: 'variable', name: string } | { kind: 'indexed', name: string, index: AwkExpression }, startIndex: number }
     | { ok: false } {
     const startIndex = this.index;
     const token = this.peek();
@@ -567,7 +567,7 @@ class AwkParser {
   }
 
   private parseDeleteTarget():
-    | { ok: true; target: { kind: 'array'; name: string } | { kind: 'indexed'; name: string; index: AwkExpression } }
+    | { ok: true, target: { kind: 'array', name: string } | { kind: 'indexed', name: string, index: AwkExpression } }
     | { ok: false } {
     const startIndex = this.index;
     const token = this.peek();
@@ -610,7 +610,7 @@ class AwkParser {
     };
   }
 
-  private parseStatementBody(): { ok: true; statements: AwkStatement[] } | { ok: false; message: string } {
+  private parseStatementBody(): { ok: true, statements: AwkStatement[] } | { ok: false, message: string } {
     const token = this.peek();
     if (token.kind === 'punctuation' && token.value === '{') {
       return this.parseBlock();
@@ -624,8 +624,8 @@ class AwkParser {
   private parseOptionalExpressionUntil({
     terminator,
   }: {
-    terminator: ';' | ')';
-  }): { ok: true; expression: AwkExpression | undefined } | { ok: false; message: string } {
+    terminator: ';' | ')',
+  }): { ok: true, expression: AwkExpression | undefined } | { ok: false, message: string } {
     const token = this.peek();
     if (token.kind === 'punctuation' && token.value === terminator) {
       return { ok: true, expression: undefined };
@@ -637,8 +637,8 @@ class AwkParser {
   }
 
   private parseForClausePart():
-    | { ok: true; part: { kind: 'assign'; target: { kind: 'variable'; name: string } | { kind: 'indexed'; name: string; index: AwkExpression }; expression: AwkExpression } | { kind: 'expression'; expression: AwkExpression } | undefined }
-    | { ok: false; message: string } {
+    | { ok: true, part: { kind: 'assign', target: { kind: 'variable', name: string } | { kind: 'indexed', name: string, index: AwkExpression }, expression: AwkExpression } | { kind: 'expression', expression: AwkExpression } | undefined }
+    | { ok: false, message: string } {
     const token = this.peek();
     if (
       token.kind === 'punctuation'
@@ -672,7 +672,7 @@ class AwkParser {
   }
 
   private parseForInClause():
-    | { ok: true; variableName: string; arrayName: string }
+    | { ok: true, variableName: string, arrayName: string }
     | { ok: false } {
     const startIndex = this.index;
     const variableToken = this.peek();
@@ -699,11 +699,11 @@ class AwkParser {
     };
   }
 
-  private parseExpression(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parseExpression(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     return this.parseLogicalOr();
   }
 
-  private parseLogicalOr(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parseLogicalOr(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseLogicalAnd();
     if (!expression.ok) return expression;
 
@@ -730,7 +730,7 @@ class AwkParser {
     return expression;
   }
 
-  private parseLogicalAnd(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parseLogicalAnd(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseComparison();
     if (!expression.ok) return expression;
 
@@ -757,7 +757,7 @@ class AwkParser {
     return expression;
   }
 
-  private parseComparison(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parseComparison(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     const left = this.parseConcatenation();
     if (!left.ok) return left;
 
@@ -795,7 +795,7 @@ class AwkParser {
     return left;
   }
 
-  private parseConcatenation(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parseConcatenation(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseAdditive();
     if (!expression.ok) return expression;
 
@@ -816,7 +816,7 @@ class AwkParser {
     return expression;
   }
 
-  private parseAdditive(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parseAdditive(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parseUnary();
     if (!expression.ok) return expression;
 
@@ -843,7 +843,7 @@ class AwkParser {
     return expression;
   }
 
-  private parseUnary(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parseUnary(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     const token = this.peek();
     switch (token.kind) {
     case 'operator':
@@ -900,7 +900,7 @@ class AwkParser {
     return this.parseMultiplicative();
   }
 
-  private parseMultiplicative(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parseMultiplicative(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     let expression = this.parsePrimary();
     if (!expression.ok) return expression;
 
@@ -967,9 +967,9 @@ class AwkParser {
     }
   }
 
-  private parsePrimary(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+  private parsePrimary(): { ok: true, expression: AwkExpression } | { ok: false, message: string } {
     const token = this.peek();
-    const primary: { ok: true; expression: AwkExpression } | { ok: false; message: string } = (() => {
+    const primary: { ok: true, expression: AwkExpression } | { ok: false, message: string } = (() => {
       switch (token.kind) {
       case 'number':
         this.index += 1;
@@ -1125,7 +1125,7 @@ class AwkParser {
     return primary;
   }
 
-  private consumePunctuation({ value }: { value: '{' | '}' | '(' | ')' | '[' | ']' | ',' | ';' }): { ok: true } | { ok: false; message: string } {
+  private consumePunctuation({ value }: { value: '{' | '}' | '(' | ')' | '[' | ']' | ',' | ';' }): { ok: true } | { ok: false, message: string } {
     const token = this.peek();
     if (token.kind === 'punctuation' && token.value === value) {
       this.index += 1;
@@ -1215,8 +1215,8 @@ class AwkParser {
 export function parseAwkProgram({
   script,
 }: {
-  script: string;
-}): { ok: true; program: AwkProgram } | { ok: false; message: string } {
+  script: string,
+}): { ok: true, program: AwkProgram } | { ok: false, message: string } {
   const tokenized = tokenizeAwkProgram({ script });
   if (!tokenized.ok) {
     return tokenized;

@@ -6,21 +6,21 @@ import type { WeshVFS } from '@/services/wesh/vfs';
  * upfront, enabling the UI to reflect permissions before any operation is attempted.
  */
 export interface ExplorerDirectory {
-  readonly name: string;
-  readonly readOnly: boolean;
+  readonly name: string,
+  readonly readOnly: boolean,
 
-  children(): AsyncIterable<ExplorerChild>;
-  subdir({ name }: { name: string }): Promise<ExplorerDirectory | null>;
-  subdirCreate({ name }: { name: string }): Promise<ExplorerDirectory>;
-  file({ name }: { name: string }): Promise<FileSystemFileHandle | null>;
-  fileCreate({ name }: { name: string }): Promise<FileSystemFileHandle>;
-  remove({ name, recursive }: { name: string; recursive: boolean }): Promise<void>;
-  isSameAs({ other }: { other: ExplorerDirectory }): Promise<boolean>;
+  children(): AsyncIterable<ExplorerChild>,
+  subdir({ name }: { name: string }): Promise<ExplorerDirectory | null>,
+  subdirCreate({ name }: { name: string }): Promise<ExplorerDirectory>,
+  file({ name }: { name: string }): Promise<FileSystemFileHandle | null>,
+  fileCreate({ name }: { name: string }): Promise<FileSystemFileHandle>,
+  remove({ name, recursive }: { name: string, recursive: boolean }): Promise<void>,
+  isSameAs({ other }: { other: ExplorerDirectory }): Promise<boolean>,
 }
 
 export type ExplorerChild =
-  | { kind: 'file'; name: string; readOnly: boolean; fileHandle: FileSystemFileHandle }
-  | { kind: 'directory'; name: string; readOnly: boolean; directory: ExplorerDirectory };
+  | { kind: 'file', name: string, readOnly: boolean, fileHandle: FileSystemFileHandle }
+  | { kind: 'directory', name: string, readOnly: boolean, directory: ExplorerDirectory };
 
 // ─── FsExplorerDirectory ─────────────────────────────────────────────────────
 
@@ -38,10 +38,10 @@ export class FsExplorerDirectory implements ExplorerDirectory {
     readOnly,
     name,
   }: {
-    handle: FileSystemDirectoryHandle;
-    readOnly: boolean;
+    handle: FileSystemDirectoryHandle,
+    readOnly: boolean,
     /** Override the display name (defaults to handle.name). */
-    name: string | undefined;
+    name: string | undefined,
   }) {
     this.name = name ?? handle.name;
     this.readOnly = readOnly;
@@ -106,7 +106,7 @@ export class FsExplorerDirectory implements ExplorerDirectory {
     return this._handle.getFileHandle(name, { create: true });
   }
 
-  async remove({ name, recursive }: { name: string; recursive: boolean }): Promise<void> {
+  async remove({ name, recursive }: { name: string, recursive: boolean }): Promise<void> {
     if (this.readOnly) {
       throw new DOMException('Read-only file system', 'NotAllowedError');
     }
@@ -121,7 +121,7 @@ export class FsExplorerDirectory implements ExplorerDirectory {
 
 // ─── VfsExplorerDirectory ─────────────────────────────────────────────────────
 
-function joinVfsPath({ base, name }: { base: string; name: string }): string {
+function joinVfsPath({ base, name }: { base: string, name: string }): string {
   return base === '/' ? `/${name}` : `${base}/${name}`;
 }
 
@@ -137,7 +137,7 @@ export class VfsExplorerDirectory implements ExplorerDirectory {
   private readonly _vfs: WeshVFS;
   private readonly _path: string;
 
-  constructor({ name, path, vfs }: { name: string; path: string; vfs: WeshVFS }) {
+  constructor({ name, path, vfs }: { name: string, path: string, vfs: WeshVFS }) {
     this.name = name;
     this._path = path;
     this._vfs = vfs;
@@ -206,7 +206,7 @@ export class VfsExplorerDirectory implements ExplorerDirectory {
     return Promise.reject(new DOMException('Read-only file system', 'NotAllowedError'));
   }
 
-  remove({ name, recursive }: { name: string; recursive: boolean }): Promise<void> {
+  remove({ name, recursive }: { name: string, recursive: boolean }): Promise<void> {
     void name;
     void recursive;
     return Promise.reject(new DOMException('Read-only file system', 'NotAllowedError'));

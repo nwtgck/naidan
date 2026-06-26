@@ -18,17 +18,17 @@ import {
 export type { FakeLmStreamItem } from '@/services/fake-lm/core/thinking';
 
 export type StreamFakeLmMarkdownInput = {
-  language: FakeLmLanguage;
-  mode: FakeLmMode;
-  seed: FakeLmSeed;
-  thinkingEffort: FakeLmThinkingEffort;
-  inputAnalysis: FakeLmInputAnalysis;
-  signal: AbortSignal | undefined;
+  language: FakeLmLanguage,
+  mode: FakeLmMode,
+  seed: FakeLmSeed,
+  thinkingEffort: FakeLmThinkingEffort,
+  inputAnalysis: FakeLmInputAnalysis,
+  signal: AbortSignal | undefined,
   chunking: {
-    minChars: number;
-    maxChars: number;
-    delayMs: number;
-  };
+    minChars: number,
+    maxChars: number,
+    delayMs: number,
+  },
 };
 
 export async function* streamFakeLmMarkdown({ language, mode, seed, thinkingEffort, inputAnalysis, signal, chunking }: StreamFakeLmMarkdownInput): AsyncIterable<FakeLmStreamItem> {
@@ -49,10 +49,10 @@ export async function* streamFakeLmMarkdown({ language, mode, seed, thinkingEffo
 }
 
 async function* streamFakeLmThinking({ pack, ctx, effort, signal }: {
-  pack: LanguagePack;
-  ctx: FakeLmContext;
-  effort: FakeLmThinkingEffort;
-  signal: AbortSignal | undefined;
+  pack: LanguagePack,
+  ctx: FakeLmContext,
+  effort: FakeLmThinkingEffort,
+  signal: AbortSignal | undefined,
 }): AsyncIterable<FakeLmStreamItem> {
   const sentenceCount = makeFakeLmThinkingSentenceCount({ effort, random: ctx.random });
   if (sentenceCount === 0) {
@@ -82,14 +82,14 @@ async function* streamFakeLmThinking({ pack, ctx, effort, signal }: {
 }
 
 async function* streamFakeLmContent({ pack, ctx, signal, chunking }: {
-  pack: LanguagePack;
-  ctx: FakeLmContext;
-  signal: AbortSignal | undefined;
+  pack: LanguagePack,
+  ctx: FakeLmContext,
+  signal: AbortSignal | undefined,
   chunking: {
-    minChars: number;
-    maxChars: number;
-    delayMs: number;
-  };
+    minChars: number,
+    maxChars: number,
+    delayMs: number,
+  },
 }): AsyncIterable<FakeLmStreamItem> {
   const plans = makeMarkdownPlan({ random: ctx.random });
 
@@ -121,9 +121,9 @@ async function* streamFakeLmContent({ pack, ctx, signal, chunking }: {
 }
 
 function makeMarkdownBlock({ pack, ctx, plan }: {
-  pack: LanguagePack;
-  ctx: FakeLmContext;
-  plan: BlockPlan;
+  pack: LanguagePack,
+  ctx: FakeLmContext,
+  plan: BlockPlan,
 }): MarkdownBlock {
   switch (plan.kind) {
   case 'heading':
@@ -152,8 +152,8 @@ function makeMarkdownBlock({ pack, ctx, plan }: {
 }
 
 function sleep({ ms, signal }: {
-  ms: number;
-  signal: AbortSignal | undefined;
+  ms: number,
+  signal: AbortSignal | undefined,
 }): Promise<void> {
   if (isAbortSignalAborted({ signal })) {
     return Promise.resolve();
@@ -169,7 +169,7 @@ function sleep({ ms, signal }: {
 }
 
 function isAbortSignalAborted({ signal }: {
-  signal: AbortSignal | undefined;
+  signal: AbortSignal | undefined,
 }): boolean {
   return signal?.aborted === true;
 }

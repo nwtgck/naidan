@@ -23,7 +23,7 @@ const MIN_PNG = new Uint8Array([
   0x49, 0x48, 0x44, 0x52, // IHDR Type
   0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // Width/Height (1x1)
   0x08, 0x02, 0x00, 0x00, 0x00, // 8-bit RGB
-  0x90, 0x77, 0x53, 0xde // IHDR CRC
+  0x90, 0x77, 0x53, 0xde, // IHDR CRC
 ]);
 
 /**
@@ -63,7 +63,7 @@ describe('image-metadata utilities', () => {
         prompt: 'A beautiful mountain landscape',
         model: 'naidan-v1-alpha',
         steps: 25,
-        seed: 12345
+        seed: 12345,
       };
 
       const result = await embedMetadataInPng({ blob, metadata });
@@ -91,7 +91,7 @@ describe('image-metadata utilities', () => {
         prompt: 'Cyberpunk city, neon lighting',
         model: 'flux-1-schnell',
         steps: 30,
-        seed: 67890
+        seed: 67890,
       };
 
       const result = await embedMetadataInWebp({ blob, metadata });

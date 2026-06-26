@@ -29,7 +29,7 @@ vi.mock('./render', () => ({
 function createApprovalContext({
   calls,
 }: {
-  calls: unknown[];
+  calls: unknown[],
 }): ToolApprovalContext {
   return {
     chatId: toChatId({ raw: 'chat-approval-test' }),

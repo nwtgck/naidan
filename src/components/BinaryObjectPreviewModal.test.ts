@@ -32,7 +32,7 @@ const globalStubs = {
   Teleport: true,
   XIcon: true, DownloadIcon: true, Trash2Icon: true, ChevronLeftIcon: true, ChevronRightIcon: true,
   ZoomInIcon: true, ZoomOutIcon: true, CopyIcon: true, CheckIcon: true, File: true, EyeIcon: true,
-  RefreshCwIcon: true, Calendar: true, InfoIcon: true
+  RefreshCwIcon: true, Calendar: true, InfoIcon: true,
 };
 
 describe('BinaryObjectPreviewModal.vue', () => {
@@ -148,7 +148,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
       clientX: 250,
       clientY: 250,
       preventDefault: vi.fn(),
-      currentTarget: container.element
+      currentTarget: container.element,
     };
 
     (wrapper.vm as any).handleWheel({ event } as any);

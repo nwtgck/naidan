@@ -19,17 +19,17 @@ describe('OllamaProvider Image Generation', () => {
           const chunks = [
             JSON.stringify({ done: false, total: 10 }) + '\n',
             JSON.stringify({ done: false, completed: 5, total: 10 }) + '\n',
-            JSON.stringify({ done: true, image: 'YmFzZTY0ZGF0YQ==' })
+            JSON.stringify({ done: true, image: 'YmFzZTY0ZGF0YQ==' }),
           ];
           let index = 0;
           return {
             read: () => {
               if (index >= chunks.length) return Promise.resolve({ done: true });
               return Promise.resolve({ done: false, value: encoder.encode(chunks[index++]) });
-            }
+            },
           };
-        }
-      }
+        },
+      },
     };
     (fetch as any).mockResolvedValueOnce(mockResponse);
 
@@ -43,7 +43,7 @@ describe('OllamaProvider Image Generation', () => {
       seed: 123,
       images: [],
       onProgress: () => {},
-      signal: undefined
+      signal: undefined,
     });
 
     expect(image).toBeInstanceOf(Blob);
@@ -60,9 +60,9 @@ describe('OllamaProvider Image Generation', () => {
           width: 512,
           height: 512,
           steps: 10,
-          options: { seed: 123 }
-        })
-      })
+          options: { seed: 123 },
+        }),
+      }),
     );
   });
 
@@ -76,17 +76,17 @@ describe('OllamaProvider Image Generation', () => {
           const chunks = [
             JSON.stringify({ done: false, completed: 1, total: 10 }) + '\n',
             JSON.stringify({ done: false, completed: 5, total: 10 }) + '\n',
-            JSON.stringify({ done: true, image: 'YmFzZTY0ZGF0YQ==' })
+            JSON.stringify({ done: true, image: 'YmFzZTY0ZGF0YQ==' }),
           ];
           let index = 0;
           return {
             read: () => {
               if (index >= chunks.length) return Promise.resolve({ done: true });
               return Promise.resolve({ done: false, value: encoder.encode(chunks[index++]) });
-            }
+            },
           };
-        }
-      }
+        },
+      },
     };
     (fetch as any).mockResolvedValueOnce(mockResponse);
 
@@ -100,7 +100,7 @@ describe('OllamaProvider Image Generation', () => {
       seed: 123,
       images: [],
       onProgress,
-      signal: undefined
+      signal: undefined,
     });
 
     expect(onProgress).toHaveBeenCalledTimes(2);
@@ -126,17 +126,17 @@ describe('OllamaProvider Image Generation', () => {
           const chunks = [
             JSON.stringify({ done: false, total: 10 }) + '\n',
             JSON.stringify({ done: false, completed: 5, total: 10 }) + '\n',
-            JSON.stringify({ done: true, image: 'YmFzZTY0cmVzcG9uc2U=' })
+            JSON.stringify({ done: true, image: 'YmFzZTY0cmVzcG9uc2U=' }),
           ];
           let index = 0;
           return {
             read: () => {
               if (index >= chunks.length) return Promise.resolve({ done: true });
               return Promise.resolve({ done: false, value: encoder.encode(chunks[index++]) });
-            }
+            },
           };
-        }
-      }
+        },
+      },
     };
     (fetch as any).mockResolvedValueOnce(mockResponse);
 
@@ -151,7 +151,7 @@ describe('OllamaProvider Image Generation', () => {
       seed: undefined,
       images: [{ blob: inputBlob }],
       onProgress: () => {},
-      signal: undefined
+      signal: undefined,
     });
 
     expect(image).toBeInstanceOf(Blob);
@@ -168,9 +168,9 @@ describe('OllamaProvider Image Generation', () => {
           width: 512,
           height: 512,
           steps: undefined,
-          options: undefined
-        })
-      })
+          options: undefined,
+        }),
+      }),
     );
   });
 
@@ -179,7 +179,7 @@ describe('OllamaProvider Image Generation', () => {
       ok: false,
       status: 500,
       statusText: 'Internal Server Error',
-      json: () => Promise.resolve({ error: { message: 'Something went wrong' } })
+      json: () => Promise.resolve({ error: { message: 'Something went wrong' } }),
     };
     (fetch as any).mockResolvedValueOnce(mockResponse);
 
@@ -193,7 +193,7 @@ describe('OllamaProvider Image Generation', () => {
       seed: undefined,
       images: [],
       onProgress: () => {},
-      signal: undefined
+      signal: undefined,
     })).rejects.toThrow('Ollama Image Generation Error (/api/generate, 500): Something went wrong');
   });
 
@@ -214,7 +214,7 @@ describe('OllamaProvider Image Generation', () => {
       seed: undefined,
       images: [],
       onProgress: () => {},
-      signal: controller.signal
+      signal: controller.signal,
     });
 
     controller.abort();

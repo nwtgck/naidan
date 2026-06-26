@@ -8,13 +8,13 @@ export function scrollIntoViewSafe({
   element,
   block = 'start',
   behavior = 'smooth',
-  offset = 0
+  offset = 0,
 }: {
-  container: HTMLElement;
-  element: HTMLElement;
-  block?: 'start' | 'center' | 'end' | 'nearest';
-  behavior?: 'smooth' | 'auto' | 'instant';
-  offset?: number;
+  container: HTMLElement,
+  element: HTMLElement,
+  block?: 'start' | 'center' | 'end' | 'nearest',
+  behavior?: 'smooth' | 'auto' | 'instant',
+  offset?: number,
 }) {
   const containerRect = container.getBoundingClientRect();
   const elementRect = element.getBoundingClientRect();
@@ -56,6 +56,6 @@ export function scrollIntoViewSafe({
         return _ex;
       }
       }
-    })()
+    })(),
   });
 }

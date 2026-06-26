@@ -6,7 +6,7 @@ import { normalizeDom } from './test-utils';
 describe('BlockMarkdownRenderer: KaTeX Rendering', () => {
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 
@@ -18,7 +18,7 @@ describe('BlockMarkdownRenderer: KaTeX Rendering', () => {
       preserveAttributes: undefined,
       preserveClasses: ['katex'],
       trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     // Check if the 'katex' class is present
     expect(dom).toContain('class="katex"');
@@ -41,7 +41,7 @@ More text
       preserveAttributes: undefined,
       preserveClasses: ['katex-display'],
       trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     // With proper spacing, marked-katex-extension should trigger
     expect(dom).toContain('class="katex-display"');

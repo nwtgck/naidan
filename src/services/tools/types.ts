@@ -47,20 +47,26 @@ export type LmToolName =
   | 'wikipedia_get_page'
   | 'shell_execute';
 
+export type ToolConfigStatus = 'enabled' | 'disabled';
+
 export type CalculatorToolConfig = {
-  key: 'builtin.calculator';
+  key: 'builtin.calculator',
+  status: ToolConfigStatus,
 };
 
 export type ChoicesToolConfig = {
-  key: 'builtin.choices';
+  key: 'builtin.choices',
+  status: ToolConfigStatus,
 };
 
 export type WikipediaToolConfig = {
-  key: 'builtin.wikipedia';
+  key: 'builtin.wikipedia',
+  status: ToolConfigStatus,
 };
 
 export type WeshToolConfig = {
-  key: 'builtin.wesh';
+  key: 'builtin.wesh',
+  status: ToolConfigStatus,
   naidanSysfs: {
     /**
      * Scope of Naidan chat data Wesh can access through /sys/fs/naidan.
@@ -69,8 +75,8 @@ export type WeshToolConfig = {
      * access because that access level is not currently user-selectable and
      * should remain an implementation default.
      */
-    accessScope: NaidanSysfsAccessScope;
-  };
+    accessScope: NaidanSysfsAccessScope,
+  },
 };
 
 export type ToolConfig =
@@ -83,13 +89,13 @@ export type ToolConfig =
  * Result of a tool execution.
  */
 export type TextOrBinaryObject =
-  | { type: 'text'; text: string }
-  | { type: 'binary_object'; id: BinaryObjectId };
+  | { type: 'text', text: string }
+  | { type: 'binary_object', id: BinaryObjectId };
 
 export type ToolExecutionEvent =
   | { type: 'started' }
-  | { type: 'output'; stream: 'stdout' | 'stderr'; text: string }
-  | { type: 'exit'; exitCode: number };
+  | { type: 'output', stream: 'stdout' | 'stderr', text: string }
+  | { type: 'exit', exitCode: number };
 
 /**
  * Result of a tool execution.
@@ -105,8 +111,8 @@ export type ToolExecutionEvent =
  */
 export type ToolExecutionResult = { toolCallId: ToolCallId } & (
   | { status: 'executing' }
-  | { status: 'success'; content: TextOrBinaryObject }
-  | { status: 'error'; error: { code: ToolExecutionErrorCode; message: TextOrBinaryObject } }
+  | { status: 'success', content: TextOrBinaryObject }
+  | { status: 'error', error: { code: ToolExecutionErrorCode, message: TextOrBinaryObject } }
 );
 
 /**
@@ -114,14 +120,14 @@ export type ToolExecutionResult = { toolCallId: ToolCallId } & (
  * This is kept in memory only and not persisted.
  */
 export type ToolCallRecord = {
-  id: ToolCallId;
-  toolName: string;
-  args: unknown;
-  timestamp: number;
+  id: ToolCallId,
+  toolName: string,
+  args: unknown,
+  timestamp: number,
 } & (
   | { status: 'executing' }
-  | { status: 'success'; result: { content: TextOrBinaryObject } }
-  | { status: 'error'; error: { message: TextOrBinaryObject } }
+  | { status: 'success', result: { content: TextOrBinaryObject } }
+  | { status: 'error', error: { message: TextOrBinaryObject } }
 );
 
 export interface Tool {
@@ -129,22 +135,22 @@ export interface Tool {
    * LM-visible function/tool name.
    * This is not a stable persisted Naidan tool config key.
    */
-  name: string;
-  description: string;
-  parametersSchema: z.ZodObject<z.ZodRawShape>;
-  dispose?(): Promise<void>;
+  name: string,
+  description: string,
+  parametersSchema: z.ZodObject<z.ZodRawShape>,
+  dispose?(): Promise<void>,
 
   /**
    * Execute the tool with the given arguments.
    * The arguments are guaranteed to be validated against the parametersSchema before execution.
    */
   execute({ args, signal, onEvent, approvalContext }: {
-    args: unknown;
-    signal?: AbortSignal;
-    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
-    approvalContext?: ToolApprovalContext;
+    args: unknown,
+    signal?: AbortSignal,
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>,
+    approvalContext?: ToolApprovalContext,
   }): Promise<
-    | { status: 'success'; content: string }
-    | { status: 'error'; code: ToolExecutionErrorCode; message: string }
-  >;
+    | { status: 'success', content: string }
+    | { status: 'error', code: ToolExecutionErrorCode, message: string }
+  >,
 }

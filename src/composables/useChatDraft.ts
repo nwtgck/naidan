@@ -3,9 +3,9 @@ import type { AttachmentId, ChatId } from '@/models/ids';
 import type { Attachment } from '@/models/types';
 
 interface ChatDraft {
-  input: string;
-  attachments: Attachment[];
-  attachmentUrls: Map<AttachmentId, string>;
+  input: string,
+  attachments: Attachment[],
+  attachmentUrls: Map<AttachmentId, string>,
 }
 
 const drafts = reactive(new Map<ChatId, ChatDraft>());
@@ -13,7 +13,7 @@ const drafts = reactive(new Map<ChatId, ChatDraft>());
 const globalDraft = reactive<ChatDraft>({
   input: '',
   attachments: [],
-  attachmentUrls: new Map<AttachmentId, string>()
+  attachmentUrls: new Map<AttachmentId, string>(),
 });
 
 export function useChatDraft() {

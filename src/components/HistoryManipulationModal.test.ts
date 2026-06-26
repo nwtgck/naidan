@@ -12,8 +12,8 @@ vi.mock('vuedraggable', () => ({
   default: {
     name: 'draggable',
     template: '<div class="draggable-root"><slot name="item" v-for="(element, index) in modelValue" :element="element" :index="index"></slot></div>',
-    props: ['modelValue', 'itemKey', 'handle']
-  }
+    props: ['modelValue', 'itemKey', 'handle'],
+  },
 }));
 
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
@@ -27,8 +27,8 @@ vi.mock('../composables/chat/chat-scoped/chat-history-flow', () => ({
 // Mock useLayout
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
-    setActiveFocusArea: vi.fn()
-  })
+    setActiveFocusArea: vi.fn(),
+  }),
 }));
 
 describe('HistoryManipulationModal', () => {
@@ -36,10 +36,10 @@ describe('HistoryManipulationModal', () => {
   const mockCurrentChat = ref({ id: 'chat-1', systemPrompt: undefined });
   const mockActiveMessages = ref([
     { id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } },
-    { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } }
+    { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } },
   ] as any);
   const mockInheritedSettings = ref({
-    systemPromptMessages: ['Inherited Prompt']
+    systemPromptMessages: ['Inherited Prompt'],
   });
 
   beforeEach(() => {
@@ -59,7 +59,7 @@ describe('HistoryManipulationModal', () => {
     vi.mocked(commitFullHistoryManipulationForChat).mockImplementation(mockCommit);
     mockActiveMessages.value = [
       { id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } },
-      { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } }
+      { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } },
     ];
     mockCurrentChat.value = { id: 'chat-1', systemPrompt: undefined };
   });
@@ -70,10 +70,10 @@ describe('HistoryManipulationModal', () => {
       global: {
         stubs: {
           Transition: {
-            template: '<div><slot /></div>'
-          }
-        }
-      }
+            template: '<div><slot /></div>',
+          },
+        },
+      },
     });
     await wrapper.setProps({ isOpen: true });
     await nextTick();
@@ -192,9 +192,9 @@ describe('HistoryManipulationModal', () => {
       chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Msg 2' }),
-        expect.objectContaining({ content: 'Msg 1' })
+        expect.objectContaining({ content: 'Msg 1' }),
       ],
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
   });
 
@@ -212,9 +212,9 @@ describe('HistoryManipulationModal', () => {
       chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Updated Msg 1' }),
-        expect.objectContaining({ content: 'Msg 2' })
+        expect.objectContaining({ content: 'Msg 2' }),
       ],
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
     expect(wrapper.emitted().close).toBeTruthy();
   });
@@ -239,9 +239,9 @@ describe('HistoryManipulationModal', () => {
       chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Msg 1' }),
-        expect.objectContaining({ content: 'Msg 2' })
+        expect.objectContaining({ content: 'Msg 2' }),
       ],
-      systemPrompt: { behavior: 'override', content: 'New System Prompt' }
+      systemPrompt: { behavior: 'override', content: 'New System Prompt' },
     });
   });
 
@@ -259,9 +259,9 @@ describe('HistoryManipulationModal', () => {
       chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Msg 1' }),
-        expect.objectContaining({ content: 'Msg 2' })
+        expect.objectContaining({ content: 'Msg 2' }),
       ],
-      systemPrompt: { behavior: 'override', content: null }
+      systemPrompt: { behavior: 'override', content: null },
     });
   });
 
@@ -280,9 +280,9 @@ describe('HistoryManipulationModal', () => {
       chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Msg 1' }),
-        expect.objectContaining({ content: 'Msg 2' })
+        expect.objectContaining({ content: 'Msg 2' }),
       ],
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
   });
 
@@ -314,7 +314,7 @@ describe('HistoryManipulationModal', () => {
   it('predicts roles correctly when inserting messages (alternating role heuristic)', async () => {
     mockActiveMessages.value = [
       { id: '1', role: 'user', content: 'U1', replies: { items: [] } },
-      { id: '2', role: 'assistant', content: 'A1', replies: { items: [] } }
+      { id: '2', role: 'assistant', content: 'A1', replies: { items: [] } },
     ];
     const wrapper = await mountModal();
 
@@ -335,7 +335,7 @@ describe('HistoryManipulationModal', () => {
 
   it('predicts role correctly when inserting at the beginning', async () => {
     mockActiveMessages.value = [
-      { id: '1', role: 'user', content: 'U1', replies: { items: [] } }
+      { id: '1', role: 'user', content: 'U1', replies: { items: [] } },
     ];
     const wrapper = await mountModal();
 
@@ -351,7 +351,7 @@ describe('HistoryManipulationModal', () => {
   it('loads existing attachments and shows previews', async () => {
     const mockAtt = { id: 'att-1', status: 'persisted', originalName: 'test.png', mimeType: 'image/png', size: 100, uploadedAt: Date.now() };
     mockActiveMessages.value = [
-      { id: '1', role: 'user', content: 'Msg 1', attachments: [mockAtt], replies: { items: [] } }
+      { id: '1', role: 'user', content: 'Msg 1', attachments: [mockAtt], replies: { items: [] } },
     ];
 
     const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test-persisted');
@@ -377,7 +377,7 @@ describe('HistoryManipulationModal', () => {
     const file = new File([''], 'test.png', { type: 'image/png' });
 
     Object.defineProperty(fileInput.element, 'files', {
-      value: [file]
+      value: [file],
     });
     await fileInput.trigger('change');
     await nextTick();
@@ -389,7 +389,7 @@ describe('HistoryManipulationModal', () => {
   it('can remove attachments', async () => {
     const mockAtt = { id: 'att-1', status: 'memory', blob: new Blob(['']), originalName: 'test.png', mimeType: 'image/png', size: 100, uploadedAt: Date.now() };
     mockActiveMessages.value = [
-      { id: '1', role: 'user', content: 'Msg 1', attachments: [mockAtt], replies: { items: [] } }
+      { id: '1', role: 'user', content: 'Msg 1', attachments: [mockAtt], replies: { items: [] } },
     ];
 
     const mockRevokeObjectURL = vi.fn();
@@ -420,10 +420,10 @@ describe('HistoryManipulationModal', () => {
         items: [
           {
             type: 'image/png',
-            getAsFile: () => file
-          }
-        ]
-      }
+            getAsFile: () => file,
+          },
+        ],
+      },
     });
 
     await nextTick();

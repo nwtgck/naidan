@@ -5,8 +5,8 @@ import { marked } from './useMarkdown'; // Re-use the configured instance
 import BlockMarkdownItem from './BlockMarkdownItem.vue';
 
 const props = defineProps<{
-  content: string;
-  trailingInline?: Component;
+  content: string,
+  trailingInline?: Component,
 }>();
 
 const tokens = computed(() => {
@@ -30,7 +30,7 @@ const lastRenderableIndex = computed(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

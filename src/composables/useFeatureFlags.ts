@@ -45,7 +45,7 @@ const featureFlags = useStorage<FeatureFlags>(
       },
       write: (value) => JSON.stringify(FeatureFlagsSchema.parse(value)),
     },
-  }
+  },
 );
 
 export function useFeatureFlags() {
@@ -54,8 +54,8 @@ export function useFeatureFlags() {
   };
 
   const setFeatureEnabled = ({ feature, enabled }: {
-    feature: FeatureFlagName;
-    enabled: boolean;
+    feature: FeatureFlagName,
+    enabled: boolean,
   }) => {
     const current = featureFlags.value[feature];
     featureFlags.value = {
@@ -69,8 +69,8 @@ export function useFeatureFlags() {
   };
 
   const setFeatureParams = <TFeature extends FeatureFlagName>({ feature, params }: {
-    feature: TFeature;
-    params: FeatureFlags[TFeature]['params'];
+    feature: TFeature,
+    params: FeatureFlags[TFeature]['params'],
   }) => {
     featureFlags.value = {
       ...featureFlags.value,

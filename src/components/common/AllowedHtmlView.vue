@@ -3,8 +3,8 @@ import type { AllowedHtml } from '@/lib/security/allowedHtml';
 
 withDefaults(
   defineProps<{
-    as?: 'span' | 'div' | 'pre' | 'code';
-    html: AllowedHtml;
+    as?: 'span' | 'div' | 'pre' | 'code',
+    html: AllowedHtml,
   }>(),
   {
     as: 'span',
@@ -14,7 +14,7 @@ withDefaults(
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

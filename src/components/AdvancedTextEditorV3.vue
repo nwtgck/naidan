@@ -28,28 +28,28 @@ import type {
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
-  initialValue: string;
-  title: string | undefined;
-  mode: 'advanced' | 'textarea';
+  initialValue: string,
+  title: string | undefined,
+  mode: 'advanced' | 'textarea',
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:content', { content }: { content: string }): void;
-  (e: 'update:mode', { mode }: { mode: 'advanced' | 'textarea' }): void;
-  (e: 'close'): void;
+  (e: 'update:content', { content }: { content: string }): void,
+  (e: 'update:mode', { mode }: { mode: 'advanced' | 'textarea' }): void,
+  (e: 'close'): void,
 }>();
 
 // --- Text Model Manager ---
 function useTextModel({ initialValue }: {
-  initialValue: string;
+  initialValue: string,
 }) {
   const fullText = ref(initialValue);
   const lines = ref<string[]>(initialValue.split('\n'));
 
   // Atomic update that maintains consistency
   const updateContent = ({ text, immediateLines }: {
-    text: string;
-    immediateLines: boolean;
+    text: string,
+    immediateLines: boolean,
   }) => {
     fullText.value = text;
     if (immediateLines) {
@@ -64,11 +64,11 @@ function useTextModel({ initialValue }: {
   return { fullText, lines, updateContent, syncLines,
     TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    }, };
+    } };
 }
 
 const { fullText, lines, updateContent, syncLines } = useTextModel({
-  initialValue: props.initialValue
+  initialValue: props.initialValue,
 });
 
 // --- Mode Management ---
@@ -309,8 +309,8 @@ let historyTimeout: ReturnType<typeof setTimeout> | undefined;
 
 // --- Helper: update lines from full text (for bulk operations like search/replace) ---
 function setFullText({ text, recordInHistory }: {
-  text: string
-  recordInHistory?: boolean | undefined
+  text: string,
+  recordInHistory?: boolean | undefined,
 }) {
   updateContent({ text, immediateLines: true });
   if (recordInHistory) {
@@ -320,8 +320,8 @@ function setFullText({ text, recordInHistory }: {
 
 // --- Search & Replace ---
 function updateSearchState({ matches, preserveIndex }: {
-  matches: AdvancedTextEditorV3Match[]
-  preserveIndex: boolean
+  matches: AdvancedTextEditorV3Match[],
+  preserveIndex: boolean,
 }) {
   searchMatches.value = matches;
   if (matches.length === 0) {
@@ -846,7 +846,7 @@ defineExpose({
     calculateLineHeights,
     lineHeights,
     lines,
-  }
+  },
 });
 </script>
 

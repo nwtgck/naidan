@@ -10,15 +10,15 @@ import { useSettings } from '@/composables/useSettings';
 import type { ChatId } from '@/models/ids';
 
 export type ChatBootstrapAdapter = {
-  loadChats(): Promise<void>;
+  loadChats(): Promise<void>,
 
   openChat({
     chatId,
   }: {
-    chatId: ChatId;
-  }): Promise<unknown>;
+    chatId: ChatId,
+  }): Promise<unknown>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
@@ -83,7 +83,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   async function openChat({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     return await chatNavigation.openChat({
       chatId,

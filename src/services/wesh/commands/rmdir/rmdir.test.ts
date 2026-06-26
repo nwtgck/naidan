@@ -19,7 +19,7 @@ describe('wesh rmdir', () => {
   async function createDir({
     path,
   }: {
-    path: string;
+    path: string,
   }) {
     const segments = path.split('/').filter(Boolean);
     let dir = rootHandle;
@@ -32,7 +32,7 @@ describe('wesh rmdir', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

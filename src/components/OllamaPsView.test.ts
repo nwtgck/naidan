@@ -31,8 +31,8 @@ function createProvider({
   listRunningModels,
   unloadModel,
 }: {
-  listRunningModels: ReturnType<typeof vi.fn>;
-  unloadModel: ReturnType<typeof vi.fn>;
+  listRunningModels: ReturnType<typeof vi.fn>,
+  unloadModel: ReturnType<typeof vi.fn>,
 }): OllamaProvider {
   return {
     listRunningModels,

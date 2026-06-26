@@ -16,7 +16,7 @@ const dateArgvSpec: StandardArgvParserSpec = {
 function pad2({
   value,
 }: {
-  value: number;
+  value: number,
 }): string {
   return value.toString().padStart(2, '0');
 }
@@ -28,8 +28,8 @@ function formatTimezoneOffset({
   date,
   utc,
 }: {
-  date: Date;
-  utc: boolean;
+  date: Date,
+  utc: boolean,
 }): string {
   if (utc) {
     return '+0000';
@@ -47,8 +47,8 @@ function formatTimezoneName({
   date,
   utc,
 }: {
-  date: Date;
-  utc: boolean;
+  date: Date,
+  utc: boolean,
 }): string {
   if (utc) {
     return 'UTC';
@@ -66,9 +66,9 @@ function formatDateToken({
   date,
   utc,
 }: {
-  token: string;
-  date: Date;
-  utc: boolean;
+  token: string,
+  date: Date,
+  utc: boolean,
 }): string {
   const year = utc ? date.getUTCFullYear() : date.getFullYear();
   const month = utc ? date.getUTCMonth() + 1 : date.getMonth() + 1;
@@ -119,9 +119,9 @@ function formatDate({
   date,
   utc,
 }: {
-  format: string;
-  date: Date;
-  utc: boolean;
+  format: string,
+  date: Date,
+  utc: boolean,
 }): string {
   return format.replace(/%[%abdeHmMSYFTszZ]/g, (token) => formatDateToken({
     token,

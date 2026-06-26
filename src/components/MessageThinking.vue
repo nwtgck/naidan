@@ -5,10 +5,10 @@ import { BrainIcon } from 'lucide-vue-next';
 import type { MessageNode } from '@/models/types';
 
 const props = defineProps<{
-  message: MessageNode;
-  noMargin?: boolean;
-  partContent?: string;
-  trailingInline?: Component;
+  message: MessageNode,
+  noMargin?: boolean,
+  partContent?: string,
+  trailingInline?: Component,
 }>();
 
 type ThinkingMode = 'expanded' | 'collapsed-active' | 'collapsed-finished';
@@ -95,8 +95,8 @@ defineExpose({
   TEST_ONLY: {
     isUserExpanded,
     mode,
-    handleToggleThinking
-  }
+    handleToggleThinking,
+  },
 });
 </script>
 

@@ -12,7 +12,7 @@
 export declare const idBrand: unique symbol;
 
 type BrandedId<TName extends string> = {
-  readonly [idBrand]: TName;
+  readonly [idBrand]: TName,
 };
 
 export type ChatId = BrandedId<'ChatId'>;

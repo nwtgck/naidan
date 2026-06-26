@@ -45,7 +45,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
           res.write('data: [DONE]\n\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -75,7 +75,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(secondReqBody.messages[2]).toEqual({
       role: 'tool',
       tool_call_id: 'call_1',
-      content: 'Sunny, 25C'
+      content: 'Sunny, 25C',
     });
   });
 
@@ -97,7 +97,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
             'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"lc"}}]}}]}\n\n',
             'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"e\\":\\"2"}}]}}]}\n\n',
             'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"+2\\"}"}}]}}]}\n\n',
-            'data: [DONE]\n\n'
+            'data: [DONE]\n\n',
           ];
           payloads.forEach(p => res.write(p));
         } else {
@@ -105,7 +105,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
           res.write('data: [DONE]\n\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -139,7 +139,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
           res.write('data: [DONE]\n\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -159,12 +159,12 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(secondReqBody.messages[0]).toEqual({
       role: 'assistant',
       content: 'Thinking...',
-      tool_calls: [expect.objectContaining({ id: 'c1' })]
+      tool_calls: [expect.objectContaining({ id: 'c1' })],
     });
     expect(secondReqBody.messages[1]).toEqual({
       role: 'tool',
       tool_call_id: 'c1',
-      content: 'OK'
+      content: 'OK',
     });
   });
 
@@ -186,7 +186,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         }
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -220,7 +220,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         }
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -253,7 +253,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         }
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -286,7 +286,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         }
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -312,7 +312,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         }
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -349,7 +349,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         res.write('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"long","arguments":"{}"}}]}}]}\n\n');
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -392,7 +392,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         }
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -436,7 +436,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         }
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -467,7 +467,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
         res.write('data: {"choices":[{"delta":{"content":"Done"}}]}\n\n');
         res.write('data: [DONE]\n\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -506,7 +506,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
             'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"calc"}}]}}]}\n\n',
             'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"calc","arguments":"{\\"e\\":\\"2+2\\"}"}}]}}]}\n\n',
             'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"calc","arguments":"{\\"e\\":\\"2+2\\"}"}}]}}]}\n\n', // Repeated
-            'data: [DONE]\n\n'
+            'data: [DONE]\n\n',
           ];
           payloads.forEach(p => res.write(p));
         } else {
@@ -514,7 +514,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
           res.write('data: [DONE]\n\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -549,7 +549,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
           res.write('data: [DONE]\n\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
@@ -590,7 +590,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
           res.write('data: [DONE]\n\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });

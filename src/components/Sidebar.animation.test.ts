@@ -221,12 +221,12 @@ describe('Sidebar Animation Logic', () => {
       id: 'g1',
       name: 'Test Group',
       isCollapsed: false,
-      items: items
+      items: items,
     };
 
     mockChatGroups.value = [group];
     mockSidebarItems.value = [
-      { id: 'g1', type: 'chat_group', chatGroup: group }
+      { id: 'g1', type: 'chat_group', chatGroup: group },
     ];
   });
 
@@ -236,12 +236,12 @@ describe('Sidebar Animation Logic', () => {
         stubs: {
           'router-link': true,
           'draggable': {
-            template: '<div><slot name="item" v-for="item in $attrs.modelValue" :element="item"></slot></div>'
+            template: '<div><slot name="item" v-for="item in $attrs.modelValue" :element="item"></slot></div>',
           },
           'ThemeToggle': true,
-          'ModelSelector': true
-        }
-      }
+          'ModelSelector': true,
+        },
+      },
     });
 
     await nextTick();

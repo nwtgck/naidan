@@ -96,7 +96,7 @@ export class LocalStorageProvider extends IStorageProvider {
     localStorage.setItem(`${KEY_META_PREFIX}${idToRaw({ id: meta.id })}`, JSON.stringify(dto));
   }
 
-  async saveChatContent({ id, content }: { id: ChatId; content: ChatContent }): Promise<void> {
+  async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
     const findAndCacheBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
       for (const node of nodes) {
         if (node.attachments) {
@@ -238,7 +238,7 @@ export class LocalStorageProvider extends IStorageProvider {
     try {
       const [hierarchy, allMetas] = await Promise.all([
         this.loadHierarchy(),
-        this.listChatMetasRaw()
+        this.listChatMetasRaw(),
       ]);
       const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
       const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
@@ -288,37 +288,37 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async createVolume({ name: _name, type: _type, sourceHandle: _sourceHandle }: {
-    name: string;
-    type: import('@/models/types').VolumeType;
-    sourceHandle: FileSystemDirectoryHandle;
+    name: string,
+    type: import('@/models/types').VolumeType,
+    sourceHandle: FileSystemDirectoryHandle,
   }): Promise<import('@/models/types').Volume> {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }
 
   async createVolumeFromFiles({ name: _name, entries: _entries, onProgress: _onProgress, signal: _signal }: {
-    name: string;
-    entries: Array<{ file: File; relativePath: string }>;
-    onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
-    signal?: AbortSignal;
+    name: string,
+    entries: Array<{ file: File, relativePath: string }>,
+    onProgress?: ({ processed, total }: { processed: number, total: number }) => void,
+    signal?: AbortSignal,
   }): Promise<import('@/models/types').Volume> {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }
 
   async getVolumeDirectoryHandle({ volumeId: _volumeId }: {
-    volumeId: VolumeId;
+    volumeId: VolumeId,
   }): Promise<FileSystemDirectoryHandle | null> {
     return null;
   }
 
   async deleteVolume({ volumeId: _volumeId }: {
-    volumeId: VolumeId;
+    volumeId: VolumeId,
   }): Promise<void> {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }
 
   async renameVolume({ volumeId: _volumeId, name: _name }: {
-    volumeId: VolumeId;
-    name: string;
+    volumeId: VolumeId,
+    name: string,
   }): Promise<void> {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }
@@ -331,10 +331,10 @@ export class LocalStorageProvider extends IStorageProvider {
     name: _name,
     mimeType: _mimeType,
   }: {
-    blob: Blob;
-    binaryObjectId: BinaryObjectId;
-    name: string;
-    mimeType?: string;
+    blob: Blob,
+    binaryObjectId: BinaryObjectId,
+    name: string,
+    mimeType?: string,
   }): Promise<void> {
     throw new Error('File persistence is not supported in LocalStorage provider.');
   }

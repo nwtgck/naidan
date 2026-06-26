@@ -9,8 +9,8 @@ import { iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 function parseWidth({
   value,
 }: {
-  value: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   if (!/^[1-9]\d*$/.test(value)) {
     return { ok: false, message: `invalid width: '${value}'` };
   }
@@ -22,8 +22,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -38,10 +38,10 @@ function findFoldBreakLength({
   width,
   breakAtSpaces,
 }: {
-  characters: string[];
-  start: number;
-  width: number;
-  breakAtSpaces: boolean;
+  characters: string[],
+  start: number,
+  width: number,
+  breakAtSpaces: boolean,
 }): number {
   const remainingLength = characters.length - start;
   if (remainingLength <= width) {
@@ -67,9 +67,9 @@ function foldLine({
   width,
   breakAtSpaces,
 }: {
-  line: string;
-  width: number;
-  breakAtSpaces: boolean;
+  line: string,
+  width: number,
+  breakAtSpaces: boolean,
 }): string[] {
   const characters = Array.from(line);
   if (characters.length === 0) {
@@ -98,11 +98,11 @@ async function writeFoldedLine({
   breakAtSpaces,
   hadNewline,
 }: {
-  writer: ReturnType<typeof createBufferedTextWriter>;
-  line: string;
-  width: number;
-  breakAtSpaces: boolean;
-  hadNewline: boolean;
+  writer: ReturnType<typeof createBufferedTextWriter>,
+  line: string,
+  width: number,
+  breakAtSpaces: boolean,
+  hadNewline: boolean,
 }): Promise<void> {
   const foldedLines = foldLine({
     line,
@@ -125,10 +125,10 @@ async function processFoldStream({
   width,
   breakAtSpaces,
 }: {
-  context: WeshCommandContext;
-  stream: ReadableStream<Uint8Array>;
-  width: number;
-  breakAtSpaces: boolean;
+  context: WeshCommandContext,
+  stream: ReadableStream<Uint8Array>,
+  width: number,
+  breakAtSpaces: boolean,
 }): Promise<void> {
   const writer = createBufferedTextWriter({
     handle: context.stdout,

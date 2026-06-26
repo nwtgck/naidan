@@ -9,18 +9,18 @@ import {
 } from '@/composables/chat/chat-activity-queries';
 
 export type ChatActivityAdapter = {
-  isProcessing: ComputedRef<boolean>;
-  isTaskRunning: ComputedRef<boolean>;
-  isGeneratingTitle: ComputedRef<boolean>;
-  contextCompactProgress: ComputedRef<ContextCompactProgress>;
+  isProcessing: ComputedRef<boolean>,
+  isTaskRunning: ComputedRef<boolean>,
+  isGeneratingTitle: ComputedRef<boolean>,
+  contextCompactProgress: ComputedRef<ContextCompactProgress>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatActivity({
   chatId,
 }: {
-  chatId: Readonly<Ref<ChatId>>;
+  chatId: Readonly<Ref<ChatId>>,
 }): ChatActivityAdapter {
   const isProcessingState = computed(() => {
     return isChatProcessing({

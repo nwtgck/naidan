@@ -58,7 +58,7 @@ describe('ChatToolsMenu', () => {
   it('toggles menu on click', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: defaultProps,
-      attachTo: document.body
+      attachTo: document.body,
     });
     const button = wrapper.find('[data-testid="chat-tools-button"]');
 
@@ -77,7 +77,7 @@ describe('ChatToolsMenu', () => {
   it('closes when the backdrop is clicked', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: defaultProps,
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -113,7 +113,7 @@ describe('ChatToolsMenu', () => {
   it('emits toggle-image-mode when clicking the image mode button', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: defaultProps,
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -128,7 +128,7 @@ describe('ChatToolsMenu', () => {
   it('shows resolution, count and model selectors when image mode is on', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -152,7 +152,7 @@ describe('ChatToolsMenu', () => {
   it('emits update:resolution when a resolution is selected', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -167,7 +167,7 @@ describe('ChatToolsMenu', () => {
   it('emits update:resolution when a custom resolution is entered', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -190,7 +190,7 @@ describe('ChatToolsMenu', () => {
   it('emits update:count when a count is selected', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -205,7 +205,7 @@ describe('ChatToolsMenu', () => {
   it('emits update:count when a custom count is entered', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -221,7 +221,7 @@ describe('ChatToolsMenu', () => {
   it('emits update:persist-as when a format is selected', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -236,7 +236,7 @@ describe('ChatToolsMenu', () => {
   it('emits update:steps when steps are changed in settings', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -260,7 +260,7 @@ describe('ChatToolsMenu', () => {
   it('emits update:seed when seed is changed in settings', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -277,7 +277,7 @@ describe('ChatToolsMenu', () => {
   it('shows empty state when no tools are available', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, canGenerateImage: false },
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
@@ -289,7 +289,7 @@ describe('ChatToolsMenu', () => {
   describe('Reasoning Effort Integration', () => {
     it('shows highlighing on the gear icon when isThinkActive is true', async () => {
       wrapper = mount(ChatToolsMenu, {
-        props: { ...defaultProps, isThinkActive: true }
+        props: { ...defaultProps, isThinkActive: true },
       });
       const button = wrapper.find('[data-testid="chat-tools-button"]');
       expect(button.classes()).toContain('text-blue-600');
@@ -299,7 +299,7 @@ describe('ChatToolsMenu', () => {
     it('emits update:reasoning-effort when a value is selected in ReasoningSettings', async () => {
       wrapper = mount(ChatToolsMenu, {
         props: defaultProps,
-        attachTo: document.body
+        attachTo: document.body,
       });
       await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
       await flushPromises();
@@ -317,7 +317,7 @@ describe('ChatToolsMenu', () => {
     it('closes on window width resize', async () => {
       wrapper = mount(ChatToolsMenu, {
         props: defaultProps,
-        attachTo: document.body
+        attachTo: document.body,
       });
       await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
       await flushPromises();

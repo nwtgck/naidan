@@ -7,22 +7,22 @@ import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 let rememberedDetailVisibility: 'hidden' | 'visible' = 'hidden';
 
 const props = defineProps<{
-  isOpen: boolean;
-  title: string | null;
-  availableModels: readonly string[];
-  selectedTitleModel: string | undefined;
-  titleModelSource: 'chat' | 'chat_group' | 'global';
-  generatedTitles: readonly string[];
-  generatingTitle: boolean;
-  fetchingModels: boolean;
+  isOpen: boolean,
+  title: string | null,
+  availableModels: readonly string[],
+  selectedTitleModel: string | undefined,
+  titleModelSource: 'chat' | 'chat_group' | 'global',
+  generatedTitles: readonly string[],
+  generatingTitle: boolean,
+  fetchingModels: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'save-title', title: string): void;
-  (e: 'generate-title', modelId: string | undefined): void;
-  (e: 'abort-title'): void;
-  (e: 'refresh-models'): void;
+  (e: 'close'): void,
+  (e: 'save-title', title: string): void,
+  (e: 'generate-title', modelId: string | undefined): void,
+  (e: 'abort-title'): void,
+  (e: 'refresh-models'): void,
 }>();
 
 const titleInput = ref('');
@@ -45,7 +45,7 @@ watch(
       suppressTitleAutosave.value = false;
     });
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
@@ -53,7 +53,7 @@ watch(
   (modelId) => {
     if (!props.isOpen) return;
     selectedTitleModelDraft.value = modelId;
-  }
+  },
 );
 
 watch(
@@ -66,7 +66,7 @@ watch(
       if (nextTitle === (props.title || '')) return;
       emit('save-title', nextTitle);
     }, 500);
-  }
+  },
 );
 
 watch(
@@ -78,7 +78,7 @@ watch(
     queueMicrotask(() => {
       suppressTitleAutosave.value = false;
     });
-  }
+  },
 );
 
 function emitGenerateTitle() {
@@ -130,7 +130,7 @@ onBeforeUnmount(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

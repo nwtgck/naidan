@@ -110,7 +110,7 @@ Line 3`;
     it('performs replace (single)', async () => {
       const wrapper = mount(AdvancedTextEditorV3, {
         props: { ...defaultProps, initialValue: 'apple banana apple' },
-        attachTo: document.body
+        attachTo: document.body,
       });
 
       // Open search mode
@@ -137,7 +137,7 @@ Line 3`;
     it('allows undo after single replace', async () => {
       const wrapper = mount(AdvancedTextEditorV3, {
         props: { ...defaultProps, initialValue: 'apple banana apple' },
-        attachTo: document.body
+        attachTo: document.body,
       });
 
       await wrapper.find('button[title^="Find & Replace"]').trigger('click');
@@ -216,7 +216,7 @@ Line 3`;
   it('enters multi-edit mode via shortcut', async () => {
     const wrapper = mount(AdvancedTextEditorV3, {
       props: { ...defaultProps, initialValue: 'foo bar foo baz' },
-      attachTo: document.body
+      attachTo: document.body,
     });
     const vm = wrapper.vm as any;
 
@@ -284,7 +284,7 @@ Line 3`;
 Line 1
 Line 2
 Line 3` },
-        attachTo: document.body
+        attachTo: document.body,
       });
       const vm = wrapper.vm as any;
 
@@ -374,7 +374,7 @@ Line 3` },
     it('closes on Escape key when not in other modes', async () => {
       const wrapper = mount(AdvancedTextEditorV3, {
         props: { ...defaultProps, initialValue: 'test' },
-        attachTo: document.body
+        attachTo: document.body,
       });
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -386,7 +386,7 @@ Line 3` },
     it('does not close on Escape if Multi-Edit is active', async () => {
       const wrapper = mount(AdvancedTextEditorV3, {
         props: { ...defaultProps, initialValue: 'test' },
-        attachTo: document.body
+        attachTo: document.body,
       });
       const vm = wrapper.vm as any;
 

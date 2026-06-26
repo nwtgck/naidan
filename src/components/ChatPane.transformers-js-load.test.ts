@@ -28,7 +28,7 @@ vi.mock('../services/transformers-js', () => {
     isCached: false,
     progressItems: new Map(),
     totalLoadedAmount: 0,
-    totalSizeAmount: 0
+    totalSizeAmount: 0,
   };
   const listeners = new Set();
   return {
@@ -59,8 +59,8 @@ vi.mock('../services/transformers-js', () => {
           progressItems: state.progressItems,
           loadingModelId: state.loadingModelId,
         }));
-      }
-    }
+      },
+    },
   };
 });
 
@@ -71,13 +71,13 @@ const mockCurrentChat = ref<any>({
   root: { items: [] },
   currentLeafId: 'msg-2',
   debugEnabled: false,
-  endpointType: 'transformers_js'
+  endpointType: 'transformers_js',
 });
 const mockActiveMessages = ref<any[]>([]);
 const mockResolvedSettings = ref<any>({
   endpointType: 'transformers_js',
   modelId: 'm',
-  sources: { modelId: 'global' }
+  sources: { modelId: 'global' },
 });
 const mockInheritedSettings = ref<any>({ modelId: 'm', sources: { modelId: 'global' } });
 const mockChatGroups = ref<any[]>([]);
@@ -127,7 +127,7 @@ vi.mock('../composables/useChat', () => ({
       flow: { position: 'standalone', nesting: 'none' },
       isFirstInNode: true,
       isLastInNode: true,
-      isFirstInTurn: true
+      isFirstInTurn: true,
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(({ item }) => item.type === 'message' && item.mode === 'waiting'),
@@ -161,12 +161,12 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: ChatId;
-    autoSendPrompt?: string;
-    targetMessageId?: MessageId;
-  };
-  attachTo?: Element | string;
-  global?: Record<string, unknown>;
+    chatId?: ChatId,
+    autoSendPrompt?: string,
+    targetMessageId?: MessageId,
+  },
+  attachTo?: Element | string,
+  global?: Record<string, unknown>,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -191,7 +191,7 @@ vi.mock('../composables/useChatDisplayFlow', () => ({
       isFirstInTurn: true,
     }))),
     isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(({ item }: { item: { type: string; mode?: string } }) => item.type === 'message' && item.mode === 'waiting'),
+    isWaitingResponse: vi.fn(({ item }: { item: { type: string, mode?: string } }) => item.type === 'message' && item.mode === 'waiting'),
   }),
 }));
 
@@ -297,7 +297,7 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 vi.mock('mermaid', () => ({
-  default: { initialize: vi.fn(), run: vi.fn() }
+  default: { initialize: vi.fn(), run: vi.fn() },
 }));
 
 describe('Transformers.js Loading Flow in ChatPane', () => {
@@ -308,7 +308,7 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     vi.clearAllMocks();
     mockActiveMessages.value = [
       { id: 'msg-1', role: 'user', content: 'hello', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'msg-2', role: 'assistant', content: '', timestamp: Date.now(), modelId: 'hf.co/model', replies: { items: [] } }
+      { id: 'msg-2', role: 'assistant', content: '', timestamp: Date.now(), modelId: 'hf.co/model', replies: { items: [] } },
     ];
     mockCurrentChat.value.currentLeafId = 'msg-2';
     (transformersJsService as any).__triggerStateChange({ status: 'idle', progress: 0 });
@@ -323,11 +323,11 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     (transformersJsService as any).__triggerStateChange({
       status: 'loading',
       progress: 45,
-      loadingModelId: 'hf.co/SmolLM2'
+      loadingModelId: 'hf.co/SmolLM2',
     });
 
     wrapper = mountChatPane( {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
 
     await nextTick();
@@ -352,7 +352,7 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     (transformersJsService as any).__triggerStateChange({ status: 'loading', progress: 99 });
 
     wrapper = mountChatPane( {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
 
     await nextTick();
@@ -379,7 +379,7 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     (transformersJsService as any).__triggerStateChange({ status: 'ready', progress: 100 });
 
     wrapper = mountChatPane( {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
 
     await nextTick();
@@ -401,11 +401,11 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     mockResolvedSettings.value = {
       endpointType: 'openai',
       modelId: 'gpt-4o',
-      sources: { modelId: 'global' }
+      sources: { modelId: 'global' },
     };
 
     wrapper = mountChatPane( {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
 
     await nextTick();

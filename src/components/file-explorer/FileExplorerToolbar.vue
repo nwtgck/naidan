@@ -25,7 +25,7 @@ async function handleFileInputChange({ event }: { event: Event }): Promise<void>
   input.value = '';
 }
 
-const viewModes: Array<{ mode: ViewMode; icon: unknown; title: string }> = [
+const viewModes: Array<{ mode: ViewMode, icon: unknown, title: string }> = [
   { mode: 'icon', icon: LayoutGridIcon, title: 'Icon view' },
   { mode: 'list', icon: ListIcon, title: 'List view' },
   { mode: 'column', icon: Columns3Icon, title: 'Column view' },
@@ -66,7 +66,7 @@ function toggleSearch(): void {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

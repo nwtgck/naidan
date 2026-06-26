@@ -5,7 +5,7 @@ import { nextTick } from 'vue';
 
 describe('ReasoningSettings Component', () => {
   const getWrapper = (selectedEffort: any = undefined) => mount(ReasoningSettings, {
-    props: { selectedEffort }
+    props: { selectedEffort },
   });
 
   it('renders all effort options with segmented control style', () => {

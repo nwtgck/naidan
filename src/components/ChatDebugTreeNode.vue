@@ -12,19 +12,19 @@ import { idToRaw, toBinaryObjectId } from '@/models/ids';
 import type { BinaryObjectId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
-  node: Readonly<MessageNode>;
-  activeIds: Set<MessageId>;
-  highlight: boolean;
-  isContentCollapsed?: boolean;
-  isLast?: boolean;
-  isRoot?: boolean;
-  mode?: 'active' | 'tree' | 'compact';
-  hasLinearParent?: boolean;
+  node: Readonly<MessageNode>,
+  activeIds: Set<MessageId>,
+  highlight: boolean,
+  isContentCollapsed?: boolean,
+  isLast?: boolean,
+  isRoot?: boolean,
+  mode?: 'active' | 'tree' | 'compact',
+  hasLinearParent?: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'preview-attachment', objId: BinaryObjectId): void;
-  (e: 'select-node', node: Readonly<MessageNode>): void;
+  (e: 'preview-attachment', objId: BinaryObjectId): void,
+  (e: 'select-node', node: Readonly<MessageNode>): void,
 }>();
 
 const { addErrorEvent } = useGlobalEvents();
@@ -157,13 +157,13 @@ onUnmounted(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 
 <script lang="ts">
 export default {
-  name: 'ChatDebugTreeNode'
+  name: 'ChatDebugTreeNode',
 };
 </script>
 

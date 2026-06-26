@@ -19,85 +19,85 @@
  */
 
 function normalizePath(filePath) {
-  return filePath.replace(/\\/g, '/')
+  return filePath.replace(/\\/g, '/');
 }
 
 function getStaticPropertyName(memberExpression) {
   if (!memberExpression) {
-    return undefined
+    return undefined;
   }
 
   if (!memberExpression.computed && memberExpression.property?.type === 'Identifier') {
-    return memberExpression.property.name
+    return memberExpression.property.name;
   }
 
   if (memberExpression.computed && memberExpression.property?.type === 'Literal' && typeof memberExpression.property.value === 'string') {
-    return memberExpression.property.value
+    return memberExpression.property.value;
   }
 
-  return undefined
+  return undefined;
 }
 
 function isIdentifierNamed(node, name) {
-  return node?.type === 'Identifier' && node.name === name
+  return node?.type === 'Identifier' && node.name === name;
 }
 
 function isGlobalObjectIdentifier(node) {
-  return node?.type === 'Identifier' && ['globalThis', 'self', 'window'].includes(node.name)
+  return node?.type === 'Identifier' && ['globalThis', 'self', 'window'].includes(node.name);
 }
 
 function isLiteralString(node, value) {
-  return node?.type === 'Literal' && typeof node.value === 'string' && node.value.toLowerCase() === value.toLowerCase()
+  return node?.type === 'Literal' && typeof node.value === 'string' && node.value.toLowerCase() === value.toLowerCase();
 }
 
 function isLiteralStringStartingWith(node, prefix) {
-  return node?.type === 'Literal' && typeof node.value === 'string' && node.value.toLowerCase().startsWith(prefix.toLowerCase())
+  return node?.type === 'Literal' && typeof node.value === 'string' && node.value.toLowerCase().startsWith(prefix.toLowerCase());
 }
 
 function isDocumentObject(node) {
   if (isIdentifierNamed(node, 'document')) {
-    return true
+    return true;
   }
 
-  return node?.type === 'MemberExpression' && isGlobalObjectIdentifier(node.object) && getStaticPropertyName(node) === 'document'
+  return node?.type === 'MemberExpression' && isGlobalObjectIdentifier(node.object) && getStaticPropertyName(node) === 'document';
 }
 
 function isDocumentMemberCall(node, methodName) {
-  return node.callee?.type === 'MemberExpression' && isDocumentObject(node.callee.object) && getStaticPropertyName(node.callee) === methodName
+  return node.callee?.type === 'MemberExpression' && isDocumentObject(node.callee.object) && getStaticPropertyName(node.callee) === methodName;
 }
 
 function isGlobalOrMemberCall(node, names) {
   if (node.callee?.type === 'Identifier') {
-    return names.has(node.callee.name)
+    return names.has(node.callee.name);
   }
 
   if (node.callee?.type === 'MemberExpression' && isGlobalObjectIdentifier(node.callee.object)) {
-    const propertyName = getStaticPropertyName(node.callee)
-    return typeof propertyName === 'string' && names.has(propertyName)
+    const propertyName = getStaticPropertyName(node.callee);
+    return typeof propertyName === 'string' && names.has(propertyName);
   }
 
-  return false
+  return false;
 }
 
 function isFunctionConstructor(node) {
   if (node.callee?.type === 'Identifier') {
-    return node.callee.name === 'Function'
+    return node.callee.name === 'Function';
   }
 
-  return node.callee?.type === 'MemberExpression' && isGlobalObjectIdentifier(node.callee.object) && getStaticPropertyName(node.callee) === 'Function'
+  return node.callee?.type === 'MemberExpression' && isGlobalObjectIdentifier(node.callee.object) && getStaticPropertyName(node.callee) === 'Function';
 }
 
 function isWorkerConstructor(node) {
   if (node.callee?.type === 'Identifier') {
-    return node.callee.name === 'Worker' || node.callee.name === 'SharedWorker'
+    return node.callee.name === 'Worker' || node.callee.name === 'SharedWorker';
   }
 
   if (node.callee?.type === 'MemberExpression' && isGlobalObjectIdentifier(node.callee.object)) {
-    const propertyName = getStaticPropertyName(node.callee)
-    return propertyName === 'Worker' || propertyName === 'SharedWorker'
+    const propertyName = getStaticPropertyName(node.callee);
+    return propertyName === 'Worker' || propertyName === 'SharedWorker';
   }
 
-  return false
+  return false;
 }
 
 function isStaticViteWorkerUrl(node) {
@@ -112,33 +112,33 @@ function isStaticViteWorkerUrl(node) {
     node.arguments[1].object.meta?.name === 'import' &&
     node.arguments[1].object.property?.name === 'meta' &&
     getStaticPropertyName(node.arguments[1]) === 'url'
-  )
+  );
 }
 
 function isServiceWorkerRegisterCall(node) {
   if (node.callee?.type !== 'MemberExpression' || getStaticPropertyName(node.callee) !== 'register') {
-    return false
+    return false;
   }
 
-  const calleeObject = node.callee.object
-  return calleeObject?.type === 'MemberExpression' && getStaticPropertyName(calleeObject) === 'serviceWorker'
+  const calleeObject = node.callee.object;
+  return calleeObject?.type === 'MemberExpression' && getStaticPropertyName(calleeObject) === 'serviceWorker';
 }
 
 function isAllowedExceptionFile({ filePath }) {
-  const normalized = normalizePath(filePath)
+  const normalized = normalizePath(filePath);
   return (
     normalized.endsWith('/src/components/common/AllowedHtmlView.vue') ||
     normalized.endsWith('/src/lib/security/allowedHtmlDom.ts') ||
     normalized.endsWith('/src/services/worker-hub-standalone-loader.ts') ||
     normalized.endsWith('/src/components/block-markdown/test-utils.ts')
-  )
+  );
 }
 
-const htmlAssignmentProperties = new Set(['innerHTML', 'outerHTML', 'srcdoc'])
-const htmlCallProperties = new Set(['insertAdjacentHTML', 'createContextualFragment'])
-const dangerousMimeTypes = new Set(['text/html', 'application/xhtml+xml', 'image/svg+xml'])
-const stringTimerNames = new Set(['setTimeout', 'setInterval'])
-const evalLikeNames = new Set(['eval', 'Function'])
+const htmlAssignmentProperties = new Set(['innerHTML', 'outerHTML', 'srcdoc']);
+const htmlCallProperties = new Set(['insertAdjacentHTML', 'createContextualFragment']);
+const dangerousMimeTypes = new Set(['text/html', 'application/xhtml+xml', 'image/svg+xml']);
+const stringTimerNames = new Set(['setTimeout', 'setInterval']);
+const evalLikeNames = new Set(['eval', 'Function']);
 
 export const rule = {
   meta: {
@@ -159,83 +159,83 @@ export const rule = {
   },
   create(context) {
     if (isAllowedExceptionFile({ filePath: context.filename ?? context.getFilename?.() ?? '' })) {
-      return {}
+      return {};
     }
 
     return {
       AssignmentExpression(node) {
-        const left = node.left
+        const left = node.left;
         if (left.type === 'MemberExpression' && htmlAssignmentProperties.has(getStaticPropertyName(left))) {
-          context.report({ node, messageId: 'noHtmlSink' })
+          context.report({ node, messageId: 'noHtmlSink' });
         }
       },
       CallExpression(node) {
         if (isDocumentMemberCall(node, 'write') || isDocumentMemberCall(node, 'writeln')) {
-          context.report({ node, messageId: 'noDocumentWrite' })
-          return
+          context.report({ node, messageId: 'noDocumentWrite' });
+          return;
         }
 
         if (isGlobalOrMemberCall(node, evalLikeNames)) {
-          context.report({ node, messageId: 'noEvalLike' })
-          return
+          context.report({ node, messageId: 'noEvalLike' });
+          return;
         }
 
         if (isGlobalOrMemberCall(node, stringTimerNames) && node.arguments[0]?.type === 'Literal' && typeof node.arguments[0].value === 'string') {
-          context.report({ node, messageId: 'noStringTimer' })
-          return
+          context.report({ node, messageId: 'noStringTimer' });
+          return;
         }
 
         if (isDocumentMemberCall(node, 'createElement') && isLiteralString(node.arguments[0], 'script')) {
-          context.report({ node, messageId: 'noScriptElement' })
-          return
+          context.report({ node, messageId: 'noScriptElement' });
+          return;
         }
 
         if (node.callee?.type === 'Identifier' && node.callee.name === 'importScripts') {
-          context.report({ node, messageId: 'noScriptLikeWorker' })
-          return
+          context.report({ node, messageId: 'noScriptLikeWorker' });
+          return;
         }
 
         if (isServiceWorkerRegisterCall(node)) {
-          context.report({ node, messageId: 'noScriptLikeWorker' })
-          return
+          context.report({ node, messageId: 'noScriptLikeWorker' });
+          return;
         }
 
         if (node.callee?.type === 'MemberExpression') {
-          const propertyName = getStaticPropertyName(node.callee)
+          const propertyName = getStaticPropertyName(node.callee);
           if (htmlCallProperties.has(propertyName)) {
-            context.report({ node, messageId: 'noHtmlSink' })
-            return
+            context.report({ node, messageId: 'noHtmlSink' });
+            return;
           }
 
           if (propertyName === 'setAttribute') {
             if (isLiteralStringStartingWith(node.arguments[0], 'on')) {
-              context.report({ node, messageId: 'noEventAttribute' })
-              return
+              context.report({ node, messageId: 'noEventAttribute' });
+              return;
             }
             if (isLiteralString(node.arguments[0], 'srcdoc')) {
-              context.report({ node, messageId: 'noHtmlSink' })
-              return
+              context.report({ node, messageId: 'noHtmlSink' });
+              return;
             }
           }
 
           if (propertyName === 'parseFromString' && node.arguments[1]?.type === 'Literal' && typeof node.arguments[1].value === 'string' && dangerousMimeTypes.has(node.arguments[1].value.toLowerCase())) {
-            context.report({ node, messageId: 'noHtmlSink' })
+            context.report({ node, messageId: 'noHtmlSink' });
           }
         }
       },
       NewExpression(node) {
         if (isFunctionConstructor(node)) {
-          context.report({ node, messageId: 'noEvalLike' })
-          return
+          context.report({ node, messageId: 'noEvalLike' });
+          return;
         }
 
         if (isWorkerConstructor(node) && !isStaticViteWorkerUrl(node.arguments[0])) {
-          context.report({ node, messageId: 'noScriptLikeWorker' })
+          context.report({ node, messageId: 'noScriptLikeWorker' });
         }
       },
-    }
+    };
   },
-}
+};
 
 export default {
   files: ['src/**/*.ts', 'src/**/*.vue'],
@@ -250,4 +250,4 @@ export default {
   rules: {
     'local-rules-xss-prone-browser-apis/no-xss-prone-browser-apis': 'error',
   },
-}
+};

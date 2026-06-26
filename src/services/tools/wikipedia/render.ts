@@ -3,7 +3,7 @@ import type { WikipediaPageResult, WikipediaSearchGroup } from './types';
 export function renderWikipediaSearchMarkdown({
   groups,
 }: {
-  groups: WikipediaSearchGroup[];
+  groups: WikipediaSearchGroup[],
 }): string {
   const lines = ['lang\tpageId\ttitle'];
 
@@ -19,7 +19,7 @@ export function renderWikipediaSearchMarkdown({
 function sanitizeWikipediaSearchTsvField({
   value,
 }: {
-  value: string;
+  value: string,
 }): string {
   return value.replace(/[\t\r\n]+/g, ' ');
 }
@@ -27,7 +27,7 @@ function sanitizeWikipediaSearchTsvField({
 export function renderWikipediaPageMarkdown({
   page,
 }: {
-  page: WikipediaPageResult;
+  page: WikipediaPageResult,
 }): string {
   switch (page.kind) {
   case 'inline':
@@ -38,7 +38,7 @@ title: ${page.title}
 
 BEGIN CONTENT
 ${page.content}
-END CONTENT`
+END CONTENT`;
   case 'binary_object':
     return `\
 lang: ${page.lang}
@@ -53,10 +53,10 @@ bytes: ${page.byteLength}
 
 Command hints for reducing context:
 grep -nF -C 20 'keyword' <path>
-awk 'NR>80{exit}{print NR":"$0}' <path>`
+awk 'NR>80{exit}{print NR":"$0}' <path>`;
   default: {
-    const neverPage: never = page
-    throw new Error(`Unhandled Wikipedia page result: ${String(neverPage)}`)
+    const neverPage: never = page;
+    throw new Error(`Unhandled Wikipedia page result: ${String(neverPage)}`);
   }
   }
 }

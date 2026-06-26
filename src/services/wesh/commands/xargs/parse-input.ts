@@ -3,10 +3,10 @@ function finalizeToken({
   current,
   tokenStarted,
 }: {
-  tokens: string[];
-  current: string;
-  tokenStarted: boolean;
-}): { current: string; tokenStarted: boolean } {
+  tokens: string[],
+  current: string,
+  tokenStarted: boolean,
+}): { current: string, tokenStarted: boolean } {
   if (tokenStarted) {
     tokens.push(current);
   }
@@ -20,8 +20,8 @@ function finalizeToken({
 export function parseXargsStandardInput({
   text,
 }: {
-  text: string;
-}): { ok: true; items: string[] } | { ok: false; message: string } {
+  text: string,
+}): { ok: true, items: string[] } | { ok: false, message: string } {
   const items: string[] = [];
   let current = '';
   let tokenStarted = false;
@@ -101,8 +101,8 @@ export function parseXargsStandardInput({
 export function parseXargsNullDelimitedInput({
   text,
 }: {
-  text: string;
-}): { ok: true; items: string[] } {
+  text: string,
+}): { ok: true, items: string[] } {
   const items = text.split('\0');
   if (text.endsWith('\0')) {
     items.pop();
@@ -116,7 +116,7 @@ export function parseXargsNullDelimitedInput({
 function parseEscapedChar({
   char,
 }: {
-  char: string;
+  char: string,
 }): string {
   switch (char) {
   case 'n':
@@ -138,9 +138,9 @@ function parseNumericEscape({
   value,
   base,
 }: {
-  value: string;
-  base: 8 | 16;
-}): { ok: true; delimiter: string } | { ok: false; message: string } {
+  value: string,
+  base: 8 | 16,
+}): { ok: true, delimiter: string } | { ok: false, message: string } {
   const parsed = Number.parseInt(value, base);
   if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
     return { ok: false, message: `invalid delimiter value '\\${base === 8 ? value : `x${value}`}'` };
@@ -151,8 +151,8 @@ function parseNumericEscape({
 export function parseXargsDelimiter({
   value,
 }: {
-  value: string;
-}): { ok: true; delimiter: string } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, delimiter: string } | { ok: false, message: string } {
   if (value.length === 0) {
     return { ok: false, message: "invalid delimiter value ''" };
   }
@@ -194,9 +194,9 @@ export function parseXargsDelimitedInput({
   text,
   delimiter,
 }: {
-  text: string;
-  delimiter: string;
-}): { ok: true; items: string[] } {
+  text: string,
+  delimiter: string,
+}): { ok: true, items: string[] } {
   const items = text.split(delimiter);
   if (text.endsWith(delimiter)) {
     items.pop();
@@ -210,8 +210,8 @@ export function parseXargsDelimitedInput({
 export function parseXargsLineInput({
   text,
 }: {
-  text: string;
-}): { ok: true; lines: string[][] } | { ok: false; message: string } {
+  text: string,
+}): { ok: true, lines: string[][] } | { ok: false, message: string } {
   const lines: string[][] = [];
   const rawLines = text.split('\n');
   let continuedLine = '';
@@ -250,8 +250,8 @@ export function parseXargsLineInput({
 export function parseXargsInsertInput({
   text,
 }: {
-  text: string;
-}): { ok: true; items: string[] } | { ok: false; message: string } {
+  text: string,
+}): { ok: true, items: string[] } | { ok: false, message: string } {
   const lines = text.split('\n');
   const items: string[] = [];
 

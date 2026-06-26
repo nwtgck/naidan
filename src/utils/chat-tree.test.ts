@@ -8,7 +8,7 @@ describe('chat-tree utils', () => {
       const messages: HistoryItem[] = [
         { role: 'user', content: 'Hello' },
         { role: 'assistant', content: 'Hi there!', modelId: 'gpt-4' },
-        { role: 'user', content: 'How are you?' }
+        { role: 'user', content: 'How are you?' },
       ];
 
       const nodes = createBranchFromMessages({ messages });
@@ -45,7 +45,7 @@ describe('chat-tree utils', () => {
           role: 'assistant',
           content: 'I thought about it.',
           thinking: 'Inner thoughts',
-        }
+        },
       ];
 
       const nodes = createBranchFromMessages({ messages });
@@ -57,8 +57,8 @@ describe('chat-tree utils', () => {
         {
           role: 'user',
           content: 'Here is an image.',
-          attachments: [{ id: toAttachmentId({ raw: '1' }), binaryObjectId: toBinaryObjectId({ raw: '1' }), status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }]
-        }
+          attachments: [{ id: toAttachmentId({ raw: '1' }), binaryObjectId: toBinaryObjectId({ raw: '1' }), status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }],
+        },
       ];
 
       const nodes = createBranchFromMessages({ messages });

@@ -69,14 +69,14 @@ describe('Wesh Shell', () => {
     wesh.registerCommand({
       definition: {
         meta: { name: 'true', description: 'Success', usage: 'true' },
-        fn: async () => ({ exitCode: 0 })
-      }
+        fn: async () => ({ exitCode: 0 }),
+      },
     });
     wesh.registerCommand({
       definition: {
         meta: { name: 'false', description: 'Fail', usage: 'false' },
-        fn: async () => ({ exitCode: 1 })
-      }
+        fn: async () => ({ exitCode: 1 }),
+      },
     });
   });
 
@@ -1461,7 +1461,7 @@ echo "$PIPE_VALUE"`,
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
-    const seenProcesses: Array<{ pid: number; pgid: number }> = [];
+    const seenProcesses: Array<{ pid: number, pgid: number }> = [];
 
     wesh.registerCommand({
       definition: {

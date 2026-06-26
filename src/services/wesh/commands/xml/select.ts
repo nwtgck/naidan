@@ -9,16 +9,16 @@ import {
 import type { WeshCommandContext, WeshCommandResult } from '@/services/wesh/types';
 
 type XmlSelectTemplateAction =
-  | { kind: 'value'; expression: string }
-  | { kind: 'copy'; expression: string }
+  | { kind: 'value', expression: string }
+  | { kind: 'copy', expression: string }
   | { kind: 'newline' };
 
 export async function runXmlSelect({
   context,
   args,
 }: {
-  context: WeshCommandContext;
-  args: string[];
+  context: WeshCommandContext,
+  args: string[],
 }): Promise<WeshCommandResult> {
   const actions: XmlSelectTemplateAction[] = [];
   const inputs: string[] = [];

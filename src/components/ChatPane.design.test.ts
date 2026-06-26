@@ -72,7 +72,7 @@ describe('ChatPane Design Specifications', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       }))),
       isThinkingActive: vi.fn(() => false),
       isWaitingResponse: vi.fn(() => false),
@@ -86,8 +86,8 @@ describe('ChatPane Design Specifications', () => {
     global,
     targetMessageId,
   }: {
-    global?: Record<string, unknown>;
-    targetMessageId?: MessageId;
+    global?: Record<string, unknown>,
+    targetMessageId?: MessageId,
   } = {}) {
     return mount(ChatPane, {
       props: {

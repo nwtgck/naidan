@@ -60,7 +60,7 @@ export const rule = {
               }
               
               return fixer.insertTextBeforeRange([0, 0], newScriptSetup);
-            }
+            },
           });
         } else {
           const arg = defineExposeNode.arguments[0];
@@ -75,7 +75,7 @@ export const rule = {
                   return fixer.insertTextAfter(openingParen, text);
                 }
                 return fixer.replaceText(arg, text);
-              }
+              },
             });
             return;
           }
@@ -83,7 +83,7 @@ export const rule = {
           const hasTestOnly = arg.properties.some(prop => 
             (prop.type === 'Property' || prop.type === 'MethodDefinition') &&
             ((prop.key.type === 'Identifier' && prop.key.name === 'TEST_ONLY') ||
-             (prop.key.type === 'Literal' && prop.key.value === 'TEST_ONLY'))
+             (prop.key.type === 'Literal' && prop.key.value === 'TEST_ONLY')),
           );
 
           if (!hasTestOnly) {
@@ -116,13 +116,13 @@ export const rule = {
                   
                   return fixer.replaceText(arg, `{\n${innerIndent}TEST_ONLY: {\n${innerIndent}  ${indentedComment}\n${innerIndent}},\n${indent}}`);
                 }
-              }
+              },
             });
           }
         }
-      }
+      },
     };
-  }
+  },
 };
 
 export default {
@@ -130,11 +130,11 @@ export default {
   plugins: {
     'local-rules-define-expose': {
       rules: {
-        'require-define-expose-test-only': rule
-      }
-    }
+        'require-define-expose-test-only': rule,
+      },
+    },
   },
   rules: {
-    'local-rules-define-expose/require-define-expose-test-only': 'error'
-  }
+    'local-rules-define-expose/require-define-expose-test-only': 'error',
+  },
 };

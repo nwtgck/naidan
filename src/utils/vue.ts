@@ -1,7 +1,7 @@
 import { defineAsyncComponent, onMounted, type Component, type ComponentPublicInstance } from 'vue';
 
 type AsyncComponentResolveResult<T = Component> = T | {
-    default: T;
+    default: T,
 };
 export type AsyncComponentLoader<T = Component> = () => Promise<AsyncComponentResolveResult<T>>;
 
@@ -12,7 +12,7 @@ export type AsyncComponentLoader<T = Component> = () => Promise<AsyncComponentRe
  * Note: Must be called within <script setup> or setup() as it uses onMounted.
  */
 export function defineAsyncComponentAndLoadOnMounted<T extends Component = {
-    new (): ComponentPublicInstance;
+    new (): ComponentPublicInstance,
 }>({ loader }: { loader: AsyncComponentLoader<T> }) {
   const Comp = defineAsyncComponent(loader);
 

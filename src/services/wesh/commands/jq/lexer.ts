@@ -3,7 +3,7 @@ import type { JqStringTokenPart, JqToken } from './ast';
 function isIdentifierStart({
   char,
 }: {
-  char: string;
+  char: string,
 }): boolean {
   return /[A-Za-z_]/.test(char);
 }
@@ -11,7 +11,7 @@ function isIdentifierStart({
 function isIdentifierPart({
   char,
 }: {
-  char: string;
+  char: string,
 }): boolean {
   return /[A-Za-z0-9_]/.test(char);
 }
@@ -20,8 +20,8 @@ function appendTextPart({
   parts,
   value,
 }: {
-  parts: JqStringTokenPart[];
-  value: string;
+  parts: JqStringTokenPart[],
+  value: string,
 }): void {
   if (value.length === 0) return;
   const previous = parts.at(-1);
@@ -45,9 +45,9 @@ function decodeUnicodeEscape({
   source,
   index,
 }: {
-  source: string;
-  index: number;
-}): { ok: true; value: string; nextIndex: number } | { ok: false; message: string } {
+  source: string,
+  index: number,
+}): { ok: true, value: string, nextIndex: number } | { ok: false, message: string } {
   const digits = source.slice(index, index + 4);
   if (!/^[0-9a-fA-F]{4}$/.test(digits)) {
     return { ok: false, message: 'invalid unicode escape' };
@@ -80,7 +80,7 @@ function decodeUnicodeEscape({
 function decodeSimpleEscape({
   char,
 }: {
-  char: string;
+  char: string,
 }): string | undefined {
   switch (char) {
   case '"':
@@ -108,9 +108,9 @@ function scanInterpolation({
   source,
   start,
 }: {
-  source: string;
-  start: number;
-}): { ok: true; body: string; nextIndex: number } | { ok: false; message: string } {
+  source: string,
+  start: number,
+}): { ok: true, body: string, nextIndex: number } | { ok: false, message: string } {
   let index = start;
   let depth = 1;
   let inString = false;
@@ -169,9 +169,9 @@ function scanString({
   source,
   start,
 }: {
-  source: string;
-  start: number;
-}): { ok: true; parts: JqStringTokenPart[]; nextIndex: number } | { ok: false; message: string } {
+  source: string,
+  start: number,
+}): { ok: true, parts: JqStringTokenPart[], nextIndex: number } | { ok: false, message: string } {
   const parts: JqStringTokenPart[] = [];
   let text = '';
   let index = start + 1;
@@ -228,8 +228,8 @@ function scanString({
 export function lexJq({
   source,
 }: {
-  source: string;
-}): { ok: true; tokens: JqToken[] } | { ok: false; message: string } {
+  source: string,
+}): { ok: true, tokens: JqToken[] } | { ok: false, message: string } {
   const tokens: JqToken[] = [];
   let index = 0;
 

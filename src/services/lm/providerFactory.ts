@@ -7,10 +7,10 @@ import type { LmProvider } from '@/services/lm/types';
 import { TransformersJsProvider } from '@/services/transformers-js/provider';
 
 export function createLmProvider({ endpointType, endpointUrl, endpointHttpHeaders, fakeLmDebugModeStatus }: {
-  endpointType: EndpointType;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
-  fakeLmDebugModeStatus: FakeLmDebugModeStatus;
+  endpointType: EndpointType,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
+  fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): LmProvider {
   const headers = cloneEndpointHttpHeaders({ headers: endpointHttpHeaders });
 
@@ -37,9 +37,9 @@ export function createLmProvider({ endpointType, endpointUrl, endpointHttpHeader
 }
 
 export function createOllamaProvider({ endpointUrl, endpointHttpHeaders, fakeLmDebugModeStatus }: {
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
-  fakeLmDebugModeStatus: FakeLmDebugModeStatus;
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
+  fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): OllamaProvider {
   return new OllamaProvider({
     endpoint: endpointUrl ?? '',
@@ -49,8 +49,8 @@ export function createOllamaProvider({ endpointUrl, endpointHttpHeaders, fakeLmD
 }
 
 export function createLmFetch({ endpointUrl, fakeLmDebugModeStatus }: {
-  endpointUrl: string | undefined;
-  fakeLmDebugModeStatus: FakeLmDebugModeStatus;
+  endpointUrl: string | undefined,
+  fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): LmFetch {
   const fakeLmFetch = createFakeLmFetchForEndpoint({
     endpointUrl,
@@ -65,7 +65,7 @@ export function createLmFetch({ endpointUrl, fakeLmDebugModeStatus }: {
 }
 
 export function cloneEndpointHttpHeaders({ headers }: {
-  headers: [string, string][] | undefined;
+  headers: [string, string][] | undefined,
 }): [string, string][] | undefined {
   return headers === undefined
     ? undefined

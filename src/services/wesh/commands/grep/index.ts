@@ -8,15 +8,15 @@ import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 import { iterateUtf8Lines } from '@/services/wesh/utils/text-records';
 
 interface GrepFileReport {
-  matched: boolean;
-  selectedLineCount: number;
-  outputLines: string[];
+  matched: boolean,
+  selectedLineCount: number,
+  outputLines: string[],
 }
 
 type GrepOutputMode = 'lines' | 'count' | 'files-with-matches' | 'files-without-match' | 'only-matching';
 type GrepPatternSyntax = 'basic' | 'extended' | 'perl' | 'fixed';
 
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   if (path.startsWith('/')) {
     return path;
   }
@@ -27,7 +27,7 @@ function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
 function asDirectoryEntryRef({
   entry,
 }: {
-  entry: WeshEntryRef;
+  entry: WeshEntryRef,
 }): WeshEntryRef<'directory'> {
   switch (entry.type) {
   case 'directory':
@@ -140,7 +140,7 @@ function convertBREPattern({ pattern }: { pattern: string }): string {
 function resolveGrepPatternSyntax({
   occurrences,
 }: {
-  occurrences: ArgvOptionOccurrence[];
+  occurrences: ArgvOptionOccurrence[],
 }): GrepPatternSyntax {
   let syntax: GrepPatternSyntax = 'basic';
 
@@ -188,12 +188,12 @@ function buildGrepRegex({
   exactLine,
   global,
 }: {
-  patterns: string[];
-  syntax: GrepPatternSyntax;
-  wordRegexp: boolean;
-  ignoreCase: boolean;
-  exactLine: boolean;
-  global: boolean;
+  patterns: string[],
+  syntax: GrepPatternSyntax,
+  wordRegexp: boolean,
+  ignoreCase: boolean,
+  exactLine: boolean,
+  global: boolean,
 }): RegExp {
   const source = patterns
     .map((pattern) => {
@@ -223,8 +223,8 @@ async function readPatternFile({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<string[]> {
   const fullPath = resolvePath({ cwd: context.cwd, path });
   const bytes = await readAllFileBytes({ files: context.files, path: fullPath });
@@ -237,9 +237,9 @@ async function openGrepInputStream({
   file,
   entry,
 }: {
-  context: WeshCommandContext;
-  file: string;
-  entry?: WeshEntryRef;
+  context: WeshCommandContext,
+  file: string,
+  entry?: WeshEntryRef,
 }): Promise<ReadableStream<Uint8Array>> {
   if (file === '-') {
     return new ReadableStream<Uint8Array>({
@@ -279,9 +279,9 @@ async function* iterateGrepInputChunks({
   binaryWithoutMatch,
   state,
 }: {
-  stream: ReadableStream<Uint8Array>;
-  binaryWithoutMatch: boolean;
-  state: { skippedBinary: boolean };
+  stream: ReadableStream<Uint8Array>,
+  binaryWithoutMatch: boolean,
+  state: { skippedBinary: boolean },
 }): AsyncIterable<Uint8Array> {
   const reader = stream.getReader();
   let reachedEnd = false;
@@ -520,9 +520,9 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     };
 
     interface ContextLine {
-      line: string;
-      lineNumber: number;
-      selected: boolean;
+      line: string,
+      lineNumber: number,
+      selected: boolean,
     }
 
     class ContextLineRing {
@@ -567,10 +567,10 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       selected,
       name,
     }: {
-      line: string;
-      lineNumber: number;
-      selected: boolean;
-      name?: string;
+      line: string,
+      lineNumber: number,
+      selected: boolean,
+      name?: string,
     }): Promise<void> => {
       const separator = selected ? ':' : '-';
       let output = '';
@@ -584,8 +584,8 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       stream,
       name,
     }: {
-      stream: ReadableStream<Uint8Array>;
-      name?: string;
+      stream: ReadableStream<Uint8Array>,
+      name?: string,
     }): Promise<GrepFileReport> => {
       const state = {
         matched: false,
@@ -602,7 +602,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       const writeContextGroupSeparatorIfNeeded = async ({
         firstLineNumber,
       }: {
-        firstLineNumber: number;
+        firstLineNumber: number,
       }): Promise<void> => {
         if (
           (before > 0 || after > 0)
@@ -763,9 +763,9 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       file,
       displayName,
     }: {
-      entry?: WeshEntryRef;
-      file: string;
-      displayName: string;
+      entry?: WeshEntryRef,
+      file: string,
+      displayName: string,
     }): Promise<boolean> => {
       const stream = await openGrepInputStream({
         context,
@@ -786,8 +786,8 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       entry,
       displayName,
     }: {
-      entry: WeshEntryRef;
-      displayName: string;
+      entry: WeshEntryRef,
+      displayName: string,
     }): Promise<boolean> => {
       switch (entry.type) {
       case 'directory':

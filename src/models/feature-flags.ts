@@ -25,7 +25,7 @@ export type FeatureFlagName = keyof FeatureFlags;
 export const FEATURE_FLAGS_STORAGE_KEY = `${STORAGE_KEY_PREFIX}feature_flags`;
 
 export function createDefaultFeatureFlag<TFeature extends FeatureFlagName>({ feature }: {
-  feature: TFeature;
+  feature: TFeature,
 }): FeatureFlags[TFeature] {
   // Keep each feature explicit so this file remains the template for future flags,
   // even when current experimental features ship enabled by default.
@@ -57,8 +57,8 @@ export function createDefaultFeatureFlags(): FeatureFlags {
 }
 
 export function parseFeatureFlag<TFeature extends FeatureFlagName>({ feature, value }: {
-  feature: TFeature;
-  value: unknown;
+  feature: TFeature,
+  value: unknown,
 }): FeatureFlags[TFeature] {
   switch (feature) {
   case 'volume': {

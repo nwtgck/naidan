@@ -33,7 +33,7 @@ const mockSettings = {
     defaultModelId: 'gpt-4',
     lmParameters: {},
     providerProfiles: [],
-  }
+  },
 };
 
 vi.mock('./useSettings', () => ({

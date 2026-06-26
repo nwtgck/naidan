@@ -5,7 +5,7 @@ import type { BinaryObject } from '@/models/types';
 import {
   SearchIcon, ArrowUpIcon, ArrowDownIcon, DownloadIcon,
   EyeIcon, HardDriveIcon,
-  Trash2Icon, RefreshCwIcon, LayoutGridIcon, ListIcon, FileIcon
+  Trash2Icon, RefreshCwIcon, LayoutGridIcon, ListIcon, FileIcon,
 } from 'lucide-vue-next';
 import { Semaphore } from '@/utils/concurrency';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -70,7 +70,7 @@ const filteredObjects = computed(() => {
     result = result.filter(f =>
       (f.name || 'unnamed').toLowerCase().includes(q) ||
       idToRaw({ id: f.id }).toLowerCase().includes(q) ||
-      f.mimeType.toLowerCase().includes(q)
+      f.mimeType.toLowerCase().includes(q),
     );
   }
 
@@ -192,7 +192,7 @@ const thumbnailLoading = ref(new Set<BinaryObjectId>());
 const visibleIds = new Set<string>(); // Not reactive for performance
 const thumbnailCount = ref(0);
 
-const createThumbnailUrl = ({ blob, size = 120 }: { blob: Blob; size?: number }): Promise<string> => {
+const createThumbnailUrl = ({ blob, size = 120 }: { blob: Blob, size?: number }): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
@@ -345,7 +345,7 @@ onUnmounted(() => {
   thumbnails.value.forEach(url => URL.revokeObjectURL(url));
 });
 
-const registerObserver = ({ el, id }: { el: HTMLElement | null; id: string }) => {
+const registerObserver = ({ el, id }: { el: HTMLElement | null, id: string }) => {
   if (el && itemObserver && !observedElements.has(el)) {
     el.dataset.id = id;
     itemObserver.observe(el);

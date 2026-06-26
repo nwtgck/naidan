@@ -20,8 +20,8 @@ describe('AboutTab GitHub Link', () => {
           ShieldCheckIcon: true,
           DownloadIcon: true,
           Loader2Icon: true,
-        }
-      }
+        },
+      },
     });
 
     const githubLink = wrapper.find('a[href*="github.com/nwtgck/naidan"]');

@@ -3,48 +3,48 @@ import type { ContextCompactProgress } from '@/services/context-compact';
 import type { ChatId } from '@/models/ids';
 
 export type ContextCompactRuntime = {
-  activeContextCompactions: Map<ChatId, AbortController>;
+  activeContextCompactions: Map<ChatId, AbortController>,
 
   setActiveContextCompaction({
     chatId,
     controller,
   }: {
-    chatId: ChatId;
-    controller: AbortController;
-  }): void;
+    chatId: ChatId,
+    controller: AbortController,
+  }): void,
 
   getActiveContextCompaction({
     chatId,
   }: {
-    chatId: ChatId;
-  }): AbortController | undefined;
+    chatId: ChatId,
+  }): AbortController | undefined,
 
   clearActiveContextCompaction({
     chatId,
     controller,
   }: {
-    chatId: ChatId;
-    controller: AbortController | undefined;
-  }): void;
+    chatId: ChatId,
+    controller: AbortController | undefined,
+  }): void,
 
   setProgress({
     chatId,
     progress,
   }: {
-    chatId: ChatId;
-    progress: ContextCompactProgress;
-  }): void;
+    chatId: ChatId,
+    progress: ContextCompactProgress,
+  }): void,
 
   getProgress({
     chatId,
   }: {
-    chatId: ChatId | undefined;
-  }): ContextCompactProgress;
+    chatId: ChatId | undefined,
+  }): ContextCompactProgress,
 
   TEST_ONLY: {
-    compactProgressByChat: Map<ChatId, ContextCompactProgress>;
-    compactProgressResetTimers: Map<ChatId, ReturnType<typeof globalThis.setTimeout>>;
-  };
+    compactProgressByChat: Map<ChatId, ContextCompactProgress>,
+    compactProgressResetTimers: Map<ChatId, ReturnType<typeof globalThis.setTimeout>>,
+  },
 };
 
 export function createContextCompactRuntime(): ContextCompactRuntime {
@@ -55,7 +55,7 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
   function clearProgressResetTimer({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     const existingTimer = compactProgressResetTimers.get(chatId);
     if (existingTimer === undefined) return;
@@ -67,8 +67,8 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
     chatId,
     progress,
   }: {
-    chatId: ChatId;
-    progress: ContextCompactProgress;
+    chatId: ChatId,
+    progress: ContextCompactProgress,
   }) {
     clearProgressResetTimer({ chatId });
     compactProgressByChat.set(chatId, progress);
@@ -103,7 +103,7 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
   function getProgress({
     chatId,
   }: {
-    chatId: ChatId | undefined;
+    chatId: ChatId | undefined,
   }): ContextCompactProgress {
     if (chatId === undefined) {
       return { phase: 'idle' };
@@ -116,8 +116,8 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
     chatId,
     controller,
   }: {
-    chatId: ChatId;
-    controller: AbortController;
+    chatId: ChatId,
+    controller: AbortController,
   }) {
     activeContextCompactions.set(chatId, controller);
   }
@@ -125,7 +125,7 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
   function getActiveContextCompaction({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     return activeContextCompactions.get(chatId);
   }
@@ -134,8 +134,8 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
     chatId,
     controller,
   }: {
-    chatId: ChatId;
-    controller: AbortController | undefined;
+    chatId: ChatId,
+    controller: AbortController | undefined,
   }) {
     if (controller === undefined) {
       activeContextCompactions.delete(chatId);

@@ -5,7 +5,7 @@ import { openHandleReadStream, writeAllStreamToFile } from '@/services/wesh/util
 
 type CpSymlinkMode = 'physical' | 'logical' | 'command-line';
 
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   if (path.startsWith('/')) {
     return path;
   }
@@ -21,7 +21,7 @@ function basename({ path }: { path: string }): string {
 function asDirectoryEntryRef({
   entry,
 }: {
-  entry: WeshEntryRef;
+  entry: WeshEntryRef,
 }): WeshEntryRef<'directory'> {
   switch (entry.type) {
   case 'directory':
@@ -163,8 +163,8 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       path,
       isCommandLineArgument,
     }: {
-      path: string;
-      isCommandLineArgument: boolean;
+      path: string,
+      isCommandLineArgument: boolean,
     }): Promise<WeshEntryRef> => {
       const finalSymlinkTreatment = (() => {
         switch (symlinkMode) {
@@ -187,8 +187,8 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       entry,
       destPath,
     }: {
-      entry: WeshEntryRef;
-      destPath: string;
+      entry: WeshEntryRef,
+      destPath: string,
     }): Promise<void> => {
       const handle = await context.files.openEntry({
         entry,
@@ -210,7 +210,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
     const removeExistingTargetIfNeeded = async ({
       destPath,
     }: {
-      destPath: string;
+      destPath: string,
     }): Promise<'removed' | 'skipped' | 'missing'> => {
       try {
         const existing = await context.files.lstat({ path: destPath });
@@ -259,10 +259,10 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       destPath,
       isCommandLineArgument,
     }: {
-      srcPath: string;
-      sourceEntry: WeshEntryRef | undefined;
-      destPath: string;
-      isCommandLineArgument: boolean;
+      srcPath: string,
+      sourceEntry: WeshEntryRef | undefined,
+      destPath: string,
+      isCommandLineArgument: boolean,
     }): Promise<void> => {
       const entry = sourceEntry ?? await resolveSourceEntry({
         path: srcPath,
@@ -332,9 +332,9 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       destPath,
       treatDestAsDirectory,
     }: {
-      srcPath: string;
-      destPath: string;
-      treatDestAsDirectory: boolean;
+      srcPath: string,
+      destPath: string,
+      treatDestAsDirectory: boolean,
     }) => {
       if (treatDestAsDirectory) {
         return `${destPath}/${basename({ path: srcPath })}`;

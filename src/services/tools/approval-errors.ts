@@ -4,11 +4,11 @@ import type { ToolExecutionErrorCode } from './types';
 export function createApprovalDeniedToolError({
   action,
 }: {
-  action: ApprovalAction;
+  action: ApprovalAction,
 }): {
-  status: 'error';
-  code: ToolExecutionErrorCode;
-  message: string;
+  status: 'error',
+  code: ToolExecutionErrorCode,
+  message: string,
 } {
   return {
     status: 'error',
@@ -20,11 +20,11 @@ export function createApprovalDeniedToolError({
 export function createMissingApprovalContextToolError({
   action,
 }: {
-  action: ApprovalAction;
+  action: ApprovalAction,
 }): {
-  status: 'error';
-  code: ToolExecutionErrorCode;
-  message: string;
+  status: 'error',
+  code: ToolExecutionErrorCode,
+  message: string,
 } {
   return {
     status: 'error',

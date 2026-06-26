@@ -12,30 +12,30 @@ import {
 } from '@/composables/chat/chat-model-fetch';
 
 type FetchAvailableModelsCustomEndpoint = {
-  type: EndpointType;
-  url: string;
-  headers: [string, string][] | undefined;
+  type: EndpointType,
+  url: string,
+  headers: [string, string][] | undefined,
 };
 
 export type ChatModelsAdapter = {
-  availableModels: Ref<string[]>;
-  fetchingModels: ComputedRef<boolean>;
+  availableModels: Ref<string[]>,
+  fetchingModels: ComputedRef<boolean>,
 
   fetchForChat({
     chatId,
   }: {
-    chatId: ChatId;
-  }): Promise<string[]>;
+    chatId: ChatId,
+  }): Promise<string[]>,
 
-  fetchForGlobalEndpoint(): Promise<string[]>;
+  fetchForGlobalEndpoint(): Promise<string[]>,
 
   fetchForEndpoint({
     customEndpoint,
   }: {
-    customEndpoint: FetchAvailableModelsCustomEndpoint;
-  }): Promise<string[]>;
+    customEndpoint: FetchAvailableModelsCustomEndpoint,
+  }): Promise<string[]>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatModels(): ChatModelsAdapter {
@@ -44,7 +44,7 @@ export function useChatModels(): ChatModelsAdapter {
   async function fetchForChat({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }): Promise<string[]> {
     return await fetchModelsForChat({
       chatId,
@@ -61,7 +61,7 @@ export function useChatModels(): ChatModelsAdapter {
   async function fetchForEndpoint({
     customEndpoint,
   }: {
-    customEndpoint: FetchAvailableModelsCustomEndpoint;
+    customEndpoint: FetchAvailableModelsCustomEndpoint,
   }): Promise<string[]> {
     return await fetchModelsForEndpoint({
       endpointType: customEndpoint.type,

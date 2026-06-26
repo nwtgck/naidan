@@ -3,7 +3,7 @@ import type { StorageType } from '@/models/types';
 export function shouldIncludeWritableTmpMount({
   storageType,
 }: {
-  storageType: StorageType;
+  storageType: StorageType,
 }): boolean {
   switch (storageType) {
   case 'opfs':

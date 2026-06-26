@@ -28,6 +28,7 @@ import {
   abortProcessingForChat,
 } from '@/composables/chat/chat-scoped/chat-processing-abort';
 import type { ChatId, ChatGroupId, MessageId } from '@/models/ids';
+import { cloneToolConfigs } from '@/services/tools/tool-config';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
@@ -36,8 +37,8 @@ export async function forkChatForChat({
   chatId,
   messageId,
 }: {
-  chatId: ChatId;
-  messageId: MessageId;
+  chatId: ChatId,
+  messageId: MessageId,
 }): Promise<ChatId | null> {
   return await forkChatFromTarget({
     targetChat: getLiveChatById({ chatId }),
@@ -51,10 +52,10 @@ export async function editMessageForChat({
   newContent,
   lmParameters,
 }: {
-  chatId: ChatId;
-  messageId: MessageId;
-  newContent: string;
-  lmParameters: LmParameters | undefined;
+  chatId: ChatId,
+  messageId: MessageId,
+  newContent: string,
+  lmParameters: LmParameters | undefined,
 }): Promise<void> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -72,8 +73,8 @@ export async function switchVersionForChat({
   chatId,
   messageId,
 }: {
-  chatId: ChatId;
-  messageId: MessageId;
+  chatId: ChatId,
+  messageId: MessageId,
 }): Promise<void> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -90,9 +91,9 @@ export async function commitFullHistoryManipulationForChat({
   messages,
   systemPrompt,
 }: {
-  chatId: ChatId;
-  messages: HistoryItem[];
-  systemPrompt: SystemPrompt | undefined;
+  chatId: ChatId,
+  messages: HistoryItem[],
+  systemPrompt: SystemPrompt | undefined,
 }): Promise<void> {
   const target = getLiveChatById({ chatId });
   if (target === null) {
@@ -163,8 +164,8 @@ async function forkChatFromTarget({
   targetChat,
   messageId,
 }: {
-  targetChat: Chat | Readonly<Chat> | null;
-  messageId: MessageId;
+  targetChat: Chat | Readonly<Chat> | null,
+  messageId: MessageId,
 }): Promise<ChatId | null> {
   if (targetChat === null) {
     return null;
@@ -258,6 +259,7 @@ async function forkChatFromTarget({
     createdAt: Date.now(),
     updatedAt: Date.now(),
     modelId: mutableChat.modelId,
+    toolConfigs: cloneToolConfigs({ toolConfigs: mutableChat.toolConfigs }),
   });
 
   registerLiveInstance({ chat: newChat });
@@ -287,10 +289,10 @@ async function editMessageInTarget({
   newContent,
   lmParameters,
 }: {
-  targetChat: Chat | Readonly<Chat>;
-  messageId: MessageId;
-  newContent: string;
-  lmParameters: LmParameters | undefined;
+  targetChat: Chat | Readonly<Chat>,
+  messageId: MessageId,
+  newContent: string,
+  lmParameters: LmParameters | undefined,
 }): Promise<void> {
   if (isProcessing({ chatId: targetChat.id })) {
     abortProcessingForChat({
@@ -369,8 +371,8 @@ async function switchVersionInTarget({
   targetChat,
   messageId,
 }: {
-  targetChat: Chat | Readonly<Chat>;
-  messageId: MessageId;
+  targetChat: Chat | Readonly<Chat>,
+  messageId: MessageId,
 }): Promise<void> {
   const mutableChat = getLiveChat({ chat: targetChat });
   const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
@@ -392,9 +394,9 @@ function prependForkedChatToHierarchy({
   newChatId,
   chatGroupId,
 }: {
-  current: Hierarchy;
-  newChatId: ChatId;
-  chatGroupId: ChatGroupId | null | undefined;
+  current: Hierarchy,
+  newChatId: ChatId,
+  chatGroupId: ChatGroupId | null | undefined,
 }): Hierarchy {
   const node: HierarchyNode = { type: 'chat', id: newChatId };
   if (chatGroupId) {
@@ -420,11 +422,11 @@ async function sendEditedMessage({
   attachments,
   lmParameters,
 }: {
-  mutableChat: Chat;
-  messageId: MessageId;
-  newContent: string;
-  attachments: UserMessageNode['attachments'] | undefined;
-  lmParameters: LmParameters | undefined;
+  mutableChat: Chat,
+  messageId: MessageId,
+  newContent: string,
+  attachments: UserMessageNode['attachments'] | undefined,
+  lmParameters: LmParameters | undefined,
 }): Promise<void> {
   const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
   await sendMessageToTargetChat({

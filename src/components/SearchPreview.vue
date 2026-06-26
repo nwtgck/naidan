@@ -12,8 +12,8 @@ import { idToRaw, toChatId, toMessageId } from '@/models/ids';
 import type { ChatId } from '@/models/ids';
 
 const props = defineProps<{
-  match?: ContentMatch;
-  chat?: Extract<SearchResultItem, { type: 'chat' }>;
+  match?: ContentMatch,
+  chat?: Extract<SearchResultItem, { type: 'chat' }>,
 }>();
 
 const { searchContextSize } = useSettings();
@@ -41,7 +41,7 @@ async function loadContext() {
         : toMessageId({ raw: props.match.targetLeafId });
       const virtualChat: Chat = {
         ...fullChat,
-        currentLeafId: targetLeafId
+        currentLeafId: targetLeafId,
       };
       const branch = Array.from(getChatBranchIterator({ chat: virtualChat }));
       branchMessages.value = branch;
@@ -85,7 +85,7 @@ const handleDummy = () => {};
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

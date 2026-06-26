@@ -176,7 +176,7 @@ describe('OnboardingModal.vue', () => {
     // 4. Verify draft has normalized URL and selected model
     expect(mockOnboardingDraft.value).toEqual(expect.objectContaining({
       url: 'http://api.openai.com', // Normalized URL
-      selectedModel: 'model-y'      // Selected model
+      selectedModel: 'model-y',      // Selected model
     }));
   });
 
@@ -360,7 +360,7 @@ describe('OnboardingModal.vue', () => {
     await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
 
     expect(listModelsMock).toHaveBeenCalledWith(
-      expect.objectContaining({ signal: expect.anything() })
+      expect.objectContaining({ signal: expect.anything() }),
     );
 
     // Remove header
@@ -384,10 +384,10 @@ describe('OnboardingModal.vue', () => {
           ModelSelector: {
             name: 'ModelSelector',
             template: '<div class="model-selector-stub" />',
-            props: ['models']
-          }
-        }
-      }
+            props: ['models'],
+          },
+        },
+      },
     });
 
     const selector = wrapper.getComponent({ name: 'ModelSelector' });

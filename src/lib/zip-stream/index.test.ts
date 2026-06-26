@@ -18,10 +18,10 @@ const compressionCodec = createWebZipCompressionCodec();
 
 interface TestZipCapture {
   readonly handle: ZipCentralDirectoryStore & {
-    close(): Promise<void>;
-  };
-  readonly buffer: Uint8Array;
-  readonly chunkCount: number;
+    close(): Promise<void>,
+  },
+  readonly buffer: Uint8Array,
+  readonly chunkCount: number,
 }
 
 function concatenateChunks({ chunks }: { chunks: readonly Uint8Array[] }): Uint8Array {
@@ -86,8 +86,8 @@ function createTestStreamingZipWriter({
   outputHandle,
   centralDirectoryHandle,
 }: {
-  outputHandle: ZipByteSink;
-  centralDirectoryHandle: ZipCentralDirectoryStore;
+  outputHandle: ZipByteSink,
+  centralDirectoryHandle: ZipCentralDirectoryStore,
 }): StreamingZipWriter {
   return new StreamingZipWriter({
     output: outputHandle,
@@ -105,7 +105,7 @@ class TestStreamingZipReader extends StreamingZipReader {
 function createByteStream({
   chunks,
 }: {
-  chunks: readonly Uint8Array[];
+  chunks: readonly Uint8Array[],
 }): ReadableStream<Uint8Array> {
   let index = 0;
   return new ReadableStream({
@@ -130,7 +130,7 @@ function createBlobFromBytes({ bytes }: { bytes: Uint8Array }): Blob {
 async function readStreamBytes({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let totalLength = 0;
@@ -160,7 +160,7 @@ async function readStreamBytes({
 async function collectEntries({
   reader,
 }: {
-  reader: StreamingZipReader;
+  reader: StreamingZipReader,
 }): Promise<ZipArchiveEntry[]> {
   const entries: ZipArchiveEntry[] = [];
   for await (const entry of reader.entries()) {
@@ -173,8 +173,8 @@ function findEntry({
   entries,
   name,
 }: {
-  entries: readonly ZipArchiveEntry[];
-  name: string;
+  entries: readonly ZipArchiveEntry[],
+  name: string,
 }): ZipArchiveEntry {
   const entry = entries.find(candidate => candidate.name === name);
   if (entry === undefined) {
@@ -196,7 +196,7 @@ function createDeterministicBytes({ size }: { size: number }): Uint8Array {
 function corruptFirstStoredEntryData({
   archive,
 }: {
-  archive: Uint8Array;
+  archive: Uint8Array,
 }): Uint8Array {
   const output = archive.slice();
   const view = new DataView(output.buffer, output.byteOffset, output.byteLength);
@@ -218,8 +218,8 @@ function findZipSignature({
   bytes,
   signature,
 }: {
-  bytes: Uint8Array;
-  signature: number;
+  bytes: Uint8Array,
+  signature: number,
 }): number {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   for (let offset = 0; offset <= bytes.byteLength - 4; offset += 1) {
@@ -445,7 +445,7 @@ describe('streaming ZIP codec', () => {
       archive.file('payload.txt', 'payload', { compression: 'STORE' });
       return archive.generateAsync({ type: 'uint8array', compression: 'STORE' });
     };
-    const findSignature = ({ bytes, signature }: { bytes: Uint8Array; signature: number }): number => {
+    const findSignature = ({ bytes, signature }: { bytes: Uint8Array, signature: number }): number => {
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       for (let offset = 0; offset <= bytes.byteLength - 4; offset += 1) {
         if (view.getUint32(offset, true) === signature) {
@@ -458,8 +458,8 @@ describe('streaming ZIP codec', () => {
       bytes,
       message,
     }: {
-      bytes: Uint8Array;
-      message: string;
+      bytes: Uint8Array,
+      message: string,
     }): Promise<void> => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
@@ -498,7 +498,7 @@ describe('streaming ZIP codec', () => {
     const archive = new JSZip();
     archive.file('payload.txt', 'payload', { compression: 'STORE' });
     const original = await archive.generateAsync({ type: 'uint8array', compression: 'STORE' });
-    const findSignature = ({ bytes, signature }: { bytes: Uint8Array; signature: number }): number => {
+    const findSignature = ({ bytes, signature }: { bytes: Uint8Array, signature: number }): number => {
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       for (let offset = 0; offset <= bytes.byteLength - 4; offset += 1) {
         if (view.getUint32(offset, true) === signature) {
@@ -543,8 +543,8 @@ describe('streaming ZIP codec', () => {
       bytes,
       message,
     }: {
-      bytes: Uint8Array;
-      message: string;
+      bytes: Uint8Array,
+      message: string,
     }): Promise<void> => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
@@ -604,8 +604,8 @@ describe('streaming ZIP codec', () => {
       bytes,
       message,
     }: {
-      bytes: Uint8Array;
-      message: string;
+      bytes: Uint8Array,
+      message: string,
     }): Promise<void> => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
@@ -768,7 +768,7 @@ describe('streaming ZIP codec', () => {
       compressionOptions: { level: 1 },
     });
     const blobSource = createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) });
-    const reads: { offset: number; length: number }[] = [];
+    const reads: { offset: number, length: number }[] = [];
     const trackedSource: ZipRandomAccessSource = {
       size: blobSource.size,
       async read({ offset, length }) {
@@ -805,7 +805,7 @@ describe('streaming ZIP codec', () => {
       comment: 'prefix PK\x05\x06 suffix',
     });
     const blobSource = createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) });
-    const reads: { offset: number; length: number }[] = [];
+    const reads: { offset: number, length: number }[] = [];
     let closed = false;
     const trackedSource: ZipRandomAccessSource = {
       size: blobSource.size,

@@ -60,8 +60,8 @@ describe('WelcomeScreen.vue', () => {
   it('hides suggestions when hasInput is true', () => {
     const wrapper = mount(WelcomeScreen, {
       props: {
-        hasInput: true
-      }
+        hasInput: true,
+      },
     });
 
     const suggestionsContainer = wrapper.find('[data-testid="suggestions-container"]');
@@ -73,8 +73,8 @@ describe('WelcomeScreen.vue', () => {
   it('shows suggestions when hasInput is false', () => {
     const wrapper = mount(WelcomeScreen, {
       props: {
-        hasInput: false
-      }
+        hasInput: false,
+      },
     });
 
     const suggestionsContainer = wrapper.find('[data-testid="suggestions-container"]');

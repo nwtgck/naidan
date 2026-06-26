@@ -13,8 +13,8 @@ import { idToRaw } from '@/models/ids';
 import type { ChatId } from '@/models/ids';
 
 const props = defineProps<{
-  groupId: string;
-  groupName: string;
+  groupId: string,
+  groupName: string,
 }>();
 
 const router = useRouter();
@@ -36,7 +36,7 @@ async function selectAndNavigate({ chatId }: { chatId: ChatId }) {
 }
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short', day: 'numeric'
+  month: 'short', day: 'numeric',
 });
 
 function formatTime({ timestamp }: { timestamp: number }) {
@@ -73,7 +73,7 @@ function navigate({ direction }: { direction: 'up' | 'down' }) {
           container: chatListContainer.value,
           element: el,
           block: 'nearest',
-          behavior: 'instant'
+          behavior: 'instant',
         });
       }
     });
@@ -103,7 +103,7 @@ const selectedSearchResultItem = computed<Extract<SearchResultItem, { type: 'cha
     title: selectedChat.value.title,
     updatedAt: selectedChat.value.updatedAt,
     matchType: 'title',
-    contentMatches: []
+    contentMatches: [],
   };
 });
 

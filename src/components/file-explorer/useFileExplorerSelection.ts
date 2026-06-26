@@ -93,9 +93,9 @@ export function useFileExplorerSelection() {
     allEntries,
     extend,
   }: {
-    direction: 'prev' | 'next';
-    allEntries: FileExplorerEntry[];
-    extend: boolean;
+    direction: 'prev' | 'next',
+    allEntries: FileExplorerEntry[],
+    extend: boolean,
   }): void {
     if (allEntries.length === 0) return;
     const focus = selectionState.value.focusName;

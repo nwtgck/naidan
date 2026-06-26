@@ -20,7 +20,7 @@ const mockCurrentChat = ref<any>({
 });
 const mockActiveMessages = ref<any[]>([
   { id: 'msg_1', role: 'user', content: 'Hello' },
-  { id: 'msg_2', role: 'assistant', content: 'World' }
+  { id: 'msg_2', role: 'assistant', content: 'World' },
 ]);
 
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
@@ -36,8 +36,8 @@ vi.mock('./MessageItem.vue', () => ({
   default: {
     name: 'MessageItem',
     props: ['message'],
-    template: '<div class="mock-message-item">{{ message.content }}</div>'
-  }
+    template: '<div class="mock-message-item">{{ message.content }}</div>',
+  },
 }));
 
 describe('ChatPrintContent component', () => {

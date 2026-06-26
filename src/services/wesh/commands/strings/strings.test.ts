@@ -20,8 +20,8 @@ describe('wesh strings', () => {
     path,
     data,
   }: {
-    path: string;
-    data: string | Uint8Array;
+    path: string,
+    data: string | Uint8Array,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -44,8 +44,8 @@ describe('wesh strings', () => {
     script,
     stdinBytes,
   }: {
-    script: string;
-    stdinBytes?: Uint8Array;
+    script: string,
+    stdinBytes?: Uint8Array,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

@@ -8,7 +8,7 @@ import {
   isImageGenerationPending,
   isImageGenerationProcessed,
   SENTINEL_IMAGE_PENDING,
-  SENTINEL_IMAGE_PROCESSED
+  SENTINEL_IMAGE_PROCESSED,
 } from './image-generation';
 
 describe('image-generation utilities', () => {
@@ -19,11 +19,11 @@ describe('image-generation utilities', () => {
         'x/z-image-turbo:v1',
         'gpt-4',
         'x/z-image-turbo:v2',
-        'mistral'
+        'mistral',
       ];
       expect(getImageGenerationModels({ models })).toEqual([
         'x/z-image-turbo:v1',
-        'x/z-image-turbo:v2'
+        'x/z-image-turbo:v2',
       ]);
     });
 
@@ -57,7 +57,7 @@ describe('image-generation utilities', () => {
         height: 256,
         model: 'turbo-1',
         count: 1,
-        persistAs: 'jpeg'
+        persistAs: 'jpeg',
       });
     });
 
@@ -68,7 +68,7 @@ describe('image-generation utilities', () => {
         height: 512,
         model: 'turbo-1',
         count: 1,
-        persistAs: 'original'
+        persistAs: 'original',
       });
     });
 

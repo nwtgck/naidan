@@ -12,8 +12,8 @@ function applyEffects({
   optionValues,
   effects,
 }: {
-  optionValues: Record<string, boolean | string | number>;
-  effects: ArgvOptionEffect[];
+  optionValues: Record<string, boolean | string | number>,
+  effects: ArgvOptionEffect[],
 }): void {
   for (const effect of effects) {
     optionValues[effect.key] = effect.value;
@@ -24,8 +24,8 @@ function createMissingValueDiagnostic({
   option,
   valueName,
 }: {
-  option: string;
-  valueName: string;
+  option: string,
+  valueName: string,
 }): ArgvDiagnostic {
   return {
     kind: 'missing_option_value',
@@ -38,9 +38,9 @@ function parseValueOption({
   option,
   rawValue,
 }: {
-  option: Extract<ArgvOptionSpec, { kind: 'value' }>;
-  rawValue: string;
-}): { ok: true; value: boolean | string | number } | { ok: false; diagnostic: ArgvDiagnostic } {
+  option: Extract<ArgvOptionSpec, { kind: 'value' }>,
+  rawValue: string,
+}): { ok: true, value: boolean | string | number } | { ok: false, diagnostic: ArgvDiagnostic } {
   if (option.parseValue === undefined) {
     return { ok: true, value: rawValue };
   }
@@ -64,8 +64,8 @@ export function parseStandardArgv({
   args,
   spec,
 }: {
-  args: string[];
-  spec: StandardArgvParserSpec;
+  args: string[],
+  spec: StandardArgvParserSpec,
 }): ParsedStandardArgv {
   const optionValues: Record<string, boolean | string | number> = {};
   const positionals: string[] = [];

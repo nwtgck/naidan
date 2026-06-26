@@ -28,7 +28,7 @@ export type SupportedLanguage =
  * 2. Fallback to browser/system language provided in options
  * 3. Default to English
  */
-export function detectLanguage({ content, fallbackLanguage = 'en' }: { content: string; fallbackLanguage?: string }): SupportedLanguage {
+export function detectLanguage({ content, fallbackLanguage = 'en' }: { content: string, fallbackLanguage?: string }): SupportedLanguage {
   const sample = content.slice(0, 500); // Analyze first 500 chars
 
   // 1. Check for specific scripts (High confidence)
@@ -82,7 +82,7 @@ export function detectLanguage({ content, fallbackLanguage = 'en' }: { content: 
     // Check if the code is in our supported list
     const supported: Set<string | undefined> = new Set([
       'en', 'zh', 'hi', 'es', 'fr', 'ar', 'bn', 'pt', 'ru', 'ur',
-      'id', 'de', 'ja', 'ko', 'it', 'vi', 'tr', 'th'
+      'id', 'de', 'ja', 'ko', 'it', 'vi', 'tr', 'th',
     ]);
 
     if (code && supported.has(code)) {
@@ -112,7 +112,7 @@ const SYSTEM_PROMPTS: Record<SupportedLanguage, string> = {
   it: "Identifica l'argomento principale di questa conversazione in 3-5 parole. Output SOLO l'argomento.",
   vi: "Xác định chủ đề chính của cuộc trò chuyện này trong 3-5 từ. CHỈ xuất chủ đề.",
   tr: "Bu konuşmanın ana konusunu 3-5 kelimeyle belirtin. SADECE konuyu çıktı verin.",
-  th: "ระบุหัวข้อหลักของการสนทนานี้เป็นคำสั้นๆ ไม่เกิน 5 คำ ส่งออกเฉพาะหัวข้อเท่านั้น"
+  th: "ระบุหัวข้อหลักของการสนทนานี้เป็นคำสั้นๆ ไม่เกิน 5 คำ ส่งออกเฉพาะหัวข้อเท่านั้น",
 };
 
 /**

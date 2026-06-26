@@ -14,7 +14,7 @@ const {
   mockGetLiveChatById,
   mockTriggerCurrentChat,
 } = vi.hoisted(() => {
-  const mockCurrentChat: { value: { id: ChatId; mounts?: any[] } | null } = { value: null };
+  const mockCurrentChat: { value: { id: ChatId, mounts?: any[] } | null } = { value: null };
   const mockCurrentChatRef: { value: { id: ChatId } | null } = { value: null };
   return {
     mockCurrentChat,

@@ -9,12 +9,12 @@ import type { Mount } from '@/models/types';
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 
 const props = defineProps<{
-  isOpen: boolean;
-  chatMounts: readonly Mount[] | undefined;
-  chatGroupMounts: readonly Mount[] | undefined;
-  chatId: ChatId | undefined;
-  chatGroupId: ChatGroupId | undefined;
-  naidanSysfsAccessScope: NaidanSysfsAccessScope;
+  isOpen: boolean,
+  chatMounts: readonly Mount[] | undefined,
+  chatGroupMounts: readonly Mount[] | undefined,
+  chatId: ChatId | undefined,
+  chatGroupId: ChatGroupId | undefined,
+  naidanSysfsAccessScope: NaidanSysfsAccessScope,
 }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 
@@ -61,7 +61,7 @@ async function handleCloseSession({ sessionId }: { sessionId: string }) {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

@@ -34,15 +34,15 @@ vi.mock('@huggingface/transformers', () => ({
     backends: {
       onnx: {
         wasm: {},
-        logLevel: 'error'
-      }
+        logLevel: 'error',
+      },
     },
     allowLocalModels: false,
     allowRemoteModels: true,
     useBrowserCache: false,
     useCustomCache: false,
-    customCache: null
-  }
+    customCache: null,
+  },
 }));
 
 // Mock Comlink
@@ -54,8 +54,8 @@ vi.mock('comlink', () => ({
 // Mock Worker globals
 vi.stubGlobal('self', {
   location: {
-    origin: 'http://localhost:3000'
-  }
+    origin: 'http://localhost:3000',
+  },
 });
 
 // Helper to create a mock FileSystemDirectoryHandle
@@ -84,7 +84,7 @@ function createMockDir(entries: Record<string, any> = {}) {
     }),
     removeEntry: vi.fn(async (name: string) => {
       delete entries[name];
-    })
+    }),
   };
   return dir;
 }
@@ -95,12 +95,12 @@ function createMockFile(size: number) {
     size,
     getFile: vi.fn().mockResolvedValue({
       size,
-      stream: vi.fn().mockReturnValue(new ReadableStream())
+      stream: vi.fn().mockReturnValue(new ReadableStream()),
     }),
     createWritable: vi.fn().mockResolvedValue(new WritableStream({
       write: vi.fn(),
-      close: vi.fn()
-    }))
+      close: vi.fn(),
+    })),
   };
   return file;
 }
@@ -118,15 +118,15 @@ describe('transformers-js.worker', () => {
     global.self = {
       ...global.self,
       fetch: originalFetchMock,
-      location: { origin: 'http://localhost:3000' } as any
+      location: { origin: 'http://localhost:3000' } as any,
     } as any;
 
     mockRoot = createMockDir();
     vi.stubGlobal('navigator', {
       storage: {
-        getDirectory: vi.fn().mockResolvedValue(mockRoot)
+        getDirectory: vi.fn().mockResolvedValue(mockRoot),
       },
-      hardwareConcurrency: 4
+      hardwareConcurrency: 4,
     });
 
     const { AutoModelForCausalLM, AutoModelForImageTextToText } = await import('@huggingface/transformers');
@@ -161,10 +161,10 @@ describe('transformers-js.worker', () => {
           'org': createMockDir({
             'repo': createMockDir({
               'model.onnx': createMockFile(100),
-              '.model.onnx.complete': createMockFile(0)
-            })
-          })
-        })
+              '.model.onnx.complete': createMockFile(0),
+            }),
+          }),
+        }),
       });
       throw new Error('Not found');
     });
@@ -186,7 +186,7 @@ describe('transformers-js.worker', () => {
 
     const response = new Response('model data', {
       status: 200,
-      headers: { 'Content-Type': 'application/octet-stream' }
+      headers: { 'Content-Type': 'application/octet-stream' },
     });
 
     await cache.put('https://huggingface.co/org/repo/model.onnx', response);
@@ -200,11 +200,11 @@ describe('transformers-js.worker', () => {
 
     // Force failure in createWritable deep inside the hierarchy
     const failingFile = {
-      createWritable: vi.fn().mockRejectedValue(new Error('QuotaExceededError'))
+      createWritable: vi.fn().mockRejectedValue(new Error('QuotaExceededError')),
     };
 
     const failingDir = createMockDir({
-      'model.onnx': failingFile
+      'model.onnx': failingFile,
     });
 
     mockRoot.getDirectoryHandle.mockResolvedValue(failingDir);
@@ -232,7 +232,7 @@ describe('transformers-js.worker', () => {
 
     const response = new Response('<html>Error</html>', {
       status: 200,
-      headers: { 'Content-Type': 'text/html' }
+      headers: { 'Content-Type': 'text/html' },
     });
 
     await expect(cache.put('https://huggingface.co/org/repo/model.onnx', response))
@@ -253,7 +253,7 @@ describe('transformers-js.worker', () => {
       .mockRejectedValueOnce(new Error('WebGPU default error'))
       .mockResolvedValueOnce({
         dispose: vi.fn(),
-        device: 'wasm'
+        device: 'wasm',
       });
 
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
@@ -263,7 +263,7 @@ describe('transformers-js.worker', () => {
     expect(result.device).toBe('wasm');
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(4);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenLastCalledWith('org/repo', expect.objectContaining({
-      device: 'wasm'
+      device: 'wasm',
     }));
   });
 
@@ -321,7 +321,7 @@ describe('transformers-js.worker', () => {
       { input: 'hf.co/org/repo', expected: 'org/repo' },
       { input: 'https://huggingface.co/org/repo', expected: 'org/repo' },
       { input: 'user/my-model', expected: 'user/my-model' },
-      { input: 'org/repo', expected: 'org/repo' }
+      { input: 'org/repo', expected: 'org/repo' },
     ];
 
     for (const { input, expected } of testCases) {
@@ -370,7 +370,7 @@ describe('transformers-js.worker', () => {
 
     const mockResponse = new Response(new Uint8Array([10, 20, 30, 40]), {
       status: 200,
-      headers: { 'Content-Length': '4' }
+      headers: { 'Content-Length': '4' },
     });
     originalFetchMock.mockResolvedValue(mockResponse);
 
@@ -384,7 +384,7 @@ describe('transformers-js.worker', () => {
     expect(progressUpdates.length).toBeGreaterThan(0);
     expect(progressUpdates[0]).toMatchObject({
       status: 'progress',
-      file: 'model.onnx'
+      file: 'model.onnx',
     });
   });
 
@@ -396,7 +396,7 @@ describe('transformers-js.worker', () => {
       const urls = [
         'https://example.com/models/user/my-model/config.json',
         'models/user/my-model/tokenizer.json',
-        'user/my-model/model.onnx'
+        'user/my-model/model.onnx',
       ];
 
       for (const url of urls) {
@@ -429,7 +429,7 @@ describe('transformers-js.worker', () => {
         }
         return new Response('<!DOCTYPE html>...', {
           status: 200,
-          headers: { 'content-type': 'text/html' }
+          headers: { 'content-type': 'text/html' },
         });
       });
 
@@ -438,7 +438,7 @@ describe('transformers-js.worker', () => {
         'https://hf.co/model/model.onnx',
         'https://hf.co/model/tokenizer.json',
         'https://hf.co/model/weights.bin',
-        'https://hf.co/model/module.wasm'
+        'https://hf.co/model/module.wasm',
       ];
 
       for (const url of modelFiles) {
@@ -470,7 +470,7 @@ describe('transformers-js.worker', () => {
 
       const mockRes = new Response('<html>ok</html>', {
         status: 200,
-        headers: { 'content-type': 'text/html' }
+        headers: { 'content-type': 'text/html' },
       });
       originalFetchMock.mockResolvedValue(mockRes);
 
@@ -502,7 +502,7 @@ describe('transformers-js.worker', () => {
       (tfMock.TextStreamer as any).mockImplementation(
         function(this: unknown, _tok: unknown, opts: { callback_function: (output: string) => void }) {
           capturedCallback = opts.callback_function;
-        }
+        },
       );
 
       mockApplyTemplate = vi.fn().mockReturnValue({ input_ids: [1, 2, 3] });
@@ -592,12 +592,12 @@ describe('transformers-js.worker', () => {
     let mockApplyTemplate: ReturnType<typeof vi.fn>;
     let mockCallableTokenizer: ReturnType<typeof vi.fn>;
     let mockModel: {
-      generate: ReturnType<typeof vi.fn>;
-      dispose: ReturnType<typeof vi.fn>;
-      device: string;
+      generate: ReturnType<typeof vi.fn>,
+      dispose: ReturnType<typeof vi.fn>,
+      device: string,
       config: {
-        model_type: string;
-      };
+        model_type: string,
+      },
     };
 
     beforeEach(async () => {
@@ -609,7 +609,7 @@ describe('transformers-js.worker', () => {
       (tfMock.TextStreamer as any).mockImplementation(
         function(this: unknown, _tok: unknown, opts: { callback_function: (output: string) => void }) {
           capturedCallback = opts.callback_function;
-        }
+        },
       );
 
       mockModel = {
@@ -632,7 +632,7 @@ describe('transformers-js.worker', () => {
       });
       mockCallableTokenizer = Object.assign(
         vi.fn().mockReturnValue({ input_ids: [9, 9, 9] }),
-        { apply_chat_template: mockApplyTemplate }
+        { apply_chat_template: mockApplyTemplate },
       );
       (tfMock.AutoProcessor.from_pretrained as any).mockResolvedValue(Object.assign(
         vi.fn().mockResolvedValue({
@@ -724,7 +724,7 @@ describe('transformers-js.worker', () => {
         vi.fn(),
         vi.fn(),
         undefined,
-        tools
+        tools,
       );
 
       const processorMock = (await import('@huggingface/transformers')).AutoProcessor.from_pretrained as any;
@@ -760,7 +760,7 @@ describe('transformers-js.worker', () => {
         vi.fn(),
         vi.fn(),
         undefined,
-        tools
+        tools,
       );
 
       const processorMock = (await import('@huggingface/transformers')).AutoProcessor.from_pretrained as any;
@@ -778,7 +778,7 @@ describe('transformers-js.worker', () => {
         vi.fn(),
         vi.fn(),
         undefined,
-        tools
+        tools,
       );
 
       mockApplyTemplate.mockClear();
@@ -812,7 +812,7 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        tools
+        tools,
       );
 
       expect(mockModel.generate).toHaveBeenCalledOnce();
@@ -835,7 +835,7 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        undefined
+        undefined,
       );
 
       await workerObj.resetCache();
@@ -851,7 +851,7 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        undefined
+        undefined,
       );
 
       expect(mockModel.generate).toHaveBeenCalledWith(expect.objectContaining({
@@ -869,7 +869,7 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        undefined
+        undefined,
       );
 
       mockModel.generate.mockClear();
@@ -883,7 +883,7 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        undefined
+        undefined,
       );
 
       expect(mockModel.generate).toHaveBeenCalledWith(expect.objectContaining({
@@ -904,7 +904,7 @@ file-a
         onChunk,
         vi.fn(),
         undefined,
-        tools
+        tools,
       );
 
       const emitted = (onChunk.mock.calls as [string][]).map(([chunk]) => chunk).join('');
@@ -918,17 +918,17 @@ file-a
     let tokensToEmit: string[];
     let mockProcessor: ReturnType<typeof vi.fn> & {
       tokenizer: {
-        apply_chat_template: ReturnType<typeof vi.fn>;
-      };
-      apply_chat_template: ReturnType<typeof vi.fn>;
+        apply_chat_template: ReturnType<typeof vi.fn>,
+      },
+      apply_chat_template: ReturnType<typeof vi.fn>,
     };
     let mockModel: {
-      generate: ReturnType<typeof vi.fn>;
-      dispose: ReturnType<typeof vi.fn>;
-      device: string;
+      generate: ReturnType<typeof vi.fn>,
+      dispose: ReturnType<typeof vi.fn>,
+      device: string,
       config: {
-        model_type: string;
-      };
+        model_type: string,
+      },
     };
 
     beforeEach(async () => {
@@ -940,7 +940,7 @@ file-a
       (tfMock.TextStreamer as any).mockImplementation(
         function(this: unknown, _tok: unknown, opts: { callback_function: (output: string) => void }) {
           capturedCallback = opts.callback_function;
-        }
+        },
       );
       (tfMock.RawImage.read as any).mockResolvedValue({ kind: 'raw-image' });
 
@@ -994,7 +994,7 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        undefined
+        undefined,
       );
 
       expect(mockProcessor.apply_chat_template).toHaveBeenCalledWith(
@@ -1005,13 +1005,13 @@ file-a
             { type: 'image' },
           ],
         }],
-        { add_generation_prompt: true }
+        { add_generation_prompt: true },
       );
       expect(mockProcessor).toHaveBeenCalledWith(
         'gemma4 prompt',
         [{ kind: 'raw-image' }],
         null,
-        { add_special_tokens: false }
+        { add_special_tokens: false },
       );
       expect(mockModel.generate).toHaveBeenCalledWith(expect.objectContaining({
         input_ids: [7, 8, 9],
@@ -1032,12 +1032,12 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        tools
+        tools,
       );
 
       expect(mockProcessor.apply_chat_template).toHaveBeenCalledWith(
         [{ role: 'user', content: 'list files' }],
-        { add_generation_prompt: true }
+        { add_generation_prompt: true },
       );
     });
   });
@@ -1058,14 +1058,14 @@ file-a
       (tfMock.TextStreamer as any).mockImplementation(
         function(this: unknown, _tok: unknown, opts: { callback_function: (output: string) => void }) {
           capturedCallback = opts.callback_function;
-        }
+        },
       );
 
       mockApplyTemplate = vi.fn().mockReturnValue({ input_ids: [1, 2, 3] });
       // GPT-OSS tokenizer must be callable for buildGptOssToolResultTokens
       mockCallableTokenizer = Object.assign(
         vi.fn().mockReturnValue({ input_ids: [1] }),
-        { apply_chat_template: mockApplyTemplate }
+        { apply_chat_template: mockApplyTemplate },
       );
 
       const mockModel = {
@@ -1171,7 +1171,7 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        [SIMPLE_TOOL]
+        [SIMPLE_TOOL],
       );
 
       const [formattedMessages] = mockApplyTemplate.mock.calls[0]!;
@@ -1191,7 +1191,7 @@ file-a
         vi.fn(),
         vi.fn(),
         undefined,
-        [SIMPLE_TOOL]
+        [SIMPLE_TOOL],
       );
 
       mockApplyTemplate.mockClear();
@@ -1213,7 +1213,7 @@ file-a
       // The callable tokenizer should have been invoked with the Harmony-formatted text
       expect(mockCallableTokenizer).toHaveBeenCalledWith(
         expect.stringContaining('<|start|>my_tool to=assistant'),
-        expect.objectContaining({ add_special_tokens: false })
+        expect.objectContaining({ add_special_tokens: false }),
       );
     });
 

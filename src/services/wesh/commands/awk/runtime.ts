@@ -3,23 +3,23 @@ import type { AwkExpression, AwkPattern, AwkProgram, AwkStatement, AwkValue } fr
 type AwkStatementControl = 'normal' | 'next' | 'break' | 'continue_loop';
 
 interface AwkRecord {
-  text: string;
-  fields: string[];
-  hadNewline: boolean;
+  text: string,
+  fields: string[],
+  hadNewline: boolean,
 }
 
 interface AwkRuntimeState {
-  variables: Map<string, AwkValue>;
-  arrays: Map<string, Map<string, AwkValue>>;
-  currentRecord: AwkRecord | undefined;
-  nr: number;
-  fnr: number;
+  variables: Map<string, AwkValue>,
+  arrays: Map<string, Map<string, AwkValue>>,
+  currentRecord: AwkRecord | undefined,
+  nr: number,
+  fnr: number,
 }
 
 function isNumericLike({
   value,
 }: {
-  value: string;
+  value: string,
 }): boolean {
   return /^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(value.trim());
 }
@@ -27,7 +27,7 @@ function isNumericLike({
 function coerceToNumber({
   value,
 }: {
-  value: AwkValue;
+  value: AwkValue,
 }): number {
   switch (typeof value) {
   case 'number':
@@ -42,7 +42,7 @@ function coerceToNumber({
 function coerceToString({
   value,
 }: {
-  value: AwkValue;
+  value: AwkValue,
 }): string {
   if (value instanceof RegExp) {
     return value.source;
@@ -54,7 +54,7 @@ function coerceToString({
 function coerceToRegex({
   value,
 }: {
-  value: AwkValue;
+  value: AwkValue,
 }): RegExp {
   switch (typeof value) {
   case 'number':
@@ -69,7 +69,7 @@ function coerceToRegex({
 function isTruthy({
   value,
 }: {
-  value: AwkValue;
+  value: AwkValue,
 }): boolean {
   switch (typeof value) {
   case 'number':
@@ -85,8 +85,8 @@ function splitFields({
   line,
   fieldSeparator,
 }: {
-  line: string;
-  fieldSeparator: string;
+  line: string,
+  fieldSeparator: string,
 }): string[] {
   if (fieldSeparator === ' ') {
     const trimmed = line.trim();
@@ -104,8 +104,8 @@ function getVariable({
   state,
   name,
 }: {
-  state: AwkRuntimeState;
-  name: string;
+  state: AwkRuntimeState,
+  name: string,
 }): AwkValue {
   switch (name) {
   case 'NR':
@@ -128,9 +128,9 @@ function getArrayValue({
   name,
   index,
 }: {
-  state: AwkRuntimeState;
-  name: string;
-  index: string;
+  state: AwkRuntimeState,
+  name: string,
+  index: string,
 }): AwkValue {
   return state.arrays.get(name)?.get(index) ?? '';
 }
@@ -139,8 +139,8 @@ function requireArrayEntries({
   state,
   name,
 }: {
-  state: AwkRuntimeState;
-  name: string;
+  state: AwkRuntimeState,
+  name: string,
 }): Map<string, AwkValue> {
   const entries = state.arrays.get(name);
   if (entries === undefined) {
@@ -154,9 +154,9 @@ function setVariable({
   name,
   value,
 }: {
-  state: AwkRuntimeState;
-  name: string;
-  value: AwkValue;
+  state: AwkRuntimeState,
+  name: string,
+  value: AwkValue,
 }): void {
   state.variables.set(name, value);
 }
@@ -165,8 +165,8 @@ function setCurrentRecordText({
   state,
   text,
 }: {
-  state: AwkRuntimeState;
-  text: string;
+  state: AwkRuntimeState,
+  text: string,
 }): void {
   if (state.currentRecord === undefined) {
     throw new Error('awk: no current record available');
@@ -188,9 +188,9 @@ function setFieldValue({
   index,
   value,
 }: {
-  state: AwkRuntimeState;
-  index: number;
-  value: string;
+  state: AwkRuntimeState,
+  index: number,
+  value: string,
 }): void {
   if (state.currentRecord === undefined) {
     throw new Error('awk: no current record available');
@@ -216,10 +216,10 @@ function setArrayValue({
   index,
   value,
 }: {
-  state: AwkRuntimeState;
-  name: string;
-  index: string;
-  value: AwkValue;
+  state: AwkRuntimeState,
+  name: string,
+  index: string,
+  value: AwkValue,
 }): void {
   let entries = state.arrays.get(name);
   if (entries === undefined) {
@@ -233,8 +233,8 @@ function clearArray({
   state,
   name,
 }: {
-  state: AwkRuntimeState;
-  name: string;
+  state: AwkRuntimeState,
+  name: string,
 }): Map<string, AwkValue> {
   const entries = new Map<string, AwkValue>();
   state.arrays.set(name, entries);
@@ -245,8 +245,8 @@ function applyAwkReplacement({
   replacement,
   match,
 }: {
-  replacement: string;
-  match: string;
+  replacement: string,
+  match: string,
 }): string {
   let output = '';
 
@@ -279,11 +279,11 @@ function replaceInText({
   replacement,
   mode,
 }: {
-  source: string;
-  pattern: RegExp;
-  replacement: string;
-  mode: 'first' | 'global';
-}): { text: string; count: number } {
+  source: string,
+  pattern: RegExp,
+  replacement: string,
+  mode: 'first' | 'global',
+}): { text: string, count: number } {
   const flags = [...new Set(pattern.flags.split(''))].join('');
   const regexFlags = (() => {
     switch (mode) {
@@ -335,9 +335,9 @@ function applySubstitution({
   expression,
   mode,
 }: {
-  state: AwkRuntimeState;
-  expression: Extract<AwkExpression, { kind: 'call' }>;
-  mode: 'first' | 'global';
+  state: AwkRuntimeState,
+  expression: Extract<AwkExpression, { kind: 'call' }>,
+  mode: 'first' | 'global',
 }): number {
   const pattern = coerceToRegex({
     value: evaluateExpression({
@@ -457,9 +457,9 @@ function deleteArrayEntry({
   name,
   index,
 }: {
-  state: AwkRuntimeState;
-  name: string;
-  index: string;
+  state: AwkRuntimeState,
+  name: string,
+  index: string,
 }): void {
   state.arrays.get(name)?.delete(index);
 }
@@ -470,10 +470,10 @@ function updateTarget({
   operator,
   position,
 }: {
-  state: AwkRuntimeState;
-  target: Extract<AwkExpression, { kind: 'update' }>['target'];
-  operator: Extract<AwkExpression, { kind: 'update' }>['operator'];
-  position: Extract<AwkExpression, { kind: 'update' }>['position'];
+  state: AwkRuntimeState,
+  target: Extract<AwkExpression, { kind: 'update' }>['target'],
+  operator: Extract<AwkExpression, { kind: 'update' }>['operator'],
+  position: Extract<AwkExpression, { kind: 'update' }>['position'],
 }): AwkValue {
   const delta = (() => {
     switch (operator) {
@@ -492,8 +492,8 @@ function updateTarget({
     currentNumber,
     nextValue,
   }: {
-    currentNumber: number;
-    nextValue: number;
+    currentNumber: number,
+    nextValue: number,
   }): number => {
     switch (position) {
     case 'prefix':
@@ -548,8 +548,8 @@ function formatPrintfOutput({
   format,
   argumentsList,
 }: {
-  format: string;
-  argumentsList: AwkValue[];
+  format: string,
+  argumentsList: AwkValue[],
 }): string {
   let output = '';
   let argumentIndex = 0;
@@ -603,8 +603,8 @@ function executeForClausePart({
   part,
   state,
 }: {
-  part: Extract<AwkStatement, { kind: 'for' }>['initializer'];
-  state: AwkRuntimeState;
+  part: Extract<AwkStatement, { kind: 'for' }>['initializer'],
+  state: AwkRuntimeState,
 }): void {
   if (part === undefined) return;
 
@@ -648,8 +648,8 @@ function evaluateExpression({
   expression,
   state,
 }: {
-  expression: AwkExpression;
-  state: AwkRuntimeState;
+  expression: AwkExpression,
+  state: AwkRuntimeState,
 }): AwkValue {
   switch (expression.kind) {
   case 'number':
@@ -832,8 +832,8 @@ function compareValues({
   left,
   right,
 }: {
-  left: AwkValue;
-  right: AwkValue;
+  left: AwkValue,
+  right: AwkValue,
 }): number {
   const leftString = coerceToString({ value: left });
   const rightString = coerceToString({ value: right });
@@ -852,8 +852,8 @@ function matchesPattern({
   pattern,
   state,
 }: {
-  pattern: AwkPattern;
-  state: AwkRuntimeState;
+  pattern: AwkPattern,
+  state: AwkRuntimeState,
 }): boolean {
   switch (pattern.kind) {
   case 'begin':
@@ -899,9 +899,9 @@ function executeStatement({
   state,
   output,
 }: {
-  statement: AwkStatement;
-  state: AwkRuntimeState;
-  output: string[];
+  statement: AwkStatement,
+  state: AwkRuntimeState,
+  output: string[],
 }): AwkStatementControl {
   switch (statement.kind) {
   case 'assign': {
@@ -1165,7 +1165,7 @@ function executeStatement({
 function splitRecords({
   text,
 }: {
-  text: string;
+  text: string,
 }): AwkRecord[] {
   const lines = text.split(/\n/);
   if (lines.length > 0 && lines[lines.length - 1] === '') {
@@ -1185,7 +1185,7 @@ function splitRecords({
 export function createAwkRuntime({
   variables,
 }: {
-  variables: Map<string, AwkValue>;
+  variables: Map<string, AwkValue>,
 }): AwkRuntimeState {
   const state: AwkRuntimeState = {
     variables: new Map(variables),
@@ -1207,10 +1207,10 @@ function executeAwkStatements({
   patternKind,
   output,
 }: {
-  program: AwkProgram;
-  runtime: AwkRuntimeState;
-  patternKind: 'begin' | 'end';
-  output: string[];
+  program: AwkProgram,
+  runtime: AwkRuntimeState,
+  patternKind: 'begin' | 'end',
+  output: string[],
 }): void {
   for (const rule of program.rules) {
     if (rule.pattern.kind !== patternKind) {
@@ -1242,9 +1242,9 @@ export function executeAwkBegin({
   runtime,
   output,
 }: {
-  program: AwkProgram;
-  runtime: AwkRuntimeState;
-  output: string[];
+  program: AwkProgram,
+  runtime: AwkRuntimeState,
+  output: string[],
 }): void {
   executeAwkStatements({
     program,
@@ -1260,10 +1260,10 @@ export function executeAwkRecord({
   record,
   output,
 }: {
-  program: AwkProgram;
-  runtime: AwkRuntimeState;
-  record: AwkRecord;
-  output: string[];
+  program: AwkProgram,
+  runtime: AwkRuntimeState,
+  record: AwkRecord,
+  output: string[],
 }): void {
   runtime.nr += 1;
   runtime.fnr += 1;
@@ -1307,9 +1307,9 @@ export function executeAwkEnd({
   runtime,
   output,
 }: {
-  program: AwkProgram;
-  runtime: AwkRuntimeState;
-  output: string[];
+  program: AwkProgram,
+  runtime: AwkRuntimeState,
+  output: string[],
 }): void {
   runtime.currentRecord = undefined;
   executeAwkStatements({
@@ -1325,9 +1325,9 @@ export function executeAwkProgram({
   runtime,
   inputs,
 }: {
-  program: AwkProgram;
-  runtime: AwkRuntimeState;
-  inputs: string[];
+  program: AwkProgram,
+  runtime: AwkRuntimeState,
+  inputs: string[],
 }): string {
   const output: string[] = [];
   executeAwkBegin({

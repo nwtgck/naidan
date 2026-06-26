@@ -74,7 +74,7 @@ vi.mock('./useSettings', () => ({
 describe('useChat Interrupt and Sync Tests', () => {
   const chatStore = useChat();
   const {
-    sendMessage, editMessage, regenerateMessage, TEST_ONLY
+    sendMessage, editMessage, regenerateMessage, TEST_ONLY,
   } = chatStore;
   const { __testOnlySetCurrentChat } = TEST_ONLY;
 
@@ -158,11 +158,11 @@ describe('useChat Interrupt and Sync Tests', () => {
             id: 'user-1', role: 'user', content: 'two cats', timestamp: 0,
             replies: {
               items: [
-                { id: assistantId, role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }
-              ]
-            }
-          }
-        ]
+                { id: assistantId, role: 'assistant', content: '', timestamp: 0, replies: { items: [] } },
+              ],
+            },
+          },
+        ],
       },
       currentLeafId: assistantId,
       modelId: 'x/z-image-turbo:v1',
@@ -176,7 +176,7 @@ describe('useChat Interrupt and Sync Tests', () => {
 
     mockLm.generateImage.mockResolvedValue({
       image: new Blob(['img'], { type: 'image/png' }),
-      totalSteps: 10
+      totalSteps: 10,
     });
 
     await handleImageGeneration({
@@ -191,7 +191,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       persistAs: 'original',
       images: [],
       model: 'x/z-image-turbo:v1',
-      signal: new AbortController().signal
+      signal: new AbortController().signal,
     });
 
     // 1 call before loop (initial sentinel) + 1 call per loop iteration (2 images) + 1 call in finally block = 4 calls
@@ -209,11 +209,11 @@ describe('useChat Interrupt and Sync Tests', () => {
             id: 'user-1', role: 'user', content: 'Will be aborted', timestamp: 0,
             replies: {
               items: [
-                { id: assistantId, role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }
-              ]
-            }
-          }
-        ]
+                { id: assistantId, role: 'assistant', content: '', timestamp: 0, replies: { items: [] } },
+              ],
+            },
+          },
+        ],
       },
       currentLeafId: assistantId,
       modelId: 'gpt-4',

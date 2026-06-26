@@ -39,7 +39,7 @@ OLLAMA_ORIGINS="*" ollama serve`;
   return base;
 });
 
-const copyToClipboard = async ({ text, id }: { text: string; id: string }) => {
+const copyToClipboard = async ({ text, id }: { text: string, id: string }) => {
   await navigator.clipboard.writeText(text);
   copiedCommand.value = id;
   setTimeout(() => {
@@ -48,16 +48,16 @@ const copyToClipboard = async ({ text, id }: { text: string; id: string }) => {
 };
 
 interface GuideStep {
-  install: string;
-  downloadUrl?: string;
-  installCommand?: string;
-  serveCommand?: string;
-  runCommand: string;
+  install: string,
+  downloadUrl?: string,
+  installCommand?: string,
+  serveCommand?: string,
+  runCommand: string,
 }
 
 const guides: {
-  ollama: Record<'windows' | 'mac' | 'linux', GuideStep>;
-  'llama-server': { all: GuideStep };
+  ollama: Record<'windows' | 'mac' | 'linux', GuideStep>,
+  'llama-server': { all: GuideStep },
 } = {
   ollama: {
     windows: {
@@ -92,7 +92,7 @@ const guides: {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

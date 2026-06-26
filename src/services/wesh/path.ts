@@ -4,8 +4,8 @@ export function normalizePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   const joined = path.startsWith('/')
     ? path
@@ -34,8 +34,8 @@ export function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   return normalizePath({ cwd, path });
 }
@@ -44,8 +44,8 @@ export async function canonicalizePathAllowingMissingLeaf({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<string> {
   if (!path.startsWith('/')) {
     return resolvePath({ cwd: context.cwd, path });

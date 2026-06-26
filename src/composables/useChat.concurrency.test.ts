@@ -95,7 +95,7 @@ const mockSettings = {
     defaultModelId: 'gpt-4',
     lmParameters: {},
     providerProfiles: [],
-  }
+  },
 };
 
 vi.mock('./useSettings', () => ({
@@ -137,7 +137,7 @@ vi.mock('../services/lm/ollama', () => ({
 describe('useChat Concurrency & Stale State Protection', () => {
   const chatStore = useChat();
   const {
-    currentChat, rootItems, TEST_ONLY
+    currentChat, rootItems, TEST_ONLY,
   } = chatStore;
   const { activeGenerations, __testOnlySetCurrentChat } = TEST_ONLY;
 

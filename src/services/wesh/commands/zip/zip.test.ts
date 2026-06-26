@@ -21,8 +21,8 @@ describe('wesh zip and unzip', () => {
     path,
     data,
   }: {
-    path: string;
-    data: string;
+    path: string,
+    data: string,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -45,8 +45,8 @@ describe('wesh zip and unzip', () => {
     path,
     data,
   }: {
-    path: string;
-    data: Uint8Array;
+    path: string,
+    data: Uint8Array,
   }): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -68,7 +68,7 @@ describe('wesh zip and unzip', () => {
   async function readFile({
     path,
   }: {
-    path: string;
+    path: string,
   }): Promise<string> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -90,8 +90,8 @@ describe('wesh zip and unzip', () => {
     script,
     stdinText,
   }: {
-    script: string;
-    stdinText: string;
+    script: string,
+    stdinText: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

@@ -17,9 +17,9 @@ vi.mock('./MessageItem.vue', () => ({
 type OutlineTestRole = Exclude<MessageNode['role'], 'tool'>;
 
 function messageFlowItem({ id, role, content }: {
-  id: string;
-  role: OutlineTestRole;
-  content: string;
+  id: string,
+  role: OutlineTestRole,
+  content: string,
 }): ChatFlowItem {
   return {
     type: 'message',

@@ -5,11 +5,11 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
   /** Download action handler */
-  onDownload: ({ withMetadata }: { withMetadata: boolean }) => void;
+  onDownload: ({ withMetadata }: { withMetadata: boolean }) => void,
   /** Whether metadata embedding is supported for the current image format */
-  isSupported?: boolean;
+  isSupported?: boolean,
   /** Alignment of the dropdown: 'left' or 'right' (default) */
-  align?: 'left' | 'right';
+  align?: 'left' | 'right',
 }>();
 
 const isOpen = ref(false);
@@ -20,7 +20,7 @@ function toggleDropdown({ event }: { event: Event }) {
   isOpen.value = !isOpen.value;
 }
 
-function handleDownload({ withMetadata, event }: { withMetadata: boolean; event: Event }) {
+function handleDownload({ withMetadata, event }: { withMetadata: boolean, event: Event }) {
   event.stopPropagation();
   props.onDownload({ withMetadata });
   isOpen.value = false;
@@ -38,7 +38,7 @@ useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ ev
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

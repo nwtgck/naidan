@@ -16,8 +16,8 @@ export function useFileExplorerClipboard() {
     entries,
     sourceDirectoryPath,
   }: {
-    entries: FileExplorerEntry[];
-    sourceDirectoryPath: string;
+    entries: FileExplorerEntry[],
+    sourceDirectoryPath: string,
   }): void {
     clipboardState.value = { operation: 'cut', sourceDirectoryPath, sourceDirectory: sourceDirectoryPath, entries: [...entries] };
   }
@@ -26,8 +26,8 @@ export function useFileExplorerClipboard() {
     entries,
     sourceDirectoryPath,
   }: {
-    entries: FileExplorerEntry[];
-    sourceDirectoryPath: string;
+    entries: FileExplorerEntry[],
+    sourceDirectoryPath: string,
   }): void {
     clipboardState.value = { operation: 'copy', sourceDirectoryPath, sourceDirectory: sourceDirectoryPath, entries: [...entries] };
   }

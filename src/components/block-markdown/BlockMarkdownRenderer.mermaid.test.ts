@@ -14,7 +14,7 @@ vi.mock('mermaid', () => ({
 describe('BlockMarkdownRenderer: Mermaid Support', () => {
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 
@@ -31,7 +31,7 @@ ${'```'}
       preserveAttributes: undefined,
       preserveClasses: ['mermaid-block', 'mermaid'],
       trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     // Should render the MermaidBlock component which has .mermaid-block class
     expect(dom).toContain('class="mermaid-block"');

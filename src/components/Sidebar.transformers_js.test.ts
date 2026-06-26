@@ -85,7 +85,7 @@ describe('Sidebar Transformers.js Support', () => {
     'ModelSelector': {
       name: 'ModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue">{{ modelValue }}</div>',
-      props: ['modelValue', 'models', 'loading']
+      props: ['modelValue', 'models', 'loading'],
     },
   };
 

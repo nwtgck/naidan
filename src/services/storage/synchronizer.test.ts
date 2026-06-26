@@ -35,7 +35,7 @@ describe('StorageSynchronizer', () => {
       // Mock navigator.locks
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: { request: mockRequest }
+        value: { request: mockRequest },
       });
 
       const task = async () => 'done';
@@ -46,7 +46,7 @@ describe('StorageSynchronizer', () => {
       // Restore
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: originalLocks
+        value: originalLocks,
       });
     });
 
@@ -56,7 +56,7 @@ describe('StorageSynchronizer', () => {
       // Remove navigator.locks
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: undefined
+        value: undefined,
       });
 
       const task = async () => 'fallback';
@@ -66,7 +66,7 @@ describe('StorageSynchronizer', () => {
       // Restore
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: originalLocks
+        value: originalLocks,
       });
     });
 
@@ -77,7 +77,7 @@ describe('StorageSynchronizer', () => {
       const mockRequest = vi.fn(() => new Promise(() => {}));
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: { request: mockRequest }
+        value: { request: mockRequest },
       });
 
       const onLockWait = vi.fn();
@@ -96,7 +96,7 @@ describe('StorageSynchronizer', () => {
       const mockRequest = vi.fn((_name, cb) => cb());
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: { request: mockRequest }
+        value: { request: mockRequest },
       });
 
       const onTaskSlow = vi.fn();
@@ -116,7 +116,7 @@ describe('StorageSynchronizer', () => {
       const mockRequest = vi.fn((_name, cb) => cb());
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: { request: mockRequest }
+        value: { request: mockRequest },
       });
 
       const onFinalize = vi.fn();
@@ -141,11 +141,11 @@ describe('StorageSynchronizer', () => {
 
       expect(setItemSpy).toHaveBeenCalledWith(
         SYNC_SIGNAL_KEY,
-        expect.stringContaining('"type":"chat_content"')
+        expect.stringContaining('"type":"chat_content"'),
       );
       expect(setItemSpy).toHaveBeenCalledWith(
         SYNC_SIGNAL_KEY,
-        expect.stringContaining('"id":"123"')
+        expect.stringContaining('"id":"123"'),
       );
     });
 
@@ -158,13 +158,13 @@ describe('StorageSynchronizer', () => {
       // Simulate storage event from another window
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
-        newValue: JSON.stringify(eventData)
+        newValue: JSON.stringify(eventData),
       });
       window.dispatchEvent(storageEvent);
 
       expect(listener).toHaveBeenCalledWith({ event: expect.objectContaining({
         type: 'chat_content',
-        id: '456'
+        id: '456',
       }) });
     });
 
@@ -178,7 +178,7 @@ describe('StorageSynchronizer', () => {
       const eventData = { type: 'chat_content', id: 'any', timestamp: Date.now() };
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
-        newValue: JSON.stringify(eventData)
+        newValue: JSON.stringify(eventData),
       });
       window.dispatchEvent(storageEvent);
 
@@ -194,7 +194,7 @@ describe('StorageSynchronizer', () => {
 
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
-        newValue: JSON.stringify({ type: 'settings', timestamp: Date.now() })
+        newValue: JSON.stringify({ type: 'settings', timestamp: Date.now() }),
       });
       window.dispatchEvent(storageEvent);
 
@@ -208,7 +208,7 @@ describe('StorageSynchronizer', () => {
 
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
-        newValue: '{ invalid json'
+        newValue: '{ invalid json',
       });
       window.dispatchEvent(storageEvent);
 
@@ -223,7 +223,7 @@ describe('StorageSynchronizer', () => {
 
       const storageEvent = new StorageEvent('storage', {
         key: 'unrelated-key',
-        newValue: JSON.stringify({ type: 'chat_content', id: 'any', timestamp: Date.now() })
+        newValue: JSON.stringify({ type: 'chat_content', id: 'any', timestamp: Date.now() }),
       });
       window.dispatchEvent(storageEvent);
 

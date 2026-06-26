@@ -74,19 +74,19 @@ import { useLayout } from '@/composables/useLayout';
 const { setActiveFocusArea } = useLayout();
 
 const _props = withDefaults(defineProps<{
-  show?: boolean;
-  title?: string;
-  icon?: Component | null;
-  message?: string;
-  confirmButtonText?: string;
-  cancelButtonText?: string;
-  confirmButtonVariant: 'default' | 'danger';
-  showInput?: boolean;
-  inputValue?: string;
-  inputType?: string;
-  inputPlaceholder?: string;
+  show?: boolean,
+  title?: string,
+  icon?: Component | null,
+  message?: string,
+  confirmButtonText?: string,
+  cancelButtonText?: string,
+  confirmButtonVariant: 'default' | 'danger',
+  showInput?: boolean,
+  inputValue?: string,
+  inputType?: string,
+  inputPlaceholder?: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  bodyComponent?: Component | any | null;
+  bodyComponent?: Component | any | null,
 }>(), {
   show: false,
   title: 'Dialog',
@@ -102,9 +102,9 @@ const _props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  (e: 'confirm', value?: string): void;
-  (e: 'cancel'): void;
-  (e: 'update:inputValue', value: string): void;
+  (e: 'confirm', value?: string): void,
+  (e: 'cancel'): void,
+  (e: 'update:inputValue', value: string): void,
 }>();
 
 const confirm = () => {
@@ -123,7 +123,7 @@ const cancel = () => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

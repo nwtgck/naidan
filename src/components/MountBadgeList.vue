@@ -5,17 +5,17 @@ import type { VolumeId } from '@/models/ids';
 import { FolderIcon, LockIcon, UnlockIcon, XIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
-  mounts: readonly Mount[];
+  mounts: readonly Mount[],
   /** Path prefix stripped from display labels (e.g. '/home/user/'). */
-  pathTrimPrefix: string;
+  pathTrimPrefix: string,
   /** When true, the path label is a clickable button that emits open-explorer. */
-  showExplorer: boolean;
+  showExplorer: boolean,
 }>();
 
 const emit = defineEmits<{
-  'toggle-read-only': [{ volumeId: VolumeId; readOnly: boolean }];
-  remove: [{ volumeId: VolumeId }];
-  'open-explorer': [{ volumeId: VolumeId }];
+  'toggle-read-only': [{ volumeId: VolumeId, readOnly: boolean }],
+  remove: [{ volumeId: VolumeId }],
+  'open-explorer': [{ volumeId: VolumeId }],
 }>();
 
 function displayPath({ mountPath }: { mountPath: string }): string {
@@ -30,7 +30,7 @@ function displayPath({ mountPath }: { mountPath: string }): string {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

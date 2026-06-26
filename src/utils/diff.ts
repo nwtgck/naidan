@@ -1,8 +1,8 @@
 export type DiffChangeType = 'added' | 'removed' | 'unchanged';
 
 export interface DiffPart {
-  type: DiffChangeType;
-  value: string;
+  type: DiffChangeType,
+  value: string,
 }
 
 /**

@@ -10,18 +10,18 @@ export type ChatCompactionAdapter = {
     keepRecentMessages,
     instructionOverride,
   }: {
-    chatId: ChatId;
-    keepRecentMessages: number;
-    instructionOverride: string | undefined;
-  }): Promise<boolean>;
+    chatId: ChatId,
+    keepRecentMessages: number,
+    instructionOverride: string | undefined,
+  }): Promise<boolean>,
 
   abort({
     chatId,
   }: {
-    chatId: ChatId;
-  }): void;
+    chatId: ChatId,
+  }): void,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatCompaction(): ChatCompactionAdapter {
@@ -30,9 +30,9 @@ export function useChatCompaction(): ChatCompactionAdapter {
     keepRecentMessages,
     instructionOverride,
   }: {
-    chatId: ChatId;
-    keepRecentMessages: number;
-    instructionOverride: string | undefined;
+    chatId: ChatId,
+    keepRecentMessages: number,
+    instructionOverride: string | undefined,
   }): Promise<boolean> {
     const result = await runCompactCurrentBranchForChat({
       chatId,
@@ -45,7 +45,7 @@ export function useChatCompaction(): ChatCompactionAdapter {
   function abort({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     abortContextCompactForChat({
       chatId,

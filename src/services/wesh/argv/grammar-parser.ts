@@ -28,7 +28,7 @@ function isFindExpressionToken({ token }: { token: string }): boolean {
 export function parseFindLikeArgv({
   args,
 }: {
-  args: string[];
+  args: string[],
 }): ParsedFindLikeArgv {
   const paths: string[] = [];
   let index = 0;

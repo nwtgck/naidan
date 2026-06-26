@@ -84,7 +84,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 
 vi.mock('../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: () => ({
-    openChat: ({ chatId }: { chatId: string; leafId?: string }) => mockOpenChat({ id: chatId }),
+    openChat: ({ chatId }: { chatId: string, leafId?: string }) => mockOpenChat({ id: chatId }),
     openChatAtMessage: vi.fn(),
     openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
     TEST_ONLY: {},
@@ -94,7 +94,7 @@ vi.mock('../composables/chat/ui/useChatNavigation', () => ({
 vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
   useSidebarStructure: () => ({
     persistSidebarStructure: mockPersistSidebarStructure,
-    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string, isCollapsed: boolean }) =>
       mockSetChatGroupCollapsed({ groupId, isCollapsed }),
     TEST_ONLY: {},
   }),
@@ -156,7 +156,7 @@ vi.mock('vuedraggable', () => ({
     template: '<div class="draggable-mock" v-bind="$attrs"><slot name="item" v-for="element in modelValue" :element="element"></slot></div>',
     props: ['modelValue'],
     emits: ['update:modelValue', 'start', 'end'],
-    inheritAttrs: false
+    inheritAttrs: false,
   },
 }));
 
@@ -189,20 +189,20 @@ describe('Sidebar Compact View & DND Integrity', () => {
       if (this.dataset.testid === 'sidebar-nav') {
         return {
           top: 0, bottom: 100, left: 0, right: 100, width: 100, height: 100,
-          x: 0, y: 0, toJSON: () => ({})
+          x: 0, y: 0, toJSON: () => ({}),
         };
       }
 
       if (this.dataset.sidebarChatId === 'c6') {
         return {
           top: 180, bottom: 220, left: 0, right: 100, width: 100, height: 40,
-          x: 0, y: 180, toJSON: () => ({})
+          x: 0, y: 180, toJSON: () => ({}),
         };
       }
 
       return {
         top: 0, bottom: 40, left: 0, right: 100, width: 100, height: 40,
-        x: 0, y: 0, toJSON: () => ({})
+        x: 0, y: 0, toJSON: () => ({}),
       };
     });
   });
@@ -217,7 +217,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
-      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }
+      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) },
     }));
 
     mockChatGroups.value = [{
@@ -225,7 +225,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       name: 'Big Group',
       isCollapsed: false,
       updatedAt: 0,
-      items: groupItems
+      items: groupItems,
     }];
 
     const wrapper = mount(Sidebar, {
@@ -248,7 +248,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
-      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }
+      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) },
     }));
 
     mockChatGroups.value = [{
@@ -256,7 +256,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       name: 'Big Group',
       isCollapsed: false,
       updatedAt: 0,
-      items: groupItems
+      items: groupItems,
     }];
 
     const wrapper = mount(Sidebar, {
@@ -280,7 +280,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
-      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }
+      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) },
     }));
 
     mockChatGroups.value = [{
@@ -288,7 +288,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       name: 'Big Group',
       isCollapsed: false,
       updatedAt: 0,
-      items: groupItems
+      items: groupItems,
     }];
     mockCurrentChat.value = null;
 
@@ -315,7 +315,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const groupItems: ChatSidebarItem[] = Array.from({ length: 10 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
-      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }
+      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) },
     }));
 
     mockChatGroups.value = [{
@@ -323,7 +323,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       name: 'Big Group',
       isCollapsed: false,
       updatedAt: 0,
-      items: groupItems
+      items: groupItems,
     }];
 
     const wrapper = mount(Sidebar, {
@@ -361,7 +361,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
-      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }
+      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) },
     }));
 
     const group = {
@@ -369,7 +369,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       name: 'Big Group',
       isCollapsed: false,
       updatedAt: 0,
-      items: groupItems
+      items: groupItems,
     };
     mockChatGroups.value = [group];
 
@@ -403,7 +403,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
-      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }
+      chat: { id: toChatId({ raw: `c${i}` }), title: `Chat ${i}`, updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) },
     }));
 
     mockChatGroups.value = [{
@@ -411,7 +411,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       name: 'Big Group',
       isCollapsed: false,
       updatedAt: 0,
-      items: groupItems
+      items: groupItems,
     }];
 
     const wrapper = mount(Sidebar, {
@@ -449,7 +449,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const groupItems: ChatSidebarItem[] = [{
       id: 'chat-0',
       type: 'chat',
-      chat: { id: toChatId({ raw: 'c0' }), title: 'Chat 0', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }
+      chat: { id: toChatId({ raw: 'c0' }), title: 'Chat 0', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) },
     }];
 
     mockChatGroups.value = [{
@@ -457,7 +457,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       name: 'Group 1',
       isCollapsed: false,
       updatedAt: 0,
-      items: groupItems
+      items: groupItems,
     }];
 
     // Set current chat to c0

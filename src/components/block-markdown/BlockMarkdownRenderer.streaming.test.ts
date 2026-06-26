@@ -6,7 +6,7 @@ import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
 describe('BlockMarkdownRenderer: Streaming Update Stability', () => {
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 

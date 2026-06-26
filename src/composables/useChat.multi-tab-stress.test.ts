@@ -16,7 +16,7 @@ const { mocks } = vi.hoisted(() => ({
     mockHierarchy: { items: [] } as Hierarchy,
     mockNotify: null as any,
     mockRootItems: [] as any[],
-  }
+  },
 }));
 
 vi.mock('../services/storage', () => ({
@@ -114,7 +114,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
     const chat1: Chat = {
       id: toChatId({ raw: 'c1' }), title: 'C1',
       root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Hi', replies: { items: [{ id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, timestamp: 0 }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'a1' })
+      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'a1' }),
     };
     mocks.mockChatStorage.set('c1', chat1);
 
@@ -181,7 +181,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
             await storageService.updateChatContent({ id: chat.id, updater: ({ current }) => ({
               ...current,
               root: chat.root,
-              currentLeafId: chat.currentLeafId
+              currentLeafId: chat.currentLeafId,
             }) });
             lastSave = Date.now();
           } finally {

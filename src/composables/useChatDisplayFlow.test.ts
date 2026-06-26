@@ -12,7 +12,7 @@ describe('useChatDisplayFlow', () => {
     role: 'assistant',
     content,
     timestamp: Date.now(),
-    replies: { items: [] }
+    replies: { items: [] },
   } as MessageNode);
 
   const createToolNode = (toolCallId: string): MessageNode => ({
@@ -28,10 +28,10 @@ describe('useChatDisplayFlow', () => {
     results: [{
       toolCallId: toToolCallId({ raw: toolCallId }),
       status: 'success',
-      content: { type: 'text', text: 'ok' }
+      content: { type: 'text', text: 'ok' },
     }],
     timestamp: Date.now(),
-    replies: { items: [] }
+    replies: { items: [] },
   } as MessageNode);
 
   const createFlow = ({ messages, isProcessing = false }: { messages: MessageNode[], isProcessing?: boolean }) => {
@@ -47,12 +47,12 @@ describe('useChatDisplayFlow', () => {
       currentLeafId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      debugEnabled: false
+      debugEnabled: false,
     } as Chat));
 
     return useChatDisplayFlow({
       chat,
-      isProcessing: () => isProcessing
+      isProcessing: () => isProcessing,
     });
   };
 
@@ -119,12 +119,12 @@ describe('useChatDisplayFlow', () => {
       currentLeafId: messages.value.length > 0 ? messages.value[messages.value.length - 1]!.id : null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      debugEnabled: false
+      debugEnabled: false,
     } as Chat));
 
     const { chatFlow, isThinkingActive } = useChatDisplayFlow({
       chat,
-      isProcessing: () => isProcessingRef.value
+      isProcessing: () => isProcessingRef.value,
     });
 
     expect(chatFlow.value).toHaveLength(1);

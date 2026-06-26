@@ -23,7 +23,7 @@ function makeDirEntry(name: string, path: string): FileExplorerEntry {
   return { ...makeEntry(name, 'directory'), path };
 }
 
-function makeKey(key: string, opts: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {}): KeyboardEvent {
+function makeKey(key: string, opts: { ctrlKey?: boolean, metaKey?: boolean, shiftKey?: boolean } = {}): KeyboardEvent {
   return new KeyboardEvent('keydown', {
     key,
     ctrlKey: opts.ctrlKey ?? false,

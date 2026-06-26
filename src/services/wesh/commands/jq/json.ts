@@ -4,7 +4,7 @@ import { normalizeJsonValue, stringifyJson } from './value';
 function isWhitespace({
   char,
 }: {
-  char: string;
+  char: string,
 }): boolean {
   return /\s/.test(char);
 }
@@ -13,8 +13,8 @@ function scanStringEnd({
   text,
   start,
 }: {
-  text: string;
-  start: number;
+  text: string,
+  start: number,
 }): number | undefined {
   let index = start + 1;
   let escaped = false;
@@ -39,8 +39,8 @@ function scanStructuredEnd({
   text,
   start,
 }: {
-  text: string;
-  start: number;
+  text: string,
+  start: number,
 }): number | undefined {
   const stack: string[] = [text[start]!];
   let index = start + 1;
@@ -102,8 +102,8 @@ function scanPrimitiveEnd({
   text,
   start,
 }: {
-  text: string;
-  start: number;
+  text: string,
+  start: number,
 }): number {
   let index = start;
   while (index < text.length) {
@@ -117,13 +117,13 @@ function scanPrimitiveEnd({
 }
 
 export type JsonSequenceEntry =
-  | { ok: true; value: JsonValue }
-  | { ok: false; message: string };
+  | { ok: true, value: JsonValue }
+  | { ok: false, message: string };
 
 export function* iterateJsonSequence({
   text,
 }: {
-  text: string;
+  text: string,
 }): Generator<JsonSequenceEntry, void, undefined> {
   let index = 0;
 
@@ -176,8 +176,8 @@ export function* iterateJsonSequence({
 export function parseJsonSequence({
   text,
 }: {
-  text: string;
-}): { ok: true; values: JsonValue[] } | { ok: false; message: string } {
+  text: string,
+}): { ok: true, values: JsonValue[] } | { ok: false, message: string } {
   const values: JsonValue[] = [];
   for (const entry of iterateJsonSequence({ text })) {
     if (!entry.ok) return entry;
@@ -196,14 +196,14 @@ export function formatJsonOutput({
   indentation,
   nullSeparator,
 }: {
-  value: JsonValue;
-  compact: boolean;
-  raw: boolean;
-  join: boolean;
-  asciiOnly: boolean;
-  sortKeys: boolean;
-  indentation: number | '\t';
-  nullSeparator: boolean;
+  value: JsonValue,
+  compact: boolean,
+  raw: boolean,
+  join: boolean,
+  asciiOnly: boolean,
+  sortKeys: boolean,
+  indentation: number | '\t',
+  nullSeparator: boolean,
 }): string {
   const separator = nullSeparator ? '\0' : join ? '' : '\n';
   if (raw && typeof value === 'string') {

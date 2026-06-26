@@ -47,11 +47,11 @@ const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => 
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
 
 const props = defineProps<{
-  show?: boolean;
+  show?: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void
+  (e: 'close'): void,
 }>();
 
 const { currentChatId, currentChat, resolvedSettings, inheritedSettings } = useCurrentChatState();
@@ -63,14 +63,14 @@ const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
 type ChatSettingsDraft = {
-  endpointType: EndpointType | undefined;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
-  modelId: string | undefined;
-  autoTitleEnabled: boolean | undefined;
-  titleModelId: string | undefined;
-  systemPrompt: SystemPrompt | undefined;
-  lmParameters: LmParameters | undefined;
+  endpointType: EndpointType | undefined,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
+  modelId: string | undefined,
+  autoTitleEnabled: boolean | undefined,
+  titleModelId: string | undefined,
+  systemPrompt: SystemPrompt | undefined,
+  lmParameters: LmParameters | undefined,
 };
 
 function emptyDraft(): ChatSettingsDraft {
@@ -116,8 +116,8 @@ function areHeadersEqual({
   left,
   right,
 }: {
-  left: [string, string][] | undefined;
-  right: [string, string][] | undefined;
+  left: [string, string][] | undefined,
+  right: [string, string][] | undefined,
 }): boolean {
   if (left === right) return true;
   if (left === undefined || right === undefined || left.length !== right.length) return false;
@@ -128,8 +128,8 @@ function areSystemPromptsEqual({
   left,
   right,
 }: {
-  left: SystemPrompt | undefined;
-  right: SystemPrompt | undefined;
+  left: SystemPrompt | undefined,
+  right: SystemPrompt | undefined,
 }): boolean {
   return left?.behavior === right?.behavior && left?.content === right?.content;
 }
@@ -167,8 +167,8 @@ function endpointFromDraft({
   draft,
   inheritedEndpointType,
 }: {
-  draft: ChatSettingsDraft;
-  inheritedEndpointType: EndpointType | undefined;
+  draft: ChatSettingsDraft,
+  inheritedEndpointType: EndpointType | undefined,
 }): Endpoint | undefined {
   const endpointType = draft.endpointType ?? inheritedEndpointType;
   if (endpointType === undefined) return undefined;
@@ -194,9 +194,9 @@ function createChanges({
   next,
   inheritedEndpointType,
 }: {
-  previous: ChatSettingsDraft;
-  next: ChatSettingsDraft;
-  inheritedEndpointType: EndpointType | undefined;
+  previous: ChatSettingsDraft,
+  next: ChatSettingsDraft,
+  inheritedEndpointType: EndpointType | undefined,
 }): ScopedSettingChange[] {
   const changes: ScopedSettingChange[] = [];
   const lmChanges = new Map(
@@ -296,9 +296,9 @@ function applyLmParameterFieldFromDraft({
   target,
   source,
 }: {
-  field: LmParameterSettingField;
-  target: ChatSettingsDraft;
-  source: ChatSettingsDraft;
+  field: LmParameterSettingField,
+  target: ChatSettingsDraft,
+  source: ChatSettingsDraft,
 }): void {
   const lmParameters: LmParameters = {
     temperature: target.lmParameters?.temperature,
@@ -352,9 +352,9 @@ function applyFieldFromDraft({
   target,
   source,
 }: {
-  field: ScopedSettingChange['field'];
-  target: ChatSettingsDraft;
-  source: ChatSettingsDraft;
+  field: ScopedSettingChange['field'],
+  target: ChatSettingsDraft,
+  source: ChatSettingsDraft,
 }): void {
   switch (field) {
   case 'endpoint':
@@ -604,7 +604,7 @@ function isLocalhost({ url }: { url: string | undefined }) {
 async function updateEndpointType({
   endpointType,
 }: {
-  endpointType: EndpointType | undefined;
+  endpointType: EndpointType | undefined,
 }): Promise<void> {
   switch (endpointType) {
   case undefined:
@@ -707,7 +707,7 @@ watch([
 async function updateSystemPromptBehavior({
   behavior,
 }: {
-  behavior: 'inherit' | 'clear' | 'replace' | 'append';
+  behavior: 'inherit' | 'clear' | 'replace' | 'append',
 }) {
   switch (behavior) {
   case 'inherit':

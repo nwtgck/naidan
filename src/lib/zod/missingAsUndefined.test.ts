@@ -43,13 +43,13 @@ describe('missingAsUndefined', () => {
     const resolvedSchema = resolveMissingAsUndefined(rawSchema);
 
     expectTypeOf<z.input<typeof rawSchema>>().toEqualTypeOf<{
-      a?: string | undefined;
+      a?: string | undefined,
     }>();
     expectTypeOf<z.output<typeof rawSchema>>().toEqualTypeOf<{
-      a: string | undefined;
+      a: string | undefined,
     }>();
     expectTypeOf<z.output<typeof resolvedSchema>>().toEqualTypeOf<{
-      a: string | undefined;
+      a: string | undefined,
     }>();
   });
 

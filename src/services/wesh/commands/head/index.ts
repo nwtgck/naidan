@@ -6,7 +6,7 @@ import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
 import { getWeshTextRecordTerminator, iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   if (path.startsWith('/')) {
     return path;
   }
@@ -17,9 +17,9 @@ function parseCount({
   value,
   errorPrefix,
 }: {
-  value: string;
-  errorPrefix: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+  errorPrefix: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   if (!/^\d+$/.test(value)) {
     return { ok: false, message: `${errorPrefix}: '${value}'` };
   }

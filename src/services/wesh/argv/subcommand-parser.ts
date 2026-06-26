@@ -5,8 +5,8 @@ export function parseSubcommandArgv({
   args,
   spec,
 }: {
-  args: string[];
-  spec: SubcommandArgvParserSpec;
+  args: string[],
+  spec: SubcommandArgvParserSpec,
 }): ParsedSubcommandArgv {
   const matchedSubcommands: string[] = [];
   let activeSpec = spec;

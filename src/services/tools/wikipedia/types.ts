@@ -6,31 +6,31 @@ export type WikipediaSearchLanguages = readonly [
 ];
 
 export type WikipediaSearchItem = {
-  title: string;
-  pageId: number;
+  title: string,
+  pageId: number,
 };
 
 export type WikipediaSearchGroup = {
-  lang: WikipediaLanguageCode;
-  items: WikipediaSearchItem[];
+  lang: WikipediaLanguageCode,
+  items: WikipediaSearchItem[],
 };
 
 export type WikipediaSearchResult = {
-  groups: WikipediaSearchGroup[];
+  groups: WikipediaSearchGroup[],
 };
 
 export type WikipediaPageResult = {
-  kind: 'inline';
-  lang: WikipediaLanguageCode;
-  pageId: number;
-  title: string;
-  content: string;
+  kind: 'inline',
+  lang: WikipediaLanguageCode,
+  pageId: number,
+  title: string,
+  content: string,
 } | {
-  kind: 'binary_object';
-  lang: WikipediaLanguageCode;
-  pageId: number;
-  title: string;
-  lineCount: number;
-  byteLength: number;
-  sysfsNaidanDataFilePath: string;
+  kind: 'binary_object',
+  lang: WikipediaLanguageCode,
+  pageId: number,
+  title: string,
+  lineCount: number,
+  byteLength: number,
+  sysfsNaidanDataFilePath: string,
 };

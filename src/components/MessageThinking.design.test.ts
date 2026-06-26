@@ -17,7 +17,7 @@ describe('MessageThinking Design', () => {
   it('does not have uppercase header', () => {
     const message = createMessageWithThinking('<think>Testing</think>Hello');
     const wrapper = mount(MessageThinking, {
-      props: { message }
+      props: { message },
     });
 
     const header = wrapper.find('[data-testid="thinking-header"]');
@@ -28,7 +28,7 @@ describe('MessageThinking Design', () => {
   it('shows "Show Thought Process" instead of all-caps header', () => {
     const message = createMessageWithThinking('<think>Done thinking</think>Hello');
     const wrapper = mount(MessageThinking, {
-      props: { message }
+      props: { message },
     });
 
     expect(wrapper.text()).toContain('Show Thought Process');

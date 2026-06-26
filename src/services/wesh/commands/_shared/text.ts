@@ -7,7 +7,7 @@ import { iterateUtf8Lines } from '@/services/wesh/utils/text-records';
 async function readStreamText({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -30,7 +30,7 @@ async function readStreamText({
 export async function readTextFromHandle({
   handle,
 }: {
-  handle: WeshFileHandle;
+  handle: WeshFileHandle,
 }): Promise<string> {
   return await readStreamText({
     stream: openHandleReadStream({ handle }),
@@ -41,8 +41,8 @@ export async function readTextFromFile({
   files,
   path,
 }: {
-  files: WeshCommandContext['files'];
-  path: string;
+  files: WeshCommandContext['files'],
+  path: string,
 }): Promise<string> {
   return readAllFileText({ files, path });
 }
@@ -50,7 +50,7 @@ export async function readTextFromFile({
 export function iterateTextLinesFromHandle({
   handle,
 }: {
-  handle: WeshFileHandle;
+  handle: WeshFileHandle,
 }): AsyncIterable<string> {
   return iterateUtf8Lines({
     chunks: iterateReadableStreamChunks({
@@ -63,8 +63,8 @@ export async function openTextLineIterator({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<AsyncIterator<string>> {
   const stream = path === '-'
     ? openHandleReadStream({ handle: context.stdin })
@@ -83,7 +83,7 @@ export async function openTextLineIterator({
 export function splitTextLines({
   text,
 }: {
-  text: string;
+  text: string,
 }): string[] {
   if (text.length === 0) {
     return [];

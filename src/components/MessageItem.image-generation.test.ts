@@ -37,12 +37,12 @@ vi.mock('../services/storage', () => ({
       name: 'default.png',
       mimeType: 'image/png',
       size: 100,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     }),
     subscribeToChanges: vi.fn(),
     loadSettings: vi.fn().mockResolvedValue({}),
     saveSettings: vi.fn(),
-  }
+  },
 }));
 
 // Mock global events
@@ -51,7 +51,7 @@ vi.mock('../composables/useGlobalEvents', () => ({
     addErrorEvent: vi.fn(),
     addInfoEvent: vi.fn(),
     addSuccessEvent: vi.fn(),
-  })
+  }),
 }));
 
 // Mock speech service
@@ -62,8 +62,8 @@ vi.mock('../services/web-speech', () => ({
     speak: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
-    stop: vi.fn()
-  }
+    stop: vi.fn(),
+  },
 }));
 
 // --- Now import the component and other things ---
@@ -79,7 +79,7 @@ describe('MessageItem Image Generation', () => {
     role: 'assistant' as const,
     content,
     timestamp: Date.now(),
-    replies: { items: [] }
+    replies: { items: [] },
   });
 
   beforeEach(() => {
@@ -96,7 +96,7 @@ describe('MessageItem Image Generation', () => {
       name: 'test.png',
       mimeType: 'image/png',
       size: 100,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     });
 
     // Reset URL.createObjectURL for tests
@@ -109,7 +109,7 @@ describe('MessageItem Image Generation', () => {
   it('shows ImageConjuringLoader when generation is pending', () => {
     const message = createMessage(SENTINEL_IMAGE_PENDING);
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     expect(wrapper.findComponent({ name: 'ImageConjuringLoader' }).exists()).toBe(true);
@@ -121,7 +121,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     const img = wrapper.find('img');
@@ -135,7 +135,7 @@ describe('MessageItem Image Generation', () => {
       binaryObjectId,
       displayWidth: 400,
       displayHeight: 300,
-      prompt: 'a beautiful sunset'
+      prompt: 'a beautiful sunset',
     };
     const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block)}\n\`\`\``;
     const message = createMessage(content);
@@ -143,8 +143,8 @@ describe('MessageItem Image Generation', () => {
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
-        components: { ImageDownloadButton }
-      }
+        components: { ImageDownloadButton },
+      },
     });
 
     await flushPromises();
@@ -169,7 +169,7 @@ describe('MessageItem Image Generation', () => {
       binaryObjectId,
       displayWidth: 400,
       displayHeight: 300,
-      prompt: 'meta-test'
+      prompt: 'meta-test',
     };
     const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block)}\n\`\`\``;
     const message = createMessage(content);
@@ -180,14 +180,14 @@ describe('MessageItem Image Generation', () => {
       name: 'test.png',
       mimeType: 'image/png',
       size: 100,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     });
 
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
-        components: { ImageDownloadButton }
-      }
+        components: { ImageDownloadButton },
+      },
     });
 
     await flushPromises();
@@ -231,7 +231,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
@@ -246,7 +246,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
@@ -261,7 +261,7 @@ describe('MessageItem Image Generation', () => {
     vi.mocked(storageService.getFile).mockResolvedValue(null);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) }
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
     });
 
     await flushPromises();
@@ -278,7 +278,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) }
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
     });
 
     await flushPromises();
@@ -295,7 +295,7 @@ describe('MessageItem Image Generation', () => {
   it('hides speech controls for pending image generation', () => {
     const message = createMessage(SENTINEL_IMAGE_PENDING);
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     // SpeechControl should be hidden or not rendered
@@ -306,7 +306,7 @@ describe('MessageItem Image Generation', () => {
     const content = `${SENTINEL_IMAGE_PROCESSED}<img src="blob:test">`;
     const message = createMessage(content);
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     const speechControl = wrapper.findComponent({ name: 'SpeechControl' });
@@ -324,14 +324,14 @@ describe('MessageItem Image Generation', () => {
       name: 'blue cat.webp',
       mimeType: 'image/webp',
       size: 123,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     });
 
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
-        components: { ImageDownloadButton }
-      }
+        components: { ImageDownloadButton },
+      },
     });
 
     await flushPromises();
@@ -348,7 +348,7 @@ describe('MessageItem Image Generation', () => {
       click: vi.fn(),
       download: '',
       href: '',
-      style: {}
+      style: {},
     };
     const createElementSpy = vi.spyOn(document, 'createElement').mockReturnValue(link as any);
     const appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation(() => link as any);
@@ -379,7 +379,7 @@ describe('MessageItem Image Generation', () => {
       displayHeight: 300,
       prompt: 'a futuristic city',
       steps: 30,
-      seed: 12345
+      seed: 12345,
     };
     const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block)}\n\`\`\``;
     const message = createMessage(content);
@@ -387,8 +387,8 @@ describe('MessageItem Image Generation', () => {
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
-        components: { ImageDownloadButton }
-      }
+        components: { ImageDownloadButton },
+      },
     });
 
     await flushPromises();
@@ -427,21 +427,21 @@ describe('MessageItem Image Generation', () => {
   it('maintains layout stability with aspect-ratio skeleton and hydrates multiple images in parallel', async () => {
     const images = [
       { id: 'img-1', w: 512, h: 512 },
-      { id: 'img-2', w: 1024, h: 768 }
+      { id: 'img-2', w: 1024, h: 768 },
     ];
     const content = SENTINEL_IMAGE_PROCESSED + '\n\n' + images.map(img => (
       `\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify({
         binaryObjectId: img.id,
         displayWidth: img.w,
         displayHeight: img.h,
-        prompt: `image ${img.id}`
+        prompt: `image ${img.id}`,
       })}\n\`\`\``
     )).join('\n\n');
 
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'parallel-test' }) }
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'parallel-test' }) },
     });
 
     // Check skeletons immediately after mount
@@ -488,11 +488,11 @@ describe('MessageItem Image Generation', () => {
       role: 'assistant' as const,
       content,
       timestamp: Date.now(),
-      replies: { items: [] }
+      replies: { items: [] },
     };
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'cache-test' }) }
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'cache-test' }) },
     });
 
     // 1. Wait for first hydration
@@ -509,8 +509,8 @@ describe('MessageItem Image Generation', () => {
     await wrapper.setProps({
       message: {
         ...message,
-        content: content + '\n\nMore text added to message.'
-      }
+        content: content + '\n\nMore text added to message.',
+      },
     });
 
     // Wait for potential re-hydration

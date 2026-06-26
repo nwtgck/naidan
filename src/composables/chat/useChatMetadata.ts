@@ -48,8 +48,8 @@ async function legacyUpdatesToChanges({
   chatId,
   updates,
 }: {
-  chatId: ChatId;
-  updates: ChatSettingsUpdate;
+  chatId: ChatId,
+  updates: ChatSettingsUpdate,
 }): Promise<ScopedSettingChange[]> {
   const changes: ScopedSettingChange[] = [];
   const liveChat = getLiveChatById({ chatId });
@@ -160,63 +160,63 @@ export type ChatMetadataAdapter = {
     chatId,
     title,
   }: {
-    chatId: ChatId;
-    title: string;
-  }): Promise<void>;
+    chatId: ChatId,
+    title: string,
+  }): Promise<void>,
 
   toggleDebug({
     chatId,
   }: {
-    chatId: ChatId;
-  }): Promise<void>;
+    chatId: ChatId,
+  }): Promise<void>,
 
   updateModel({
     chatId,
     modelId,
   }: {
-    chatId: ChatId;
-    modelId: string | undefined;
-  }): Promise<void>;
+    chatId: ChatId,
+    modelId: string | undefined,
+  }): Promise<void>,
 
   updateGroupOverride({
     chatId,
     chatGroupId,
   }: {
-    chatId: ChatId;
-    chatGroupId: ChatGroupId | undefined;
-  }): Promise<void>;
+    chatId: ChatId,
+    chatGroupId: ChatGroupId | undefined,
+  }): Promise<void>,
 
   updateScopedSettings({
     chatId,
     changes,
   }: {
-    chatId: ChatId;
-    changes: readonly ScopedSettingChange[];
-  }): Promise<void>;
+    chatId: ChatId,
+    changes: readonly ScopedSettingChange[],
+  }): Promise<void>,
 
   updateSettings({
     chatId,
     updates,
   }: {
-    chatId: ChatId;
-    updates: ChatSettingsUpdate;
-  }): Promise<void>;
+    chatId: ChatId,
+    updates: ChatSettingsUpdate,
+  }): Promise<void>,
 
   reasoningEffort({
     chatId,
   }: {
-    chatId: Readonly<Ref<ChatId>>;
-  }): ComputedRef<ReasoningEffort | undefined>;
+    chatId: Readonly<Ref<ChatId>>,
+  }): ComputedRef<ReasoningEffort | undefined>,
 
   updateReasoningEffort({
     chatId,
     effort,
   }: {
-    chatId: ChatId;
-    effort: ReasoningEffort | undefined;
-  }): Promise<void>;
+    chatId: ChatId,
+    effort: ReasoningEffort | undefined,
+  }): Promise<void>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatMetadata(): ChatMetadataAdapter {
@@ -224,8 +224,8 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     title,
   }: {
-    chatId: ChatId;
-    title: string;
+    chatId: ChatId,
+    title: string,
   }): Promise<void> {
     const liveChat = getLiveChatById({ chatId });
     if (liveChat !== null) {
@@ -268,8 +268,8 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     changes,
   }: {
-    chatId: ChatId;
-    changes: readonly ScopedSettingChange[];
+    chatId: ChatId,
+    changes: readonly ScopedSettingChange[],
   }): Promise<void> {
     await updateChatScopedSettings({ chatId, changes });
   }
@@ -278,8 +278,8 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     modelId,
   }: {
-    chatId: ChatId;
-    modelId: string | undefined;
+    chatId: ChatId,
+    modelId: string | undefined,
   }): Promise<void> {
     await updateScopedSettings({
       chatId,
@@ -293,8 +293,8 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     chatGroupId,
   }: {
-    chatId: ChatId;
-    chatGroupId: ChatGroupId | undefined;
+    chatId: ChatId,
+    chatGroupId: ChatGroupId | undefined,
   }): Promise<void> {
     const liveChat = getLiveChatById({ chatId });
     if (liveChat !== null) {
@@ -317,8 +317,8 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     updates,
   }: {
-    chatId: ChatId;
-    updates: ChatSettingsUpdate;
+    chatId: ChatId,
+    updates: ChatSettingsUpdate,
   }): Promise<void> {
     await updateScopedSettings({
       chatId,
@@ -329,7 +329,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
   function reasoningEffort({
     chatId,
   }: {
-    chatId: Readonly<Ref<ChatId>>;
+    chatId: Readonly<Ref<ChatId>>,
   }): ComputedRef<ReasoningEffort | undefined> {
     return computed(() => getLiveChatById({
       chatId: chatId.value,
@@ -340,8 +340,8 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     effort,
   }: {
-    chatId: ChatId;
-    effort: ReasoningEffort | undefined;
+    chatId: ChatId,
+    effort: ReasoningEffort | undefined,
   }): Promise<void> {
     await updateScopedSettings({
       chatId,

@@ -59,25 +59,25 @@ function createSymlinkStat({ size }: { size: number }): WeshStat {
 }
 
 interface TestSyncAccessHandle {
-  read(buffer: Uint8Array, options?: { at?: number }): number;
-  write(buffer: Uint8Array, options?: { at?: number }): number;
-  truncate(newSize: number): void;
-  getSize(): number;
-  flush(): void;
-  close(): void;
+  read(buffer: Uint8Array, options?: { at?: number }): number,
+  write(buffer: Uint8Array, options?: { at?: number }): number,
+  truncate(newSize: number): void,
+  getSize(): number,
+  flush(): void,
+  close(): void,
 }
 
 interface TestSyncAccessCapableFileHandle extends MockFileSystemFileHandle {
-  createSyncAccessHandle(): Promise<TestSyncAccessHandle>;
+  createSyncAccessHandle(): Promise<TestSyncAccessHandle>,
 }
 
 function attachTestSyncAccessHandle({
   fileHandle,
 }: {
-  fileHandle: MockFileSystemFileHandle;
+  fileHandle: MockFileSystemFileHandle,
 }): {
-  syncAccessHandle: TestSyncAccessHandle;
-  createSyncAccessHandle: ReturnType<typeof vi.fn<() => Promise<TestSyncAccessHandle>>>;
+  syncAccessHandle: TestSyncAccessHandle,
+  createSyncAccessHandle: ReturnType<typeof vi.fn<() => Promise<TestSyncAccessHandle>>>,
 } {
   const flush = vi.fn();
   const close = vi.fn();
@@ -248,7 +248,7 @@ describe('wesh vfs mounts', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -744,7 +744,7 @@ describe('WeshVFS virtual mounts', () => {
   it('exposes virtual mounts through synthetic parent directories', async () => {
     const vfs = new WeshVFS({ rootHandle: undefined });
     const provider: WeshVirtualMountProvider = {
-      async open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }) {
+      async open({ path, flags, mode }: { path: string, flags: WeshOpenFlags, mode?: number }) {
         void path;
         void flags;
         void mode;
@@ -791,7 +791,7 @@ describe('WeshVFS virtual mounts', () => {
 
   it('delegates file operations to the virtual provider', async () => {
     const vfs = new WeshVFS({ rootHandle: undefined });
-    const open = vi.fn(async ({ path }: { path: string; flags: WeshOpenFlags; mode?: number }) => {
+    const open = vi.fn(async ({ path }: { path: string, flags: WeshOpenFlags, mode?: number }) => {
       expect(path).toBe('/sys/fs/naidan/version');
       return createVirtualFileHandle({ text: 'naidan-sysfs-v1\n' });
     });
@@ -1024,7 +1024,7 @@ describe('WeshVFS virtual mounts', () => {
   it('treats virtual mounts as read-only and non-native', async () => {
     const vfs = new WeshVFS({ rootHandle: undefined });
     const provider: WeshVirtualMountProvider = {
-      async open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }) {
+      async open({ path, flags, mode }: { path: string, flags: WeshOpenFlags, mode?: number }) {
         void path;
         void flags;
         void mode;

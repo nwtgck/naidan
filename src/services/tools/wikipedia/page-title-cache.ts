@@ -4,8 +4,8 @@ function createWikipediaPageTitleCacheKey({
   lang,
   pageId,
 }: {
-  lang: string;
-  pageId: number;
+  lang: string,
+  pageId: number,
 }): string {
   return `${lang}:${pageId}`;
 }
@@ -15,9 +15,9 @@ export function rememberWikipediaPageTitle({
   pageId,
   title,
 }: {
-  lang: string;
-  pageId: number;
-  title: string;
+  lang: string,
+  pageId: number,
+  title: string,
 }): void {
   rememberedPageTitlesByKey.set(createWikipediaPageTitleCacheKey({
     lang,
@@ -29,8 +29,8 @@ export function getRememberedWikipediaPageTitle({
   lang,
   pageId,
 }: {
-  lang: string;
-  pageId: number;
+  lang: string,
+  pageId: number,
 }): string | undefined {
   return rememberedPageTitlesByKey.get(createWikipediaPageTitleCacheKey({
     lang,

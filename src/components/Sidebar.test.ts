@@ -164,7 +164,7 @@ vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
 
 vi.mock('../composables/chat/useChatMetadata', () => ({
   useChatMetadata: () => ({
-    rename: ({ chatId, title }: { chatId: string; title: string }) => mockRenameChat({ id: chatId, newTitle: title }),
+    rename: ({ chatId, title }: { chatId: string, title: string }) => mockRenameChat({ id: chatId, newTitle: title }),
     TEST_ONLY: {},
   }),
 }));
@@ -210,9 +210,9 @@ vi.mock('vuedraggable', () => ({
 }));
 
 interface SidebarComponent {
-  sidebarItemsLocal: SidebarItem[];
-  isDragging: boolean;
-  syncLocalItems: () => void;
+  sidebarItemsLocal: SidebarItem[],
+  isDragging: boolean,
+  syncLocalItems: () => void,
 }
 
 describe('Sidebar Logic Stability', () => {
@@ -274,13 +274,13 @@ describe('Sidebar Logic Stability', () => {
         models: Array,
         loading: {
           type: Boolean,
-          default: false
+          default: false,
         },
         allowClear: {
           type: Boolean,
-          default: false
-        }
-      }
+          default: false,
+        },
+      },
     },
   };
 
@@ -606,7 +606,7 @@ describe('Sidebar Logic Stability', () => {
     it('should prompt for confirmation when deleting a group with chats', async () => {
       const groupWithChats: ChatGroup = {
         id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
-        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }]
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
       };
       mockChatGroups.value = [groupWithChats];
 
@@ -627,7 +627,7 @@ describe('Sidebar Logic Stability', () => {
     it('should prompt for confirmation when deleting an empty group with custom settings', async () => {
       const groupWithSettings: ChatGroup = {
         id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
-        systemPrompt: { content: 'sys', behavior: 'append' }
+        systemPrompt: { content: 'sys', behavior: 'append' },
       };
       mockChatGroups.value = [groupWithSettings];
 
@@ -647,7 +647,7 @@ describe('Sidebar Logic Stability', () => {
 
     it('should delete IMMEDIATELY without confirmation for an empty group with no settings', async () => {
       const emptyGroup: ChatGroup = {
-        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: []
+        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
       };
       mockChatGroups.value = [emptyGroup];
 
@@ -669,7 +669,7 @@ describe('Sidebar Logic Stability', () => {
     it('should call deleteChatGroup after confirmation is accepted', async () => {
       const group: ChatGroup = {
         id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
-        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }]
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
       };
       mockChatGroups.value = [group];
       mockShowConfirm.mockResolvedValue(true);
@@ -693,7 +693,7 @@ describe('Sidebar Logic Stability', () => {
     it('should NOT call deleteChatGroup if confirmation is cancelled', async () => {
       const group: ChatGroup = {
         id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
-        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }]
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
       };
       mockChatGroups.value = [group];
       mockShowConfirm.mockResolvedValue(false);
@@ -744,7 +744,7 @@ describe('Sidebar Logic Stability', () => {
     it('opens the file explorer when the file explorer button is clicked', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
-        attachTo: document.body
+        attachTo: document.body,
       });
       await nextTick();
 

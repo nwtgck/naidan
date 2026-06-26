@@ -16,9 +16,9 @@ export const fakeLmFetch: LmFetch = async (input, init) => {
 };
 
 async function normalizeFakeLmFetchRequest({ input, init }: {
-  input: RequestInfo | URL;
-  init: RequestInit | undefined;
-}): Promise<{ url: URL; init: RequestInit | undefined }> {
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+}): Promise<{ url: URL, init: RequestInit | undefined }> {
   if (!(input instanceof Request)) {
     return {
       url: toUrl({ input }),
@@ -33,7 +33,7 @@ async function normalizeFakeLmFetchRequest({ input, init }: {
 }
 
 function toUrl({ input }: {
-  input: Exclude<RequestInfo | URL, Request>;
+  input: Exclude<RequestInfo | URL, Request>,
 }): URL {
   if (input instanceof URL) {
     return input;
@@ -43,7 +43,7 @@ function toUrl({ input }: {
 }
 
 function normalizeRequestInit({ init }: {
-  init: RequestInit | undefined;
+  init: RequestInit | undefined,
 }): RequestInit | undefined {
   if (init?.method === undefined) {
     return init;
@@ -56,8 +56,8 @@ function normalizeRequestInit({ init }: {
 }
 
 async function mergeRequestInputAndInit({ request, init }: {
-  request: Request;
-  init: RequestInit | undefined;
+  request: Request,
+  init: RequestInit | undefined,
 }): Promise<RequestInit> {
   const body = init?.body ?? await readRequestBodyText({ request });
 
@@ -71,7 +71,7 @@ async function mergeRequestInputAndInit({ request, init }: {
 }
 
 async function readRequestBodyText({ request }: {
-  request: Request;
+  request: Request,
 }): Promise<string | undefined> {
   if (request.method === 'GET' || request.method === 'HEAD') {
     return undefined;

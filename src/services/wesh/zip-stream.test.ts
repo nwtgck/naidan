@@ -11,9 +11,9 @@ function createBaseHandle({
   write,
   size,
 }: {
-  read: WeshFileHandle['read'];
-  write: WeshFileHandle['write'];
-  size: number;
+  read: WeshFileHandle['read'],
+  write: WeshFileHandle['write'],
+  size: number,
 }): WeshFileHandle {
   return {
     read,
@@ -36,7 +36,7 @@ function createBaseHandle({
 describe('Wesh ZIP adapters', () => {
   it('writes the original chunk directly while completing partial writes', async () => {
     const chunk = new Uint8Array([1, 2, 3, 4, 5]);
-    const calls: Array<{ buffer: Uint8Array; offset: number; length: number }> = [];
+    const calls: Array<{ buffer: Uint8Array, offset: number, length: number }> = [];
     const handle = createBaseHandle({
       size: 0,
       read: vi.fn(async () => ({ bytesRead: 0 })),

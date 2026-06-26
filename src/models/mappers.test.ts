@@ -22,11 +22,11 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
         presencePenalty: undefined,
         frequencyPenalty: undefined,
         stop: undefined,
-        reasoning: { effort: 'low' }
+        reasoning: { effort: 'low' },
       },
       replies: { items: [] },
       toolCalls: undefined,
-      results: undefined
+      results: undefined,
     };
 
     const domain = messageNodeToDomain({ dto }) as UserMessageNode;
@@ -57,11 +57,11 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
         presencePenalty: undefined,
         frequencyPenalty: undefined,
         stop: undefined,
-        reasoning: { effort: 'high' }
+        reasoning: { effort: 'high' },
       },
       replies: { items: [] },
       toolCalls: undefined,
-      results: undefined
+      results: undefined,
     };
 
     const domain = messageNodeToDomain({ dto }) as AssistantMessageNode;
@@ -88,7 +88,7 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       lmParameters: undefined,
       replies: { items: [] },
       toolCalls: undefined,
-      results: undefined
+      results: undefined,
     };
 
     const domain = messageNodeToDomain({ dto }) as SystemMessageNode;
@@ -113,7 +113,7 @@ describe('LmParameters Mapping', () => {
       presencePenalty: undefined,
       frequencyPenalty: undefined,
       stop: undefined,
-      reasoning: undefined
+      reasoning: undefined,
     } });
     expect(domain).toBeDefined();
     if (domain === undefined) throw new Error('Expected LM parameters');
@@ -147,7 +147,7 @@ describe('LmParameters Mapping', () => {
       presencePenalty: undefined,
       frequencyPenalty: undefined,
       stop: undefined,
-      reasoning: original
+      reasoning: original,
     } });
     expect(dto?.reasoning?.effort).toBe('medium');
 
@@ -163,11 +163,11 @@ describe('Sidebar assembly', () => {
     const hierarchy: Hierarchy = {
       items: [
         { type: 'chat', id: toChatId({ raw: 'exists' }) },
-        { type: 'chat', id: toChatId({ raw: 'orphan' }) }
-      ]
+        { type: 'chat', id: toChatId({ raw: 'orphan' }) },
+      ],
     };
     const metas: ChatMeta[] = [
-      { id: toChatId({ raw: 'exists' }), title: 'Exists', updatedAt: 100, createdAt: 100, debugEnabled: false }
+      { id: toChatId({ raw: 'exists' }), title: 'Exists', updatedAt: 100, createdAt: 100, debugEnabled: false },
     ];
     const groups: ChatGroup[] = [];
 
@@ -179,8 +179,8 @@ describe('Sidebar assembly', () => {
   it('should filter out orphan groups from hierarchy', () => {
     const hierarchy: Hierarchy = {
       items: [
-        { type: 'chat_group', id: toChatGroupId({ raw: 'orphan-group' }), chat_ids: [] }
-      ]
+        { type: 'chat_group', id: toChatGroupId({ raw: 'orphan-group' }), chat_ids: [] },
+      ],
     };
     const items = buildSidebarItemsFromHierarchy({ hierarchy, chatMetas: [], chatGroups: [] });
     expect(items).toHaveLength(0);

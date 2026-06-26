@@ -7,7 +7,7 @@ import type { WeshFileHandle } from '@/services/wesh/types';
 export function createTestReadHandleFromText({
   text,
 }: {
-  text: string;
+  text: string,
 }): WeshFileHandle {
   const source = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -26,7 +26,7 @@ export function createTestReadHandleFromText({
 export function createTestReadHandleFromBytes({
   bytes,
 }: {
-  bytes: Uint8Array;
+  bytes: Uint8Array,
 }): WeshFileHandle {
   const source = new ReadableStream<Uint8Array>({
     start(controller) {

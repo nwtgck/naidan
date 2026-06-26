@@ -3,22 +3,22 @@ import { MoreHorizontalIcon, CopyIcon, Trash2Icon, SearchIcon } from 'lucide-vue
 import type { ChatGroup } from '@/models/types';
 
 defineProps<{
-  chatGroup: ChatGroup;
-  isOpen: boolean;
+  chatGroup: ChatGroup,
+  isOpen: boolean,
 }>();
 
 defineEmits<{
-  (e: 'toggle'): void;
-  (e: 'duplicate'): void;
-  (e: 'delete'): void;
-  (e: 'search'): void;
+  (e: 'toggle'): void,
+  (e: 'duplicate'): void,
+  (e: 'delete'): void,
+  (e: 'search'): void,
 }>();
 
 
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

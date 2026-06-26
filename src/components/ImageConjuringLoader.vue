@@ -2,10 +2,10 @@
 import { computed } from 'vue';
 
 const props = defineProps<{
-  remainingCount?: number;
-  totalCount?: number;
-  currentStep?: number;
-  totalSteps?: number;
+  remainingCount?: number,
+  totalCount?: number,
+  currentStep?: number,
+  totalSteps?: number,
 }>();
 
 const currentNumber = computed(() => {
@@ -21,8 +21,8 @@ const stepProgress = computed(() => {
 defineExpose({
   TEST_ONLY: {
     currentNumber,
-    stepProgress
-  }
+    stepProgress,
+  },
 });
 </script>
 

@@ -1,6 +1,6 @@
 export type JsonParseResult =
-  | { success: true; data: unknown; raw: string }
-  | { success: false; error: string; raw: string };
+  | { success: true, data: unknown, raw: string }
+  | { success: false, error: string, raw: string };
 
 /**
  * Parses a string containing one or more concatenated JSON objects.
@@ -44,13 +44,13 @@ export function parseConcatenatedJson({ input }: { input: string }): JsonParseRe
           results.push({
             success: true,
             data,
-            raw: jsonStr
+            raw: jsonStr,
           });
         } catch (e) {
           results.push({
             success: false,
             error: e instanceof Error ? e.message : String(e),
-            raw: jsonStr
+            raw: jsonStr,
           });
         }
         start = -1;
@@ -63,7 +63,7 @@ export function parseConcatenatedJson({ input }: { input: string }): JsonParseRe
     results.push({
       success: false,
       error: 'Unclosed JSON object',
-      raw: input.substring(start)
+      raw: input.substring(start),
     });
   }
 

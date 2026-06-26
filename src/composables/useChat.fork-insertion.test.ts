@@ -6,8 +6,8 @@ import type { SidebarItem } from '@/models/types';
 import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 type TestHierarchyNode =
-  | { type: 'chat'; id: string }
-  | { type: 'chat_group'; id: string; chat_ids: string[] };
+  | { type: 'chat', id: string }
+  | { type: 'chat_group', id: string, chat_ids: string[] };
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -26,7 +26,7 @@ vi.mock('../services/storage', () => ({
         items: chat.rootItems.value.map(item => {
           if (item.type === 'chat') return { type: 'chat', id: idToRaw({ id: item.chat.id }) };
           return { type: 'chat_group', id: idToRaw({ id: item.chatGroup.id }), chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
-        })
+        }),
       };
       const updated = await updater({ current: currentH as any });
 
@@ -40,7 +40,7 @@ vi.mock('../services/storage', () => ({
           }
           return {
             id: `chat_group:${node.id}`, type: 'chat_group',
-            chatGroup: { id: toChatGroupId({ raw: node.id }), name: 'G1', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: toChatId({ raw: cid }), title: cid === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } })) }
+            chatGroup: { id: toChatGroupId({ raw: node.id }), name: 'G1', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: toChatId({ raw: cid }), title: cid === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } })) },
           };
         }) as any;
       });
@@ -78,13 +78,13 @@ describe('useChat Fork Insertion Logic', () => {
     (storageService.loadChat as any).mockResolvedValue({
       id: 'a', title: 'A', root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
-      currentLeafId: 'm1'
+      currentLeafId: 'm1',
     });
 
     chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: {
       id: 'a', title: 'A', root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
-      currentLeafId: 'm1'
+      currentLeafId: 'm1',
     } as any });
 
     vi.spyOn(storageService, 'getSidebarStructure').mockImplementation(async () => {
@@ -122,8 +122,8 @@ describe('useChat Fork Insertion Logic', () => {
           name: 'G1',
           items: [{ id: 'chat:a', type: 'chat', chat: { id: toChatId({ raw: 'a' }), title: 'A', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } } as unknown as SidebarItem],
           isCollapsed: false,
-          updatedAt: 0
-        }
+          updatedAt: 0,
+        },
       } as SidebarItem,
     ];
 
@@ -131,14 +131,14 @@ describe('useChat Fork Insertion Logic', () => {
       id: 'a', title: 'A', groupId: 'g1',
       root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
-      currentLeafId: 'm1'
+      currentLeafId: 'm1',
     });
 
     chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: {
       id: 'a', title: 'A', groupId: 'g1',
       root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
-      currentLeafId: 'm1'
+      currentLeafId: 'm1',
     } as any });
 
     vi.spyOn(storageService, 'getSidebarStructure').mockImplementation(async () => {

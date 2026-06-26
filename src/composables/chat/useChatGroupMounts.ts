@@ -11,17 +11,17 @@ export type ChatGroupMountsAdapter = {
     chatGroupId,
     mount,
   }: {
-    chatGroupId: ChatGroupId;
-    mount: Mount;
-  }): Promise<void>;
+    chatGroupId: ChatGroupId,
+    mount: Mount,
+  }): Promise<void>,
 
   removeMount({
     chatGroupId,
     volumeId,
   }: {
-    chatGroupId: ChatGroupId;
-    volumeId: VolumeId;
-  }): Promise<void>;
+    chatGroupId: ChatGroupId,
+    volumeId: VolumeId,
+  }): Promise<void>,
 
   updateMount({
     chatGroupId,
@@ -29,13 +29,13 @@ export type ChatGroupMountsAdapter = {
     mountPath,
     readOnly,
   }: {
-    chatGroupId: ChatGroupId;
-    volumeId: VolumeId;
-    mountPath: string;
-    readOnly: boolean;
-  }): Promise<void>;
+    chatGroupId: ChatGroupId,
+    volumeId: VolumeId,
+    mountPath: string,
+    readOnly: boolean,
+  }): Promise<void>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatGroupMounts(): ChatGroupMountsAdapter {
@@ -43,8 +43,8 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
     chatGroupId,
     mount,
   }: {
-    chatGroupId: ChatGroupId;
-    mount: Mount;
+    chatGroupId: ChatGroupId,
+    mount: Mount,
   }): Promise<void> {
     await storageService.addMountToChatGroup({
       groupId: chatGroupId,
@@ -67,8 +67,8 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
     chatGroupId,
     volumeId,
   }: {
-    chatGroupId: ChatGroupId;
-    volumeId: VolumeId;
+    chatGroupId: ChatGroupId,
+    volumeId: VolumeId,
   }): Promise<void> {
     await storageService.removeMountFromChatGroup({
       groupId: chatGroupId,
@@ -84,7 +84,7 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
 
     if (currentChatGroupRef.value?.id === chatGroupId && currentChatGroupRef.value !== group) {
       currentChatGroupRef.value.mounts = (currentChatGroupRef.value.mounts ?? []).filter(
-        mount => !(mount.type === 'volume' && mount.volumeId === volumeId)
+        mount => !(mount.type === 'volume' && mount.volumeId === volumeId),
       );
     }
   }
@@ -95,10 +95,10 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
     mountPath,
     readOnly,
   }: {
-    chatGroupId: ChatGroupId;
-    volumeId: VolumeId;
-    mountPath: string;
-    readOnly: boolean;
+    chatGroupId: ChatGroupId,
+    volumeId: VolumeId,
+    mountPath: string,
+    readOnly: boolean,
   }): Promise<void> {
     await storageService.updateChatGroupMount({
       groupId: chatGroupId,
@@ -110,12 +110,12 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
     const applyUpdate = ({
       mounts,
     }: {
-      mounts: Mount[] | undefined;
+      mounts: Mount[] | undefined,
     }): Mount[] => {
       return (mounts ?? []).map(mount =>
         mount.type === 'volume' && mount.volumeId === volumeId
           ? { ...mount, mountPath, readOnly }
-          : mount
+          : mount,
       );
     };
 
@@ -148,7 +148,7 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
 function findChatGroupById({
   chatGroupId,
 }: {
-  chatGroupId: ChatGroupId;
+  chatGroupId: ChatGroupId,
 }) {
   for (const item of rootItems.value) {
     switch (item.type) {

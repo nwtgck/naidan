@@ -58,7 +58,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
         }),
         getFile: vi.fn().mockImplementation(async () => ({
           text: async () => content,
-        }))
+        })),
       };
     }
 
@@ -94,7 +94,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     }
 
     vi.stubGlobal('navigator', {
-      storage: { getDirectory: () => Promise.resolve(mockRoot) }
+      storage: { getDirectory: () => Promise.resolve(mockRoot) },
     });
   });
 
@@ -131,20 +131,20 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
             size: 100,
             uploadedAt: Date.now(),
             status: 'memory',
-            blob: mockBlob
+            blob: mockBlob,
           }],
-          replies: { items: [] }
-        }]
+          replies: { items: [] },
+        }],
       },
       modelId: 'm1',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      debugEnabled: false
+      debugEnabled: false,
     };
 
     await storageService.updateChatContent({ id: toChatId({ raw: chat.id }), updater: () => ({
       root: chat.root,
-      currentLeafId: undefined
+      currentLeafId: undefined,
     } as any) });
     await storageService.updateChatMeta({ id: toChatId({ raw: chat.id }), updater: () => chat as any });
     await storageService.updateHierarchy({ updater: ({ current: curr }) => {

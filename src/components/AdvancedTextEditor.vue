@@ -22,13 +22,13 @@ import {
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
-  initialValue: string;
-  title: string | undefined;
+  initialValue: string,
+  title: string | undefined,
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:content', { content }: { content: string }): void;
-  (e: 'close'): void;
+  (e: 'update:content', { content }: { content: string }): void,
+  (e: 'close'): void,
 }>();
 
 // --- State ---
@@ -57,7 +57,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const lineNumbersContentRef = ref<HTMLElement | null>(null); // Inner container for transform
 const multiEditInputRef = ref<HTMLInputElement | null>(null);
 const searchIndex = ref(-1);
-const searchMatches = ref<{ start: number; end: number }[]>([]);
+const searchMatches = ref<{ start: number, end: number }[]>([]);
 const showStats = ref(false);
 
 // Line Height Calculation State
@@ -224,7 +224,7 @@ function performSearch() {
     return;
   }
 
-  const matches: { start: number; end: number }[] = [];
+  const matches: { start: number, end: number }[] = [];
   const text = content.value;
   const query = findText.value;
 
@@ -607,7 +607,7 @@ defineExpose({
     wrapMode,
     calculateLineHeights,
     lineHeights,
-  }
+  },
 });
 </script>
 

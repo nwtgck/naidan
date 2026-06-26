@@ -125,7 +125,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     await save({ patch: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpointUrl: 'http://new-endpoint',
-      endpointType: 'ollama'
+      endpointType: 'ollama',
     } });
 
     expect(settings.value.storageType).toBe('opfs');
@@ -135,8 +135,42 @@ describe('useSettings Initialization and Bootstrap', () => {
     const updated = await updater({ current: settings.value });
     expect(updated).toEqual(expect.objectContaining({
       storageType: 'opfs',
-      endpointUrl: 'http://new-endpoint'
+      endpointUrl: 'http://new-endpoint',
     }));
+  });
+
+  it('updates one experimental field against the latest persisted settings', async () => {
+    const local = {
+      ...DEFAULT_SETTINGS,
+      endpointType: 'openai' as const,
+      storageType: 'local' as const,
+      experimental: {
+        toolConfigPersistence: 'enabled' as const,
+      },
+    };
+    const persisted = {
+      ...local,
+      experimental: {
+        ...local.experimental,
+        fakeLm: 'enabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(persisted);
+    const { updateExperimental, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: local });
+
+    await updateExperimental({
+      updater: ({ experimental }) => ({
+        ...experimental,
+        toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }],
+      }),
+    });
+
+    expect(settings.value.experimental).toEqual({
+      toolConfigPersistence: 'enabled',
+      fakeLm: 'enabled',
+      toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }],
+    });
   });
 
   it('persists fake LM mode without overwriting other experimental settings', async () => {
@@ -282,7 +316,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       storageType: 'local',
       endpointUrl: 'http://localhost:11434',
       endpointType: 'openai',
-      defaultModelId: 'gpt-3.5'
+      defaultModelId: 'gpt-3.5',
     });
 
     // Act
@@ -300,7 +334,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       storageType: 'local',
       endpointUrl: 'http://localhost:11434',
       endpointType: 'openai',
-      defaultModelId: undefined
+      defaultModelId: undefined,
     });
 
     const { init, isOnboardingDismissed } = useSettings();
@@ -423,7 +457,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
       await updateGlobalEndpoint({
         type: 'ollama',
-        url: 'http://localhost:11434'
+        url: 'http://localhost:11434',
       });
 
       // Still false because model is missing

@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   ensureChatTmpDirectory: vi.fn(),
   settingsValue: {
     storageType: 'opfs' as 'opfs' | 'local' | 'memory',
-    mounts: [] as Array<{ type: 'volume'; volumeId: unknown; mountPath: string; readOnly: boolean }>,
+    mounts: [] as Array<{ type: 'volume', volumeId: unknown, mountPath: string, readOnly: boolean }>,
   },
 }));
 

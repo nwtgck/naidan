@@ -33,7 +33,7 @@ describe('MessageItem Image Generation Progress', () => {
     role: 'assistant' as const,
     content,
     timestamp: Date.now(),
-    replies: { items: [] }
+    replies: { items: [] },
   });
 
   beforeEach(() => {
@@ -49,7 +49,7 @@ describe('MessageItem Image Generation Progress', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
@@ -70,7 +70,7 @@ describe('MessageItem Image Generation Progress', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();
@@ -93,7 +93,7 @@ describe('MessageItem Image Generation Progress', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false },
     });
 
     await flushPromises();

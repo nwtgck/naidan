@@ -71,7 +71,7 @@ describe('require-test-only-export rule', () => {
     `;
     const result = await lint(code);
     expect(result.messages.some(m => m.ruleId === 'local-rules-test-only/require-test-only-export')).toBe(true);
-    
+
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('TEST_ONLY: {');
     expect(fixedResult.output).toContain('// Export internal state and logic used only for testing here.');
@@ -88,7 +88,7 @@ describe('require-test-only-export rule', () => {
     `;
     const result = await lint(code);
     expect(result.messages.some(m => m.ruleId === 'local-rules-test-only/require-test-only-export')).toBe(true);
-    
+
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('TEST_ONLY: {');
   });
@@ -136,7 +136,7 @@ describe('require-test-only-export rule', () => {
     `;
     const result = await lint(code);
     expect(result.messages.some(m => m.ruleId === 'local-rules-test-only/require-test-only-export')).toBe(true);
-    
+
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('TEST_ONLY: {');
   });

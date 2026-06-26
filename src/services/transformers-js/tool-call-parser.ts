@@ -106,7 +106,7 @@ export class ToolCallStreamParser {
 
   private parseBuffered(): void {
     try {
-      const parsed = JSON.parse(this.buffer.trim()) as { name: string; arguments: Record<string, unknown> };
+      const parsed = JSON.parse(this.buffer.trim()) as { name: string, arguments: Record<string, unknown> };
       this.parsedToolCalls.push({
         id: generateId<ToolCallId>(),
         type: 'function',

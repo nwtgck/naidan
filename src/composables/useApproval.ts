@@ -13,9 +13,9 @@ import type {
 } from '@/services/approval';
 
 type ApprovalRuntimeState = {
-  activeRequestsByChatId: Map<ChatId, ApprovalActiveRequest>;
-  chatApprovalsByChatId: Map<ChatId, Set<ApprovalActionId>>;
-  globalApprovalActionIds: Set<ApprovalActionId>;
+  activeRequestsByChatId: Map<ChatId, ApprovalActiveRequest>,
+  chatApprovalsByChatId: Map<ChatId, Set<ApprovalActionId>>,
+  globalApprovalActionIds: Set<ApprovalActionId>,
 };
 
 const approvalRuntimeState = reactive<ApprovalRuntimeState>({
@@ -30,7 +30,7 @@ const pendingDecisionResolvers = new Map<string, ({ decision }: { decision: Appr
 function getChatApprovalLock({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): Semaphore {
   const existing = chatApprovalLocks.get(chatId);
   if (existing !== undefined) {
@@ -46,8 +46,8 @@ function getStoredApprovalStatus({
   chatId,
   actionId,
 }: {
-  chatId: ChatId;
-  actionId: ApprovalActionId;
+  chatId: ChatId,
+  actionId: ApprovalActionId,
 }): ApprovalStoredStatus {
   if (approvalRuntimeState.globalApprovalActionIds.has(actionId)) {
     return 'approved';
@@ -66,9 +66,9 @@ function storeApprovalDecision({
   actionId,
   decision,
 }: {
-  chatId: ChatId;
-  actionId: ApprovalActionId;
-  decision: ApprovalUiDecision;
+  chatId: ChatId,
+  actionId: ApprovalActionId,
+  decision: ApprovalUiDecision,
 }): void {
   switch (decision) {
   case 'allow_once':
@@ -95,8 +95,8 @@ function waitForApprovalUiDecision({
   request,
   signal,
 }: {
-  request: ApprovalActiveRequest;
-  signal: AbortSignal | undefined;
+  request: ApprovalActiveRequest,
+  signal: AbortSignal | undefined,
 }): Promise<ApprovalUiDecision> {
   approvalRuntimeState.activeRequestsByChatId.set(request.chatId, request);
 
@@ -123,8 +123,8 @@ function clearActiveApprovalRequest({
   chatId,
   requestId,
 }: {
-  chatId: ChatId;
-  requestId: string;
+  chatId: ChatId,
+  requestId: string,
 }): void {
   const activeRequest = approvalRuntimeState.activeRequestsByChatId.get(chatId);
   if (activeRequest?.requestId !== requestId) {
@@ -137,8 +137,8 @@ async function runWithChatApprovalLock<TResult>({
   chatId,
   run,
 }: {
-  chatId: ChatId;
-  run: () => Promise<TResult>;
+  chatId: ChatId,
+  run: () => Promise<TResult>,
 }): Promise<TResult> {
   const lock = getChatApprovalLock({ chatId });
   return await lock.run({ task: run });
@@ -150,10 +150,10 @@ export async function ensureApproval({
   preview,
   signal,
 }: {
-  chatId: ChatId;
-  action: ApprovalEnsureRequest['action'];
-  preview: ApprovalEnsureRequest['preview'];
-  signal: ApprovalEnsureRequest['signal'];
+  chatId: ChatId,
+  action: ApprovalEnsureRequest['action'],
+  preview: ApprovalEnsureRequest['preview'],
+  signal: ApprovalEnsureRequest['signal'],
 }): Promise<ApprovalEnsureResult> {
   return await runWithChatApprovalLock({
     chatId,
@@ -221,34 +221,34 @@ export async function ensureApproval({
 }
 
 export function useApproval(): {
-  ensureApproval: EnsureApproval;
+  ensureApproval: EnsureApproval,
   getActiveApprovalRequest: ({
     chatId,
   }: {
-    chatId: ChatId;
-  }) => ComputedRef<ApprovalActiveRequest | undefined>;
+    chatId: ChatId,
+  }) => ComputedRef<ApprovalActiveRequest | undefined>,
   resolveApprovalRequest: ({
     requestId,
     decision,
   }: {
-    requestId: string;
-    decision: ApprovalUiDecision;
-  }) => void;
+    requestId: string,
+    decision: ApprovalUiDecision,
+  }) => void,
   TEST_ONLY: {
     getStoredApprovalStatus: ({
       chatId,
       actionId,
     }: {
-      chatId: ChatId;
-      actionId: ApprovalActionId;
-    }) => ApprovalStoredStatus;
-    clearAll: () => void;
-  };
+      chatId: ChatId,
+      actionId: ApprovalActionId,
+    }) => ApprovalStoredStatus,
+    clearAll: () => void,
+  },
   } {
   function getActiveApprovalRequest({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }): ComputedRef<ApprovalActiveRequest | undefined> {
     return computed(() => approvalRuntimeState.activeRequestsByChatId.get(chatId));
   }
@@ -257,8 +257,8 @@ export function useApproval(): {
     requestId,
     decision,
   }: {
-    requestId: string;
-    decision: ApprovalUiDecision;
+    requestId: string,
+    decision: ApprovalUiDecision,
   }): void {
     const resolver = pendingDecisionResolvers.get(requestId);
     if (resolver === undefined) {

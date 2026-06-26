@@ -38,7 +38,7 @@ vi.mock('./useSettings', () => ({
         defaultModelId: 'global-model',
         systemPrompt: 'Global Prompt',
         lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.7 },
-      }
+      },
     },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
@@ -112,13 +112,13 @@ describe('useChat Group Overrides Resolution', () => {
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: 'system', content: 'Group Prompt' }),
-          expect.objectContaining({ role: 'system', content: 'Chat Prompt' })
+          expect.objectContaining({ role: 'system', content: 'Chat Prompt' }),
         ]),
         model: 'chat-model',
         onChunk: expect.any(Function),
         parameters: expect.objectContaining({ temperature: 0.5 }),
-        signal: expect.any(AbortSignal)
-      })
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -156,13 +156,13 @@ describe('useChat Group Overrides Resolution', () => {
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: 'system', content: 'Global Prompt' }),
-          expect.objectContaining({ role: 'system', content: 'Group Instruction' })
+          expect.objectContaining({ role: 'system', content: 'Group Instruction' }),
         ]),
         model: expect.any(String),
         onChunk: expect.any(Function),
         parameters: expect.any(Object),
-        signal: expect.any(AbortSignal)
-      })
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -199,8 +199,8 @@ describe('useChat Group Overrides Resolution', () => {
         model: 'group-special-model',
         onChunk: expect.any(Function),
         parameters: expect.any(Object),
-        signal: expect.any(AbortSignal)
-      })
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -253,8 +253,8 @@ describe('useChat Group Overrides Resolution', () => {
         model: expect.any(String),
         onChunk: expect.any(Function),
         parameters: expect.any(Object),
-        signal: expect.any(AbortSignal)
-      })
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -292,8 +292,8 @@ describe('useChat Group Overrides Resolution', () => {
           topP: 0.5,                // Group wins (not in chat)
           maxCompletionTokens: 100, // Chat wins
         }),
-        signal: expect.any(AbortSignal)
-      })
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -340,7 +340,7 @@ describe('useChat Group Overrides Resolution', () => {
 
     chatStore.rootItems.value = [
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group },
-      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C', updatedAt: 0 } }
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C', updatedAt: 0 } },
     ];
     mockRootItems.push(...chatStore.rootItems.value);
 
@@ -353,8 +353,8 @@ describe('useChat Group Overrides Resolution', () => {
         model: 'global-model',
         onChunk: expect.any(Function),
         parameters: expect.any(Object),
-        signal: expect.any(AbortSignal)
-      })
+        signal: expect.any(AbortSignal),
+      }),
     );
 
     // 2. Move chat to group
@@ -370,8 +370,8 @@ describe('useChat Group Overrides Resolution', () => {
         model: 'group-model',
         onChunk: expect.any(Function),
         parameters: expect.any(Object),
-        signal: expect.any(AbortSignal)
-      })
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -412,8 +412,8 @@ describe('useChat Group Overrides Resolution', () => {
         model: expect.any(String),
         onChunk: expect.any(Function),
         parameters: expect.any(Object),
-        signal: expect.any(AbortSignal)
-      })
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 });

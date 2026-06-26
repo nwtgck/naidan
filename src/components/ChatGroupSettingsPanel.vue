@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import { useChatGroups } from '@/composables/chat/useChatGroups';
+import { useChatGroups, type ToolConfigsUpdater } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -17,6 +17,7 @@ import {
   ChefHatIcon,
   SearchIcon,
   FolderIcon,
+  WrenchIcon,
 } from 'lucide-vue-next';
 import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/models/scoped-setting-change';
 import type {
@@ -54,6 +55,7 @@ import type { WeshMount } from '@/services/wesh/types';
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeExportModal.vue') });
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
+const ChatGroupToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupToolsSettings.vue') });
 
 const { currentChatGroup } = useCurrentChatState();
 const { settings } = useSettings();
@@ -78,9 +80,9 @@ async function handleVolumeCreated({
   mountPath,
   readOnly,
 }: {
-  volumeId: VolumeId;
-  mountPath: string;
-  readOnly: boolean;
+  volumeId: VolumeId,
+  mountPath: string,
+  readOnly: boolean,
 }): Promise<void> {
   const chatGroupId = currentChatGroup.value?.id;
   if (chatGroupId === undefined) return;
@@ -100,8 +102,8 @@ async function handleChatGroupMountToggleReadOnly({
   volumeId,
   readOnly,
 }: {
-  volumeId: VolumeId;
-  readOnly: boolean;
+  volumeId: VolumeId,
+  readOnly: boolean,
 }): Promise<void> {
   const chatGroupId = currentChatGroup.value?.id;
   if (chatGroupId === undefined) return;
@@ -146,12 +148,12 @@ function handleCreateRecipe(): void {
 }
 
 type GroupSettingsDraft = {
-  endpoint: Endpoint | undefined;
-  modelId: string | undefined;
-  autoTitleEnabled: boolean | undefined;
-  titleModelId: string | undefined;
-  systemPrompt: SystemPrompt | undefined;
-  lmParameters: LmParameters | undefined;
+  endpoint: Endpoint | undefined,
+  modelId: string | undefined,
+  autoTitleEnabled: boolean | undefined,
+  titleModelId: string | undefined,
+  systemPrompt: SystemPrompt | undefined,
+  lmParameters: LmParameters | undefined,
 };
 
 function emptyDraft(): GroupSettingsDraft {
@@ -202,8 +204,8 @@ function areHeadersEqual({
   left,
   right,
 }: {
-  left: [string, string][] | undefined;
-  right: [string, string][] | undefined;
+  left: [string, string][] | undefined,
+  right: [string, string][] | undefined,
 }): boolean {
   if (left === right) return true;
   if (left === undefined || right === undefined || left.length !== right.length) return false;
@@ -214,8 +216,8 @@ function areEndpointsEqual({
   left,
   right,
 }: {
-  left: Endpoint | undefined;
-  right: Endpoint | undefined;
+  left: Endpoint | undefined,
+  right: Endpoint | undefined,
 }): boolean {
   return left?.type === right?.type
     && left?.url === right?.url
@@ -226,8 +228,8 @@ function areSystemPromptsEqual({
   left,
   right,
 }: {
-  left: SystemPrompt | undefined;
-  right: SystemPrompt | undefined;
+  left: SystemPrompt | undefined,
+  right: SystemPrompt | undefined,
 }): boolean {
   return left?.behavior === right?.behavior && left?.content === right?.content;
 }
@@ -265,8 +267,8 @@ function createChanges({
   previous,
   next,
 }: {
-  previous: GroupSettingsDraft;
-  next: GroupSettingsDraft;
+  previous: GroupSettingsDraft,
+  next: GroupSettingsDraft,
 }): ScopedSettingChange[] {
   const changes: ScopedSettingChange[] = [];
   const lmChanges = new Map(
@@ -343,7 +345,8 @@ const saveError = ref<string | null>(null);
 let nextSaveRevision = 0;
 
 const effectiveEndpointType = computed(() => localSettings.value.endpoint?.type || settings.value.endpointType);
-const hasActiveOverrides = computed(() => hasGroupOverrides({ group: localSettings.value }));
+const hasActiveOverrides = computed(() => hasGroupOverrides({ group: localSettings.value })
+  || (currentChatGroup.value?.toolConfigs?.length ?? 0) > 0);
 
 // Keep field synchronization exhaustive. A new LM setting command must
 // fail typechecking here until clean/dirty draft merge semantics are defined.
@@ -352,9 +355,9 @@ function applyLmParameterFieldFromDraft({
   target,
   source,
 }: {
-  field: LmParameterSettingField;
-  target: GroupSettingsDraft;
-  source: GroupSettingsDraft;
+  field: LmParameterSettingField,
+  target: GroupSettingsDraft,
+  source: GroupSettingsDraft,
 }): void {
   const lmParameters: LmParameters = {
     temperature: target.lmParameters?.temperature,
@@ -408,9 +411,9 @@ function applyFieldFromDraft({
   target,
   source,
 }: {
-  field: ScopedSettingChange['field'];
-  target: GroupSettingsDraft;
-  source: GroupSettingsDraft;
+  field: ScopedSettingChange['field'],
+  target: GroupSettingsDraft,
+  source: GroupSettingsDraft,
 }): void {
   switch (field) {
   case 'endpoint':
@@ -472,7 +475,17 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
   }
 }
 
-function saveChangesForGroup({ chatGroupId }: { chatGroupId: ChatGroupId | undefined }): Promise<void> {
+type SaveToolConfigUpdate =
+  | { behavior: 'preserve' }
+  | { behavior: 'update', updater: ToolConfigsUpdater };
+
+function saveChangesForGroup({
+  chatGroupId,
+  toolConfigUpdate,
+}: {
+  chatGroupId: ChatGroupId | undefined,
+  toolConfigUpdate: SaveToolConfigUpdate,
+}): Promise<void> {
   if (chatGroupId === undefined) return Promise.resolve();
 
   const snapshot = cloneDraft({ draft: localSettings.value });
@@ -485,7 +498,19 @@ function saveChangesForGroup({ chatGroupId }: { chatGroupId: ChatGroupId | undef
         previous: baselineSettings.value,
         next: snapshot,
       });
-      if (changes.length === 0) return;
+      const hasToolConfigUpdate = (() => {
+        switch (toolConfigUpdate.behavior) {
+        case 'preserve':
+          return false;
+        case 'update':
+          return true;
+        default: {
+          const _ex: never = toolConfigUpdate;
+          throw new Error(`Unhandled Tool Config save behavior: ${String(_ex)}`);
+        }
+        }
+      })();
+      if (changes.length === 0 && !hasToolConfigUpdate) return;
 
       const revision = ++nextSaveRevision;
       for (const change of changes) {
@@ -502,7 +527,22 @@ function saveChangesForGroup({ chatGroupId }: { chatGroupId: ChatGroupId | undef
       }
 
       try {
-        await chatGroups.updateScopedSettings({ chatGroupId, changes });
+        switch (toolConfigUpdate.behavior) {
+        case 'preserve':
+          await chatGroups.updateScopedSettings({ chatGroupId, changes });
+          break;
+        case 'update':
+          await chatGroups.updateScopedSettingsAndToolConfigs({
+            chatGroupId,
+            changes,
+            updater: toolConfigUpdate.updater,
+          });
+          break;
+        default: {
+          const _ex: never = toolConfigUpdate;
+          throw new Error(`Unhandled Tool Config save behavior: ${String(_ex)}`);
+        }
+        }
       } catch (cause: unknown) {
         for (const change of changes) {
           if (pendingFieldRevisions.get(change.field) !== revision) continue;
@@ -542,7 +582,10 @@ function saveChangesForGroup({ chatGroupId }: { chatGroupId: ChatGroupId | undef
 }
 
 function saveChanges(): Promise<void> {
-  return saveChangesForGroup({ chatGroupId: editingChatGroupId.value });
+  return saveChangesForGroup({
+    chatGroupId: editingChatGroupId.value,
+    toolConfigUpdate: { behavior: 'preserve' },
+  });
 }
 
 async function saveChangesFromUi(): Promise<void> {
@@ -571,7 +614,10 @@ watch(() => currentChatGroup.value?.id, async (newId) => {
   const oldEditingId = editingChatGroupId.value;
   if (oldEditingId !== undefined && oldEditingId !== newId) {
     try {
-      await saveChangesForGroup({ chatGroupId: oldEditingId });
+      await saveChangesForGroup({
+        chatGroupId: oldEditingId,
+        toolConfigUpdate: { behavior: 'preserve' },
+      });
     } catch {
       // The route has already moved to another group; do not attach the old
       // group's save error to the newly selected group.
@@ -605,7 +651,7 @@ function isLocalhost({ url }: { url: string | undefined }) {
 async function updateEndpointType({
   endpointType,
 }: {
-  endpointType: EndpointType | undefined;
+  endpointType: EndpointType | undefined,
 }): Promise<void> {
   switch (endpointType) {
   case undefined:
@@ -724,7 +770,7 @@ watch([
 async function updateSystemPromptBehavior({
   behavior,
 }: {
-  behavior: 'inherit' | 'clear' | 'replace' | 'append';
+  behavior: 'inherit' | 'clear' | 'replace' | 'append',
 }) {
   switch (behavior) {
   case 'inherit':
@@ -751,9 +797,30 @@ async function updateSystemPromptBehavior({
   await saveChangesFromUi();
 }
 
-async function restoreDefaults() {
+async function restoreDefaults(): Promise<void> {
   localSettings.value = emptyDraft();
-  await saveChangesFromUi();
+  const toolConfigUpdate: SaveToolConfigUpdate = (() => {
+    const persistence = settings.value.experimental?.toolConfigPersistence ?? 'disabled';
+    switch (persistence) {
+    case 'enabled':
+      return { behavior: 'update', updater: () => undefined };
+    case 'disabled':
+      return { behavior: 'preserve' };
+    default: {
+      const _ex: never = persistence;
+      throw new Error(`Unhandled Tool Config persistence status: ${_ex}`);
+    }
+    }
+  })();
+
+  try {
+    await saveChangesForGroup({
+      chatGroupId: editingChatGroupId.value,
+      toolConfigUpdate,
+    });
+  } catch {
+    // saveChangesForGroup records a user-visible error and restores its baseline.
+  }
 }
 
 async function setGroupNameFromModelId() {
@@ -1104,6 +1171,20 @@ defineExpose({
             </div>
           </div>
         </div>
+
+        <!-- Tools -->
+        <section class="pt-8 border-t border-gray-200/50 dark:border-gray-800 space-y-4">
+          <div class="space-y-1">
+            <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <WrenchIcon class="w-3 h-3" />
+              Tools
+            </label>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400">
+              Inherit Global Settings or override individual tools for this chat group.
+            </p>
+          </div>
+          <ChatGroupToolsSettings />
+        </section>
 
         <!-- System Prompt and Parameters -->
         <div class="pt-8 border-t border-gray-200/50 dark:border-gray-800 space-y-8 pb-20">

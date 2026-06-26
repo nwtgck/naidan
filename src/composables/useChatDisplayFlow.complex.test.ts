@@ -17,7 +17,7 @@ describe('useChatDisplayFlow complex scenario', () => {
       currentLeafId: messages.length > 0 ? messages[messages.length - 1]!.id : undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      debugEnabled: false
+      debugEnabled: false,
     } as Chat));
   };
 
@@ -33,7 +33,7 @@ describe('useChatDisplayFlow complex scenario', () => {
 
     const { chatFlow } = useChatDisplayFlow({
       chat: createChat(messages),
-      isProcessing: () => false
+      isProcessing: () => false,
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));
@@ -47,7 +47,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         isFirstInNode: true,
         isLastInNode: true,
         isFirstInTurn: true,
-        flow: { position: 'standalone', nesting: 'none' }
+        flow: { position: 'standalone', nesting: 'none' },
       },
       {
         type: 'process_sequence',
@@ -60,15 +60,15 @@ describe('useChatDisplayFlow complex scenario', () => {
           toolNames: ['c'],
           isCurrentlyThinking: false,
           isCurrentlyToolRunning: false,
-          isWaiting: false
+          isWaiting: false,
         },
         items: [
           { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'thinking', partContent: 'T1', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
           { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
           { type: 'tool_group', id: 't1', node: expect.objectContaining({ id: 't1' }), toolCalls: [expect.objectContaining({ id: 'tc1' })], flow: { position: 'standalone', nesting: 'inside-group' }, isFirstInTurn: true },
-          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'thinking', partContent: 'TM', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } }
+          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'thinking', partContent: 'TM', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
         ],
-        flow: { position: 'start', nesting: 'none' }
+        flow: { position: 'start', nesting: 'none' },
       },
       {
         type: 'message',
@@ -78,7 +78,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         isFirstInNode: false,
         isLastInNode: false,
         isFirstInTurn: false,
-        flow: { position: 'middle', nesting: 'none' }
+        flow: { position: 'middle', nesting: 'none' },
       },
       {
         type: 'process_sequence',
@@ -91,14 +91,14 @@ describe('useChatDisplayFlow complex scenario', () => {
           toolNames: ['c'],
           isCurrentlyThinking: false,
           isCurrentlyToolRunning: false,
-          isWaiting: false
+          isWaiting: false,
         },
         items: [
           { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
           { type: 'tool_group', id: 'tm', node: expect.objectContaining({ id: 'tm' }), toolCalls: [expect.objectContaining({ id: 'tcm' })], flow: { position: 'standalone', nesting: 'inside-group' }, isFirstInTurn: true },
-          { type: 'message', node: expect.objectContaining({ id: 'al' }), mode: 'thinking', partContent: 'TL', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } }
+          { type: 'message', node: expect.objectContaining({ id: 'al' }), mode: 'thinking', partContent: 'TL', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
         ],
-        flow: { position: 'middle', nesting: 'none' }
+        flow: { position: 'middle', nesting: 'none' },
       },
       {
         type: 'message',
@@ -108,8 +108,8 @@ describe('useChatDisplayFlow complex scenario', () => {
         isFirstInNode: false,
         isLastInNode: true,
         isFirstInTurn: false,
-        flow: { position: 'end', nesting: 'none' }
-      }
+        flow: { position: 'end', nesting: 'none' },
+      },
     ];
 
     expect(result).toEqual(expected);
@@ -123,7 +123,7 @@ describe('useChatDisplayFlow complex scenario', () => {
 
     const { chatFlow } = useChatDisplayFlow({
       chat: createChat(messages),
-      isProcessing: () => true
+      isProcessing: () => true,
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));
@@ -137,7 +137,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         isFirstInNode: true,
         isLastInNode: true,
         isFirstInTurn: true,
-        flow: { position: 'standalone', nesting: 'none' }
+        flow: { position: 'standalone', nesting: 'none' },
       },
       {
         type: 'message',
@@ -147,7 +147,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         isFirstInNode: true,
         isLastInNode: false,
         isFirstInTurn: true,
-        flow: { position: 'start', nesting: 'none' }
+        flow: { position: 'start', nesting: 'none' },
       },
       {
         type: 'message',
@@ -158,8 +158,8 @@ describe('useChatDisplayFlow complex scenario', () => {
         isLastInNode: true,
         isFirstInTurn: false,
         isCompletedThinking: false,
-        flow: { position: 'end', nesting: 'none' }
-      }
+        flow: { position: 'end', nesting: 'none' },
+      },
     ];
 
     expect(result).toEqual(expected);
@@ -171,18 +171,18 @@ describe('useChatDisplayFlow complex scenario', () => {
         id: toMessageId({ raw: 'a1' }), role: 'assistant',
         content: '<think>T1</think>C1<think>T2</think>',
         timestamp: 0, replies: { items: [] }, toolCalls: [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'f', arguments: '{}' } }],
-        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined
+        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined,
       } as MessageNode,
       {
         id: toMessageId({ raw: 't1' }), role: 'tool', content: undefined, timestamp: 0, replies: { items: [] },
         results: [{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R' } }],
-        attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined
+        attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined,
       } as MessageNode,
     ];
 
     const { chatFlow } = useChatDisplayFlow({
       chat: createChat(messages),
-      isProcessing: () => false
+      isProcessing: () => false,
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));
@@ -198,13 +198,13 @@ describe('useChatDisplayFlow complex scenario', () => {
     const messages: MessageNode[] = [
       {
         id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: 0, replies: { items: [] },
-        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined
+        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined,
       } as MessageNode,
     ];
 
     const { chatFlow } = useChatDisplayFlow({
       chat: createChat(messages),
-      isProcessing: () => true
+      isProcessing: () => true,
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));
@@ -218,13 +218,13 @@ describe('useChatDisplayFlow complex scenario', () => {
     const messages: MessageNode[] = [
       {
         id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '<think>Just one think</think>', timestamp: 0, replies: { items: [] },
-        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined
+        attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined,
       } as MessageNode,
     ];
 
     const { chatFlow } = useChatDisplayFlow({
       chat: createChat(messages),
-      isProcessing: () => false
+      isProcessing: () => false,
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));

@@ -73,6 +73,7 @@ vi.mock('lucide-vue-next', () => ({
   BrainCircuitIcon: { template: '<span>BrainCircuit</span>' },
   FileIcon: { template: '<span>File</span>' },
   FolderIcon: { template: '<span>Folder</span>' },
+  WrenchIcon: { template: '<span>Wrench</span>' },
 }));
 
 describe('SettingsModal feature flags', () => {

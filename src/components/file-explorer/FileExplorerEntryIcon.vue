@@ -6,10 +6,10 @@ import {
 import type { EntryKind, MimeCategory } from './types';
 
 const props = defineProps<{
-  kind: EntryKind;
-  extension: string;
-  mimeCategory: MimeCategory;
-  size?: 'sm' | 'md' | 'lg';
+  kind: EntryKind,
+  extension: string,
+  mimeCategory: MimeCategory,
+  size?: 'sm' | 'md' | 'lg',
 }>();
 
 const sizeClass = {
@@ -88,7 +88,7 @@ function getColorClass() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

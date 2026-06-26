@@ -5,11 +5,11 @@ import { RotateCcwIcon, XIcon } from 'lucide-vue-next';
 import { hasLmParameterOverrides } from '@/utils/lm-parameters';
 
 const props = defineProps<{
-  modelValue?: LmParameters;
+  modelValue?: LmParameters,
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: LmParameters): void;
+  (e: 'update:modelValue', value: LmParameters): void,
 }>();
 
 const defaultParams: LmParameters = {
@@ -19,12 +19,12 @@ const defaultParams: LmParameters = {
   presencePenalty: undefined,
   frequencyPenalty: undefined,
   stop: undefined,
-  reasoning: { effort: undefined }
+  reasoning: { effort: undefined },
 };
 
 const params = computed<LmParameters>({
   get: () => ({ ...defaultParams, ...props.modelValue }),
-  set: (val) => emit('update:modelValue', val)
+  set: (val) => emit('update:modelValue', val),
 });
 
 const stopSequencesRaw = ref('');
@@ -40,7 +40,7 @@ watch(() => params.value.stop, (newVal) => {
 // Keep the key switches below exhaustive. Adding an LM parameter must stop
 // typechecking until its clear and assignment semantics are implemented; this
 // deliberately prevents a future refactor from silently ignoring the field.
-function updateParam<K extends keyof LmParameters>({ key, value }: { key: K; value: LmParameters[K] }) {
+function updateParam<K extends keyof LmParameters>({ key, value }: { key: K, value: LmParameters[K] }) {
   const newParams: LmParameters = { ...params.value };
   if (value === undefined || value === null || (value as unknown) === '' || (typeof value === 'number' && isNaN(value))) {
     switch (key) {
@@ -143,7 +143,7 @@ const isOverridden = ({ key }: { key: keyof LmParameters }) => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

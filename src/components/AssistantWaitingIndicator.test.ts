@@ -27,21 +27,21 @@ describe('AssistantWaitingIndicator', () => {
 
   it('removes padding when noPadding is true', () => {
     const wrapper = mount(AssistantWaitingIndicator, {
-      props: { noPadding: true }
+      props: { noPadding: true },
     });
     expect(wrapper.find('[data-testid="assistant-waiting-indicator"]').classes()).not.toContain('py-2');
   });
 
   it('applies nested horizontal padding when isNested is true and not noPadding', () => {
     const wrapper = mount(AssistantWaitingIndicator, {
-      props: { isNested: true }
+      props: { isNested: true },
     });
     expect(wrapper.find('[data-testid="assistant-waiting-indicator"]').classes()).toContain('px-5');
   });
 
   it('does NOT apply nested horizontal padding when noPadding is true even if isNested is true', () => {
     const wrapper = mount(AssistantWaitingIndicator, {
-      props: { isNested: true, noPadding: true }
+      props: { isNested: true, noPadding: true },
     });
     expect(wrapper.find('[data-testid="assistant-waiting-indicator"]').classes()).not.toContain('px-5');
   });

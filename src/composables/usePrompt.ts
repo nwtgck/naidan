@@ -1,13 +1,13 @@
 import { ref, type Component, shallowRef } from 'vue';
 
 interface PromptOptions {
-  title?: string;
-  message?: string;
-  confirmButtonText?: string;
-  cancelButtonText?: string;
-  defaultValue?: string;
+  title?: string,
+  message?: string,
+  confirmButtonText?: string,
+  cancelButtonText?: string,
+  defaultValue?: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  bodyComponent?: Component | any | null;
+  bodyComponent?: Component | any | null,
 }
 
 const isPromptOpen = ref(false);

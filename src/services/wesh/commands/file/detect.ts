@@ -8,8 +8,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   return path.startsWith('/') ? path : `${cwd}/${path}`;
 }
@@ -17,7 +17,7 @@ function resolvePath({
 function isAsciiText({
   bytes,
 }: {
-  bytes: Uint8Array;
+  bytes: Uint8Array,
 }): boolean {
   for (const byte of bytes) {
     if (byte === 9 || byte === 10 || byte === 13) {
@@ -33,7 +33,7 @@ function isAsciiText({
 function isLikelyBinary({
   bytes,
 }: {
-  bytes: Uint8Array;
+  bytes: Uint8Array,
 }): boolean {
   const sample = bytes.subarray(0, Math.min(bytes.length, 4096));
   for (const byte of sample) {
@@ -48,8 +48,8 @@ function decodeUtf8({
   bytes,
   complete,
 }: {
-  bytes: Uint8Array;
-  complete: boolean;
+  bytes: Uint8Array,
+  complete: boolean,
 }): string | undefined {
   try {
     const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -63,7 +63,7 @@ function decodeUtf8({
 function decodeUtf16({
   bytes,
 }: {
-  bytes: Uint8Array;
+  bytes: Uint8Array,
 }): string | undefined {
   if (bytes.length < 2) {
     return undefined;
@@ -94,8 +94,8 @@ function classifyText({
   bytes,
   complete,
 }: {
-  bytes: Uint8Array;
-  complete: boolean;
+  bytes: Uint8Array,
+  complete: boolean,
 }): FileCommandClassification {
   const text = decodeUtf8({ bytes, complete });
   if (text === undefined) {
@@ -143,9 +143,9 @@ async function readFileSample({
   path,
   size,
 }: {
-  context: WeshCommandContext;
-  path: string;
-  size: number;
+  context: WeshCommandContext,
+  path: string,
+  size: number,
 }): Promise<Uint8Array> {
   const sampleLength = Math.min(size, FILE_SAMPLE_BYTES);
   if (context.files.tryReadBlobEfficiently !== undefined) {
@@ -195,8 +195,8 @@ export async function statFileTarget({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<FileCommandTargetInfo> {
   const resolvedPath = resolvePath({
     cwd: context.cwd,
@@ -236,8 +236,8 @@ export async function detectFileClassification({
   context,
   target,
 }: {
-  context: WeshCommandContext;
-  target: FileCommandTargetInfo;
+  context: WeshCommandContext,
+  target: FileCommandTargetInfo,
 }): Promise<FileCommandClassification> {
   switch (target.fileType) {
   case 'directory':

@@ -5,17 +5,17 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
   /** The generation prompt */
-  prompt: string;
+  prompt: string,
   /** Number of denoising steps */
-  steps: number | undefined;
+  steps: number | undefined,
   /** Random seed used for generation */
-  seed: number | undefined;
+  seed: number | undefined,
   /** Image width */
-  width: number | string | undefined;
+  width: number | string | undefined,
   /** Image height */
-  height: number | string | undefined;
+  height: number | string | undefined,
   /** Alignment of the dropdown: 'left' (default) or 'right' */
-  align?: 'left' | 'right';
+  align?: 'left' | 'right',
 }>();
 
 const isOpen = ref(false);
@@ -56,8 +56,8 @@ defineExpose({
   TEST_ONLY: {
     isOpen,
     copiedPrompt,
-    copiedSeed
-  }
+    copiedSeed,
+  },
 });
 </script>
 

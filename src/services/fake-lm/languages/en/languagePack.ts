@@ -45,8 +45,8 @@ export function makeEnHeading({ ctx }: { ctx: FakeLmContext }): Inline[] {
 }
 
 export function makeEnOpeningParagraph({ ctx, sentenceCount }: {
-  ctx: FakeLmContext;
-  sentenceCount: number;
+  ctx: FakeLmContext,
+  sentenceCount: number,
 }): Inline[] {
   return joinInlineSentences({
     sentences: [
@@ -58,8 +58,8 @@ export function makeEnOpeningParagraph({ ctx, sentenceCount }: {
 }
 
 export function makeEnParagraph({ ctx, sentenceCount }: {
-  ctx: FakeLmContext;
-  sentenceCount: number;
+  ctx: FakeLmContext,
+  sentenceCount: number,
 }): Inline[] {
   return joinInlineSentences({
     sentences: Array.from({ length: sentenceCount }, () => makeEnSentence({ ctx })),
@@ -72,9 +72,9 @@ export function makeEnClosingParagraph({ ctx }: { ctx: FakeLmContext }): Inline[
 }
 
 export function makeEnThinkingText({ ctx, sentenceCount, paragraphBreakEvery }: {
-  ctx: FakeLmContext;
-  sentenceCount: number;
-  paragraphBreakEvery: number | undefined;
+  ctx: FakeLmContext,
+  sentenceCount: number,
+  paragraphBreakEvery: number | undefined,
 }): string {
   const sentences = Array.from({ length: sentenceCount }, () => makeEnPatternText({ ctx, category: 'thinking' }));
 
@@ -107,8 +107,8 @@ export function makeEnTableCell({ ctx }: { ctx: FakeLmContext }): Inline[] {
 }
 
 function makeEnPatternText({ ctx, category }: {
-  ctx: FakeLmContext;
-  category: 'opening' | 'body' | 'thinking' | 'closing';
+  ctx: FakeLmContext,
+  category: 'opening' | 'body' | 'thinking' | 'closing',
 }): string {
   const patterns = (() => {
     switch (category) {
@@ -133,8 +133,8 @@ function makeEnPatternText({ ctx, category }: {
 }
 
 function renderEnTextPatternSlot({ slot, ctx }: {
-  slot: TextPatternSlot;
-  ctx: FakeLmContext;
+  slot: TextPatternSlot,
+  ctx: FakeLmContext,
 }): string {
   const d = ctx.lexicons;
   const r = ctx.random;
@@ -172,7 +172,7 @@ function renderEnTextPatternSlot({ slot, ctx }: {
 }
 
 function makeEnInputGreeting({ ctx }: {
-  ctx: FakeLmContext;
+  ctx: FakeLmContext,
 }): string {
   switch (ctx.inputAnalysis.greeting) {
   case 'morning':
@@ -196,7 +196,7 @@ function makeEnInputGreeting({ ctx }: {
 }
 
 function pickEnInputKeyword({ ctx }: {
-  ctx: FakeLmContext;
+  ctx: FakeLmContext,
 }): string {
   if (ctx.inputAnalysis.keywords.length === 0) {
     return makeEnNounPhrase({ ctx });
@@ -213,7 +213,7 @@ function pickEnInputKeyword({ ctx }: {
 }
 
 function makeEnInputKeywordPhrase({ ctx }: {
-  ctx: FakeLmContext;
+  ctx: FakeLmContext,
 }): string {
   const keyword = pickEnInputKeyword({ ctx });
   return oneOf({
@@ -228,8 +228,8 @@ function makeEnInputKeywordPhrase({ ctx }: {
 }
 
 function maybeBoldInline({ text, ctx }: {
-  text: string;
-  ctx: FakeLmContext;
+  text: string,
+  ctx: FakeLmContext,
 }): Inline[] {
   if (ctx.random() > 0.28) {
     return [{ kind: 'text', text }];
@@ -243,20 +243,20 @@ function maybeBoldInline({ text, ctx }: {
 }
 
 function withArticle({ phrase }: {
-  phrase: string;
+  phrase: string,
 }): string {
   return /^[aeiou]/iu.test(phrase) ? `an ${phrase}` : `a ${phrase}`;
 }
 
 function capitalize({ text }: {
-  text: string;
+  text: string,
 }): string {
   return text.length === 0 ? text : `${text[0]!.toUpperCase()}${text.slice(1)}`;
 }
 
 function joinInlineSentences({ sentences, separator }: {
-  sentences: Inline[][];
-  separator: string;
+  sentences: Inline[][],
+  separator: string,
 }): Inline[] {
   return sentences.flatMap((sentence, index) => (
     index === 0 ? sentence : [{ kind: 'text' as const, text: separator }, ...sentence]

@@ -7,8 +7,8 @@ export function markExecutingToolResultsAsInterrupted({
   results,
   toolCallIds,
 }: {
-  results: ToolExecutionResult[];
-  toolCallIds: ReadonlySet<ToolCallId>;
+  results: ToolExecutionResult[],
+  toolCallIds: ReadonlySet<ToolCallId>,
 }): number {
   let interruptedCount = 0;
 

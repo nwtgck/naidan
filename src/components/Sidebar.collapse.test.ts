@@ -11,7 +11,7 @@ vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),
 }));
 
-const mockCurrentChat = ref<{ id: string; groupId?: string | null } | null>(null);
+const mockCurrentChat = ref<{ id: string, groupId?: string | null } | null>(null);
 const mockCurrentChatGroup = ref<{ id: string } | null>(null);
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockSidebarItems = ref<SidebarItem[]>([
@@ -77,7 +77,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 
 vi.mock('../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: () => ({
-    openChat: ({ chatId }: { chatId: string; leafId?: string }) => mockOpenChat({ id: chatId }),
+    openChat: ({ chatId }: { chatId: string, leafId?: string }) => mockOpenChat({ id: chatId }),
     openChatAtMessage: vi.fn(),
     openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
     TEST_ONLY: {},
@@ -96,7 +96,7 @@ vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
 vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
   useSidebarStructure: () => ({
     persistSidebarStructure: vi.fn(),
-    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string, isCollapsed: boolean }) =>
       mockSetChatGroupCollapsed({ groupId, isCollapsed }),
     TEST_ONLY: {},
   }),

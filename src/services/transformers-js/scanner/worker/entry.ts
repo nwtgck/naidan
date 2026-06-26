@@ -27,13 +27,13 @@ import {
   AutoTokenizer,
   AutoModelForCausalLM,
   AutoModelForImageTextToText,
-  env
+  env,
 } from '@huggingface/transformers';
 import type { ITransformersJsScannerWorker, ScannedModelFile, ScanOptions, ScanTask } from '@/services/transformers-js/types';
 
 const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
-function debugLog({ event, details }: { event: string; details: Record<string, unknown> }): void {
+function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
   console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
     at: new Date().toISOString(),
     ...details,
@@ -78,7 +78,7 @@ const interceptedFetch: typeof self.fetch = async (input, init) => {
     // Return a 4-byte distinctive dummy response
     return new Response(new Uint8Array([0, 1, 2, 3]), {
       status: 200,
-      headers: { 'Content-Type': 'application/octet-stream' }
+      headers: { 'Content-Type': 'application/octet-stream' },
     });
   }
 
@@ -208,7 +208,7 @@ const scannerWorker: ITransformersJsScannerWorker = {
     });
     console.log(`[scanner-worker] Scan complete. Found ${files.length} URLs:`, Array.from(capturedUrls));
     return { files };
-  }
+  },
 };
 
 Comlink.expose(scannerWorker);

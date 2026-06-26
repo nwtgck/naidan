@@ -4,18 +4,18 @@ import { BrainIcon } from 'lucide-vue-next';
 import type { Reasoning } from '@/models/types';
 
 defineOptions({
-  name: 'ReasoningSettings'
+  name: 'ReasoningSettings',
 });
 
 const props = defineProps<{
-  selectedEffort: Reasoning['effort'];
+  selectedEffort: Reasoning['effort'],
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:effort', effort: Reasoning['effort']): void;
+  (e: 'update:effort', effort: Reasoning['effort']): void,
 }>();
 
-const effortOptions: { label: string; shortLabel: string; value: Reasoning['effort'] }[] = [
+const effortOptions: { label: string, shortLabel: string, value: Reasoning['effort'] }[] = [
   { label: 'Default', shortLabel: 'Default', value: undefined },
   { label: 'Off', shortLabel: 'Off', value: 'none' },
   { label: 'Low', shortLabel: 'Low', value: 'low' },
@@ -29,7 +29,7 @@ const sliderStyle = ref({
   left: '0px',
   width: '0px',
   opacity: 0,
-  transitionDuration: '0ms'
+  transitionDuration: '0ms',
 });
 
 function updateSlider({ immediate }: { immediate?: boolean }) {
@@ -40,7 +40,7 @@ function updateSlider({ immediate }: { immediate?: boolean }) {
       left: `${el.offsetLeft}px`,
       width: `${el.offsetWidth}px`,
       opacity: 1,
-      transitionDuration: (immediate || !isInitialized.value) ? '0ms' : '300ms'
+      transitionDuration: (immediate || !isInitialized.value) ? '0ms' : '300ms',
     };
   }
 }
@@ -68,7 +68,7 @@ watch(() => props.selectedEffort, () => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

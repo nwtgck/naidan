@@ -21,7 +21,7 @@ import {
 export function isGeneratingChatTitle({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): boolean {
   return isGeneratingTitle({ chatId });
 }
@@ -29,7 +29,7 @@ export function isGeneratingChatTitle({
 export function abortTitleGenerationForChat({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): void {
   if (!chatRuntimeStore.activeTitleGenerations.has(chatId)) {
     return;
@@ -44,9 +44,9 @@ export async function generateChatTitleForChat({
   titleModelIdOverride,
   signal,
 }: {
-  chatId: ChatId;
-  titleModelIdOverride: string | undefined;
-  signal: AbortSignal | undefined;
+  chatId: ChatId,
+  titleModelIdOverride: string | undefined,
+  signal: AbortSignal | undefined,
 }): Promise<string | undefined> {
   const mutableChat = getLiveChatById({ chatId });
   if (mutableChat === null) {
@@ -157,7 +157,7 @@ export async function generateChatTitleForChat({
 function resolveTitleSettings({
   chat,
 }: {
-  chat: Chat;
+  chat: Chat,
 }) {
   const { settings } = useSettings();
   const resolved = resolveChatSettings({
@@ -179,7 +179,7 @@ function resolveTitleSettings({
 function collectChatGroups({
   items,
 }: {
-  items: typeof rootItems.value;
+  items: typeof rootItems.value,
 }) {
   return items.flatMap((item) => {
     switch (item.type) {
@@ -198,7 +198,7 @@ function collectChatGroups({
 function getTitleLanguage({
   content,
 }: {
-  content: string;
+  content: string,
 }) {
   const typeOfNavigator = typeof navigator;
   switch (typeOfNavigator) {
@@ -224,9 +224,9 @@ function createTitleProvider({
   endpointUrl,
   endpointHttpHeaders,
 }: {
-  endpointType: NonNullable<Chat['endpointType']>;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
+  endpointType: NonNullable<Chat['endpointType']>,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
 }): LmProvider {
   if (endpointUrl === undefined && endpointType !== 'transformers_js') {
     throw new Error(`${endpointType} title generation requires an endpoint URL`);

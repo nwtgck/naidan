@@ -1,12 +1,12 @@
 import { ref, shallowRef, type Component } from 'vue';
 
 interface ConfirmOptions {
-  title?: string;
-  message?: string;
-  confirmButtonText?: string;
-  cancelButtonText?: string;
-  confirmButtonVariant?: 'default' | 'danger'; // Add new variant
-  icon?: Component; // Change to Component
+  title?: string,
+  message?: string,
+  confirmButtonText?: string,
+  cancelButtonText?: string,
+  confirmButtonVariant?: 'default' | 'danger', // Add new variant
+  icon?: Component, // Change to Component
 }
 
 const isConfirmOpen = ref(false);

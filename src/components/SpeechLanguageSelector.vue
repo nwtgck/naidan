@@ -5,10 +5,10 @@ import type { MessageId } from '@/models/ids';
 import { webSpeechService, type SpeechLanguage } from '@/services/web-speech';
 
 const props = defineProps<{
-  messageId: MessageId;
-  content: string;
-  isMini?: boolean;
-  align?: 'up' | 'down';
+  messageId: MessageId,
+  content: string,
+  isMini?: boolean,
+  align?: 'up' | 'down',
 }>();
 
 const showMenu = ref(false);
@@ -16,7 +16,7 @@ const isRedetecting = ref(false);
 const selectedLang = computed(() => webSpeechService.state.preferredLang);
 const detectedLang = computed(() => webSpeechService.state.detectedLang);
 
-const languages: { label: string; value: SpeechLanguage }[] = [
+const languages: { label: string, value: SpeechLanguage }[] = [
   { label: 'Auto Detect', value: 'auto' },
   { label: 'English', value: 'en-US' },
   { label: '日本語', value: 'ja-JP' },
@@ -37,7 +37,7 @@ function handleRedetect() {
   isRedetecting.value = true;
   webSpeechService.redetectLanguage({
     text: props.content,
-    messageId: props.messageId
+    messageId: props.messageId,
   });
   // Small delay for visual feedback
   setTimeout(() => {
@@ -66,7 +66,7 @@ function getDisplayLabel() {
   }
 }
 
-function getFullLabel({ langObj }: { langObj: { label: string; value: SpeechLanguage } }) {
+function getFullLabel({ langObj }: { langObj: { label: string, value: SpeechLanguage } }) {
   const val = langObj.value;
   switch (val) {
   case 'auto':
@@ -95,7 +95,7 @@ function getFullLabel({ langObj }: { langObj: { label: string; value: SpeechLang
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

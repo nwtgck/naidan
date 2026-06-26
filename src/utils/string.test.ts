@@ -6,7 +6,7 @@ describe('sanitizeFilename', () => {
     const result = sanitizeFilename({
       base: '  hello / \\ ? % * : | " < > world  ',
       suffix: '.png',
-      fallback: 'fallback'
+      fallback: 'fallback',
     });
     // Each of the 10 invalid characters becomes a dash.
     // Spaces are normalized.
@@ -17,7 +17,7 @@ describe('sanitizeFilename', () => {
     const result = sanitizeFilename({
       base: '/\\?%*:|"<>',
       suffix: '.txt',
-      fallback: 'default-name'
+      fallback: 'default-name',
     });
     expect(result).toBe('default-name.txt');
   });
@@ -27,7 +27,7 @@ describe('sanitizeFilename', () => {
     const result = sanitizeFilename({
       base: longBase,
       suffix: '.png',
-      fallback: 'fallback'
+      fallback: 'fallback',
     });
     expect(result).toBe(longBase + '.png');
     expect(new TextEncoder().encode(result).length).toBe(254);
@@ -36,7 +36,7 @@ describe('sanitizeFilename', () => {
     const resultTruncated = sanitizeFilename({
       base: veryLongBase,
       suffix: '.png',
-      fallback: 'fallback'
+      fallback: 'fallback',
     });
     // MAX_BYTES(255) - suffix(4) - ellipsis(3) = 248 chars of 'b'
     expect(resultTruncated).toBe('b'.repeat(248) + '....png');
@@ -48,7 +48,7 @@ describe('sanitizeFilename', () => {
     const result = sanitizeFilename({
       base: emojiBase,
       suffix: '.png',
-      fallback: 'fallback'
+      fallback: 'fallback',
     });
 
     const byteLength = new TextEncoder().encode(result).length;
@@ -68,7 +68,7 @@ describe('sanitizeFilename', () => {
     const result = sanitizeFilename({
       base,
       suffix,
-      fallback: 'fb'
+      fallback: 'fb',
     });
 
     expect(result).toBe('a'.repeat(248) + '....png');
@@ -79,7 +79,7 @@ describe('sanitizeFilename', () => {
     const result = sanitizeFilename({
       base: 'test',
       suffix: '.' + 's'.repeat(300),
-      fallback: 'fallback'
+      fallback: 'fallback',
     });
     const byteLength = new TextEncoder().encode(result).length;
     expect(byteLength).toBe(255);

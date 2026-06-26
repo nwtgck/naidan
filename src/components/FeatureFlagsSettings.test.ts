@@ -24,9 +24,9 @@ const mockSettings = ref({
   providerProfiles: [],
   mounts: [],
   experimental: undefined as {
-    fakeLm?: 'disabled' | 'enabled';
-    toolConfigPersistence?: 'disabled' | 'enabled';
-    sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat';
+    fakeLm?: 'disabled' | 'enabled',
+    toolConfigPersistence?: 'disabled' | 'enabled',
+    sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
   } | undefined,
 });
 
@@ -164,6 +164,13 @@ describe('FeatureFlagsSettings.vue', () => {
 
     expect(mockShowConfirm).toHaveBeenCalled();
     expect(useFeatureFlags().isFeatureEnabled({ feature: 'volume' })).toBe(true);
+  });
+
+  it('describes persistence across Global, Chat Group, and Chat layers', () => {
+    const wrapper = mount(FeatureFlagsSettings);
+
+    expect(wrapper.text()).toContain('Saves Global, Chat Group, and Chat tool settings.');
+    expect(wrapper.text()).toContain('Saved settings remain active.');
   });
 
   it('auto-saves the tool config persistence setting when toggled', async () => {

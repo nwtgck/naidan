@@ -96,8 +96,8 @@ const mockUpdateChatScopedSettings = vi.fn().mockImplementation(async ({
   chatId,
   changes,
 }: {
-  chatId: ChatId;
-  changes: readonly ScopedSettingChange[];
+  chatId: ChatId,
+  changes: readonly ScopedSettingChange[],
 }) => {
   if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
     mockCurrentChat.value = applyScopedSettingChangesToChat({
@@ -220,7 +220,7 @@ vi.mock('../composables/useChat', () => ({
       flow: { position: 'standalone', nesting: 'none' },
       isFirstInNode: true,
       isLastInNode: true,
-      isFirstInTurn: true
+      isFirstInTurn: true,
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(() => false),
@@ -275,12 +275,12 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: ChatId;
-    autoSendPrompt?: string;
-    targetMessageId?: MessageId;
-  };
-  attachTo?: Element | string;
-  global?: Record<string, unknown>;
+    chatId?: ChatId,
+    autoSendPrompt?: string,
+    targetMessageId?: MessageId,
+  },
+  attachTo?: Element | string,
+  global?: Record<string, unknown>,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -312,11 +312,11 @@ vi.mock('../composables/useChatDisplayFlow', () => ({
 vi.mock('../composables/chat/useChatConversation', () => ({
   useChatConversation: () => ({
     sendMessage: ({ chatId, content, parentId, attachments, lmParameters }: {
-      chatId: string;
-      content: string;
-      parentId: string | null | undefined;
-      attachments: unknown[] | undefined;
-      lmParameters: unknown;
+      chatId: string,
+      content: string,
+      parentId: string | null | undefined,
+      attachments: unknown[] | undefined,
+      lmParameters: unknown,
     }) => mockSendMessage({
       chatId,
       content,
@@ -324,7 +324,7 @@ vi.mock('../composables/chat/useChatConversation', () => ({
       attachments,
       lmParameters,
     }),
-    regenerateMessage: ({ chatId, failedMessageId }: { chatId: string; failedMessageId: string }) =>
+    regenerateMessage: ({ chatId, failedMessageId }: { chatId: string, failedMessageId: string }) =>
       mockRegenerateMessage({
         chatId,
         failedMessageId,
@@ -336,22 +336,22 @@ vi.mock('../composables/chat/useChatConversation', () => ({
 vi.mock('../composables/chat/useChatBranches', () => ({
   useChatBranches: () => ({
     editMessage: ({ chatId, messageId, newContent, lmParameters }: {
-      chatId: string;
-      messageId: string;
-      newContent: string;
-      lmParameters: unknown;
+      chatId: string,
+      messageId: string,
+      newContent: string,
+      lmParameters: unknown,
     }) => mockEditMessage({
       chatId,
       messageId,
       newContent,
       lmParameters,
     }),
-    switchVersion: ({ chatId, messageId }: { chatId: string; messageId: string }) =>
+    switchVersion: ({ chatId, messageId }: { chatId: string, messageId: string }) =>
       mockSwitchVersion({
         chatId,
         messageId,
       }),
-    forkChat: ({ chatId, messageId }: { chatId: string; messageId: string }) =>
+    forkChat: ({ chatId, messageId }: { chatId: string, messageId: string }) =>
       mockForkChat({
         chatId,
         messageId,
@@ -362,9 +362,9 @@ vi.mock('../composables/chat/useChatBranches', () => ({
 vi.mock('../composables/chat/useChatCompaction', () => ({
   useChatCompaction: () => ({
     compactCurrentBranch: ({ chatId, keepRecentMessages, instructionOverride }: {
-      chatId: string;
-      keepRecentMessages: number;
-      instructionOverride: string | undefined;
+      chatId: string,
+      keepRecentMessages: number,
+      instructionOverride: string | undefined,
     }) => mockCompactCurrentBranch({
       chatId,
       keepRecentMessages,
@@ -377,22 +377,22 @@ vi.mock('../composables/chat/useChatCompaction', () => ({
 
 vi.mock('../composables/chat/useChatGroups', () => ({
   useChatGroups: () => ({
-    moveChatToGroup: ({ chatId, chatGroupId }: { chatId: string; chatGroupId: string | null }) =>
+    moveChatToGroup: ({ chatId, chatGroupId }: { chatId: string, chatGroupId: string | null }) =>
       mockMoveChatToGroup({
         chatId,
         targetGroupId: chatGroupId,
       }),
     updateChatGroupMetadata: ({ chatGroupId, updates }: {
-      chatGroupId: string;
-      updates: Record<string, unknown>;
+      chatGroupId: string,
+      updates: Record<string, unknown>,
     }) =>
       mockUpdateChatGroupMetadata({
         id: chatGroupId,
         updates,
       }),
     updateScopedSettings: ({ chatGroupId, changes }: {
-      chatGroupId: string;
-      changes: readonly unknown[];
+      chatGroupId: string,
+      changes: readonly unknown[],
     }) => mockUpdateChatGroupScopedSettings({ chatGroupId, changes }),
   }),
 }));
@@ -400,9 +400,9 @@ vi.mock('../composables/chat/useChatGroups', () => ({
 vi.mock('../composables/chat/useChatTitle', () => ({
   useChatTitle: () => ({
     generateTitle: ({ chatId, signal, titleModelIdOverride }: {
-      chatId: string;
-      signal: AbortSignal | undefined;
-      titleModelIdOverride: string | undefined;
+      chatId: string,
+      signal: AbortSignal | undefined,
+      titleModelIdOverride: string | undefined,
     }) =>
       mockGenerateChatTitle({
         chatId,
@@ -418,7 +418,7 @@ vi.mock('../composables/chat/useChatTitle', () => ({
 
 vi.mock('../composables/chat/useChatMetadata', () => ({
   useChatMetadata: () => ({
-    rename: ({ chatId, title }: { chatId: string; title: string }) =>
+    rename: ({ chatId, title }: { chatId: string, title: string }) =>
       mockRenameChat({
         id: chatId,
         newTitle: title,
@@ -432,7 +432,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
         };
       }
     },
-    updateModel: ({ chatId, modelId }: { chatId: string; modelId: string | undefined }) => {
+    updateModel: ({ chatId, modelId }: { chatId: string, modelId: string | undefined }) => {
       if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
@@ -461,18 +461,18 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
         modelId,
       });
     },
-    updateSettings: ({ chatId, updates }: { chatId: string; updates: Record<string, unknown> }) =>
+    updateSettings: ({ chatId, updates }: { chatId: string, updates: Record<string, unknown> }) =>
       mockUpdateChatSettings({
         id: chatId,
         updates,
       }),
     updateScopedSettings: ({ chatId, changes }: {
-      chatId: ChatId;
-      changes: readonly ScopedSettingChange[];
+      chatId: ChatId,
+      changes: readonly ScopedSettingChange[],
     }) => mockUpdateChatScopedSettings({ chatId, changes }),
     reasoningEffort: ({ chatId }: { chatId: { value: string } }) =>
       computed(() => mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId.value ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined),
-    updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+    updateReasoningEffort: ({ chatId, effort }: { chatId: string, effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
       if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
@@ -544,11 +544,11 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatGroupId,
     naidanSysfsAccessScope,
   }: {
-    chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
-    chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
-    chatId: ChatId | undefined;
-    chatGroupId: ChatGroupId | undefined;
-    naidanSysfsAccessScope: string;
+    chatMounts: Array<{ type: string, volumeId?: string, mountPath: string, readOnly: boolean }>,
+    chatGroupMounts: Array<{ type: string, volumeId?: string, mountPath: string, readOnly: boolean }> | undefined,
+    chatId: ChatId | undefined,
+    chatGroupId: ChatGroupId | undefined,
+    naidanSysfsAccessScope: string,
   }) => {
     const mounts: WeshMount[] = [];
 
@@ -735,11 +735,11 @@ function resetMocks() {
   mockResolvedSettings.value = {
     modelId: 'global-default-model',
     titleModelId: undefined,
-    sources: { modelId: 'global', titleModelId: 'global' }
+    sources: { modelId: 'global', titleModelId: 'global' },
   };
   mockInheritedSettings.value = {
     modelId: 'global-default-model',
-    sources: { modelId: 'global' }
+    sources: { modelId: 'global' },
   };
   mockCurrentChat.value = {
     id: toChatId({ raw: '1' }),
@@ -1089,7 +1089,7 @@ Question`,
     }
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'msg-1' }), role: 'user', content: 'hello', timestamp: 0, replies: { items: [] } },
-      { id: toMessageId({ raw: assistantMsgId }), role: 'assistant', content: 'generating...', timestamp: 0, replies: { items: [] } }
+      { id: toMessageId({ raw: assistantMsgId }), role: 'assistant', content: 'generating...', timestamp: 0, replies: { items: [] } },
     ];
 
     wrapper = mountChatPane( {
@@ -1097,8 +1097,8 @@ Question`,
         plugins: [router],
         stubs: {
           // We need MessageItem to NOT be stubbed or to emit the event if stubbed
-          MessageItem: false
-        }
+          MessageItem: false,
+        },
       },
     });
 
@@ -1130,9 +1130,9 @@ Question`,
         plugins: [router],
         stubs: {
           ChatDebugInspector: {
-            template: '<div data-testid="chat-inspector">Chat Inspector</div>'
-          }
-        }
+            template: '<div data-testid="chat-inspector">Chat Inspector</div>',
+          },
+        },
       },
     });
     await flushPromises();
@@ -1350,7 +1350,7 @@ Question`,
     mockResolvedSettings.value = {
       modelId: 'global-default-model',
       titleModelId: 'model-2',
-      sources: { modelId: 'global', titleModelId: 'chat' }
+      sources: { modelId: 'global', titleModelId: 'chat' },
     };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
@@ -1381,7 +1381,7 @@ Question`,
     mockResolvedSettings.value = {
       modelId: 'global-default-model',
       titleModelId: 'model-2',
-      sources: { modelId: 'global', titleModelId: 'chat_group' }
+      sources: { modelId: 'global', titleModelId: 'chat_group' },
     };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
@@ -1521,12 +1521,12 @@ Question`,
 
     expect(mockOpenFileExplorer).toHaveBeenCalledTimes(1);
     const [{ options }] = mockOpenFileExplorer.mock.calls[0] as [{ options: {
-      kind: string;
-      title: string;
-      rootName: string;
-      mounts: WeshMount[];
-      initialPath: string[] | undefined;
-    } }];
+      kind: string,
+      title: string,
+      rootName: string,
+      mounts: WeshMount[],
+      initialPath: string[] | undefined,
+    }, }];
     expect(options.kind).toBe('wesh-mounts');
     expect(options.title).toBe('Files');
     expect(options.rootName).toBe('Files');
@@ -1650,7 +1650,7 @@ Question`,
         id: 'c1', title: 'T', root: { items: [] },
         endpointType: 'ollama',
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0
+        modelId: undefined, createdAt: 0, updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1661,7 +1661,7 @@ Question`,
         id: 'c1', title: 'T', root: { items: [] },
         systemPrompt: { content: 'test', behavior: 'override' },
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0
+        modelId: undefined, createdAt: 0, updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1672,7 +1672,7 @@ Question`,
         id: 'c1', title: 'T', root: { items: [] },
         lmParameters: { temperature: 0.5 },
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0
+        modelId: undefined, createdAt: 0, updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1682,7 +1682,7 @@ Question`,
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0
+        modelId: undefined, createdAt: 0, updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(false);
@@ -1781,7 +1781,7 @@ describe('ChatPane Scrolling Logic', () => {
     // 2. User sends message
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'init' }), role: 'assistant', content: 'hello', timestamp: Date.now(), replies: { items: [] } },
-      { id: toMessageId({ raw: 'user-1' }), role: 'user', content: 'how are you?', timestamp: Date.now(), replies: { items: [] } }
+      { id: toMessageId({ raw: 'user-1' }), role: 'user', content: 'how are you?', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     await flushPromises();
@@ -1809,7 +1809,7 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: toMessageId({ raw: 'leaf-open-user' })
+      currentLeafId: toMessageId({ raw: 'leaf-open-user' }),
     };
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] } },
@@ -1900,7 +1900,7 @@ describe('ChatPane Scrolling Logic', () => {
     const assistantId = toMessageId({ raw: 'a1' });
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
-      { id: assistantId, role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }
+      { id: assistantId, role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } },
     ];
     mockChatFlowOverride.value = [
       {
@@ -1910,7 +1910,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -1919,8 +1919,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -1961,7 +1961,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -1970,8 +1970,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -1994,8 +1994,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -2031,7 +2031,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2040,8 +2040,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -2055,7 +2055,7 @@ describe('ChatPane Scrolling Logic', () => {
     mockStreaming.value = false;
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: toMessageId({ raw: 'changed-branch' })
+      currentLeafId: toMessageId({ raw: 'changed-branch' }),
     };
 
     await flushPromises();
@@ -2068,7 +2068,7 @@ describe('ChatPane Scrolling Logic', () => {
   it('does not treat a processing leaf update as an initial open', async () => {
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: toMessageId({ raw: 'old-leaf' })
+      currentLeafId: toMessageId({ raw: 'old-leaf' }),
     };
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'old-user' }), role: 'user', content: 'before', timestamp: Date.now(), replies: { items: [] } },
@@ -2093,7 +2093,7 @@ describe('ChatPane Scrolling Logic', () => {
     mockStreaming.value = true;
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: toMessageId({ raw: 'streaming-assistant-leaf' })
+      currentLeafId: toMessageId({ raw: 'streaming-assistant-leaf' }),
     };
     mockActiveMessages.value = [
       ...mockActiveMessages.value,
@@ -2108,7 +2108,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2117,7 +2117,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2126,7 +2126,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2135,8 +2135,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -2179,7 +2179,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2188,8 +2188,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -2209,7 +2209,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2218,7 +2218,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2227,7 +2227,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2236,8 +2236,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -2288,7 +2288,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2297,8 +2297,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -2318,7 +2318,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2327,7 +2327,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2336,8 +2336,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: false
-      }
+        isFirstInTurn: false,
+      },
     ];
 
     await flushPromises();
@@ -2354,7 +2354,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2363,7 +2363,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'message',
@@ -2372,7 +2372,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: false
+        isFirstInTurn: false,
       },
       {
         type: 'message',
@@ -2381,8 +2381,8 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: false
-      }
+        isFirstInTurn: false,
+      },
     ];
 
     await flushPromises();
@@ -2409,7 +2409,7 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: toMessageId({ raw: 'leaf-open-bottom' })
+      currentLeafId: toMessageId({ raw: 'leaf-open-bottom' }),
     };
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
@@ -2439,7 +2439,7 @@ describe('ChatPane Scrolling Logic', () => {
 
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
-      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } },
     ];
     mockChatFlowOverride.value = [
       {
@@ -2449,7 +2449,7 @@ describe('ChatPane Scrolling Logic', () => {
         flow: { position: 'standalone', nesting: 'none' },
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: true
+        isFirstInTurn: true,
       },
       {
         type: 'process_sequence',
@@ -2463,10 +2463,10 @@ describe('ChatPane Scrolling Logic', () => {
           toolNames: ['shell_execute'],
           isCurrentlyThinking: false,
           isCurrentlyToolRunning: true,
-          isWaiting: false
+          isWaiting: false,
         },
-        isFirstInTurn: true
-      }
+        isFirstInTurn: true,
+      },
     ];
 
     await flushPromises();
@@ -2481,7 +2481,7 @@ describe('ChatPane Scrolling Logic', () => {
   it('re-runs the initial open scroll when the active leaf changes in the same chat', async () => {
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: toMessageId({ raw: 'leaf-1' })
+      currentLeafId: toMessageId({ raw: 'leaf-1' }),
     };
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'first leaf', timestamp: Date.now(), replies: { items: [] } },
@@ -2504,7 +2504,7 @@ describe('ChatPane Scrolling Logic', () => {
 
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: toMessageId({ raw: 'leaf-2' })
+      currentLeafId: toMessageId({ raw: 'leaf-2' }),
     };
     mockActiveMessages.value = [
       { id: toMessageId({ raw: 'u2' }), role: 'user', content: 'second leaf', timestamp: Date.now(), replies: { items: [] } },
@@ -2822,7 +2822,7 @@ Another message`);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockUrl);
     expect(mockAddToast).toHaveBeenCalledWith({
       message: 'Share URL copied to clipboard!',
-      duration: 3000
+      duration: 3000,
     });
   });
 });
@@ -3304,7 +3304,7 @@ Line 6`;
       originalName: 'mem.png',
       mimeType: 'image/png',
       size: 10,
-      uploadedAt: Date.now()
+      uploadedAt: Date.now(),
     }];
 
     await nextTick();
@@ -3429,7 +3429,7 @@ describe('ChatPane Welcome Screen & Suggestions', () => {
       attachTo: document.body,
       global: {
         plugins: [router],
-        stubs: { WelcomeScreen: true }
+        stubs: { WelcomeScreen: true },
       },
     });
 
@@ -3580,11 +3580,11 @@ describe('ChatPane Model Selection', () => {
 
     wrapper = mountChatPane( {
       props: {
-        autoSendPrompt: 'automatic message'
+        autoSendPrompt: 'automatic message',
       },
       global: {
         plugins: [router],
-        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true }
+        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true },
       },
     });
 
@@ -3601,7 +3601,7 @@ describe('ChatPane Model Selection', () => {
     wrapper = mountChatPane( {
       global: {
         plugins: [router],
-        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true }
+        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true },
       },
     });
     await flushPromises();

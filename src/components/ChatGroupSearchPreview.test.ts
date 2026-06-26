@@ -43,7 +43,7 @@ vi.mock('lucide-vue-next', () => ({
 
 // Mock SearchPreview stub (since it's async and complex)
 vi.mock('./SearchPreview.vue', () => ({
-  default: { name: 'SearchPreview', props: ['chat', 'match'], template: '<div class="search-preview-stub"></div>' }
+  default: { name: 'SearchPreview', props: ['chat', 'match'], template: '<div class="search-preview-stub"></div>' },
 }));
 
 // --- Tests ---
@@ -71,7 +71,7 @@ describe('ChatGroupSearchPreview Component', () => {
 
   it('should load and filter chats by groupId', async () => {
     const wrapper = mount(ChatGroupSearchPreview, {
-      props: { groupId: mockGroupId, groupName: mockGroupName }
+      props: { groupId: mockGroupId, groupName: mockGroupName },
     });
 
     await nextTick();
@@ -85,7 +85,7 @@ describe('ChatGroupSearchPreview Component', () => {
 
   it('should select the first chat by default', async () => {
     const wrapper = mount(ChatGroupSearchPreview, {
-      props: { groupId: mockGroupId, groupName: mockGroupName }
+      props: { groupId: mockGroupId, groupName: mockGroupName },
     });
 
     await nextTick();
@@ -97,7 +97,7 @@ describe('ChatGroupSearchPreview Component', () => {
 
   it('should navigate when "Open Chat" button is clicked', async () => {
     const wrapper = mount(ChatGroupSearchPreview, {
-      props: { groupId: mockGroupId, groupName: mockGroupName }
+      props: { groupId: mockGroupId, groupName: mockGroupName },
     });
 
     await nextTick();

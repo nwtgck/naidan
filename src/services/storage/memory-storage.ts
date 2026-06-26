@@ -41,7 +41,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   private chatMetas = new Map<ChatId, ChatMetaDto>();
   private chatGroups = new Map<ChatGroupId, ChatGroupDto>();
   private chatContents = new Map<ChatId, ChatContentDto>();
-  private binaryObjects = new Map<BinaryObjectId, { blob: Blob; meta: BinaryObject }>();
+  private binaryObjects = new Map<BinaryObjectId, { blob: Blob, meta: BinaryObject }>();
   private blobCache = new Map<AttachmentId, Blob>();
 
   async init(): Promise<void> {
@@ -76,7 +76,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     this.chatMetas.set(meta.id, dto);
   }
 
-  async saveChatContent({ id, content }: { id: ChatId; content: ChatContent }): Promise<void> {
+  async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
     const findAndCacheBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
       for (const node of nodes) {
         if (node.attachments) {
@@ -246,37 +246,37 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async createVolume({ name: _name, type: _type, sourceHandle: _sourceHandle }: {
-    name: string;
-    type: import('@/models/types').VolumeType;
-    sourceHandle: FileSystemDirectoryHandle;
+    name: string,
+    type: import('@/models/types').VolumeType,
+    sourceHandle: FileSystemDirectoryHandle,
   }): Promise<import('@/models/types').Volume> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
   async createVolumeFromFiles({ name: _name, entries: _entries, onProgress: _onProgress, signal: _signal }: {
-    name: string;
-    entries: Array<{ file: File; relativePath: string }>;
-    onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
-    signal?: AbortSignal;
+    name: string,
+    entries: Array<{ file: File, relativePath: string }>,
+    onProgress?: ({ processed, total }: { processed: number, total: number }) => void,
+    signal?: AbortSignal,
   }): Promise<import('@/models/types').Volume> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
   async getVolumeDirectoryHandle({ volumeId: _volumeId }: {
-    volumeId: VolumeId;
+    volumeId: VolumeId,
   }): Promise<FileSystemDirectoryHandle | null> {
     return null;
   }
 
   async deleteVolume({ volumeId: _volumeId }: {
-    volumeId: VolumeId;
+    volumeId: VolumeId,
   }): Promise<void> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
   async renameVolume({ volumeId: _volumeId, name: _name }: {
-    volumeId: VolumeId;
-    name: string;
+    volumeId: VolumeId,
+    name: string,
   }): Promise<void> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
@@ -284,10 +284,10 @@ export class MemoryStorageProvider extends IStorageProvider {
   // --- File Storage ---
 
   async saveFile({ blob, binaryObjectId, name, mimeType }: {
-    blob: Blob;
-    binaryObjectId: BinaryObjectId;
-    name: string;
-    mimeType?: string;
+    blob: Blob,
+    binaryObjectId: BinaryObjectId,
+    name: string,
+    mimeType?: string,
   }): Promise<void> {
     const meta: BinaryObject = {
       id: binaryObjectId,
@@ -356,7 +356,7 @@ export class MemoryStorageProvider extends IStorageProvider {
           mimeType: meta.mimeType,
           size: meta.size,
           createdAt: meta.createdAt,
-          blob
+          blob,
         };
       }
     };
@@ -405,7 +405,7 @@ export class MemoryStorageProvider extends IStorageProvider {
           blob: chunk.blob,
           binaryObjectId: toBinaryObjectId({ raw: chunk.id }),
           name: chunk.name,
-          mimeType: chunk.mimeType
+          mimeType: chunk.mimeType,
         });
         break;
       default: {

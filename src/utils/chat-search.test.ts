@@ -17,7 +17,7 @@ describe('searchChatTree', () => {
       items: [
         createNode('1', 'Hello world'),
         createNode('2', 'Another message'),
-      ]
+      ],
     };
 
     const matches = searchChatTree({ root, query: 'world', chatId: toChatId({ raw: 'chat-1' }) });
@@ -63,7 +63,7 @@ describe('searchChatTree', () => {
 
   it('is case insensitive', () => {
     const root: MessageBranch = {
-      items: [createNode('1', 'HeLLo ThErE')]
+      items: [createNode('1', 'HeLLo ThErE')],
     };
 
     const matches = searchChatTree({ root, query: 'hello', chatId: toChatId({ raw: 'chat-1' }) });

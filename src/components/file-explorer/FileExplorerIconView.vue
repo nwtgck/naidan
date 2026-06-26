@@ -30,7 +30,7 @@ function isEntryCut({ entry }: { entry: FileExplorerEntry }): boolean {
   );
 }
 
-function onEntryClick({ entry, event }: { entry: FileExplorerEntry; event: MouseEvent }): void {
+function onEntryClick({ entry, event }: { entry: FileExplorerEntry, event: MouseEvent }): void {
   if (event.shiftKey) {
     ctx.applySelection({
       action: { type: 'range', name: entry.name, allEntries: ctx.sortedFilteredEntries },
@@ -58,7 +58,7 @@ async function onEntryDblClick({ entry }: { entry: FileExplorerEntry }): Promise
   }
 }
 
-function onContextMenu({ entry, event }: { entry: FileExplorerEntry; event: MouseEvent }): void {
+function onContextMenu({ entry, event }: { entry: FileExplorerEntry, event: MouseEvent }): void {
   if (!isEntrySelected({ entry })) {
     ctx.applySelection({ action: { type: 'single', name: entry.name } });
   }
@@ -93,7 +93,7 @@ async function onExternalDrop({ event }: { event: DragEvent }): Promise<void> {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

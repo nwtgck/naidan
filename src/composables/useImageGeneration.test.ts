@@ -8,8 +8,8 @@ import { SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '@/utils/image-genera
 vi.mock('../services/storage', () => ({
   storageService: {
     getFile: vi.fn(),
-    saveFile: vi.fn().mockResolvedValue(undefined)
-  }
+    saveFile: vi.fn().mockResolvedValue(undefined),
+  },
 }));
 
 vi.mock('@/composables/useSettings', () => ({
@@ -29,7 +29,7 @@ const mockReencodeImage = vi.fn().mockImplementation(({ format }: { format: stri
   return Promise.resolve(new Blob([`reencoded-${format}`], { type: `image/${format}` }));
 });
 vi.mock('../utils/image-processing', () => ({
-  reencodeImage: (...args: any[]) => mockReencodeImage(...args)
+  reencodeImage: (...args: any[]) => mockReencodeImage(...args),
 }));
 
 // Mock global URL
@@ -42,7 +42,7 @@ if (!global.crypto) {
     getRandomValues: (arr: Uint32Array) => {
       for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 1000000);
       return arr;
-    }
+    },
   };
 }
 
@@ -55,10 +55,10 @@ vi.mock('../services/lm/ollama', async (importOriginal) => {
       generateImage() {
         return Promise.resolve({
           image: new Blob(['test-image'], { type: 'image/png' }),
-          totalSteps: 10
+          totalSteps: 10,
         });
       }
-    }
+    },
   };
 });
 
@@ -149,14 +149,14 @@ describe('useImageGeneration', () => {
         chatId,
         attachments: [],
         availableModels,
-        sendMessage
+        sendMessage,
       });
 
       expect(result).toBe(true);
       expect(sendMessage).toHaveBeenCalledWith({
         content: expect.stringContaining('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1","count":1,"persistAs":"original"} -->a sunset'),
         parentId: undefined,
-        attachments: []
+        attachments: [],
       });
     });
 
@@ -176,11 +176,11 @@ describe('useImageGeneration', () => {
         chatId,
         attachments: [],
         availableModels,
-        sendMessage
+        sendMessage,
       });
 
       expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-        content: expect.stringContaining('"steps":35,"seed":12345')
+        content: expect.stringContaining('"steps":35,"seed":12345'),
       }));
     });
 
@@ -200,11 +200,11 @@ describe('useImageGeneration', () => {
         chatId,
         attachments: [],
         availableModels,
-        sendMessage
+        sendMessage,
       });
 
       expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
-        content: expect.stringContaining('"seed":"browser_random"')
+        content: expect.stringContaining('"seed":"browser_random"'),
       }));
     });
   });
@@ -215,9 +215,9 @@ describe('useImageGeneration', () => {
       id: chatId,
       root: {
         items: [
-          { id: assistantId, role: 'assistant', content: '', replies: { items: [] } }
-        ]
-      }
+          { id: assistantId, role: 'assistant', content: '', replies: { items: [] } },
+        ],
+      },
     };
 
     const commonParams = {
@@ -248,7 +248,7 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        storageType: 'opfs'
+        storageType: 'opfs',
       });
 
       const assistantNode = mockChat.root.items[0];
@@ -266,7 +266,7 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        storageType: 'local'
+        storageType: 'local',
       });
 
       const assistantNode = mockChat.root.items[0];
@@ -287,7 +287,7 @@ describe('useImageGeneration', () => {
         ...commonParams,
         count: 3,
         storageType: 'local',
-        triggerChatRef
+        triggerChatRef,
       });
 
       const assistantNode = mockChat.root.items[0];
@@ -310,20 +310,20 @@ describe('useImageGeneration', () => {
       await handleImageGeneration({
         ...commonParams,
         persistAs: 'webp',
-        storageType: 'opfs'
+        storageType: 'opfs',
       });
 
       // Should have called reencodeImage
       expect(mockReencodeImage).toHaveBeenCalledWith({
         blob: expect.any(Blob),
-        format: 'webp'
+        format: 'webp',
       });
 
       // Should have saved with .webp extension
       expect(storageService.saveFile).toHaveBeenCalledWith(expect.objectContaining({
         blob: expect.objectContaining({ type: 'image/webp' }),
         binaryObjectId: expect.any(String),
-        name: expect.stringMatching(/\.webp$/)
+        name: expect.stringMatching(/\.webp$/),
       }));
     });
 
@@ -337,14 +337,14 @@ describe('useImageGeneration', () => {
       await handleImageGeneration({
         ...commonParams,
         persistAs: 'jpeg',
-        storageType: 'opfs'
+        storageType: 'opfs',
       });
 
       // Should have saved original blob with .png extension (default)
       expect(storageService.saveFile).toHaveBeenCalledWith(expect.objectContaining({
         blob: expect.objectContaining({ type: 'image/png' }),
         binaryObjectId: expect.any(String),
-        name: expect.stringMatching(/\.png$/)
+        name: expect.stringMatching(/\.png$/),
       }));
     });
 
@@ -354,7 +354,7 @@ describe('useImageGeneration', () => {
       await handleImageGeneration({
         ...commonParams,
         seed: 'browser_random',
-        storageType: 'opfs'
+        storageType: 'opfs',
       });
 
       const assistantNode = mockChat.root.items[0];
@@ -379,7 +379,7 @@ describe('useImageGeneration', () => {
         ...commonParams,
         steps: 42,
         seed: 1337,
-        storageType: 'opfs'
+        storageType: 'opfs',
       });
 
       const assistantNode = mockChat.root.items[0];
@@ -401,13 +401,13 @@ describe('useImageGeneration', () => {
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockResolvedValueOnce({
           image: new Blob(['test'], { type: 'image/png' }),
-          totalSteps: UNKNOWN_STEPS as any
+          totalSteps: UNKNOWN_STEPS as any,
         });
 
       await handleImageGeneration({
         ...commonParams,
         steps: 42,
-        storageType: 'opfs'
+        storageType: 'opfs',
       });
 
       const assistantNode = mockChat.root.items[0];
@@ -428,7 +428,7 @@ describe('useImageGeneration', () => {
       await handleImageGeneration({
         ...commonParams,
         chatId: toChatId({ raw: 'progress-test-chat' }),
-        storageType: 'opfs'
+        storageType: 'opfs',
       });
 
       // After generation, it should be cleared
@@ -452,7 +452,7 @@ describe('useImageGeneration', () => {
           if (params.onProgress) params.onProgress({ currentStep: 1, totalSteps: 10 });
           return {
             image: new Blob(['test'], { type: 'image/png' }),
-            totalSteps: 10
+            totalSteps: 10,
           };
         });
 
@@ -460,7 +460,7 @@ describe('useImageGeneration', () => {
         ...commonParams,
         chatId: toChatId({ raw: 'progress-test-chat' }),
         count: 2,
-        storageType: 'opfs'
+        storageType: 'opfs',
       });
 
       expect(generateImageSpy).toHaveBeenCalledTimes(2);

@@ -1,20 +1,20 @@
 import { toChatGroupId, toChatId } from '@/models/ids';
-import { beforeEach, describe, expect, it } from 'vitest'
-import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
   mapFileExplorerModalOptionsToRootDescriptor,
   useFileExplorerModal,
-} from './useFileExplorerModal'
+} from './useFileExplorerModal';
 
 describe('useFileExplorerModal', () => {
   beforeEach(() => {
-    const { closeFileExplorer } = useFileExplorerModal()
-    closeFileExplorer()
-  })
+    const { closeFileExplorer } = useFileExplorerModal();
+    closeFileExplorer();
+  });
 
   it('keeps wesh mount options structured-cloneable after opening the modal', () => {
-    const { fileExplorerOptions, openFileExplorer } = useFileExplorerModal()
-    const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' })
+    const { fileExplorerOptions, openFileExplorer } = useFileExplorerModal();
+    const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' });
 
     openFileExplorer({ options: {
       kind: 'wesh-mounts',
@@ -36,13 +36,13 @@ describe('useFileExplorerModal', () => {
         currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       }],
       initialPath: ['home', 'user', 'project'],
-    } })
+    } });
 
-    expect(() => structuredClone(fileExplorerOptions.value)).not.toThrow()
+    expect(() => structuredClone(fileExplorerOptions.value)).not.toThrow();
     expect(() => structuredClone(mapFileExplorerModalOptionsToRootDescriptor({
       options: fileExplorerOptions.value,
-    }))).not.toThrow()
-  })
+    }))).not.toThrow();
+  });
 
   it('maps the OPFS root label to "OPFS root"', () => {
     expect(mapFileExplorerModalOptionsToRootDescriptor({
@@ -50,6 +50,6 @@ describe('useFileExplorerModal', () => {
     })).toEqual({
       kind: 'opfs-root',
       rootName: 'OPFS root',
-    })
-  })
-})
+    });
+  });
+});

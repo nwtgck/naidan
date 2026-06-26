@@ -48,28 +48,28 @@ const { showConfirm } = useConfirm();
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
 const props = defineProps<{
-  chatId: ChatId;
-  chat: Chat;
-  chatGroup: ChatGroup | null;
-  resolvedLmParameters: LmParameters | undefined;
-  inheritedModelId: string | undefined;
-  inheritedModelSource: SettingsSource | undefined;
-  autoSendPrompt?: string;
-  visibility: 'submerged' | 'peeking' | 'active';
-  aboveInputVisibility: 'visible' | 'hidden';
-  isStreaming: boolean;
-  canGenerateImage: boolean;
-  hasImageModel: boolean;
-  availableImageModels: string[];
-  isAnimatingHeight: boolean;
+  chatId: ChatId,
+  chat: Chat,
+  chatGroup: ChatGroup | null,
+  resolvedLmParameters: LmParameters | undefined,
+  inheritedModelId: string | undefined,
+  inheritedModelSource: SettingsSource | undefined,
+  autoSendPrompt?: string,
+  visibility: 'submerged' | 'peeking' | 'active',
+  aboveInputVisibility: 'visible' | 'hidden',
+  isStreaming: boolean,
+  canGenerateImage: boolean,
+  hasImageModel: boolean,
+  availableImageModels: string[],
+  isAnimatingHeight: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'auto-sent'): void;
-  (e: 'sent'): void;
-  (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void;
-  (e: 'update:isAnimatingHeight', value: boolean): void;
-  (e: 'scroll-to-bottom', force?: boolean): void;
+  (e: 'auto-sent'): void,
+  (e: 'sent'): void,
+  (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void,
+  (e: 'update:isAnimatingHeight', value: boolean): void,
+  (e: 'scroll-to-bottom', force?: boolean): void,
 }>();
 
 const isFocused = ref(false);
@@ -94,10 +94,10 @@ const availableImageModels = computed(() => props.availableImageModels);
 
 const isAnimatingHeight = computed({
   get: () => props.isAnimatingHeight,
-  set: (val) => emit('update:isAnimatingHeight', val)
+  set: (val) => emit('update:isAnimatingHeight', val),
 });
 
-function formatLabel({ value, source }: { value: string | undefined; source: SettingsSource | undefined }) {
+function formatLabel({ value, source }: { value: string | undefined, source: SettingsSource | undefined }) {
   return formatSettingsSourceLabel({ value, source });
 }
 
@@ -105,14 +105,14 @@ const isImageMode = computed({
   get: () => chatMedia.isImageMode.value,
   set: () => {
     chatMedia.toggleImageMode();
-  }
+  },
 });
 
 const currentResolution = computed(() => {
   return chatMedia.resolution.value;
 });
 
-function updateResolution({ width, height }: { width: number; height: number }) {
+function updateResolution({ width, height }: { width: number, height: number }) {
   chatMedia.updateResolution({ width, height });
 }
 
@@ -187,10 +187,10 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const hasFileSystemAccess = checkFileSystemAccessSupport();
 
 type ActiveCopy = {
-  id: string;
-  name: string;
-  progress: { processed: number; total: number } | null;
-  abort: AbortController;
+  id: string,
+  name: string,
+  progress: { processed: number, total: number } | null,
+  abort: AbortController,
 };
 const activeCopies = ref<ActiveCopy[]>([]);
 
@@ -222,9 +222,9 @@ const attachmentUrls = ref(new Map<AttachmentId, string>());
 // surface (`__VLS_base` using `idBrand`). Internally this component should keep
 // branded IDs; only the TEST_ONLY exposed boundary is downgraded to raw strings.
 type TestOnlyAttachment =
-  | (Omit<Extract<Attachment, { status: 'persisted' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string })
-  | (Omit<Extract<Attachment, { status: 'memory' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string })
-  | (Omit<Extract<Attachment, { status: 'missing' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string });
+  | (Omit<Extract<Attachment, { status: 'persisted' }>, 'id' | 'binaryObjectId'> & { id: string, binaryObjectId: string })
+  | (Omit<Extract<Attachment, { status: 'memory' }>, 'id' | 'binaryObjectId'> & { id: string, binaryObjectId: string })
+  | (Omit<Extract<Attachment, { status: 'missing' }>, 'id' | 'binaryObjectId'> & { id: string, binaryObjectId: string });
 
 // Image Editor integration
 const editingAttachmentId = ref<AttachmentId | undefined>(undefined);
@@ -241,13 +241,13 @@ const testOnlyAttachments = computed({
       id: toAttachmentId({ raw: attachment.id }),
       binaryObjectId: toBinaryObjectId({ raw: attachment.binaryObjectId }),
     }));
-  }
+  },
 });
 const testOnlyEditingAttachmentId = computed({
   get: () => editingAttachmentId.value === undefined ? undefined : idToRaw({ id: editingAttachmentId.value }),
   set: (value: string | undefined) => {
     editingAttachmentId.value = value === undefined ? undefined : toAttachmentId({ raw: value });
-  }
+  },
 });
 const testOnlyEditingAttachment = computed(() => {
   if (editingAttachment.value === undefined) {
@@ -362,7 +362,7 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
   return path;
 }
 
-async function finishMount({ volumeId, name }: { volumeId: VolumeId; name: string }) {
+async function finishMount({ volumeId, name }: { volumeId: VolumeId, name: string }) {
   if (!chat.value) return;
   const mountPath = generateChatMountPath({ baseName: name });
   await chatMounts.addMount({
@@ -376,8 +376,8 @@ async function finishMount({ volumeId, name }: { volumeId: VolumeId; name: strin
 }
 
 async function attachCopyAsVolume({ entries, name }: {
-  entries: Array<{ file: File; relativePath: string }>;
-  name: string;
+  entries: Array<{ file: File, relativePath: string }>,
+  name: string,
 }) {
   if (!chat.value) return;
   const copyId = generateOpaqueId();
@@ -391,7 +391,7 @@ async function attachCopyAsVolume({ entries, name }: {
       signal: abort.signal,
       onProgress: ({ processed, total }) => {
         activeCopies.value = activeCopies.value.map(c =>
-          c.id === copyId ? { ...c, progress: { processed, total } } : c
+          c.id === copyId ? { ...c, progress: { processed, total } } : c,
         );
       },
     });
@@ -431,7 +431,7 @@ async function onAttachFilesSelected({ files }: { files: File[] }) {
   }
 }
 
-async function onAttachFolderCopy({ folderName, files }: { folderName: string; files: File[] }) {
+async function onAttachFolderCopy({ folderName, files }: { folderName: string, files: File[] }) {
   const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
   await attachCopyAsVolume({ entries, name: folderName });
 }
@@ -439,24 +439,24 @@ async function onAttachFolderCopy({ folderName, files }: { folderName: string; f
 // Collects all files from a FileSystemDirectoryEntry recursively.
 // relativePath is relative to the dropped directory root (does not include the root name).
 async function collectFilesFromDirectoryEntry(
-  { dirEntry, prefix = '' }: { dirEntry: FileSystemDirectoryEntry; prefix?: string },
-): Promise<Array<{ file: File; relativePath: string }>> {
+  { dirEntry, prefix = '' }: { dirEntry: FileSystemDirectoryEntry, prefix?: string },
+): Promise<Array<{ file: File, relativePath: string }>> {
   const reader = dirEntry.createReader();
   const allEntries: FileSystemEntry[] = [];
   // readEntries returns at most 100 items per call — must loop until empty batch
   for (;;) {
     const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
-      reader.readEntries(resolve, reject)
+      reader.readEntries(resolve, reject),
     );
     if (batch.length === 0) break;
     allEntries.push(...batch);
   }
-  const results: Array<{ file: File; relativePath: string }> = [];
+  const results: Array<{ file: File, relativePath: string }> = [];
   for (const entry of allEntries) {
     const entryPath = prefix ? `${prefix}/${entry.name}` : entry.name;
     if (entry.isFile) {
       const file = await new Promise<File>((resolve, reject) =>
-        (entry as FileSystemFileEntry).file(resolve, reject)
+        (entry as FileSystemFileEntry).file(resolve, reject),
       );
       results.push({ file, relativePath: entryPath });
     } else {
@@ -474,9 +474,9 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
   if (!chat.value) return;
 
   type DropCollected =
-    | { kind: 'fsa-handle'; promise: Promise<FileSystemHandle> }
-    | { kind: 'entry'; entry: FileSystemEntry }
-    | { kind: 'raw-file'; item: DataTransferItem };
+    | { kind: 'fsa-handle', promise: Promise<FileSystemHandle> }
+    | { kind: 'entry', entry: FileSystemEntry }
+    | { kind: 'raw-file', item: DataTransferItem };
 
   // Phase 1: collect synchronously (DataTransfer items expire after event handler returns)
   const collected: DropCollected[] = [];
@@ -487,7 +487,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
       collected.push({
         kind: 'fsa-handle',
         promise: (item as DataTransferItem & {
-          getAsFileSystemHandle(): Promise<FileSystemHandle>;
+          getAsFileSystemHandle(): Promise<FileSystemHandle>,
         }).getAsFileSystemHandle(),
       });
     } else {
@@ -524,7 +524,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
       const { entry } = c;
       if (entry.isFile) {
         const file = await new Promise<File>((resolve, reject) =>
-          (entry as FileSystemFileEntry).file(resolve, reject)
+          (entry as FileSystemFileEntry).file(resolve, reject),
         );
         plainFiles.push(file);
       } else if (entry.isDirectory) {
@@ -617,7 +617,7 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
   }
 }
 
-async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: VolumeId; readOnly: boolean }) {
+async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: VolumeId, readOnly: boolean }) {
   if (!chat.value) return;
 
   let volumeType: 'opfs' | 'host' | undefined;
@@ -635,7 +635,7 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: Vol
       // The handle was obtained with mode:'read', so writes will fail unless explicitly upgraded.
       type FSHandleWithPermission = FileSystemDirectoryHandle & {
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this signature mirrors the File System Access API requestPermission contract.
-        requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
+        requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>,
       };
       const result = await (handle as FSHandleWithPermission).requestPermission({ mode: 'readwrite' });
       // Note: downgrading back to read-only cannot be enforced at the browser level.
@@ -841,7 +841,7 @@ async function handleGenerateImage() {
     steps: currentSteps.value,
     seed: currentSeed.value,
     persistAs: currentPersistAs.value,
-    attachments: currentAttachments
+    attachments: currentAttachments,
   });
   if (success) {
     if (chat.value?.id === sendingChatId) {
@@ -929,7 +929,7 @@ watch(
       chatDraft.saveDraft({ chatId: oldId, draft: {
         input: input.value,
         attachments: attachments.value,
-        attachmentUrls: attachmentUrls.value
+        attachmentUrls: attachmentUrls.value,
       } });
     }
 
@@ -959,7 +959,7 @@ watch(
       });
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 onMounted(async () => {
@@ -1002,7 +1002,7 @@ onUnmounted(() => {
   chatDraft.saveDraft({ chatId: props.chatId, draft: {
     input: input.value,
     attachments: attachments.value,
-    attachmentUrls: attachmentUrls.value
+    attachmentUrls: attachmentUrls.value,
   } });
 
   // Revoke all created URLs across all drafts to prevent leaks
@@ -1067,8 +1067,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     editingAttachment: testOnlyEditingAttachment,
     openAdvancedEditor,
     handleAdvancedEditorModeUpdate,
-    selectedReasoningEffort
-  }, });
+    selectedReasoningEffort,
+  } });
 </script>
 
 <template>

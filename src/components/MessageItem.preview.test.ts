@@ -63,10 +63,10 @@ const mockMessage: MessageNode = {
       mimeType: 'image/png',
       size: 100,
       uploadedAt: 1000,
-      status: 'persisted'
-    }
+      status: 'persisted',
+    },
   ],
-  replies: { items: [] }
+  replies: { items: [] },
 };
 
 describe('MessageItem.vue Preview Integration', () => {
@@ -81,13 +81,13 @@ describe('MessageItem.vue Preview Integration', () => {
       name: 'test.png',
       mimeType: 'image/png',
       size: 100,
-      createdAt: 1000
+      createdAt: 1000,
     });
 
     const wrapper = mount(MessageItem, {
       props: {
-        message: mockMessage
-      }
+        message: mockMessage,
+      },
     });
 
     await flushPromises();
@@ -100,9 +100,9 @@ describe('MessageItem.vue Preview Integration', () => {
 
     expect(mockOpenPreview).toHaveBeenCalledWith({
       objects: [
-        expect.objectContaining({ id: 'bin-1', name: 'test.png' })
+        expect.objectContaining({ id: 'bin-1', name: 'test.png' }),
       ],
-      initialId: 'bin-1'
+      initialId: 'bin-1',
     });
   });
 
@@ -115,7 +115,7 @@ describe('MessageItem.vue Preview Integration', () => {
 {"binaryObjectId":"${genId}","displayWidth":512,"displayHeight":512,"prompt":"a sunset"}
 \`\`\``,
       timestamp: 2000,
-      replies: { items: [] }
+      replies: { items: [] },
     };
 
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
@@ -124,20 +124,20 @@ describe('MessageItem.vue Preview Integration', () => {
       name: 'generated.png',
       mimeType: 'image/png',
       size: 500,
-      createdAt: 2000
+      createdAt: 2000,
     });
 
     const wrapper = mount(MessageItem, {
       props: {
-        message: genImageMsg
+        message: genImageMsg,
       },
       global: {
         stubs: {
           ImageConjuringLoader: true,
           SpeechControl: true,
-          ChatToolsMenu: true
-        }
-      }
+          ChatToolsMenu: true,
+        },
+      },
     });
 
     await flushPromises();
@@ -160,9 +160,9 @@ describe('MessageItem.vue Preview Integration', () => {
 
     expect(mockOpenPreview).toHaveBeenCalledWith({
       objects: [
-        expect.objectContaining({ id: genId })
+        expect.objectContaining({ id: genId }),
       ],
-      initialId: genId
+      initialId: genId,
     });
   });
 });

@@ -22,8 +22,8 @@ const sleepArgvSpec: StandardArgvParserSpec = {
 function parseSleepOperand({
   value,
 }: {
-  value: string;
-}): { ok: true; seconds: number } | { ok: false } {
+  value: string,
+}): { ok: true, seconds: number } | { ok: false } {
   const match = value.match(/^([0-9]+(?:\.[0-9]+)?)([smhd]?)$/);
   if (match === null) {
     return { ok: false };

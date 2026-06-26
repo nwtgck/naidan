@@ -35,9 +35,9 @@ function mountHeader({
   groups,
   activeMessageCount = 2,
 }: {
-  chat: Chat | null;
-  groups: readonly ChatGroup[];
-  activeMessageCount?: number;
+  chat: Chat | null,
+  groups: readonly ChatGroup[],
+  activeMessageCount?: number,
 }) {
   const currentGroup = chat?.groupId
     ? groups.find(group => group.id === chat.groupId)

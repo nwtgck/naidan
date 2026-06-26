@@ -46,52 +46,52 @@ const OpenAIModelsSchema = z.object({
 });
 
 interface OpenAICompletionRequest {
-  model: string;
-  messages: ChatMessage[];
-  stream: boolean;
-  temperature?: number;
-  top_p?: number;
-  max_completion_tokens?: number;
-  presence_penalty?: number;
-  frequency_penalty?: number;
-  stop?: string[];
-  reasoning_effort?: 'none' | 'low' | 'medium' | 'high';
+  model: string,
+  messages: ChatMessage[],
+  stream: boolean,
+  temperature?: number,
+  top_p?: number,
+  max_completion_tokens?: number,
+  presence_penalty?: number,
+  frequency_penalty?: number,
+  stop?: string[],
+  reasoning_effort?: 'none' | 'low' | 'medium' | 'high',
   tools?: {
-    type: 'function';
+    type: 'function',
     function: {
-      name: string;
-      description: string;
-      parameters: unknown;
-    };
-  }[];
+      name: string,
+      description: string,
+      parameters: unknown,
+    },
+  }[],
 }
 
 export class OpenAIProvider implements LmProvider {
   private config: {
-    endpoint: string;
-    headers?: [string, string][];
-    fetcher: LmFetch;
+    endpoint: string,
+    headers?: [string, string][],
+    fetcher: LmFetch,
   };
 
-  constructor({ endpoint, headers, fetcher }: { endpoint: string; headers?: [string, string][]; fetcher?: LmFetch }) {
+  constructor({ endpoint, headers, fetcher }: { endpoint: string, headers?: [string, string][], fetcher?: LmFetch }) {
     this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
   async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
-    messages: ChatMessage[];
-    model: string;
-    onChunk: ({ chunk }: { chunk: string }) => void;
-    parameters?: LmParameters;
-    tools?: Tool[];
-    toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
-    onToolEvent?: ({ id, event }: { id: ToolCallId; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
+    messages: ChatMessage[],
+    model: string,
+    onChunk: ({ chunk }: { chunk: string }) => void,
+    parameters?: LmParameters,
+    tools?: Tool[],
+    toolApprovalContext?: ToolApprovalContext,
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId, toolName: string, args: unknown }) => void,
+    onToolEvent?: ({ id, event }: { id: ToolCallId, event: import('@/services/tools/types').ToolExecutionEvent }) => void,
     onToolResult?: ({ id, result }: {
-      id: ToolCallId;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
-    }) => void;
-    onAssistantMessageStart?: () => void;
-    signal?: AbortSignal;
+      id: ToolCallId,
+      result: | { status: 'success', content: string } | { status: 'error', code: import('@/services/tools/types').ToolExecutionErrorCode, message: string },
+    }) => void,
+    onAssistantMessageStart?: () => void,
+    signal?: AbortSignal,
   }): Promise<void> {
     const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
@@ -127,7 +127,7 @@ export class OpenAIProvider implements LmProvider {
             name: t.name,
             description: t.description,
             parameters: zodToJsonSchema({ schema: t.parametersSchema }),
-          }
+          },
         }));
       }
 
@@ -166,7 +166,7 @@ export class OpenAIProvider implements LmProvider {
         addErrorEvent({
           source: 'OpenAIProvider',
           message: errorMsg,
-          details: { status: response.status, statusText: response.statusText, url }
+          details: { status: response.status, statusText: response.statusText, url },
         });
         throw new Error(errorMsg);
       }
@@ -242,7 +242,7 @@ export class OpenAIProvider implements LmProvider {
                   accumulatedToolCalls.set(key, {
                     id: toToolCallId({ raw: tc.id || currentId }),
                     type: 'function',
-                    function: { name: '', arguments: '' }
+                    function: { name: '', arguments: '' },
                   });
                 }
                 const record = accumulatedToolCalls.get(key)!;
@@ -276,7 +276,7 @@ export class OpenAIProvider implements LmProvider {
         currentMessages.push({
           role: 'assistant',
           content: fullContent,
-          tool_calls: toolCalls
+          tool_calls: toolCalls,
         });
 
         for (const tc of toolCalls) {
@@ -331,7 +331,7 @@ export class OpenAIProvider implements LmProvider {
             } catch (e) {
               if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-              const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
+              const errorResult: { status: 'error', code: import('@/services/tools/types').ToolExecutionErrorCode, message: string } = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
@@ -340,7 +340,7 @@ export class OpenAIProvider implements LmProvider {
             }
 
           } else if (!tool) {
-            const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            const errorResult: { status: 'error', code: import('@/services/tools/types').ToolExecutionErrorCode, message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
             result = errorResult.message;
           } else {
@@ -351,7 +351,7 @@ export class OpenAIProvider implements LmProvider {
           currentMessages.push({
             role: 'tool',
             tool_call_id: tc.id,
-            content: result
+            content: result,
           });
         }
         continue; // Loop for next response from LM
@@ -374,7 +374,7 @@ export class OpenAIProvider implements LmProvider {
         addErrorEvent({
           source: 'OpenAIProvider:listModels',
           message,
-          details: { error: e, url }
+          details: { error: e, url },
         });
         throw new Error(message);
       }
@@ -391,7 +391,7 @@ export class OpenAIProvider implements LmProvider {
       addErrorEvent({
         source: 'OpenAIProvider:listModels',
         message: errorMsg,
-        details: { status: response.status, statusText: response.statusText, url }
+        details: { status: response.status, statusText: response.statusText, url },
       });
       throw new Error(errorMsg);
     }

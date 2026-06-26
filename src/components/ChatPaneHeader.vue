@@ -4,7 +4,7 @@ import {
   XIcon, GitForkIcon,
   ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon, PencilIcon,
   FolderIcon, FolderInputIcon, ChevronRightIcon, HammerIcon, SearchIcon, ImageIcon,
-  PrinterIcon, LinkIcon, TerminalIcon, ListIcon
+  PrinterIcon, LinkIcon, TerminalIcon, ListIcon,
 } from 'lucide-vue-next';
 import type { MediaShelfVisibility } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
@@ -15,49 +15,49 @@ import { idToRaw } from '@/models/ids';
 import type { ChatGroupId, ChatId } from '@/models/ids';
 
 type HeaderChat = {
-  readonly id: ChatId;
-  readonly title: string | null;
-  readonly groupId?: ChatGroupId | null;
-  readonly originChatId?: ChatId;
-  readonly debugEnabled: boolean;
+  readonly id: ChatId,
+  readonly title: string | null,
+  readonly groupId?: ChatGroupId | null,
+  readonly originChatId?: ChatId,
+  readonly debugEnabled: boolean,
 };
 
 type HeaderChatGroup = {
-  readonly id: ChatGroupId;
-  readonly name: string;
+  readonly id: ChatGroupId,
+  readonly name: string,
 };
 
 defineProps<{
-  chat: HeaderChat | null;
-  chatGroups: readonly HeaderChatGroup[];
-  chatGroupBadge: HeaderChatGroup | undefined;
-  activeMessageCount: number;
-  modelLabel: string;
-  hasOverrides: boolean;
-  showChatSettings: boolean;
-  outlineVisibility: 'hidden' | 'visible';
-  generatingTitle: boolean;
-  mediaShelfVisibility: MediaShelfVisibility;
-  isChatWeshTerminalOpen: boolean;
+  chat: HeaderChat | null,
+  chatGroups: readonly HeaderChatGroup[],
+  chatGroupBadge: HeaderChatGroup | undefined,
+  activeMessageCount: number,
+  modelLabel: string,
+  hasOverrides: boolean,
+  showChatSettings: boolean,
+  outlineVisibility: 'hidden' | 'visible',
+  generatingTitle: boolean,
+  mediaShelfVisibility: MediaShelfVisibility,
+  isChatWeshTerminalOpen: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'jump-origin'): void;
-  (e: 'edit-title'): void;
-  (e: 'update:show-chat-settings', value: boolean): void;
-  (e: 'fork-last-message'): void;
-  (e: 'move-to-group', groupId: ChatGroupId | null): void;
-  (e: 'toggle-outline'): void;
-  (e: 'print'): void;
-  (e: 'search-chat'): void;
-  (e: 'open-history'): void;
-  (e: 'compact-context'): void;
-  (e: 'export-chat'): void;
-  (e: 'toggle-media-shelf'): void;
-  (e: 'share-url'): void;
-  (e: 'open-file-explorer'): void;
-  (e: 'toggle-wesh-terminal'): void;
-  (e: 'toggle-debug'): void;
+  (e: 'jump-origin'): void,
+  (e: 'edit-title'): void,
+  (e: 'update:show-chat-settings', value: boolean): void,
+  (e: 'fork-last-message'): void,
+  (e: 'move-to-group', groupId: ChatGroupId | null): void,
+  (e: 'toggle-outline'): void,
+  (e: 'print'): void,
+  (e: 'search-chat'): void,
+  (e: 'open-history'): void,
+  (e: 'compact-context'): void,
+  (e: 'export-chat'): void,
+  (e: 'toggle-media-shelf'): void,
+  (e: 'share-url'): void,
+  (e: 'open-file-explorer'): void,
+  (e: 'toggle-wesh-terminal'): void,
+  (e: 'toggle-debug'): void,
 }>();
 
 const showMoreMenu = ref(false);
@@ -85,7 +85,7 @@ function emitMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
 }
 
 function emitMoreAction({ action }: {
-  action: ChatPaneHeaderMoreAction;
+  action: ChatPaneHeaderMoreAction,
 }) {
   switch (action) {
   case 'print':
@@ -129,7 +129,7 @@ function emitMoreAction({ action }: {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

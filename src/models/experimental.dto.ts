@@ -6,14 +6,26 @@ const EmptyExperimentalSchemaDto = resolveMissingAsUndefined(z.object({}));
 
 export const ExperimentalCalculatorToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
   key: z.literal('builtin.calculator'),
+  status: z.enum([
+    'enabled',
+    'disabled',
+  ]),
 }));
 
 export const ExperimentalChoicesToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
   key: z.literal('builtin.choices'),
+  status: z.enum([
+    'enabled',
+    'disabled',
+  ]),
 }));
 
 export const ExperimentalWikipediaToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
   key: z.literal('builtin.wikipedia'),
+  status: z.enum([
+    'enabled',
+    'disabled',
+  ]),
 }));
 
 export const ExperimentalWeshNaidanSysfsAccessScopeSchemaDto = z.enum([
@@ -26,6 +38,10 @@ export const ExperimentalWeshNaidanSysfsAccessScopeSchemaDto = z.enum([
 
 export const ExperimentalWeshToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
   key: z.literal('builtin.wesh'),
+  status: z.enum([
+    'enabled',
+    'disabled',
+  ]),
   naidanSysfs: resolveMissingAsUndefined(z.object({
     accessScope: ExperimentalWeshNaidanSysfsAccessScopeSchemaDto,
   })),
@@ -52,7 +68,9 @@ export const ExperimentalSystemPromptAppendSchemaDto = EmptyExperimentalSchemaDt
 export const ExperimentalVolumeBaseSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalVolumeIndexSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalMountVolumeSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalChatGroupSchemaDto = EmptyExperimentalSchemaDto;
+export const ExperimentalChatGroupSchemaDto = resolveMissingAsUndefined(z.object({
+  toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
+}));
 export const ExperimentalHierarchyChatNodeSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalHierarchyChatGroupNodeSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalHierarchySchemaDto = EmptyExperimentalSchemaDto;
@@ -88,6 +106,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
     z.literal('monolithic_html'),
   ])),
   toolConfigPersistence: missingAsUndefined(z.literal('enabled')),
+  toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
   fakeLm: missingAsUndefined(z.literal('enabled')),
   sidebarSendMessageReorder: missingAsUndefined(z.union([
     z.literal('disabled'),
@@ -100,15 +119,15 @@ const ExperimentalUnreadableRootKey = '_root';
 type ExperimentalUnreadable = Readonly<Record<string, unknown>>;
 
 type ExperimentalOutput<TSchema extends z.ZodObject> = z.output<TSchema> & {
-  readonly unreadable?: ExperimentalUnreadable;
+  readonly unreadable?: ExperimentalUnreadable,
 };
 
 const attachUnreadable = <T extends object>({
   value,
   unreadable,
 }: {
-  value: T;
-  unreadable: ExperimentalUnreadable;
+  value: T,
+  unreadable: ExperimentalUnreadable,
 }): T => {
   Object.defineProperty(value, 'unreadable', {
     value: unreadable,
@@ -123,7 +142,7 @@ const attachUnreadable = <T extends object>({
 export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>({
   schema,
 }: {
-  schema: TSchema;
+  schema: TSchema,
 }) => {
   // Experimental fields intentionally break the normal DTO rule that new optional
   // persisted fields should materialize as `key: undefined`. This helper is used

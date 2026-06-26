@@ -11,14 +11,14 @@ vi.mock('../../services/storage', () => ({
   storageService: {
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),
-  }
+  },
 }));
 
 // Mock global events
 vi.mock('../../composables/useGlobalEvents', () => ({
   useGlobalEvents: vi.fn().mockReturnValue({
     addErrorEvent: vi.fn(),
-  })
+  }),
 }));
 
 // Mock image preview composable
@@ -37,7 +37,7 @@ describe('GeneratedImageBlock', () => {
     displayHeight: 300,
     prompt: 'a beautiful sunset',
     steps: 25,
-    seed: 42
+    seed: 42,
   };
   const json = JSON.stringify(blockData);
 
@@ -54,7 +54,7 @@ describe('GeneratedImageBlock', () => {
     vi.mocked(storageService.getFile).mockReturnValue(new Promise(() => {}));
 
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json }
+      props: { json },
     });
 
     expect(wrapper.find('.naidan-image-skeleton').exists()).toBe(true);
@@ -65,7 +65,7 @@ describe('GeneratedImageBlock', () => {
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
 
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json }
+      props: { json },
     });
 
     await flushPromises();
@@ -82,7 +82,7 @@ describe('GeneratedImageBlock', () => {
     vi.mocked(storageService.getFile).mockResolvedValue(null);
 
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json }
+      props: { json },
     });
 
     await flushPromises();
@@ -97,7 +97,7 @@ describe('GeneratedImageBlock', () => {
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
 
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json }
+      props: { json },
     });
 
     await flushPromises();
@@ -117,7 +117,7 @@ describe('GeneratedImageBlock', () => {
     const downloadSpy = vi.spyOn(ImageDownloadHydrator, 'download').mockResolvedValue(undefined as any);
 
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json }
+      props: { json },
     });
 
     await flushPromises();
@@ -131,7 +131,7 @@ describe('GeneratedImageBlock', () => {
       prompt: 'a beautiful sunset',
       steps: 25,
       seed: 42,
-      withMetadata: true
+      withMetadata: true,
     }));
   });
 
@@ -141,7 +141,7 @@ describe('GeneratedImageBlock', () => {
     vi.mocked(storageService.getBinaryObject).mockResolvedValue(mockBinaryObj as any);
 
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json }
+      props: { json },
     });
 
     await flushPromises();
@@ -153,7 +153,7 @@ describe('GeneratedImageBlock', () => {
     const { openPreview } = useImagePreview();
     expect(openPreview).toHaveBeenCalledWith({
       objects: [mockBinaryObj],
-      initialId: binaryObjectId
+      initialId: binaryObjectId,
     });
   });
 
@@ -167,9 +167,9 @@ describe('GeneratedImageBlock', () => {
       props: { json },
       global: {
         provide: {
-          [MESSAGE_CONTEXTUAL_PREVIEW_KEY as any]: mockContextualPreview
-        }
-      }
+          [MESSAGE_CONTEXTUAL_PREVIEW_KEY as any]: mockContextualPreview,
+        },
+      },
     });
 
     await flushPromises();
@@ -188,7 +188,7 @@ describe('GeneratedImageBlock', () => {
     const detectSpy = vi.spyOn(ImageDownloadHydrator, 'detectSupport').mockResolvedValue(true);
 
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json }
+      props: { json },
     });
 
     await flushPromises();
@@ -203,7 +203,7 @@ describe('GeneratedImageBlock', () => {
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
 
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json }
+      props: { json },
     });
 
     await flushPromises();
@@ -214,7 +214,7 @@ describe('GeneratedImageBlock', () => {
 
   it('handles invalid JSON gracefully', () => {
     const wrapper = mount(GeneratedImageBlock, {
-      props: { json: '{ invalid }' }
+      props: { json: '{ invalid }' },
     });
 
     expect(wrapper.text()).toContain('Invalid Image Block Data');

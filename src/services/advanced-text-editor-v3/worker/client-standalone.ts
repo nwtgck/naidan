@@ -1,7 +1,7 @@
-import * as Comlink from 'comlink'
+import * as Comlink from 'comlink';
 
-import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
-import type { IWorkerHub } from '@/services/worker-hub.types'
+import { createFileProtocolStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader';
+import type { IWorkerHub } from '@/services/worker-hub.types';
 import {
   advancedTextEditorV3ApplyMultiEditResponseSchema,
   advancedTextEditorV3PrepareMultiEditResponseSchema,
@@ -9,35 +9,35 @@ import {
   advancedTextEditorV3ReplaceSingleResponseSchema,
   advancedTextEditorV3SearchTextResponseSchema,
   type AdvancedTextEditorV3WorkerClient,
-} from './types'
+} from './types';
 
 export async function createAdvancedTextEditorV3WorkerClient(): Promise<AdvancedTextEditorV3WorkerClient> {
-  const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
-  const remote = Comlink.wrap<IWorkerHub>(worker)
-  const advancedTextEditorV3 = await remote.advancedTextEditorV3
+  const worker = await createFileProtocolStandaloneWorkerHub();
+  const remote = Comlink.wrap<IWorkerHub>(worker);
+  const advancedTextEditorV3 = await remote.advancedTextEditorV3;
 
   return {
     async searchText({ request }) {
-      return advancedTextEditorV3SearchTextResponseSchema.parse(await advancedTextEditorV3.searchText({ request }))
+      return advancedTextEditorV3SearchTextResponseSchema.parse(await advancedTextEditorV3.searchText({ request }));
     },
     async replaceAll({ request }) {
-      return advancedTextEditorV3ReplaceAllResponseSchema.parse(await advancedTextEditorV3.replaceAll({ request }))
+      return advancedTextEditorV3ReplaceAllResponseSchema.parse(await advancedTextEditorV3.replaceAll({ request }));
     },
     async replaceSingle({ request }) {
-      return advancedTextEditorV3ReplaceSingleResponseSchema.parse(await advancedTextEditorV3.replaceSingle({ request }))
+      return advancedTextEditorV3ReplaceSingleResponseSchema.parse(await advancedTextEditorV3.replaceSingle({ request }));
     },
     async prepareMultiEdit({ request }) {
-      return advancedTextEditorV3PrepareMultiEditResponseSchema.parse(await advancedTextEditorV3.prepareMultiEdit({ request }))
+      return advancedTextEditorV3PrepareMultiEditResponseSchema.parse(await advancedTextEditorV3.prepareMultiEdit({ request }));
     },
     async applyMultiEdit({ request }) {
-      return advancedTextEditorV3ApplyMultiEditResponseSchema.parse(await advancedTextEditorV3.applyMultiEdit({ request }))
+      return advancedTextEditorV3ApplyMultiEditResponseSchema.parse(await advancedTextEditorV3.applyMultiEdit({ request }));
     },
     async dispose() {
       try {
-        await remote[Comlink.releaseProxy]()
+        await remote[Comlink.releaseProxy]();
       } finally {
-        worker.terminate()
+        worker.terminate();
       }
     },
-  }
+  };
 }

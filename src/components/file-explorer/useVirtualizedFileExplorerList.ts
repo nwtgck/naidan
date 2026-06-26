@@ -9,10 +9,10 @@ export function useVirtualizedFileExplorerList({
   rowHeight,
   overscan,
 }: {
-  containerRef: Ref<HTMLElement | undefined>;
-  entries: Ref<FileExplorerEntry[]>;
-  rowHeight: number;
-  overscan: number;
+  containerRef: Ref<HTMLElement | undefined>,
+  entries: Ref<FileExplorerEntry[]>,
+  rowHeight: number,
+  overscan: number,
 }) {
   const scrollTop = ref(0);
   const viewportHeight = ref(0);
@@ -36,8 +36,8 @@ export function useVirtualizedFileExplorerList({
     nextContainer,
     previousContainer,
   }: {
-    nextContainer: HTMLElement | undefined;
-    previousContainer: HTMLElement | undefined;
+    nextContainer: HTMLElement | undefined,
+    previousContainer: HTMLElement | undefined,
   }): void {
     previousContainer?.removeEventListener('scroll', handleScroll);
     nextContainer?.addEventListener('scroll', handleScroll, { passive: true });

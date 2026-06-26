@@ -1,30 +1,24 @@
 <script setup lang="ts">
+import type { NaidanLicense } from '@/models/naidan-license';
 import { ref, onMounted } from 'vue';
 import { InfoIcon, ShieldCheckIcon, Loader2Icon, GithubIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
 import Logo from './Logo.vue';
 
-interface OssLicense {
-  name: string;
-  version: string;
-  license: string | null;
-  licenseText: string | null;
-}
-
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 const appVersion = __APP_VERSION__;
 
-const ossLicenses = ref<OssLicense[]>([]);
+const ossLicenses = ref<readonly NaidanLicense[]>([]);
 const isLoadingLicenses = ref(false);
 
-async function loadLicenses() {
-  if (isStandalone || ossLicenses.value.length > 0) return;
+async function loadLicenses(): Promise<void> {
+  if (ossLicenses.value.length > 0) return;
   isLoadingLicenses.value = true;
   try {
     // Dynamic import to keep initial bundle small
-    const data = await import('@/assets/licenses.json');
+    const data = await import('virtual:naidan-licenses');
     ossLicenses.value = data.default;
-  } catch (err) {
-    console.error('Failed to load licenses:', err);
+  } catch (error) {
+    console.error('Failed to load licenses:', error);
   } finally {
     isLoadingLicenses.value = false;
   }
@@ -34,11 +28,10 @@ onMounted(() => {
   loadLicenses();
 });
 
-
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 
@@ -109,27 +102,16 @@ defineExpose({
         Naidan is built with incredible open-source software. We are grateful to the community for their contributions.
       </p>
 
-      <!-- Standalone Mode Info -->
-      <div v-if="isStandalone" class="p-6 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 rounded-3xl space-y-3">
-        <div class="flex items-center gap-2 text-blue-800 dark:text-blue-300 font-bold text-sm">
-          <InfoIcon class="w-4 h-4" />
-          Offline License Information
-        </div>
-        <p class="text-xs text-blue-600 dark:text-blue-400 leading-relaxed">
-          Full license texts for all third-party dependencies are included in the <strong>THIRD_PARTY_LICENSES.txt</strong> file within this application package.
-        </p>
-      </div>
-
-      <!-- Hosted Mode License List -->
-      <div v-else class="border border-gray-100 dark:border-gray-800 rounded-3xl overflow-hidden bg-white dark:bg-gray-900 min-h-[100px] flex flex-col items-center justify-center">
-        <div v-if="isLoadingLicenses" class="p-12 flex flex-col items-center gap-3">
+      <div data-testid="oss-license-list" class="border border-gray-100 dark:border-gray-800 rounded-3xl overflow-hidden bg-white dark:bg-gray-900 min-h-[100px] flex flex-col items-center justify-center">
+        <div v-if="isLoadingLicenses" data-testid="oss-license-loading" class="p-12 flex flex-col items-center gap-3">
           <Loader2Icon class="w-6 h-6 text-blue-500 animate-spin" />
           <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Loading licenses...</p>
         </div>
         <div v-else class="w-full max-h-[400px] overflow-y-auto p-2 space-y-1 overscroll-contain">
           <div
             v-for="license in ossLicenses"
-            :key="license.name"
+            :key="`${license.name}@${license.version}`"
+            data-testid="oss-license-item"
             class="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-2xl transition-colors group"
           >
             <div class="flex items-start justify-between gap-4">

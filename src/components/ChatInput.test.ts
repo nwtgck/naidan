@@ -115,14 +115,14 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatId,
     naidanSysfsAccessScope,
   }: {
-    chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
-    chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
-    chatId: string | undefined;
-    chatGroupId: string | undefined;
-    naidanSysfsAccessScope: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'main_chats';
+    chatMounts: Array<{ type: string, volumeId?: string, mountPath: string, readOnly: boolean }>,
+    chatGroupMounts: Array<{ type: string, volumeId?: string, mountPath: string, readOnly: boolean }> | undefined,
+    chatId: string | undefined,
+    chatGroupId: string | undefined,
+    naidanSysfsAccessScope: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'main_chats',
   }) => {
     const { storageService } = await import('@/services/storage');
-    const mounts: Array<{ type: string; path: string; readOnly?: boolean; visibility?: string }> = [];
+    const mounts: Array<{ type: string, path: string, readOnly?: boolean, visibility?: string }> = [];
 
     if (chatId !== undefined && mockSettings.value.storageType === 'opfs') {
       const tmp = await mockEnsureChatTmpDirectory({ chatId });
@@ -214,7 +214,7 @@ const mockReasoningStore = {
     if (mockCurrentChat.value?.id === chatId) {
       mockCurrentChat.value.lmParameters = {
         ...(mockCurrentChat.value.lmParameters || {}),
-        reasoning: { effort }
+        reasoning: { effort },
       };
       mockUpdateChatSettings(chatId, { lmParameters: mockCurrentChat.value.lmParameters });
     }
@@ -311,7 +311,7 @@ const mockChatStore = {
     if (mockCurrentChat.value?.id === chatId) {
       mockCurrentChat.value.lmParameters = {
         ...(mockCurrentChat.value.lmParameters || {}),
-        reasoning: { effort }
+        reasoning: { effort },
       };
       mockUpdateChatSettings(chatId, { lmParameters: mockCurrentChat.value.lmParameters });
     }
@@ -334,11 +334,11 @@ vi.mock('../composables/useChat', () => ({
 vi.mock('../composables/chat/useChatConversation', () => ({
   useChatConversation: () => ({
     sendMessage: ({ chatId, content, parentId, attachments, lmParameters }: {
-      chatId: string;
-      content: string;
-      parentId: string | null | undefined;
-      attachments: unknown[] | undefined;
-      lmParameters: unknown;
+      chatId: string,
+      content: string,
+      parentId: string | null | undefined,
+      attachments: unknown[] | undefined,
+      lmParameters: unknown,
     }) => mockSendMessageForChat({
       chatId,
       content,
@@ -346,7 +346,7 @@ vi.mock('../composables/chat/useChatConversation', () => ({
       attachments,
       lmParameters,
     }),
-    regenerateMessage: ({ chatId, failedMessageId }: { chatId: string; failedMessageId: string }) =>
+    regenerateMessage: ({ chatId, failedMessageId }: { chatId: string, failedMessageId: string }) =>
       mockRegenerateMessageForChat({
         chatId,
         failedMessageId,
@@ -366,7 +366,7 @@ vi.mock('../composables/chat/useChatImageGeneration', () => ({
     seed: computed(() => mockChatStore.getSeed()),
     selectedImageModel: computed(() => mockChatStore.getSelectedImageModel()),
     toggleImageMode: () => mockChatStore.toggleImageMode(),
-    updateResolution: ({ width, height }: { width: number; height: number }) => mockChatStore.updateResolution({ width, height }),
+    updateResolution: ({ width, height }: { width: number, height: number }) => mockChatStore.updateResolution({ width, height }),
     updateCount: ({ count }: { count: number }) => mockChatStore.updateCount({ count }),
     updatePersistAs: ({ format }: { format: 'original' | 'webp' | 'jpeg' | 'png' }) => mockChatStore.updatePersistAs({ format }),
     updateSteps: ({ steps }: { steps: number | undefined }) => mockChatStore.updateSteps({ steps }),
@@ -390,7 +390,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
         }
         return undefined;
       }),
-    updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+    updateReasoningEffort: ({ chatId, effort }: { chatId: string, effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
       mockReasoningStore.updateReasoningEffort({
         chatId,
         effort,
@@ -468,7 +468,7 @@ describe('ChatInput Integration', () => {
       canGenerateImage: true,
       hasImageModel: true,
       availableImageModels: [],
-      isAnimatingHeight: false
+      isAnimatingHeight: false,
     },
     global: {
       stubs: {
@@ -476,10 +476,10 @@ describe('ChatInput Integration', () => {
         ImageEditor: {
           name: 'ImageEditor',
           template: '<div data-testid="image-editor"><button class="apply-btn" @click="$emit(\'save\', { blob: {} })">Apply</button></div>',
-          emits: ['save', 'cancel']
-        }
-      }
-    }
+          emits: ['save', 'cancel'],
+        },
+      },
+    },
   });
 
   it('does not synchronize currentLeafId changes into the URL query', async () => {
@@ -515,7 +515,7 @@ describe('ChatInput Integration', () => {
       size: 100,
       uploadedAt: Date.now(),
       status: 'memory',
-      blob: new Blob()
+      blob: new Blob(),
     }];
     await nextTick();
 
@@ -581,8 +581,8 @@ describe('ChatInput Integration', () => {
     expect(mockEnsureChatTmpDirectory).not.toHaveBeenCalled();
     expect(mockOpenFileExplorer).toHaveBeenCalledTimes(1);
     const [{ options }] = mockOpenFileExplorer.mock.calls[0] as [{ options: {
-      mounts: Array<{ path: string }>;
-    } }];
+      mounts: Array<{ path: string }>,
+    }, }];
     expect(options.mounts.some(({ path }) => path === '/tmp')).toBe(false);
   });
 
@@ -644,8 +644,8 @@ describe('ChatInput Integration', () => {
 
     expect(mockOpenFileExplorer).toHaveBeenCalledTimes(1);
     const [{ options }] = mockOpenFileExplorer.mock.calls[0] as [{ options: {
-      mounts: Array<{ type: string; path: string; visibility?: string }>;
-    } }];
+      mounts: Array<{ type: string, path: string, visibility?: string }>,
+    }, }];
     expect(options.mounts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: 'naidan_sysfs',
@@ -685,7 +685,7 @@ describe('ChatInput Integration', () => {
       size: 10,
       uploadedAt: Date.now(),
       status: 'memory',
-      blob: originalBlob
+      blob: originalBlob,
     }];
     await nextTick();
 
@@ -714,7 +714,7 @@ describe('ChatInput Integration', () => {
   it('should handle attachment removal correctly', async () => {
     const wrapper = getWrapper();
     wrapper.vm.TEST_ONLY.attachments.value = [
-      { id: 'att-1', status: 'memory', blob: new Blob() } as any
+      { id: 'att-1', status: 'memory', blob: new Blob() } as any,
     ];
     await nextTick();
 
@@ -731,7 +731,7 @@ describe('ChatInput Integration', () => {
     const wrapper = getWrapper();
     wrapper.vm.input = 'test message';
     wrapper.vm.TEST_ONLY.attachments.value = [
-      { id: 'att-1', status: 'memory', blob: new Blob() } as any
+      { id: 'att-1', status: 'memory', blob: new Blob() } as any,
     ];
     await nextTick();
 
@@ -773,7 +773,7 @@ describe('ChatInput Integration', () => {
     mockCurrentChat.value = {
       id: 'chat-1',
       modelId: 'model-1',
-      lmParameters: { reasoning: { effort: undefined } }
+      lmParameters: { reasoning: { effort: undefined } },
     };
     await nextTick();
 
@@ -784,8 +784,8 @@ describe('ChatInput Integration', () => {
     // Verify updateChatSettings was called correctly
     expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
       lmParameters: expect.objectContaining({
-        reasoning: { effort: 'high' }
-      })
+        reasoning: { effort: 'high' },
+      }),
     }));
   });
 
@@ -793,7 +793,7 @@ describe('ChatInput Integration', () => {
     // 1. Set Chat 1 to 'low'
     mockCurrentChat.value = {
       id: 'chat-1',
-      lmParameters: { reasoning: { effort: 'low' } }
+      lmParameters: { reasoning: { effort: 'low' } },
     };
     const wrapper = getWrapper();
     await nextTick();
@@ -802,7 +802,7 @@ describe('ChatInput Integration', () => {
     // 2. Switch to Chat 2 which has 'high'
     mockCurrentChat.value = {
       id: 'chat-2',
-      lmParameters: { reasoning: { effort: 'high' } }
+      lmParameters: { reasoning: { effort: 'high' } },
     };
     await wrapper.setProps({ chatId: toChatId({ raw: 'chat-2' }) });
     await nextTick();

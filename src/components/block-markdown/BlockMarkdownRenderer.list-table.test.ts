@@ -6,7 +6,7 @@ import { normalizeDom } from './test-utils';
 describe('BlockMarkdownRenderer: Lists and Tables', () => {
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 
@@ -21,7 +21,7 @@ describe('BlockMarkdownRenderer: Lists and Tables', () => {
       trimWhitespaceNodes: true,
       preserveAttributes: undefined,
       preserveClasses: ['list-disc', 'ml-6'],
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     // Verify direct span inside li (no div wrapper for single items)
     expect(dom).toContain('<ul class="list-disc ml-6"><li><span>item 1</span></li><li><span>item 2</span></li></ul>');
@@ -38,7 +38,7 @@ describe('BlockMarkdownRenderer: Lists and Tables', () => {
       trimWhitespaceNodes: true,
       preserveAttributes: undefined,
       preserveClasses: ['list-decimal', 'ml-6'],
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     expect(dom).toContain('<ol class="list-decimal ml-6"><li><span>first</span></li><li><span>second</span></li></ol>');
   });
@@ -54,7 +54,7 @@ describe('BlockMarkdownRenderer: Lists and Tables', () => {
       preserveAttributes: ['type', 'checked', 'disabled'],
       preserveClasses: ['list-none', 'ml-2'],
       trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     expect(dom).toContain('class="list-none ml-2"');
     expect(dom).toContain('type="checkbox"');
@@ -72,7 +72,7 @@ describe('BlockMarkdownRenderer: Lists and Tables', () => {
       element: wrapper.element,
       trimWhitespaceNodes: true,
       preserveAttributes: undefined,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     expect(dom).toContain('<table>');
     expect(dom).toContain('<span>1</span>');

@@ -11,9 +11,9 @@ function parseSignedCount({
   value,
   label,
 }: {
-  value: string;
-  label: string;
-}): { ok: true; value: string } | { ok: false; message: string } {
+  value: string,
+  label: string,
+}): { ok: true, value: string } | { ok: false, message: string } {
   if (!/^[+-]?\d+$/.test(value)) {
     return { ok: false, message: `invalid number of ${label}: '${value}'` };
   }
@@ -24,8 +24,8 @@ async function writeOwnedBytes({
   handle,
   data,
 }: {
-  handle: WeshCommandContext['stdout'];
-  data: Uint8Array<ArrayBufferLike>;
+  handle: WeshCommandContext['stdout'],
+  data: Uint8Array<ArrayBufferLike>,
 }): Promise<void> {
   if (data.byteLength === 0) {
     return;
@@ -51,7 +51,7 @@ async function writeOwnedBytes({
   }
 }
 
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   if (path.startsWith('/')) {
     return path;
   }
@@ -59,10 +59,10 @@ function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
 }
 
 interface TailByteQueue {
-  chunks: Uint8Array<ArrayBufferLike>[];
-  headIndex: number;
-  headOffset: number;
-  byteLength: number;
+  chunks: Uint8Array<ArrayBufferLike>[],
+  headIndex: number,
+  headOffset: number,
+  byteLength: number,
 }
 
 function appendTailByteChunk({
@@ -70,9 +70,9 @@ function appendTailByteChunk({
   chunk,
   maxBytes,
 }: {
-  queue: TailByteQueue;
-  chunk: Uint8Array<ArrayBufferLike>;
-  maxBytes: number;
+  queue: TailByteQueue,
+  chunk: Uint8Array<ArrayBufferLike>,
+  maxBytes: number,
 }): void {
   if (maxBytes === 0 || chunk.byteLength === 0) {
     return;
@@ -106,8 +106,8 @@ async function writeTailByteQueue({
   queue,
   handle,
 }: {
-  queue: TailByteQueue;
-  handle: WeshCommandContext['stdout'];
+  queue: TailByteQueue,
+  handle: WeshCommandContext['stdout'],
 }): Promise<void> {
   for (let index = queue.headIndex; index < queue.chunks.length; index++) {
     const chunk = queue.chunks[index]!;
@@ -119,8 +119,8 @@ async function writeTailByteQueue({
 }
 
 interface TailLineQueue {
-  lines: string[];
-  headIndex: number;
+  lines: string[],
+  headIndex: number,
 }
 
 function appendTailLine({
@@ -128,9 +128,9 @@ function appendTailLine({
   line,
   maxLines,
 }: {
-  queue: TailLineQueue;
-  line: string;
-  maxLines: number;
+  queue: TailLineQueue,
+  line: string,
+  maxLines: number,
 }): void {
   if (maxLines === 0) {
     return;

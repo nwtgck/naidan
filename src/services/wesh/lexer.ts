@@ -21,9 +21,9 @@ export type TokenType =
   | 'EOF';
 
 export interface Token {
-  type: TokenType;
-  value: string;
-  position: number;
+  type: TokenType,
+  value: string,
+  position: number,
 }
 
 export class Lexer {

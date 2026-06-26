@@ -8,7 +8,7 @@ import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
 import type { BinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
-  toolCall: CombinedToolCall;
+  toolCall: CombinedToolCall,
 }>();
 
 const inSequence = inject<boolean>('inSequence', false);
@@ -138,7 +138,7 @@ defineExpose({
     // Backward compat for existing tests
     isExpanded: isDetailVisible,
     toggleExpand: handleHeaderClick,
-  }
+  },
 });
 </script>
 

@@ -3,7 +3,7 @@ import { useChat } from './useChat';
 
 const chats = new Map<string, any>();
 const mockListModels = vi.fn();
-const mockUpdateChatContent = vi.fn().mockImplementation(async ({ updater }: { id: string; updater: ({ current }: { current: unknown }) => unknown }) => {
+const mockUpdateChatContent = vi.fn().mockImplementation(async ({ updater }: { id: string, updater: ({ current }: { current: unknown }) => unknown }) => {
   return await updater({ current: null });
 });
 
@@ -20,7 +20,7 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     updateHierarchy: vi.fn().mockImplementation(async ({ updater }: { updater: ({ current }: { current: { items: never[] } }) => { items: never[] } }) => updater({ current: { items: [] } })),
     updateChatContent: (...args: Parameters<typeof mockUpdateChatContent>) => mockUpdateChatContent(...args),
-    updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }: { id: string; updater: ({ current }: { current: unknown }) => Promise<unknown> | unknown }) => {
+    updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }: { id: string, updater: ({ current }: { current: unknown }) => Promise<unknown> | unknown }) => {
       const updated = await updater({ current: chats.get(id) ?? null });
       chats.set(id, updated);
     }),
@@ -65,7 +65,7 @@ describe('useChat shared state', () => {
     vi.clearAllMocks();
     chats.clear();
     mockListModels.mockResolvedValue(['gpt-4.1', 'o4-mini']);
-    mockUpdateChatContent.mockImplementation(async ({ updater }: { id: string; updater: ({ current }: { current: unknown }) => unknown }) => {
+    mockUpdateChatContent.mockImplementation(async ({ updater }: { id: string, updater: ({ current }: { current: unknown }) => unknown }) => {
       return await updater({ current: null });
     });
 
@@ -97,7 +97,7 @@ describe('useChat shared state', () => {
     const createChatBlocked = new Promise<void>(resolve => {
       releaseCreateChat = resolve;
     });
-    mockUpdateChatContent.mockImplementationOnce(async ({ updater }: { id: string; updater: ({ current }: { current: unknown }) => unknown }) => {
+    mockUpdateChatContent.mockImplementationOnce(async ({ updater }: { id: string, updater: ({ current }: { current: unknown }) => unknown }) => {
       await createChatBlocked;
       return await updater({ current: null });
     });

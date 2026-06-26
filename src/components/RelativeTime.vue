@@ -2,8 +2,8 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 
 const props = defineProps<{
-  timestamp: number;
-  prefix?: string;
+  timestamp: number,
+  prefix?: string,
 }>();
 
 const now = ref(Date.now());
@@ -11,7 +11,7 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short', day: 'numeric',
-  hour: '2-digit', minute: '2-digit'
+  hour: '2-digit', minute: '2-digit',
 });
 
 const relativeTime = computed(() => {
@@ -57,7 +57,7 @@ onUnmounted(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

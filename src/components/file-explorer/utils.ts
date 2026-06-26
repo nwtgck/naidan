@@ -36,8 +36,8 @@ export function sortEntries({
   entries,
   config,
 }: {
-  entries: FileExplorerEntry[];
-  config: SortConfig;
+  entries: FileExplorerEntry[],
+  config: SortConfig,
 }): FileExplorerEntry[] {
   return [...entries].sort((a, b) => {
     // Directories always come first
@@ -89,8 +89,8 @@ export function filterEntries({
   entries,
   query,
 }: {
-  entries: FileExplorerEntry[];
-  query: string;
+  entries: FileExplorerEntry[],
+  query: string,
 }): FileExplorerEntry[] {
   const q = query.trim().toLowerCase();
   if (!q) return entries;
@@ -106,9 +106,9 @@ export async function copyDirectoryHandle({
   targetDir,
   signal,
 }: {
-  source: FileSystemDirectoryHandle;
-  targetDir: ExplorerDirectory;
-  signal: AbortSignal | undefined;
+  source: FileSystemDirectoryHandle,
+  targetDir: ExplorerDirectory,
+  signal: AbortSignal | undefined,
 }): Promise<void> {
   const destDir = await targetDir.subdirCreate({ name: source.name });
   for await (const entry of source.values()) {
@@ -140,8 +140,8 @@ export async function copyFileHandle({
   source,
   targetDir,
 }: {
-  source: FileSystemFileHandle;
-  targetDir: ExplorerDirectory;
+  source: FileSystemFileHandle,
+  targetDir: ExplorerDirectory,
 }): Promise<void> {
   const file = await source.getFile();
   const destFh = await targetDir.fileCreate({ name: source.name });

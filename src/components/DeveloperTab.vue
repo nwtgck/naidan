@@ -8,7 +8,7 @@ import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 
 defineProps<{
-  storageType: string;
+  storageType: string,
 }>();
 
 const { createSampleChat, createLongSampleChat } = useSampleChat();
@@ -21,7 +21,7 @@ function togglePWAUpdate() {
     handler: !needRefresh.value ? async () => {
       console.log('PWA Update triggered via Developer Tab');
       window.location.reload();
-    } : undefined
+    } : undefined,
   });
 }
 
@@ -60,7 +60,7 @@ function handleReload() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

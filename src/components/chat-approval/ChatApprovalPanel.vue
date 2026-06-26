@@ -4,17 +4,17 @@ import ChatApprovalDecisionList from './ChatApprovalDecisionList.vue';
 import ChatApprovalPreviewRenderer from './ChatApprovalPreviewRenderer';
 
 const props = defineProps<{
-  request: ApprovalActiveRequest;
+  request: ApprovalActiveRequest,
 }>();
 
 const emit = defineEmits<{
-  (event: 'decide', decision: ApprovalUiDecision): void;
+  (event: 'decide', decision: ApprovalUiDecision): void,
 }>();
 
 function decide({
   decision,
 }: {
-  decision: ApprovalUiDecision;
+  decision: ApprovalUiDecision,
 }): void {
   emit('decide', decision);
 }
@@ -23,7 +23,7 @@ defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
     // ESLint-required for defineExpose.
-  }
+  },
 });
 </script>
 

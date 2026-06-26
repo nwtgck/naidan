@@ -32,8 +32,8 @@ describe('OnboardingModal GitHub Link', () => {
           ArrowLeftIcon: true,
           ActivityIcon: true,
           SettingsIcon: true,
-        }
-      }
+        },
+      },
     });
 
     const githubLink = wrapper.find('a[href*="github.com"]');

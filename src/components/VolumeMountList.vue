@@ -25,31 +25,31 @@ const { addToast } = useToast();
 const vFocus: ObjectDirective<HTMLElement> = { mounted: (el) => el.focus() };
 
 const props = defineProps<{
-  volumes: Volume[];
-  mounts: Mount[];
-  inUseSectionLabel?: string;
-  notInUseSectionLabel?: string;
-  addButtonLabel?: string;
+  volumes: Volume[],
+  mounts: Mount[],
+  inUseSectionLabel?: string,
+  notInUseSectionLabel?: string,
+  addButtonLabel?: string,
   /** Default path prefix when adding a new mount (e.g. '/home/user/' or '/'). */
-  mountPathPrefix?: string;
+  mountPathPrefix?: string,
   /** Show rename and delete actions on volume cards. */
-  showVolumeManagement?: boolean;
+  showVolumeManagement?: boolean,
 }>();
 
 const emit = defineEmits<{
-  add: [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
-  remove: [{ volumeId: VolumeId }];
-  'update-mount': [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
-  'rename-volume': [{ volumeId: VolumeId; name: string }];
-  'delete-volume': [{ volumeId: VolumeId }];
+  add: [{ volumeId: VolumeId, mountPath: string, readOnly: boolean }],
+  remove: [{ volumeId: VolumeId }],
+  'update-mount': [{ volumeId: VolumeId, mountPath: string, readOnly: boolean }],
+  'rename-volume': [{ volumeId: VolumeId, name: string }],
+  'delete-volume': [{ volumeId: VolumeId }],
 }>();
 
 const mountedVolumes = computed(() =>
-  props.volumes.filter(vol => props.mounts.some(m => m.type === 'volume' && m.volumeId === vol.id))
+  props.volumes.filter(vol => props.mounts.some(m => m.type === 'volume' && m.volumeId === vol.id)),
 );
 
 const unmountedVolumes = computed(() =>
-  props.volumes.filter(vol => !props.mounts.some(m => m.type === 'volume' && m.volumeId === vol.id))
+  props.volumes.filter(vol => !props.mounts.some(m => m.type === 'volume' && m.volumeId === vol.id)),
 );
 
 function getMount({ volId }: { volId: VolumeId }): Mount | undefined {
@@ -127,7 +127,7 @@ const menuOpenVolumeId = ref<VolumeId | null>(null);
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

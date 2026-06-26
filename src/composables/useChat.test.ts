@@ -21,9 +21,9 @@ const { mocks } = vi.hoisted(() => ({
       defaultModelId: 'gpt-4',
       providerProfiles: [],
       mounts: [],
-      experimental: undefined as { toolConfigPersistence?: 'disabled' | 'enabled'; sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
+      experimental: undefined as { toolConfigPersistence?: 'disabled' | 'enabled', sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
     },
-  }
+  },
 }));
 
 // Mock storage service state
@@ -96,7 +96,7 @@ vi.mock('../services/lm/ollama', () => {
 describe('useChat Composable Logic', () => {
   const chatStore = useChat();
   const {
-    activeMessages, sendMessage, currentChat, rootItems, TEST_ONLY
+    activeMessages, sendMessage, currentChat, rootItems, TEST_ONLY,
   } = chatStore;
   const { __testOnlySetCurrentChat, __testOnlySetContextCompactProgress } = TEST_ONLY;
 
@@ -288,13 +288,13 @@ describe('useChat Composable Logic', () => {
     // Initial state: g1, c1
     mockHierarchy.items = [
       { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
-      { type: 'chat', id: toChatId({ raw: 'c1' }) }
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
     ];
 
     const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
     __testOnlySetCurrentChat({ chat: reactive({
       id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [m1] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null
+      createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null,
     }) as any });
 
     await forkChat({ messageId: 'm1' });
@@ -321,7 +321,7 @@ describe('useChat Composable Logic', () => {
       error: undefined,
       replies: { items: [] },
       timestamp: 0,
-      lmParameters: EMPTY_LM_PARAMETERS
+      lmParameters: EMPTY_LM_PARAMETERS,
     };
 
     const mockChat: Chat = {
@@ -332,6 +332,11 @@ describe('useChat Composable Logic', () => {
       updatedAt: 0,
       debugEnabled: false,
       modelId: 'special-model',
+      toolConfigs: [{
+        key: 'builtin.wesh',
+        status: 'enabled',
+        naidanSysfs: { accessScope: 'main_chats' },
+      }],
     };
 
     __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
@@ -348,6 +353,12 @@ describe('useChat Composable Logic', () => {
     const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId)?.[0].updater;
     const savedMeta = await (updater as any)({});
     expect(savedMeta?.modelId).toBe('special-model');
+    expect(savedMeta?.toolConfigs).toEqual(mockChat.toolConfigs);
+    expect(savedMeta?.toolConfigs).not.toBe(mockChat.toolConfigs);
+    expect(savedMeta?.toolConfigs?.[0]).not.toBe(mockChat.toolConfigs?.[0]);
+    if (savedMeta?.toolConfigs?.[0]?.key === 'builtin.wesh' && mockChat.toolConfigs?.[0]?.key === 'builtin.wesh') {
+      expect(savedMeta.toolConfigs[0].naidanSysfs).not.toBe(mockChat.toolConfigs[0].naidanSysfs);
+    }
   });
 
   it('should preserve attachments during editMessage', async () => {
@@ -364,7 +375,7 @@ describe('useChat Composable Logic', () => {
       modelId: undefined,
       replies: { items: [] },
       timestamp: 0,
-      lmParameters: EMPTY_LM_PARAMETERS
+      lmParameters: EMPTY_LM_PARAMETERS,
     };
 
     __testOnlySetCurrentChat({ chat: reactive({
@@ -518,7 +529,7 @@ describe('useChat Composable Logic', () => {
     const customParams = {
       ...EMPTY_LM_PARAMETERS,
       temperature: 0.8,
-      reasoning: { effort: 'medium' as const }
+      reasoning: { effort: 'medium' as const },
     };
 
     await sendMessage({ content: 'Test message', parentId: null, attachments: [], chatTarget: undefined, lmParameters: customParams });
@@ -547,7 +558,7 @@ describe('useChat Composable Logic', () => {
     mockRootItems.push(...initial);
     mockHierarchy.items = [
       { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
-      { type: 'chat', id: toChatId({ raw: 'c1' }) }
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
     ];
 
     const newItems: SidebarItem[] = [
@@ -574,7 +585,7 @@ describe('useChat Composable Logic', () => {
     mockRootItems.push(...initial);
     mockHierarchy.items = [
       { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
-      { type: 'chat', id: toChatId({ raw: 'c1' }) }
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
     ];
 
     const newItems: SidebarItem[] = [
@@ -677,7 +688,7 @@ describe('useChat Composable Logic', () => {
     mockRootItems.push(...initial);
     mockHierarchy.items = [
       { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [toChatId({ raw: 'c1' })] },
-      { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
     ];
 
     const newItems: SidebarItem[] = [
@@ -709,7 +720,7 @@ describe('useChat Composable Logic', () => {
     const customParams = {
       ...EMPTY_LM_PARAMETERS,
       temperature: 0.5,
-      reasoning: { effort: 'high' as const }
+      reasoning: { effort: 'high' as const },
     };
 
     // 1. Send first message with custom params
@@ -719,8 +730,8 @@ describe('useChat Composable Logic', () => {
     // The mockLmChat should have been called with customParams
     expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
       parameters: expect.objectContaining({
-        reasoning: { effort: 'high' }
-      })
+        reasoning: { effort: 'high' },
+      }),
     }));
 
     const assistantMsgId = currentChat.value!.currentLeafId!;
@@ -733,8 +744,8 @@ describe('useChat Composable Logic', () => {
     // 3. Verify that the second call ALSO used the same customParams
     expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
       parameters: expect.objectContaining({
-        reasoning: { effort: 'high' }
-      })
+        reasoning: { effort: 'high' },
+      }),
     }));
   });
 
@@ -776,8 +787,8 @@ describe('useChat Composable Logic', () => {
     // 3. Verify that the resulting generation used the NEW parameters
     expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
       parameters: expect.objectContaining({
-        reasoning: { effort: 'low' }
-      })
+        reasoning: { effort: 'low' },
+      }),
     }));
   });
 
@@ -841,7 +852,7 @@ describe('useChat Composable Logic', () => {
     mockRootItems.push(...initial);
     mockHierarchy.items = [
       { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
-      { type: 'chat', id: toChatId({ raw: 'c1' }) }
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
     ];
 
     await chatStore.loadChats();
@@ -870,7 +881,7 @@ describe('useChat Composable Logic', () => {
       mockHierarchy.items = [
         { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
         { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
-        { type: 'chat', id: toChatId({ raw: 'c1' }) }
+        { type: 'chat', id: toChatId({ raw: 'c1' }) },
       ];
       await chatStore.loadChats();
 
@@ -887,7 +898,7 @@ describe('useChat Composable Logic', () => {
       const chat = await chatStore.createNewChat({
         groupId: undefined,
         modelId: undefined,
-        systemPrompt: { behavior: 'override', content: 'Custom system prompt' }
+        systemPrompt: { behavior: 'override', content: 'Custom system prompt' },
       });
       expect(chat!.systemPrompt).toEqual({ behavior: 'override', content: 'Custom system prompt' });
 
@@ -947,7 +958,7 @@ describe('useChat Composable Logic', () => {
       mockRootItems.push(...initial);
       mockHierarchy.items = [
         { type: 'chat', id: toChatId({ raw: 'c1' }) },
-        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] }
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
       ];
       await chatStore.loadChats();
 
@@ -966,7 +977,7 @@ describe('useChat Composable Logic', () => {
       ];
       mockRootItems.push(...initial);
       mockHierarchy.items = [
-        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] }
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
       ];
       await chatStore.loadChats();
 
@@ -1001,7 +1012,7 @@ describe('useChat Composable Logic', () => {
     mockHierarchy.items = [
       { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
       { type: 'chat', id: toChatId({ raw: 'c1' }) },
-      { type: 'chat', id: toChatId({ raw: 'c2' }) }
+      { type: 'chat', id: toChatId({ raw: 'c2' }) },
     ];
     __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
     await sendMessage({ content: 'Hello' });
@@ -1019,7 +1030,7 @@ describe('useChat Composable Logic', () => {
     mockHierarchy.items = [
       { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
       { type: 'chat', id: toChatId({ raw: 'c1' }) },
-      { type: 'chat', id: toChatId({ raw: 'c2' }) }
+      { type: 'chat', id: toChatId({ raw: 'c2' }) },
     ];
 
     __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
@@ -1035,7 +1046,7 @@ describe('useChat Composable Logic', () => {
     mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
     mockHierarchy.items = [
       { type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' }), toChatId({ raw: 'c3' })] },
-      { type: 'chat', id: toChatId({ raw: 'top' }) }
+      { type: 'chat', id: toChatId({ raw: 'top' }) },
     ];
 
     __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });

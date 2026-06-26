@@ -34,14 +34,14 @@ const x = 1;
 ${'```'}
 `;
   const wrapper = mount(BlockMarkdownRenderer, { props: { content } });
-  
+
   // Explicitly define what to preserve/normalize to get a stable string
   const dom = normalizeDom({
     element: wrapper.element,
     preserveAttributes: ['class'],
-    trimWhitespaceNodes: true
+    trimWhitespaceNodes: true,
   });
-  
+
   // Verify the exact structure of the code block components
   expect(dom).toContain('<pre><code class="language-js"><span>const x = 1;</span></code></pre>');
 });

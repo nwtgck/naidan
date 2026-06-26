@@ -20,7 +20,7 @@ const XARGS_VERSION = 'xargs (wesh) 0.25.1-dev';
 function parseDeprecatedIOption({
   token,
 }: {
-  token: string;
+  token: string,
 }): ArgvSpecialParseResult | undefined {
   if (token === '--replace') {
     return {
@@ -55,7 +55,7 @@ function parseDeprecatedIOption({
 function parseDeprecatedLOption({
   token,
 }: {
-  token: string;
+  token: string,
 }): ArgvSpecialParseResult | undefined {
   if (token === '-l') {
     return {
@@ -81,7 +81,7 @@ function parseDeprecatedLOption({
 function parseDeprecatedEOption({
   token,
 }: {
-  token: string;
+  token: string,
 }): ArgvSpecialParseResult | undefined {
   if (token === '--eof') {
     return {
@@ -283,7 +283,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
 function shellQuote({
   text,
 }: {
-  text: string;
+  text: string,
 }): string {
   return /^[A-Za-z0-9_./-]+$/.test(text) ? text : `'${text.replaceAll('\'', `'\\''`)}'`;
 }
@@ -312,7 +312,7 @@ function createDevNullLikeHandle(): WeshFileHandle {
 function describeConflictMode({
   mode,
 }: {
-  mode: 'replace' | 'maxArgs' | 'maxLines';
+  mode: 'replace' | 'maxArgs' | 'maxLines',
 }): string {
   switch (mode) {
   case 'replace':
@@ -339,14 +339,14 @@ function getLastValueOccurrence({
   occurrences,
   key,
 }: {
-  occurrences: ArgvOptionOccurrence[];
-  key: string;
+  occurrences: ArgvOptionOccurrence[],
+  key: string,
 }): Extract<ArgvOptionOccurrence, { kind: 'value' }> | undefined {
   return [...occurrences].reverse().find((occurrence) => isValueOccurrence(occurrence, key));
 }
 
 type XargsModeOccurrence = Extract<ArgvOptionOccurrence, { kind: 'value' }> & {
-  key: 'replace' | 'maxArgs' | 'maxLines';
+  key: 'replace' | 'maxArgs' | 'maxLines',
 };
 
 function isXargsModeOccurrence(
@@ -360,12 +360,12 @@ async function resolveExecutionLimits({
   context,
   occurrences,
 }: {
-  context: WeshCommandContext;
-  occurrences: ArgvOptionOccurrence[];
+  context: WeshCommandContext,
+  occurrences: ArgvOptionOccurrence[],
 }): Promise<{
-  replaceValue: string | undefined;
-  maxArgs: number | undefined;
-  maxLines: number | undefined;
+  replaceValue: string | undefined,
+  maxArgs: number | undefined,
+  maxLines: number | undefined,
 }> {
   const conflictingOccurrences = occurrences.filter(isXargsModeOccurrence);
 
@@ -431,7 +431,7 @@ async function resolveExecutionLimits({
 }
 
 interface XargsInvocation {
-  readonly args: string[];
+  readonly args: string[],
 }
 
 const MAX_AUTOMATIC_PARALLELISM = 32;
@@ -445,8 +445,8 @@ function getCommandBytes({
   command,
   args,
 }: {
-  command: string;
-  args: readonly string[];
+  command: string,
+  args: readonly string[],
 }): number {
   let bytes = getArgumentBytes({ value: command });
   for (const arg of args) {
@@ -466,13 +466,13 @@ async function* createBatchedInvocations({
   exitIfTooLong,
   noRunIfEmpty,
 }: {
-  command: string;
-  items: AsyncIterable<string>;
-  initialArgs: readonly string[];
-  maxArgs: number | undefined;
-  maxChars: number;
-  exitIfTooLong: boolean;
-  noRunIfEmpty: boolean;
+  command: string,
+  items: AsyncIterable<string>,
+  initialArgs: readonly string[],
+  maxArgs: number | undefined,
+  maxChars: number,
+  exitIfTooLong: boolean,
+  noRunIfEmpty: boolean,
 }): AsyncIterable<XargsInvocation> {
   let batch: string[] = [];
   let batchBytes = getCommandBytes({ command, args: initialArgs });
@@ -519,9 +519,9 @@ function replaceTemplateArgs({
   placeholder,
   value,
 }: {
-  args: string[];
-  placeholder: string;
-  value: string;
+  args: string[],
+  placeholder: string,
+  value: string,
 }): string[] {
   let replaced = false;
   const nextArgs = args.map((arg) => {
@@ -539,10 +539,10 @@ async function* createReplaceInvocations({
   placeholder,
   noRunIfEmpty,
 }: {
-  items: AsyncIterable<string>;
-  initialArgs: readonly string[];
-  placeholder: string;
-  noRunIfEmpty: boolean;
+  items: AsyncIterable<string>,
+  initialArgs: readonly string[],
+  placeholder: string,
+  noRunIfEmpty: boolean,
 }): AsyncIterable<XargsInvocation> {
   let sawItem = false;
   for await (const item of items) {
@@ -575,12 +575,12 @@ async function* createLineInvocations({
   maxChars,
   exitIfTooLong,
 }: {
-  command: string;
-  lines: AsyncIterable<string[]>;
-  initialArgs: readonly string[];
-  maxLines: number;
-  maxChars: number;
-  exitIfTooLong: boolean;
+  command: string,
+  lines: AsyncIterable<string[]>,
+  initialArgs: readonly string[],
+  maxLines: number,
+  maxChars: number,
+  exitIfTooLong: boolean,
 }): AsyncIterable<XargsInvocation> {
   let groupedItems: string[] = [];
   let lineCount = 0;
@@ -618,7 +618,7 @@ async function* createLineInvocations({
 function normalizeXargsExitCode({
   exitCode,
 }: {
-  exitCode: number;
+  exitCode: number,
 }): number {
   if (exitCode === 0) return 0;
   if (exitCode === 255) return 124;
@@ -634,11 +634,11 @@ async function runCommand({
   trace,
   stdin,
 }: {
-  context: WeshCommandContext;
-  command: string;
-  args: string[];
-  trace: boolean;
-  stdin: WeshFileHandle;
+  context: WeshCommandContext,
+  command: string,
+  args: string[],
+  trace: boolean,
+  stdin: WeshFileHandle,
 }): Promise<WeshCommandResult> {
   if (trace) {
     await context.text().error({
@@ -659,9 +659,9 @@ async function handleCommandResult({
   context,
   result,
 }: {
-  context: WeshCommandContext;
-  result: WeshCommandResult;
-}): Promise<{ kind: 'continue'; normalizedExitCode: number } | { kind: 'stop'; exitCode: number }> {
+  context: WeshCommandContext,
+  result: WeshCommandResult,
+}): Promise<{ kind: 'continue', normalizedExitCode: number } | { kind: 'stop', exitCode: number }> {
   if (result.exitCode === 255) {
     await context.text().error({
       text: 'xargs: command exited with status 255; aborting\n',
@@ -683,12 +683,12 @@ async function executeInvocationStream({
   stdin,
   maxProcs,
 }: {
-  context: WeshCommandContext;
-  command: string;
-  invocations: AsyncIterable<XargsInvocation>;
-  trace: boolean;
-  stdin: WeshFileHandle;
-  maxProcs: number;
+  context: WeshCommandContext,
+  command: string,
+  invocations: AsyncIterable<XargsInvocation>,
+  trace: boolean,
+  stdin: WeshFileHandle,
+  maxProcs: number,
 }): Promise<WeshCommandResult> {
   const concurrency = maxProcs === 0
     ? MAX_AUTOMATIC_PARALLELISM

@@ -20,8 +20,8 @@ describe('wesh uniq', () => {
     path,
     data,
   }: {
-    path: string;
-    data: string | Uint8Array;
+    path: string,
+    data: string | Uint8Array,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -41,7 +41,7 @@ describe('wesh uniq', () => {
   async function readFileText({
     path,
   }: {
-    path: string;
+    path: string,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -61,8 +61,8 @@ describe('wesh uniq', () => {
     script,
     stdinText,
   }: {
-    script: string;
-    stdinText?: string;
+    script: string,
+    stdinText?: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

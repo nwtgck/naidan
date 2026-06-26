@@ -1,12 +1,12 @@
 import { ref } from 'vue';
 
 export interface Toast {
-  id: string;
-  message: string;
-  actionLabel?: string;
-  onAction?: () => void | Promise<void>;
-  onClose?: ({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>;
-  duration?: number;
+  id: string,
+  message: string,
+  actionLabel?: string,
+  onAction?: () => void | Promise<void>,
+  onClose?: ({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>,
+  duration?: number,
 }
 
 const toasts = ref<Toast[]>([]);

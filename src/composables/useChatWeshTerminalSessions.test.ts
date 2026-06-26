@@ -113,11 +113,11 @@ describe('useChatWeshTerminalSessions', () => {
     });
 
     it('uses local storage type for naidan sysfs mounts when configured', async () => {
-      mocks.settingsValue.storageType = 'local'
-      mocks.settingsValue.mounts = []
+      mocks.settingsValue.storageType = 'local';
+      mocks.settingsValue.mounts = [];
 
-      const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions')
-      const { TEST_ONLY } = useChatWeshTerminalSessions()
+      const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
       const result = await TEST_ONLY.buildWorkerMountsForChat({
         chatMounts: [],
@@ -125,9 +125,9 @@ describe('useChatWeshTerminalSessions', () => {
         chatId: toChatId({ raw: 'chat-1' }),
         chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
         naidanSysfsAccessScope: 'current_chat_only',
-      })
+      });
 
-      expect(mocks.ensureChatTmpDirectory).not.toHaveBeenCalled()
+      expect(mocks.ensureChatTmpDirectory).not.toHaveBeenCalled();
       expect(result[0]).toMatchObject({
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',
@@ -135,11 +135,11 @@ describe('useChatWeshTerminalSessions', () => {
         visibility: 'current_chat_only',
         currentChatId: toChatId({ raw: 'chat-1' }),
         currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
-      })
+      });
     });
 
     it('omits /tmp and naidan sysfs when access scope is none for local storage', async () => {
-      mocks.settingsValue.storageType = 'local'
+      mocks.settingsValue.storageType = 'local';
 
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { TEST_ONLY } = useChatWeshTerminalSessions();

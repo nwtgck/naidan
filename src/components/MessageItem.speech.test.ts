@@ -47,7 +47,7 @@ describe('MessageItem Speech Controls', () => {
   it('renders speech buttons if supported', () => {
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, {
-      props: { message, isFirstInTurn: true }
+      props: { message, isFirstInTurn: true },
     });
 
     // Header and footer toggle buttons
@@ -150,7 +150,7 @@ describe('MessageItem Speech Controls', () => {
 
     // Update message content (streaming simulation)
     await wrapper.setProps({
-      message: createMessage('Initial content. More content coming...')
+      message: createMessage('Initial content. More content coming...'),
     });
 
     // Should NOT have been called (by any instance)
@@ -166,7 +166,7 @@ describe('MessageItem Speech Controls', () => {
 
     // Update again
     await wrapper.setProps({
-      message: createMessage('Final content.')
+      message: createMessage('Final content.'),
     });
 
     // NOW it should be called (at least once, by the active instance)

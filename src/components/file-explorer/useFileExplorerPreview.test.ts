@@ -17,7 +17,7 @@ vi.mock('@/services/highlight/worker/client-shared', () => ({
     dispose: vi.fn(async () => undefined),
   })),
   releaseSharedHighlightWorkerClient: vi.fn(async () => undefined),
-}))
+}));
 
 function makeEntry(overrides: Partial<FileExplorerEntry> & { name: string }): FileExplorerEntry {
   return {

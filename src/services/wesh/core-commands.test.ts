@@ -20,8 +20,8 @@ describe('wesh core command parsing', () => {
     name,
     data,
   }: {
-    name: string;
-    data: string;
+    name: string,
+    data: string,
   }) {
     const handle = await rootHandle.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
@@ -32,7 +32,7 @@ describe('wesh core command parsing', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

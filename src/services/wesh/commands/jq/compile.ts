@@ -87,14 +87,14 @@ const builtinArities = {
 
 export type JqCompileResult =
   | { ok: true }
-  | { ok: false; message: string };
+  | { ok: false, message: string };
 
 function validateChildren({
   children,
   variables,
 }: {
-  children: readonly JqFilter[];
-  variables: ReadonlySet<string>;
+  children: readonly JqFilter[],
+  variables: ReadonlySet<string>,
 }): string | undefined {
   for (const child of children) {
     const message = validateFilter({ filter: child, variables });
@@ -107,8 +107,8 @@ function validateFilter({
   filter,
   variables,
 }: {
-  filter: JqFilter;
-  variables: ReadonlySet<string>;
+  filter: JqFilter,
+  variables: ReadonlySet<string>,
 }): string | undefined {
   switch (filter.kind) {
   case 'identity':
@@ -208,8 +208,8 @@ export function validateJqProgram({
   program,
   variables,
 }: {
-  program: JqProgram;
-  variables: readonly string[];
+  program: JqProgram,
+  variables: readonly string[],
 }): JqCompileResult {
   const message = validateFilter({
     filter: program.filter,

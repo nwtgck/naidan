@@ -7,15 +7,15 @@ Use one of these two patterns for new workers.
 The main constraint is `standalone`, which must work from `file:///`.
 
 - Standalone cannot rely on normal hosted worker asset loading.
-- Standalone worker code must be embedded into `index.html`.
-- If standalone embeds many separate workers, shared libraries get duplicated and `index.html` grows.
+- Standalone worker code is built as one classic IIFE and registered by a lazily loaded classic script. It is not embedded into `index.html`.
+- If standalone emits many independent worker bundles, shared libraries get duplicated across those bundles.
 - Hosted should keep normal worker assets and chunk splitting.
 - Build-time exclusion matters. Hosted-only worker code should not leak into standalone bundles.
 
 The goal is:
 
 - `file:///` compatibility in standalone
-- small standalone `index.html`
+- small standalone `index.html` and lazy worker payload loading
 - normal worker chunking in hosted
 - good tree shaking
 - one stable import surface for app code
@@ -58,12 +58,12 @@ Structure:
 Behavior:
 
 - Hosted: dedicated worker
-- Standalone: one embedded hub worker, accessed as `hub.remote.foo`
+- Standalone: one Blob-backed hub worker created from an external classic registry, accessed as `hub.remote.foo`
 
 Why:
 
-- Standalone embedding is required anyway.
-- One standalone hub avoids duplicating shared libraries across multiple embedded workers.
+- Direct `file:` Worker URLs are not portable across the target browsers, so the plugin registers one Blob and creates Workers from its Object URL.
+- One standalone hub avoids duplicating shared libraries across multiple independent worker bundles.
 - Hosted keeps dedicated workers so normal chunking is preserved.
 
 Rules:
@@ -79,6 +79,47 @@ Notes:
 - Put worker request and response schemas in `foo/worker/types.ts`.
 - Put worker-only helper code next to the worker, for example `highlight/worker/core.ts`.
 - If the feature also has non-worker code, keep it outside `worker/`, for example `global-search/types.ts`.
+
+## Standalone Hub Runtime Contract
+
+The `file-protocol-standalone` plugin builds the configured hub entry as one classic IIFE. A classic registry script constructs a `Blob` from source parts and registers only the Blob metadata. The virtual worker module loads that registry on demand, creates one page-lifetime Object URL, deletes the temporary registry entry, and returns a new `Worker` instance for each caller.
+
+Why:
+
+- A classic `<script src>` can load a local file where direct `file:` Worker creation and native modules are unreliable.
+- Keeping the large source outside `index.html` avoids parsing the Worker payload during initial page startup.
+- Passing source parts directly to `Blob` avoids creating another large joined string.
+- The Object URL keeps the Blob alive, so the temporary Blob entry under `globalThis.__FILE_PROTOCOL_STANDALONE__.internal.core.workerBlobRegistry` is removed after URL creation.
+- The Object URL is intentionally not revoked during normal page lifetime because later callers may create more Worker instances from the same hub.
+- The plugin does not make Worker instances singletons; isolation and lifetime are application decisions.
+- SHA-256 is build-time diagnostic metadata only. Runtime code verifies metadata and `Blob.size` without reading the whole Blob into another buffer.
+
+The plugin guarantees one JavaScript artifact with no additional Vite-managed Worker assets, static module syntax, or `import.meta`. A remaining runtime `import(specifier)` with a dynamic specifier is reported because the plugin cannot prove whether a dependency's code path is reachable; the plugin does not rewrite Naidan or its dependencies to remove it.
+
+Adding a normal service to the existing hub does not require registering a new Worker entry. Update `vite.config.ts` only when introducing a genuinely independent standalone Worker artifact.
+
+
+## Core, Debug, Optimization, and Verification Boundaries
+
+File-protocol standalone code intentionally uses names that expose which path a symbol belongs to. Preserve these boundaries when adding features:
+
+- **Core** makes the standalone application function: Worker Blob registration, Worker creation, SystemJS loading and recovery, HTML bootstrap replacement, output validation, build metrics, and budget enforcement.
+- **Debug** observes Core but does not decide Core behavior. Names start with `Debug...` or `debug...` so unfamiliar implementers do not reuse them as normal product APIs. Core may write Debug checkpoints or counters, but Core must not read Debug state to choose its behavior.
+- **Optimization** may improve latency without changing correctness. Worker asset warmup uses `scheduleFileProtocolStandaloneWorkerHubWarmup()` and is not Debug state.
+- **Verification** actively probes a built standalone application. It lives under `debug-file-protocol-standalone/verification/` and must not become a dependency of normal application behavior.
+
+The only public runtime namespace is `globalThis.__FILE_PROTOCOL_STANDALONE__`. Application code may call `getDiagnostics()`. Generated runtime scripts use the private namespace as follows:
+
+- `internal.core.workerBlobRegistry` is Core state required while constructing the page-lifetime Worker Object URL.
+- `internal.debug.startup`, `systemJsPatch`, `systemJsRetry`, and `workerRuntime` are optional Debug state. Their initialization and updates must fail open.
+
+Do not make a normal feature depend on a `debug...` result. If a value starts controlling product behavior, promote it to an explicit Core API and rename it accordingly.
+
+The standalone Worker facade is exposed through:
+
+- `createFileProtocolStandaloneWorkerHub()` for normal Worker creation
+- `scheduleFileProtocolStandaloneWorkerHubWarmup()` for optional idle warmup
+- `debugGetFileProtocolStandaloneWorkerHubDiagnostics()` for Debug-only observation
 
 ## Pattern B: Hosted Only + Standalone Unsupported
 
@@ -127,8 +168,8 @@ Do not use the Comlink exception merely because a function internally calls a Co
 
 ```ts
 async function generateText({ messages, onChunk }: {
-  messages: ChatMessage[];
-  onChunk: ({ chunk }: { chunk: string }) => void;
+  messages: ChatMessage[],
+  onChunk: ({ chunk }: { chunk: string }) => void,
 }) {
   return remote.generateText(
     { messages },
@@ -141,7 +182,7 @@ async function generateText({ messages, onChunk }: {
 
 - Use `resolve.alias` to swap standalone clients.
 - Do not depend on `window.location.protocol` to exclude hosted worker code.
-- If standalone supports the worker, embed the standalone hub worker into `index.html`.
+- If standalone supports the worker, add it to the shared hub. The plugin emits the hub source as an external classic registry script and creates a Blob lazily.
 - If standalone does not support the worker, swap the facade to an unsupported implementation.
 
 Why:
@@ -155,7 +196,7 @@ Why:
 1. Add the public client facade.
 2. Add the hosted client implementation.
 3. Decide the standalone side:
-   - supported in standalone: add the service to `worker-hub-standalone.ts`, expose it from `worker-hub-standalone.worker.ts`, and add standalone embedding in `vite.config.ts`
+   - supported in standalone: add the service to `worker-hub-standalone.ts` and expose it from `worker-hub-standalone.worker.ts`; the existing registered hub entry normally needs no `vite.config.ts` change
    - unsupported in standalone: add the standalone unsupported client and add the standalone alias in `vite.config.ts`
 4. Add or update the `vite.config.ts` alias so app code imports the facade path in both modes.
 5. Move callers to the facade.

@@ -7,7 +7,7 @@
  */
 export async function reencodeImage({ blob, format }: {
   blob: Blob,
-  format: 'webp' | 'jpeg' | 'png'
+  format: 'webp' | 'jpeg' | 'png',
 }): Promise<Blob> {
   const img = await createImageBitmap(blob);
   const canvas = document.createElement('canvas');

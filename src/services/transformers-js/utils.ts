@@ -2,7 +2,7 @@
  * Interface to extend FileSystemFileHandle with the non-standard createWritable method.
  */
 export interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
-  createWritable(): Promise<FileSystemWritableFileStream>;
+  createWritable(): Promise<FileSystemWritableFileStream>,
 }
 
 /**

@@ -28,7 +28,7 @@ const timeArgvSpec: StandardArgvParserSpec = {
 function formatPortableDuration({
   elapsedMs,
 }: {
-  elapsedMs: number;
+  elapsedMs: number,
 }): string {
   return (elapsedMs / 1000).toFixed(2);
 }
@@ -36,7 +36,7 @@ function formatPortableDuration({
 function formatDefaultDuration({
   elapsedMs,
 }: {
-  elapsedMs: number;
+  elapsedMs: number,
 }): string {
   const totalSeconds = elapsedMs / 1000;
   const minutes = Math.floor(totalSeconds / 60);
@@ -49,9 +49,9 @@ async function writeTimingReport({
   portable,
   elapsedMs,
 }: {
-  context: WeshCommandContext;
-  portable: boolean;
-  elapsedMs: number;
+  context: WeshCommandContext,
+  portable: boolean,
+  elapsedMs: number,
 }): Promise<void> {
   const real = portable
     ? formatPortableDuration({ elapsedMs })

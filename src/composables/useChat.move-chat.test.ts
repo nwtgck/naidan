@@ -5,8 +5,8 @@ import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
 import { toChatGroupId, toChatId } from '@/models/ids';
 
 type TestHierarchyNode =
-  | { type: 'chat'; id: string }
-  | { type: 'chat_group'; id: string; chat_ids: string[] };
+  | { type: 'chat', id: string }
+  | { type: 'chat_group', id: string, chat_ids: string[] };
 
 const mockGetSidebarStructure = vi.fn();
 
@@ -25,7 +25,7 @@ vi.mock('../services/storage', () => ({
         items: chat.rootItems.value.map(item => {
           if (item.type === 'chat') return { type: 'chat', id: item.chat.id };
           return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
-        })
+        }),
       };
       const updated = await updater({ current: currentH as any });
       // Map back to sidebar structure for the test to see the changes after loadChats()
@@ -36,8 +36,8 @@ vi.mock('../services/storage', () => ({
           type: 'chat_group',
           chatGroup: {
             id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0,
-            items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0 } }))
-          }
+            items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0 } })),
+          },
         };
       });
       mockGetSidebarStructure.mockResolvedValue(newSidebar);
@@ -58,7 +58,7 @@ vi.mock('./useSettings', () => ({
         endpointType: 'openai',
         endpointUrl: 'http://global-url',
         defaultModelId: 'global-model',
-      }
+      },
     },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
@@ -79,7 +79,7 @@ describe('useChat moveChatToGroup', () => {
       id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [
-        { id: 'chat:existing', type: 'chat', chat: { id: toChatId({ raw: 'existing' }), title: 'Existing', updatedAt: 0 } }
+        { id: 'chat:existing', type: 'chat', chat: { id: toChatId({ raw: 'existing' }), title: 'Existing', updatedAt: 0 } },
       ],
       updatedAt: 0,
       isCollapsed: false,
@@ -87,7 +87,7 @@ describe('useChat moveChatToGroup', () => {
 
     const sidebarItems: SidebarItem[] = [
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group },
-      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } }
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } },
     ];
 
     mockGetSidebarStructure.mockResolvedValue(sidebarItems);
@@ -112,7 +112,7 @@ describe('useChat moveChatToGroup', () => {
       id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [
-        { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } }
+        { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } },
       ],
       updatedAt: 0,
       isCollapsed: false,
@@ -121,7 +121,7 @@ describe('useChat moveChatToGroup', () => {
       id: toChatGroupId({ raw: 'g2' }),
       name: 'Group 2',
       items: [
-        { id: 'chat:existing', type: 'chat', chat: { id: toChatId({ raw: 'existing' }), title: 'Existing', updatedAt: 0 } }
+        { id: 'chat:existing', type: 'chat', chat: { id: toChatId({ raw: 'existing' }), title: 'Existing', updatedAt: 0 } },
       ],
       updatedAt: 0,
       isCollapsed: false,
@@ -149,7 +149,7 @@ describe('useChat moveChatToGroup', () => {
       id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [
-        { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } }
+        { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } },
       ],
       updatedAt: 0,
       isCollapsed: false,
@@ -157,7 +157,7 @@ describe('useChat moveChatToGroup', () => {
 
     mockGetSidebarStructure.mockResolvedValue([
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 },
-      { id: 'chat:top', type: 'chat', chat: { id: 'top', title: 'Top Chat', updatedAt: 0 } }
+      { id: 'chat:top', type: 'chat', chat: { id: 'top', title: 'Top Chat', updatedAt: 0 } },
     ]);
     await chatStore.loadChats();
 
@@ -191,13 +191,13 @@ describe('useChat moveChatToGroup', () => {
 
   it('updates currentChat.groupId if the moved chat is the current one', async () => {
     const chat: Chat = reactive({
-      id: 'c1', title: 'C1', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false
+      id: 'c1', title: 'C1', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
     }) as any;
     __testOnlySetCurrentChat({ chat });
 
     mockGetSidebarStructure.mockResolvedValue([
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
-      { id: 'chat_group:g1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } }
+      { id: 'chat_group:g1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } },
     ]);
     await chatStore.loadChats();
 

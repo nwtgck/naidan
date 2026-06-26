@@ -20,10 +20,10 @@ vi.stubGlobal('navigator', {
   storage: {
     getDirectory: vi.fn().mockResolvedValue({
       getDirectoryHandle: vi.fn().mockResolvedValue({
-        getDirectoryHandle: vi.fn().mockRejectedValue(new Error('Not found'))
-      })
-    })
-  }
+        getDirectoryHandle: vi.fn().mockRejectedValue(new Error('Not found')),
+      }),
+    }),
+  },
 });
 
 // Mock Comlink

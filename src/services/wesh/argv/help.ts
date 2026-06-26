@@ -57,9 +57,9 @@ export function formatArgvUsageSummary({
   maxOptions = 12,
   includeHelpHint = true,
 }: {
-  spec: StandardArgvParserSpec;
-  maxOptions?: number;
-  includeHelpHint?: boolean;
+  spec: StandardArgvParserSpec,
+  maxOptions?: number,
+  includeHelpHint?: boolean,
 }): string | undefined {
   const options = spec.options
     .filter((option) => option.help !== undefined)
@@ -84,8 +84,8 @@ export function formatArgvOptionHelp({
   spec,
   maxOptions,
 }: {
-  spec: StandardArgvParserSpec;
-  maxOptions?: number;
+  spec: StandardArgvParserSpec,
+  maxOptions?: number,
 }): string[] {
   const options = spec.options
     .filter((option) => option.help !== undefined)

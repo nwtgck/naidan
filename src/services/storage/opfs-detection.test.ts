@@ -16,11 +16,11 @@ describe('checkOPFSSupport', () => {
 
   it('should return true if getDirectory and createWritable are supported', async () => {
     const mockFileHandle = {
-      createWritable: vi.fn()
+      createWritable: vi.fn(),
     };
     const mockDirectoryHandle = {
       getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
-      removeEntry: vi.fn().mockResolvedValue(undefined)
+      removeEntry: vi.fn().mockResolvedValue(undefined),
     };
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
 
@@ -53,7 +53,7 @@ describe('checkOPFSSupport', () => {
     const mockFileHandle = {}; // Missing createWritable
     const mockDirectoryHandle = {
       getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
-      removeEntry: vi.fn().mockResolvedValue(undefined)
+      removeEntry: vi.fn().mockResolvedValue(undefined),
     };
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
 
@@ -64,7 +64,7 @@ describe('checkOPFSSupport', () => {
   it('should return false if getFileHandle fails', async () => {
     const mockDirectoryHandle = {
       getFileHandle: vi.fn().mockRejectedValue(new Error('Quota exceeded')),
-      removeEntry: vi.fn()
+      removeEntry: vi.fn(),
     };
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
 
@@ -86,15 +86,15 @@ describe('checkOPFSSupport', () => {
         accessed = true;
         return false; // Return false to see if it blocks the detection
       },
-      configurable: true
+      configurable: true,
     });
 
     const mockFileHandle = {
-      createWritable: vi.fn()
+      createWritable: vi.fn(),
     };
     const mockDirectoryHandle = {
       getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
-      removeEntry: vi.fn().mockResolvedValue(undefined)
+      removeEntry: vi.fn().mockResolvedValue(undefined),
     };
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
 

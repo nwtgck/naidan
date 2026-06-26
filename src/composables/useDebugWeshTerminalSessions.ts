@@ -1,1 +1,1 @@
-export * from '@/features/wesh-terminal/composables/useDebugWeshTerminalSessions'
+export * from '@/features/wesh-terminal/composables/useDebugWeshTerminalSessions';

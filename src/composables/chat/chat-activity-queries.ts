@@ -5,7 +5,7 @@ import { chatRuntimeStore, contextCompactRuntime } from '@/composables/chat/glob
 export function isChatProcessing({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): boolean {
   return chatRuntimeStore.isProcessing({ chatId });
 }
@@ -13,7 +13,7 @@ export function isChatProcessing({
 export function isChatTaskRunning({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): boolean {
   return chatRuntimeStore.isTaskRunning({ chatId });
 }
@@ -21,7 +21,7 @@ export function isChatTaskRunning({
 export function getChatContextCompactProgress({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): ContextCompactProgress {
   return contextCompactRuntime.getProgress({ chatId });
 }
@@ -29,7 +29,7 @@ export function getChatContextCompactProgress({
 export function isChatGeneratingTitle({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): boolean {
   return chatRuntimeStore.activeTitleGenerations.has(chatId);
 }

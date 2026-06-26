@@ -12,7 +12,7 @@ const mockService = {
 };
 
 vi.mock('./index', () => ({
-  transformersJsService: mockService
+  transformersJsService: mockService,
 }));
 
 /**
@@ -24,15 +24,15 @@ function setupGenerateTextMock(toolCallsOnFirstCall: ToolCall[] = []) {
   let callCount = 0;
   mockService.generateText.mockImplementation(
     async ({ onToolCalls }: {
-      messages: unknown;
-      onChunk: (params: { chunk: string }) => void;
-      onToolCalls: (params: { toolCalls: ToolCall[] }) => void;
+      messages: unknown,
+      onChunk: (params: { chunk: string }) => void,
+      onToolCalls: (params: { toolCalls: ToolCall[] }) => void,
     }) => {
       callCount++;
       if (callCount === 1 && toolCallsOnFirstCall.length > 0) {
         onToolCalls({ toolCalls: toolCallsOnFirstCall });
       }
-    }
+    },
   );
 }
 
@@ -93,7 +93,7 @@ describe('TransformersJsProvider', () => {
   it('should list available models from cache (only complete ones)', async () => {
     mockService.listCachedModels.mockResolvedValue([
       { id: 'model-1', isComplete: true },
-      { id: 'model-2', isComplete: false }
+      { id: 'model-2', isComplete: false },
     ]);
 
     const { TransformersJsProvider } = await import('./provider');
@@ -148,7 +148,7 @@ describe('TransformersJsProvider', () => {
       // Second call includes tool result message
       const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
-        expect.objectContaining({ role: 'tool', tool_call_id: 'call_1', content: 'result of my_tool' })
+        expect.objectContaining({ role: 'tool', tool_call_id: 'call_1', content: 'result of my_tool' }),
       );
     });
 
@@ -182,7 +182,7 @@ describe('TransformersJsProvider', () => {
       // Error is sent back to the model
       const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
-        expect.objectContaining({ role: 'tool', tool_call_id: 'call_unknown' })
+        expect.objectContaining({ role: 'tool', tool_call_id: 'call_unknown' }),
       );
     });
 
@@ -216,7 +216,7 @@ describe('TransformersJsProvider', () => {
         expect.objectContaining({
           id: 'call_bad_json',
           result: expect.objectContaining({ status: 'error', code: 'invalid_arguments' }),
-        })
+        }),
       );
       expect(onToolCall).not.toHaveBeenCalled();
       expect(tool.execute).not.toHaveBeenCalled();
@@ -253,7 +253,7 @@ describe('TransformersJsProvider', () => {
       });
       const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
-        expect.objectContaining({ role: 'tool', content: 'Error [execution_failed]: something broke' })
+        expect.objectContaining({ role: 'tool', content: 'Error [execution_failed]: something broke' }),
       );
     });
 
@@ -270,16 +270,16 @@ describe('TransformersJsProvider', () => {
       let callCount = 0;
       mockService.generateText.mockImplementation(
         async ({ onToolCalls }: {
-          messages: unknown;
-          onChunk: (params: { chunk: string }) => void;
-          onToolCalls: (params: { toolCalls: ToolCall[] }) => void;
+          messages: unknown,
+          onChunk: (params: { chunk: string }) => void,
+          onToolCalls: (params: { toolCalls: ToolCall[] }) => void,
         }) => {
           callCount++;
           if (callCount === 1) {
             onToolCalls({ toolCalls: [toolCall] });
             controller.abort(); // abort during tool execution phase
           }
-        }
+        },
       );
 
       const tool = makeTool('my_tool');

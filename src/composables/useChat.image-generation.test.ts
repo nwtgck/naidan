@@ -9,7 +9,7 @@ import { toRaw } from 'vue';
 const mockOllamaChat = vi.fn();
 const mockOllamaGenerateImage = vi.fn().mockResolvedValue({
   image: new Blob(['test'], { type: 'image/png' }),
-  totalSteps: 10
+  totalSteps: 10,
 });
 
 vi.mock('../services/lm/ollama', () => ({
@@ -101,7 +101,7 @@ describe('useChat Image Generation', () => {
       steps: undefined,
       seed: undefined,
       persistAs: 'original',
-      attachments: []
+      attachments: [],
     });
 
     expect(success).toBe(true);
@@ -154,7 +154,7 @@ describe('useChat Image Generation', () => {
       steps: undefined,
       seed: undefined,
       persistAs: 'original',
-      attachments: [mockAttachment]
+      attachments: [mockAttachment],
     });
 
     expect(success).toBe(true);
@@ -171,9 +171,9 @@ describe('useChat Image Generation', () => {
       title: 'New Chat',
       root: {
         items: [{
-          id: '1', role: 'user', content: '<!-- naidan_experimental_image_request {"w":512} -->A beautiful landscape', replies: { items: [] }
-        }]
-      }
+          id: '1', role: 'user', content: '<!-- naidan_experimental_image_request {"w":512} -->A beautiful landscape', replies: { items: [] },
+        }],
+      },
     } as any;
     chatStore.registerLiveInstance({ chat });
 
@@ -181,8 +181,8 @@ describe('useChat Image Generation', () => {
 
     expect(mockOllamaChat).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([
-        expect.objectContaining({ content: expect.stringContaining('A beautiful landscape') })
-      ])
+        expect.objectContaining({ content: expect.stringContaining('A beautiful landscape') }),
+      ]),
     }));
 
     // Ensure the sentinel is NOT in the prompt sent to LM
@@ -196,9 +196,9 @@ describe('useChat Image Generation', () => {
       root: {
         items: [{
           id: 'u1', role: 'user', content: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->small cat',
-          replies: { items: [{ id: 'a1', role: 'assistant', content: 'Failed', replies: { items: [] } }] }
-        }]
-      }
+          replies: { items: [{ id: 'a1', role: 'assistant', content: 'Failed', replies: { items: [] } }] },
+        }],
+      },
     } as any;
     chatStore.registerLiveInstance({ chat });
 
@@ -241,9 +241,9 @@ describe('useChat Image Generation', () => {
       root: {
         items: [{
           id: 'u1', role: 'user', content: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->cat',
-          replies: { items: [{ id: 'a1', role: 'assistant', content: '', replies: { items: [] } }] }
-        }]
-      }
+          replies: { items: [{ id: 'a1', role: 'assistant', content: '', replies: { items: [] } }] },
+        }],
+      },
     } as any;
     chatStore.registerLiveInstance({ chat });
 

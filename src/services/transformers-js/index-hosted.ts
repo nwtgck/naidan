@@ -16,7 +16,7 @@ import type {
  * Interface for FileSystemFileHandle with createWritable() method.
  */
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
-  createWritable(): Promise<FileSystemWritableFileStream>;
+  createWritable(): Promise<FileSystemWritableFileStream>,
 }
 
 // Singleton state for UI
@@ -35,7 +35,7 @@ let currentDevice: string = 'wasm';
 
 const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
-function debugLog({ event, details }: { event: string; details: Record<string, unknown> }): void {
+function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
   const timestamp = (() => {
     const dateCtor = globalThis.Date;
     if (typeof dateCtor === 'function') {
@@ -60,8 +60,8 @@ function cloneLmParameters({ params }: { params: LmParameters | undefined }): Lm
     frequencyPenalty: params.frequencyPenalty,
     stop: params.stop ? [...params.stop] : undefined,
     reasoning: {
-      effort: params.reasoning?.effort
-    }
+      effort: params.reasoning?.effort,
+    },
   };
 }
 
@@ -74,7 +74,7 @@ function cloneToolCalls({ toolCalls }: { toolCalls: ToolCall[] | undefined }): T
     function: {
       name: toolCall.function.name,
       arguments: toolCall.function.arguments,
-    }
+    },
   }));
 }
 
@@ -109,7 +109,7 @@ function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined
       name: tool.function.name,
       description: tool.function.description,
       parameters: JSON.parse(JSON.stringify(tool.function.parameters)) as Record<string, unknown>,
-    }
+    },
   }));
 }
 
@@ -122,13 +122,13 @@ type ProgressListener = ({
   progressItems,
   loadingModelId,
 }: {
-  status: typeof loadingStatus;
-  progress: number;
-  error: string | undefined;
-  isCached: boolean;
-  isLoadingFromCache: boolean;
-  progressItems: ReadonlyMap<string, ProgressInfo>;
-  loadingModelId: string | undefined;
+  status: typeof loadingStatus,
+  progress: number,
+  error: string | undefined,
+  isCached: boolean,
+  isLoadingFromCache: boolean,
+  progressItems: ReadonlyMap<string, ProgressInfo>,
+  loadingModelId: string | undefined,
 }) => void;
 const listeners: Set<ProgressListener> = new Set();
 
@@ -276,7 +276,7 @@ function isFatalError({ msg }: { msg: string }): boolean {
 async function preDownloadModel({ modelId, remote, progress_callback }: {
   modelId: string,
   remote: TransformersJsWorkerClient,
-  progress_callback: TransformersJsProgressCallback
+  progress_callback: TransformersJsProgressCallback,
 }): Promise<{ discoveredFileCount: number }> {
   const startedAt = performance.now();
   const scannerClient = createTransformersJsScannerWorkerClient();
@@ -369,7 +369,7 @@ export const transformersJsService = {
       isLoadingFromCache,
       progressItems,
       totalLoadedAmount,
-      totalSizeAmount
+      totalSizeAmount,
     };
   },
 
@@ -389,8 +389,8 @@ export const transformersJsService = {
     notify();
   },
 
-  async listCachedModels(): Promise<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number; isComplete: boolean }>> {
-    const results: Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number; isComplete: boolean }> = [];
+  async listCachedModels(): Promise<Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }>> {
+    const results: Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }> = [];
     try {
       const root = await navigator.storage.getDirectory();
       let modelsDir: FileSystemDirectoryHandle;
@@ -401,7 +401,7 @@ export const transformersJsService = {
       }
 
       // Helper to calculate directory stats and check for marker
-      const getDirStats = async ({ dir }: { dir: FileSystemDirectoryHandle }): Promise<{ size: number; fileCount: number; lastModified: number; isComplete: boolean }> => {
+      const getDirStats = async ({ dir }: { dir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean }> => {
         let size = 0;
         let fileCount = 0;
         let lastModified = 0;
@@ -410,7 +410,7 @@ export const transformersJsService = {
         const markers = new Set<string>();
         let hasWeights = false;
 
-        const scan = async ({ dir, path = '' }: { dir: FileSystemDirectoryHandle; path?: string }) => {
+        const scan = async ({ dir, path = '' }: { dir: FileSystemDirectoryHandle, path?: string }) => {
           for await (const [name, handle] of dir.entries()) {
             const h = handle as FileSystemHandle;
             const fullPath = path ? `${path}/${name}` : name;
@@ -465,7 +465,7 @@ export const transformersJsService = {
           size,
           fileCount,
           lastModified,
-          isComplete: files.size > 0 && allFilesComplete && hasWeights
+          isComplete: files.size > 0 && allFilesComplete && hasWeights,
         };
       };
 
@@ -552,7 +552,7 @@ export const transformersJsService = {
     return results;
   },
 
-  async importFile({ modelName, fileName, data }: { modelName: string; fileName: string; data: ArrayBuffer | ReadableStream }) {
+  async importFile({ modelName, fileName, data }: { modelName: string, fileName: string, data: ArrayBuffer | ReadableStream }) {
     const root = await navigator.storage.getDirectory();
     const modelsDir = await root.getDirectoryHandle('models', { create: true });
     const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
@@ -801,7 +801,7 @@ export const transformersJsService = {
       const { discoveredFileCount } = await preDownloadModel({ modelId, remote: client, progress_callback });
       if (discoveredFileCount === 0) {
         throw new Error(
-          'Pre-download did not discover any model files. The download would be incomplete, so it was aborted.'
+          'Pre-download did not discover any model files. The download would be incomplete, so it was aborted.',
         );
       }
 
@@ -872,12 +872,12 @@ export const transformersJsService = {
    * Generates text through the worker.
    */
   async generateText({ messages, onChunk, onToolCalls, params, tools, signal }: {
-    messages: ChatMessage[]
-    onChunk: TransformersJsChunkCallback
-    onToolCalls: TransformersJsToolCallsCallback
-    params?: LmParameters
-    tools?: WorkerToolDefinition[]
-    signal?: AbortSignal
+    messages: ChatMessage[],
+    onChunk: TransformersJsChunkCallback,
+    onToolCalls: TransformersJsToolCallsCallback,
+    params?: LmParameters,
+    tools?: WorkerToolDefinition[],
+    signal?: AbortSignal,
   }) {
     switch (loadingStatus) {
     case 'idle':
@@ -919,5 +919,5 @@ export const transformersJsService = {
       }
       throw e;
     }
-  }
+  },
 };

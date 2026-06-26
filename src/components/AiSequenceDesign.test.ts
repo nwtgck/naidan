@@ -47,15 +47,15 @@ describe('AI Sequence Design', () => {
       call: {
         id: generateId<ToolCallId>(),
         type: 'function',
-        function: { name, arguments: '{}' }
+        function: { name, arguments: '{}' },
       },
-      result: { toolCallId: generateId<ToolCallId>(), status: 'success', content: { type: 'text', text: 'ok' } }
+      result: { toolCallId: generateId<ToolCallId>(), status: 'success', content: { type: 'text', text: 'ok' } },
     }));
   };
 
   const flow = (position: 'standalone' | 'start' | 'middle' | 'end', nesting: 'none' | 'inside-group' = 'none'): FlowMetadata => ({
     position,
-    nesting
+    nesting,
   });
 
   beforeEach(() => {
@@ -69,7 +69,7 @@ describe('AI Sequence Design', () => {
     it('hides header when position is middle or end', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('middle') }
+        props: { message, flow: flow('middle') },
       });
 
       // showHeader is false for middle
@@ -79,7 +79,7 @@ describe('AI Sequence Design', () => {
     it('shows header when position is standalone or start', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('start'), isFirstInTurn: true }
+        props: { message, flow: flow('start'), isFirstInTurn: true },
       });
 
       expect(wrapper.find('.flex.items-center.gap-3.mb-1').exists()).toBe(true);
@@ -88,7 +88,7 @@ describe('AI Sequence Design', () => {
     it('applies pt-2 when position is middle or end', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('middle') }
+        props: { message, flow: flow('middle') },
       });
 
       const root = wrapper.find('.flex.flex-col');
@@ -98,7 +98,7 @@ describe('AI Sequence Design', () => {
     it('applies border-t when position is standalone or start for assistant', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('start') }
+        props: { message, flow: flow('start') },
       });
 
       const root = wrapper.find('.flex.flex-col');
@@ -109,12 +109,12 @@ describe('AI Sequence Design', () => {
       const message = createAssistantMessage('Hello');
 
       const lastWrapper = mount(MessageItem, {
-        props: { message, flow: flow('end') }
+        props: { message, flow: flow('end') },
       });
       expect(lastWrapper.find('.flex.flex-col').classes()).toContain('border-b');
 
       const notLastWrapper = mount(MessageItem, {
-        props: { message, flow: flow('start') }
+        props: { message, flow: flow('start') },
       });
       expect(notLastWrapper.find('.flex.flex-col').classes()).not.toContain('border-b');
     });
@@ -122,7 +122,7 @@ describe('AI Sequence Design', () => {
     it('applies pb-2 when NOT last in sequence', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('start') } // Not end or standalone
+        props: { message, flow: flow('start') }, // Not end or standalone
       });
 
       expect(wrapper.find('.flex.flex-col').classes()).toContain('pb-2');
@@ -131,7 +131,7 @@ describe('AI Sequence Design', () => {
     it('removes specialized styling when nested inside a group', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('middle', 'inside-group') }
+        props: { message, flow: flow('middle', 'inside-group') },
       });
 
       const root = wrapper.find('.flex.flex-col');
@@ -145,7 +145,7 @@ describe('AI Sequence Design', () => {
     it('applies pt-2 when position is middle or end', () => {
       const toolCalls = createToolCalls(['search']);
       const wrapper = mount(ToolCallGroupItem, {
-        props: { toolCalls, flow: flow('middle') }
+        props: { toolCalls, flow: flow('middle') },
       });
 
       const root = wrapper.find('[data-testid="tool-call-group"]');
@@ -156,14 +156,14 @@ describe('AI Sequence Design', () => {
       const toolCalls = createToolCalls(['search']);
 
       const lastWrapper = mount(ToolCallGroupItem, {
-        props: { toolCalls, flow: flow('end') }
+        props: { toolCalls, flow: flow('end') },
       });
       const lastRoot = lastWrapper.find('[data-testid="tool-call-group"]');
       expect(lastRoot.classes()).toContain('border-b');
       expect(lastWrapper.find('.px-5').classes()).toContain('pb-3');
 
       const notLastWrapper = mount(ToolCallGroupItem, {
-        props: { toolCalls, flow: flow('start') }
+        props: { toolCalls, flow: flow('start') },
       });
       const notLastRoot = notLastWrapper.find('[data-testid="tool-call-group"]');
       expect(notLastRoot.classes()).not.toContain('border-b');
@@ -173,7 +173,7 @@ describe('AI Sequence Design', () => {
     it('shows repeated tool names in the summary', () => {
       const toolCalls = createToolCalls(['search', 'search', 'fetch']);
       const wrapper = mount(ToolCallGroupItem, {
-        props: { toolCalls, flow: flow('standalone') }
+        props: { toolCalls, flow: flow('standalone') },
       });
 
       expect(wrapper.text()).toContain('Used search, search, fetch');
@@ -182,7 +182,7 @@ describe('AI Sequence Design', () => {
     it('summarizes tool names when over the limit of 3', () => {
       const toolCalls = createToolCalls(['t1', 't2', 't3', 't4', 't5']);
       const wrapper = mount(ToolCallGroupItem, {
-        props: { toolCalls, flow: flow('standalone') }
+        props: { toolCalls, flow: flow('standalone') },
       });
 
       expect(wrapper.text()).toContain('Used t1, t2, t3 and 2 more');

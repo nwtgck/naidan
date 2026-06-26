@@ -9,8 +9,8 @@ import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
 function parseWrap({
   value,
 }: {
-  value: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   if (!/^\d+$/u.test(value)) {
     return { ok: false, message: `invalid wrap size: '${value}'` };
   }
@@ -21,7 +21,7 @@ function parseWrap({
 function encodeBytesToBase64({
   bytes,
 }: {
-  bytes: Uint8Array;
+  bytes: Uint8Array,
 }): string {
   const parts: string[] = [];
   const chunkSize = 0x8000;
@@ -37,10 +37,10 @@ async function writeWrappedBase64({
   wrap,
   column,
 }: {
-  writer: ReturnType<typeof createBufferedTextWriter>;
-  value: string;
-  wrap: number;
-  column: number;
+  writer: ReturnType<typeof createBufferedTextWriter>,
+  value: string,
+  wrap: number,
+  column: number,
 }): Promise<number> {
   if (wrap === 0) {
     await writer.write({ text: value });
@@ -70,9 +70,9 @@ async function encodeStream({
   input,
   wrap,
 }: {
-  context: WeshCommandContext;
-  input: string | undefined;
-  wrap: number;
+  context: WeshCommandContext,
+  input: string | undefined,
+  wrap: number,
 }): Promise<void> {
   const writer = createBufferedTextWriter({
     handle: context.stdout,
@@ -132,7 +132,7 @@ async function encodeStream({
 function isBase64Whitespace({
   byte,
 }: {
-  byte: number;
+  byte: number,
 }): boolean {
   switch (byte) {
   case 0x09:
@@ -150,7 +150,7 @@ function isBase64Whitespace({
 function isBase64Byte({
   byte,
 }: {
-  byte: number;
+  byte: number,
 }): boolean {
   return (byte >= 0x41 && byte <= 0x5a)
     || (byte >= 0x61 && byte <= 0x7a)
@@ -163,7 +163,7 @@ function isBase64Byte({
 function decodeBase64Group({
   value,
 }: {
-  value: string;
+  value: string,
 }): Uint8Array {
   let binary: string;
   try {
@@ -182,8 +182,8 @@ async function decodeStream({
   context,
   input,
 }: {
-  context: WeshCommandContext;
-  input: string | undefined;
+  context: WeshCommandContext,
+  input: string | undefined,
 }): Promise<void> {
   let group = '';
   let finished = false;
@@ -204,7 +204,7 @@ async function decodeStream({
   const appendDecoded = async ({
     value,
   }: {
-    value: Uint8Array;
+    value: Uint8Array,
   }): Promise<void> => {
     if (outputLength + value.byteLength > output.byteLength) {
       await flush();

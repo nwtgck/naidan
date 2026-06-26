@@ -1,1 +1,1 @@
-export { createFileProtocolCompatibleWeshWorkerClient } from './client-hosted'
+export { createFileProtocolCompatibleWeshWorkerClient } from './client-hosted';

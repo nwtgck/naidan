@@ -21,17 +21,17 @@ export type TextPatternPart = string | { slot: TextPatternSlot };
 export type TextPatternRequirement = 'inputKeyword' | 'inputGreeting';
 
 export type TextPattern = {
-  weight: number;
-  parts: TextPatternPart[];
-  affinity?: Partial<Record<FakeLmToneKey, number>>;
-  requires?: TextPatternRequirement[];
-  containsNotAlways?: boolean;
+  weight: number,
+  parts: TextPatternPart[],
+  affinity?: Partial<Record<FakeLmToneKey, number>>,
+  requires?: TextPatternRequirement[],
+  containsNotAlways?: boolean,
 };
 
 export type PatternHistory = {
-  recentPatternKeys: string[];
-  notAlwaysCount: number;
-  recentInputKeywords: string[];
+  recentPatternKeys: string[],
+  notAlwaysCount: number,
+  recentInputKeywords: string[],
 };
 
 export function createPatternHistory(): PatternHistory {
@@ -43,10 +43,10 @@ export function createPatternHistory(): PatternHistory {
 }
 
 export function pickTextPattern({ patterns, ctx, category }: {
-  patterns: readonly TextPattern[];
-  ctx: FakeLmContext;
-  category: string;
-}): { pattern: TextPattern; key: string } {
+  patterns: readonly TextPattern[],
+  ctx: FakeLmContext,
+  category: string,
+}): { pattern: TextPattern, key: string } {
   const weighted = patterns
     .map((pattern, index) => {
       const key = `${category}:${index}`;
@@ -71,9 +71,9 @@ export function pickTextPattern({ patterns, ctx, category }: {
 }
 
 export function recordTextPatternUse({ pattern, key, ctx }: {
-  pattern: TextPattern;
-  key: string;
-  ctx: FakeLmContext;
+  pattern: TextPattern,
+  key: string,
+  ctx: FakeLmContext,
 }): void {
   ctx.patternHistory.recentPatternKeys = [
     key,
@@ -86,8 +86,8 @@ export function recordTextPatternUse({ pattern, key, ctx }: {
 }
 
 export function recordInputKeywordUse({ keyword, ctx }: {
-  keyword: string;
-  ctx: FakeLmContext;
+  keyword: string,
+  ctx: FakeLmContext,
 }): void {
   ctx.patternHistory.recentInputKeywords = [
     keyword,
@@ -96,9 +96,9 @@ export function recordInputKeywordUse({ keyword, ctx }: {
 }
 
 export function renderTextPattern({ pattern, ctx, renderSlot }: {
-  pattern: TextPattern;
-  ctx: FakeLmContext;
-  renderSlot: ({ slot, ctx }: { slot: TextPatternSlot; ctx: FakeLmContext }) => string;
+  pattern: TextPattern,
+  ctx: FakeLmContext,
+  renderSlot: ({ slot, ctx }: { slot: TextPatternSlot, ctx: FakeLmContext }) => string,
 }): string {
   return pattern.parts.map((part) => {
     if (typeof part === 'string') {
@@ -110,8 +110,8 @@ export function renderTextPattern({ pattern, ctx, renderSlot }: {
 }
 
 function patternRequiresAvailableInput({ pattern, ctx }: {
-  pattern: TextPattern;
-  ctx: FakeLmContext;
+  pattern: TextPattern,
+  ctx: FakeLmContext,
 }): boolean {
   if (pattern.requires?.includes('inputKeyword') === true && ctx.inputAnalysis.keywords.length === 0) {
     return false;
@@ -125,10 +125,10 @@ function patternRequiresAvailableInput({ pattern, ctx }: {
 }
 
 function makePatternWeight({ pattern, key, ctx, category }: {
-  pattern: TextPattern;
-  key: string;
-  ctx: FakeLmContext;
-  category: string;
+  pattern: TextPattern,
+  key: string,
+  ctx: FakeLmContext,
+  category: string,
 }): number {
   if (category === 'opening' && ctx.inputAnalysis.toneScores.greeting >= 0.85 && pattern.affinity?.greeting === undefined) {
     return 0;
@@ -156,8 +156,8 @@ function makePatternWeight({ pattern, key, ctx, category }: {
 }
 
 function makeAffinityMultiplier({ toneScores, affinity }: {
-  toneScores: FakeLmToneScores;
-  affinity: Partial<Record<FakeLmToneKey, number>>;
+  toneScores: FakeLmToneScores,
+  affinity: Partial<Record<FakeLmToneKey, number>>,
 }): number {
   const tonePull = Object.entries(affinity).reduce((sum, [key, value]) => {
     const toneKey = key as FakeLmToneKey;

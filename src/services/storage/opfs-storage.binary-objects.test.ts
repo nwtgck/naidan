@@ -99,7 +99,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       blob,
       binaryObjectId: toBinaryObjectId({ raw: id }),
       name: 'test.png',
-      mimeType: undefined
+      mimeType: undefined,
     });
 
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage');
@@ -120,7 +120,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     expect(index.objects[id]).toMatchObject({
       mimeType: 'image/png',
       size: 5,
-      name: 'test.png'
+      name: 'test.png',
     });
   });
 
@@ -159,13 +159,13 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       blob: new Blob(['1'], { type: 'image/png' }),
       binaryObjectId: toBinaryObjectId({ raw: id1 }),
       name: 'img1.png',
-      mimeType: undefined
+      mimeType: undefined,
     });
     await provider.saveFile({
       blob: new Blob(['22'], { type: 'application/pdf' }),
       binaryObjectId: toBinaryObjectId({ raw: id2 }),
       name: 'doc2.pdf',
-      mimeType: undefined
+      mimeType: undefined,
     });
 
     const nodes: MessageNode[] = [{
@@ -175,9 +175,9 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       timestamp: Date.now(),
       attachments: [
         { id: toAttachmentId({ raw: '22222222-2222-4222-a222-222222222222' }), binaryObjectId: toBinaryObjectId({ raw: id1 }), originalName: 'img1.png', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 },
-        { id: toAttachmentId({ raw: '33333333-3333-4333-a333-333333333333' }), binaryObjectId: toBinaryObjectId({ raw: id2 }), originalName: 'doc2.pdf', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 }
+        { id: toAttachmentId({ raw: '33333333-3333-4333-a333-333333333333' }), binaryObjectId: toBinaryObjectId({ raw: id2 }), originalName: 'doc2.pdf', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 },
       ],
-      replies: { items: [] }
+      replies: { items: [] },
     }];
 
     // Hydrate
@@ -199,7 +199,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       blob: new Blob(['test']),
       binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-4466554400a1' }),
       name: 't.txt',
-      mimeType: undefined
+      mimeType: undefined,
     });
     expect(await provider.hasAttachments()).toBe(true);
   });
@@ -210,7 +210,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       blob: new Blob(['test']),
       binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-4466554400a1' }),
       name: 't.txt',
-      mimeType: undefined
+      mimeType: undefined,
     });
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage');
     expect(naidanDir.entries.has('binary-objects')).toBe(true);

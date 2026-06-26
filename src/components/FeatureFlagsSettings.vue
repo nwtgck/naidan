@@ -149,7 +149,7 @@ defineExpose({
     handleToolConfigPersistenceToggle,
     handleSidebarSendMessageReorderToggle,
     handleFakeLmDebugModeToggle,
-  }
+  },
 });
 </script>
 
@@ -216,10 +216,10 @@ defineExpose({
       <ExperimentalFeatureRow
         id="feature-tool-config-persistence"
         title="Tool config persistence"
-        summary="Saves chat tool settings into chat metadata."
+        summary="Saves Global, Chat Group, and Chat tool settings."
         :details="toolConfigPersistence === 'enabled'
-          ? 'Tool configuration changes are persisted to chat metadata. Disable it to keep tool settings limited to the current runtime session.'
-          : 'Disabled by default. Tool configuration changes affect the current runtime session but are not saved to chat metadata.'"
+          ? 'Global, Chat Group, and Chat overrides are persisted. Disable it to make new Chat changes runtime-only while keeping saved settings active.'
+          : 'Saved settings remain active. Global and Chat Group settings are read-only, while new Chat changes last only for the current browser session.'"
         :status="toolConfigPersistence === 'enabled' ? 'enabled' : 'disabled'"
         toggle-availability="available"
         :toggle-label="toolConfigPersistence === 'enabled' ? 'Disable Tool config persistence' : 'Enable Tool config persistence'"

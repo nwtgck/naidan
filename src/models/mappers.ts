@@ -2,6 +2,10 @@
  * Mappers
  */
 import type { ToolConfig } from '@/services/tools/types';
+import type {
+  ExperimentalToolConfigDto,
+  ExperimentalToolConfigsDto,
+} from './experimental.dto';
 
 import type {
   RoleDto,
@@ -71,7 +75,7 @@ import {
 const toolConfigPersistenceToExperimentalDto = ({
   persistence,
 }: {
-  persistence: ToolConfigPersistence | undefined;
+  persistence: ToolConfigPersistence | undefined,
 }): 'enabled' | undefined => {
   const normalized = persistence ?? 'disabled';
   switch (normalized) {
@@ -89,7 +93,7 @@ const toolConfigPersistenceToExperimentalDto = ({
 const fakeLmToExperimentalDto = ({
   status,
 }: {
-  status: 'disabled' | 'enabled' | undefined;
+  status: 'disabled' | 'enabled' | undefined,
 }): 'enabled' | undefined => {
   const normalized = status ?? 'disabled';
   switch (normalized) {
@@ -104,18 +108,76 @@ const fakeLmToExperimentalDto = ({
   }
 };
 
+const toolConfigToDomain = ({
+  dto,
+}: {
+  dto: ExperimentalToolConfigDto,
+}): ToolConfig => {
+  switch (dto.key) {
+  case 'builtin.calculator':
+  case 'builtin.choices':
+  case 'builtin.wikipedia':
+    return {
+      key: dto.key,
+      status: dto.status,
+    };
+  case 'builtin.wesh':
+    return {
+      key: dto.key,
+      status: dto.status,
+      naidanSysfs: {
+        accessScope: dto.naidanSysfs.accessScope,
+      },
+    };
+  default: {
+    const _ex: never = dto;
+    throw new Error(`Unhandled tool config DTO: ${String(_ex)}`);
+  }
+  }
+};
+
+const toolConfigToDto = ({
+  domain,
+}: {
+  domain: ToolConfig,
+}): ExperimentalToolConfigDto => {
+  switch (domain.key) {
+  case 'builtin.calculator':
+  case 'builtin.choices':
+  case 'builtin.wikipedia':
+    return {
+      key: domain.key,
+      status: domain.status,
+    };
+  case 'builtin.wesh':
+    return {
+      key: domain.key,
+      status: domain.status,
+      naidanSysfs: {
+        accessScope: domain.naidanSysfs.accessScope,
+      },
+    };
+  default: {
+    const _ex: never = domain;
+    throw new Error(`Unhandled tool config domain: ${String(_ex)}`);
+  }
+  }
+};
+
 const toolConfigsToDomain = ({
   toolConfigs,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-}): ToolConfig[] | undefined => toolConfigs;
+  toolConfigs: ExperimentalToolConfigsDto | undefined,
+}): ToolConfig[] | undefined => toolConfigs?.map(dto => toolConfigToDomain({ dto }));
 
 const toolConfigsToExperimentalDto = ({
   toolConfigs,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-}): { toolConfigs: ToolConfig[] | undefined } | undefined => {
-  return toolConfigs === undefined ? undefined : { toolConfigs };
+  toolConfigs: ToolConfig[] | undefined,
+}): { toolConfigs: ExperimentalToolConfigsDto | undefined } | undefined => {
+  return toolConfigs === undefined
+    ? undefined
+    : { toolConfigs: toolConfigs.map(domain => toolConfigToDto({ domain })) };
 };
 
 const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
@@ -230,7 +292,7 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
   originChatId: dto.originChatId === undefined ? undefined : toChatId({ raw: dto.originChatId }),
   originMessageId: dto.originMessageId === undefined ? undefined : toMessageId({ raw: dto.originMessageId }),
   mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
-  toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
+  toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
 });
 
 /**
@@ -238,10 +300,10 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
  * Resolves nested items using the hierarchy and provided chat metadata.
  */
 export const chatGroupToDomain = (
-  { dto, hierarchy, chatMetas }: { dto: ChatGroupDto, hierarchy: Hierarchy, chatMetas: ChatMeta[] }
+  { dto, hierarchy, chatMetas }: { dto: ChatGroupDto, hierarchy: Hierarchy, chatMetas: ChatMeta[] },
 ): ChatGroup => {
   const node = hierarchy.items.find(
-    i => i.type === 'chat_group' && i.id === toChatGroupId({ raw: dto.id })
+    i => i.type === 'chat_group' && i.id === toChatGroupId({ raw: dto.id }),
   ) as HierarchyChatGroupNode | undefined;
 
   const chatIds = node?.chat_ids || [];
@@ -255,8 +317,8 @@ export const chatGroupToDomain = (
         id: cid,
         title: meta?.title || null,
         updatedAt: meta?.updatedAt || 0,
-        groupId: toChatGroupId({ raw: dto.id })
-      }
+        groupId: toChatGroupId({ raw: dto.id }),
+      },
     };
   });
 
@@ -294,6 +356,7 @@ export const chatGroupToDomain = (
     systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
     mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
   };
 };
 
@@ -309,10 +372,11 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
   systemPrompt: domain.systemPrompt,
   lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
   mounts: domain.mounts?.map(domain => mountToDto({ domain })),
+  experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
 });
 
 export const lmParametersToDomain = (
-  { dto }: { dto: LmParametersDto | undefined }
+  { dto }: { dto: LmParametersDto | undefined },
 ): LmParameters | undefined => {
   if (!dto) return undefined;
 
@@ -368,7 +432,7 @@ export const lmParametersToDomain = (
 };
 
 export const lmParametersToDto = (
-  { domain }: { domain: LmParameters | undefined }
+  { domain }: { domain: LmParameters | undefined },
 ): LmParametersDto | undefined => {
   const normalized = normalizeLmParameters({ lmParameters: domain });
   if (normalized === undefined) return undefined;
@@ -580,12 +644,12 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
             content: (() => {
               switch (dto.content.type) {
               case 'text':
-                return dto.content
+                return dto.content;
               case 'binary_object':
-                return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.content.id }) }
+                return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.content.id }) };
               default: {
-                const _ex: never = dto.content
-                throw new Error(`Unhandled tool result content: ${((_ex satisfies never) as { readonly type: string }).type}`)
+                const _ex: never = dto.content;
+                throw new Error(`Unhandled tool result content: ${((_ex satisfies never) as { readonly type: string }).type}`);
               }
               }
             })(),
@@ -599,12 +663,12 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
               message: (() => {
                 switch (dto.error.message.type) {
                 case 'text':
-                  return dto.error.message
+                  return dto.error.message;
                 case 'binary_object':
-                  return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.error.message.id }) }
+                  return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.error.message.id }) };
                 default: {
-                  const _ex: never = dto.error.message
-                  throw new Error(`Unhandled tool error message: ${((_ex satisfies never) as { readonly type: string }).type}`)
+                  const _ex: never = dto.error.message;
+                  throw new Error(`Unhandled tool error message: ${((_ex satisfies never) as { readonly type: string }).type}`);
                 }
                 }
               })(),
@@ -692,12 +756,12 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
             content: (() => {
               switch (domain.content.type) {
               case 'text':
-                return domain.content
+                return domain.content;
               case 'binary_object':
-                return { type: 'binary_object', id: idToRaw({ id: domain.content.id }) }
+                return { type: 'binary_object', id: idToRaw({ id: domain.content.id }) };
               default: {
-                const _ex: never = domain.content
-                throw new Error(`Unhandled tool result content: ${((_ex satisfies never) as { readonly type: string }).type}`)
+                const _ex: never = domain.content;
+                throw new Error(`Unhandled tool result content: ${((_ex satisfies never) as { readonly type: string }).type}`);
               }
               }
             })(),
@@ -711,12 +775,12 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
               message: (() => {
                 switch (domain.error.message.type) {
                 case 'text':
-                  return domain.error.message
+                  return domain.error.message;
                 case 'binary_object':
-                  return { type: 'binary_object', id: idToRaw({ id: domain.error.message.id }) }
+                  return { type: 'binary_object', id: idToRaw({ id: domain.error.message.id }) };
                 default: {
-                  const _ex: never = domain.error.message
-                  throw new Error(`Unhandled tool error message: ${((_ex satisfies never) as { readonly type: string }).type}`)
+                  const _ex: never = domain.error.message;
+                  throw new Error(`Unhandled tool error message: ${((_ex satisfies never) as { readonly type: string }).type}`);
                 }
                 }
               })(),
@@ -737,12 +801,12 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
 };
 
 interface LegacyMessage {
-  id: string;
-  role: Role;
-  content: string;
-  timestamp: number;
-  thinking?: string;
-  modelId?: string;
+  id: string,
+  role: Role,
+  content: string,
+  timestamp: number,
+  thinking?: string,
+  modelId?: string,
 }
 
 function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): MessageBranch {
@@ -770,7 +834,7 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
           presencePenalty: undefined,
           frequencyPenalty: undefined,
           stop: undefined,
-          reasoning: { effort: undefined }
+          reasoning: { effort: undefined },
         },
         toolCalls: undefined,
         results: undefined,
@@ -790,7 +854,7 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
           presencePenalty: undefined,
           frequencyPenalty: undefined,
           stop: undefined,
-          reasoning: { effort: undefined }
+          reasoning: { effort: undefined },
         },
         toolCalls: undefined,
         results: undefined,
@@ -842,7 +906,7 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
   const {
     id, title, currentLeafId, createdAt, updatedAt,
     debugEnabled, endpoint, modelId, originChatId, originMessageId,
-    systemPrompt, lmParameters
+    systemPrompt, lmParameters,
   } = dto;
 
   const endpointInfo = endpoint ? (() => {
@@ -888,7 +952,7 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: lmParameters }),
     mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
-    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
   };
 };
 
@@ -931,7 +995,7 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
   const {
     id, title, root, currentLeafId, createdAt, updatedAt,
     debugEnabled, endpointType, endpointUrl, endpointHttpHeaders,
-    modelId, originChatId, originMessageId, systemPrompt, lmParameters
+    modelId, originChatId, originMessageId, systemPrompt, lmParameters,
   } = domain;
 
   return {
@@ -965,7 +1029,7 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
  * Uses Hierarchy as the structural template.
  */
 export const buildSidebarItemsFromHierarchy = (
-  { hierarchy, chatMetas, chatGroups }: { hierarchy: Hierarchy, chatMetas: ChatMeta[], chatGroups: Omit<ChatGroup, 'items'>[] }
+  { hierarchy, chatMetas, chatGroups }: { hierarchy: Hierarchy, chatMetas: ChatMeta[], chatGroups: Omit<ChatGroup, 'items'>[] },
 ): SidebarItem[] => {
   const metaMap = new Map(chatMetas.map(m => [m.id, m]));
   const groupMap = new Map(chatGroups.map(g => [g.id, g]));
@@ -978,7 +1042,7 @@ export const buildSidebarItemsFromHierarchy = (
       return {
         id: `chat:${idToRaw({ id: node.id })}`,
         type: 'chat',
-        chat: { ...chatMetaToSummary({ domain: meta }), groupId: null }
+        chat: { ...chatMetaToSummary({ domain: meta }), groupId: null },
       };
     }
     case 'chat_group': {
@@ -992,7 +1056,7 @@ export const buildSidebarItemsFromHierarchy = (
           return {
             id: `chat:${idToRaw({ id: cid })}`,
             type: 'chat' as const,
-            chat: { ...chatMetaToSummary({ domain: m }), groupId: groupMeta.id }
+            chat: { ...chatMetaToSummary({ domain: m }), groupId: groupMeta.id },
           } as ChatSidebarItem;
         })
         .filter((i): i is ChatSidebarItem => i !== null);
@@ -1000,7 +1064,7 @@ export const buildSidebarItemsFromHierarchy = (
       return {
         id: `chat_group:${idToRaw({ id: node.id })}`,
         type: 'chat_group',
-        chatGroup: { ...groupMeta, items: nestedItems }
+        chatGroup: { ...groupMeta, items: nestedItems },
       };
     }
     default: {
@@ -1049,6 +1113,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
         ? {}
         : { markdownRendering: rest.experimental.markdownRendering }),
       toolConfigPersistence: rest.experimental?.toolConfigPersistence ?? 'disabled',
+      toolConfigs: toolConfigsToDomain({ toolConfigs: rest.experimental?.toolConfigs }),
       fakeLm: rest.experimental?.fakeLm ?? 'disabled',
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
       ...(rest.experimental?.unreadable === undefined
@@ -1134,6 +1199,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
         persistence: rest.experimental?.toolConfigPersistence,
       }),
+      toolConfigs: rest.experimental?.toolConfigs?.map(domain => toolConfigToDto({ domain })),
       fakeLm: fakeLmToExperimentalDto({
         status: rest.experimental?.fakeLm,
       }),

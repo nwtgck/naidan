@@ -6,9 +6,9 @@ import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
 
 export type ChatListDataAdapter = {
-  chats: ComputedRef<ChatSummary[]>;
+  chats: ComputedRef<ChatSummary[]>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatListData(): ChatListDataAdapter {

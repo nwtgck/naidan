@@ -31,13 +31,13 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
     onEvent: _onEvent,
     approvalContext,
   }: {
-    args: unknown;
-    signal?: AbortSignal;
-    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
-    approvalContext?: ToolApprovalContext;
+    args: unknown,
+    signal?: AbortSignal,
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>,
+    approvalContext?: ToolApprovalContext,
   }): Promise<
-    | { status: 'success'; content: string }
-    | { status: 'error'; code: ToolExecutionErrorCode; message: string }
+    | { status: 'success', content: string }
+    | { status: 'error', code: ToolExecutionErrorCode, message: string }
   > {
     const validated = WikipediaSearchArgsSchema.safeParse(args);
     if (!validated.success) {
@@ -128,13 +128,13 @@ Long page text may be saved to sysfs Naidan instead of being returned inline.`;
     onEvent: _onEvent,
     approvalContext,
   }: {
-    args: unknown;
-    signal?: AbortSignal;
-    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
-    approvalContext?: ToolApprovalContext;
+    args: unknown,
+    signal?: AbortSignal,
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>,
+    approvalContext?: ToolApprovalContext,
   }): Promise<
-    | { status: 'success'; content: string }
-    | { status: 'error'; code: ToolExecutionErrorCode; message: string }
+    | { status: 'success', content: string }
+    | { status: 'error', code: ToolExecutionErrorCode, message: string }
   > {
     const validated = WikipediaGetPageArgsSchema.safeParse(args);
     if (!validated.success) {

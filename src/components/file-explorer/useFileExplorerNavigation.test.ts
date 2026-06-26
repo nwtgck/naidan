@@ -21,7 +21,7 @@ class MockFileSystemFileHandle {
     this._lastModified = lastModified;
   }
 
-  async getFile(): Promise<{ size: number; lastModified: number }> {
+  async getFile(): Promise<{ size: number, lastModified: number }> {
     return { size: this._size, lastModified: this._lastModified };
   }
 }
@@ -70,7 +70,7 @@ class MockExplorerDirectory implements ExplorerDirectory {
     return fh as unknown as FileSystemFileHandle;
   }
 
-  async remove({ name }: { name: string; recursive: boolean }): Promise<void> {
+  async remove({ name }: { name: string, recursive: boolean }): Promise<void> {
     this._entries.delete(name);
   }
 
@@ -119,11 +119,11 @@ async function resolveDirectory({ path }: { path: string }): Promise<MockExplore
 }
 
 async function readDirectory({ path }: { path: string }): Promise<{
-  directoryName: string;
-  directoryPath: string;
-  readOnly: boolean;
-  pathSegments: FileExplorerPathSegment[];
-  entries: FileExplorerEntry[];
+  directoryName: string,
+  directoryPath: string,
+  readOnly: boolean,
+  pathSegments: FileExplorerPathSegment[],
+  entries: FileExplorerEntry[],
 }> {
   const normalizedPath = normalizePath(path);
   const directory = await resolveDirectory({ path: normalizedPath });

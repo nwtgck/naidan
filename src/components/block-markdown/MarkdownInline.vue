@@ -7,8 +7,8 @@ import { sanitizeMarkdownHtml, splitMarkdownHtmlByExternalImages } from '@/lib/s
 import type { MarkdownInlinePart } from '@/lib/security/allowedHtml';
 
 const props = defineProps<{
-  text: string;
-  mode: 'markdown' | 'html';
+  text: string,
+  mode: 'markdown' | 'html',
 }>();
 
 const parts = computed<MarkdownInlinePart[]>(() => {
@@ -34,7 +34,7 @@ const parts = computed<MarkdownInlinePart[]>(() => {
 defineExpose({
   TEST_ONLY: {
     parts,
-  }
+  },
 });
 </script>
 

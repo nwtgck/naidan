@@ -1,0 +1,5 @@
+.standalone-verification-lazy-style-probe {
+  --debug-file-protocol-standalone-lazy-style-marker: applied;
+  outline-style: solid;
+  outline-width: 3px;
+}

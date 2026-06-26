@@ -16,11 +16,11 @@ import type { VolumeId } from '@/models/ids';
 
 const props = defineProps<{
   /** Existing mount paths used to avoid conflicts when suggesting a default path. */
-  existingMountPaths: string[];
+  existingMountPaths: string[],
   /** Prefix prepended when generating a suggested mount path (e.g. '/' or '/home/user/'). */
-  mountPathPrefix: string;
+  mountPathPrefix: string,
   /** CSS selector for the drag-overlay Teleport target. Omit to disable drag-drop. */
-  dragOverlayTarget?: string;
+  dragOverlayTarget?: string,
 }>();
 
 const emit = defineEmits<{
@@ -28,13 +28,13 @@ const emit = defineEmits<{
    * Fired after a volume is created. The parent is responsible for mounting it
    * (globally via storageService or as a chat group mount).
    */
-  created: [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
+  created: [{ volumeId: VolumeId, mountPath: string, readOnly: boolean }],
 }>();
 
 const { addToast } = useToast();
 
 const isCreating = ref(false);
-const progress = ref<{ processed: number; total: number } | null>(null);
+const progress = ref<{ processed: number, total: number } | null>(null);
 const copyAbortController = ref<AbortController | null>(null);
 const copyingLabel = ref('');
 
@@ -77,8 +77,8 @@ function generateSuggestedPath({ baseName }: { baseName: string }): string {
   return path;
 }
 
-function fileListToEntries({ files }: { files: FileList }): Array<{ file: File; relativePath: string }> {
-  const result: Array<{ file: File; relativePath: string }> = [];
+function fileListToEntries({ files }: { files: FileList }): Array<{ file: File, relativePath: string }> {
+  const result: Array<{ file: File, relativePath: string }> = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     if (!file) continue;
@@ -89,8 +89,8 @@ function fileListToEntries({ files }: { files: FileList }): Array<{ file: File; 
   return result;
 }
 
-async function readDirectoryEntries({ entry, basePath }: { entry: FileSystemDirectoryEntry; basePath: string }): Promise<Array<{ file: File; relativePath: string }>> {
-  const result: Array<{ file: File; relativePath: string }> = [];
+async function readDirectoryEntries({ entry, basePath }: { entry: FileSystemDirectoryEntry, basePath: string }): Promise<Array<{ file: File, relativePath: string }>> {
+  const result: Array<{ file: File, relativePath: string }> = [];
   const reader = entry.createReader();
 
   await new Promise<void>((resolve, reject) => {
@@ -118,10 +118,10 @@ async function readDirectoryEntries({ entry, basePath }: { entry: FileSystemDire
 }
 
 async function startCopyAndEmit({ name, entries, label, readOnly }: {
-  name: string;
-  entries: Array<{ file: File; relativePath: string }>;
-  label: string;
-  readOnly: boolean;
+  name: string,
+  entries: Array<{ file: File, relativePath: string }>,
+  label: string,
+  readOnly: boolean,
 }) {
   const controller = new AbortController();
   copyAbortController.value = controller;
@@ -224,7 +224,7 @@ async function handleDrop({ event }: { event: DragEvent }) {
 
   const folderName = fsEntries[0]!.name;
   try {
-    const allEntries: Array<{ file: File; relativePath: string }> = [];
+    const allEntries: Array<{ file: File, relativePath: string }> = [];
     for (const entry of fsEntries) {
       if (entry.isFile) {
         const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
@@ -356,7 +356,7 @@ onUnmounted(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

@@ -31,34 +31,34 @@ import { builtinCommands } from './commands';
 import { helpCommandDefinition } from './commands/help';
 
 interface WeshJob {
-  id: number;
-  command: string;
-  pid: number;
-  status: 'running' | 'done';
+  id: number,
+  command: string,
+  pid: number,
+  status: 'running' | 'done',
 }
 
 interface WeshExecutionEnvironment {
-  shellPid: number;
-  pgid: number;
-  env: Map<string, string>;
-  aliases: Map<string, string>;
-  functions: Map<string, WeshASTNode>;
-  cwd: string;
-  fds: Map<number, WeshFileHandle>;
-  traps: Map<string, WeshTrapDisposition>;
-  shellOptions: Map<WeshShellOption, boolean>;
-  positionalArgs: string[];
-  lastBackgroundPid: number | undefined;
+  shellPid: number,
+  pgid: number,
+  env: Map<string, string>,
+  aliases: Map<string, string>,
+  functions: Map<string, WeshASTNode>,
+  cwd: string,
+  fds: Map<number, WeshFileHandle>,
+  traps: Map<string, WeshTrapDisposition>,
+  shellOptions: Map<WeshShellOption, boolean>,
+  positionalArgs: string[],
+  lastBackgroundPid: number | undefined,
 }
 
 type WeshExpansionMode = 'argv' | 'assignment' | 'redirection';
 
 interface WeshExpandedField {
-  text: string;
+  text: string,
   parts: Array<{
-    text: string;
-    quoted: boolean;
-  }>;
+    text: string,
+    quoted: boolean,
+  }>,
 }
 
 const WESH_SHELL_SPECIAL_FILES = {
@@ -80,7 +80,7 @@ const WESH_SHELL_SPECIAL_FILE_CONTENT = {
 function stripShebangLine({
   script,
 }: {
-  script: string;
+  script: string,
 }): string {
   if (!script.startsWith('#!')) {
     return script;
@@ -102,18 +102,18 @@ class StaticTextFileHandle implements WeshFileHandle {
     text,
     mode,
   }: {
-    text: string;
-    mode: number;
+    text: string,
+    mode: number,
   }) {
     this.bytes = new TextEncoder().encode(text);
     this.mode = mode;
   }
 
   async read({ buffer, offset, length: requestedLength, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<{ bytesRead: number }> {
     const bufferOffset = offset ?? 0;
     const length = requestedLength ?? (buffer.length - bufferOffset);
@@ -160,9 +160,9 @@ class StaticTextFileHandle implements WeshFileHandle {
 
 class SharedFileHandle implements WeshFileHandle {
   private readonly state: {
-    handle: WeshFileHandle;
-    refCount: number;
-    closed: boolean;
+    handle: WeshFileHandle,
+    refCount: number,
+    closed: boolean,
   };
   private closed = false;
 
@@ -170,10 +170,10 @@ class SharedFileHandle implements WeshFileHandle {
     state,
   }: {
     state: {
-      handle: WeshFileHandle;
-      refCount: number;
-      closed: boolean;
-    };
+      handle: WeshFileHandle,
+      refCount: number,
+      closed: boolean,
+    },
   }) {
     this.state = state;
   }
@@ -186,20 +186,20 @@ class SharedFileHandle implements WeshFileHandle {
   }
 
   async read({ buffer, offset, length, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<{ bytesRead: number }> {
     const options = { buffer, offset, length, position };
     return this.state.handle.read(options);
   }
 
   async write({ buffer, offset, length, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<{ bytesWritten: number }> {
     const options = { buffer, offset, length, position };
     return this.state.handle.write(options);
@@ -226,7 +226,7 @@ class SharedFileHandle implements WeshFileHandle {
     await this.state.handle.truncate(options);
   }
 
-  async ioctl({ request, arg }: { request: number; arg?: unknown }): Promise<{ ret: number }> {
+  async ioctl({ request, arg }: { request: number, arg?: unknown }): Promise<{ ret: number }> {
     const options = { request, arg };
     return this.state.handle.ioctl(options);
   }
@@ -239,7 +239,7 @@ class SharedFileHandle implements WeshFileHandle {
 function weshSignalConditionNames({
   signal,
 }: {
-  signal: number;
+  signal: number,
 }): string[] {
   switch (signal) {
   case 2:
@@ -254,7 +254,7 @@ function weshSignalConditionNames({
 function weshSignalNumbersForCondition({
   condition,
 }: {
-  condition: string;
+  condition: string,
 }): number[] {
   switch (condition) {
   case 'INT':
@@ -291,8 +291,8 @@ export class Wesh {
     ['nullglob', false],
   ]);
   private readonly foregroundProcessGroupScopes: Array<{
-    id: number;
-    pgid: number;
+    id: number,
+    pgid: number,
   }> = [];
   private nextForegroundProcessGroupScopeId = 1;
 
@@ -304,10 +304,10 @@ export class Wesh {
     initialEnv = {},
     initialCwd,
   }: {
-    rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle;
-    user?: string;
-    initialEnv?: Record<string, string>;
-    initialCwd?: string;
+    rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle,
+    user?: string,
+    initialEnv?: Record<string, string>,
+    initialCwd?: string,
   }) {
     this.vfs = new WeshVFS({ rootHandle });
     this.kernel = new WeshKernel({ vfs: this.vfs });
@@ -418,17 +418,17 @@ export class Wesh {
     return true;
   }
 
-  private registerInternalCommand({ name, fn }: { name: string; fn: ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult> }) {
+  private registerInternalCommand({ name, fn }: { name: string, fn: ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult> }) {
     this.commands.set(name, {
       fn,
-      meta: { name, description: 'Built-in command', usage: name }
+      meta: { name, description: 'Built-in command', usage: name },
     });
   }
 
   private createShellAliasCommandDefinition({
     name,
   }: {
-    name: 'sh' | 'bash';
+    name: 'sh' | 'bash',
   }): WeshCommandDefinition {
     return {
       meta: {
@@ -539,18 +539,18 @@ usage: ${name} [-c command] [file [argument...]]
     cwd,
     env,
   }: {
-    name: string;
-    cwd: string;
-    env: Map<string, string>;
+    name: string,
+    cwd: string,
+    env: Map<string, string>,
   }): {
-    definition: WeshCommandDefinition;
+    definition: WeshCommandDefinition,
     resolved: {
-      kind: 'builtin';
-      name: string;
-      meta: WeshCommandDefinition['meta'];
-      invocationPath: string | undefined;
-      resolution: 'builtin-name' | 'path-lookup' | 'explicit-path';
-    };
+      kind: 'builtin',
+      name: string,
+      meta: WeshCommandDefinition['meta'],
+      invocationPath: string | undefined,
+      resolution: 'builtin-name' | 'path-lookup' | 'explicit-path',
+    },
   } | undefined {
     const direct = this.commands.get(name);
     if (direct !== undefined) {
@@ -630,7 +630,7 @@ usage: ${name} [-c command] [file [argument...]]
   private async readHandleToBytes({
     handle,
   }: {
-    handle: WeshFileHandle;
+    handle: WeshFileHandle,
   }): Promise<Uint8Array> {
     const chunks: Uint8Array[] = [];
     let totalLength = 0;
@@ -663,10 +663,10 @@ usage: ${name} [-c command] [file [argument...]]
     cwd,
     env,
   }: {
-    name: string;
-    cwd: string;
-    env: Map<string, string>;
-  }): Promise<{ scriptPath: string; interpreter: string; interpreterArgs: string[] } | undefined> {
+    name: string,
+    cwd: string,
+    env: Map<string, string>,
+  }): Promise<{ scriptPath: string, interpreter: string, interpreterArgs: string[] } | undefined> {
     const candidatePaths = (() => {
       if (name.includes('/')) {
         return [resolvePath({ cwd, path: name })];
@@ -740,9 +740,9 @@ usage: ${name} [-c command] [file [argument...]]
     environment,
     expandedAliases,
   }: {
-    node: WeshCommandNode;
-    environment: WeshExecutionEnvironment;
-    expandedAliases: Set<string>;
+    node: WeshCommandNode,
+    environment: WeshExecutionEnvironment,
+    expandedAliases: Set<string>,
   }): WeshCommandNode {
     if (expandedAliases.has(node.name)) {
       return node;
@@ -806,16 +806,16 @@ usage: ${name} [-c command] [file [argument...]]
   private parseWordParts({
     raw,
   }: {
-    raw: string;
+    raw: string,
   }): Array<{
-    text: string;
-    quoted: boolean;
-    expandVariables: boolean;
+    text: string,
+    quoted: boolean,
+    expandVariables: boolean,
   }> {
     const parts: Array<{
-      text: string;
-      quoted: boolean;
-      expandVariables: boolean;
+      text: string,
+      quoted: boolean,
+      expandVariables: boolean,
     }> = [];
 
     let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
@@ -824,10 +824,10 @@ usage: ${name} [-c command] [file [argument...]]
     const toPartMeta = ({
       currentMode,
     }: {
-      currentMode: 'unquoted' | 'single' | 'double';
+      currentMode: 'unquoted' | 'single' | 'double',
     }): {
-      quoted: boolean;
-      expandVariables: boolean;
+      quoted: boolean,
+      expandVariables: boolean,
     } => {
       switch (currentMode) {
       case 'unquoted':
@@ -855,7 +855,7 @@ usage: ${name} [-c command] [file [argument...]]
     const pushCurrent = ({
       nextMode,
     }: {
-      nextMode: 'unquoted' | 'single' | 'double';
+      nextMode: 'unquoted' | 'single' | 'double',
     }) => {
       if (current.length === 0 && mode === nextMode) {
         return;
@@ -944,8 +944,8 @@ usage: ${name} [-c command] [file [argument...]]
   private findBraceExpansion({
     raw,
   }: {
-    raw: string;
-  }): { start: number; end: number; parts: string[] } | undefined {
+    raw: string,
+  }): { start: number, end: number, parts: string[] } | undefined {
     let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
 
     for (let index = 0; index < raw.length; index += 1) {
@@ -1012,9 +1012,9 @@ usage: ${name} [-c command] [file [argument...]]
     raw,
     startIndex,
   }: {
-    raw: string;
-    startIndex: number;
-  }): { start: number; end: number; parts: string[] } | undefined {
+    raw: string,
+    startIndex: number,
+  }): { start: number, end: number, parts: string[] } | undefined {
     let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
     let depth = 0;
     let currentPart = '';
@@ -1135,7 +1135,7 @@ usage: ${name} [-c command] [file [argument...]]
   private expandBraceRange({
     content,
   }: {
-    content: string;
+    content: string,
   }): string[] | undefined {
     const parts = content.split('..');
     if (parts.length !== 2 && parts.length !== 3) {
@@ -1169,9 +1169,9 @@ usage: ${name} [-c command] [file [argument...]]
     endRaw,
     stepRaw,
   }: {
-    startRaw: string;
-    endRaw: string;
-    stepRaw: string | undefined;
+    startRaw: string,
+    endRaw: string,
+    stepRaw: string | undefined,
   }): string[] | undefined {
     if (!/^-?\d+$/u.test(startRaw) || !/^-?\d+$/u.test(endRaw)) {
       return undefined;
@@ -1211,9 +1211,9 @@ usage: ${name} [-c command] [file [argument...]]
     width,
     pad,
   }: {
-    value: number;
-    width: number;
-    pad: boolean;
+    value: number,
+    width: number,
+    pad: boolean,
   }): string {
     if (!pad) {
       return value.toString();
@@ -1229,9 +1229,9 @@ usage: ${name} [-c command] [file [argument...]]
     endRaw,
     stepRaw,
   }: {
-    startRaw: string;
-    endRaw: string;
-    stepRaw: string | undefined;
+    startRaw: string,
+    endRaw: string,
+    stepRaw: string | undefined,
   }): string[] | undefined {
     if (startRaw.length !== 1 || endRaw.length !== 1) {
       return undefined;
@@ -1270,7 +1270,7 @@ usage: ${name} [-c command] [file [argument...]]
   private expandBraceExpressions({
     raw,
   }: {
-    raw: string;
+    raw: string,
   }): string[] {
     const expansion = this.findBraceExpansion({ raw });
     if (expansion === undefined) {
@@ -1294,9 +1294,9 @@ usage: ${name} [-c command] [file [argument...]]
     env,
     environment,
   }: {
-    text: string;
-    env: Map<string, string>;
-    environment: WeshExecutionEnvironment;
+    text: string,
+    env: Map<string, string>,
+    environment: WeshExecutionEnvironment,
   }): Promise<string> {
     let result = '';
 
@@ -1404,8 +1404,8 @@ usage: ${name} [-c command] [file [argument...]]
     text,
     environment,
   }: {
-    text: string;
-    environment: WeshExecutionEnvironment;
+    text: string,
+    environment: WeshExecutionEnvironment,
   }): Promise<string> {
     let result = '';
     let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
@@ -1491,13 +1491,13 @@ usage: ${name} [-c command] [file [argument...]]
     env,
     environment,
   }: {
-    text: string;
-    startIndex: number;
-    env: Map<string, string>;
-    environment: WeshExecutionEnvironment;
+    text: string,
+    startIndex: number,
+    env: Map<string, string>,
+    environment: WeshExecutionEnvironment,
   }): Promise<{
-    value: string;
-    endIndex: number;
+    value: string,
+    endIndex: number,
   }> {
     const endIndex = text.indexOf('}', startIndex + 2);
     if (endIndex === -1) {
@@ -1524,12 +1524,12 @@ usage: ${name} [-c command] [file [argument...]]
     startIndex,
     environment,
   }: {
-    text: string;
-    startIndex: number;
-    environment: WeshExecutionEnvironment;
+    text: string,
+    startIndex: number,
+    environment: WeshExecutionEnvironment,
   }): Promise<{
-    value: string;
-    endIndex: number;
+    value: string,
+    endIndex: number,
   }> {
     const parsed = this.findBalancedParenthesizedExpression({
       text,
@@ -1604,12 +1604,12 @@ usage: ${name} [-c command] [file [argument...]]
     startIndex,
     env,
   }: {
-    text: string;
-    startIndex: number;
-    env: Map<string, string>;
+    text: string,
+    startIndex: number,
+    env: Map<string, string>,
   }): {
-    value: string;
-    endIndex: number;
+    value: string,
+    endIndex: number,
   } {
     const parsed = this.findBalancedArithmeticExpression({
       text,
@@ -1635,11 +1635,11 @@ usage: ${name} [-c command] [file [argument...]]
     text,
     startIndex,
   }: {
-    text: string;
-    startIndex: number;
+    text: string,
+    startIndex: number,
   }): {
-    content: string;
-    endIndex: number;
+    content: string,
+    endIndex: number,
   } | undefined {
     if (text[startIndex] !== '(') {
       return undefined;
@@ -1706,11 +1706,11 @@ usage: ${name} [-c command] [file [argument...]]
     text,
     startIndex,
   }: {
-    text: string;
-    startIndex: number;
+    text: string,
+    startIndex: number,
   }): {
-    content: string;
-    endIndex: number;
+    content: string,
+    endIndex: number,
   } | undefined {
     if (text.slice(startIndex, startIndex + 3) !== '$((') {
       return undefined;
@@ -1780,9 +1780,9 @@ usage: ${name} [-c command] [file [argument...]]
     env,
     environment,
   }: {
-    expression: string;
-    env: Map<string, string>;
-    environment: WeshExecutionEnvironment;
+    expression: string,
+    env: Map<string, string>,
+    environment: WeshExecutionEnvironment,
   }): Promise<string> {
     if (expression.length === 0) {
       return '';
@@ -1839,16 +1839,16 @@ usage: ${name} [-c command] [file [argument...]]
     expression,
     env,
   }: {
-    expression: string;
-    env: Map<string, string>;
+    expression: string,
+    env: Map<string, string>,
   }): number {
     type ArithmeticToken =
-      | { kind: 'number'; value: number }
-      | { kind: 'identifier'; value: string }
-      | { kind: 'operator'; value: string };
+      | { kind: 'number', value: number }
+      | { kind: 'identifier', value: string }
+      | { kind: 'operator', value: string };
     type ArithmeticValue = {
-      value: number;
-      targetName: string | undefined;
+      value: number,
+      targetName: string | undefined,
     };
 
     const tokens: ArithmeticToken[] = [];
@@ -1915,7 +1915,7 @@ usage: ${name} [-c command] [file [argument...]]
     const readVariable = ({
       name,
     }: {
-      name: string;
+      name: string,
     }): number => {
       const raw = env.get(name);
       if (raw === undefined || raw.length === 0) {
@@ -1928,8 +1928,8 @@ usage: ${name} [-c command] [file [argument...]]
       name,
       value,
     }: {
-      name: string;
-      value: number;
+      name: string,
+      value: number,
     }): number => {
       env.set(name, value.toString());
       return value;
@@ -1937,7 +1937,7 @@ usage: ${name} [-c command] [file [argument...]]
     const requireTarget = ({
       value,
     }: {
-      value: ArithmeticValue;
+      value: ArithmeticValue,
     }): string => {
       if (value.targetName === undefined) {
         throw new Error('Arithmetic assignment requires a variable');
@@ -1947,7 +1947,7 @@ usage: ${name} [-c command] [file [argument...]]
     const toPlain = ({
       value,
     }: {
-      value: number;
+      value: number,
     }): ArithmeticValue => ({
       value,
       targetName: undefined,
@@ -2238,11 +2238,11 @@ usage: ${name} [-c command] [file [argument...]]
     env,
     environment,
   }: {
-    name: string;
-    operator: string;
-    operand: string;
-    env: Map<string, string>;
-    environment: WeshExecutionEnvironment;
+    name: string,
+    operator: string,
+    operand: string,
+    env: Map<string, string>,
+    environment: WeshExecutionEnvironment,
   }): Promise<string> {
     const currentValue = env.get(name);
     const isSet = currentValue !== undefined;
@@ -2285,14 +2285,14 @@ usage: ${name} [-c command] [file [argument...]]
     operator,
     pattern,
   }: {
-    value: string;
-    operator: '##' | '#' | '%%' | '%';
-    pattern: string;
+    value: string,
+    operator: '##' | '#' | '%%' | '%',
+    pattern: string,
   }): string {
     const compileParameterPattern = ({
       pattern,
     }: {
-      pattern: string;
+      pattern: string,
     }): RegExp => {
       let source = '^';
 
@@ -2347,7 +2347,7 @@ usage: ${name} [-c command] [file [argument...]]
     const matchesPattern = ({
       text,
     }: {
-      text: string;
+      text: string,
     }): boolean => {
       return matcher.test(text);
     };
@@ -2400,8 +2400,8 @@ usage: ${name} [-c command] [file [argument...]]
     name,
     env,
   }: {
-    name: string;
-    env: Map<string, string>;
+    name: string,
+    env: Map<string, string>,
   }): string {
     if (name === 'RANDOM') {
       return Math.floor(Math.random() * 32768).toString();
@@ -2414,10 +2414,10 @@ usage: ${name} [-c command] [file [argument...]]
     mode,
   }: {
     parts: Array<{
-      text: string;
-      quoted: boolean;
-    }>;
-    mode: WeshExpansionMode;
+      text: string,
+      quoted: boolean,
+    }>,
+    mode: WeshExpansionMode,
   }): WeshExpandedField[] {
     switch (mode) {
     case 'assignment':
@@ -2436,7 +2436,7 @@ usage: ${name} [-c command] [file [argument...]]
 
     const fields: WeshExpandedField[] = [];
     let currentText = '';
-    let currentParts: Array<{ text: string; quoted: boolean }> = [];
+    let currentParts: Array<{ text: string, quoted: boolean }> = [];
     let hasContent = false;
 
     const flush = () => {
@@ -2490,7 +2490,7 @@ usage: ${name} [-c command] [file [argument...]]
   private escapeGlobLiteral({
     text,
   }: {
-    text: string;
+    text: string,
   }): string {
     let result = '';
     for (const char of text) {
@@ -2506,8 +2506,8 @@ usage: ${name} [-c command] [file [argument...]]
     field,
     shellOptions,
   }: {
-    field: WeshExpandedField;
-    shellOptions: Map<WeshShellOption, boolean>;
+    field: WeshExpandedField,
+    shellOptions: Map<WeshShellOption, boolean>,
   }): boolean {
     return field.parts.some((part) => {
       if (part.quoted) {
@@ -2529,7 +2529,7 @@ usage: ${name} [-c command] [file [argument...]]
   private buildGlobPattern({
     field,
   }: {
-    field: WeshExpandedField;
+    field: WeshExpandedField,
   }): string {
     return field.parts
       .map((part) => part.quoted ? this.escapeGlobLiteral({ text: part.text }) : part.text)
@@ -2540,16 +2540,16 @@ usage: ${name} [-c command] [file [argument...]]
     pattern,
     shellOptions,
   }: {
-    pattern: string;
-    shellOptions: Map<WeshShellOption, boolean>;
+    pattern: string,
+    shellOptions: Map<WeshShellOption, boolean>,
   }): RegExp {
     const parsePattern = ({
       text,
       stopAtPipeOrParen,
     }: {
-      text: string;
-      stopAtPipeOrParen: boolean;
-    }): { source: string; nextIndex: number } => {
+      text: string,
+      stopAtPipeOrParen: boolean,
+    }): { source: string, nextIndex: number } => {
       let source = '';
       let index = 0;
 
@@ -2665,10 +2665,10 @@ usage: ${name} [-c command] [file [argument...]]
     startIndex,
     shellOptions,
   }: {
-    text: string;
-    startIndex: number;
-    shellOptions: Map<WeshShellOption, boolean>;
-  }): { source: string; nextIndex: number } | undefined {
+    text: string,
+    startIndex: number,
+    shellOptions: Map<WeshShellOption, boolean>,
+  }): { source: string, nextIndex: number } | undefined {
     const branches: string[] = [];
     let branch = '';
     let index = startIndex;
@@ -2738,8 +2738,8 @@ usage: ${name} [-c command] [file [argument...]]
     segment,
     shellOptions,
   }: {
-    segment: string;
-    shellOptions: Map<WeshShellOption, boolean>;
+    segment: string,
+    shellOptions: Map<WeshShellOption, boolean>,
   }): boolean {
     if (/(^|[^\\])[[*?]/.test(segment)) {
       return true;
@@ -2752,8 +2752,8 @@ usage: ${name} [-c command] [file [argument...]]
     segment,
     shellOptions,
   }: {
-    segment: string;
-    shellOptions: Map<WeshShellOption, boolean>;
+    segment: string,
+    shellOptions: Map<WeshShellOption, boolean>,
   }): boolean {
     return segment === '**' && shellOptions.get('globstar') === true;
   }
@@ -2762,8 +2762,8 @@ usage: ${name} [-c command] [file [argument...]]
     patternSegment,
     shellOptions,
   }: {
-    patternSegment: string;
-    shellOptions: Map<WeshShellOption, boolean>;
+    patternSegment: string,
+    shellOptions: Map<WeshShellOption, boolean>,
   }): boolean {
     return patternSegment.startsWith('.') || shellOptions.get('dotglob') === true;
   }
@@ -2774,10 +2774,10 @@ usage: ${name} [-c command] [file [argument...]]
     segmentIndex,
     shellOptions,
   }: {
-    bases: string[];
-    segments: string[];
-    segmentIndex: number;
-    shellOptions: Map<WeshShellOption, boolean>;
+    bases: string[],
+    segments: string[],
+    segmentIndex: number,
+    shellOptions: Map<WeshShellOption, boolean>,
   }): Promise<string[]> {
     if (segmentIndex >= segments.length) {
       return bases;
@@ -2921,8 +2921,8 @@ usage: ${name} [-c command] [file [argument...]]
     cwd,
     absolutePath,
   }: {
-    cwd: string;
-    absolutePath: string;
+    cwd: string,
+    absolutePath: string,
   }): string {
     if (cwd === absolutePath) {
       return '.';
@@ -2957,9 +2957,9 @@ usage: ${name} [-c command] [file [argument...]]
     cwd,
     shellOptions,
   }: {
-    field: WeshExpandedField;
-    cwd: string;
-    shellOptions: Map<WeshShellOption, boolean>;
+    field: WeshExpandedField,
+    cwd: string,
+    shellOptions: Map<WeshShellOption, boolean>,
   }): Promise<string[]> {
     if (!this.hasActiveGlob({ field, shellOptions })) {
       return [field.text];
@@ -3005,12 +3005,12 @@ usage: ${name} [-c command] [file [argument...]]
     shellOptions,
     environment,
   }: {
-    raw: string;
-    env: Map<string, string>;
-    cwd: string;
-    mode: WeshExpansionMode;
-    shellOptions: Map<WeshShellOption, boolean>;
-    environment: WeshExecutionEnvironment;
+    raw: string,
+    env: Map<string, string>,
+    cwd: string,
+    mode: WeshExpansionMode,
+    shellOptions: Map<WeshShellOption, boolean>,
+    environment: WeshExecutionEnvironment,
   }): Promise<string[]> {
     const expandedFields: string[] = [];
 
@@ -3037,7 +3037,7 @@ usage: ${name} [-c command] [file [argument...]]
 
         return part;
       });
-      const expandedParts: Array<{ text: string; quoted: boolean }> = [];
+      const expandedParts: Array<{ text: string, quoted: boolean }> = [];
       for (const part of tildeExpandedParts) {
         expandedParts.push({
           text: part.expandVariables
@@ -3069,12 +3069,12 @@ usage: ${name} [-c command] [file [argument...]]
     shellOptions,
     environment,
   }: {
-    raw: string;
-    env: Map<string, string>;
-    cwd: string;
-    mode: Exclude<WeshExpansionMode, 'argv'>;
-    shellOptions: Map<WeshShellOption, boolean>;
-    environment: WeshExecutionEnvironment;
+    raw: string,
+    env: Map<string, string>,
+    cwd: string,
+    mode: Exclude<WeshExpansionMode, 'argv'>,
+    shellOptions: Map<WeshShellOption, boolean>,
+    environment: WeshExecutionEnvironment,
   }): Promise<string> {
     const expanded = await this.expandWord({
       raw,
@@ -3092,9 +3092,9 @@ usage: ${name} [-c command] [file [argument...]]
     stdout,
     stderr,
   }: {
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
   }): Map<number, WeshFileHandle> {
     const fds = new Map<number, WeshFileHandle>([
       [0, this.createPrimaryFileHandleReference({ handle: stdin })],
@@ -3112,7 +3112,7 @@ usage: ${name} [-c command] [file [argument...]]
   private createPrimaryFileHandleReference({
     handle,
   }: {
-    handle: WeshFileHandle;
+    handle: WeshFileHandle,
   }): WeshFileHandle {
     if (typeof handle.cloneReference === 'function') {
       return handle;
@@ -3123,7 +3123,7 @@ usage: ${name} [-c command] [file [argument...]]
   private createSharedFileHandle({
     handle,
   }: {
-    handle: WeshFileHandle;
+    handle: WeshFileHandle,
   }): SharedFileHandle {
     if (handle instanceof SharedFileHandle) {
       return handle;
@@ -3140,10 +3140,10 @@ usage: ${name} [-c command] [file [argument...]]
   private cloneFileHandleReference({
     handle,
   }: {
-    handle: WeshFileHandle;
+    handle: WeshFileHandle,
   }): WeshFileHandle {
     const cloneReference = (handle as WeshFileHandle & {
-      cloneReference?: () => WeshFileHandle;
+      cloneReference?: () => WeshFileHandle,
     }).cloneReference;
     if (typeof cloneReference === 'function') {
       return cloneReference.call(handle);
@@ -3154,17 +3154,17 @@ usage: ${name} [-c command] [file [argument...]]
   private isFileHandleReferenceCloneable({
     handle,
   }: {
-    handle: WeshFileHandle;
+    handle: WeshFileHandle,
   }): boolean {
     return typeof (handle as WeshFileHandle & {
-      cloneReference?: () => WeshFileHandle;
+      cloneReference?: () => WeshFileHandle,
     }).cloneReference === 'function';
   }
 
   private cloneFileDescriptorTable({
     fdTable,
   }: {
-    fdTable: Map<number, WeshFileHandle>;
+    fdTable: Map<number, WeshFileHandle>,
   }): Map<number, WeshFileHandle> {
     return new Map(
       Array.from(fdTable.entries()).map(([fd, handle]) => [
@@ -3178,8 +3178,8 @@ usage: ${name} [-c command] [file [argument...]]
     fd,
     handle,
   }: {
-    fd: number;
-    handle: WeshFileHandle;
+    fd: number,
+    handle: WeshFileHandle,
   }): Promise<void> {
     const previous = this.shellFds.get(fd);
     if (previous !== undefined && previous !== handle) {
@@ -3191,7 +3191,7 @@ usage: ${name} [-c command] [file [argument...]]
   private async closePersistentFd({
     fd,
   }: {
-    fd: number;
+    fd: number,
   }): Promise<void> {
     const previous = this.shellFds.get(fd);
     if (previous !== undefined) {
@@ -3205,9 +3205,9 @@ usage: ${name} [-c command] [file [argument...]]
     environment,
     trackBackgroundTask,
   }: {
-    redirection: WeshCommandNode['redirections'][number];
-    environment: WeshExecutionEnvironment;
-    trackBackgroundTask: ({ task }: { task: Promise<unknown> }) => void;
+    redirection: WeshCommandNode['redirections'][number],
+    environment: WeshExecutionEnvironment,
+    trackBackgroundTask: ({ task }: { task: Promise<unknown> }) => void,
   }): Promise<WeshFileHandle | undefined> {
     if (redirection.type === 'heredoc' || redirection.type === 'herestring') {
       if (redirection.content === undefined) {
@@ -3350,11 +3350,11 @@ usage: ${name} [-c command] [file [argument...]]
     trackOpenedHandle,
     trackBackgroundTask,
   }: {
-    redirections: WeshCommandNode['redirections'];
-    environment: WeshExecutionEnvironment;
-    fdTable: Map<number, WeshFileHandle>;
-    trackOpenedHandle: ({ handle }: { handle: WeshFileHandle }) => void;
-    trackBackgroundTask: ({ task }: { task: Promise<unknown> }) => void;
+    redirections: WeshCommandNode['redirections'],
+    environment: WeshExecutionEnvironment,
+    fdTable: Map<number, WeshFileHandle>,
+    trackOpenedHandle: ({ handle }: { handle: WeshFileHandle }) => void,
+    trackBackgroundTask: ({ task }: { task: Promise<unknown> }) => void,
   }): Promise<void> {
     for (const redirection of redirections) {
       if (redirection.closeTarget) {
@@ -3391,10 +3391,10 @@ usage: ${name} [-c command] [file [argument...]]
    * Low-level: All I/O goes to provided handles. Returns only exit status.
    */
   async execute({ script: rawScript, stdin, stdout, stderr }: {
-    script: string;
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
+    script: string,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
   }): Promise<WeshCommandResult> {
     if (this.shellPid === 0) await this.init();
 
@@ -3522,7 +3522,7 @@ usage: ${name} [-c command] [file [argument...]]
             id: jobId,
             command: cmdStr,
             pid: jobEnvironment.shellPid,
-            status: 'running'
+            status: 'running',
           });
           environment.lastBackgroundPid = jobEnvironment.shellPid;
           this.syncSpecialParameters({
@@ -3926,7 +3926,7 @@ usage: ${name} [-c command] [file [argument...]]
     const commands = node.commands;
     if (commands.length === 0) return { exitCode: 0 };
 
-    const pipes: Array<{ read: WeshFileHandle; write: WeshFileHandle }> = [];
+    const pipes: Array<{ read: WeshFileHandle, write: WeshFileHandle }> = [];
     for (let i = 0; i < commands.length - 1; i++) {
       pipes.push(await this.kernel.pipe());
     }
@@ -3969,7 +3969,7 @@ usage: ${name} [-c command] [file [argument...]]
             await myStdin.close();
           }
           return res;
-        })
+        }),
       );
 
       if (i < commands.length - 1) {
@@ -4002,15 +4002,15 @@ usage: ${name} [-c command] [file [argument...]]
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
-    stderr: WeshFileHandle;
-    ignoreAliases?: boolean;
+    stderr: WeshFileHandle,
+    ignoreAliases?: boolean,
     directInvocation?: {
-      command: string;
-      args: string[];
-      argumentEntryRefs: readonly (WeshEntryRef | undefined)[] | undefined;
-    };
-    loopDepth?: number;
-    functionDepth?: number;
+      command: string,
+      args: string[],
+      argumentEntryRefs: readonly (WeshEntryRef | undefined)[] | undefined,
+    },
+    loopDepth?: number,
+    functionDepth?: number,
   }): Promise<WeshCommandResult> {
     const aliasExpandedNode = directInvocation !== undefined || ignoreAliases === true
       ? node
@@ -4275,7 +4275,7 @@ usage: ${name} [-c command] [file [argument...]]
         environment.cwd = path;
         environment.env.set('PWD', path);
       },
-      setEnv: ({ key, value }: { key: string; value: string }) => {
+      setEnv: ({ key, value }: { key: string, value: string }) => {
         environment.env.set(key, value);
       },
       unsetEnv: ({ key }: { key: string }) => {
@@ -4286,7 +4286,7 @@ usage: ${name} [-c command] [file [argument...]]
       getAliases: () => Array.from(environment.aliases.entries())
         .sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
         .map(([name, value]) => ({ name, value })),
-      setAlias: ({ name, value }: { name: string; value: string }) => {
+      setAlias: ({ name, value }: { name: string, value: string }) => {
         environment.aliases.set(name, value);
       },
       unsetAlias: ({ name }: { name: string }) => {
@@ -4523,8 +4523,8 @@ usage: ${name} [-c command] [file [argument...]]
     stderr,
     text,
   }: {
-    stderr: WeshFileHandle;
-    text: string;
+    stderr: WeshFileHandle,
+    text: string,
   }): Promise<void> {
     await stderr.write({
       buffer: new TextEncoder().encode(text),
@@ -4539,12 +4539,12 @@ usage: ${name} [-c command] [file [argument...]]
     functionDepth,
     environment,
   }: {
-    commandName: string;
-    args: string[];
-    stderr: WeshFileHandle;
-    loopDepth: number;
-    functionDepth: number;
-    environment: WeshExecutionEnvironment;
+    commandName: string,
+    args: string[],
+    stderr: WeshFileHandle,
+    loopDepth: number,
+    functionDepth: number,
+    environment: WeshExecutionEnvironment,
   }): Promise<WeshCommandResult | undefined> {
     switch (commandName) {
     case 'break':
@@ -4604,10 +4604,10 @@ usage: ${name} [-c command] [file [argument...]]
     stderr,
     loopDepth,
   }: {
-    commandName: 'break' | 'continue';
-    args: string[];
-    stderr: WeshFileHandle;
-    loopDepth: number;
+    commandName: 'break' | 'continue',
+    args: string[],
+    stderr: WeshFileHandle,
+    loopDepth: number,
   }): Promise<WeshCommandResult> {
     if (loopDepth <= 0) {
       await this.writeErrorText({
@@ -4647,14 +4647,14 @@ usage: ${name} [-c command] [file [argument...]]
     args,
     stderr,
   }: {
-    commandName: 'break' | 'continue' | 'return';
-    args: string[];
-    stderr: WeshFileHandle;
+    commandName: 'break' | 'continue' | 'return',
+    args: string[],
+    stderr: WeshFileHandle,
   }): Promise<{
-    kind: 'ok';
-    value: number | undefined;
+    kind: 'ok',
+    value: number | undefined,
   } | {
-    kind: 'error';
+    kind: 'error',
   }> {
     if (args.length === 0) {
       return {
@@ -4695,15 +4695,15 @@ usage: ${name} [-c command] [file [argument...]]
     loopDepth,
     functionDepth,
   }: {
-    name: string;
-    body: WeshASTNode;
-    args: string[];
-    environment: WeshExecutionEnvironment;
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
-    loopDepth: number;
-    functionDepth: number;
+    name: string,
+    body: WeshASTNode,
+    args: string[],
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
+    loopDepth: number,
+    functionDepth: number,
   }): Promise<WeshCommandResult> {
     const previousArgs = [...environment.positionalArgs];
     const previousZero = environment.env.get('0');
@@ -4748,7 +4748,7 @@ usage: ${name} [-c command] [file [argument...]]
   private compileStringPattern({
     pattern,
   }: {
-    pattern: string;
+    pattern: string,
   }): RegExp {
     let source = '^';
     for (let index = 0; index < pattern.length; index += 1) {
@@ -4797,9 +4797,9 @@ usage: ${name} [-c command] [file [argument...]]
     value,
     environment,
   }: {
-    patterns: string[];
-    value: string;
-    environment: WeshExecutionEnvironment;
+    patterns: string[],
+    value: string,
+    environment: WeshExecutionEnvironment,
   }): Promise<boolean> {
     for (const rawPattern of patterns) {
       const expandedPattern = await this.expandPatternWord({
@@ -4817,8 +4817,8 @@ usage: ${name} [-c command] [file [argument...]]
     raw,
     environment,
   }: {
-    raw: string;
-    environment: WeshExecutionEnvironment;
+    raw: string,
+    environment: WeshExecutionEnvironment,
   }): Promise<string> {
     const substitutionExpandedRaw = await this.expandInlineSubstitutions({
       text: raw,
@@ -4842,8 +4842,8 @@ usage: ${name} [-c command] [file [argument...]]
     expression,
     environment,
   }: {
-    expression: string;
-    environment: WeshExecutionEnvironment;
+    expression: string,
+    environment: WeshExecutionEnvironment,
   }): WeshCommandResult {
     const value = this.evaluateArithmeticExpression({
       expression,
@@ -4857,7 +4857,7 @@ usage: ${name} [-c command] [file [argument...]]
   private executeExtendedTestCommand({
     args,
   }: {
-    args: string[];
+    args: string[],
   }): WeshCommandResult {
     const tokens = args[args.length - 1] === ']]'
       ? args.slice(0, -1)
@@ -4948,14 +4948,14 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private async executeArgv({ command, args, argumentEntryRefs, environment, stdin, stdout, stderr, ignoreAliases }: {
-    command: string;
-    args: string[];
-    argumentEntryRefs?: readonly (WeshEntryRef | undefined)[];
-    environment: WeshExecutionEnvironment;
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
-    ignoreAliases?: boolean;
+    command: string,
+    args: string[],
+    argumentEntryRefs?: readonly (WeshEntryRef | undefined)[],
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
+    ignoreAliases?: boolean,
   }): Promise<WeshCommandResult> {
     // argv is already separated, so an intermediate shell process would only
     // duplicate state and leave another process to reap. Keep command-local
@@ -5002,17 +5002,17 @@ usage: ${name} [-c command] [file [argument...]]
     positionalArgs,
     lastBackgroundPid,
   }: {
-    shellPid: number;
-    pgid: number;
-    env: Map<string, string>;
-    aliases: Map<string, string>;
-    functions: Map<string, WeshASTNode>;
-    cwd: string;
-    fds: Map<number, WeshFileHandle>;
-    traps: Map<string, WeshTrapDisposition>;
-    shellOptions: Map<WeshShellOption, boolean>;
-    positionalArgs: string[];
-    lastBackgroundPid: number | undefined;
+    shellPid: number,
+    pgid: number,
+    env: Map<string, string>,
+    aliases: Map<string, string>,
+    functions: Map<string, WeshASTNode>,
+    cwd: string,
+    fds: Map<number, WeshFileHandle>,
+    traps: Map<string, WeshTrapDisposition>,
+    shellOptions: Map<WeshShellOption, boolean>,
+    positionalArgs: string[],
+    lastBackgroundPid: number | undefined,
   }): WeshExecutionEnvironment {
     const environment: WeshExecutionEnvironment = {
       shellPid,
@@ -5039,10 +5039,10 @@ usage: ${name} [-c command] [file [argument...]]
     pgid,
     mapStrategy,
   }: {
-    environment: WeshExecutionEnvironment;
-    shellPid: number | undefined;
-    pgid: number | undefined;
-    mapStrategy: 'snapshot_copy' | 'synchronous_overlay';
+    environment: WeshExecutionEnvironment,
+    shellPid: number | undefined,
+    pgid: number | undefined,
+    mapStrategy: 'snapshot_copy' | 'synchronous_overlay',
   }): WeshExecutionEnvironment {
     const cloneMap = <K, V>({ source }: { source: ReadonlyMap<K, V> }): Map<K, V> => {
       switch (mapStrategy) {
@@ -5076,8 +5076,8 @@ usage: ${name} [-c command] [file [argument...]]
     environment,
     execute,
   }: {
-    environment: WeshExecutionEnvironment;
-    execute: () => Promise<WeshCommandResult>;
+    environment: WeshExecutionEnvironment,
+    execute: () => Promise<WeshCommandResult>,
   }): Promise<WeshCommandResult> {
     let result: WeshCommandResult | undefined;
     try {
@@ -5095,8 +5095,8 @@ usage: ${name} [-c command] [file [argument...]]
     environment,
     result,
   }: {
-    environment: WeshExecutionEnvironment;
-    result: WeshCommandResult | undefined;
+    environment: WeshExecutionEnvironment,
+    result: WeshCommandResult | undefined,
   }): Promise<void> {
     const process = this.kernel.getProcess({ pid: environment.shellPid });
     if (process === undefined) {
@@ -5133,8 +5133,8 @@ usage: ${name} [-c command] [file [argument...]]
     parentEnvironment,
     pgid,
   }: {
-    parentEnvironment: WeshExecutionEnvironment;
-    pgid: number | undefined;
+    parentEnvironment: WeshExecutionEnvironment,
+    pgid: number | undefined,
   }): Promise<WeshExecutionEnvironment> {
     const childEnvironment = this.cloneExecutionEnvironment({
       environment: parentEnvironment,
@@ -5165,11 +5165,11 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private async runExitTrapIfNeeded({ result, environment, stdin, stdout, stderr }: {
-    result: WeshCommandResult;
-    environment: WeshExecutionEnvironment;
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
+    result: WeshCommandResult,
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
   }): Promise<WeshCommandResult> {
     const exitTrap = environment.traps.get('EXIT');
     if (exitTrap === undefined || exitTrap.kind !== 'run') {
@@ -5191,11 +5191,11 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private async runSignalTrapIfNeeded({ signal, environment, stdin, stdout, stderr }: {
-    signal: number;
-    environment: WeshExecutionEnvironment;
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
+    signal: number,
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
   }): Promise<void> {
     for (const condition of weshSignalConditionNames({ signal: signal })) {
       const trapDisposition = environment.traps.get(condition);
@@ -5228,12 +5228,12 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private async runTrapScript({ script, trapStatus, environment, stdin, stdout, stderr }: {
-    script: string;
-    trapStatus: WeshWaitStatus;
-    environment: WeshExecutionEnvironment;
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
+    script: string,
+    trapStatus: WeshWaitStatus,
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
   }): Promise<void> {
     const previousQuestionMark = environment.env.get('?');
     environment.env.set(
@@ -5260,11 +5260,11 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private async buildSignalCommandResultIfAny({ pid, environment, stdin, stdout, stderr }: {
-    pid: number;
-    environment: WeshExecutionEnvironment;
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
+    pid: number,
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
   }): Promise<WeshCommandResult | undefined> {
     const signalWaitStatus = this.kernel.getWaitStatus({ pid: pid });
     if (signalWaitStatus === undefined) {
@@ -5305,8 +5305,8 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private async runWithForegroundProcessGroup<T>({ pgid, fn }: {
-    pgid: number;
-    fn: () => Promise<T>;
+    pgid: number,
+    fn: () => Promise<T>,
   }): Promise<T> {
     const scopeId = this.nextForegroundProcessGroupScopeId++;
     this.foregroundProcessGroupScopes.push({
@@ -5324,7 +5324,7 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private buildProcessSignalDispositions({ environment }: {
-    environment: WeshExecutionEnvironment;
+    environment: WeshExecutionEnvironment,
   }): Map<number, WeshProcessSignalDisposition> {
     const signalDispositions = new Map<number, WeshProcessSignalDisposition>();
 
@@ -5348,7 +5348,7 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private syncSpecialParameters({ environment }: {
-    environment: WeshExecutionEnvironment;
+    environment: WeshExecutionEnvironment,
   }): void {
     environment.env.set('$$', environment.shellPid.toString());
     environment.env.set('#', environment.positionalArgs.length.toString());
@@ -5371,11 +5371,11 @@ usage: ${name} [-c command] [file [argument...]]
   }
 
   private async executeShellInState({ script, environment, stdin, stdout, stderr }: {
-    script: string;
-    environment: WeshExecutionEnvironment;
-    stdin: WeshFileHandle;
-    stdout: WeshFileHandle;
-    stderr: WeshFileHandle;
+    script: string,
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
   }): Promise<WeshCommandResult> {
     const rootNode = parseCommandLine({
       commandLine: script,

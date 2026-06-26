@@ -5,8 +5,8 @@ export const OPENAI_FAKE_LM_MODELS = ['fake-lm-ja', 'fake-lm-en', 'fake-lm-rando
 export const OLLAMA_FAKE_LM_MODELS = ['fake-lm:ja', 'fake-lm:en', 'fake-lm:random'] as const;
 
 export function getFakeLmLanguageForModel({ model, seed }: {
-  model: string;
-  seed: FakeLmSeed;
+  model: string,
+  seed: FakeLmSeed,
 }): FakeLmLanguage {
   if (model.endsWith('-en') || model.endsWith(':en')) {
     return 'en';
@@ -20,7 +20,7 @@ export function getFakeLmLanguageForModel({ model, seed }: {
 }
 
 export function getFakeLmModeForModel({ model }: {
-  model: string;
+  model: string,
 }): FakeLmMode {
   if (model.includes('calm')) {
     return 'calm';

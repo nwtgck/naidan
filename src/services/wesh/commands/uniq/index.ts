@@ -14,23 +14,23 @@ type UniqMode = 'all' | 'duplicates' | 'unique';
 type UniqDelimiter = '\n' | '\0';
 
 interface UniqRecord {
-  text: string;
-  endedWithDelimiter: boolean;
+  text: string,
+  endedWithDelimiter: boolean,
 }
 
 interface UniqComparisonOptions {
-  ignoreCase: boolean;
-  skipFields: number;
-  skipChars: number;
-  checkChars: number | undefined;
+  ignoreCase: boolean,
+  skipFields: number,
+  skipChars: number,
+  checkChars: number | undefined,
 }
 
 function resolveInputPath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -43,9 +43,9 @@ function parseNonNegativeInteger({
   value,
   label,
 }: {
-  value: string;
-  label: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+  label: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   if (!/^\d+$/.test(value)) {
     return { ok: false, message: `invalid argument to ${label}: ${value}` };
   }
@@ -56,7 +56,7 @@ function parseNonNegativeInteger({
 function isBlank({
   char,
 }: {
-  char: string;
+  char: string,
 }): boolean {
   return char === ' ' || char === '\t';
 }
@@ -65,8 +65,8 @@ function skipFields({
   text,
   fieldCount,
 }: {
-  text: string;
-  fieldCount: number;
+  text: string,
+  fieldCount: number,
 }): number {
   let index = 0;
 
@@ -82,8 +82,8 @@ function normalizeForComparison({
   line,
   options,
 }: {
-  line: string;
-  options: UniqComparisonOptions;
+  line: string,
+  options: UniqComparisonOptions,
 }): string {
   let index = skipFields({
     text: line,
@@ -108,10 +108,10 @@ function formatRecord({
   showCount,
   delimiter,
 }: {
-  record: UniqRecord;
-  count: number;
-  showCount: boolean;
-  delimiter: UniqDelimiter;
+  record: UniqRecord,
+  count: number,
+  showCount: boolean,
+  delimiter: UniqDelimiter,
 }): string {
   let output = '';
   if (showCount) {
@@ -128,8 +128,8 @@ function shouldEmitGroup({
   mode,
   count,
 }: {
-  mode: UniqMode;
-  count: number;
+  mode: UniqMode,
+  count: number,
 }): boolean {
   switch (mode) {
   case 'all':
@@ -149,8 +149,8 @@ function buildComparisonKey({
   line,
   options,
 }: {
-  line: string;
-  options: UniqComparisonOptions;
+  line: string,
+  options: UniqComparisonOptions,
 }): string {
   return normalizeForComparison({ line, options });
 }
@@ -159,8 +159,8 @@ async function writeAll({
   handle,
   buffer,
 }: {
-  handle: WeshFileHandle;
-  buffer: Uint8Array;
+  handle: WeshFileHandle,
+  buffer: Uint8Array,
 }): Promise<void> {
   let offset = 0;
   while (offset < buffer.length) {
@@ -180,8 +180,8 @@ async function openUniqInputStream({
   context,
   inputPath,
 }: {
-  context: WeshCommandContext;
-  inputPath: string | undefined;
+  context: WeshCommandContext,
+  inputPath: string | undefined,
 }): Promise<ReadableStream<Uint8Array>> {
   if (inputPath === undefined || inputPath === '-') {
     return openHandleReadStream({ handle: context.stdin });
@@ -197,8 +197,8 @@ async function *readUniqRecords({
   stream,
   delimiter,
 }: {
-  stream: ReadableStream<Uint8Array>;
-  delimiter: UniqDelimiter;
+  stream: ReadableStream<Uint8Array>,
+  delimiter: UniqDelimiter,
 }): AsyncGenerator<UniqRecord> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -237,16 +237,16 @@ async function *readUniqRecords({
 }
 
 type UniqOutputTarget =
-  | { kind: 'stdout'; handle: WeshFileHandle }
-  | { kind: 'writer'; writer: WeshEfficientFileWriter }
-  | { kind: 'handle'; handle: WeshFileHandle };
+  | { kind: 'stdout', handle: WeshFileHandle }
+  | { kind: 'writer', writer: WeshEfficientFileWriter }
+  | { kind: 'handle', handle: WeshFileHandle };
 
 async function openUniqOutputTarget({
   context,
   outputPath,
 }: {
-  context: WeshCommandContext;
-  outputPath: string | undefined;
+  context: WeshCommandContext,
+  outputPath: string | undefined,
 }): Promise<UniqOutputTarget> {
   if (outputPath === undefined || outputPath === '-') {
     return {
@@ -289,8 +289,8 @@ async function writeUniqOutput({
   target,
   buffer,
 }: {
-  target: UniqOutputTarget;
-  buffer: Uint8Array;
+  target: UniqOutputTarget,
+  buffer: Uint8Array,
 }): Promise<void> {
   switch (target.kind) {
   case 'stdout':
@@ -315,7 +315,7 @@ async function writeUniqOutput({
 async function closeUniqOutputTarget({
   target,
 }: {
-  target: UniqOutputTarget;
+  target: UniqOutputTarget,
 }): Promise<void> {
   switch (target.kind) {
   case 'stdout':
@@ -340,11 +340,11 @@ async function emitUniqRecord({
   showCount,
   delimiter,
 }: {
-  target: UniqOutputTarget;
-  record: UniqRecord;
-  count: number;
-  showCount: boolean;
-  delimiter: UniqDelimiter;
+  target: UniqOutputTarget,
+  record: UniqRecord,
+  count: number,
+  showCount: boolean,
+  delimiter: UniqDelimiter,
 }): Promise<void> {
   const data = formatRecord({
     record,

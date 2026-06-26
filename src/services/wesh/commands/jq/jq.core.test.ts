@@ -20,8 +20,8 @@ describe('wesh jq core', () => {
     script,
     stdinText,
   }: {
-    script: string;
-    stdinText?: string;
+    script: string,
+    stdinText?: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

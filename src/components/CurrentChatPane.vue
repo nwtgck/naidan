@@ -5,12 +5,12 @@ import ChatPane from './ChatPane.vue';
 import UnselectedChatPane from './UnselectedChatPane.vue';
 
 const props = defineProps<{
-  autoSendPrompt?: string;
-  targetMessageId?: MessageId;
+  autoSendPrompt?: string,
+  targetMessageId?: MessageId,
 }>();
 
 const emit = defineEmits<{
-  (e: 'auto-sent'): void;
+  (e: 'auto-sent'): void,
 }>();
 
 const { currentChatId } = useCurrentChatState();

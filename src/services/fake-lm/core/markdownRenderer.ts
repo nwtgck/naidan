@@ -1,7 +1,7 @@
 import type { Inline, MarkdownBlock } from '@/services/fake-lm/core/markdownTypes';
 
 export function renderMarkdownBlock({ block }: {
-  block: MarkdownBlock;
+  block: MarkdownBlock,
 }): string {
   switch (block.kind) {
   case 'heading':
@@ -22,7 +22,7 @@ export function renderMarkdownBlock({ block }: {
 }
 
 export function renderInline({ inlines }: {
-  inlines: Inline[];
+  inlines: Inline[],
 }): string {
   return inlines.map((inline) => {
     switch (inline.kind) {
@@ -39,7 +39,7 @@ export function renderInline({ inlines }: {
 }
 
 function renderTable({ block }: {
-  block: Extract<MarkdownBlock, { kind: 'table' }>;
+  block: Extract<MarkdownBlock, { kind: 'table' }>,
 }): string {
   const header = block.headers.map((cell) => renderTableCell({ inlines: cell })).join(' | ');
   const separator = block.headers.map(() => '---').join(' | ');
@@ -53,7 +53,7 @@ function renderTable({ block }: {
 }
 
 function renderTableCell({ inlines }: {
-  inlines: Inline[];
+  inlines: Inline[],
 }): string {
   return renderInline({ inlines })
     .replace(/\|/gu, '\\|')
@@ -63,7 +63,7 @@ function renderTableCell({ inlines }: {
 }
 
 function escapeBoldText({ text }: {
-  text: string;
+  text: string,
 }): string {
   return text.replace(/\*/gu, '');
 }

@@ -43,7 +43,7 @@ describe('LM Providers Reasoning', () => {
         expect.stringContaining('/chat/completions'),
         expect.objectContaining({
           body: expect.stringContaining('"reasoning_effort":"medium"'),
-        })
+        }),
       );
     });
 
@@ -102,7 +102,7 @@ describe('LM Providers Reasoning', () => {
       const chunks = [
         'data: {"choices":[{"delta":{"reasoning_content":"Thinking hard"}}]}',
         'data: {"choices":[{"delta":{"content":"Hello!"}}]}',
-        'data: [DONE]'
+        'data: [DONE]',
       ];
       let chunkIndex = 0;
 
@@ -141,7 +141,7 @@ describe('LM Providers Reasoning', () => {
       const chunks = [
         'data: {"choices":[{"delta":{"reasoning":"Alternative field"}}]}',
         'data: {"choices":[{"delta":{"content":"Done"}}]}',
-        'data: [DONE]'
+        'data: [DONE]',
       ];
       let chunkIndex = 0;
 
@@ -172,7 +172,7 @@ describe('LM Providers Reasoning', () => {
     it('should close <think> tag if stream ends abruptly', async () => {
       const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
       const chunks = [
-        'data: {"choices":[{"delta":{"reasoning_content":"Unfinished thoughts"}}]}'
+        'data: {"choices":[{"delta":{"reasoning_content":"Unfinished thoughts"}}]}',
       ];
       let chunkIndex = 0;
 
@@ -228,7 +228,7 @@ describe('LM Providers Reasoning', () => {
         expect.stringContaining('/api/chat'),
         expect.objectContaining({
           body: expect.stringContaining('"think":"medium"'),
-        })
+        }),
       );
     });
 
@@ -258,7 +258,7 @@ describe('LM Providers Reasoning', () => {
         expect.stringContaining('/api/chat'),
         expect.objectContaining({
           body: expect.stringContaining('"think":false'),
-        })
+        }),
       );
     });
 
@@ -319,7 +319,7 @@ describe('LM Providers Reasoning', () => {
         status: 400,
         clone: () => mockErrorResponse,
         json: vi.fn().mockResolvedValue({
-          error: 'think value "medium" is not supported for this model'
+          error: 'think value "medium" is not supported for this model',
         }),
       };
 
@@ -360,7 +360,7 @@ describe('LM Providers Reasoning', () => {
         status: 400,
         clone: () => mockErrorResponse1,
         json: vi.fn().mockResolvedValue({
-          error: 'think value "medium" is not supported for this model'
+          error: 'think value "medium" is not supported for this model',
         }),
       };
 
@@ -397,7 +397,7 @@ describe('LM Providers Reasoning', () => {
         status: 400,
         clone: () => mockErrorResponse,
         json: vi.fn().mockResolvedValue({
-          error: 'think value "false" is not supported' // Should not trigger retry because think is not a string
+          error: 'think value "false" is not supported', // Should not trigger retry because think is not a string
         }),
       };
 
@@ -424,7 +424,7 @@ describe('LM Providers Reasoning', () => {
         status: 400,
         clone: () => mockErrorResponse,
         json: vi.fn().mockResolvedValue({
-          error: 'some error'
+          error: 'some error',
         }),
       };
 
@@ -448,7 +448,7 @@ describe('LM Providers Reasoning', () => {
         status: 400,
         clone: () => mockErrorResponse,
         json: vi.fn().mockResolvedValue({
-          error: 'Invalid parameter: temperature'
+          error: 'Invalid parameter: temperature',
         }),
       };
 

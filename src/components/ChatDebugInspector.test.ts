@@ -34,22 +34,22 @@ vi.mock('lucide-vue-next', () => ({
   CalendarIcon: { template: '<span>Calendar</span>' },
   InfoIcon: { template: '<span>Info</span>' },
   DownloadIcon: { template: '<span>Download</span>' },
-  Trash2Icon: { template: '<span>Trash2</span>' }
+  Trash2Icon: { template: '<span>Trash2</span>' },
 }));
 
 const mockPush = vi.fn();
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: mockPush,
-    currentRoute: { value: { query: {} } }
-  })
+    currentRoute: { value: { query: {} } },
+  }),
 }));
 
 vi.mock('../services/storage', () => ({
   storageService: {
     getBinaryObject: vi.fn(),
     getFile: vi.fn().mockResolvedValue(new Blob()),
-  }
+  },
 }));
 
 const mockSettings = vi.hoisted(() => ({
@@ -91,8 +91,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       thinking?: string,
       error?: string,
       attachments?: any[],
-      lmParameters?: LmParameters
-    } = {}
+      lmParameters?: LmParameters,
+    } = {},
   ): MessageNode => {
     const common = { id: toMessageId({ raw: id }), content, timestamp: Date.now(), replies: { items: replies } };
     switch (role) {
@@ -104,7 +104,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         thinking: undefined,
         error: undefined,
         modelId: undefined,
-        lmParameters: extra.lmParameters || { reasoning: { effort: undefined } }
+        lmParameters: extra.lmParameters || { reasoning: { effort: undefined } },
       } as unknown as UserMessageNode;
     case 'assistant':
       return {
@@ -114,7 +114,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         thinking: extra.thinking,
         error: extra.error,
         modelId: extra.modelId || 'test-model',
-        lmParameters: extra.lmParameters || { reasoning: { effort: undefined } }
+        lmParameters: extra.lmParameters || { reasoning: { effort: undefined } },
       } as unknown as AssistantMessageNode;
     case 'system':
       return {
@@ -139,7 +139,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     root: { items: rootItems },
     debugEnabled: true,
     createdAt: Date.now(),
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
   });
 
   const mountInspector = (chat: Chat, activeMessages: MessageNode[] = []) => {
@@ -147,8 +147,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       props: {
         show: true,
         chat,
-        activeMessages
-      }
+        activeMessages,
+      },
     });
   };
 
@@ -174,9 +174,9 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const chat = createMockChat([
       createNode('A', 'user', 'A', [
         createNode('B', 'assistant', 'B', [
-          createNode('C', 'user', 'C')
-        ])
-      ])
+          createNode('C', 'user', 'C'),
+        ]),
+      ]),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -198,7 +198,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   it('Scenario 2: Root Branching ([A, B])', async () => {
     const chat = createMockChat([
       createNode('A', 'user', 'A'),
-      createNode('B', 'user', 'B')
+      createNode('B', 'user', 'B'),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -218,10 +218,10 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const chat = createMockChat([
       createNode('A', 'user', 'A', [
         createNode('B', 'assistant', 'B', [
-          createNode('D', 'user', 'D')
+          createNode('D', 'user', 'D'),
         ]),
-        createNode('C', 'assistant', 'C')
-      ])
+        createNode('C', 'assistant', 'C'),
+      ]),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -241,9 +241,9 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const chat = createMockChat([
       createNode('A', 'user', 'A', [
         createNode('B', 'assistant', 'B', [
-          createNode('C', 'user', 'C')
-        ])
-      ])
+          createNode('C', 'user', 'C'),
+        ]),
+      ]),
     ]);
 
     const wrapper = mountInspector(chat);
@@ -336,8 +336,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         mimeType: 'image/png',
         size: 100,
         uploadedAt: Date.now(),
-        status: 'persisted' as const
-      }]
+        status: 'persisted' as const,
+      }],
     });
     const activeMessages = [nodeWithAtt];
 
@@ -354,7 +354,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   it('Scenario 10: Thinking and Error Display', async () => {
     const nodeWithDetails = createNode('A', 'assistant', 'Final Content', [], {
       thinking: 'Analyzing the request...',
-      error: 'Simulated API Timeout'
+      error: 'Simulated API Timeout',
     });
     const activeMessages = [nodeWithDetails];
     const chat = createMockChat(activeMessages);
@@ -381,10 +381,10 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('opens the selected tree node with a message-id query parameter', async () => {
     const nodeB = createNode('B', 'assistant', 'B content', [
-      createNode('C', 'user', 'C content')
+      createNode('C', 'user', 'C content'),
     ]);
     const chat = createMockChat([
-      createNode('A', 'user', 'A content', [nodeB])
+      createNode('A', 'user', 'A content', [nodeB]),
     ]);
     const wrapper = mountInspector(chat);
 
@@ -412,7 +412,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 13: JSON Content Escaping (Technical Comments Visibility)', async () => {
     const chat = createMockChat([
-      createNode('A', 'user', 'Check this <!-- technical_comment -->')
+      createNode('A', 'user', 'Check this <!-- technical_comment -->'),
     ]);
     const wrapper = mountInspector(chat);
 
@@ -426,7 +426,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 14: Technical Comments remain visible when Highlighting is OFF', async () => {
     const chat = createMockChat([
-      createNode('A', 'user', 'Check this <!-- technical_comment -->')
+      createNode('A', 'user', 'Check this <!-- technical_comment -->'),
     ]);
     const wrapper = mountInspector(chat);
 
@@ -454,7 +454,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       status: 'persisted' as const,
       originalName: 'img1.png',
       size: 1024,
-      uploadedAt: Date.now()
+      uploadedAt: Date.now(),
     };
     const img2 = {
       id: toAttachmentId({ raw: 'att-2' }),
@@ -463,7 +463,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       status: 'persisted' as const,
       originalName: 'img2.png',
       size: 1024,
-      uploadedAt: Date.now()
+      uploadedAt: Date.now(),
     };
 
     const nodeB = createNode('B', 'assistant', 'B content', []);
@@ -473,7 +473,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     nodeC.attachments = [img2];
 
     const chat = createMockChat([
-      createNode('A', 'user', 'A', [nodeB, nodeC])
+      createNode('A', 'user', 'A', [nodeB, nodeC]),
     ]);
 
     // Mock storageService.getBinaryObject to return valid objects

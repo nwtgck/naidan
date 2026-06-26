@@ -14,7 +14,7 @@ import {
 function truthy({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): boolean {
   return value !== false && value !== null;
 }
@@ -24,8 +24,8 @@ function containsJson({
   input,
   expected,
 }: {
-  input: JsonValue;
-  expected: JsonValue;
+  input: JsonValue,
+  expected: JsonValue,
 }): boolean {
   if (typeof input === 'string' && typeof expected === 'string') {
     return input.includes(expected);
@@ -52,8 +52,8 @@ function insideJson({
   input,
   expected,
 }: {
-  input: JsonValue;
-  expected: JsonValue;
+  input: JsonValue,
+  expected: JsonValue,
 }): boolean {
   return containsJson({
     input: expected,
@@ -65,8 +65,8 @@ function addValues({
   left,
   right,
 }: {
-  left: JsonValue;
-  right: JsonValue;
+  left: JsonValue,
+  right: JsonValue,
 }): JsonValue | undefined {
   if (typeof left === 'number' && typeof right === 'number') {
     return left + right;
@@ -93,7 +93,7 @@ function addValues({
 function flattenJson({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): JsonValue[] {
   if (!Array.isArray(value)) return [value];
   const flattened: JsonValue[] = [];
@@ -107,8 +107,8 @@ function trimStartPrefix({
   value,
   prefix,
 }: {
-  value: string;
-  prefix: string;
+  value: string,
+  prefix: string,
 }): string {
   return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }
@@ -117,8 +117,8 @@ function trimEndSuffix({
   value,
   suffix,
 }: {
-  value: string;
-  suffix: string;
+  value: string,
+  suffix: string,
 }): string {
   return value.endsWith(suffix) ? value.slice(0, value.length - suffix.length) : value;
 }
@@ -126,7 +126,7 @@ function trimEndSuffix({
 function parseStrictNumber({
   value,
 }: {
-  value: string;
+  value: string,
 }): number | undefined {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
@@ -144,10 +144,10 @@ function evaluateSingleOutput({
   input,
   evaluate,
 }: {
-  filter: import('./ast').JqFilter;
-  input: JsonValue;
-  evaluate: JqRuntimeFilterEvaluator;
-}): { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError } {
+  filter: import('./ast').JqFilter,
+  input: JsonValue,
+  evaluate: JqRuntimeFilterEvaluator,
+}): { ok: true, value: JsonValue } | { ok: false, error: JqRuntimeError } {
   const result = evaluate({ filter, input });
   if (!result.ok) return result;
   if (result.outputs.length !== 1) {
@@ -160,9 +160,9 @@ function walkValue({
   value,
   mapper,
 }: {
-  value: JsonValue;
-  mapper: ({ input }: { input: JsonValue }) => { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError };
-}): { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError } {
+  value: JsonValue,
+  mapper: ({ input }: { input: JsonValue }) => { ok: true, value: JsonValue } | { ok: false, error: JqRuntimeError },
+}): { ok: true, value: JsonValue } | { ok: false, error: JqRuntimeError } {
   if (Array.isArray(value)) {
     const mappedItems: JsonValue[] = [];
     for (const item of value) {
@@ -195,7 +195,7 @@ function walkValue({
 function recurseChildren({
   input,
 }: {
-  input: JsonValue;
+  input: JsonValue,
 }): JsonValue[] {
   if (Array.isArray(input)) {
     return [...input];
@@ -210,9 +210,9 @@ function recurseValues({
   input,
   evaluateNext,
 }: {
-  input: JsonValue;
-  evaluateNext: ({ input }: { input: JsonValue }) => { ok: true; values: JsonValue[] } | { ok: false; error: JqRuntimeError };
-}): { ok: true; values: JsonValue[] } | { ok: false; error: JqRuntimeError } {
+  input: JsonValue,
+  evaluateNext: ({ input }: { input: JsonValue }) => { ok: true, values: JsonValue[] } | { ok: false, error: JqRuntimeError },
+}): { ok: true, values: JsonValue[] } | { ok: false, error: JqRuntimeError } {
   const outputs: JsonValue[] = [input];
   const next = evaluateNext({ input });
   if (!next.ok) return next;
@@ -233,8 +233,8 @@ function typeFilter({
   input,
   expected,
 }: {
-  input: JsonValue;
-  expected: 'array' | 'boolean' | 'null' | 'number' | 'object' | 'scalar' | 'string';
+  input: JsonValue,
+  expected: 'array' | 'boolean' | 'null' | 'number' | 'object' | 'scalar' | 'string',
 }): JsonValue[] {
   switch (expected) {
   case 'array':
@@ -264,8 +264,8 @@ function findIndices({
   input,
   search,
 }: {
-  input: JsonValue;
-  search: JsonValue;
+  input: JsonValue,
+  search: JsonValue,
 }): number[] | undefined {
   if (typeof input === 'string' && typeof search === 'string') {
     if (search.length === 0) {
@@ -299,8 +299,8 @@ function collectPaths({
   value,
   current,
 }: {
-  value: JsonValue;
-  current: (string | number)[];
+  value: JsonValue,
+  current: (string | number)[],
 }): JsonValue[] {
   const paths: JsonValue[] = [];
   if (Array.isArray(value)) {
@@ -326,9 +326,9 @@ function assignPickedValue({
   path,
   value,
 }: {
-  container: JsonValue;
-  path: (string | number)[];
-  value: JsonValue;
+  container: JsonValue,
+  path: (string | number)[],
+  value: JsonValue,
 }): void {
   const [head, ...tail] = path;
   if (head === undefined) {
@@ -385,8 +385,8 @@ function readPathValue({
   input,
   path,
 }: {
-  input: JsonValue;
-  path: (string | number)[];
+  input: JsonValue,
+  path: (string | number)[],
 }): JsonValue | undefined {
   let current: JsonValue | undefined = input;
   for (const segment of path) {
@@ -409,8 +409,8 @@ function readPathValue({
 function parsePathArray({
   value,
 }: {
-  value: JsonValue;
-}): { ok: true; path: (string | number)[] } | { ok: false; message: string } {
+  value: JsonValue,
+}): { ok: true, path: (string | number)[] } | { ok: false, message: string } {
   if (!Array.isArray(value)) {
     return { ok: false, message: 'path must be an array' };
   }
@@ -432,7 +432,7 @@ function parsePathArray({
 function toJqPath({
   path,
 }: {
-  path: readonly (string | number)[];
+  path: readonly (string | number)[],
 }): import('./ast').JqPath {
   return {
     segments: path.map((segment) => typeof segment === 'string'
@@ -445,8 +445,8 @@ function createEntryObject({
   key,
   value,
 }: {
-  key: JsonValue;
-  value: JsonValue;
+  key: JsonValue,
+  value: JsonValue,
 }): JsonValue {
   const entry = createJsonObject();
   defineJsonProperty({ object: entry, key: 'key', value: key });
@@ -457,7 +457,7 @@ function createEntryObject({
 function toEntriesValue({
   input,
 }: {
-  input: JsonValue;
+  input: JsonValue,
 }): JsonValue[] | undefined {
   if (Array.isArray(input)) {
     return input.map((value, key) => createEntryObject({ key, value }));
@@ -472,8 +472,8 @@ function readEntryField({
   entry,
   names,
 }: {
-  entry: { [key: string]: JsonValue };
-  names: readonly string[];
+  entry: { [key: string]: JsonValue },
+  names: readonly string[],
 }): JsonValue | undefined {
   for (const name of names) {
     if (Object.hasOwn(entry, name)) return entry[name];
@@ -484,8 +484,8 @@ function readEntryField({
 function fromEntriesValue({
   input,
 }: {
-  input: JsonValue;
-}): { ok: true; value: JsonValue } | { ok: false; message: string } {
+  input: JsonValue,
+}): { ok: true, value: JsonValue } | { ok: false, message: string } {
   if (!Array.isArray(input)) {
     return { ok: false, message: 'from_entries input must be an array' };
   }
@@ -508,7 +508,7 @@ function fromEntriesValue({
 function flattenCommaFilter({
   filter,
 }: {
-  filter: JqFilter;
+  filter: JqFilter,
 }): JqFilter[] {
   switch (filter.kind) {
   case 'comma':
@@ -552,11 +552,11 @@ function evaluateCount({
   evaluate,
   name,
 }: {
-  filter: import('./ast').JqFilter;
-  input: JsonValue;
-  evaluate: JqRuntimeFilterEvaluator;
-  name: string;
-}): { ok: true; value: number } | { ok: false; error: JqRuntimeError } {
+  filter: import('./ast').JqFilter,
+  input: JsonValue,
+  evaluate: JqRuntimeFilterEvaluator,
+  name: string,
+}): { ok: true, value: number } | { ok: false, error: JqRuntimeError } {
   const evaluated = evaluateSingleOutput({ filter, input, evaluate });
   if (!evaluated.ok) return evaluated;
   if (typeof evaluated.value !== 'number' || !Number.isInteger(evaluated.value) || evaluated.value < 0) {
@@ -568,7 +568,7 @@ function evaluateCount({
 function combinationsOf({
   arrays,
 }: {
-  arrays: JsonValue[][];
+  arrays: JsonValue[][],
 }): JsonValue[][] {
   let combinations: JsonValue[][] = [[]];
   for (const values of arrays) {
@@ -584,8 +584,8 @@ function combinationsOf({
 function transposeArray({
   input,
 }: {
-  input: JsonValue[];
-}): { ok: true; value: JsonValue[][] } | { ok: false; message: string } {
+  input: JsonValue[],
+}): { ok: true, value: JsonValue[][] } | { ok: false, message: string } {
   const rows: JsonValue[][] = [];
   for (const row of input) {
     if (!Array.isArray(row)) {
@@ -606,11 +606,11 @@ export function evaluateBuiltin({
   input,
   evaluate,
 }: {
-  name: JqBuiltinName;
-  args: import('./ast').JqFilter[];
-  input: JsonValue;
-  evaluate: JqRuntimeFilterEvaluator;
-}): { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError } {
+  name: JqBuiltinName,
+  args: import('./ast').JqFilter[],
+  input: JsonValue,
+  evaluate: JqRuntimeFilterEvaluator,
+}): { ok: true, outputs: JsonValue[] } | { ok: false, error: JqRuntimeError } {
   switch (name) {
   case 'abs':
   case 'log':
@@ -974,7 +974,7 @@ export function evaluateBuiltin({
     }
 
     keyed.sort((left, right) => compareJsonValues({ left: left.key, right: right.key }));
-    const groups: { key: JsonValue; items: JsonValue[] }[] = [];
+    const groups: { key: JsonValue, items: JsonValue[] }[] = [];
     for (const entry of keyed) {
       const lastGroup = groups.at(-1);
       if (lastGroup !== undefined && compareJsonValues({ left: entry.key, right: lastGroup.key }) === 0) {

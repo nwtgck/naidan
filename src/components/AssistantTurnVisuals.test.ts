@@ -48,7 +48,7 @@ describe('Assistant Turn Visual Logic', () => {
     content: '',
     timestamp: Date.now(),
     modelId,
-    replies: { items: [] }
+    replies: { items: [] },
   } as any);
 
   describe('Header Visibility (Icon + ModelID)', () => {
@@ -59,8 +59,8 @@ describe('Assistant Turn Visual Logic', () => {
         props: {
           items: [{ type: 'message', node, mode: 'thinking', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, flow: { position: 'standalone', nesting: 'none' } }],
           isProcessing: false,
-          isFirstInTurn: true
-        }
+          isFirstInTurn: true,
+        },
       });
 
       expect(wrapper.find('[data-testid="icon-bird"]').exists()).toBe(true);
@@ -76,8 +76,8 @@ describe('Assistant Turn Visual Logic', () => {
           mode: 'content',
           isFirstInTurn: true,
           isNested: false,
-          flow: { position: 'standalone', nesting: 'none' }
-        }
+          flow: { position: 'standalone', nesting: 'none' },
+        },
       });
 
       expect(wrapper.find('[data-testid="icon-bird"]').exists()).toBe(true);
@@ -93,8 +93,8 @@ describe('Assistant Turn Visual Logic', () => {
           mode: 'thinking',
           isFirstInTurn: true,
           isNested: true,
-          flow: { position: 'standalone', nesting: 'inside-group' }
-        }
+          flow: { position: 'standalone', nesting: 'inside-group' },
+        },
       });
 
       expect(wrapper.find('[data-testid="icon-bird"]').exists()).toBe(false);
@@ -109,8 +109,8 @@ describe('Assistant Turn Visual Logic', () => {
           mode: 'content',
           isFirstInTurn: false, // Turn already started with a sequence
           isNested: false,
-          flow: { position: 'standalone', nesting: 'none' }
-        }
+          flow: { position: 'standalone', nesting: 'none' },
+        },
       });
 
       expect(wrapper.find('[data-testid="icon-bird"]').exists()).toBe(false);
@@ -125,8 +125,8 @@ describe('Assistant Turn Visual Logic', () => {
           mode: 'content',
           isFirstInTurn: true,
           isNested: false,
-          flow: { position: 'standalone', nesting: 'none' }
-        }
+          flow: { position: 'standalone', nesting: 'none' },
+        },
       });
 
       expect(wrapper.find('[data-testid="icon-user"]').exists()).toBe(true);
@@ -137,7 +137,7 @@ describe('Assistant Turn Visual Logic', () => {
   describe('Show/Less UI State', () => {
     it('switches between Eye and EyeOff icons based on expansion', async () => {
       const wrapper = mount(AssistantProcessSequence, {
-        props: { items: [], isProcessing: false }
+        props: { items: [], isProcessing: false },
       });
 
       // Default: Collapsed
@@ -153,7 +153,7 @@ describe('Assistant Turn Visual Logic', () => {
 
     it('shows action labels only on hover (simulated via class check)', () => {
       const wrapper = mount(AssistantProcessSequence, {
-        props: { items: [], isProcessing: false }
+        props: { items: [], isProcessing: false },
       });
 
       const label = wrapper.find('.group-hover\\/seq\\:opacity-100');
@@ -166,8 +166,8 @@ describe('Assistant Turn Visual Logic', () => {
         props: {
           items: [],
           isProcessing: true,
-          stats: { thinkingSteps: 1, toolCallCount: 0, toolNames: [], isCurrentlyThinking: true, isCurrentlyToolRunning: false, isWaiting: false }
-        }
+          stats: { thinkingSteps: 1, toolCallCount: 0, toolNames: [], isCurrentlyThinking: true, isCurrentlyToolRunning: false, isWaiting: false },
+        },
       });
 
       expect(wrapper.find('[data-testid="icon-loader"]').exists()).toBe(true);
@@ -176,7 +176,7 @@ describe('Assistant Turn Visual Logic', () => {
 
     it('toggle wrapper is sticky with backdrop when expanded', async () => {
       const wrapper = mount(AssistantProcessSequence, {
-        props: { items: [], isProcessing: false }
+        props: { items: [], isProcessing: false },
       });
 
       const toggleWrapper = wrapper.find('[data-testid="assistant-process-toggle"]').element.parentElement!;
@@ -195,11 +195,11 @@ describe('Assistant Turn Visual Logic', () => {
         props: {
           items: [],
           isProcessing: true,
-          stats: { thinkingSteps: 1, toolCallCount: 0, toolNames: [], isCurrentlyThinking: true, isCurrentlyToolRunning: false, isWaiting: false }
+          stats: { thinkingSteps: 1, toolCallCount: 0, toolNames: [], isCurrentlyThinking: true, isCurrentlyToolRunning: false, isWaiting: false },
         },
         slots: {
-          peek: '<div data-testid="peek-content">thinking...</div>'
-        }
+          peek: '<div data-testid="peek-content">thinking...</div>',
+        },
       });
 
       expect(wrapper.find('[data-testid="peek-content"]').exists()).toBe(true);
@@ -213,8 +213,8 @@ describe('Assistant Turn Visual Logic', () => {
         props: {
           message: node,
           isNested: true,
-          flow: { position: 'middle', nesting: 'inside-group' }
-        }
+          flow: { position: 'middle', nesting: 'inside-group' },
+        },
       });
 
       // Should not have the specific background class for standalone assistant messages
@@ -225,8 +225,8 @@ describe('Assistant Turn Visual Logic', () => {
       const wrapper = mount(ToolCallGroupItem, {
         props: {
           toolCalls: [],
-          flow: { position: 'middle', nesting: 'inside-group' }
-        }
+          flow: { position: 'middle', nesting: 'inside-group' },
+        },
       });
 
       const container = wrapper.find('[data-testid="tool-call-group"]');

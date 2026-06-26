@@ -38,7 +38,7 @@ describe('ImageGenerationSettings', () => {
 
   it('swaps width and height when swap button is clicked', async () => {
     const wrapper = mount(ImageGenerationSettings, {
-      props: { ...defaultProps, selectedWidth: 1280, selectedHeight: 720 }
+      props: { ...defaultProps, selectedWidth: 1280, selectedHeight: 720 },
     });
 
     const swapButton = wrapper.find('button[title="Swap Width and Height"]');
@@ -59,7 +59,7 @@ describe('ImageGenerationSettings', () => {
 
   it('renders steps input and emits update:steps', async () => {
     const wrapper = mount(ImageGenerationSettings, {
-      props: { ...defaultProps, selectedSteps: 20 }
+      props: { ...defaultProps, selectedSteps: 20 },
     });
 
     // const stepsInput = wrapper.find('input[type="number"][title*="steps" i], input[type="number"][placeholder*="steps" i]');
@@ -74,7 +74,7 @@ describe('ImageGenerationSettings', () => {
 
   it('renders seed input and emits update:seed', async () => {
     const wrapper = mount(ImageGenerationSettings, {
-      props: { ...defaultProps, selectedSeed: 12345 }
+      props: { ...defaultProps, selectedSeed: 12345 },
     });
 
     const allInputs = wrapper.findAll('input[type="number"]');
@@ -87,7 +87,7 @@ describe('ImageGenerationSettings', () => {
 
   it('emits undefined when seed input is cleared', async () => {
     const wrapper = mount(ImageGenerationSettings, {
-      props: { ...defaultProps, selectedSeed: 12345 }
+      props: { ...defaultProps, selectedSeed: 12345 },
     });
 
     const allInputs = wrapper.findAll('input[type="number"]');
@@ -99,7 +99,7 @@ describe('ImageGenerationSettings', () => {
 
   it('emits browser_random when random seed button is clicked', async () => {
     const wrapper = mount(ImageGenerationSettings, {
-      props: { ...defaultProps, selectedSeed: undefined }
+      props: { ...defaultProps, selectedSeed: undefined },
     });
 
     const diceButton = wrapper.find('button[title*="random seed" i]');
@@ -112,7 +112,7 @@ describe('ImageGenerationSettings', () => {
   it('re-enables and focuses seed input when clicking overlay in browser_random mode', async () => {
     const wrapper = mount(ImageGenerationSettings, {
       props: { ...defaultProps, selectedSeed: 'browser_random' },
-      attachTo: document.body // Required for testing focus
+      attachTo: document.body, // Required for testing focus
     });
 
     const overlay = wrapper.find('.cursor-text');

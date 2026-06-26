@@ -20,8 +20,8 @@ describe('wesh cat', () => {
     name,
     data,
   }: {
-    name: string;
-    data: string | Uint8Array;
+    name: string,
+    data: string | Uint8Array,
   }) {
     const handle = await rootHandle.getFileHandle(name, { create: true });
     const writable = await handle.createWritable();
@@ -33,8 +33,8 @@ describe('wesh cat', () => {
     script,
     stdinText,
   }: {
-    script: string;
-    stdinText: string | undefined;
+    script: string,
+    stdinText: string | undefined,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

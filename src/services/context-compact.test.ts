@@ -16,9 +16,9 @@ function createMessage({
   role,
   content,
 }: {
-  id: string;
-  role: MessageNode['role'];
-  content: string | undefined;
+  id: string,
+  role: MessageNode['role'],
+  content: string | undefined,
 }): MessageNode {
   switch (role) {
   case 'user':

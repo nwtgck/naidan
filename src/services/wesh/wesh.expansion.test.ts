@@ -27,9 +27,9 @@ describe('wesh shell expansion', () => {
     path,
     data,
   }: {
-    directory?: MockFileSystemDirectoryHandle;
-    path: string;
-    data: string;
+    directory?: MockFileSystemDirectoryHandle,
+    path: string,
+    data: string,
   }) {
     const targetDirectory = directory ?? rootHandle;
     const segments = path.split('/').filter((segment) => segment.length > 0);
@@ -52,7 +52,7 @@ describe('wesh shell expansion', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

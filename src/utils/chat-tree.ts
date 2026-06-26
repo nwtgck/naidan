@@ -108,11 +108,11 @@ export function findRestorationIndex({ items, prevId, nextId }: { items: Sidebar
 }
 
 export interface HistoryItem {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  modelId?: string;
-  thinking?: string;
-  attachments?: import('@/models/types').Attachment[];
+  role: 'user' | 'assistant' | 'system',
+  content: string,
+  modelId?: string,
+  thinking?: string,
+  attachments?: import('@/models/types').Attachment[],
 }
 
 export function createBranchFromMessages({ messages }: { messages: HistoryItem[] }): MessageNode[] {
@@ -121,7 +121,7 @@ export function createBranchFromMessages({ messages }: { messages: HistoryItem[]
       id: generateId<MessageId>(),
       content: m.content,
       timestamp: Date.now(),
-      replies: { items: [] }
+      replies: { items: [] },
     };
     switch (m.role) {
     case 'user':

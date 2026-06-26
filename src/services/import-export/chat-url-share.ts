@@ -50,7 +50,7 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
 
   // 3. Hierarchy (minimal)
   await memoryProvider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: {
-    items: [{ type: 'chat', id: chat.id }]
+    items: [{ type: 'chat', id: chat.id }],
   } }) });
 
   // 4. Attachments
@@ -77,7 +77,7 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
         blob,
         binaryObjectId: bId,
         name: meta.name || 'file',
-        mimeType: meta.mimeType
+        mimeType: meta.mimeType,
       });
     }
   }
@@ -85,7 +85,7 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
   // 5. Export using ImportExportService
   const exportService = new ImportExportService({ storage: adapter });
   const { stream } = await exportService.exportData({
-    fileNameSegment: chat.title || 'chat-share'
+    fileNameSegment: chat.title || 'chat-share',
   });
 
   // 6. Convert to Base64

@@ -23,8 +23,8 @@ const PIPE_BUFFER_LIMIT_BYTES = 64 * 1024;
 
 abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
   protected readonly state: {
-    handle: WeshFileHandle;
-    refCount: number;
+    handle: WeshFileHandle,
+    refCount: number,
   };
   protected readonly kernel: WeshKernel;
   protected readonly pid: number;
@@ -35,9 +35,9 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
     kernel,
     pid,
   }: {
-    handle: WeshFileHandle;
-    kernel: WeshKernel;
-    pid: number;
+    handle: WeshFileHandle,
+    kernel: WeshKernel,
+    pid: number,
   }) {
     this.state = handle instanceof WeshKernelProcessFileHandle
       ? handle.state
@@ -53,7 +53,7 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
   }
 
   protected async writeWithBrokenPipeHandling({ operation }: {
-    operation: Promise<WeshWriteResult>;
+    operation: Promise<WeshWriteResult>,
   }): Promise<WeshWriteResult> {
     try {
       return await operation;
@@ -70,7 +70,7 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
   }
 
   protected async writeOwnedWithBrokenPipeHandling({ operation }: {
-    operation: Promise<void>;
+    operation: Promise<void>,
   }): Promise<void> {
     try {
       await operation;
@@ -87,7 +87,7 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
   }
 
   protected async writeOwnedUsingBorrowedWrites({ chunk }: {
-    chunk: WeshOwnedBytes;
+    chunk: WeshOwnedBytes,
   }): Promise<void> {
     let offset = 0;
     while (offset < chunk.bytes.byteLength) {
@@ -128,7 +128,7 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
     await this.state.handle.truncate(options);
   }
 
-  async ioctl({ request, arg }: { request: number; arg?: unknown }): Promise<{ ret: number }> {
+  async ioctl({ request, arg }: { request: number, arg?: unknown }): Promise<{ ret: number }> {
     const options = { request, arg };
     return this.state.handle.ioctl(options);
   }
@@ -136,17 +136,17 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
   protected onClose(): void {}
 
   abstract read({ buffer, offset, length, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<WeshIOResult>;
 
   abstract write({ buffer, offset, length, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<WeshWriteResult>;
 
   abstract cloneReference(): WeshKernelProcessFileHandle;
@@ -156,20 +156,20 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
 
 class WeshKernelHardProcessFileHandle extends WeshKernelProcessFileHandle {
   async read({ buffer, offset, length, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<WeshIOResult> {
     const options = { buffer, offset, length, position };
     return this.state.handle.read(options);
   }
 
   async write({ buffer, offset, length, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<WeshWriteResult> {
     const options = { buffer, offset, length, position };
     return this.writeWithBrokenPipeHandling({
@@ -204,10 +204,10 @@ class WeshKernelSoftProcessFileHandle extends WeshKernelProcessFileHandle {
   private readonly closeSignal = new WeshHandleCloseSignal();
 
   async read({ buffer, offset, length, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<WeshIOResult> {
     const options = { buffer, offset, length, position };
     return this.closeSignal.raceWithClose({
@@ -217,10 +217,10 @@ class WeshKernelSoftProcessFileHandle extends WeshKernelProcessFileHandle {
   }
 
   async write({ buffer, offset, length, position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<WeshWriteResult> {
     const options = { buffer, offset, length, position };
     return this.writeWithBrokenPipeHandling({
@@ -262,9 +262,9 @@ class WeshKernelSoftProcessFileHandle extends WeshKernelProcessFileHandle {
 }
 
 function createWeshKernelProcessFileHandle({ handle, kernel, pid }: {
-  handle: WeshFileHandle;
-  kernel: WeshKernel;
-  pid: number;
+  handle: WeshFileHandle,
+  kernel: WeshKernel,
+  pid: number,
 }): WeshKernelProcessFileHandle {
   const options = { handle, kernel, pid };
   const closeSemantics = options.handle instanceof WeshKernelProcessFileHandle
@@ -286,30 +286,30 @@ function createWeshKernelProcessFileHandle({ handle, kernel, pid }: {
 // --- Pipe Implementation ---
 class PipeHandle implements WeshFileHandle {
   private state: {
-    buffer: Uint8Array[];
-    bufferHeadIndex: number;
-    bufferSize: number;
-    headOffset: number;
-    readWaiters: Array<() => void>;
-    writeWaiters: Array<() => void>;
-    readRefCount: number;
-    writeRefCount: number;
+    buffer: Uint8Array[],
+    bufferHeadIndex: number,
+    bufferSize: number,
+    headOffset: number,
+    readWaiters: Array<() => void>,
+    writeWaiters: Array<() => void>,
+    readRefCount: number,
+    writeRefCount: number,
   };
   private mode: 'r' | 'w';
   private closed = false;
 
   constructor({ state, mode }: {
     state: {
-      buffer: Uint8Array[];
-      bufferHeadIndex: number;
-      bufferSize: number;
-      headOffset: number;
-      readWaiters: Array<() => void>;
-      writeWaiters: Array<() => void>;
-      readRefCount: number;
-      writeRefCount: number;
-    };
-    mode: 'r' | 'w';
+      buffer: Uint8Array[],
+      bufferHeadIndex: number,
+      bufferSize: number,
+      headOffset: number,
+      readWaiters: Array<() => void>,
+      writeWaiters: Array<() => void>,
+      readRefCount: number,
+      writeRefCount: number,
+    },
+    mode: 'r' | 'w',
   }) {
     this.state = state;
     this.mode = mode;
@@ -331,7 +331,7 @@ class PipeHandle implements WeshFileHandle {
     }
   }
 
-  async read({ buffer, offset, length }: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
+  async read({ buffer, offset, length }: { buffer: Uint8Array, offset?: number, length?: number }): Promise<WeshIOResult> {
     switch (this.mode) {
     case 'r':
       break;
@@ -381,10 +381,10 @@ class PipeHandle implements WeshFileHandle {
     length,
     ownership,
   }: {
-    buffer: Uint8Array;
-    offset: number;
-    length: number;
-    ownership: 'borrowed' | 'owned';
+    buffer: Uint8Array,
+    offset: number,
+    length: number,
+    ownership: 'borrowed' | 'owned',
   }): Promise<number> {
     let bytesWritten = 0;
     while (bytesWritten < length) {
@@ -427,7 +427,7 @@ class PipeHandle implements WeshFileHandle {
     return bytesWritten;
   }
 
-  async write({ buffer, offset, length: requestedLength }: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshWriteResult> {
+  async write({ buffer, offset, length: requestedLength }: { buffer: Uint8Array, offset?: number, length?: number }): Promise<WeshWriteResult> {
     switch (this.mode) {
     case 'w':
       break;
@@ -499,7 +499,7 @@ class PipeHandle implements WeshFileHandle {
       mode: 0o600,
       type: 'fifo',
       mtime: Date.now(),
-      ino: 0, uid: 0, gid: 0
+      ino: 0, uid: 0, gid: 0,
     };
   }
 
@@ -547,21 +547,21 @@ export class WeshKernel {
       env: new Map(),
       cwd: '/',
       args: ['init'],
-      fds: new Map()
+      fds: new Map(),
     });
     this.nextPid = 2;
   }
 
   async spawn({ image: _image, args, env, cwd, fds, ppid, pgid, signalDispositions }: {
-    image: string;
-    args: string[];
-    env?: Map<string, string>;
-    cwd?: string;
-    fds?: Map<number, WeshFileHandle>;
-    ppid?: number;
-    pgid?: number;
-    signalDispositions?: Map<number, WeshProcessSignalDisposition>;
-  }): Promise<{ pid: number; process: WeshProcess }> {
+    image: string,
+    args: string[],
+    env?: Map<string, string>,
+    cwd?: string,
+    fds?: Map<number, WeshFileHandle>,
+    ppid?: number,
+    pgid?: number,
+    signalDispositions?: Map<number, WeshProcessSignalDisposition>,
+  }): Promise<{ pid: number, process: WeshProcess }> {
     const pid = this.nextPid++;
     const process: WeshProcess = {
       pid,
@@ -574,14 +574,14 @@ export class WeshKernel {
       env: env ? new Map(env) : new Map(),
       cwd: cwd || '/',
       args: args,
-      fds: fds ? new Map(fds) : new Map()
+      fds: fds ? new Map(fds) : new Map(),
     };
 
     this.processes.set(pid, process);
     return { pid, process };
   }
 
-  async wait({ pid, flags: _flags }: { pid: number; flags?: number }): Promise<{ pid: number; exitCode: number }> {
+  async wait({ pid, flags: _flags }: { pid: number, flags?: number }): Promise<{ pid: number, exitCode: number }> {
     const proc = this.processes.get(pid);
     if (!proc) throw new Error(`No such process: ${pid}`);
 
@@ -599,7 +599,7 @@ export class WeshKernel {
     });
   }
 
-  async kill({ pid, signal }: { pid: number; signal: number }): Promise<void> {
+  async kill({ pid, signal }: { pid: number, signal: number }): Promise<void> {
     const proc = this.processes.get(pid);
     if (!proc) return;
     if (proc.state === 'terminated' || proc.state === 'zombie') {
@@ -655,9 +655,9 @@ export class WeshKernel {
   }
 
   async waitForSignalOrTimeout({ pid, timeoutMs, pollIntervalMs: requestedPollIntervalMs }: {
-    pid: number;
-    timeoutMs: number;
-    pollIntervalMs?: number;
+    pid: number,
+    timeoutMs: number,
+    pollIntervalMs?: number,
   }): Promise<WeshWaitStatus | undefined> {
     const deadline = Date.now() + timeoutMs;
     const pollIntervalMs = requestedPollIntervalMs ?? 10;
@@ -676,9 +676,9 @@ export class WeshKernel {
   }
 
   async killProcessGroup({ pgid, signal, excludedPids: excludedPidList }: {
-    pgid: number;
-    signal: number;
-    excludedPids?: number[];
+    pgid: number,
+    signal: number,
+    excludedPids?: number[],
   }): Promise<void> {
     const excludedPids = new Set(excludedPidList ?? []);
     const targets = Array.from(this.processes.values()).filter(proc => (
@@ -692,9 +692,9 @@ export class WeshKernel {
   }
 
   bindFileHandle({ pid, handle, trackOwnership }: {
-    pid: number;
-    handle: WeshFileHandle;
-    trackOwnership: boolean;
+    pid: number,
+    handle: WeshFileHandle,
+    trackOwnership: boolean,
   }): WeshFileHandle {
     const boundHandle = createWeshKernelProcessFileHandle({
       handle: handle,
@@ -711,8 +711,8 @@ export class WeshKernel {
   }
 
   bindFdTable({ pid, fdTable }: {
-    pid: number;
-    fdTable: Map<number, WeshFileHandle>;
+    pid: number,
+    fdTable: Map<number, WeshFileHandle>,
   }): Map<number, WeshFileHandle> {
     return new Map(
       Array.from(fdTable.entries()).map(([fd, handle]) => [
@@ -728,7 +728,7 @@ export class WeshKernel {
     );
   }
 
-  async pipe(): Promise<{ read: WeshFileHandle; write: WeshFileHandle }> {
+  async pipe(): Promise<{ read: WeshFileHandle, write: WeshFileHandle }> {
     const state = {
       buffer: [],
       bufferHeadIndex: 0,
@@ -741,12 +741,12 @@ export class WeshKernel {
     };
     return {
       read: new PipeHandle({ state, mode: 'r' }),
-      write: new PipeHandle({ state, mode: 'w' })
+      write: new PipeHandle({ state, mode: 'w' }),
     };
   }
 
   private createDuplicatedHandleReference({ handle }: {
-    handle: WeshFileHandle;
+    handle: WeshFileHandle,
   }): WeshFileHandle {
     if (typeof (handle as WeshFileHandle & { cloneReference?: () => WeshFileHandle }).cloneReference === 'function') {
       return (handle as WeshFileHandle & { cloneReference: () => WeshFileHandle }).cloneReference();
@@ -754,7 +754,7 @@ export class WeshKernel {
     return handle;
   }
 
-  async open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle> {
+  async open({ path, flags, mode }: { path: string, flags: WeshOpenFlags, mode?: number }): Promise<WeshFileHandle> {
     return this.vfs.open({ path: path, flags: flags, mode: mode });
   }
 
@@ -770,7 +770,7 @@ export class WeshKernel {
     return this.vfs.readlink({ path: path });
   }
 
-  async resolve({ path }: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
+  async resolve({ path }: { path: string }): Promise<{ fullPath: string, stat: WeshStat }> {
     const options = { path };
     return this.vfs.resolve(options);
   }
@@ -780,8 +780,8 @@ export class WeshKernel {
   }
 
   async tryCreateFileWriterEfficiently({ path, mode }: {
-    path: string;
-    mode: 'truncate' | 'append';
+    path: string,
+    mode: 'truncate' | 'append',
   }): Promise<WeshEfficientFileWriteResult> {
     return this.vfs.tryCreateFileWriterEfficiently({
       path: path,
@@ -797,8 +797,8 @@ export class WeshKernel {
     path,
     finalSymlinkTreatment,
   }: {
-    path: string;
-    finalSymlinkTreatment: WeshFinalSymlinkTreatment;
+    path: string,
+    finalSymlinkTreatment: WeshFinalSymlinkTreatment,
   }): Promise<WeshEntryRef> {
     return this.vfs.resolveEntry({ path, finalSymlinkTreatment });
   }
@@ -806,7 +806,7 @@ export class WeshKernel {
   readDirEntry({
     entry,
   }: {
-    entry: WeshEntryRef<'directory'>;
+    entry: WeshEntryRef<'directory'>,
   }): AsyncIterable<WeshEntryRef> {
     return this.vfs.readDirEntry({ entry });
   }
@@ -820,9 +820,9 @@ export class WeshKernel {
     flags,
     mode,
   }: {
-    entry: WeshEntryRef;
-    flags: WeshOpenFlags;
-    mode?: number;
+    entry: WeshEntryRef,
+    flags: WeshOpenFlags,
+    mode?: number,
   }): Promise<WeshFileHandle> {
     return this.vfs.openEntry({ entry, flags, mode });
   }
@@ -830,22 +830,22 @@ export class WeshKernel {
   async readlinkEntry({
     entry,
   }: {
-    entry: WeshEntryRef<'symlink'>;
+    entry: WeshEntryRef<'symlink'>,
   }): Promise<string> {
     return this.vfs.readlinkEntry({ entry });
   }
 
-  async mkdir({ path, mode, recursive }: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
+  async mkdir({ path, mode, recursive }: { path: string, mode?: number, recursive?: boolean }): Promise<void> {
     const options = { path, mode, recursive };
     return this.vfs.mkdir(options);
   }
 
-  async symlink({ path, targetPath, mode }: { path: string; targetPath: string; mode?: number }): Promise<void> {
+  async symlink({ path, targetPath, mode }: { path: string, targetPath: string, mode?: number }): Promise<void> {
     const options = { path, targetPath, mode };
     return this.vfs.symlink(options);
   }
 
-  async mknod({ path, type, mode }: { path: string; type: WeshFileType; mode?: number }): Promise<void> {
+  async mknod({ path, type, mode }: { path: string, type: WeshFileType, mode?: number }): Promise<void> {
     const options = { path, type, mode };
     return this.vfs.mknod(options);
   }
@@ -860,7 +860,7 @@ export class WeshKernel {
     return this.vfs.rmdir(options);
   }
 
-  async rename({ oldPath, newPath }: { oldPath: string; newPath: string }): Promise<void> {
+  async rename({ oldPath, newPath }: { oldPath: string, newPath: string }): Promise<void> {
     const options = { oldPath, newPath };
     return this.vfs.rename(options);
   }
@@ -898,8 +898,8 @@ export class WeshKernel {
   }
 
   registerOwnedHandle({ pid, handle }: {
-    pid: number;
-    handle: WeshFileHandle;
+    pid: number,
+    handle: WeshFileHandle,
   }): void {
     const proc = this.processes.get(pid);
     if (proc === undefined) {
@@ -910,15 +910,15 @@ export class WeshKernel {
   }
 
   unregisterOwnedHandle({ pid, handle }: {
-    pid: number;
-    handle: WeshFileHandle;
+    pid: number,
+    handle: WeshFileHandle,
   }): void {
     const proc = this.processes.get(pid);
     proc?.ownedHandles?.delete(handle);
   }
 
   async closeProcessResources({ pid }: {
-    pid: number;
+    pid: number,
   }): Promise<void> {
     const proc = this.processes.get(pid);
     if (proc === undefined) {
@@ -928,7 +928,7 @@ export class WeshKernel {
   }
 
   private async closeProcessFileDescriptors({ proc }: {
-    proc: WeshProcess;
+    proc: WeshProcess,
   }): Promise<void> {
     const closedHandles = new Set<WeshFileHandle>();
     for (const handle of proc.fds.values()) {

@@ -67,13 +67,13 @@ const mockChatStore = {
     flow: { position: 'standalone', nesting: 'none' },
     isFirstInNode: true,
     isLastInNode: true,
-    isFirstInTurn: true
+    isFirstInTurn: true,
   }))),
   isThinkingActive: vi.fn(() => false),
   isWaitingResponse: vi.fn(() => false),
 };
 vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(() => mockChatStore)
+  useChat: vi.fn(() => mockChatStore),
 }));
 
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
@@ -128,10 +128,10 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
       attachments,
       lmParameters,
     }: {
-      content: string;
-      parentId: string | null | undefined;
-      attachments: unknown[] | undefined;
-      lmParameters: unknown;
+      content: string,
+      parentId: string | null | undefined,
+      attachments: unknown[] | undefined,
+      lmParameters: unknown,
     }) => mockChatStore.sendMessage({
       content,
       parentId,
@@ -188,14 +188,14 @@ vi.mock('../composables/chat/useChatImageGeneration', () => ({
       persistAs,
       attachments,
     }: {
-      prompt: string;
-      width: number;
-      height: number;
-      count: number;
-      steps: number | undefined;
-      seed: number | 'browser_random' | undefined;
-      persistAs: 'original' | 'webp' | 'jpeg' | 'png';
-      attachments: unknown[];
+      prompt: string,
+      width: number,
+      height: number,
+      count: number,
+      steps: number | undefined,
+      seed: number | 'browser_random' | undefined,
+      persistAs: 'original' | 'webp' | 'jpeg' | 'png',
+      attachments: unknown[],
     }) => mockChatStore.sendImageRequest({
       prompt,
       width,
@@ -215,12 +215,12 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: ChatId;
-    autoSendPrompt?: string;
-    targetMessageId?: MessageId;
-  };
-  attachTo?: Element | string;
-  global?: Record<string, unknown>;
+    chatId?: ChatId,
+    autoSendPrompt?: string,
+    targetMessageId?: MessageId,
+  },
+  attachTo?: Element | string,
+  global?: Record<string, unknown>,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -236,8 +236,8 @@ function mountChatPane({
 // Mock useRouter
 vi.mock('vue-router', () => ({
   useRouter: () => ({
-    push: vi.fn()
-  })
+    push: vi.fn(),
+  }),
 }));
 
 describe('ChatPane Image Generation Integration', () => {
@@ -280,7 +280,7 @@ describe('ChatPane Image Generation Integration', () => {
       seed: 'browser_random',
       steps: undefined,
       persistAs: 'original',
-      attachments: []
+      attachments: [],
     });
   });
 
@@ -312,7 +312,7 @@ describe('ChatPane Image Generation Integration', () => {
       seed: 'browser_random',
       steps: undefined,
       persistAs: 'original',
-      attachments: expect.arrayContaining([expect.objectContaining({ id: 'att-1' })])
+      attachments: expect.arrayContaining([expect.objectContaining({ id: 'att-1' })]),
     });
 
     // Check if attachments are cleared after success
@@ -377,7 +377,7 @@ describe('ChatPane Image Generation Integration', () => {
     expect(mockChatStore.sendImageRequest).toHaveBeenCalledWith(expect.objectContaining({
       prompt: 'a futuristic city',
       count: 3,
-      persistAs: 'original'
+      persistAs: 'original',
     }));
   });
 });

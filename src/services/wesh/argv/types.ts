@@ -1,87 +1,87 @@
 export type ArgvValue = boolean | string | number;
 
 export interface ArgvOptionEffect {
-  key: string;
-  value: ArgvValue;
+  key: string,
+  value: ArgvValue,
 }
 
 export interface ArgvOptionHelp {
-  summary: string;
-  valueName?: string;
-  category?: 'common' | 'advanced';
+  summary: string,
+  valueName?: string,
+  category?: 'common' | 'advanced',
 }
 
 export interface ArgvFlagOptionSpec {
-  kind: 'flag';
-  short: string | undefined;
-  long: string | undefined;
-  effects: ArgvOptionEffect[];
-  help: ArgvOptionHelp;
+  kind: 'flag',
+  short: string | undefined,
+  long: string | undefined,
+  effects: ArgvOptionEffect[],
+  help: ArgvOptionHelp,
 }
 
 export interface ArgvValueOptionSpec {
-  kind: 'value';
-  short: string | undefined;
-  long: string | undefined;
-  key: string;
-  valueName: string;
-  allowAttachedValue: boolean;
-  parseValue: (({ value }: { value: string }) => { ok: true; value: ArgvValue } | { ok: false; message: string }) | undefined;
-  help: ArgvOptionHelp;
+  kind: 'value',
+  short: string | undefined,
+  long: string | undefined,
+  key: string,
+  valueName: string,
+  allowAttachedValue: boolean,
+  parseValue: (({ value }: { value: string }) => { ok: true, value: ArgvValue } | { ok: false, message: string }) | undefined,
+  help: ArgvOptionHelp,
 }
 
 export type ArgvOptionSpec = ArgvFlagOptionSpec | ArgvValueOptionSpec;
 
 export interface ArgvDiagnostic {
-  kind: 'unknown_short_option' | 'unknown_long_option' | 'missing_option_value' | 'invalid_option_value';
-  option: string;
-  message: string;
+  kind: 'unknown_short_option' | 'unknown_long_option' | 'missing_option_value' | 'invalid_option_value',
+  option: string,
+  message: string,
 }
 
 export interface ArgvSpecialParseResult {
-  kind: 'matched';
-  consumeCount: number;
-  effects: ArgvOptionEffect[];
-  occurrences?: ArgvOptionOccurrence[];
+  kind: 'matched',
+  consumeCount: number,
+  effects: ArgvOptionEffect[],
+  occurrences?: ArgvOptionOccurrence[],
 }
 
 export type ArgvSpecialTokenParser = ({ token, nextToken }: {
-  token: string;
-  nextToken: string | undefined;
+  token: string,
+  nextToken: string | undefined,
 }) => ArgvSpecialParseResult | undefined;
 
 export interface StandardArgvParserSpec {
-  options: ArgvOptionSpec[];
-  allowShortFlagBundles: boolean;
-  stopAtDoubleDash: boolean;
-  treatSingleDashAsPositional: boolean;
-  specialTokenParsers: ArgvSpecialTokenParser[];
+  options: ArgvOptionSpec[],
+  allowShortFlagBundles: boolean,
+  stopAtDoubleDash: boolean,
+  treatSingleDashAsPositional: boolean,
+  specialTokenParsers: ArgvSpecialTokenParser[],
 }
 
 export interface ParsedStandardArgv {
-  optionValues: Record<string, ArgvValue>;
-  positionals: string[];
-  diagnostics: ArgvDiagnostic[];
-  occurrences: ArgvOptionOccurrence[];
+  optionValues: Record<string, ArgvValue>,
+  positionals: string[],
+  diagnostics: ArgvDiagnostic[],
+  occurrences: ArgvOptionOccurrence[],
 }
 
 export interface ArgvFlagOptionOccurrence {
-  kind: 'flag';
-  option: string;
-  effects: ArgvOptionEffect[];
+  kind: 'flag',
+  option: string,
+  effects: ArgvOptionEffect[],
 }
 
 export interface ArgvValueOptionOccurrence {
-  kind: 'value';
-  option: string;
-  key: string;
-  value: ArgvValue;
+  kind: 'value',
+  option: string,
+  key: string,
+  value: ArgvValue,
 }
 
 export interface ArgvSpecialOptionOccurrence {
-  kind: 'special';
-  option: string;
-  effects: ArgvOptionEffect[];
+  kind: 'special',
+  option: string,
+  effects: ArgvOptionEffect[],
 }
 
 export type ArgvOptionOccurrence =
@@ -90,20 +90,20 @@ export type ArgvOptionOccurrence =
   | ArgvSpecialOptionOccurrence;
 
 export interface SubcommandArgvParserSpec {
-  name: string;
+  name: string,
   parser:
-    | { kind: 'standard'; spec: StandardArgvParserSpec }
-    | { kind: 'subcommand'; spec: SubcommandArgvParserSpec };
-  subcommands: Record<string, SubcommandArgvParserSpec>;
+    | { kind: 'standard', spec: StandardArgvParserSpec }
+    | { kind: 'subcommand', spec: SubcommandArgvParserSpec },
+  subcommands: Record<string, SubcommandArgvParserSpec>,
 }
 
 export interface ParsedSubcommandArgv {
-  matchedSubcommands: string[];
-  activeCommand: string;
-  parsed: ParsedStandardArgv | undefined;
+  matchedSubcommands: string[],
+  activeCommand: string,
+  parsed: ParsedStandardArgv | undefined,
 }
 
 export interface ParsedFindLikeArgv {
-  paths: string[];
-  expressionTokens: string[];
+  paths: string[],
+  expressionTokens: string[],
 }

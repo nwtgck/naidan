@@ -14,39 +14,6 @@ import { idToRaw, toChatId } from '@/models/ids';
 
 
 /**
- * Tool config persistence is gated only for normal app metadata updates.
- *
- * Import, restore, and provider migration paths intentionally preserve their
- * input data because those operations are about reconstructing an existing
- * storage snapshot. When persistence is disabled, ordinary chat meta writes
- * strip toolConfigs so disabling the experimental feature also reduces future
- * persisted metadata.
- */
-async function shouldPersistToolConfigs({
-  loadSettings,
-}: {
-  loadSettings: () => Promise<Settings | null>;
-}): Promise<boolean> {
-  const settings = await loadSettings();
-  const persistence = settings?.experimental?.toolConfigPersistence ?? 'disabled';
-  switch (persistence) {
-  case 'disabled':
-    return false;
-  case 'enabled':
-    return true;
-  default: {
-    const _exhaustive: never = persistence;
-    throw new Error(`Unhandled tool config persistence setting: ${String(_exhaustive)}`);
-  }
-  }
-}
-
-function omitToolConfigsFromChatMeta({ meta }: { meta: ChatMeta }): ChatMeta {
-  const { toolConfigs: _toolConfigs, ...rest } = meta;
-  return rest;
-}
-
-/**
  * StorageService
  *
  * Orchestrates atomic storage operations across multiple tabs using Web Locks.
@@ -153,17 +120,12 @@ export class StorageService {
 
   // --- Persistence Methods ---
 
-  async updateChatMeta({ id, updater }: { id: ChatId; updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | Promise<ChatMeta> }): Promise<void> {
+  async updateChatMeta({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | Promise<ChatMeta> }): Promise<void> {
     try {
       await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadChatMeta({ id });
         const updated = await updater({ current: current });
-        const metaToSave = await shouldPersistToolConfigs({
-          loadSettings: () => this.loadSettings(),
-        })
-          ? updated
-          : omitToolConfigsFromChatMeta({ meta: updated });
-        await this.getProvider().saveChatMeta({ meta: metaToSave });
+        await this.getProvider().saveChatMeta({ meta: updated });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
@@ -180,7 +142,7 @@ export class StorageService {
     return this.getProvider().loadChatContent({ id });
   }
 
-  async updateChatContent({ id, updater }: { id: ChatId; updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent> }): Promise<void> {
+  async updateChatContent({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent> }): Promise<void> {
     try {
       await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadChatContent({ id });
@@ -210,7 +172,7 @@ export class StorageService {
     }
   }
 
-  async updateChatGroup({ id, updater }: { id: ChatGroupId; updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | Promise<ChatGroup> }): Promise<void> {
+  async updateChatGroup({ id, updater }: { id: ChatGroupId, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | Promise<ChatGroup> }): Promise<void> {
     try {
       await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadChatGroup({ id });
@@ -290,9 +252,9 @@ export class StorageService {
   // --- File Storage Methods ---
 
   async saveFile({ blob, binaryObjectId, name }: {
-    blob: Blob
-    binaryObjectId: BinaryObjectId
-    name: string
+    blob: Blob,
+    binaryObjectId: BinaryObjectId,
+    name: string,
   }): Promise<void> {
     try {
       await this.synchronizer.withLock({ fn: async () => {
@@ -344,18 +306,18 @@ export class StorageService {
   }
 
   async createVolume({ name, type, sourceHandle }: {
-    name: string;
-    type: VolumeType;
-    sourceHandle: FileSystemDirectoryHandle;
+    name: string,
+    type: VolumeType,
+    sourceHandle: FileSystemDirectoryHandle,
   }): Promise<Volume> {
     return this.getProvider().createVolume({ name, type, sourceHandle });
   }
 
   async createVolumeFromFiles({ name, entries, onProgress, signal }: {
-    name: string;
-    entries: Array<{ file: File; relativePath: string }>;
-    onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
-    signal?: AbortSignal;
+    name: string,
+    entries: Array<{ file: File, relativePath: string }>,
+    onProgress?: ({ processed, total }: { processed: number, total: number }) => void,
+    signal?: AbortSignal,
   }): Promise<Volume> {
     return this.getProvider().createVolumeFromFiles({ name, entries, onProgress, signal });
   }
@@ -368,14 +330,14 @@ export class StorageService {
     return this.getProvider().deleteVolume({ volumeId });
   }
 
-  async renameVolume({ volumeId, name }: { volumeId: VolumeId; name: string }): Promise<void> {
+  async renameVolume({ volumeId, name }: { volumeId: VolumeId, name: string }): Promise<void> {
     return this.getProvider().renameVolume({ volumeId, name });
   }
 
   async mountVolume({ volumeId, mountPath, readOnly }: {
-    volumeId: VolumeId;
-    mountPath: string;
-    readOnly: boolean;
+    volumeId: VolumeId,
+    mountPath: string,
+    readOnly: boolean,
   }): Promise<void> {
     await this.updateSettings({ updater: ({ current: settings }) => {
       if (!settings) throw new Error('Settings not initialized');
@@ -399,7 +361,7 @@ export class StorageService {
     } });
   }
 
-  async addMountToChat({ chatId, mount }: { chatId: ChatId; mount: Mount }): Promise<void> {
+  async addMountToChat({ chatId, mount }: { chatId: ChatId, mount: Mount }): Promise<void> {
     await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       const existing = current.mounts ?? [];
@@ -407,7 +369,7 @@ export class StorageService {
     } });
   }
 
-  async removeMountFromChat({ chatId, volumeId }: { chatId: ChatId; volumeId: VolumeId }): Promise<void> {
+  async removeMountFromChat({ chatId, volumeId }: { chatId: ChatId, volumeId: VolumeId }): Promise<void> {
     await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       return {
@@ -417,19 +379,19 @@ export class StorageService {
     } });
   }
 
-  async updateChatMount({ chatId, volumeId, readOnly }: { chatId: ChatId; volumeId: VolumeId; readOnly: boolean }): Promise<void> {
+  async updateChatMount({ chatId, volumeId, readOnly }: { chatId: ChatId, volumeId: VolumeId, readOnly: boolean }): Promise<void> {
     await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).map(m =>
-          m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m
+          m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m,
         ),
       };
     } });
   }
 
-  async addMountToChatGroup({ groupId, mount }: { groupId: ChatGroupId; mount: Mount }): Promise<void> {
+  async addMountToChatGroup({ groupId, mount }: { groupId: ChatGroupId, mount: Mount }): Promise<void> {
     await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       const existing = current.mounts ?? [];
@@ -437,7 +399,7 @@ export class StorageService {
     } });
   }
 
-  async removeMountFromChatGroup({ groupId, volumeId }: { groupId: ChatGroupId; volumeId: VolumeId }): Promise<void> {
+  async removeMountFromChatGroup({ groupId, volumeId }: { groupId: ChatGroupId, volumeId: VolumeId }): Promise<void> {
     await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       return {
@@ -447,13 +409,13 @@ export class StorageService {
     } });
   }
 
-  async updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }: { groupId: ChatGroupId; volumeId: VolumeId; mountPath: string; readOnly: boolean }): Promise<void> {
+  async updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }: { groupId: ChatGroupId, volumeId: VolumeId, mountPath: string, readOnly: boolean }): Promise<void> {
     await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).map(m =>
-          m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m
+          m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m,
         ),
       };
     } });
@@ -519,7 +481,7 @@ export class StorageService {
                               mimeType: att.mimeType,
                               size: att.size,
                               createdAt: att.uploadedAt,
-                              blob: att.blob
+                              blob: att.blob,
                             });
                             node.attachments[i] = { ...att, status: 'persisted' as const };
                           }
@@ -606,7 +568,7 @@ export class StorageService {
     }
   }
 
-  private getLockOptions({ source, custom = {} }: { source: string; custom?: { notifyLockWaitAfterMs?: number } }) {
+  private getLockOptions({ source, custom = {} }: { source: string, custom?: { notifyLockWaitAfterMs?: number } }) {
     return {
       ...custom,
       onLockWait: () => {
@@ -633,7 +595,7 @@ export class StorageService {
     };
   }
 
-  private handleStorageError({ error, source }: { error: unknown; source: string }) {
+  private handleStorageError({ error, source }: { error: unknown, source: string }) {
     const { addErrorEvent } = useGlobalEvents();
     addErrorEvent({
       source: `StorageService:${source}`,

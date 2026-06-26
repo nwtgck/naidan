@@ -4,31 +4,31 @@ import { ImageIcon, Loader2Icon, CheckIcon, ArrowLeftRightIcon, Dice5Icon } from
 import ModelSelector from './ModelSelector.vue';
 
 defineOptions({
-  name: 'ImageGenerationSettings'
+  name: 'ImageGenerationSettings',
 });
 
 const props = defineProps<{
-  canGenerateImage: boolean;
-  isProcessing: boolean;
-  isImageMode: boolean;
-  selectedWidth: number;
-  selectedHeight: number;
-  selectedCount: number;
-  selectedSteps: number | undefined;
-  selectedSeed: number | 'browser_random' | undefined;
-  selectedPersistAs: 'original' | 'webp' | 'jpeg' | 'png';
-  availableImageModels: string[];
-  selectedImageModel: string | undefined;
+  canGenerateImage: boolean,
+  isProcessing: boolean,
+  isImageMode: boolean,
+  selectedWidth: number,
+  selectedHeight: number,
+  selectedCount: number,
+  selectedSteps: number | undefined,
+  selectedSeed: number | 'browser_random' | undefined,
+  selectedPersistAs: 'original' | 'webp' | 'jpeg' | 'png',
+  availableImageModels: string[],
+  selectedImageModel: string | undefined,
 }>();
 
 const emit = defineEmits<{
-  (e: 'toggle-image-mode'): void;
-  (e: 'update:resolution', width: number, height: number): void;
-  (e: 'update:count', count: number): void;
-  (e: 'update:steps', steps: number | undefined): void;
-  (e: 'update:seed', seed: number | 'browser_random' | undefined): void;
-  (e: 'update:persist-as', format: 'original' | 'webp' | 'jpeg' | 'png'): void;
-  (e: 'update:model', modelId: string): void;
+  (e: 'toggle-image-mode'): void,
+  (e: 'update:resolution', width: number, height: number): void,
+  (e: 'update:count', count: number): void,
+  (e: 'update:steps', steps: number | undefined): void,
+  (e: 'update:seed', seed: number | 'browser_random' | undefined): void,
+  (e: 'update:persist-as', format: 'original' | 'webp' | 'jpeg' | 'png'): void,
+  (e: 'update:model', modelId: string): void,
 }>();
 
 const resolutions = [
@@ -114,7 +114,7 @@ function swapResolution() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

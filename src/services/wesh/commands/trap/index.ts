@@ -33,7 +33,7 @@ const trapArgvSpec: StandardArgvParserSpec = {
 function shellQuote({
   text,
 }: {
-  text: string;
+  text: string,
 }): string {
   return `'${text.replaceAll('\'', `'\\''`)}'`;
 }
