@@ -1001,11 +1001,11 @@ defineExpose({
           class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
           :class="isSidebarOpen ? 'flex-1 px-3 py-2 text-xs' : 'w-8 h-8'"
           data-testid="new-chat-button"
-          :title="!isSidebarOpen ? lazyStrings.Sidebar__new_chat() : ''"
+          :title="!isSidebarOpen ? lazyStrings.SHARED__new_chat() : ''"
         >
           <SquarePenIcon class="w-4 h-4 shrink-0" />
           <template v-if="isSidebarOpen">
-            <span class="whitespace-nowrap overflow-hidden">{{ lazyStrings.Sidebar__new_chat() }}</span>
+            <span class="whitespace-nowrap overflow-hidden">{{ lazyStrings.SHARED__new_chat() }}</span>
             <span class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
           </template>
         </button>
@@ -1157,7 +1157,7 @@ defineExpose({
                       @click.stop="handleNewChat({ groupId: element.chatGroup.id })"
                       class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                     >
-                      <MessageSquarePlusIcon class="w-3 h-3" /> Add Chat
+                      <MessageSquarePlusIcon class="w-3 h-3" /> {{ lazyStrings.Sidebar__add_chat() }}
                     </button>
 
                     <!-- Smooth height for Show more/less -->
@@ -1207,7 +1207,7 @@ defineExpose({
                                 class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                                 data-testid="chat-rename-input"
                               />
-                              <span v-else class="truncate text-sm">{{ nestedItem.chat.title || lazyStrings.Sidebar__new_chat() }}</span>
+                              <span v-else class="truncate text-sm">{{ nestedItem.chat.title || lazyStrings.SHARED__new_chat() }}</span>
                             </div>
                             <div class="flex items-center gap-1">
                               <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
@@ -1265,7 +1265,7 @@ defineExpose({
                     class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                     data-testid="chat-rename-input"
                   />
-                  <span v-else class="truncate text-sm">{{ element.chat.title || lazyStrings.Sidebar__new_chat() }}</span>
+                  <span v-else class="truncate text-sm">{{ element.chat.title || lazyStrings.SHARED__new_chat() }}</span>
                 </div>
                 <div class="flex items-center gap-1">
                   <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />

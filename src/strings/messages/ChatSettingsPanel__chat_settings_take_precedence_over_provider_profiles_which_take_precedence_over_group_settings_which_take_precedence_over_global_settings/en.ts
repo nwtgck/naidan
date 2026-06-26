@@ -1,0 +1,1 @@
+export const ChatSettingsPanel__chat_settings_take_precedence_over_provider_profiles_which_take_precedence_over_group_settings_which_take_precedence_over_global_settings = (): string => 'Chat settings take precedence over Provider Profiles, which take precedence over Group settings, which take precedence over Global settings.';

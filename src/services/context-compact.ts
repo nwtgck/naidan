@@ -1,4 +1,5 @@
 import { generateId } from '@/utils/id';
+import { lazyStrings } from '@/strings';
 import type { AssistantMessageNode, Attachment, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
 import type { LmProvider } from '@/services/lm/types';
@@ -694,59 +695,64 @@ export function toContextCompactDisplayProgress({
   case 'preparing':
     return {
       percent: 5,
-      title: 'Compacting context',
-      detail: `Preparing ${progress.compactedMessageCount} messages, keeping ${progress.suffixMessageCount}.`,
+      title: lazyStrings.contextCompact__compacting_context(),
+      detail: lazyStrings.contextCompact__preparing_messages_and_keeping_recent_messages({
+        compactedMessageCount: progress.compactedMessageCount,
+        suffixMessageCount: progress.suffixMessageCount,
+      }),
       isRunning: true,
     };
   case 'building_request':
     return {
       percent: 15,
-      title: 'Compacting context',
-      detail: 'Building compact request.',
+      title: lazyStrings.contextCompact__compacting_context(),
+      detail: lazyStrings.contextCompact__building_compact_request(),
       isRunning: true,
     };
   case 'requesting_model':
     return {
       percent: 25,
-      title: 'Compacting context',
-      detail: 'Waiting for the model.',
+      title: lazyStrings.contextCompact__compacting_context(),
+      detail: lazyStrings.contextCompact__waiting_for_the_model(),
       isRunning: true,
     };
   case 'receiving_compact': {
     const percent = Math.min(85, 30 + Math.floor(Math.sqrt(progress.outputChars) * 0.6));
     return {
       percent,
-      title: 'Compacting context',
-      detail: `Generating Compact Context, ${progress.outputChars} chars received.`,
+      title: lazyStrings.contextCompact__compacting_context(),
+      detail: lazyStrings.contextCompact__generating_compact_context_with_characters_received({
+        outputChars: progress.outputChars,
+      }),
       isRunning: true,
     };
   }
   case 'applying_branch':
     return {
       percent: 95,
-      title: 'Compacting context',
-      detail: 'Applying compact branch.',
+      title: lazyStrings.contextCompact__compacting_context(),
+      detail: lazyStrings.contextCompact__applying_compact_branch(),
       isRunning: true,
     };
   case 'complete':
     return {
       percent: 100,
-      title: 'Compacting context',
-      detail: 'Complete.',
+      title: lazyStrings.contextCompact__compacting_context(),
+      detail: lazyStrings.contextCompact__complete(),
       isRunning: false,
     };
   case 'failed':
     return {
       percent: 100,
-      title: 'Compacting context failed',
+      title: lazyStrings.contextCompact__compacting_context_failed(),
       detail: progress.message,
       isRunning: false,
     };
   case 'aborted':
     return {
       percent: 100,
-      title: 'Compacting context',
-      detail: 'Aborted.',
+      title: lazyStrings.contextCompact__compacting_context(),
+      detail: lazyStrings.contextCompact__aborted(),
       isRunning: false,
     };
   default: {

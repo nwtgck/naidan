@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { computed, inject, ref, watch } from 'vue';
 import { ChevronUpIcon, ChevronDownIcon } from 'lucide-vue-next';
 import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
@@ -11,12 +12,12 @@ import { useVirtualizedFileExplorerList } from './useVirtualizedFileExplorerList
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
 const scrollContainerRef = ref<HTMLElement | undefined>(undefined);
 
-const columns: Array<{ label: string, field: SortField, class: string }> = [
-  { label: 'Name', field: 'name', class: 'flex-1 min-w-0' },
-  { label: 'Size', field: 'size', class: 'w-16 text-right shrink-0' },
-  { label: 'Modified', field: 'dateModified', class: 'w-28 text-right shrink-0 hidden md:block' },
-  { label: 'Type', field: 'type', class: 'w-16 text-right shrink-0 hidden lg:block' },
-];
+const columns = computed<Array<{ label: string, field: SortField, class: string }>>(() => [
+  { label: lazyStrings.fileExplorer__name(), field: 'name', class: 'flex-1 min-w-0' },
+  { label: lazyStrings.fileExplorer__size(), field: 'size', class: 'w-16 text-right shrink-0' },
+  { label: lazyStrings.fileExplorer__modified(), field: 'dateModified', class: 'w-28 text-right shrink-0 hidden md:block' },
+  { label: lazyStrings.fileExplorer__type(), field: 'type', class: 'w-16 text-right shrink-0 hidden lg:block' },
+]);
 
 const sortedFilteredEntriesRef = computed(() => ctx.sortedFilteredEntries);
 

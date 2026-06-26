@@ -7,7 +7,7 @@ import type { ToolConfig } from '@/services/tools/types';
 const mocks = vi.hoisted(() => ({
   setToolStatus: vi.fn(),
   resetToolToInherited: vi.fn(),
-  getToolInheritanceLabel: vi.fn(),
+  getToolInheritanceSource: vi.fn(),
   setNaidanSysfsAccessScope: vi.fn(),
   getActiveChatToolConfigs: vi.fn(),
   getEffectiveToolConfigsForChat: vi.fn(),
@@ -46,7 +46,7 @@ vi.mock('@/composables/useChatTools', () => ({
   useChatTools: () => ({
     setToolStatus: mocks.setToolStatus,
     resetToolToInherited: mocks.resetToolToInherited,
-    getToolInheritanceLabel: mocks.getToolInheritanceLabel,
+    getToolInheritanceSource: mocks.getToolInheritanceSource,
   }),
 }));
 
@@ -63,12 +63,12 @@ vi.mock('lucide-vue-next', () => ({
 const HierarchySettingsStub = defineComponent({
   name: 'ToolConfigHierarchySettings',
   props: {
-    inheritanceLabelByKey: { type: Object, required: true },
+    inheritanceSourceByKey: { type: Object, required: true },
   },
   emits: ['set-status', 'reset-tool', 'set-wesh-access-scope'],
   setup(props, { emit }) {
     return () => h('div', { 'data-testid': 'hierarchy-settings-stub' }, [
-      h('span', { 'data-testid': 'calculator-inheritance-label' }, String(props.inheritanceLabelByKey['builtin.calculator'])),
+      h('span', { 'data-testid': 'calculator-inheritance-label' }, String(props.inheritanceSourceByKey['builtin.calculator'])),
       h('button', {
         'data-testid': 'enable-calculator',
         onClick: () => emit('set-status', { key: 'builtin.calculator', status: 'enabled' }),
@@ -103,7 +103,7 @@ describe('LmToolsSettings.vue', () => {
     mockCurrentChat.value.toolConfigs = undefined;
     mocks.getActiveChatToolConfigs.mockReturnValue(undefined);
     mocks.getEffectiveToolConfigsForChat.mockReturnValue(effectiveToolConfigs);
-    mocks.getToolInheritanceLabel.mockReturnValue('Use global');
+    mocks.getToolInheritanceSource.mockReturnValue('global');
     mocks.setToolStatus.mockResolvedValue(undefined);
     mocks.resetToolToInherited.mockResolvedValue(undefined);
     mocks.setNaidanSysfsAccessScope.mockResolvedValue(undefined);
@@ -130,10 +130,10 @@ describe('LmToolsSettings.vue', () => {
     expect(wrapper.find('[data-testid="chat-tool-runtime-note"]').exists()).toBe(false);
   });
 
-  it('shows Use group when the chat group has an explicit tool config', () => {
-    mocks.getToolInheritanceLabel.mockReturnValue('Use group');
+  it('passes the group inheritance source when the chat group has an explicit tool config', () => {
+    mocks.getToolInheritanceSource.mockReturnValue('group');
     const wrapper = mountSettings();
-    expect(wrapper.get('[data-testid="calculator-inheritance-label"]').text()).toBe('Use group');
+    expect(wrapper.get('[data-testid="calculator-inheritance-label"]').text()).toBe('group');
   });
 
   it('maps status changes to the chat tool API', async () => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, watch } from 'vue';
 import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight/worker/client-shared';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
@@ -132,7 +133,7 @@ defineExpose({
           @click="toggleLineWrap"
           class="flex items-center hover:text-white transition-colors cursor-pointer"
           :class="isLineWrapEnabled ? 'text-indigo-400' : 'text-gray-400'"
-          title="Toggle line wrap"
+          :title="lazyStrings.blockMarkdown__toggle_line_wrap()"
         >
           <WrapTextIcon class="w-3.5 h-3.5" />
         </button>
@@ -140,7 +141,7 @@ defineExpose({
           @click="copyCode"
           class="flex items-center hover:text-white transition-colors cursor-pointer"
           :class="copied ? 'text-green-400' : 'text-gray-400'"
-          :title="copied ? 'Copied' : 'Copy code'"
+          :title="copied ? lazyStrings.blockMarkdown__copied() : lazyStrings.blockMarkdown__copy_code()"
         >
           <CheckIcon v-if="copied" class="w-3.5 h-3.5" />
           <CopyIcon v-else class="w-3.5 h-3.5" />

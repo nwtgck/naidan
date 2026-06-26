@@ -1,11 +1,28 @@
 <script setup lang="ts">
-import type { ApprovalActiveRequest, ApprovalUiDecision } from '@/services/approval';
+import { lazyStrings } from '@/strings';
+import { computed } from 'vue';
+import type { ApprovalActionId, ApprovalActiveRequest, ApprovalUiDecision } from '@/services/approval';
 import ChatApprovalDecisionList from './ChatApprovalDecisionList.vue';
 import ChatApprovalPreviewRenderer from './ChatApprovalPreviewRenderer';
 
 const props = defineProps<{
   request: ApprovalActiveRequest,
 }>();
+
+const actionLabel = computed(() => resolveActionLabel({ actionId: props.request.action.id }));
+
+function resolveActionLabel({ actionId }: { actionId: ApprovalActionId }): string {
+  switch (actionId) {
+  case 'tool.wikipedia.search':
+    return lazyStrings.chatApproval__search_wikipedia();
+  case 'tool.wikipedia.get_page':
+    return lazyStrings.chatApproval__get_wikipedia_page();
+  default: {
+    const _exhaustive: never = actionId;
+    throw new Error(`Unhandled approval action: ${_exhaustive}`);
+  }
+  }
+}
 
 const emit = defineEmits<{
   (event: 'decide', decision: ApprovalUiDecision): void,
@@ -35,7 +52,7 @@ defineExpose({
     <div class="flex flex-col gap-2.5">
       <div class="min-w-0">
         <div class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-          Allow {{ props.request.action.label }}?
+          {{ lazyStrings.chatApproval__allow_action({ actionLabel: actionLabel }) }}
         </div>
       </div>
 
@@ -47,7 +64,7 @@ defineExpose({
       </div>
 
       <ChatApprovalDecisionList
-        :action-label="props.request.action.label"
+        :action-label="actionLabel"
         @decide="decision => decide({ decision })"
       />
     </div>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { FolderIcon, MessageSquareIcon } from 'lucide-vue-next';
-import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import { lazyStrings } from '@/strings';
 import RelativeTime from './RelativeTime.vue';
 import type { ChatSummary } from '@/models/types';
 
@@ -55,7 +55,7 @@ defineExpose({
       <div class="flex flex-col flex-1 overflow-hidden">
         <div class="flex items-center justify-between gap-2">
           <div class="flex flex-col overflow-hidden">
-            <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100">{{ chat.title || UNTITLED_CHAT_TITLE }}</span>
+            <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100">{{ chat.title || lazyStrings.SHARED__new_chat() }}</span>
             <span v-if="groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
               <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
               <span>{{ groupName }}</span>

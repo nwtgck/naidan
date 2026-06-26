@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { inject, ref } from 'vue';
+import { ensureStrings, lazyStrings } from '@/strings';
+import { computed, inject, ref } from 'vue';
 import { LayoutGridIcon, ListIcon, Columns3Icon, RefreshCwIcon, SearchIcon, FilePlusIcon, FolderPlusIcon, UploadIcon, EyeIcon, EyeOffIcon, XIcon, LockIcon, LockOpenIcon } from 'lucide-vue-next';
 import FileExplorerBreadcrumbs from './FileExplorerBreadcrumbs.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
@@ -25,11 +26,11 @@ async function handleFileInputChange({ event }: { event: Event }): Promise<void>
   input.value = '';
 }
 
-const viewModes: Array<{ mode: ViewMode, icon: unknown, title: string }> = [
-  { mode: 'icon', icon: LayoutGridIcon, title: 'Icon view' },
-  { mode: 'list', icon: ListIcon, title: 'List view' },
-  { mode: 'column', icon: Columns3Icon, title: 'Column view' },
-];
+const viewModes = computed<Array<{ mode: ViewMode, icon: unknown, title: string }>>(() => [
+  { mode: 'icon', icon: LayoutGridIcon, title: lazyStrings.fileExplorer__icon_view() },
+  { mode: 'list', icon: ListIcon, title: lazyStrings.fileExplorer__list_view() },
+  { mode: 'column', icon: Columns3Icon, title: lazyStrings.fileExplorer__column_view() },
+]);
 
 async function handleRefresh(): Promise<void> {
   isRefreshing.value = true;
@@ -39,18 +40,18 @@ async function handleRefresh(): Promise<void> {
 
 async function handleNewFile(): Promise<void> {
   const name = await showPrompt({
-    title: 'New File',
-    message: 'Enter a name for the new file:',
-    confirmButtonText: 'Create',
+    title: await ensureStrings.fileExplorer__new_file(),
+    message: await ensureStrings.fileExplorer__enter_a_name_for_the_new_file(),
+    confirmButtonText: await ensureStrings.fileExplorer__create(),
   });
   if (name) await ctx.createFile({ name });
 }
 
 async function handleNewFolder(): Promise<void> {
   const name = await showPrompt({
-    title: 'New Folder',
-    message: 'Enter a name for the new folder:',
-    confirmButtonText: 'Create',
+    title: await ensureStrings.fileExplorer__new_folder(),
+    message: await ensureStrings.fileExplorer__enter_a_name_for_the_new_folder(),
+    confirmButtonText: await ensureStrings.fileExplorer__create(),
   });
   if (name) await ctx.createFolder({ name });
 }
@@ -95,7 +96,7 @@ defineExpose({
 
       <!-- Action buttons -->
       <button
-        :title="ctx.previewState.visibility === 'visible' ? 'Hide preview' : 'Show preview'"
+        :title="ctx.previewState.visibility === 'visible' ? lazyStrings.fileExplorer__hide_preview() : lazyStrings.fileExplorer__show_preview()"
         class="p-1.5 rounded-lg transition-colors"
         :class="ctx.previewState.visibility === 'visible'
           ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20'
@@ -106,7 +107,7 @@ defineExpose({
       </button>
 
       <button
-        :title="ctx.isLocked ? 'Locked — click to unlock' : 'Unlocked — click to lock'"
+        :title="ctx.isLocked ? lazyStrings.fileExplorer__locked_click_to_unlock() : lazyStrings.fileExplorer__unlocked_click_to_lock()"
         data-testid="lock-toggle"
         class="p-1.5 rounded-lg transition-colors"
         :class="ctx.isLocked
@@ -118,7 +119,7 @@ defineExpose({
       </button>
 
       <button
-        title="Search"
+        :title="lazyStrings.fileExplorer__search()"
         data-testid="search-toggle"
         class="p-1.5 rounded-lg transition-colors"
         :class="isSearchOpen
@@ -130,7 +131,7 @@ defineExpose({
       </button>
 
       <button
-        :title="ctx.readOnly ? 'Upload Files (unlock to enable)' : 'Upload Files'"
+        :title="ctx.readOnly ? lazyStrings.fileExplorer__upload_files_unlock_to_enable() : lazyStrings.fileExplorer__upload_files()"
         data-testid="upload-button"
         class="p-1.5 rounded-lg transition-colors"
         :class="ctx.readOnly
@@ -151,7 +152,7 @@ defineExpose({
       />
 
       <button
-        :title="ctx.readOnly ? 'New File (unlock to enable)' : 'New File'"
+        :title="ctx.readOnly ? lazyStrings.fileExplorer__new_file_unlock_to_enable() : lazyStrings.fileExplorer__new_file()"
         data-testid="new-file-button"
         class="p-1.5 rounded-lg transition-colors"
         :class="ctx.readOnly
@@ -164,7 +165,7 @@ defineExpose({
       </button>
 
       <button
-        :title="ctx.readOnly ? 'New Folder (unlock to enable)' : 'New Folder'"
+        :title="ctx.readOnly ? lazyStrings.fileExplorer__new_folder_unlock_to_enable() : lazyStrings.fileExplorer__new_folder()"
         data-testid="new-folder-button"
         class="p-1.5 rounded-lg transition-colors"
         :class="ctx.readOnly
@@ -177,7 +178,7 @@ defineExpose({
       </button>
 
       <button
-        title="Refresh"
+        :title="lazyStrings.fileExplorer__refresh()"
         class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         :class="isRefreshing ? 'animate-spin' : ''"
         @click="handleRefresh"
@@ -192,7 +193,7 @@ defineExpose({
       <input
         :value="ctx.filterQuery"
         type="text"
-        placeholder="Filter by name..."
+        :placeholder="lazyStrings.fileExplorer__filter_by_name()"
         class="flex-1 text-xs bg-transparent outline-none text-gray-800 dark:text-gray-200 placeholder-gray-400"
         data-testid="filter-input"
         @input="ctx.setFilterQuery({ query: ($event.target as HTMLInputElement).value })"

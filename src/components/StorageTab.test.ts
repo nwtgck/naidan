@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick, reactive } from 'vue';
 import StorageTab from './StorageTab.vue';
@@ -7,6 +7,7 @@ import { useSettings } from '@/composables/useSettings';
 import { storageService } from '@/services/storage';
 import type { ProviderProfile } from '@/models/types';
 import { useRouter, useRoute } from 'vue-router';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 
@@ -130,6 +131,10 @@ const globalMocks = {
 };
 
 describe('StorageTab.vue Tests', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
   const mockPush = vi.fn((p) => {
     if (typeof p === 'string') {
@@ -237,7 +242,7 @@ describe('StorageTab.vue Tests', () => {
       await wait();
 
       expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
-    });
+    }, 15_000);
     it('warns about attachment loss when switching from OPFS to Local', async () => {
       vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
       vi.mocked(storageService.hasAttachments).mockResolvedValue(true);

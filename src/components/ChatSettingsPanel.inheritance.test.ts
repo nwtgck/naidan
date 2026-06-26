@@ -6,6 +6,7 @@ import ModelSelector from './ModelSelector.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
   mockAvailableModelsRef: { value: [] as string[] },
   mockFetchingModelsRef: { value: false },
@@ -57,7 +58,8 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     'router-link': true,
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mockCurrentChat.value = {
       id: 'chat-1',

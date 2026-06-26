@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { ref } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
@@ -15,10 +16,10 @@ const { isDebugOpen, toggleDebug } = useLayout();
 const isMenuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
 
-function triggerTestError() {
+async function triggerTestError() {
   addErrorEvent({
     source: 'DevTools',
-    message: 'Intentional test error triggered by user',
+    message: await ensureStrings.DebugPanel__intentional_test_error_triggered_by_user(),
     details: {
       hint: 'This is used to verify the error event system UI.',
       browser: navigator.userAgent,
@@ -27,10 +28,10 @@ function triggerTestError() {
   isMenuOpen.value = false;
 }
 
-function triggerTestInfo() {
+async function triggerTestInfo() {
   addInfoEvent({
     source: 'DevTools',
-    message: 'Application state synchronized',
+    message: await ensureStrings.DebugPanel__application_state_synchronized(),
     details: {
       status: 'success',
       timestamp: new Date().toISOString(),
@@ -109,7 +110,7 @@ defineExpose({
     >
       <div class="flex items-center gap-2">
         <TerminalIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
-        <span class="text-[10px] font-bold text-gray-400 dark:text-gray-500 tracking-widest uppercase">System Events</span>
+        <span class="text-[10px] font-bold text-gray-400 dark:text-gray-500 tracking-widest uppercase">{{ lazyStrings.DebugPanel__system_events() }}</span>
 
         <div
           v-if="errorCount > 0"
@@ -117,14 +118,14 @@ defineExpose({
           data-testid="debug-error-badge"
         >
           <AlertCircleIcon class="w-3 h-3" />
-          {{ errorCount }} Errors
+          {{ lazyStrings.DebugPanel__error_count({ count: errorCount }) }}
         </div>
 
         <span
           class="text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-lg"
           data-testid="debug-total-badge"
         >
-          Total: {{ eventCount }}
+          {{ lazyStrings.DebugPanel__total_count({ count: eventCount }) }}
         </span>
       </div>
 
@@ -133,7 +134,7 @@ defineExpose({
           v-if="eventCount > 0"
           @click.stop="clearEvents"
           class="p-1.5 hover:text-red-600 dark:hover:text-red-400 text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-          title="Clear Logs"
+          :title="lazyStrings.DebugPanel__clear_logs()"
           data-testid="debug-clear-button"
         >
           <Trash2Icon class="w-4 h-4" />
@@ -143,7 +144,7 @@ defineExpose({
         <button
           @mousedown.stop="isMenuOpen = !isMenuOpen"
           class="p-1.5 hover:text-blue-600 dark:hover:text-white text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-          title="Development Tools"
+          :title="lazyStrings.DebugPanel__development_tools()"
           data-testid="debug-menu-button"
           :class="{ 'text-blue-600 dark:text-white bg-gray-100 dark:bg-gray-700': isMenuOpen }"
         >
@@ -163,7 +164,7 @@ defineExpose({
             data-testid="trigger-test-info"
           >
             <InfoIcon class="w-3.5 h-3.5" />
-            <span>Trigger Test Info</span>
+            <span>{{ lazyStrings.DebugPanel__trigger_test_info() }}</span>
           </button>
           <button
             @click.stop="triggerTestError"
@@ -171,7 +172,7 @@ defineExpose({
             data-testid="trigger-test-error"
           >
             <SkullIcon class="w-3.5 h-3.5" />
-            <span>Trigger Test Error</span>
+            <span>{{ lazyStrings.DebugPanel__trigger_test_error() }}</span>
           </button>
           <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
           <button
@@ -180,14 +181,14 @@ defineExpose({
             data-testid="open-opfs-explorer"
           >
             <HardDriveIcon class="w-3.5 h-3.5" />
-            <span>Explore OPFS</span>
+            <span>{{ lazyStrings.DebugPanel__explore_opfs() }}</span>
           </button>
         </div>
 
         <button
           @click="toggleDebug"
           class="p-1.5 hover:text-gray-600 dark:hover:text-white text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 ml-1"
-          title="Close Panel"
+          :title="lazyStrings.DebugPanel__close_panel()"
         >
           <XIcon class="w-4 h-4" />
         </button>
@@ -198,7 +199,7 @@ defineExpose({
     <div class="h-[calc(100%-40px)] overflow-y-auto bg-gray-50/30 dark:bg-black/40 font-mono p-3 space-y-1.5" data-testid="debug-content-area">
       <div v-if="eventCount === 0" class="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
         <XIcon class="w-8 h-8 opacity-20" />
-        <p class="text-xs font-bold uppercase tracking-widest">No events recorded</p>
+        <p class="text-xs font-bold uppercase tracking-widest">{{ lazyStrings.DebugPanel__no_events_recorded() }}</p>
       </div>
 
       <div

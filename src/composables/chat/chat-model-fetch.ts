@@ -1,4 +1,5 @@
 import { toRaw } from 'vue';
+import { ensureStrings } from '@/strings';
 import type { ChatGroup, EndpointType } from '@/models/types';
 import type { LmProvider } from '@/services/lm/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
@@ -113,7 +114,7 @@ export async function fetchModelsForEndpoint({
   } catch (error) {
     addErrorEvent({
       source: errorSource,
-      message: 'Failed to fetch models for resolution',
+      message: await ensureStrings.chatModelFetch__failed_to_fetch_models_for_resolution(),
       details: error instanceof Error ? error.message : String(error),
     });
     return [];

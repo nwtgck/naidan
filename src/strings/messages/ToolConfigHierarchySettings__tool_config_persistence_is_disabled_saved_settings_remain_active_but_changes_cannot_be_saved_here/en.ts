@@ -1,0 +1,1 @@
+export const ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here = (): string => 'Tool config persistence is disabled. Saved settings remain active, but changes cannot be saved here.';

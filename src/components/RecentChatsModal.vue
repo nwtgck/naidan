@@ -48,7 +48,7 @@ const filteredRecentChats = computed(() => {
   const q = filterQuery.value.trim().toLowerCase();
   if (!q) return recentChats.value;
   return recentChats.value.filter(chat =>
-    (chat.title || lazyStrings.RecentChatsModal__untitled_chat()).toLowerCase().includes(q),
+    (chat.title || lazyStrings.SHARED__new_chat()).toLowerCase().includes(q),
   );
 });
 

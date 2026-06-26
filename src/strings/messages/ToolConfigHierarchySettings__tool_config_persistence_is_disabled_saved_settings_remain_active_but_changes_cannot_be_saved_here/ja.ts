@@ -1,0 +1,1 @@
+export const ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here = (): string => 'ツール設定の永続化が無効です。保存済み設定は有効なままですが、ここでの変更は保存できません。';

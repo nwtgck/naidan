@@ -76,7 +76,7 @@ function ensureToolConfigPersistenceWatcher(): void {
   isToolConfigPersistenceWatcherInstalled = true;
 }
 
-export type ChatToolInheritanceLabel = 'Use group' | 'Use global';
+export type ChatToolInheritanceSource = 'group' | 'global';
 
 interface ChatToolsApi {
   isToolEnabled: ({ name }: { name: string }) => boolean,
@@ -84,7 +84,7 @@ interface ChatToolsApi {
   setToolStatus: ({ name, status }: { name: LmToolName, status: ToolConfigStatus }) => Promise<void>,
   resetToolToInherited: ({ name }: { name: LmToolName }) => Promise<void>,
   toggleTool: ({ name }: { name: string }) => Promise<void>,
-  getToolInheritanceLabel: ({ name }: { name: LmToolName }) => ChatToolInheritanceLabel,
+  getToolInheritanceSource: ({ name }: { name: LmToolName }) => ChatToolInheritanceSource,
   setCurrentChatId: ({ chatId }: { chatId: ChatId | null }) => void,
   updateToolConfigsForCurrentChat: ({ updater }: { updater: ToolConfigsUpdater }) => Promise<void>,
   enabledToolNames: ComputedRef<LmToolName[]>,
@@ -529,14 +529,14 @@ export function useChatTools(): ChatToolsApi {
     await setToolEnabled({ name, enabled: !isToolEnabled({ name }) });
   };
 
-  const getToolInheritanceLabel = ({ name }: { name: LmToolName }): ChatToolInheritanceLabel => {
-    if (_currentChatId.value === null) return 'Use global';
+  const getToolInheritanceSource = ({ name }: { name: LmToolName }): ChatToolInheritanceSource => {
+    if (_currentChatId.value === null) return 'global';
     const liveChat = getCurrentLiveChat();
     const groupConfig = findLastToolConfigByKey({
       toolConfigs: getChatGroupToolConfigsForChat({ chat: liveChat }),
       key: builtinToolKeyForLmToolName({ name }),
     });
-    return groupConfig === undefined ? 'Use global' : 'Use group';
+    return groupConfig === undefined ? 'global' : 'group';
   };
 
   const setCurrentChatId = ({ chatId }: { chatId: ChatId | null }) => {
@@ -601,7 +601,7 @@ export function useChatTools(): ChatToolsApi {
     setToolStatus,
     resetToolToInherited,
     toggleTool,
-    getToolInheritanceLabel,
+    getToolInheritanceSource,
     setCurrentChatId,
     updateToolConfigsForCurrentChat,
     enabledToolNames,

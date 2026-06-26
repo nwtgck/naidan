@@ -7,7 +7,7 @@ Message directories and catalog properties must use this format:
 ```
 
 The directory name, English catalog property, every locale catalog property,
-and property accessed after `lazyStrings.` must match exactly.
+and properties accessed after `lazyStrings.` or `ensureStrings.` must match exactly.
 
 ## Scope ownership
 
@@ -29,16 +29,48 @@ should normally follow the same ownership boundary.
 The scope describes copy ownership. It does not describe a Vite chunk or force
 messages from different scopes into different output files.
 
-## Sharing
+## Accessor selection
 
-Reuse one key only when future copy changes must intentionally propagate to all
-call sites. Identical English text alone is not a reason to share a key.
+Use `lazyStrings` only where Vue or another reactive path will evaluate the
+message again after its boundary loads, such as a template or computed value.
+Use `ensureStrings` when a completed string is stored, emitted, passed to an
+imperative UI API, written into an event, or otherwise will not be revisited by
+a reactive render. Do not use test-wide eager string installation to hide an
+incorrect accessor choice.
+
+## Shared copy ownership
+
+`SHARED__` is a reserved scope for copy whose future wording changes must
+intentionally propagate to every call site using the key. It is not a fallback
+for messages whose owner is unclear, and it must not be used merely to remove
+duplicate implementations or because multiple call sites currently have the
+same English text.
+
+Before creating or reusing a `SHARED__` key, verify all of the following:
+
+* Every call site represents the same product concept.
+* The message has the same meaning in every supported locale.
+* A future wording change should intentionally affect every call site.
+* No call site is expected to evolve independently.
+
+If any condition is uncertain, use an owner-specific scope. If one call site
+later needs independent wording, split that call site into an owner-specific
+key instead of weakening or contextually overriding the shared message.
+
+Existing user-facing constants are strong evidence that copy was intended to be
+shared, but inspect every use before migration. A constant may have accumulated
+semantically different uses over time. Preserve sharing only when the call sites
+still represent one product-level copy decision.
+
+All `SHARED__` imports and catalog properties must appear before owner-specific
+keys in every locale catalog. Each catalog must keep the warning comment at the
+start of the shared group directing contributors to this file.
 
 ## Natural-language suffix
 
 The suffix after `__` must be lowercase snake_case derived from the existing
 English UI message. A reader should be able to predict the likely message from
-`lazyStrings.<key>` without opening the locale file.
+`lazyStrings.<key>` or `ensureStrings.<key>` without opening the locale file.
 
 Do not use abstract role-only suffixes such as `confirmation`, `error_message`,
 or `button_label`. Punctuation, minor tone, and incidental wording do not need

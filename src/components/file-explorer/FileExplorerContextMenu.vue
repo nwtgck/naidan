@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { inject, computed, ref } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 import {
@@ -29,7 +30,7 @@ type MenuItem =
 
 const menuItems = computed<MenuItem[]>(() => {
   const readOnly = ctx.readOnly;
-  const lockedReason = readOnly ? 'Unlock to enable' : undefined;
+  const lockedReason = readOnly ? lazyStrings.fileExplorer__unlock_to_enable() : undefined;
 
   switch (target.value.kind) {
   case 'entry': {
@@ -39,43 +40,43 @@ const menuItems = computed<MenuItem[]>(() => {
       firstEntry?.kind === 'file';
 
     const items: MenuItem[] = [
-      { type: 'action', action: 'open', label: 'Open', icon: FolderOpenIcon },
-      { type: 'action', action: 'rename', label: 'Rename', icon: PencilIcon, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'open', label: lazyStrings.fileExplorer__open(), icon: FolderOpenIcon },
+      { type: 'action', action: 'rename', label: lazyStrings.fileExplorer__rename(), icon: PencilIcon, disabled: readOnly, disabledReason: lockedReason },
     ];
 
     items.push({ type: 'divider' });
-    items.push({ type: 'action', action: 'copy', label: 'Copy', icon: CopyIcon });
-    items.push({ type: 'action', action: 'cut', label: 'Cut', icon: ScissorsIcon, disabled: readOnly, disabledReason: lockedReason });
+    items.push({ type: 'action', action: 'copy', label: lazyStrings.fileExplorer__copy(), icon: CopyIcon });
+    items.push({ type: 'action', action: 'cut', label: lazyStrings.fileExplorer__cut(), icon: ScissorsIcon, disabled: readOnly, disabledReason: lockedReason });
 
     if (hasClipboard.value) {
-      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPasteIcon, disabled: readOnly, disabledReason: lockedReason });
+      items.push({ type: 'action', action: 'paste', label: lazyStrings.fileExplorer__paste(), icon: ClipboardPasteIcon, disabled: readOnly, disabledReason: lockedReason });
     }
 
     items.push({ type: 'divider' });
 
     if (isSingleFile) {
-      items.push({ type: 'action', action: 'download', label: 'Download', icon: DownloadIcon });
+      items.push({ type: 'action', action: 'download', label: lazyStrings.fileExplorer__download(), icon: DownloadIcon });
     }
 
-    items.push({ type: 'action', action: 'getInfo', label: 'Get Info', icon: InfoIcon });
+    items.push({ type: 'action', action: 'getInfo', label: lazyStrings.fileExplorer__get_info(), icon: InfoIcon });
     items.push({ type: 'divider' });
-    items.push({ type: 'action', action: 'delete', label: 'Delete', icon: Trash2Icon, danger: true, disabled: readOnly, disabledReason: lockedReason });
+    items.push({ type: 'action', action: 'delete', label: lazyStrings.fileExplorer__delete(), icon: Trash2Icon, danger: true, disabled: readOnly, disabledReason: lockedReason });
 
     return items;
   }
   case 'background': {
     const items: MenuItem[] = [
-      { type: 'action', action: 'newFile', label: 'New File', icon: FilePlusIcon, disabled: readOnly, disabledReason: lockedReason },
-      { type: 'action', action: 'newFolder', label: 'New Folder', icon: FolderPlusIcon, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'newFile', label: lazyStrings.fileExplorer__new_file(), icon: FilePlusIcon, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'newFolder', label: lazyStrings.fileExplorer__new_folder(), icon: FolderPlusIcon, disabled: readOnly, disabledReason: lockedReason },
     ];
 
     if (hasClipboard.value) {
       items.push({ type: 'divider' });
-      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPasteIcon, disabled: readOnly, disabledReason: lockedReason });
+      items.push({ type: 'action', action: 'paste', label: lazyStrings.fileExplorer__paste(), icon: ClipboardPasteIcon, disabled: readOnly, disabledReason: lockedReason });
     }
 
     items.push({ type: 'divider' });
-    items.push({ type: 'action', action: 'selectAll', label: 'Select All', icon: CheckSquareIcon });
+    items.push({ type: 'action', action: 'selectAll', label: lazyStrings.fileExplorer__select_all(), icon: CheckSquareIcon });
 
     return items;
   }

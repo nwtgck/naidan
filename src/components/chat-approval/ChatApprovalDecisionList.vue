@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
+import { computed } from 'vue';
 import type { ApprovalUiDecision } from '@/services/approval';
 
 const props = defineProps<{
@@ -16,32 +18,32 @@ type ApprovalDecisionOption = {
   testId: string,
 };
 
-const options: ApprovalDecisionOption[] = [
+const options = computed<ApprovalDecisionOption[]>(() => [
   {
     decision: 'allow_once',
-    label: 'Allow once',
+    label: lazyStrings.chatApproval__allow_once(),
     targetLabel: undefined,
     testId: 'approval-allow-once',
   },
   {
     decision: 'allow_for_chat',
-    label: 'Allow for this chat',
+    label: lazyStrings.chatApproval__allow_for_this_chat(),
     targetLabel: props.actionLabel,
     testId: 'approval-allow-for-chat',
   },
   {
     decision: 'allow_globally',
-    label: 'Allow globally',
+    label: lazyStrings.chatApproval__allow_globally(),
     targetLabel: props.actionLabel,
     testId: 'approval-allow-globally',
   },
   {
     decision: 'deny',
-    label: 'Deny',
+    label: lazyStrings.chatApproval__deny(),
     targetLabel: undefined,
     testId: 'approval-deny',
   },
-];
+]);
 
 function decide({
   decision,

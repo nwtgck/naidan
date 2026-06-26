@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import TransformersJsManager from './TransformersJsManager.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock the service
 vi.mock('../services/transformers-js', () => ({
@@ -30,6 +31,10 @@ vi.mock('../composables/useConfirm', () => ({
 }));
 
 describe('TransformersJsManager Dropdown', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });

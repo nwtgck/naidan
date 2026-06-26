@@ -7,6 +7,7 @@ import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { setupScrollToMock } from '@/utils/test-utils';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { WeshMount } from '@/services/wesh/types';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
 
@@ -2589,6 +2590,10 @@ describe('ChatPane Focus', () => {
 });
 
 describe('ChatPane Export Functionality', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   // Mock browser APIs for file download
   const mockCreateObjectURL = vi.fn((blob: Blob | MediaSource) => {
     // Mock Blob content access for testing
@@ -2681,6 +2686,7 @@ describe('ChatPane Export Functionality', () => {
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     expect(exportButton.exists()).toBe(true);
     await exportButton.trigger('click');
+    await flushPromises();
 
     expect(URL.createObjectURL).toHaveBeenCalled();
     expect(mockAnchorClick).toHaveBeenCalled();
@@ -2749,6 +2755,7 @@ Hello User`);
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
+    await flushPromises();
 
     // Just verify the calls happened
     expect(URL.createObjectURL).toHaveBeenCalled();
@@ -2788,6 +2795,7 @@ Another message`);
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
+    await flushPromises();
 
     expect(URL.createObjectURL).toHaveBeenCalled();
     expect(mockAnchorClick).toHaveBeenCalled();
@@ -2817,6 +2825,7 @@ Another message`);
     const exportUrlBtn = wrapper.find('[data-testid="export-url-button"]');
     expect(exportUrlBtn.exists()).toBe(true);
     await exportUrlBtn.trigger('click');
+    await flushPromises();
 
     expect(mockGenerateChatShareURL).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }) });
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockUrl);

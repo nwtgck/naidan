@@ -1,13 +1,15 @@
 import { toChatGroupId, toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import {
   mapFileExplorerModalOptionsToRootDescriptor,
   useFileExplorerModal,
 } from './useFileExplorerModal';
 
 describe('useFileExplorerModal', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     const { closeFileExplorer } = useFileExplorerModal();
     closeFileExplorer();
   });

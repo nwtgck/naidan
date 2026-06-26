@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { HammerIcon, CheckCircle2Icon, AlertCircleIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
 import { ref } from 'vue';
 import type { ToolCallRecord } from '@/services/tools/types';
@@ -62,7 +63,7 @@ defineExpose({
             {{ toolCall.toolName }}
           </span>
           <span v-if="toolCall.status === 'executing'" class="text-[9px] text-blue-600/70 dark:text-blue-400/70 animate-pulse">
-            Executing...
+            {{ lazyStrings.toolCall__executing() }}
           </span>
         </div>
       </div>
@@ -86,14 +87,14 @@ defineExpose({
         <div class="p-3 flex flex-col gap-3">
           <!-- Arguments -->
           <div>
-            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
+            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">{{ lazyStrings.toolCall__arguments() }}</div>
             <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formatArgs({ args: toolCall.args }) }}</pre>
           </div>
 
           <!-- Result -->
           <div v-if="toolCall.status !== 'executing'">
             <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
-              {{ toolCall.status === 'success' ? 'Result' : 'Error' }}
+              {{ toolCall.status === 'success' ? lazyStrings.toolCall__result() : lazyStrings.toolCall__error() }}
             </div>
             <div
               class="text-[10px] font-mono p-2 rounded-lg break-words"

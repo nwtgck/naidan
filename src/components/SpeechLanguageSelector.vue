@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { lazyStrings } from '@/strings';
 import { LanguagesIcon, ChevronDownIcon, CheckIcon, RefreshCwIcon } from 'lucide-vue-next';
 import type { MessageId } from '@/models/ids';
 import { webSpeechService, type SpeechLanguage } from '@/services/web-speech';
@@ -16,9 +17,9 @@ const isRedetecting = ref(false);
 const selectedLang = computed(() => webSpeechService.state.preferredLang);
 const detectedLang = computed(() => webSpeechService.state.detectedLang);
 
-const languages: { label: string, value: SpeechLanguage }[] = [
-  { label: 'Auto Detect', value: 'auto' },
-  { label: 'English', value: 'en-US' },
+const languages = computed<Array<{ label: string, value: SpeechLanguage }>>(() => [
+  { label: lazyStrings.SpeechLanguageSelector__auto_detect(), value: 'auto' },
+  { label: lazyStrings.SpeechLanguageSelector__english(), value: 'en-US' },
   { label: '日本語', value: 'ja-JP' },
   { label: '한국어', value: 'ko-KR' },
   { label: '中文', value: 'zh-CN' },
@@ -26,7 +27,7 @@ const languages: { label: string, value: SpeechLanguage }[] = [
   { label: 'Deutsch', value: 'de-DE' },
   { label: 'Español', value: 'es-ES' },
   { label: 'Русский', value: 'ru-RU' },
-];
+]);
 
 function setLanguage({ lang }: { lang: SpeechLanguage }) {
   webSpeechService.setPreferredLang({ lang });
@@ -49,7 +50,7 @@ function getDisplayLabel() {
   const lang = selectedLang.value;
   switch (lang) {
   case 'auto':
-    return detectedLang.value ? detectedLang.value.split('-')[0]?.toUpperCase() : 'Auto';
+    return detectedLang.value ? detectedLang.value.split('-')[0]?.toUpperCase() : lazyStrings.SpeechLanguageSelector__auto();
   case 'en-US':
   case 'ja-JP':
   case 'ko-KR':
@@ -71,8 +72,8 @@ function getFullLabel({ langObj }: { langObj: { label: string, value: SpeechLang
   switch (val) {
   case 'auto':
     if (detectedLang.value) {
-      const detected = languages.find(l => l.value === detectedLang.value);
-      return `Auto Detect (${detected?.label || detectedLang.value})`;
+      const detected = languages.value.find(l => l.value === detectedLang.value);
+      return lazyStrings.SpeechLanguageSelector__auto_detect_with_language({ language: detected?.label || detectedLang.value });
     }
     return langObj.label;
   case 'en-US':
@@ -125,7 +126,7 @@ defineExpose({
           align === 'down' ? 'top-full left-0 mt-1 origin-top-left' : 'bottom-full left-0 mb-1 origin-bottom-left'
         ]"
       >
-        <div class="px-3 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">Language</div>
+        <div class="px-3 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">{{ lazyStrings.SpeechLanguageSelector__language() }}</div>
         <div class="max-h-48 overflow-y-auto custom-scrollbar">
           <div
             v-for="l in languages"
@@ -143,7 +144,7 @@ defineExpose({
                 @click.stop="handleRedetect"
                 class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-gray-400 hover:text-blue-600 transition-all"
                 :class="{ 'animate-spin text-blue-600': isRedetecting }"
-                title="Redetect language"
+                :title="lazyStrings.SpeechLanguageSelector__redetect_language()"
               >
                 <RefreshCwIcon class="w-2.5 h-2.5" />
               </button>

@@ -1,3 +1,4 @@
+import { lazyStrings } from '@/strings';
 import { computed, type ComputedRef, toRaw } from 'vue';
 import { idToRaw } from '@/models/ids';
 import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/models/types';
@@ -178,7 +179,7 @@ export function useChatDisplayFlow({
           }));
           yield { type: 'tool_group', id: idToRaw({ id: nodeId }), toolCalls, node, isFirstInTurn };
         } else {
-          yield { type: 'content', node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn };
+          yield { type: 'content', node, content: lazyStrings.useChatDisplayFlow__tool_results(), isFirstInNode: true, isLastInNode: true, isFirstInTurn };
         }
         break;
       }
@@ -343,16 +344,18 @@ export function useChatDisplayFlow({
 
   const calculateSummary = ({ stats }: { stats: SequenceStats }): string => {
     const parts: string[] = [];
-    if (stats.thinkingSteps > 0) parts.push(`${stats.thinkingSteps} thinking step${stats.thinkingSteps > 1 ? 's' : ''}`);
-    if (stats.toolCallCount > 0) parts.push(`${stats.toolCallCount} tool execution${stats.toolCallCount > 1 ? 's' : ''}`);
+    if (stats.thinkingSteps > 0) parts.push(lazyStrings.useChatDisplayFlow__thinking_steps({ count: stats.thinkingSteps }));
+    if (stats.toolCallCount > 0) parts.push(lazyStrings.useChatDisplayFlow__tool_executions({ count: stats.toolCallCount }));
     if (stats.toolNames.length > 0) {
       const limit = 2;
       const displayed = stats.toolNames.slice(0, limit);
-      let toolStr = `Used ${displayed.join(', ')}`;
-      if (stats.toolNames.length > limit) toolStr += ` and ${stats.toolNames.length - limit} more`;
+      let toolStr = lazyStrings.useChatDisplayFlow__used_tools({ toolNames: displayed.join(', ') });
+      if (stats.toolNames.length > limit) {
+        toolStr += ` ${lazyStrings.useChatDisplayFlow__and_more({ count: stats.toolNames.length - limit })}`;
+      }
       parts.push(toolStr);
     }
-    return parts.join(' • ') || 'Process Details';
+    return parts.join(' • ') || lazyStrings.useChatDisplayFlow__process_details();
   };
 
   const chatFlow = computed<ChatFlowItem[]>(() => {

@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { MessageNode, Chat } from '@/models/types';
 import { toChatId, toMessageId, toToolCallId } from '@/models/ids';
 
 describe('useChatDisplayFlow complex scenario', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   const createChat = (messages: MessageNode[]) => {
     // Build tree
     for (let i = 0; i < messages.length - 1; i++) {

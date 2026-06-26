@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { computed, ref } from 'vue';
 import { InfoIcon } from 'lucide-vue-next';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -50,11 +51,11 @@ const effectiveToolConfigs = computed(() => {
   return getEffectiveToolConfigsForChat({ chat });
 });
 
-const inheritanceLabelByKey = computed(() => ({
-  'builtin.calculator': chatTools.getToolInheritanceLabel({ name: 'calculator' }),
-  'builtin.choices': chatTools.getToolInheritanceLabel({ name: 'choices' }),
-  'builtin.wikipedia': chatTools.getToolInheritanceLabel({ name: 'wikipedia_search' }),
-  'builtin.wesh': chatTools.getToolInheritanceLabel({ name: 'shell_execute' }),
+const inheritanceSourceByKey = computed(() => ({
+  'builtin.calculator': chatTools.getToolInheritanceSource({ name: 'calculator' }),
+  'builtin.choices': chatTools.getToolInheritanceSource({ name: 'choices' }),
+  'builtin.wikipedia': chatTools.getToolInheritanceSource({ name: 'wikipedia_search' }),
+  'builtin.wesh': chatTools.getToolInheritanceSource({ name: 'shell_execute' }),
 } as const));
 
 async function runToolUpdate({
@@ -68,7 +69,7 @@ async function runToolUpdate({
   } catch (cause: unknown) {
     saveError.value = cause instanceof Error
       ? cause.message
-      : 'Failed to save Chat tool settings.';
+      : await ensureStrings.LmToolsSettings__failed_to_save_chat_tool_settings();
   }
 }
 
@@ -122,7 +123,7 @@ defineExpose({ TEST_ONLY: {} });
     >
       <InfoIcon class="mt-0.5 h-3 w-3 shrink-0" />
       <p class="text-[9px] leading-relaxed">
-        Changes apply to this browser session only while Tool config persistence is disabled.
+        {{ lazyStrings.LmToolsSettings__changes_apply_to_this_browser_session_only_while_tool_config_persistence_is_disabled() }}
       </p>
     </div>
 
@@ -139,7 +140,7 @@ defineExpose({ TEST_ONLY: {} });
       scope="chat"
       :tool-configs="toolConfigs"
       :effective-tool-configs="effectiveToolConfigs"
-      :inheritance-label-by-key="inheritanceLabelByKey"
+      :inheritance-source-by-key="inheritanceSourceByKey"
       :is-editable="true"
       @set-status="setToolStatus($event)"
       @reset-tool="resetTool($event)"

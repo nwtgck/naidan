@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
@@ -136,8 +137,8 @@ async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: Volume
   const clickedMount = mounts.find(mount => mount.volumeId === volumeId);
   openFileExplorer({ options: {
     kind: 'wesh-mounts',
-    title: 'Folders',
-    rootName: 'Files',
+    title: await ensureStrings.ChatGroupSettingsPanel__folders(),
+    rootName: await ensureStrings.ChatGroupSettingsPanel__files(),
     mounts: workerMounts,
     initialPath: clickedMount?.mountPath.split('/').filter(Boolean),
   } });
@@ -253,9 +254,9 @@ function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): st
   case 'openai':
     return 'OpenAI';
   case 'ollama':
-    return 'Ollama';
+    return lazyStrings.ChatGroupSettingsPanel__ollama();
   case 'transformers_js':
-    return 'Transformers.js';
+    return lazyStrings.ChatGroupSettingsPanel__transformers_js();
   default: {
     const _ex: never = endpointType;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -556,7 +557,7 @@ function saveChangesForGroup({
         if (editingChatGroupId.value === chatGroupId) {
           saveError.value = cause instanceof Error
             ? cause.message
-            : 'Failed to save chat group settings.';
+            : await ensureStrings.ChatGroupSettingsPanel__failed_to_save_chat_group_settings();
         }
         throw cause;
       }
@@ -749,13 +750,15 @@ async function fetchModels() {
       },
     });
     groupModels.value = models;
-    if (models.length === 0) error.value = 'No models found at this endpoint.';
+    if (models.length === 0) error.value = await ensureStrings.SHARED__no_models_found_at_this_endpoint();
     if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
       localSettings.value.modelId = undefined;
       await saveChangesFromUi();
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'Connection failed. Check URL or provider.';
+    error.value = caught instanceof Error
+      ? caught.message
+      : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
   }
 }
 
@@ -857,9 +860,9 @@ defineExpose({
         </div>
         <div class="flex flex-col overflow-hidden">
           <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">
-            {{ currentChatGroup.name }} Settings
+            {{ lazyStrings.ChatGroupSettingsPanel__group_settings_title({ groupName: currentChatGroup.name }) }}
           </h2>
-          <span class="text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider">Group Overrides</span>
+          <span class="text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider">{{ lazyStrings.ChatGroupSettingsPanel__group_overrides() }}</span>
         </div>
       </div>
 
@@ -869,7 +872,7 @@ defineExpose({
           class="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-full"
         >
           <div class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
-          <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Active Overrides</span>
+          <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">{{ lazyStrings.ChatGroupSettingsPanel__active_overrides() }}</span>
         </div>
       </div>
     </div>
@@ -905,8 +908,8 @@ defineExpose({
               <SearchIcon class="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
             </div>
             <div class="flex flex-col min-w-0">
-              <span class="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-none mb-1">Search Group</span>
-              <span class="text-[11px] font-medium text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors truncate">Search messages...</span>
+              <span class="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-none mb-1">{{ lazyStrings.ChatGroupSettingsPanel__search_group() }}</span>
+              <span class="text-[11px] font-medium text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors truncate">{{ lazyStrings.ChatGroupSettingsPanel__search_messages() }}</span>
             </div>
           </button>
 
@@ -918,8 +921,8 @@ defineExpose({
               <ChefHatIcon class="w-5 h-5 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
             </div>
             <div class="flex flex-col">
-              <span class="text-[9px] font-bold text-blue-900/50 dark:text-blue-400/50 uppercase tracking-widest leading-none mb-1">Share settings</span>
-              <span class="text-[11px] font-bold text-blue-600 dark:text-blue-400">Create Recipe</span>
+              <span class="text-[9px] font-bold text-blue-900/50 dark:text-blue-400/50 uppercase tracking-widest leading-none mb-1">{{ lazyStrings.ChatGroupSettingsPanel__share_settings() }}</span>
+              <span class="text-[11px] font-bold text-blue-600 dark:text-blue-400">{{ lazyStrings.ChatGroupSettingsPanel__create_recipe() }}</span>
             </div>
           </button>
         </div>
@@ -928,21 +931,21 @@ defineExpose({
           <div class="flex flex-col md:flex-row gap-8 flex-1">
             <!-- Quick Switcher -->
             <div v-if="settings.providerProfiles && settings.providerProfiles.length > 0" class="w-full md:max-w-[240px] space-y-2">
-              <label class="block text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider ml-1">Quick Profile Switcher</label>
+              <label class="block text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider ml-1">{{ lazyStrings.ChatGroupSettingsPanel__quick_profile_switcher() }}</label>
               <select
                 v-model="selectedProviderProfileId"
                 @change="handleQuickProviderProfileChange"
                 class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
               >
-                <option value="" disabled>Load from saved profiles...</option>
+                <option value="" disabled>{{ lazyStrings.ChatGroupSettingsPanel__load_from_saved_profiles() }}</option>
                 <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpointType }) }})</option>
               </select>
             </div>
 
             <!-- Endpoint Presets -->
             <div class="space-y-2 flex-1">
-              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider ml-1">Quick Endpoint Presets</label>
+              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider ml-1">{{ lazyStrings.ChatGroupSettingsPanel__quick_endpoint_presets() }}</label>
               <div class="flex flex-wrap gap-1.5">
                 <button
                   v-for="preset in ENDPOINT_PRESETS"
@@ -961,7 +964,7 @@ defineExpose({
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div class="space-y-2">
-            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
+            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatGroupSettingsPanel__endpoint_type() }}</label>
             <select
               data-testid="group-setting-endpoint-type-select"
               :value="localSettings.endpoint?.type || 'global'"
@@ -972,15 +975,15 @@ defineExpose({
               class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
               style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
             >
-              <option value="global">Global ({{ settings.endpointType === 'transformers_js' ? 'Transformers.js' : settings.endpointType }})</option>
-              <option value="openai">OpenAI Compatible</option>
-              <option value="ollama">Ollama</option>
-              <option value="transformers_js">Transformers.js (Experimental)</option>
+              <option value="global">{{ lazyStrings.ChatGroupSettingsPanel__global_endpoint_type({ endpointType: settings.endpointType === 'transformers_js' ? lazyStrings.ChatGroupSettingsPanel__transformers_js() : settings.endpointType }) }}</option>
+              <option value="openai">{{ lazyStrings.ChatGroupSettingsPanel__openai_compatible() }}</option>
+              <option value="ollama">{{ lazyStrings.ChatGroupSettingsPanel__ollama() }}</option>
+              <option value="transformers_js">{{ lazyStrings.ChatGroupSettingsPanel__transformers_js_experimental() }}</option>
             </select>
           </div>
 
           <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
-            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
+            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatGroupSettingsPanel__endpoint_url() }}</label>
             <input
               v-if="localSettings.endpoint"
               v-model="localSettings.endpoint.url"
@@ -998,14 +1001,14 @@ defineExpose({
 
           <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
             <div class="flex items-center justify-between ml-1">
-              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
+              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatGroupSettingsPanel__custom_http_headers() }}</label>
               <button
                 @click="addHeader"
                 type="button"
                 class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
               >
                 <PlusIcon class="w-2.5 h-2.5" />
-                Add Header
+                {{ lazyStrings.ChatGroupSettingsPanel__add_header() }}
               </button>
             </div>
 
@@ -1020,14 +1023,14 @@ defineExpose({
                   @blur="saveChangesFromUi"
                   type="text"
                   class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                  placeholder="Name"
+                  :placeholder="lazyStrings.ChatGroupSettingsPanel__name()"
                 />
                 <input
                   v-model="header[1]"
                   @blur="saveChangesFromUi"
                   type="text"
                   class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                  placeholder="Value"
+                  :placeholder="lazyStrings.ChatGroupSettingsPanel__value()"
                 />
                 <button
                   @click="removeHeader({ index })"
@@ -1037,13 +1040,13 @@ defineExpose({
                 </button>
               </div>
             </div>
-            <div v-else class="text-[10px] text-gray-400 italic ml-1">No custom headers.</div>
+            <div v-else class="text-[10px] text-gray-400 italic ml-1">{{ lazyStrings.ChatGroupSettingsPanel__no_custom_headers() }}</div>
           </div>
 
           <div class="space-y-4">
             <div class="space-y-2">
               <div class="flex items-center justify-between ml-1">
-                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Model ID Override</label>
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatGroupSettingsPanel__model_id_override() }}</label>
                 <button
                   v-if="localSettings.modelId"
                   @click="setGroupNameFromModelId"
@@ -1051,7 +1054,7 @@ defineExpose({
                   class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
                   data-testid="group-setting-set-name-from-model"
                 >
-                  Set Group Name
+                  {{ lazyStrings.ChatGroupSettingsPanel__set_group_name() }}
                 </button>
               </div>
               <ModelSelector
@@ -1059,7 +1062,7 @@ defineExpose({
                 @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
                 :loading="isFetchingModels"
                 :models="sortedGroupModels"
-                :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
+                :placeholder="lazyStrings.ChatGroupSettingsPanel__global_model({ modelId: settings.defaultModelId || lazyStrings.ChatGroupSettingsPanel__none() })"
                 :allow-clear="true"
                 @refresh="fetchModels"
                 data-testid="group-setting-model-select"
@@ -1088,8 +1091,8 @@ defineExpose({
                 <Settings2Icon class="w-4 h-4 text-blue-600" />
               </div>
               <div>
-                <h4 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Automatic Title</h4>
-                <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Configure how chats in this group are automatically named.</p>
+                <h4 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">{{ lazyStrings.ChatGroupSettingsPanel__automatic_title() }}</h4>
+                <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{{ lazyStrings.ChatGroupSettingsPanel__configure_how_chats_in_this_group_are_automatically_named() }}</p>
               </div>
             </div>
             <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
@@ -1098,34 +1101,34 @@ defineExpose({
                 class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                 :class="localSettings.autoTitleEnabled === undefined ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
               >
-                Inherit
+                {{ lazyStrings.ChatGroupSettingsPanel__inherit() }}
               </button>
               <button
                 @click="localSettings.autoTitleEnabled = true; saveChangesFromUi();"
                 class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                 :class="localSettings.autoTitleEnabled === true ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
               >
-                Enabled
+                {{ lazyStrings.ChatGroupSettingsPanel__enabled() }}
               </button>
               <button
                 @click="localSettings.autoTitleEnabled = false; saveChangesFromUi();"
                 class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                 :class="localSettings.autoTitleEnabled === false ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
               >
-                Disabled
+                {{ lazyStrings.ChatGroupSettingsPanel__disabled() }}
               </button>
             </div>
           </div>
 
           <div v-if="localSettings.autoTitleEnabled !== false" class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
             <div class="space-y-2">
-              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Title Model Override</label>
+              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatGroupSettingsPanel__title_model_override() }}</label>
               <ModelSelector
                 :model-value="localSettings.titleModelId"
                 @update:model-value="val => { localSettings.titleModelId = val; saveChangesFromUi(); }"
                 :models="sortedGroupModels"
                 :loading="isFetchingModels"
-                :placeholder="'Global (' + (settings.titleModelId || 'None') + ')'"
+                :placeholder="lazyStrings.ChatGroupSettingsPanel__global_model({ modelId: settings.titleModelId || lazyStrings.ChatGroupSettingsPanel__none() })"
                 :allow-clear="true"
                 @refresh="fetchModels"
                 data-testid="group-setting-title-model-select"
@@ -1133,8 +1136,11 @@ defineExpose({
             </div>
             <div class="flex items-center">
               <p class="text-[10px] text-gray-400 italic leading-relaxed">
-                The title model is used to summarize the first user message in new chats.
-                {{ localSettings.autoTitleEnabled === undefined ? ' Currently inheriting ' + (settings.autoTitleEnabled ? 'Enabled' : 'Disabled') + ' from Global Settings.' : '' }}
+                {{ lazyStrings.ChatGroupSettingsPanel__title_model_explanation({
+                  inheritedState: localSettings.autoTitleEnabled === undefined
+                    ? (settings.autoTitleEnabled ? lazyStrings.ChatGroupSettingsPanel__enabled() : lazyStrings.ChatGroupSettingsPanel__disabled())
+                    : undefined,
+                }) }}
               </p>
             </div>
           </div>
@@ -1147,8 +1153,8 @@ defineExpose({
               <GlobeIcon class="w-4 h-4 text-blue-500" />
             </div>
             <div class="space-y-1">
-              <p class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">Group Level</p>
-              <p class="text-[11px] text-gray-500 dark:text-blue-400/70 leading-relaxed font-medium">These settings will apply to all chats within this group unless overridden by a specific chat.</p>
+              <p class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">{{ lazyStrings.ChatGroupSettingsPanel__group_level() }}</p>
+              <p class="text-[11px] text-gray-500 dark:text-blue-400/70 leading-relaxed font-medium">{{ lazyStrings.ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat() }}</p>
             </div>
           </div>
 
@@ -1157,15 +1163,15 @@ defineExpose({
               <AlertCircleIcon class="w-4 h-4 text-gray-400" />
             </div>
             <div class="space-y-1">
-              <p class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Local Overrides</p>
+              <p class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">{{ lazyStrings.ChatGroupSettingsPanel__local_overrides() }}</p>
               <p class="text-[11px] text-gray-500/70 dark:text-gray-400/70 leading-relaxed font-medium">
-                These settings only apply to this group.
+                {{ lazyStrings.ChatGroupSettingsPanel__these_settings_only_apply_to_this_group() }}
                 <button
                   @click="restoreDefaults"
                   class="font-bold underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                   data-testid="group-setting-restore-defaults"
                 >
-                  Restore defaults
+                  {{ lazyStrings.ChatGroupSettingsPanel__restore_defaults() }}
                 </button>.
               </p>
             </div>
@@ -1177,10 +1183,10 @@ defineExpose({
           <div class="space-y-1">
             <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
               <WrenchIcon class="w-3 h-3" />
-              Tools
+              {{ lazyStrings.ChatGroupSettingsPanel__tools() }}
             </label>
             <p class="text-[11px] text-gray-500 dark:text-gray-400">
-              Inherit Global Settings or override individual tools for this chat group.
+              {{ lazyStrings.ChatGroupSettingsPanel__inherit_global_settings_or_override_individual_tools_for_this_chat_group() }}
             </p>
           </div>
           <ChatGroupToolsSettings />
@@ -1193,7 +1199,7 @@ defineExpose({
               <div class="flex items-center justify-between">
                 <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                   <MessageSquareQuoteIcon class="w-3 h-3" />
-                  Group System Prompt
+                  {{ lazyStrings.ChatGroupSettingsPanel__group_system_prompt() }}
                 </label>
 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
@@ -1202,40 +1208,40 @@ defineExpose({
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
-                    Inherit
+                    {{ lazyStrings.ChatGroupSettingsPanel__inherit() }}
                   </button>
                   <button
                     @click="updateSystemPromptBehavior({ behavior: 'clear' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
-                    Clear
+                    {{ lazyStrings.ChatGroupSettingsPanel__clear() }}
                   </button>
                   <button
                     @click="updateSystemPromptBehavior({ behavior: 'replace' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
-                    Override
+                    {{ lazyStrings.ChatGroupSettingsPanel__override() }}
                   </button>
                   <button
                     @click="updateSystemPromptBehavior({ behavior: 'append' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
-                    Append
+                    {{ lazyStrings.ChatGroupSettingsPanel__append() }}
                   </button>
                 </div>
               </div>
               <div v-if="!localSettings.systemPrompt" class="w-full bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-4 text-left">
-                <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Inherited Instructions</p>
+                <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">{{ lazyStrings.ChatGroupSettingsPanel__inherited_instructions() }}</p>
                 <p class="text-xs text-gray-400 dark:text-gray-500 italic whitespace-pre-wrap line-clamp-6">
-                  {{ settings.systemPrompt || 'No global instructions defined.' }}
+                  {{ settings.systemPrompt || lazyStrings.ChatGroupSettingsPanel__no_global_instructions_defined() }}
                 </p>
               </div>
               <div v-else-if="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null" class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center">
-                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Global Prompt Cleared</p>
-                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This group will not use any system instructions.</p>
+                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatGroupSettingsPanel__global_prompt_cleared() }}</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{{ lazyStrings.ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions() }}</p>
               </div>
               <textarea
                 v-else
@@ -1251,7 +1257,7 @@ defineExpose({
                 @blur="saveChangesFromUi"
                 rows="6"
                 class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
-                :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
+                :placeholder="localSettings.systemPrompt?.behavior === 'append' ? lazyStrings.ChatGroupSettingsPanel__added_after_global_instructions() : lazyStrings.ChatGroupSettingsPanel__completely_replaces_global_instructions()"
                 data-testid="group-setting-system-prompt-textarea"
               ></textarea>
             </div>
@@ -1259,23 +1265,23 @@ defineExpose({
             <div class="space-y-4">
               <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                 <LayersIcon class="w-3 h-3" />
-                Settings Resolution
+                {{ lazyStrings.ChatGroupSettingsPanel__settings_resolution() }}
               </label>
               <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3 shadow-sm">
                 <div class="flex items-center justify-between text-[10px] font-bold">
-                  <span class="text-gray-400">System Prompt</span>
+                  <span class="text-gray-400">{{ lazyStrings.ChatGroupSettingsPanel__system_prompt() }}</span>
                   <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">
-                    {{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : (localSettings.systemPrompt.content === null ? 'Cleared' : 'Overriding')) : 'Global Default' }}
+                    {{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? lazyStrings.ChatGroupSettingsPanel__appending() : (localSettings.systemPrompt.content === null ? lazyStrings.ChatGroupSettingsPanel__cleared() : lazyStrings.ChatGroupSettingsPanel__overriding())) : lazyStrings.ChatGroupSettingsPanel__global_default() }}
                   </span>
                 </div>
                 <div class="flex items-center justify-between text-[10px] font-bold">
-                  <span class="text-gray-400">Parameters</span>
+                  <span class="text-gray-400">{{ lazyStrings.ChatGroupSettingsPanel__parameters() }}</span>
                   <span :class="hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-lm-parameters">
-                    {{ hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? 'Group Overrides' : 'Inherited' }}
+                    {{ hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? lazyStrings.ChatGroupSettingsPanel__group_overrides() : lazyStrings.ChatGroupSettingsPanel__inherited() }}
                   </span>
                 </div>
                 <div class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
-                  <p class="text-[9px] text-gray-400 leading-relaxed italic">Group settings take precedence over Global Settings, but can be overridden by individual chats.</p>
+                  <p class="text-[9px] text-gray-400 leading-relaxed italic">{{ lazyStrings.ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats() }}</p>
                 </div>
               </div>
             </div>
@@ -1292,7 +1298,7 @@ defineExpose({
           <div class="space-y-3">
             <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
               <FolderIcon class="w-3 h-3" />
-              Folders
+              {{ lazyStrings.ChatGroupSettingsPanel__folders() }}
             </label>
 
             <!-- Active chat group mounts (badge style) -->

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { MoreHorizontalIcon, CopyIcon, Trash2Icon, SearchIcon } from 'lucide-vue-next';
 import type { ChatGroup } from '@/models/types';
 
@@ -28,7 +29,7 @@ defineExpose({
       @click.stop="$emit('toggle')"
       class="p-1 hover:text-blue-600 dark:hover:text-white transition-colors"
       :class="{ 'text-blue-600 dark:text-blue-400': isOpen }"
-      title="More Actions"
+      :title="lazyStrings.ChatGroupActions__more_actions()"
       data-testid="group-more-actions"
     >
       <MoreHorizontalIcon class="w-3.5 h-3.5" />
@@ -42,29 +43,29 @@ defineExpose({
         <button
           @click.stop="$emit('search')"
           class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50"
-          title="Search in Group"
+          :title="lazyStrings.ChatGroupActions__search_in_group()"
           data-testid="search-in-group-button"
         >
           <SearchIcon class="w-3.5 h-3.5" />
-          <span>Search in Group</span>
+          <span>{{ lazyStrings.ChatGroupActions__search_in_group() }}</span>
         </button>
         <button
           @click.stop="$emit('duplicate')"
           class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          title="Duplicate Group"
+          :title="lazyStrings.ChatGroupActions__duplicate_group()"
           data-testid="duplicate-group-button"
         >
           <CopyIcon class="w-3.5 h-3.5" />
-          <span>Duplicate Group</span>
+          <span>{{ lazyStrings.ChatGroupActions__duplicate_group() }}</span>
         </button>
         <button
           @click.stop="$emit('delete')"
           class="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-          title="Delete Group"
+          :title="lazyStrings.ChatGroupActions__delete_group()"
           data-testid="delete-group-button"
         >
           <Trash2Icon class="w-3.5 h-3.5" />
-          <span>Delete Group</span>
+          <span>{{ lazyStrings.ChatGroupActions__delete_group() }}</span>
         </button>
       </div>
     </Transition>

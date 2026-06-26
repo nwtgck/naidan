@@ -26,6 +26,13 @@ afterEach(() => {
 });
 
 describe('Boundary Strings runtime', () => {
+
+  it('falls back to English when the runtime does not expose a browser language', () => {
+    vi.stubGlobal('navigator', {});
+    expect(TEST_ONLY.resolveInitialLocale()).toBe('en');
+    vi.unstubAllGlobals();
+  });
+
   it('returns an empty string from lazyStrings until the render message is loaded', async () => {
     const englishLoader = vi.fn(resolvedModule({
       module: { ChatInput__type_a_message: () => 'Type a message...' },

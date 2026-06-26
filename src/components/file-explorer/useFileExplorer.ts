@@ -1,3 +1,4 @@
+import { ensureStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import type { InjectionKey } from 'vue';
 import { createFileExplorerWorkerClient } from '@/services/file-explorer/worker/client';
@@ -238,9 +239,9 @@ export async function useFileExplorer({
       break;
     case 'newFile': {
       const name = await showPrompt({
-        title: 'New File',
-        message: 'Enter a name for the new file:',
-        confirmButtonText: 'Create',
+        title: await ensureStrings.fileExplorer__new_file(),
+        message: await ensureStrings.fileExplorer__enter_a_name_for_the_new_file(),
+        confirmButtonText: await ensureStrings.fileExplorer__create(),
       });
       if (name) {
         await ops.createFile({ name });
@@ -249,9 +250,9 @@ export async function useFileExplorer({
     }
     case 'newFolder': {
       const name = await showPrompt({
-        title: 'New Folder',
-        message: 'Enter a name for the new folder:',
-        confirmButtonText: 'Create',
+        title: await ensureStrings.fileExplorer__new_folder(),
+        message: await ensureStrings.fileExplorer__enter_a_name_for_the_new_folder(),
+        confirmButtonText: await ensureStrings.fileExplorer__create(),
       });
       if (name) {
         await ops.createFolder({ name });
@@ -263,9 +264,27 @@ export async function useFileExplorer({
       case 'entry': {
         const entry = targetCtx.entry;
         const path = [...nav.pathSegments.value.map(segment => segment.name), entry.name].join(' / ');
-        const sizeStr = entry.size !== undefined ? `${entry.size.toLocaleString()} bytes` : '—';
+        const sizeStr = entry.size !== undefined ? await ensureStrings.fileExplorer__byte_count({ count: entry.size }) : '—';
+        let kind: string;
+        switch (entry.kind) {
+        case 'directory':
+          kind = await ensureStrings.fileExplorer__folder();
+          break;
+        case 'file':
+          kind = await ensureStrings.fileExplorer__file();
+          break;
+        default: {
+          const _exhaustiveCheck: never = entry.kind;
+          throw new Error(`Unhandled file explorer entry kind: ${_exhaustiveCheck}`);
+        }
+        }
         addToast({
-          message: `${entry.name}\nKind: ${entry.kind}\nSize: ${sizeStr}\nPath: ${path}`,
+          message: await ensureStrings.fileExplorer__entry_info({
+            name: entry.name,
+            kind,
+            size: sizeStr,
+            path,
+          }),
           duration: 10000,
         });
         break;

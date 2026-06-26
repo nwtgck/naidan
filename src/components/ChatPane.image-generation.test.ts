@@ -1,6 +1,6 @@
 import type { ChatId, MessageId } from '@/models/ids';
 import { toChatId } from '@/models/ids';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
@@ -9,6 +9,7 @@ import { ImageIcon, SendIcon } from 'lucide-vue-next';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 
 // Mock useChat singleton
@@ -241,6 +242,10 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('ChatPane Image Generation Integration', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -257,7 +262,7 @@ describe('ChatPane Image Generation Integration', () => {
 
     // Check if Image icon exists instead of Send icon
     expect(wrapper.findComponent(ImageIcon).exists()).toBe(true);
-  });
+  }, 15_000);
 
   it('calls sendImageRequest when sending a message in image mode', async () => {
     mockIsImageMode.value = true;

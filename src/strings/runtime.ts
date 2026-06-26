@@ -39,7 +39,8 @@ function resolveInitialLocale(): UiLocale {
     }
   }
 
-  if (typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('ja')) {
+  const browserLocale = typeof navigator === 'undefined' ? undefined : navigator.language;
+  if (browserLocale?.toLowerCase().startsWith('ja') === true) {
     return 'ja';
   }
   return 'en';
@@ -278,9 +279,19 @@ export const TEST_ONLY = {
   boundaryIdsByKey,
   boundaryRegistrations,
   ensureBoundaryLoaded,
+  async ensureAllRegisteredBoundariesForTest({ locale }: {
+    locale: UiLocale;
+  }): Promise<void> {
+    await Promise.all([...boundaryRegistrations.keys()].map(async (boundaryId) => {
+      await ensureBoundaryLoaded({ boundaryId, locale });
+    }));
+    currentLocaleState.value = locale;
+    revision.value += 1;
+  },
   localeStorageKey,
   loadingBoundaries,
   registries,
+  resolveInitialLocale,
   reset(): void {
     registries.en = {};
     registries.ja = {};

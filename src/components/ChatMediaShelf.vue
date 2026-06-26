@@ -10,6 +10,7 @@ import { storageService } from '@/services/storage';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { ensureStrings, lazyStrings } from '@/strings';
 import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageDownloadButton from './ImageDownloadButton.vue';
@@ -206,7 +207,7 @@ const handlePreview = ({ item }: { item: MediaItem }) => {
     mimeType: i.mimeType,
     size: i.size,
     createdAt: 0,
-    name: i.name || i.prompt || 'Generated Image',
+    name: i.name || i.prompt || lazyStrings.ChatMediaShelf__generated_image(),
   }));
 
   openPreview({
@@ -225,9 +226,9 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem, withMet
       model: item.model,
       withMetadata: true,
       storageService,
-      onError: ({ error }) => addErrorEvent({
+      onError: async ({ error }) => addErrorEvent({
         source: 'MediaShelf:Download',
-        message: 'Failed to embed metadata in image.',
+        message: await ensureStrings.ChatMediaShelf__failed_to_embed_metadata_in_image(),
 
         details: error instanceof Error ? error.message : String(error),
       }),
@@ -288,7 +289,7 @@ defineExpose({
         <div class="p-1 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
           <ImageIcon class="w-4 h-4 text-blue-500" />
         </div>
-        <span class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-widest">Media Shelf</span>
+        <span class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-widest">{{ lazyStrings.ChatMediaShelf__media_shelf() }}</span>
         <span class="text-[10px] font-bold px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-full">
           {{ allMediaItems.length }}
         </span>
@@ -300,17 +301,17 @@ defineExpose({
             ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600'
             : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
           "
-          :title="mediaOrder === 'forward' ? 'Currently Forward (1/N first)' : 'Currently Reverse (N/N first)'"
+          :title="mediaOrder === 'forward' ? lazyStrings.ChatMediaShelf__currently_forward_1_n_first() : lazyStrings.ChatMediaShelf__currently_reverse_n_n_first()"
         >
           <SortDescIcon v-if="mediaOrder === 'forward'" class="w-3 h-3" />
           <SortAscIcon v-else class="w-3 h-3" />
-          <span class="uppercase tracking-wider">{{ mediaOrder }}</span>
+          <span class="uppercase tracking-wider">{{ mediaOrder === 'forward' ? lazyStrings.ChatMediaShelf__forward() : lazyStrings.ChatMediaShelf__reverse() }}</span>
         </button>
       </div>
       <button
         @click="emit('close')"
         class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 transition-colors"
-        title="Close Shelf"
+        :title="lazyStrings.ChatMediaShelf__close_shelf()"
       >
         <XIcon class="w-4 h-4" />
       </button>
@@ -324,7 +325,7 @@ defineExpose({
     >
       <div v-if="mediaGroups.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 gap-2">
         <ImageIcon class="w-12 h-12 opacity-10" />
-        <span class="text-sm italic">No images in this chat yet</span>
+        <span class="text-sm italic">{{ lazyStrings.ChatMediaShelf__no_images_in_this_chat_yet() }}</span>
       </div>
       <template v-else>
         <div
@@ -339,17 +340,17 @@ defineExpose({
                 <button
                   @click="emit('jump-to-message', group.messageId)"
                   class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[9px] font-bold text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all uppercase tracking-widest shrink-0"
-                  title="Jump to this message in chat"
+                  :title="lazyStrings.ChatMediaShelf__jump_to_this_message_in_chat()"
                 >
                   <ExternalLinkIcon class="w-2.5 h-2.5" />
-                  <span>Jump</span>
+                  <span>{{ lazyStrings.ChatMediaShelf__jump() }}</span>
                 </button>
 
                 <div
                   v-if="group.prompt"
                   class="group/prompt relative flex-1 min-w-0 cursor-pointer"
                   @click="copyPrompt({ prompt: group.prompt, messageId: group.messageId })"
-                  title="Click to copy prompt"
+                  :title="lazyStrings.ChatMediaShelf__click_to_copy_prompt()"
                 >
                   <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 truncate italic hover:text-blue-500 transition-colors pr-8">
                     {{ group.prompt }}
@@ -357,7 +358,7 @@ defineExpose({
                   <div class="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/prompt:opacity-100 transition-opacity flex items-center gap-1 bg-white/80 dark:bg-gray-900/80 px-1 rounded shadow-sm">
                     <template v-if="copiedPromptId === group.messageId">
                       <CheckIcon class="w-2.5 h-2.5 text-green-500" />
-                      <span class="text-[8px] font-bold text-green-500 uppercase">Copied!</span>
+                      <span class="text-[8px] font-bold text-green-500 uppercase">{{ lazyStrings.ChatMediaShelf__copied() }}</span>
                     </template>
                     <template v-else>
                       <CopyIcon class="w-2.5 h-2.5 text-blue-500" />
@@ -365,7 +366,7 @@ defineExpose({
                   </div>
                 </div>
                 <div v-else class="text-[10px] font-bold text-gray-300 dark:text-gray-700 uppercase tracking-widest italic">
-                  Manual Attachment
+                  {{ lazyStrings.ChatMediaShelf__manual_attachment() }}
                 </div>
               </div>
             </div>
@@ -407,7 +408,7 @@ defineExpose({
                 <button
                   v-if="item.prompt || item.seed || item.steps"
                   class="p-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 shadow-sm transition-colors flex items-center justify-center"
-                  title="View details & Copy parameters"
+                  :title="lazyStrings.ChatMediaShelf__view_details_and_copy_parameters()"
                   @click.stop="showingInfoId = item.id"
                 >
                   <InfoIcon class="w-4 h-4" />
@@ -421,7 +422,7 @@ defineExpose({
                 @click.stop
               >
                 <div class="flex items-center justify-between border-b dark:border-gray-800 pb-1.5 mb-1">
-                  <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Parameters</span>
+                  <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ChatMediaShelf__parameters() }}</span>
                   <button @click="showingInfoId = null" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
                     <XIcon class="w-3.5 h-3.5" />
                   </button>
@@ -432,13 +433,13 @@ defineExpose({
                   <div class="flex items-center justify-between group/field">
                     <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-500">
                       <ZapIcon class="w-2.5 h-2.5" />
-                      <span>Steps</span>
+                      <span>{{ lazyStrings.ChatMediaShelf__steps() }}</span>
                     </div>
                     <button
                       @click="copyField({ text: item.steps, field: 'steps' })"
                       class="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-[10px] font-mono text-gray-700 dark:text-gray-300 transition-all"
                     >
-                      <span>{{ item.steps ?? 'N/A' }}</span>
+                      <span>{{ item.steps ?? lazyStrings.ChatMediaShelf__not_available() }}</span>
                       <template v-if="copiedField === `${item.id}-steps`">
                         <CheckIcon class="w-2.5 h-2.5 text-green-500" />
                       </template>
@@ -450,13 +451,13 @@ defineExpose({
                   <div class="flex items-center justify-between group/field">
                     <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-500">
                       <HashIcon class="w-2.5 h-2.5" />
-                      <span>Seed</span>
+                      <span>{{ lazyStrings.ChatMediaShelf__seed() }}</span>
                     </div>
                     <button
                       @click="copyField({ text: item.seed, field: 'seed' })"
                       class="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-[10px] font-mono text-gray-700 dark:text-gray-300 transition-all"
                     >
-                      <span class="truncate max-w-[60px]">{{ item.seed ?? 'N/A' }}</span>
+                      <span class="truncate max-w-[60px]">{{ item.seed ?? lazyStrings.ChatMediaShelf__not_available() }}</span>
                       <template v-if="copiedField === `${item.id}-seed`">
                         <CheckIcon class="w-2.5 h-2.5 text-green-500" />
                       </template>
@@ -468,13 +469,13 @@ defineExpose({
                   <div class="flex flex-col gap-1 group/field">
                     <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-500">
                       <CpuIcon class="w-2.5 h-2.5" />
-                      <span>Model</span>
+                      <span>{{ lazyStrings.ChatMediaShelf__model() }}</span>
                     </div>
                     <button
                       @click="copyField({ text: item.model, field: 'model' })"
                       class="flex items-center justify-between w-full px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-[9px] font-mono text-gray-700 dark:text-gray-300 transition-all text-left"
                     >
-                      <span class="truncate">{{ item.model ?? 'N/A' }}</span>
+                      <span class="truncate">{{ item.model ?? lazyStrings.ChatMediaShelf__not_available() }}</span>
                       <template v-if="copiedField === `${item.id}-model`">
                         <CheckIcon class="w-2.5 h-2.5 text-green-500 shrink-0" />
                       </template>

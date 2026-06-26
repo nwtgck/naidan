@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ToolConfigHierarchySettings from './ToolConfigHierarchySettings.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { ToolConfig } from '@/services/tools/types';
 
 const featureState = vi.hoisted(() => ({ weshEnabled: true }));
@@ -41,11 +42,11 @@ const defaults: ToolConfig[] = [
   },
 ];
 
-const inheritanceLabels = {
-  'builtin.calculator': 'Use global',
-  'builtin.choices': 'Use global',
-  'builtin.wikipedia': 'Use global',
-  'builtin.wesh': 'Use global',
+const inheritanceSources = {
+  'builtin.calculator': 'global',
+  'builtin.choices': 'global',
+  'builtin.wikipedia': 'global',
+  'builtin.wesh': 'global',
 } as const;
 
 function mountSettings({
@@ -53,20 +54,20 @@ function mountSettings({
   toolConfigs,
   effectiveToolConfigs = defaults,
   isEditable = true,
-  inheritanceLabelByKey = scope === 'chat' ? inheritanceLabels : undefined,
+  inheritanceSourceByKey = scope === 'chat' ? inheritanceSources : undefined,
 }: {
   scope?: 'global' | 'chat_group' | 'chat',
   toolConfigs?: ToolConfig[],
   effectiveToolConfigs?: ToolConfig[],
   isEditable?: boolean,
-  inheritanceLabelByKey?: typeof inheritanceLabels,
+  inheritanceSourceByKey?: typeof inheritanceSources,
 } = {}) {
   return mount(ToolConfigHierarchySettings, {
     props: {
       scope,
       toolConfigs,
       effectiveToolConfigs,
-      inheritanceLabelByKey,
+      inheritanceSourceByKey,
       isEditable,
     },
   });
@@ -88,6 +89,7 @@ describe('ToolConfigHierarchySettings', () => {
   });
 
   it('uses one effective-state toggle and keeps a separated fixed reset slot', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     const inheritedWrapper = mountSettings();
     const inheritedToggle = inheritedWrapper.get('[data-testid="tool-config-builtin.calculator-toggle"]');
 

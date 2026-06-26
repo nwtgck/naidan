@@ -1,3 +1,4 @@
+import { lazyStrings } from '@/strings';
 export type SettingsSource = 'chat' | 'chat_group' | 'global';
 
 export function formatSettingsSourceLabel({
@@ -7,12 +8,12 @@ export function formatSettingsSourceLabel({
   value: string | undefined,
   source: SettingsSource | undefined,
 }) {
-  if (!value) return 'Default';
+  if (!value) return lazyStrings.SHARED__default();
   switch (source) {
   case 'chat_group':
-    return `${value} (Group)`;
+    return lazyStrings.SHARED__value_from_group({ value });
   case 'global':
-    return `${value} (Global)`;
+    return lazyStrings.SHARED__value_from_global({ value });
   case 'chat':
   case undefined:
     return value;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref } from 'vue';
 import { ShapesIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
 import { idToRaw } from '@/models/ids';
@@ -42,7 +43,7 @@ defineExpose({
              :class="isExpanded ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 group-hover/tool-group:text-blue-600'"
         >
           <ShapesIcon class="w-3.5 h-3.5" :class="isExpanded ? 'text-blue-600 dark:text-blue-400' : ''" />
-          <span>{{ isExpanded ? 'Tool Executions' : `Show Tools (${toolCalls.length})` }}</span>
+          <span>{{ isExpanded ? lazyStrings.toolCall__tool_executions() : lazyStrings.toolCall__show_tools_count({ count: toolCalls.length }) }}</span>
         </div>        <div class="p-0.5 text-gray-400 group-hover/tool-group:text-gray-600 dark:group-hover/tool-group:text-gray-300 transition-colors">
           <ChevronUpIcon v-if="isExpanded" class="w-3.5 h-3.5" />
           <ChevronDownIcon v-else class="w-3.5 h-3.5" />

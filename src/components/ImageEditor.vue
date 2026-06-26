@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import CustomDialog from './CustomDialog.vue';
 import {
@@ -762,7 +763,7 @@ defineExpose({
           <CropIcon class="w-4 h-4 text-white" />
         </div>
         <div class="hidden sm:block">
-          <h2 class="font-bold text-sm">Image Editor</h2>
+          <h2 class="font-bold text-sm">{{ lazyStrings.ImageEditor__image_editor() }}</h2>
           <p class="text-gray-400 text-[10px] truncate max-w-[200px]">{{ fileName }}</p>
         </div>
       </div>
@@ -773,7 +774,7 @@ defineExpose({
           @click="undo"
           :disabled="!canUndo"
           class="p-2 disabled:opacity-30 hover:bg-gray-700 rounded-lg transition-colors"
-          title="Undo"
+          :title="lazyStrings.ImageEditor__undo()"
         >
           <Undo2Icon class="w-4 h-4" />
         </button>
@@ -781,7 +782,7 @@ defineExpose({
           @click="redo"
           :disabled="!canRedo"
           class="p-2 disabled:opacity-30 hover:bg-gray-700 rounded-lg transition-colors"
-          title="Redo"
+          :title="lazyStrings.ImageEditor__redo()"
         >
           <Redo2Icon class="w-4 h-4" />
         </button>
@@ -793,7 +794,7 @@ defineExpose({
           @click="isSidebarOpen = !isSidebarOpen"
           class="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
           :class="{ 'text-blue-500 bg-blue-500/10': isSidebarOpen }"
-          title="Toggle Tools Sidebar"
+          :title="lazyStrings.ImageEditor__toggle_tools_sidebar()"
         >
           <PanelRightIcon class="w-5 h-5" />
         </button>
@@ -802,7 +803,7 @@ defineExpose({
           @click="handleClose"
           class="px-4 py-2 text-sm font-bold text-gray-400 hover:text-white transition-colors"
         >
-          Close
+          {{ lazyStrings.ImageEditor__close() }}
         </button>
         <button
           @click="performSave"
@@ -811,7 +812,7 @@ defineExpose({
           class="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/30 flex items-center gap-2"
         >
           <CheckIcon class="w-4 h-4" />
-          <span>Finish</span>
+          <span>{{ lazyStrings.ImageEditor__finish() }}</span>
         </button>
       </div>
     </div>
@@ -871,13 +872,13 @@ defineExpose({
         :class="isSidebarOpen ? 'w-48 px-3' : 'w-0 px-0 opacity-0'"
       >
         <div class="flex items-center justify-between mt-2 px-1">
-          <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tools</span>
+          <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ImageEditor__tools() }}</span>
         </div>
 
         <div class="flex flex-col gap-5 flex-1 overflow-y-auto pr-1 scrollbar-thin">
           <!-- Selection Section -->
           <div class="space-y-2">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Selection</span>
+            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__selection() }}</span>
             <div class="bg-gray-800 p-2 rounded-xl border border-gray-700 space-y-3">
               <!-- Shape -->
               <div class="flex items-center gap-1 bg-gray-900/50 p-1 rounded-lg">
@@ -885,7 +886,7 @@ defineExpose({
                   @click="selection.shape = 'rectangle'"
                   class="flex-1 p-1.5 rounded-md transition-all flex items-center justify-center"
                   :class="selection.shape === 'rectangle' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
-                  title="Rectangular Selection"
+                  :title="lazyStrings.ImageEditor__rectangular_selection()"
                 >
                   <SquareIcon class="w-3.5 h-3.5" />
                 </button>
@@ -893,7 +894,7 @@ defineExpose({
                   @click="selection.shape = 'ellipse'"
                   class="flex-1 p-1.5 rounded-md transition-all flex items-center justify-center"
                   :class="selection.shape === 'ellipse' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
-                  title="Elliptical Selection"
+                  :title="lazyStrings.ImageEditor__elliptical_selection()"
                 >
                   <CircleIcon class="w-3.5 h-3.5" />
                 </button>
@@ -905,28 +906,28 @@ defineExpose({
                   @click="executeAction({ action: 'crop' })"
                   data-testid="image-editor-action-crop"
                   class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
-                  title="Crop to selection"
+                  :title="lazyStrings.ImageEditor__crop_to_selection()"
                 >
                   <CropIcon class="w-3 h-3" />
-                  <span>Crop</span>
+                  <span>{{ lazyStrings.ImageEditor__crop() }}</span>
                 </button>
                 <button
                   @click="executeAction({ action: 'mask-outside' })"
                   data-testid="image-editor-action-mask-out"
                   class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
-                  title="Fill everything outside selection"
+                  :title="lazyStrings.ImageEditor__fill_everything_outside_selection()"
                 >
                   <SquareIcon class="w-3 h-3" />
-                  <span>Mask Out</span>
+                  <span>{{ lazyStrings.ImageEditor__mask_out() }}</span>
                 </button>
                 <button
                   @click="executeAction({ action: 'mask-inside' })"
                   data-testid="image-editor-action-mask-in"
                   class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
-                  title="Fill selection area"
+                  :title="lazyStrings.ImageEditor__fill_selection_area()"
                 >
                   <EraserIcon class="w-3 h-3" />
-                  <span>Mask In</span>
+                  <span>{{ lazyStrings.ImageEditor__mask_in() }}</span>
                 </button>
               </div>
 
@@ -938,7 +939,7 @@ defineExpose({
                       @click="selectedFill = TRANSPARENT"
                       class="w-6 h-6 rounded-md border-2 transition-all flex items-center justify-center bg-gray-700"
                       :class="selectedFill === TRANSPARENT ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
-                      title="Transparent"
+                      :title="lazyStrings.ImageEditor__transparent()"
                     >
                       <div class="w-2.5 h-2.5 border border-red-500/50 rotate-45"></div>
                     </button>
@@ -946,13 +947,13 @@ defineExpose({
                       @click="selectedFill = '#ffffff'"
                       class="w-6 h-6 rounded-md border-2 transition-all bg-white"
                       :class="selectedFill === '#ffffff' ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
-                      title="White"
+                      :title="lazyStrings.ImageEditor__white()"
                     ></button>
                     <button
                       @click="selectedFill = '#000000'"
                       class="w-6 h-6 rounded-md border-2 transition-all bg-black"
                       :class="selectedFill === '#000000' ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
-                      title="Black"
+                      :title="lazyStrings.ImageEditor__black()"
                     ></button>
                   </div>
 
@@ -960,7 +961,7 @@ defineExpose({
                     @click="isPickingColor = !isPickingColor"
                     class="p-1.5 rounded-lg transition-colors"
                     :class="isPickingColor ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
-                    title="Pick color from canvas"
+                    :title="lazyStrings.ImageEditor__pick_color_from_canvas()"
                   >
                     <PipetteIcon class="w-3.5 h-3.5" />
                   </button>
@@ -977,7 +978,7 @@ defineExpose({
 
                 <!-- Color History -->
                 <div v-if="colorHistory.length > 0" class="px-1 pt-1">
-                  <span class="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1 block">Recent</span>
+                  <span class="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1 block">{{ lazyStrings.ImageEditor__recent() }}</span>
                   <div class="flex flex-wrap gap-1">
                     <button
                       v-for="color in colorHistory"
@@ -998,32 +999,32 @@ defineExpose({
 
           <!-- Transform Section -->
           <div class="space-y-2">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Transform</span>
+            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__transform() }}</span>
             <div class="bg-gray-800 p-2 rounded-xl border border-gray-700">
               <div class="grid grid-cols-2 gap-1.5">
-                <button @click="applyTransform({ type: 'rotate-l' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" title="Rotate Left">
+                <button @click="applyTransform({ type: 'rotate-l' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__rotate_left()">
                   <RotateCcwIcon class="w-3.5 h-3.5" />
                 </button>
-                <button @click="applyTransform({ type: 'rotate-r' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" title="Rotate Right">
+                <button @click="applyTransform({ type: 'rotate-r' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__rotate_right()">
                   <RotateCwIcon class="w-3.5 h-3.5" />
                 </button>
-                <button @click="applyTransform({ type: 'flip-h' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" title="Flip Horizontal">
+                <button @click="applyTransform({ type: 'flip-h' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__flip_horizontal()">
                   <FlipHorizontalIcon class="w-3.5 h-3.5" />
                 </button>
-                <button @click="applyTransform({ type: 'flip-v' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" title="Flip Vertical">
+                <button @click="applyTransform({ type: 'flip-v' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__flip_vertical()">
                   <FlipVerticalIcon class="w-3.5 h-3.5" />
                 </button>
               </div>
-              <button @click="initEditor" class="w-full mt-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors text-[9px] font-bold border border-red-900/30 flex items-center justify-center gap-2" title="Reset Image">
+              <button @click="initEditor" class="w-full mt-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors text-[9px] font-bold border border-red-900/30 flex items-center justify-center gap-2" :title="lazyStrings.ImageEditor__reset_image()">
                 <RefreshCcwIcon class="w-2.5 h-2.5" />
-                <span>Reset</span>
+                <span>{{ lazyStrings.ImageEditor__reset() }}</span>
               </button>
             </div>
           </div>
 
           <!-- Resize Section -->
           <div class="space-y-2">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Resize (px)</span>
+            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__resize_px() }}</span>
             <div class="bg-gray-800 p-2 rounded-xl border border-gray-700 space-y-2">
               <div class="flex items-center gap-1.5">
                 <input
@@ -1035,7 +1036,7 @@ defineExpose({
                   @click="resizeLock = resizeLock === 'locked' ? 'free' : 'locked'"
                   class="p-1 rounded-lg transition-colors"
                   :class="resizeLock === 'locked' ? 'text-blue-400 bg-gray-900' : 'text-gray-600'"
-                  :title="resizeLock === 'locked' ? 'Maintain aspect ratio' : 'Free resizing'"
+                  :title="resizeLock === 'locked' ? lazyStrings.ImageEditor__maintain_aspect_ratio() : lazyStrings.ImageEditor__free_resizing()"
                 >
                   <component :is="resizeLock === 'locked' ? LinkIcon : Link2OffIcon" class="w-3 h-3" />
                 </button>
@@ -1049,35 +1050,35 @@ defineExpose({
                 @click="applyResize"
                 class="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-[9px] font-bold rounded-lg transition-colors"
               >
-                Apply Resize
+                {{ lazyStrings.ImageEditor__apply_resize() }}
               </button>
             </div>
           </div>
 
           <!-- Zoom Section -->
           <div class="space-y-2">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Zoom</span>
+            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__zoom() }}</span>
             <div class="bg-gray-800 p-2 rounded-xl border border-gray-700">
               <div class="flex items-center gap-1 bg-gray-900/50 p-1 rounded-lg">
-                <button @click="zoom = Math.max(0.1, zoom / 1.2)" class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" title="Zoom Out">
+                <button @click="zoom = Math.max(0.1, zoom / 1.2)" class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" :title="lazyStrings.ImageEditor__zoom_out()">
                   <ZoomOutIcon class="w-3.5 h-3.5" />
                 </button>
-                <button @click="zoom = 1; panOffset = { x: 0, y: 0 }" class="px-2 text-[10px] font-bold text-gray-400 hover:text-white transition-colors flex-[2] text-center" title="Reset Zoom">
+                <button @click="zoom = 1; panOffset = { x: 0, y: 0 }" class="px-2 text-[10px] font-bold text-gray-400 hover:text-white transition-colors flex-[2] text-center" :title="lazyStrings.ImageEditor__reset_zoom()">
                   {{ Math.round(zoom * 100) }}%
                 </button>
-                <button @click="zoom = Math.min(10, zoom * 1.2)" class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" title="Zoom In">
+                <button @click="zoom = Math.min(10, zoom * 1.2)" class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" :title="lazyStrings.ImageEditor__zoom_in()">
                   <ZoomInIcon class="w-3.5 h-3.5" />
                 </button>
               </div>
               <p class="text-[8px] text-gray-500 mt-2 text-center leading-tight">
-                Wheel to zoom. Middle-click or Alt+Drag to pan.
+                {{ lazyStrings.ImageEditor__wheel_to_zoom_middle_click_or_alt_plus_drag_to_pan() }}
               </p>
             </div>
           </div>
 
           <!-- Format Section -->
           <div class="space-y-2 pb-4">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Output Format</span>
+            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__output_format() }}</span>
             <div class="bg-gray-800 p-1 rounded-xl border border-gray-700 grid grid-cols-2 gap-1">
               <button
                 v-for="format in ([{ label: 'Orig.', value: 'original' }, { label: 'PNG', value: 'image/png' }, { label: 'JPG', value: 'image/jpeg' }, { label: 'WebP', value: 'image/webp' }] as const)"
@@ -1097,7 +1098,7 @@ defineExpose({
     <!-- Confirm Discard Dialog -->
     <CustomDialog
       :show="showCloseConfirm"
-      title="Discard Changes?"
+      :title="lazyStrings.ImageEditor__discard_changes()"
       message="You have unsaved changes. Are you sure you want to close and discard them?"
       confirm-button-text="Discard"
       confirm-button-variant="danger"

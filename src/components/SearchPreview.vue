@@ -110,7 +110,7 @@ defineExpose({
       <!-- Context Header -->
       <div class="p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex justify-between items-center shrink-0">
         <div class="flex flex-col gap-0.5 overflow-hidden">
-          <h3 v-if="chat" class="text-xs font-black text-gray-900 dark:text-gray-100 truncate">{{ chat.title || lazyStrings.SearchPreview__untitled_chat() }}</h3>
+          <h3 v-if="chat" class="text-xs font-black text-gray-900 dark:text-gray-100 truncate">{{ chat.title || lazyStrings.SHARED__new_chat() }}</h3>
           <div class="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
             <span>{{ match ? lazyStrings.SearchPreview__conversation_match() : lazyStrings.SearchPreview__recent_history() }}</span>
             <span class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[8px]">{{ lazyStrings.SearchPreview__message_count({ count: visibleMessages.length }) }}</span>

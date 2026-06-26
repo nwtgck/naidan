@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { Minimize2Icon } from 'lucide-vue-next';
 
 defineEmits<{
@@ -17,6 +18,6 @@ defineExpose({
     @click="$emit('compact')"
   >
     <Minimize2Icon class="w-4 h-4" />
-    <span>Compact Context</span>
+    <span>{{ lazyStrings.contextCompact__compact_context() }}</span>
   </button>
 </template>

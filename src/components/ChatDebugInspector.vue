@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon } from 'lucide-vue-next';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
@@ -41,10 +42,10 @@ const activeIds = computed(() => new Set(props.activeMessages.map(m => m.id)));
 const canEnableFakeLmForChat = computed(() => fakeLmDebugModeAvailability.value === 'available');
 const fakeLmButtonTitle = computed(() => {
   if (!canEnableFakeLmForChat.value) {
-    return 'Fake LM is only available in hosted builds. Standalone builds do not bundle fake LM.';
+    return lazyStrings.ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds();
   }
 
-  return `Set this chat to Ollama at ${FAKE_LM_ENDPOINT_URL} and enable global Fake LM debug mode.`;
+  return lazyStrings.ChatDebugInspector__set_this_chat_to_ollama_and_enable_global_fake_lm_debug_mode({ endpointUrl: FAKE_LM_ENDPOINT_URL });
 });
 
 function handleSelectNode({ node }: { node: Readonly<MessageNode> }) {
@@ -224,8 +225,8 @@ defineExpose({
               <BugIcon class="w-5 h-5 text-indigo-500" />
             </div>
             <div>
-              <h3 class="text-base font-black text-gray-800 dark:text-white tracking-tight">Chat Inspector</h3>
-              <p class="text-[9px] text-gray-400 uppercase tracking-widest font-black">Data Explorer</p>
+              <h3 class="text-base font-black text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ChatDebugInspector__chat_inspector() }}</h3>
+              <p class="text-[9px] text-gray-400 uppercase tracking-widest font-black">{{ lazyStrings.ChatDebugInspector__data_explorer() }}</p>
             </div>
           </div>
 
@@ -254,11 +255,11 @@ defineExpose({
               data-testid="chat-inspector-enable-fake-lm"
             >
               <BugIcon class="w-4 h-4" />
-              <span>Fake LM</span>
+              <span>{{ lazyStrings.ChatDebugInspector__fake_lm() }}</span>
               <span
                 v-if="fakeLmDebugModeStatus === 'enabled'"
                 class="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8px]"
-              >On</span>
+              >{{ lazyStrings.ChatDebugInspector__on() }}</span>
             </button>
 
             <!-- Global Highlighting Toggle -->
@@ -266,7 +267,7 @@ defineExpose({
               @click="isHighlightEnabled = !isHighlightEnabled"
               class="p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
               :class="isHighlightEnabled ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
-              title="Toggle Highlighting"
+              :title="lazyStrings.ChatDebugInspector__toggle_highlighting()"
             >
               <component :is="isHighlightEnabled ? HighlighterIcon : ZapOffIcon" class="w-4 h-4" />
             </button>
@@ -276,7 +277,7 @@ defineExpose({
               @click="isContentCollapsed = !isContentCollapsed"
               class="p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
               :class="isContentCollapsed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
-              title="Toggle Content Collapse"
+              :title="lazyStrings.ChatDebugInspector__toggle_content_collapse()"
             >
               <component :is="isContentCollapsed ? EyeOffIcon : EyeIcon" class="w-4 h-4" />
             </button>
@@ -318,7 +319,7 @@ defineExpose({
               <button
                 @click="isTreeMapCollapsed = !isTreeMapCollapsed"
                 class="absolute right-2 top-2 p-1.5 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-white dark:hover:bg-gray-800 transition-all z-20"
-                :title="isTreeMapCollapsed ? 'Expand Tree' : 'Collapse Tree'"
+                :title="isTreeMapCollapsed ? lazyStrings.ChatDebugInspector__expand_tree() : lazyStrings.ChatDebugInspector__collapse_tree()"
               >
                 <component :is="isTreeMapCollapsed ? ChevronRightIcon : ChevronLeftIcon" class="w-4 h-4" />
               </button>
@@ -347,13 +348,13 @@ defineExpose({
             <div class="flex-1 overflow-y-auto p-8 thin-scrollbar">
               <div v-if="selectedPath.length > 0" class="space-y-4">
                 <div v-if="selectedPath.length > 1" class="mb-8 border-b border-gray-100 dark:border-white/5 pb-4 flex justify-between items-end">
-                  <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">Context Path</span>
+                  <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">{{ lazyStrings.ChatDebugInspector__context_path() }}</span>
                   <button
                     @click="handleOpenMessage({ messageId: selectedNode!.id })"
                     class="flex items-center gap-2 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
                   >
                     <CornerUpRightIcon class="w-3 h-3" />
-                    <span>Open at this message</span>
+                    <span>{{ lazyStrings.ChatDebugInspector__open_at_this_message() }}</span>
                   </button>
                 </div>
                 <ChatDebugTreeNode
@@ -370,7 +371,7 @@ defineExpose({
               </div>
               <div v-else class="h-full flex flex-col items-center justify-center text-gray-400 opacity-30">
                 <NetworkIcon class="w-16 h-16 mb-4 stroke-[0.5px]" />
-                <p class="text-[10px] font-black uppercase tracking-[0.2em]">Select a node to inspect</p>
+                <p class="text-[10px] font-black uppercase tracking-[0.2em]">{{ lazyStrings.ChatDebugInspector__select_a_node_to_inspect() }}</p>
               </div>
             </div>
           </div>

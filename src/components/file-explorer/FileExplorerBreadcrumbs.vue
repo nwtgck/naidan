@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { inject, ref } from 'vue';
 import { ChevronRightIcon, ChevronLeftIcon } from 'lucide-vue-next';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
@@ -54,7 +55,7 @@ defineExpose({
     <button
       :disabled="ctx.pathSegments.length <= 1"
       class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30 transition-colors shrink-0"
-      title="Go Back"
+      :title="lazyStrings.fileExplorer__go_back()"
       data-testid="breadcrumb-back"
       @click="ctx.navigateUp()"
     >

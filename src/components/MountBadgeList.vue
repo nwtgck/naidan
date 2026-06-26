@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { idToRaw } from '@/models/ids';
 import type { Mount } from '@/models/types';
 import type { VolumeId } from '@/models/ids';
@@ -46,7 +47,7 @@ defineExpose({
       <button
         v-if="showExplorer"
         class="max-w-[120px] truncate mx-1 hover:underline focus:outline-none"
-        :title="`Browse ${displayPath({ mountPath: mount.mountPath })}`"
+        :title="lazyStrings.MountBadgeList__browse_path({ path: displayPath({ mountPath: mount.mountPath }) })"
         data-testid="mount-open-explorer"
         @click="emit('open-explorer', { volumeId: mount.volumeId })"
       >{{ displayPath({ mountPath: mount.mountPath }) }}</button>
@@ -57,7 +58,7 @@ defineExpose({
       >{{ displayPath({ mountPath: mount.mountPath }) }}</span>
       <button
         @click="emit('toggle-read-only', { volumeId: mount.volumeId, readOnly: !mount.readOnly })"
-        :title="mount.readOnly ? 'Read-only — click to allow write' : 'Read & write — click to restrict'"
+        :title="mount.readOnly ? lazyStrings.MountBadgeList__read_only_click_to_allow_write() : lazyStrings.MountBadgeList__read_and_write_click_to_restrict()"
         class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
         data-testid="mount-toggle-readonly"
       >
@@ -66,7 +67,7 @@ defineExpose({
       </button>
       <button
         @click="emit('remove', { volumeId: mount.volumeId })"
-        title="Remove"
+        :title="lazyStrings.MountBadgeList__remove()"
         class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors text-blue-400 hover:text-red-500 dark:hover:text-red-400"
         data-testid="mount-remove-btn"
       >

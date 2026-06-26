@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import { z } from 'zod';
 import { ChevronDownIcon, ChevronRightIcon, WrapTextIcon } from 'lucide-vue-next';
@@ -76,7 +77,7 @@ defineExpose({
   <!-- Fallback to generic display if args do not match the shell_execute schema -->
   <template v-if="parsedArgs === null">
     <div>
-      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
+      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">{{ lazyStrings.toolCall__arguments() }}</div>
       <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formattedRawArgs }}</pre>
     </div>
     <div v-if="result.status === 'executing' && liveOutputText !== null">
@@ -84,10 +85,10 @@ defineExpose({
     </div>
     <div v-else-if="resultText !== null">
       <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
-        {{ result.status === 'success' ? 'Result' : 'Error' }}
+        {{ result.status === 'success' ? lazyStrings.toolCall__result() : lazyStrings.toolCall__error() }}
       </div>
       <div v-if="result.status === 'error'" class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
-        <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ result.error.code }}</div>
+        <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">{{ lazyStrings.toolCall__code() }} {{ result.error.code }}</div>
         <div class="whitespace-pre-wrap">{{ resultText }}</div>
       </div>
       <div v-else class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
@@ -106,7 +107,7 @@ defineExpose({
       <button
         class="absolute top-1 right-1 opacity-0 group-hover/cmd:opacity-100 transition-opacity p-0.5 rounded bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
         :class="wrapCommand ? 'text-blue-500/70 dark:text-blue-400/70' : 'text-gray-400 dark:text-gray-500'"
-        :title="wrapCommand ? 'Disable wrap' : 'Enable wrap'"
+        :title="wrapCommand ? lazyStrings.toolCall__disable_wrap() : lazyStrings.toolCall__enable_wrap()"
         data-testid="shell-execute-wrap-toggle"
         @click.stop="wrapCommand = !wrapCommand"
       ><WrapTextIcon class="w-3 h-3" /></button>
@@ -118,7 +119,7 @@ defineExpose({
     </div>
     <div v-else-if="resultText !== null">
       <div v-if="result.status === 'error'" class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
-        <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ result.error.code }}</div>
+        <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">{{ lazyStrings.toolCall__code() }} {{ result.error.code }}</div>
         <div class="whitespace-pre-wrap">{{ resultText }}</div>
       </div>
       <pre v-else class="text-[10px] font-mono p-2 rounded-lg bg-green-500/5 text-gray-700 dark:text-gray-300 overflow-x-auto custom-scrollbar whitespace-pre-wrap">{{ resultText }}</pre>
@@ -132,7 +133,7 @@ defineExpose({
         @click.stop="showRaw = !showRaw"
       >
         <component :is="showRaw ? ChevronDownIcon : ChevronRightIcon" class="w-3 h-3" />
-        Raw JSON
+        {{ lazyStrings.toolCall__raw_json() }}
       </button>
       <pre
         v-if="showRaw"

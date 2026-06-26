@@ -133,7 +133,7 @@ async function fetchModels() {
     } });
 
     if (models.length === 0 && form.value.endpointType !== 'transformers_js') {
-      throw new Error(await ensureStrings.ConnectionTab__no_models_found_at_endpoint());
+      throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
 
     // Validate current selection against new models
@@ -158,7 +158,7 @@ async function fetchModels() {
     }, 3000);
   } catch (err) {
     console.error(err);
-    error.value = err instanceof Error ? err.message : await ensureStrings.ConnectionTab__connection_failed();
+    error.value = err instanceof Error ? err.message : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
     connectionSuccess.value = false;
   }
 }
@@ -314,7 +314,7 @@ defineExpose({
               >
                 <CheckIcon v-if="copied" class="w-3 h-3" />
                 <LinkIcon v-else class="w-3 h-3" />
-                <span>{{ copied ? 'URL Copied!' : 'Copy Setup URL' }}</span>
+                <span>{{ copied ? lazyStrings.ConnectionTab__url_copied() : lazyStrings.ConnectionTab__copy_setup_url() }}</span>
               </button>
             </div>
 
@@ -330,7 +330,7 @@ defineExpose({
                   <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
                   <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
                   <option :disabled="isStandalone" value="transformers_js">
-                    Transformers.js (Experimental) {{ isStandalone ? '(Unavailable in Standalone due to Worker/WASM restrictions)' : '' }}
+                    {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ isStandalone ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
                   </option>
                 </select>
               </div>
@@ -378,7 +378,7 @@ defineExpose({
                       <CheckIcon v-else-if="connectionSuccess" class="w-4 h-4 text-green-600 dark:text-green-400 animate-in zoom-in duration-300" />
                       <ActivityIcon v-else class="w-4 h-4" />
                     </span>
-                    <span class="text-xs font-bold">{{ connectionSuccess ? 'Connected' : 'Check Connection' }}</span>
+                    <span class="text-xs font-bold">{{ connectionSuccess ? lazyStrings.ConnectionTab__connected() : lazyStrings.ConnectionTab__check_connection() }}</span>
                   </button>
                 </div>
                 <!-- Info message about auto-connection check -->

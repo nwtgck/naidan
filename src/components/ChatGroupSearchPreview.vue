@@ -177,7 +177,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
 
             <div class="flex-1 min-w-0 flex flex-col justify-center">
               <span class="text-[11px] font-bold truncate" :class="selectedChatId === chat.id ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'">
-                {{ chat.title || lazyStrings.ChatGroupSearchPreview__untitled_chat() }}
+                {{ chat.title || lazyStrings.SHARED__new_chat() }}
               </span>
               <span class="text-[8px] text-gray-400 font-medium truncate">{{ formatTime({ timestamp: chat.updatedAt }) }}</span>
             </div>

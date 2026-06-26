@@ -191,18 +191,18 @@ describe('StorageService Synchronization Wrapper', () => {
     // Extract the callbacks passed to withLock
     await service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => meta });
     const options = mockWithLock.mock.calls.find(([options]) => options?.lockKey === LOCK_METADATA)?.[0] as {
-      onLockWait: () => void,
-      onTaskSlow: () => void,
-      onFinalize: () => void,
+      onLockWait: () => Promise<void>,
+      onTaskSlow: () => Promise<void>,
+      onFinalize: () => Promise<void>,
     };
 
-    options.onLockWait();
+    await options.onLockWait();
     expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('busy') }));
 
-    options.onTaskSlow();
+    await options.onTaskSlow();
     expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('longer than expected') }));
 
-    options.onFinalize();
+    await options.onFinalize();
     expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('completed') }));
   });
 

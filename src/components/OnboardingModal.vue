@@ -287,7 +287,7 @@ async function handleConnect() {
     const models = await provider.listModels({ signal: abortController.signal });
 
     if (models.length === 0) {
-      throw new Error(await ensureStrings.OnboardingModal__no_models_found());
+      throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
 
     availableModels.value = models;

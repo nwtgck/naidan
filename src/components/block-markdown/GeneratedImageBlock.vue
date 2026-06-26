@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { GeneratedImageBlockSchema, getDisplayDimensions } from '@/utils/image-generation';
 import { storageService } from '@/services/storage';
@@ -59,10 +60,10 @@ async function loadImage() {
       imageUrl.value = URL.createObjectURL(blob);
       isSupported.value = await ImageDownloadHydrator.detectSupport({ blob });
     } else {
-      error.value = 'Image not found in storage';
+      error.value = await ensureStrings.blockMarkdown__image_not_found_in_storage();
     }
   } catch (e) {
-    error.value = 'Failed to load image';
+    error.value = await ensureStrings.blockMarkdown__failed_to_load_image();
     console.error(e);
   } finally {
     loading.value = false;
@@ -104,9 +105,9 @@ async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
     model: undefined, // Model info not directly available in the block JSON currently
     withMetadata,
     storageService,
-    onError: ({ error }) => addErrorEvent({
+    onError: async ({ error }) => addErrorEvent({
       source: 'GeneratedImageBlock:Download',
-      message: 'Failed to embed metadata in image.',
+      message: await ensureStrings.blockMarkdown__failed_to_embed_metadata_in_image(),
       details: error instanceof Error ? error.message : String(error),
     }),
   });
@@ -133,7 +134,7 @@ defineExpose({
       :width="displayDims.width"
       :height="displayDims.height"
       class="naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity"
-      alt="generated image"
+      :alt="lazyStrings.SHARED__generated_image()"
     />
 
     <!-- Loading Skeleton -->
@@ -182,6 +183,6 @@ defineExpose({
 
   <!-- Fallback for invalid JSON -->
   <div v-else class="p-4 border border-red-200 bg-red-50 rounded text-red-500 text-xs">
-    Invalid Image Block Data
+    {{ lazyStrings.blockMarkdown__invalid_image_block_data() }}
   </div>
 </template>

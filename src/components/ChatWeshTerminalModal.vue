@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { watch, nextTick, ref } from 'vue';
 import { TerminalIcon, XIcon } from 'lucide-vue-next';
 import WeshTerminalPane from '@/features/wesh-terminal/components/WeshTerminalPane.vue';
@@ -47,10 +48,10 @@ watch(() => props.isOpen, async (open) => {
 
 async function handleCloseSession({ sessionId }: { sessionId: string }) {
   const confirmed = await showConfirm({
-    title: 'Close Session?',
-    message: 'This will dispose the worker and lose the session history. Continue?',
-    confirmButtonText: 'Close Session',
-    cancelButtonText: 'Cancel',
+    title: await ensureStrings.weshTerminal__close_session_question(),
+    message: await ensureStrings.weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue(),
+    confirmButtonText: await ensureStrings.weshTerminal__close_session(),
+    cancelButtonText: await ensureStrings.weshTerminal__cancel(),
     confirmButtonVariant: 'danger',
   });
   if (!confirmed) return;
@@ -78,11 +79,11 @@ defineExpose({
         <div class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-700/60 shrink-0">
           <div class="flex items-center gap-2">
             <TerminalIcon class="w-4 h-4 text-blue-500 shrink-0" />
-            <span class="font-mono text-sm font-bold text-gray-200">Wesh Terminal</span>
+            <span class="font-mono text-sm font-bold text-gray-200">{{ lazyStrings.weshTerminal__wesh_terminal() }}</span>
           </div>
           <button
             class="p-1 rounded-lg hover:bg-gray-800 transition-colors text-gray-500 hover:text-gray-300"
-            aria-label="Close terminal"
+            :aria-label="lazyStrings.weshTerminal__close_terminal()"
             @click="emit('close')"
           >
             <XIcon class="w-4 h-4" />

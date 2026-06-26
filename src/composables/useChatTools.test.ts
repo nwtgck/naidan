@@ -316,11 +316,11 @@ describe('useChatTools', () => {
       const chatId = toChatId({ raw: 'chat-1' });
       liveChatRegistry.set(chatId, createTestChat({ id: chatId, groupId }));
 
-      const { setCurrentChatId, isToolEnabled, getToolInheritanceLabel } = useChatTools();
+      const { setCurrentChatId, isToolEnabled, getToolInheritanceSource } = useChatTools();
       setCurrentChatId({ chatId });
 
       expect(isToolEnabled({ name: 'calculator' })).toBe(true);
-      expect(getToolInheritanceLabel({ name: 'calculator' })).toBe('Use global');
+      expect(getToolInheritanceSource({ name: 'calculator' })).toBe('global');
     });
 
     it('uses the Chat Group override and does not expose a direct Global inheritance choice', async () => {
@@ -358,14 +358,14 @@ describe('useChatTools', () => {
       const {
         setCurrentChatId,
         isToolEnabled,
-        getToolInheritanceLabel,
+        getToolInheritanceSource,
         setToolStatus,
         resetToolToInherited,
       } = useChatTools();
       setCurrentChatId({ chatId });
 
       expect(isToolEnabled({ name: 'calculator' })).toBe(false);
-      expect(getToolInheritanceLabel({ name: 'calculator' })).toBe('Use group');
+      expect(getToolInheritanceSource({ name: 'calculator' })).toBe('group');
 
       await setToolStatus({ name: 'calculator', status: 'enabled' });
       expect(isToolEnabled({ name: 'calculator' })).toBe(true);

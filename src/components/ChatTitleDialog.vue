@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { XIcon, SparklesIcon, SquareIcon } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import { lazyStrings } from '@/strings';
 
 let rememberedDetailVisibility: 'hidden' | 'visible' = 'hidden';
 
@@ -93,11 +94,11 @@ function selectGeneratedTitle({ title }: { title: string }) {
 function titleModelSourceLabel({ source }: { source: 'chat' | 'chat_group' | 'global' }) {
   switch (source) {
   case 'chat':
-    return 'Chat override';
+    return lazyStrings.ChatTitleDialog__chat_override();
   case 'chat_group':
-    return 'Group override';
+    return lazyStrings.ChatTitleDialog__group_override();
   case 'global':
-    return 'Global default';
+    return lazyStrings.ChatTitleDialog__global_default();
   default: {
     const _ex: never = source;
     throw new Error(`Unhandled title model source: ${_ex}`);
@@ -145,13 +146,13 @@ defineExpose({
       <div class="w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden">
         <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <div>
-            <h3 class="text-sm font-bold text-gray-900 dark:text-gray-100">Chat Title</h3>
-            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Edit the title directly or generate a new one from the conversation.</p>
+            <h3 class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ lazyStrings.ChatTitleDialog__chat_title() }}</h3>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{{ lazyStrings.ChatTitleDialog__edit_the_title_directly_or_generate_a_new_one_from_the_conversation() }}</p>
           </div>
           <button
             type="button"
             class="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            title="Close"
+            :title="lazyStrings.ChatTitleDialog__close()"
             data-testid="chat-title-dialog-close"
             @click="emit('close')"
           >
@@ -161,7 +162,7 @@ defineExpose({
 
         <div class="p-5 space-y-5">
           <div class="space-y-2">
-            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Title</label>
+            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title() }}</label>
             <div class="relative">
               <input
                 v-model="titleInput"
@@ -170,7 +171,7 @@ defineExpose({
                 :class="generatingTitle
                   ? 'border-blue-300 dark:border-blue-700 shadow-lg shadow-blue-500/10'
                   : 'border-gray-100 dark:border-gray-700'"
-                :placeholder="UNTITLED_CHAT_TITLE"
+                :placeholder="lazyStrings.SHARED__new_chat()"
                 data-testid="chat-title-input"
               />
               <div v-if="generatingTitle" class="title-scan-overlay pointer-events-none absolute inset-0 overflow-hidden rounded-xl" data-testid="title-magic-scan">
@@ -186,7 +187,7 @@ defineExpose({
                 @click="emit('abort-title')"
               >
                 <SquareIcon class="w-3.5 h-3.5" />
-                <span>Stop</span>
+                <span>{{ lazyStrings.ChatTitleDialog__stop() }}</span>
               </button>
               <button
                 v-else
@@ -196,7 +197,7 @@ defineExpose({
                 @click="emitGenerateTitle()"
               >
                 <SparklesIcon class="w-3.5 h-3.5" />
-                <span>Generate</span>
+                <span>{{ lazyStrings.ChatTitleDialog__generate() }}</span>
               </button>
             </div>
           </div>
@@ -208,28 +209,28 @@ defineExpose({
               data-testid="title-options-toggle"
               @click="toggleDetails()"
             >
-              <span>Options & History</span>
-              <span>{{ detailVisibility === 'visible' ? 'Hide' : 'Show' }}</span>
+              <span>{{ lazyStrings.ChatTitleDialog__options_and_history() }}</span>
+              <span>{{ detailVisibility === 'visible' ? lazyStrings.ChatTitleDialog__hide() : lazyStrings.ChatTitleDialog__show() }}</span>
             </button>
 
             <div v-if="detailVisibility === 'visible'" class="mt-3 space-y-5">
               <div class="space-y-3 p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30">
                 <div>
-                  <h4 class="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-widest">Title Model</h4>
+                  <h4 class="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title_model() }}</h4>
                   <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                    Editing {{ titleModelSourceLabel({ source: titleModelSource }) }} because that is the active source for this chat.
+                    {{ lazyStrings.ChatTitleDialog__editing_source_because_that_is_the_active_source_for_this_chat({ sourceLabel: titleModelSourceLabel({ source: titleModelSource }) }) }}
                   </p>
                 </div>
 
                 <div class="space-y-2">
-                  <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Title Model</label>
+                  <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title_model() }}</label>
                   <ModelSelector
                     v-model="selectedTitleModelDraft"
                     :models="availableModels"
                     :loading="fetchingModels"
                     :allow-clear="true"
-                    clear-label="Use chat model"
-                    placeholder="Use chat model"
+                    :clear-label="lazyStrings.ChatTitleDialog__use_chat_model()"
+                    :placeholder="lazyStrings.ChatTitleDialog__use_chat_model()"
                     data-testid="chat-title-model-select"
                     @refresh="emit('refresh-models')"
                   />
@@ -237,13 +238,13 @@ defineExpose({
               </div>
 
               <div class="space-y-2">
-                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Generated in this dialog</label>
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__generated_in_this_dialog() }}</label>
                 <div class="h-36 space-y-2 overflow-y-auto pr-1">
                   <div
                     v-if="generatedTitles.length === 0"
                     class="h-full flex items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-700 text-[11px] text-gray-400 dark:text-gray-500"
                   >
-                    Generated titles will appear here.
+                    {{ lazyStrings.ChatTitleDialog__generated_titles_will_appear_here() }}
                   </div>
                   <div
                     v-for="titleOption in generatedTitles"
@@ -264,7 +265,7 @@ defineExpose({
                       data-testid="use-generated-title-button"
                       @click="selectGeneratedTitle({ title: titleOption })"
                     >
-                      Use
+                      {{ lazyStrings.ChatTitleDialog__use() }}
                     </button>
                   </div>
                 </div>

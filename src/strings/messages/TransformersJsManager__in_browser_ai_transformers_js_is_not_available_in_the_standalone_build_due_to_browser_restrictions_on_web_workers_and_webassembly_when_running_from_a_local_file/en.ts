@@ -1,0 +1,1 @@
+export const TransformersJsManager__in_browser_ai_transformers_js_is_not_available_in_the_standalone_build_due_to_browser_restrictions_on_web_workers_and_webassembly_when_running_from_a_local_file = (): string => 'In-browser AI (Transformers.js) is not available in the Standalone build due to browser restrictions on Web Workers and WebAssembly when running from a local file.';

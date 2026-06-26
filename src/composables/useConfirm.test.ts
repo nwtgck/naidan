@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick } from 'vue'; // Imported nextTick from vue
 import { useConfirm } from './useConfirm';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
+
+vi.mock('@/strings', () => ({
+  ensureStrings: {
+    SHARED__cancel: async () => 'Cancel',
+    SHARED__confirm: async () => 'Confirm',
+  },
+}));
 
 // Mock the global CustomDialog component
 const MockCustomDialog = defineComponent({
@@ -62,7 +69,7 @@ describe('useConfirm', () => {
 
   it('showConfirm resolves to true on confirmation', async () => {
     const confirmPromise = confirmHook.showConfirm({ message: 'Confirm this?' });
-    await nextTick(); // Wait for the dialog state to update
+    await flushPromises(); // Wait for the localized defaults and dialog state to update
 
     // Simulate confirmation by calling the composable's handler
     confirmHook.handleConfirm();
@@ -75,7 +82,7 @@ describe('useConfirm', () => {
 
   it('showConfirm resolves to false on cancellation', async () => {
     const confirmPromise = confirmHook.showConfirm({ message: 'Cancel this?' });
-    await nextTick(); // Wait for the dialog state to update
+    await flushPromises(); // Wait for the localized defaults and dialog state to update
 
     // Simulate cancellation by calling the composable's handler
     confirmHook.handleCancel();
@@ -95,7 +102,7 @@ describe('useConfirm', () => {
       confirmButtonVariant: 'danger' as const,
     };
     confirmHook.showConfirm(options);
-    await nextTick(); // Wait for the dialog state to update
+    await flushPromises(); // Wait for the localized defaults and dialog state to update
 
     expect(confirmHook.isConfirmOpen.value).toBe(true);
     expect(confirmHook.confirmTitle.value).toBe(options.title);
@@ -108,7 +115,7 @@ describe('useConfirm', () => {
   it('passes icon correctly', async () => {
     const MockIcon = { template: '<div>Icon</div>' };
     confirmHook.showConfirm({ icon: MockIcon });
-    await nextTick();
+    await flushPromises();
     expect(confirmHook.confirmIcon.value).toStrictEqual(MockIcon);
   });
 });

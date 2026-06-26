@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { SquareIcon, SparklesIcon, ChevronDownIcon, ChevronUpIcon, CheckCircle2Icon, XCircleIcon } from 'lucide-vue-next';
 import type { ContextCompactProgress } from '@/services/context-compact';
@@ -323,7 +324,7 @@ defineExpose({
                 @click="showRequestPreview = !showRequestPreview"
               >
                 <component :is="showRequestPreview ? ChevronUpIcon : ChevronDownIcon" class="w-3 h-3" />
-                {{ showRequestPreview ? 'Hide Request' : 'Show Request' }}
+                {{ showRequestPreview ? lazyStrings.ContextCompactProgressStrip__hide_request() : lazyStrings.ContextCompactProgressStrip__show_request() }}
               </button>
 
               <div v-if="showRequestPreview" class="mt-1.5 rounded-lg border border-indigo-100/50 bg-indigo-50/30 dark:border-indigo-900/40 dark:bg-gray-900/40 overflow-hidden">
@@ -339,7 +340,7 @@ defineExpose({
             <div v-if="outputPreview" class="rounded-lg border border-violet-200/40 bg-violet-50/30 dark:border-violet-800/20 dark:bg-gray-900/60 overflow-hidden shadow-inner ring-1 ring-violet-500/5" data-testid="context-compact-output-preview">
               <div class="flex items-center gap-2 px-3 py-1.5 border-b border-violet-100/30 dark:border-violet-800/20 bg-violet-100/20 dark:bg-violet-900/10">
                 <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-                <span class="text-[9px] font-bold uppercase tracking-widest text-violet-600/80 dark:text-violet-300/60">Live Output</span>
+                <span class="text-[9px] font-bold uppercase tracking-widest text-violet-600/80 dark:text-violet-300/60">{{ lazyStrings.ContextCompactProgressStrip__live_output() }}</span>
               </div>
               <pre
                 ref="outputPreviewRef"
@@ -354,7 +355,7 @@ defineExpose({
         <!-- Abort Button -->
         <button
           class="shrink-0 p-2 rounded-xl text-indigo-400 hover:text-rose-500 dark:text-indigo-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all duration-200"
-          title="Abort compact"
+          :title="lazyStrings.ContextCompactProgressStrip__abort_compact()"
           data-testid="abort-context-compact-button"
           @click="$emit('abort')"
         >

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, computed, onUnmounted, watch } from 'vue';
 import { ChevronRightIcon, ChevronDownIcon, CopyIcon, CheckIcon, ImageIcon, CpuIcon, EyeIcon, EyeOffIcon, FileIcon } from 'lucide-vue-next';
 import { storageService } from '@/services/storage';
@@ -243,7 +244,7 @@ export default {
           <button
             @click.stop="isLocallyCollapsed = !isLocallyCollapsed"
             class="p-1 rounded-md text-gray-300 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
-            :title="finalIsCollapsed ? 'Show Content' : 'Collapse Content'"
+            :title="finalIsCollapsed ? lazyStrings.ChatDebugTreeNode__show_content() : lazyStrings.ChatDebugTreeNode__collapse_content()"
           >
             <component :is="finalIsCollapsed ? EyeOffIcon : EyeIcon" class="w-3.5 h-3.5" />
           </button>
@@ -258,13 +259,13 @@ export default {
           <div v-if="!finalIsCollapsed" class="space-y-3">
             <!-- Error Display -->
             <div v-if="node.error" class="p-3 bg-red-500/5 border border-red-500/20 rounded-xl text-[11px] text-red-600 dark:text-red-400 font-sans">
-              <div class="font-black uppercase text-[8px] mb-1 opacity-70">Error</div>
+              <div class="font-black uppercase text-[8px] mb-1 opacity-70">{{ lazyStrings.ChatDebugTreeNode__error() }}</div>
               {{ node.error }}
             </div>
 
             <!-- Thinking Process -->
             <div v-if="node.thinking" class="p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl text-[11px] text-amber-700 dark:text-amber-400/80 font-sans italic italic-custom">
-              <div class="font-black uppercase text-[8px] not-italic mb-1 opacity-70">Thinking Process</div>
+              <div class="font-black uppercase text-[8px] not-italic mb-1 opacity-70">{{ lazyStrings.ChatDebugTreeNode__thinking_process() }}</div>
               {{ node.thinking }}
             </div>
 
@@ -282,7 +283,7 @@ export default {
             </div>
           </div>
           <div v-else-if="node.content || node.thinking || node.error" class="px-3 py-1.5 rounded-lg bg-gray-50/30 dark:bg-white/[0.01] border border-dashed border-gray-200 dark:border-white/5">
-            <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic opacity-60">Text content hidden</span>
+            <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic opacity-60">{{ lazyStrings.ChatDebugTreeNode__text_content_hidden() }}</span>
           </div>
 
           <!-- Non-collapsible visual elements (Images/Attachments) -->
@@ -292,7 +293,7 @@ export default {
               <div v-for="img in inlineImages" :key="img.binaryObjectId" class="relative group/inline-img max-w-full overflow-hidden">
                 <div class="text-[8px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 flex items-center gap-2">
                   <ImageIcon class="w-3 h-3" />
-                  <span>Generated Image Reference</span>
+                  <span>{{ lazyStrings.ChatDebugTreeNode__generated_image_reference() }}</span>
                 </div>
                 <div
                   @click.stop="emit('preview-attachment', toBinaryObjectId({ raw: img.binaryObjectId }))"

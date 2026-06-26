@@ -575,8 +575,8 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
 
   openFileExplorer({ options: {
     kind: 'wesh-mounts',
-    title: 'Files',
-    rootName: 'Files',
+    title: await ensureStrings.fileExplorer__files(),
+    rootName: await ensureStrings.fileExplorer__files(),
     mounts: workerMounts,
     initialPath,
   } });
@@ -1127,7 +1127,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             <div class="flex items-center justify-between mb-2">
               <span class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
                 <Loader2Icon class="w-3.5 h-3.5 animate-spin shrink-0" />
-                Copying "{{ copy.name }}"
+                {{ lazyStrings.ChatInput__copying_name({ name: copy.name }) }}
               </span>
               <div class="flex items-center gap-3">
                 <span v-if="copy.progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
@@ -1138,7 +1138,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
                   class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   data-testid="copy-cancel-btn"
                 >
-                  Cancel
+                  {{ lazyStrings.ChatInput__cancel() }}
                 </button>
               </div>
             </div>
@@ -1177,14 +1177,14 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             <button
               @click="openImageEditor({ id: att.id })"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors touch-visible"
-              title="Edit Image"
+              :title="lazyStrings.ChatInput__edit_image()"
             >
               <Edit2Icon class="w-3 h-3" />
             </button>
             <button
               @click="removeAttachment({ id: att.id })"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors touch-visible"
-              title="Remove"
+              :title="lazyStrings.ChatInput__remove()"
             >
               <XIcon class="w-3 h-3" />
             </button>
@@ -1215,7 +1215,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           v-if="isOverLimit || isMaximized"
           @click.stop="toggleMaximized"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
+          :title="isMaximized ? lazyStrings.ChatInput__minimize_input() : lazyStrings.ChatInput__maximize_input()"
           data-testid="maximize-button"
         >
           <Minimize2Icon v-if="isMaximized" class="w-4 h-4" />
@@ -1225,7 +1225,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <button
           @click.stop="toggleSubmerged"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="visibility === 'submerged' ? 'Show Input' : 'Hide Input'"
+          :title="visibility === 'submerged' ? lazyStrings.ChatInput__show_input() : lazyStrings.ChatInput__hide_input()"
           data-testid="submerge-button"
         >
           <ChevronUpIcon v-if="visibility === 'submerged'" class="w-4 h-4" />
@@ -1235,7 +1235,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <button
           @click.stop="openAdvancedEditor"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          title="Open Advanced Editor"
+          :title="lazyStrings.ChatInput__open_advanced_editor()"
           data-testid="open-advanced-editor-button"
         >
           <FileEditIcon class="w-4 h-4" />
@@ -1293,7 +1293,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
           :disabled="!isChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
-          :title="isChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
+          :title="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
           :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"
         >
           <template v-if="isChatStreaming">

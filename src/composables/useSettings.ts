@@ -1,4 +1,5 @@
 import { ref, readonly, computed, type ComputedRef, type Ref } from 'vue';
+import { ensureStrings } from '@/strings';
 import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, type ProviderProfile } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
@@ -132,18 +133,30 @@ export function useSettings(): UseSettingsApi {
         if (storageTypeOverride) {
           if (rawSavedType !== null) {
             if (storageTypeOverride !== rawSavedType) {
+              const [eventMessage, title, message, confirmButtonText] = await Promise.all([
+                ensureStrings.useSettings__storage_type_is_already_set_and_requested_type_was_ignored({
+                  savedStorageType: rawSavedType,
+                  requestedStorageType: storageTypeOverride,
+                }),
+                ensureStrings.useSettings__storage_already_initialized(),
+                ensureStrings.useSettings__request_to_use_storage_type_was_ignored({
+                  savedStorageType: rawSavedType,
+                  requestedStorageType: storageTypeOverride,
+                }),
+                ensureStrings.useSettings__ok(),
+              ]);
               const { addInfoEvent } = useGlobalEvents();
               addInfoEvent({
                 source: 'SettingsService',
-                message: `Storage type is already set to "${rawSavedType}". The requested type "${storageTypeOverride}" via query parameter was ignored.`,
+                message: eventMessage,
               });
 
               const { showConfirm } = useConfirm();
               // Do not await to avoid blocking initialization/mount
               showConfirm({
-                title: 'Storage Already Initialized',
-                message: `Storage type is already set to "${rawSavedType}". The request to use "${storageTypeOverride}" via query parameter was ignored.`,
-                confirmButtonText: 'OK',
+                title,
+                message,
+                confirmButtonText,
               });
             }
           } else {
@@ -161,7 +174,7 @@ export function useSettings(): UseSettingsApi {
           const { addErrorEvent } = useGlobalEvents();
           addErrorEvent({
             source: 'SettingsService',
-            message: 'Invalid storage type found in localStorage. Falling back to default detection.',
+            message: await ensureStrings.useSettings__invalid_storage_type_falling_back_to_default_detection(),
             details: validatedType.error,
           });
         }
@@ -195,14 +208,14 @@ export function useSettings(): UseSettingsApi {
             const { addInfoEvent } = useGlobalEvents();
             addInfoEvent({
               source: 'SettingsService',
-              message: 'Data successfully imported from URL.',
+              message: await ensureStrings.useSettings__data_successfully_imported_from_url(),
             });
           } catch (err) {
             console.error('Failed to import data from URL:', err);
             const { addErrorEvent } = useGlobalEvents();
             addErrorEvent({
               source: 'SettingsService',
-              message: 'Failed to import data from URL.',
+              message: await ensureStrings.useSettings__failed_to_import_data_from_url(),
               details: err instanceof Error ? err : String(err),
             });
           }
@@ -255,7 +268,7 @@ export function useSettings(): UseSettingsApi {
       const { addErrorEvent } = useGlobalEvents();
       addErrorEvent({
         source: 'useSettings:fetchModels',
-        message: 'Failed to fetch models for settings',
+        message: await ensureStrings.useSettings__failed_to_fetch_models_for_settings(),
         details: err instanceof Error ? err : String(err),
       });
       console.error('Failed to fetch models:', err);

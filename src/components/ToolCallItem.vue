@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { HammerIcon, CheckCircle2Icon, AlertCircleIcon, ChevronDownIcon, ChevronUpIcon, Loader2Icon } from 'lucide-vue-next';
 import { ref, watch, onMounted, nextTick, inject, computed, markRaw } from 'vue';
 import type { CombinedToolCall } from '@/models/types';
@@ -175,7 +176,7 @@ defineExpose({
             {{ toolCall.call.function.name }}
           </span>
           <span v-if="toolCall.result.status === 'executing'" class="text-[9px] text-blue-600/70 dark:text-blue-400/70 animate-pulse">
-            Executing...
+            {{ lazyStrings.toolCall__executing() }}
           </span>
         </div>
       </div>
@@ -215,18 +216,18 @@ defineExpose({
             <template v-else>
               <!-- Arguments -->
               <div>
-                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
+                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">{{ lazyStrings.toolCall__arguments() }}</div>
                 <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formatArgs({ args: toolCall.call.function.arguments }) }}</pre>
               </div>
 
               <!-- Result -->
               <div v-if="toolCall.result.status === 'executing' && liveOutput">
-                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Live Output</div>
+                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">{{ lazyStrings.toolCall__live_output() }}</div>
                 <pre class="text-[10px] font-mono p-2 rounded-lg break-words bg-blue-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ liveOutput }}</pre>
               </div>
               <div v-else-if="toolCall.result.status !== 'executing'">
                 <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
-                  {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
+                  {{ toolCall.result.status === 'success' ? lazyStrings.toolCall__result() : lazyStrings.toolCall__error() }}
                 </div>
                 <template v-if="toolCall.result.status === 'success'">
                   <div v-if="toolCall.result.content.type === 'text'"
@@ -236,7 +237,7 @@ defineExpose({
                 </template>
                 <template v-else-if="toolCall.result.status === 'error'">
                   <div class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
-                    <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ toolCall.result.error.code }}</div>
+                    <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">{{ lazyStrings.toolCall__code() }} {{ toolCall.result.error.code }}</div>
                     <div v-if="toolCall.result.error.message.type === 'text'" class="whitespace-pre-wrap">{{ toolCall.result.error.message.text }}</div>
                     <div v-else class="whitespace-pre-wrap">{{ binaryContent }}</div>
                   </div>
@@ -265,23 +266,23 @@ defineExpose({
           <template v-else>
             <!-- Arguments -->
             <div>
-              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
+              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">{{ lazyStrings.toolCall__arguments() }}</div>
               <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formatArgs({ args: toolCall.call.function.arguments }) }}</pre>
             </div>
 
             <!-- Result -->
             <div v-if="toolCall.result.status === 'executing' && liveOutput">
-              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Live Output</div>
+              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">{{ lazyStrings.toolCall__live_output() }}</div>
               <pre class="text-[10px] font-mono p-2 rounded-lg break-words bg-blue-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ liveOutput }}</pre>
             </div>
             <div v-else-if="toolCall.result.status !== 'executing'">
               <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
-                {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
+                {{ toolCall.result.status === 'success' ? lazyStrings.toolCall__result() : lazyStrings.toolCall__error() }}
               </div>
 
               <div v-if="isLoadingBinary" class="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-400">
                 <Loader2Icon class="w-3.5 h-3.5 animate-spin" />
-                <span class="text-[10px] font-medium">Loading large result...</span>
+                <span class="text-[10px] font-medium">{{ lazyStrings.toolCall__loading_large_result() }}</span>
               </div>
 
               <template v-else-if="toolCall.result.status === 'success'">
@@ -297,7 +298,7 @@ defineExpose({
 
               <template v-else-if="toolCall.result.status === 'error'">
                 <div class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
-                  <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ toolCall.result.error.code }}</div>
+                  <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">{{ lazyStrings.toolCall__code() }} {{ toolCall.result.error.code }}</div>
                   <div v-if="toolCall.result.error.message.type === 'text'" class="whitespace-pre-wrap">{{ toolCall.result.error.message.text }}</div>
                   <div v-else class="whitespace-pre-wrap">{{ binaryContent }}</div>
                 </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { currentLocale, lazyStrings } from '@/strings';
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 
 const props = defineProps<{
@@ -9,10 +10,10 @@ const props = defineProps<{
 const now = ref(Date.now());
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-const timeFormatter = new Intl.DateTimeFormat(undefined, {
+const timeFormatter = computed(() => new Intl.DateTimeFormat(currentLocale.value, {
   month: 'short', day: 'numeric',
   hour: '2-digit', minute: '2-digit',
-});
+}));
 
 const relativeTime = computed(() => {
   const diff = now.value - props.timestamp;
@@ -21,13 +22,13 @@ const relativeTime = computed(() => {
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (seconds < 5) return 'just now';
-  if (seconds < 60) return `${seconds}s ago`;
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
+  if (seconds < 5) return lazyStrings.RelativeTime__just_now();
+  if (seconds < 60) return lazyStrings.RelativeTime__seconds_ago({ seconds });
+  if (minutes < 60) return lazyStrings.RelativeTime__minutes_ago({ minutes });
+  if (hours < 24) return lazyStrings.RelativeTime__hours_ago({ hours });
+  if (days < 7) return lazyStrings.RelativeTime__days_ago({ days });
 
-  return timeFormatter.format(new Date(props.timestamp));
+  return timeFormatter.value.format(new Date(props.timestamp));
 });
 
 const scheduleUpdate = () => {

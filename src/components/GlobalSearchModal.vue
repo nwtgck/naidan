@@ -142,7 +142,7 @@ const selectedGroups = computed(() => {
 const targetChatTitle = computed(() => {
   if (!chatId.value) return undefined;
   // If it's the current chat, we can get it from currentChat
-  if (currentChat.value && idToRaw({ id: currentChat.value.id }) === chatId.value) return currentChat.value.title || lazyStrings.GlobalSearchModal__untitled_chat();
+  if (currentChat.value && idToRaw({ id: currentChat.value.id }) === chatId.value) return currentChat.value.title || lazyStrings.SHARED__new_chat();
   // Otherwise we'd need to fetch it or rely on a generic name
   return lazyStrings.GlobalSearchModal__filtered_chat();
 });
@@ -707,10 +707,10 @@ defineExpose({
                         <AllowedHtmlView
                           v-if="isHighlightingEnabled"
                           as="span"
-                          :html="highlight({ text: entry.item.title || lazyStrings.GlobalSearchModal__untitled_chat(), query, color: 'indigo' })"
+                          :html="highlight({ text: entry.item.title || lazyStrings.SHARED__new_chat(), query, color: 'indigo' })"
                           class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
                         />
-                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || lazyStrings.GlobalSearchModal__untitled_chat() }}</span>
+                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || lazyStrings.SHARED__new_chat() }}</span>
                         <span v-if="entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
                           <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
                           <AllowedHtmlView

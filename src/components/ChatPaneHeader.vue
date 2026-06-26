@@ -151,18 +151,18 @@ defineExpose({
             <h2
               class="relative text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate"
               :class="{ 'title-header-generating': generatingTitle }"
-              :data-title="chat.title || lazyStrings.ChatPaneHeader__untitled_chat()"
+              :data-title="chat.title || lazyStrings.SHARED__new_chat()"
               data-testid="chat-header-title"
             >
               <span class="title-header-base">
-                {{ chat.title || lazyStrings.ChatPaneHeader__untitled_chat() }}
+                {{ chat.title || lazyStrings.SHARED__new_chat() }}
               </span>
               <span
                 v-if="generatingTitle"
                 class="title-header-scan"
                 aria-hidden="true"
               >
-                {{ chat.title || lazyStrings.ChatPaneHeader__untitled_chat() }}
+                {{ chat.title || lazyStrings.SHARED__new_chat() }}
               </span>
             </h2>
             <button
