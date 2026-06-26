@@ -1,26 +1,33 @@
 import path from 'node:path';
 
+import MagicString from 'magic-string';
 import type { Plugin, ResolvedConfig } from 'vite';
 
-import { collectBoundaryStringKeys } from './analyze';
+import {
+  analyzeBoundaryStringSource,
+  type BoundaryStringSourceAnalysis,
+} from './analyze';
 import {
   compactBoundaryStringsModule,
   createBoundaryStringsCompactionState,
   type BoundaryStringsCompactionState,
 } from './compaction';
 import {
-  BOUNDARY_STRING_LOCALES,
-  BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX,
-  BOUNDARY_STRINGS_PACK_MODULE_PREFIX,
+  isSupportedSourceModuleId,
+  normalizeModuleId,
+  stripModuleQuery,
+} from './module-id';
+import {
   boundaryModuleId,
   createBoundaryId,
   createBoundaryRegistrationModuleSource,
   createBoundaryStringsPackModuleSource,
+  parseResolvedBoundaryModuleId,
+  parseResolvedPackModuleId,
   readBoundaryStringMessages,
-  RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX,
-  RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX,
+  resolveBoundaryStringsVirtualId,
   type BoundaryStringBoundaryDefinition,
-  type BoundaryStringLocale,
+  type BoundaryStringMessageDefinition,
 } from './virtual-modules';
 
 // Boundary Strings preserves key-per-file authoring without either eagerly
@@ -30,61 +37,80 @@ import {
 // ownership independent from chunk ownership and lets Vite/Rolldown retain
 // control of the hosted and standalone chunk graph.
 
-const supportedSourcePattern = /\.(?:[cm]?[jt]sx?|vue)$/;
-
-function stripQuery({ moduleId }: { moduleId: string }): string {
-  return moduleId.split('?', 1)[0] ?? moduleId;
-}
-
-function isProjectModule({ moduleId, root }: { moduleId: string; root: string }): boolean {
-  const filePath = stripQuery({ moduleId });
-  if (!filePath.startsWith(root)) {
-    return false;
-  }
+function projectRelativeModulePath({ moduleId, root }: {
+  moduleId: string;
+  root: string;
+}): string | undefined {
+  const filePath = stripModuleQuery({ moduleId });
   const relativePath = path.relative(root, filePath).replaceAll('\\', '/');
-  return !relativePath.startsWith('build/') && !relativePath.startsWith('node_modules/');
+  if (relativePath === '..' || relativePath.startsWith('../') || path.isAbsolute(relativePath)) {
+    return undefined;
+  }
+  return relativePath;
 }
 
-function shouldAnalyzeModule({ moduleId, root }: { moduleId: string; root: string }): boolean {
-  if (moduleId.includes('?')) {
-    return false;
-  }
-  const filePath = stripQuery({ moduleId });
-  if (!supportedSourcePattern.test(filePath) || !isProjectModule({ moduleId, root })) {
-    return false;
-  }
-  const relativePath = path.relative(root, filePath).replaceAll('\\', '/');
-  return !relativePath.startsWith('src/strings/');
+function isProjectModule({ moduleId, root }: {
+  moduleId: string;
+  root: string;
+}): boolean {
+  const relativePath = projectRelativeModulePath({ moduleId, root });
+  return relativePath !== undefined
+    && !relativePath.startsWith('build/')
+    && !relativePath.startsWith('node_modules/');
 }
 
-function injectBoundaryImport({ boundaryId, code, moduleId }: {
+function shouldParseProjectSource({ moduleId, root }: {
+  moduleId: string;
+  root: string;
+}): boolean {
+  return !moduleId.includes('?')
+    && isSupportedSourceModuleId({ moduleId })
+    && isProjectModule({ moduleId, root });
+}
+
+function shouldCreateBoundary({ moduleId, root }: {
+  moduleId: string;
+  root: string;
+}): boolean {
+  if (!shouldParseProjectSource({ moduleId, root })) {
+    return false;
+  }
+  const relativePath = projectRelativeModulePath({ moduleId, root });
+  return relativePath !== undefined && !relativePath.startsWith('src/strings/');
+}
+
+function prependBoundaryImport({ boundaryId, code, moduleId }: {
   boundaryId: string;
   code: string;
   moduleId: string;
-}): string {
-  const importStatement = `import ${JSON.stringify(boundaryModuleId({ boundaryId }))};`;
-  if (!stripQuery({ moduleId }).endsWith('.vue')) {
-    return `${importStatement}\n${code}`;
-  }
-  const scriptSetupMatch = /<script\s+setup(?:\s[^>]*)?>/.exec(code);
-  if (scriptSetupMatch !== null && scriptSetupMatch.index !== undefined) {
-    const insertionIndex = scriptSetupMatch.index + scriptSetupMatch[0].length;
-    return `${code.slice(0, insertionIndex)}\n${importStatement}${code.slice(insertionIndex)}`;
-  }
-  const scriptMatch = /<script(?:\s[^>]*)?>/.exec(code);
-  if (scriptMatch !== null && scriptMatch.index !== undefined) {
-    const insertionIndex = scriptMatch.index + scriptMatch[0].length;
-    return `${code.slice(0, insertionIndex)}\n${importStatement}${code.slice(insertionIndex)}`;
-  }
-  return `<script setup lang="ts">\n${importStatement}\n</script>\n${code}`;
+}): { code: string; map: ReturnType<MagicString['generateMap']> } {
+  const magicString = new MagicString(code);
+  magicString.prepend(`import ${JSON.stringify(boundaryModuleId({ boundaryId }))};\n`);
+  return {
+    code: magicString.toString(),
+    map: magicString.generateMap({
+      hires: true,
+      includeContent: true,
+      source: moduleId,
+    }),
+  };
+}
+
+function sameKeys({ left, right }: {
+  left: readonly string[];
+  right: readonly string[];
+}): boolean {
+  return left.length === right.length && left.every((key, index) => key === right[index]);
 }
 
 export function createBoundaryStringsPlugin(): Plugin[] {
   let resolvedConfig: ResolvedConfig | undefined;
-  let messages = readBoundaryStringMessages({ root: process.cwd() });
+  let messages: readonly BoundaryStringMessageDefinition[] = [];
   let compactionState: BoundaryStringsCompactionState | undefined;
   let isProductionBuild = false;
   const boundaries = new Map<string, BoundaryStringBoundaryDefinition>();
+  const boundaryIdsByModuleId = new Map<string, string>();
+  const sourceAnalyses = new Map<string, BoundaryStringSourceAnalysis>();
 
   function requireResolvedConfig(): ResolvedConfig {
     if (resolvedConfig === undefined) {
@@ -93,8 +119,46 @@ export function createBoundaryStringsPlugin(): Plugin[] {
     return resolvedConfig;
   }
 
-  const boundaryPlugin: Plugin = {
-    name: 'naidan-boundary-strings',
+  function updateBoundary({ analysis, moduleId }: {
+    analysis: BoundaryStringSourceAnalysis;
+    moduleId: string;
+  }): void {
+    const previousBoundaryId = boundaryIdsByModuleId.get(moduleId);
+    if (analysis.keys.length === 0) {
+      if (previousBoundaryId !== undefined) {
+        boundaries.delete(previousBoundaryId);
+        boundaryIdsByModuleId.delete(moduleId);
+      }
+      return;
+    }
+
+    const knownKeys = new Set(messages.map((message) => message.key));
+    for (const key of analysis.keys) {
+      if (!knownKeys.has(key)) {
+        throw new Error(`[naidan-boundary-strings] Unknown message key "${key}" in ${moduleId}.`);
+      }
+    }
+
+    const boundaryId = createBoundaryId({ moduleId });
+    const previousBoundary = boundaries.get(boundaryId);
+    if (
+      previousBoundary !== undefined
+      && previousBoundary.moduleId === moduleId
+      && sameKeys({ left: previousBoundary.keys, right: analysis.keys })
+    ) {
+      boundaryIdsByModuleId.set(moduleId, boundaryId);
+      return;
+    }
+    boundaries.set(boundaryId, {
+      id: boundaryId,
+      keys: analysis.keys,
+      moduleId,
+    });
+    boundaryIdsByModuleId.set(moduleId, boundaryId);
+  }
+
+  const analysisPlugin: Plugin = {
+    name: 'naidan-boundary-strings-analyze',
     enforce: 'pre',
     configResolved(config) {
       resolvedConfig = config;
@@ -105,61 +169,76 @@ export function createBoundaryStringsPlugin(): Plugin[] {
         : undefined;
     },
     resolveId(id) {
-      if (id.startsWith(BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX)) return `\0${id}`;
-      if (id.startsWith(BOUNDARY_STRINGS_PACK_MODULE_PREFIX)) return `\0${id}`;
-      return undefined;
+      return resolveBoundaryStringsVirtualId({ id });
     },
     load(id) {
-      if (id.startsWith(RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX)) {
-        const boundaryId = id.slice(RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX.length);
+      const boundaryId = parseResolvedBoundaryModuleId({ id });
+      if (boundaryId !== undefined) {
         const boundary = boundaries.get(boundaryId);
-        if (boundary === undefined) throw new Error(`[naidan-boundary-strings] Unknown boundary "${boundaryId}".`);
+        if (boundary === undefined) {
+          throw new Error(`[naidan-boundary-strings] Unknown boundary "${boundaryId}".`);
+        }
         return createBoundaryRegistrationModuleSource({ boundary, compactionState });
       }
-      if (!id.startsWith(RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX)) return undefined;
-      const remainder = id.slice(RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX.length);
-      const separatorIndex = remainder.indexOf('/');
-      if (separatorIndex < 0) throw new Error(`[naidan-boundary-strings] Invalid pack module ID "${id}".`);
-      const localeValue = remainder.slice(0, separatorIndex);
-      const boundaryId = remainder.slice(separatorIndex + 1);
-      const locale = BOUNDARY_STRING_LOCALES.find((candidate) => candidate === localeValue);
-      if (locale === undefined) throw new Error(`[naidan-boundary-strings] Unsupported locale "${localeValue}".`);
-      const boundary = boundaries.get(boundaryId);
-      if (boundary === undefined) throw new Error(`[naidan-boundary-strings] Unknown boundary "${boundaryId}".`);
+
+      const packId = parseResolvedPackModuleId({ id });
+      if (packId === undefined) {
+        return undefined;
+      }
+      const boundary = boundaries.get(packId.boundaryId);
+      if (boundary === undefined) {
+        throw new Error(`[naidan-boundary-strings] Unknown boundary "${packId.boundaryId}".`);
+      }
       return createBoundaryStringsPackModuleSource({
         boundary,
         compactionState,
-        locale: locale as BoundaryStringLocale,
+        locale: packId.locale,
         messages,
       });
     },
     transform(code, id) {
       const config = requireResolvedConfig();
-      if (!shouldAnalyzeModule({ moduleId: id, root: config.root })) return undefined;
-      const keys = collectBoundaryStringKeys({ sourceCode: code });
-      if (keys.length === 0) return undefined;
-      const knownKeys = new Set(messages.map((message) => message.key));
-      for (const key of keys) {
-        if (!knownKeys.has(key)) {
-          throw new Error(`[naidan-boundary-strings] Unknown message key "${key}" in ${stripQuery({ moduleId: id })}.`);
-        }
+      if (!shouldParseProjectSource({ moduleId: id, root: config.root })) {
+        return undefined;
       }
-      const normalizedModuleId = stripQuery({ moduleId: id });
-      const boundaryId = createBoundaryId({ moduleId: normalizedModuleId });
-      boundaries.set(boundaryId, { id: boundaryId, keys, moduleId: normalizedModuleId });
-      return { code: injectBoundaryImport({ boundaryId, code, moduleId: normalizedModuleId }), map: null };
+      const normalizedModuleId = normalizeModuleId({ moduleId: id });
+      const analysis = analyzeBoundaryStringSource({
+        moduleId: normalizedModuleId,
+        sourceCode: code,
+      });
+      sourceAnalyses.set(normalizedModuleId, analysis);
+      if (shouldCreateBoundary({ moduleId: id, root: config.root })) {
+        updateBoundary({ analysis, moduleId: normalizedModuleId });
+      }
+      return undefined;
     },
     handleHotUpdate({ file, server }) {
-      const normalizedFile = file.replaceAll('\\', '/');
-      const isMessageModule = normalizedFile.includes('/src/strings/messages/');
-      const isCatalog = normalizedFile.endsWith('/src/strings/catalogs/en.ts')
-        || normalizedFile.endsWith('/src/strings/catalogs/ja.ts');
-      if (!isMessageModule && !isCatalog) return undefined;
-      messages = readBoundaryStringMessages({ root: requireResolvedConfig().root });
+      const config = requireResolvedConfig();
+      const normalizedFile = normalizeModuleId({ moduleId: file });
+      const relativePath = projectRelativeModulePath({
+        moduleId: normalizedFile,
+        root: config.root,
+      });
+      const isMessageModule = relativePath?.startsWith('src/strings/messages/') === true;
+      const isCatalog = relativePath === 'src/strings/catalogs/en.ts'
+        || relativePath === 'src/strings/catalogs/ja.ts';
+
+      const boundaryId = boundaryIdsByModuleId.get(normalizedFile);
+      if (boundaryId !== undefined) {
+        const boundaryModule = server.moduleGraph.getModuleById(`\0${boundaryModuleId({ boundaryId })}`);
+        if (boundaryModule !== undefined) {
+          server.moduleGraph.invalidateModule(boundaryModule);
+        }
+      }
+
+      if (!isMessageModule && !isCatalog) {
+        return undefined;
+      }
+      messages = readBoundaryStringMessages({ root: config.root });
       for (const moduleNode of server.moduleGraph.idToModuleMap.values()) {
         if (
-          moduleNode.id?.startsWith(RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX) === true
-          || moduleNode.id?.startsWith(RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX) === true
+          parseResolvedBoundaryModuleId({ id: moduleNode.id ?? '' }) !== undefined
+          || parseResolvedPackModuleId({ id: moduleNode.id ?? '' }) !== undefined
         ) {
           server.moduleGraph.invalidateModule(moduleNode);
         }
@@ -169,22 +248,48 @@ export function createBoundaryStringsPlugin(): Plugin[] {
     },
   };
 
+  const injectionPlugin: Plugin = {
+    name: 'naidan-boundary-strings-inject',
+    enforce: 'post',
+    transform(code, id) {
+      if (id.includes('?')) {
+        return undefined;
+      }
+      const normalizedModuleId = normalizeModuleId({ moduleId: id });
+      const boundaryId = boundaryIdsByModuleId.get(normalizedModuleId);
+      if (boundaryId === undefined) {
+        return undefined;
+      }
+      return prependBoundaryImport({
+        boundaryId,
+        code,
+        moduleId: normalizedModuleId,
+      });
+    },
+  };
+
   const compactionPlugin: Plugin = {
     name: 'naidan-boundary-strings-compact',
     apply: 'build',
     enforce: 'post',
     transform(code, id) {
       const config = requireResolvedConfig();
-      if (!isProductionBuild || !isProjectModule({ moduleId: id, root: config.root })) return undefined;
+      if (!isProductionBuild || !isProjectModule({ moduleId: id, root: config.root })) {
+        return undefined;
+      }
       if (compactionState === undefined) {
         throw new Error('[naidan-boundary-strings] Production compaction state was not initialized.');
       }
-      // Vue template expressions are ordinary property calls by this post
-      // transform. Compacting generated JavaScript keeps source APIs readable
-      // without maintaining a second Vue-template rewriter.
-      return compactBoundaryStringsModule({ code, moduleId: id, state: compactionState });
+      const normalizedModuleId = normalizeModuleId({ moduleId: id });
+      const analysis = sourceAnalyses.get(normalizedModuleId);
+      return compactBoundaryStringsModule({
+        allowedBindingNames: analysis?.importedBindingNames ?? [],
+        code,
+        moduleId: id,
+        state: compactionState,
+      });
     },
   };
 
-  return [boundaryPlugin, compactionPlugin];
+  return [analysisPlugin, injectionPlugin, compactionPlugin];
 }

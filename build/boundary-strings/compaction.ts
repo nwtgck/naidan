@@ -4,6 +4,8 @@ import path from 'node:path';
 import MagicString from 'magic-string';
 import * as ts from 'typescript';
 
+import { messageKeyFromLocaleModuleId, stripModuleQuery } from './module-id';
+
 const compactIdentifierCharacters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ$_';
 
 export type BoundaryStringCompaction = {
@@ -19,6 +21,10 @@ export type BoundaryStringsCompactionState = {
 type MessageLike = { key: string };
 type FunctionLike = ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression;
 
+type SourceFileWithParseDiagnostics = ts.SourceFile & {
+  readonly parseDiagnostics: readonly ts.Diagnostic[];
+};
+
 function unwrapExpression({ expression }: { expression: ts.Expression }): ts.Expression {
   if (
     ts.isParenthesizedExpression(expression)
@@ -31,12 +37,23 @@ function unwrapExpression({ expression }: { expression: ts.Expression }): ts.Exp
   return expression;
 }
 
+function hasExportModifier({ node }: { node: ts.Node }): boolean {
+  return ts.canHaveModifiers(node)
+    && ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true;
+}
+
 function findMessageFunction({ key, sourceFile }: { key: string; sourceFile: ts.SourceFile }): FunctionLike {
+  const matches: FunctionLike[] = [];
   for (const statement of sourceFile.statements) {
-    if (ts.isFunctionDeclaration(statement) && statement.name?.text === key) {
-      return statement;
+    if (
+      ts.isFunctionDeclaration(statement)
+      && statement.name?.text === key
+      && hasExportModifier({ node: statement })
+    ) {
+      matches.push(statement);
+      continue;
     }
-    if (!ts.isVariableStatement(statement)) {
+    if (!ts.isVariableStatement(statement) || !hasExportModifier({ node: statement })) {
       continue;
     }
     for (const declaration of statement.declarationList.declarations) {
@@ -44,16 +61,24 @@ function findMessageFunction({ key, sourceFile }: { key: string; sourceFile: ts.
         continue;
       }
       if (declaration.initializer === undefined) {
-        break;
+        continue;
       }
       const initializer = unwrapExpression({ expression: declaration.initializer });
       if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) {
-        return initializer;
+        matches.push(initializer);
       }
-      break;
     }
   }
-  throw new Error(`[naidan-boundary-strings] Message module does not export a function named "${key}".`);
+  if (matches.length !== 1) {
+    throw new Error(
+      `[naidan-boundary-strings] Message module must export exactly one function named "${key}".`,
+    );
+  }
+  const match = matches[0];
+  if (match === undefined) {
+    throw new Error(`[naidan-boundary-strings] Message module does not export a function named "${key}".`);
+  }
+  return match;
 }
 
 function staticPropertyName({ name }: { name: ts.PropertyName }): string | undefined {
@@ -127,13 +152,10 @@ export function createBoundaryStringsCompactionState({ root, messages }: {
     const messageId = createCompactedIdentifier({ index: messageIndex });
     const englishModulePath = path.resolve(root, 'src/strings/messages', message.key, 'en.ts');
     const sourceCode = fs.readFileSync(englishModulePath, 'utf8');
-    const sourceFile = ts.createSourceFile(
-      englishModulePath,
-      sourceCode,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
+    const sourceFile = parseTypeScript({
+      code: sourceCode,
+      moduleId: englishModulePath,
+    });
     const parameterNames = parameterNamesFromFunction({
       key: message.key,
       messageFunction: findMessageFunction({ key: message.key, sourceFile }),
@@ -162,11 +184,173 @@ export function compactedMessageKey({ key, state }: {
 }
 
 function scriptKindForModule({ moduleId }: { moduleId: string }): ts.ScriptKind {
-  const filePath = moduleId.split('?', 1)[0] ?? moduleId;
+  const filePath = stripModuleQuery({ moduleId });
   if (filePath.endsWith('.tsx')) return ts.ScriptKind.TSX;
   if (filePath.endsWith('.jsx')) return ts.ScriptKind.JSX;
   if (filePath.endsWith('.js') || filePath.endsWith('.mjs') || filePath.endsWith('.cjs')) return ts.ScriptKind.JS;
   return ts.ScriptKind.TS;
+}
+
+function parseTypeScript({ code, moduleId }: {
+  code: string;
+  moduleId: string;
+}): ts.SourceFile {
+  const sourceFile = ts.createSourceFile(
+    moduleId,
+    code,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKindForModule({ moduleId }),
+  ) as SourceFileWithParseDiagnostics;
+  if (sourceFile.parseDiagnostics.length > 0) {
+    const details = sourceFile.parseDiagnostics.map((diagnostic) => {
+      return ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+    }).join('\n');
+    throw new Error(`[naidan-boundary-strings] Failed to parse ${moduleId}:\n${details}`);
+  }
+  return sourceFile;
+}
+
+
+function createTypeChecker({ moduleId, sourceCode, sourceFile }: {
+  moduleId: string;
+  sourceCode: string;
+  sourceFile: ts.SourceFile;
+}): ts.TypeChecker {
+  const compilerOptions: ts.CompilerOptions = {
+    allowJs: true,
+    module: ts.ModuleKind.ESNext,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.Latest,
+  };
+  const host: ts.CompilerHost = {
+    fileExists(fileName) {
+      return fileName === moduleId;
+    },
+    getCanonicalFileName(fileName) {
+      return fileName;
+    },
+    getCurrentDirectory() {
+      return '/';
+    },
+    getDefaultLibFileName() {
+      return '';
+    },
+    getDirectories() {
+      return [];
+    },
+    getNewLine() {
+      return '\n';
+    },
+    getSourceFile(fileName) {
+      return fileName === moduleId ? sourceFile : undefined;
+    },
+    readFile(fileName) {
+      return fileName === moduleId ? sourceCode : undefined;
+    },
+    useCaseSensitiveFileNames() {
+      return true;
+    },
+    writeFile() {
+    },
+  };
+  return ts.createProgram([moduleId], compilerOptions, host).getTypeChecker();
+}
+
+function importedAllowedSymbols({ allowedBindingNames, checker, sourceFile }: {
+  allowedBindingNames: ReadonlySet<string>;
+  checker: ts.TypeChecker;
+  sourceFile: ts.SourceFile;
+}): ReadonlySet<ts.Symbol> {
+  const symbols = new Set<ts.Symbol>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly === true) {
+      continue;
+    }
+    const namedBindings = statement.importClause?.namedBindings;
+    if (namedBindings === undefined || !ts.isNamedImports(namedBindings)) {
+      continue;
+    }
+    for (const specifier of namedBindings.elements) {
+      if (specifier.isTypeOnly || !allowedBindingNames.has(specifier.name.text)) {
+        continue;
+      }
+      const symbol = checker.getSymbolAtLocation(specifier.name);
+      if (symbol !== undefined) {
+        symbols.add(symbol);
+      }
+    }
+  }
+  return symbols;
+}
+
+function unwrapReceiverExpression({ expression }: {
+  expression: ts.Expression;
+}): ts.Expression {
+  if (
+    ts.isParenthesizedExpression(expression)
+    || ts.isAsExpression(expression)
+    || ts.isTypeAssertionExpression(expression)
+    || ts.isNonNullExpression(expression)
+    || ts.isSatisfiesExpression(expression)
+  ) {
+    return unwrapReceiverExpression({ expression: expression.expression });
+  }
+  return expression;
+}
+
+function isAllowedBoundaryStringsReceiver({
+  allowedBindingNames,
+  checker,
+  expression,
+  importedSymbols,
+  moduleId,
+}: {
+  allowedBindingNames: ReadonlySet<string>;
+  checker: ts.TypeChecker;
+  expression: ts.Expression;
+  importedSymbols: ReadonlySet<ts.Symbol>;
+  moduleId: string;
+}): boolean {
+  const receiver = unwrapReceiverExpression({ expression });
+  if (ts.isIdentifier(receiver)) {
+    const symbol = checker.getSymbolAtLocation(receiver);
+    return symbol !== undefined && importedSymbols.has(symbol);
+  }
+
+  // Vue compiler output exposes setup bindings through generated context
+  // objects or unref helpers. Restrict these shapes to transformed SFC modules
+  // so user-authored objects with the same property names are never compacted.
+  if (!stripModuleQuery({ moduleId }).endsWith('.vue')) {
+    return false;
+  }
+  if (ts.isPropertyAccessExpression(receiver)) {
+    return allowedBindingNames.has(receiver.name.text)
+      && ts.isIdentifier(receiver.expression)
+      && ['$setup', '_ctx', '__returned__'].includes(receiver.expression.text);
+  }
+  if (ts.isElementAccessExpression(receiver)) {
+    return receiver.argumentExpression !== undefined
+      && ts.isStringLiteral(receiver.argumentExpression)
+      && allowedBindingNames.has(receiver.argumentExpression.text)
+      && ts.isIdentifier(receiver.expression)
+      && ['$setup', '_ctx', '__returned__'].includes(receiver.expression.text);
+  }
+  if (
+    ts.isCallExpression(receiver)
+    && ts.isIdentifier(receiver.expression)
+    && ['_unref', 'unref'].includes(receiver.expression.text)
+    && receiver.arguments.length === 1
+  ) {
+    const argument = receiver.arguments[0];
+    if (argument === undefined) {
+      return false;
+    }
+    const unwrappedArgument = unwrapReceiverExpression({ expression: argument });
+    return ts.isIdentifier(unwrappedArgument) && allowedBindingNames.has(unwrappedArgument.text);
+  }
+  return false;
 }
 
 function compactCallArgument({ argument, compaction, key, magicString, sourceFile }: {
@@ -227,17 +411,30 @@ function compactCallArgument({ argument, compaction, key, magicString, sourceFil
   }
 }
 
-function compactMessageCalls({ code, magicString, moduleId, sourceFile, state }: {
+function compactMessageCalls({ allowedBindingNames, code, magicString, moduleId, sourceFile, state }: {
+  allowedBindingNames: ReadonlySet<string>;
   code: string;
   magicString: MagicString;
   moduleId: string;
   sourceFile: ts.SourceFile;
   state: BoundaryStringsCompactionState;
 }): boolean {
-  if (!code.includes('__')) return false;
+  if (!code.includes('__') || allowedBindingNames.size === 0) return false;
+  const checker = createTypeChecker({ moduleId, sourceCode: code, sourceFile });
+  const importedSymbols = importedAllowedSymbols({ allowedBindingNames, checker, sourceFile });
   let changed = false;
   function visit(node: ts.Node): void {
-    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    if (
+      ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && isAllowedBoundaryStringsReceiver({
+        allowedBindingNames,
+        checker,
+        expression: node.expression.expression,
+        importedSymbols,
+        moduleId,
+      })
+    ) {
       const key = node.expression.name.text;
       const compaction = state.compactionByMessageKey.get(key);
       if (compaction !== undefined) {
@@ -253,11 +450,6 @@ function compactMessageCalls({ code, magicString, moduleId, sourceFile, state }:
   }
   visit(sourceFile);
   return changed;
-}
-
-function messageKeyFromModuleId({ moduleId }: { moduleId: string }): string | undefined {
-  const normalizedModuleId = (moduleId.split('?', 1)[0] ?? moduleId).replaceAll('\\', '/');
-  return /\/src\/strings\/messages\/([^/]+)\/(?:en|ja)\.ts$/.exec(normalizedModuleId)?.[1];
 }
 
 function compactMessageImplementation({ key, magicString, sourceFile, state }: {
@@ -317,21 +509,27 @@ function compactMessageImplementation({ key, magicString, sourceFile, state }: {
   return true;
 }
 
-export function compactBoundaryStringsModule({ code, moduleId, state }: {
+export function compactBoundaryStringsModule({ allowedBindingNames, code, moduleId, state }: {
+  allowedBindingNames: readonly string[];
   code: string;
   moduleId: string;
   state: BoundaryStringsCompactionState;
 }): { code: string; map: ReturnType<MagicString['generateMap']> } | undefined {
-  const messageKey = messageKeyFromModuleId({ moduleId });
-  // Most project modules have no Boundary Strings access. Avoid parsing them
-  // after Vue and Vite transforms because this hook runs across every module.
-  if (messageKey === undefined && !code.includes('__')) return undefined;
-  const sourceFile = ts.createSourceFile(moduleId, code, ts.ScriptTarget.Latest, true, scriptKindForModule({ moduleId }));
+  const messageKey = messageKeyFromLocaleModuleId({ moduleId });
+  if (messageKey === undefined && allowedBindingNames.length === 0) return undefined;
+  const sourceFile = parseTypeScript({ code, moduleId });
   const magicString = new MagicString(code);
   const implementationChanged = messageKey === undefined
     ? false
     : compactMessageImplementation({ key: messageKey, magicString, sourceFile, state });
-  const callsChanged = compactMessageCalls({ code, magicString, moduleId, sourceFile, state });
+  const callsChanged = compactMessageCalls({
+    allowedBindingNames: new Set(allowedBindingNames),
+    code,
+    magicString,
+    moduleId,
+    sourceFile,
+    state,
+  });
   if (!implementationChanged && !callsChanged) return undefined;
   return {
     code: magicString.toString(),

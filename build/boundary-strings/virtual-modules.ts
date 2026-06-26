@@ -28,12 +28,49 @@ export type BoundaryStringBoundaryDefinition = {
   moduleId: string;
 };
 
+type SourceFileWithParseDiagnostics = ts.SourceFile & {
+  readonly parseDiagnostics: readonly ts.Diagnostic[];
+};
+
 const messageKeyPattern = /^[A-Za-z][A-Za-z0-9]*__[a-z][a-z0-9_]*$/;
+const boundaryIdPattern = /^[a-f0-9]{16}$/;
 
 function normalizeModulePath({ modulePath }: {
   modulePath: string;
 }): string {
   return modulePath.replaceAll('\\', '/');
+}
+
+function hasExportModifier({ node }: {
+  node: ts.Node;
+}): boolean {
+  return ts.canHaveModifiers(node)
+    && ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true;
+}
+
+function messageKeyFromEnglishCatalogImport({ moduleSpecifier }: {
+  moduleSpecifier: string;
+}): string | undefined {
+  const prefix = '@/strings/messages/';
+  if (!moduleSpecifier.startsWith(prefix)) {
+    return undefined;
+  }
+  const segments = moduleSpecifier.slice(prefix.length).split('/');
+  if (segments.length !== 2 || segments[1] !== 'en') {
+    return undefined;
+  }
+  const key = segments[0];
+  return key === undefined || key.length === 0 ? undefined : key;
+}
+
+function requireBoundaryId({ boundaryId, moduleId }: {
+  boundaryId: string;
+  moduleId: string;
+}): string {
+  if (!boundaryIdPattern.test(boundaryId)) {
+    throw new Error(`[naidan-boundary-strings] Invalid boundary module ID "${moduleId}".`);
+  }
+  return boundaryId;
 }
 
 export function createBoundaryId({ moduleId }: {
@@ -57,21 +94,25 @@ export function readBoundaryStringMessages({ root }: {
     ts.ScriptTarget.Latest,
     true,
     ts.ScriptKind.TS,
-  );
+  ) as SourceFileWithParseDiagnostics;
+  if (sourceFile.parseDiagnostics.length > 0) {
+    const details = sourceFile.parseDiagnostics.map((diagnostic) => {
+      return ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+    }).join('\n');
+    throw new Error(`[naidan-boundary-strings] Failed to parse ${catalogPath}:\n${details}`);
+  }
   const catalogImports = new Map<string, string>();
   let catalogKeys: readonly string[] | undefined;
 
   for (const statement of sourceFile.statements) {
     if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
-      const moduleMatch = /^@\/strings\/messages\/([^/]+)\/en$/.exec(statement.moduleSpecifier.text);
-      if (moduleMatch === null) {
+      const key = messageKeyFromEnglishCatalogImport({ moduleSpecifier: statement.moduleSpecifier.text });
+      if (key === undefined) {
         continue;
       }
-      const key = moduleMatch[1];
       const namedBindings = statement.importClause?.namedBindings;
       if (
-        key === undefined
-        || namedBindings === undefined
+        namedBindings === undefined
         || !ts.isNamedImports(namedBindings)
         || namedBindings.elements.length !== 1
       ) {
@@ -80,8 +121,8 @@ export function readBoundaryStringMessages({ root }: {
         );
       }
       const importSpecifier = namedBindings.elements[0];
-      if (importSpecifier === undefined) {
-        throw new Error('[naidan-boundary-strings] English catalog import has no named binding.');
+      if (importSpecifier === undefined || importSpecifier.isTypeOnly) {
+        throw new Error('[naidan-boundary-strings] English catalog import has no value binding.');
       }
       const importedName = importSpecifier.propertyName?.text ?? importSpecifier.name.text;
       const localName = importSpecifier.name.text;
@@ -90,6 +131,9 @@ export function readBoundaryStringMessages({ root }: {
           `[naidan-boundary-strings] English catalog import for "${key}" must preserve the message identifier.`,
         );
       }
+      if (catalogImports.has(localName)) {
+        throw new Error(`[naidan-boundary-strings] Duplicate English catalog import "${key}".`);
+      }
       catalogImports.set(localName, key);
       continue;
     }
@@ -97,16 +141,23 @@ export function readBoundaryStringMessages({ root }: {
     if (!ts.isVariableStatement(statement)) {
       continue;
     }
-    const declaration = statement.declarationList.declarations.find((candidate) => {
+    const declarations = statement.declarationList.declarations.filter((candidate) => {
       return ts.isIdentifier(candidate.name) && candidate.name.text === 'en';
     });
-    if (declaration === undefined || declaration.initializer === undefined) {
+    if (declarations.length === 0) {
       continue;
+    }
+    if (catalogKeys !== undefined || declarations.length !== 1 || !hasExportModifier({ node: statement })) {
+      throw new Error('[naidan-boundary-strings] English catalog must export exactly one "en" object.');
+    }
+    const declaration = declarations[0];
+    if (declaration === undefined || declaration.initializer === undefined) {
+      throw new Error('[naidan-boundary-strings] English catalog "en" has no initializer.');
     }
     if (!ts.isObjectLiteralExpression(declaration.initializer)) {
       throw new Error('[naidan-boundary-strings] English catalog "en" must be an object literal.');
     }
-    catalogKeys = declaration.initializer.properties.map((property) => {
+    const keys = declaration.initializer.properties.map((property) => {
       if (!ts.isShorthandPropertyAssignment(property)) {
         throw new Error(
           '[naidan-boundary-strings] English catalog entries must use shorthand message identifiers.',
@@ -114,6 +165,10 @@ export function readBoundaryStringMessages({ root }: {
       }
       return property.name.text;
     });
+    if (new Set(keys).size !== keys.length) {
+      throw new Error('[naidan-boundary-strings] English catalog contains duplicate message entries.');
+    }
+    catalogKeys = keys;
   }
 
   if (catalogKeys === undefined) {
@@ -162,6 +217,52 @@ export function packModuleId({ boundaryId, locale }: {
   locale: BoundaryStringLocale;
 }): string {
   return `${BOUNDARY_STRINGS_PACK_MODULE_PREFIX}${locale}/${boundaryId}`;
+}
+
+export function resolveBoundaryStringsVirtualId({ id }: {
+  id: string;
+}): string | undefined {
+  if (
+    id.startsWith(BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX)
+    || id.startsWith(BOUNDARY_STRINGS_PACK_MODULE_PREFIX)
+  ) {
+    return `\0${id}`;
+  }
+  return undefined;
+}
+
+export function parseResolvedBoundaryModuleId({ id }: {
+  id: string;
+}): string | undefined {
+  if (!id.startsWith(RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX)) {
+    return undefined;
+  }
+  const boundaryId = id.slice(RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX.length);
+  return requireBoundaryId({ boundaryId, moduleId: id });
+}
+
+export function parseResolvedPackModuleId({ id }: {
+  id: string;
+}): { boundaryId: string; locale: BoundaryStringLocale } | undefined {
+  if (!id.startsWith(RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX)) {
+    return undefined;
+  }
+  const segments = id.slice(RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX.length).split('/');
+  if (segments.length !== 2) {
+    throw new Error(`[naidan-boundary-strings] Invalid pack module ID "${id}".`);
+  }
+  const [localeValue, boundaryIdValue] = segments;
+  const locale = BOUNDARY_STRING_LOCALES.find((candidate) => candidate === localeValue);
+  if (locale === undefined) {
+    throw new Error(`[naidan-boundary-strings] Unsupported locale "${String(localeValue)}".`);
+  }
+  if (boundaryIdValue === undefined) {
+    throw new Error(`[naidan-boundary-strings] Invalid pack module ID "${id}".`);
+  }
+  return {
+    boundaryId: requireBoundaryId({ boundaryId: boundaryIdValue, moduleId: id }),
+    locale,
+  };
 }
 
 export function createBoundaryRegistrationModuleSource({ boundary, compactionState }: {

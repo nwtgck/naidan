@@ -8,7 +8,10 @@ import { createBoundaryStringsCompactionState } from './compaction';
 import {
   createBoundaryRegistrationModuleSource,
   createBoundaryStringsPackModuleSource,
+  parseResolvedBoundaryModuleId,
+  parseResolvedPackModuleId,
   readBoundaryStringMessages,
+  resolveBoundaryStringsVirtualId,
   type BoundaryStringBoundaryDefinition,
 } from './virtual-modules';
 
@@ -42,6 +45,32 @@ afterEach(() => {
 });
 
 describe('Boundary Strings virtual modules', () => {
+
+  it('parses only structurally valid virtual module IDs', () => {
+    const boundaryId = '0123456789abcdef';
+    expect(resolveBoundaryStringsVirtualId({
+      id: `virtual:naidan-boundary-strings/boundary/${boundaryId}`,
+    })).toBe(`\0virtual:naidan-boundary-strings/boundary/${boundaryId}`);
+    expect(parseResolvedBoundaryModuleId({
+      id: `\0virtual:naidan-boundary-strings/boundary/${boundaryId}`,
+    })).toBe(boundaryId);
+    expect(parseResolvedPackModuleId({
+      id: `\0virtual:naidan-boundary-strings/pack/ja/${boundaryId}`,
+    })).toEqual({
+      boundaryId,
+      locale: 'ja',
+    });
+    expect(() => parseResolvedPackModuleId({
+      id: `\0virtual:naidan-boundary-strings/pack/ja/${boundaryId}/extra`,
+    })).toThrow('Invalid pack module ID');
+    expect(() => parseResolvedPackModuleId({
+      id: `\0virtual:naidan-boundary-strings/pack/fr/${boundaryId}`,
+    })).toThrow('Unsupported locale "fr"');
+    expect(() => parseResolvedBoundaryModuleId({
+      id: '\0virtual:naidan-boundary-strings/boundary/not-a-boundary',
+    })).toThrow('Invalid boundary module ID');
+  });
+
   it('reads locale modules without creating generated source files', () => {
     const root = createFixtureRoot();
     expect(readBoundaryStringMessages({ root })).toEqual([{
@@ -51,6 +80,28 @@ describe('Boundary Strings virtual modules', () => {
         ja: '/src/strings/messages/ChatInput__type_a_message/ja.ts',
       },
     }]);
+  });
+
+
+  it('surfaces TypeScript parser failures in the English catalog', () => {
+    const root = createFixtureRoot();
+    const catalogPath = path.join(root, 'src/strings/catalogs/en.ts');
+    fs.appendFileSync(catalogPath, '\nexport const broken = {;\n');
+    expect(() => readBoundaryStringMessages({ root })).toThrow(
+      `Failed to parse ${catalogPath}`,
+    );
+  });
+
+  it('rejects an English catalog object that is not exported', () => {
+    const root = createFixtureRoot();
+    const catalogPath = path.join(root, 'src/strings/catalogs/en.ts');
+    fs.writeFileSync(
+      catalogPath,
+      fs.readFileSync(catalogPath, 'utf8').replace('export const en', 'const en'),
+    );
+    expect(() => readBoundaryStringMessages({ root })).toThrow(
+      'English catalog must export exactly one "en" object.',
+    );
   });
 
   it('ignores message directories that are not registered in the English catalog', () => {
