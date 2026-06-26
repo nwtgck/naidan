@@ -11,6 +11,7 @@ export const rule = {
     messages: {
       directCall: 'Call Boundary Strings as {{name}}.<static_key>(...) so Vite can discover the message dependency.',
       noAlias: 'Import {{name}} without an alias so Boundary Strings analysis can identify it.',
+      directArguments: 'Pass Boundary Strings parameters as one direct object literal without spreads or computed properties so production builds can compact them safely.',
     },
   },
   create(context) {
@@ -61,20 +62,41 @@ export const rule = {
         const member = node.parent;
         const call = member?.parent;
         if (
-          member?.type === 'MemberExpression'
-          && member.object === node
-          && member.computed === false
-          && member.property.type === 'Identifier'
-          && call?.type === 'CallExpression'
-          && call.callee === member
+          member?.type !== 'MemberExpression'
+          || member.object !== node
+          || member.computed !== false
+          || member.property.type !== 'Identifier'
+          || call?.type !== 'CallExpression'
+          || call.callee !== member
         ) {
+          context.report({
+            node,
+            messageId: 'directCall',
+            data: { name: node.name },
+          });
           return;
         }
-        context.report({
-          node,
-          messageId: 'directCall',
-          data: { name: node.name },
-        });
+
+        if (call.arguments.length === 0) {
+          return;
+        }
+        const [argument] = call.arguments;
+        if (
+          call.arguments.length !== 1
+          || argument?.type !== 'ObjectExpression'
+          || argument.properties.some((property) => {
+            return property.type === 'SpreadElement'
+              || property.computed === true
+              || property.type !== 'Property'
+              || property.kind !== 'init'
+              || property.method === true;
+          })
+        ) {
+          context.report({
+            node: call,
+            messageId: 'directArguments',
+          });
+        }
       },
     };
   },

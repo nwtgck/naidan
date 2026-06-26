@@ -4,7 +4,7 @@ import type { Strings, StringKey } from '@/strings/catalogs/en';
 import { STORAGE_KEY_PREFIX } from '@/models/constants';
 import { UiLocaleSchema, type UiLocale } from '@/strings/types';
 
-export type StringBoundaryModule = Partial<Strings>;
+export type StringBoundaryModule = Partial<Strings> & Partial<Record<string, Strings[StringKey]>>;
 
 export type StringBoundaryLoaders = Readonly<Record<
   UiLocale,
@@ -13,19 +13,21 @@ export type StringBoundaryLoaders = Readonly<Record<
 
 type StringBoundaryRegistration = {
   boundaryId: string;
-  keys: readonly StringKey[];
+  keys: readonly string[];
   loaders: StringBoundaryLoaders;
 };
 
 const localeStorageKey = `${STORAGE_KEY_PREFIX}ui_locale`;
-const registries: Record<UiLocale, Partial<Strings>> = {
+const registries: Record<UiLocale, StringBoundaryModule> = {
   en: {},
   ja: {},
 };
 const boundaryRegistrations = new Map<string, StringBoundaryRegistration>();
-const boundaryIdsByKey = new Map<StringKey, Set<string>>();
+const boundaryIdsByKey = new Map<string, Set<string>>();
 const loadingBoundaries = new Map<string, Promise<void>>();
 const usedBoundaryIds = new Set<string>();
+const warmedBoundaryIds = new Set<string>();
+const scheduledBoundaryWarmups = new Map<string, () => void>();
 const revision = shallowRef(0);
 let localeSwitchRequest = 0;
 
@@ -83,7 +85,7 @@ async function ensureBoundaryLoaded({ boundaryId, locale }: {
 }
 
 function resolveBoundaryId({ key }: {
-  key: StringKey;
+  key: string;
 }): string {
   const boundaryIds = boundaryIdsByKey.get(key);
   const boundaryId = boundaryIds?.values().next().value as string | undefined;
@@ -94,7 +96,7 @@ function resolveBoundaryId({ key }: {
 }
 
 async function ensureKeyLoaded({ key, locale }: {
-  key: StringKey;
+  key: string;
   locale: UiLocale;
 }): Promise<void> {
   if (registries[locale][key] !== undefined) {
@@ -107,15 +109,51 @@ async function ensureKeyLoaded({ key, locale }: {
 }
 
 function getLoadedMessage({ key, locale }: {
-  key: StringKey;
+  key: string;
   locale: UiLocale;
 }): Strings[StringKey] | undefined {
   return registries[locale][key];
 }
 
+function scheduleBoundaryWarmup({ boundaryId }: {
+  boundaryId: string;
+}): void {
+  if (scheduledBoundaryWarmups.has(boundaryId)) {
+    return;
+  }
+
+  const run = () => {
+    scheduledBoundaryWarmups.delete(boundaryId);
+    warmedBoundaryIds.add(boundaryId);
+    void ensureBoundaryLoaded({
+      boundaryId,
+      locale: currentLocaleState.value,
+    }).catch((error: unknown) => {
+      warmedBoundaryIds.delete(boundaryId);
+      console.error('[Boundary Strings] Failed to warm a message boundary.', error);
+    });
+  };
+
+  // Registration means the owning JavaScript module is already close to use.
+  // Warming during idle time prepares component, composable, and helper text
+  // without maintaining a second UI graph or adding preload calls to app code.
+  if (typeof globalThis.requestIdleCallback === 'function') {
+    const handle = globalThis.requestIdleCallback(run, { timeout: 1000 });
+    scheduledBoundaryWarmups.set(boundaryId, () => {
+      globalThis.cancelIdleCallback(handle);
+    });
+    return;
+  }
+
+  const handle = globalThis.setTimeout(run, 200);
+  scheduledBoundaryWarmups.set(boundaryId, () => {
+    globalThis.clearTimeout(handle);
+  });
+}
+
 export function registerStringBoundary({ boundaryId, keys, loaders }: {
   boundaryId: string;
-  keys: readonly StringKey[];
+  keys: readonly string[];
   loaders: StringBoundaryLoaders;
 }): void {
   const previous = boundaryRegistrations.get(boundaryId);
@@ -139,6 +177,11 @@ export function registerStringBoundary({ boundaryId, keys, loaders }: {
     boundaryIds.add(boundaryId);
     boundaryIdsByKey.set(key, boundaryIds);
   }
+
+  // Naidan already evaluates async child modules while their parent is idle.
+  // Scheduling from registration therefore follows real code proximity and
+  // reduces empty first renders without handwritten component-specific hints.
+  scheduleBoundaryWarmup({ boundaryId });
 }
 
 /**
@@ -153,7 +196,7 @@ export const lazyStrings = new Proxy({}, {
     if (typeof property !== 'string') {
       return undefined;
     }
-    const key = property as StringKey;
+    const key = property;
     // This Proxy adapter must preserve both zero-argument and one-object message signatures.
     // eslint-disable-next-line local-rules-named-args/require-named-args
     return (...args: readonly unknown[]): string => {
@@ -194,7 +237,7 @@ export const ensureStrings = new Proxy({}, {
     if (typeof property !== 'string') {
       return undefined;
     }
-    const key = property as StringKey;
+    const key = property;
     // This Proxy adapter must preserve both zero-argument and one-object message signatures.
     // eslint-disable-next-line local-rules-named-args/require-named-args
     return async (...args: readonly unknown[]): Promise<string> => {
@@ -213,7 +256,11 @@ export async function setLocale({ locale }: {
   locale: UiLocale;
 }): Promise<void> {
   const request = ++localeSwitchRequest;
-  await Promise.all([...usedBoundaryIds].map(async (boundaryId) => {
+  const activeBoundaryIds = new Set([
+    ...usedBoundaryIds,
+    ...warmedBoundaryIds,
+  ]);
+  await Promise.all([...activeBoundaryIds].map(async (boundaryId) => {
     await ensureBoundaryLoaded({ boundaryId, locale });
   }));
   if (request !== localeSwitchRequest) {
@@ -240,10 +287,17 @@ export const TEST_ONLY = {
     boundaryRegistrations.clear();
     boundaryIdsByKey.clear();
     loadingBoundaries.clear();
+    for (const cancel of scheduledBoundaryWarmups.values()) {
+      cancel();
+    }
+    scheduledBoundaryWarmups.clear();
     usedBoundaryIds.clear();
+    warmedBoundaryIds.clear();
     localeSwitchRequest = 0;
     currentLocaleState.value = 'en';
     revision.value += 1;
   },
+  scheduledBoundaryWarmups,
   usedBoundaryIds,
+  warmedBoundaryIds,
 };

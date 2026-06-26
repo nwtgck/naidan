@@ -4,6 +4,11 @@ import path from 'node:path';
 
 import * as ts from 'typescript';
 
+import {
+  compactedMessageKey,
+  type BoundaryStringsCompactionState,
+} from './compaction';
+
 export const BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX = 'virtual:naidan-boundary-strings/boundary/';
 export const RESOLVED_BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX = `\0${BOUNDARY_STRINGS_BOUNDARY_MODULE_PREFIX}`;
 export const BOUNDARY_STRINGS_PACK_MODULE_PREFIX = 'virtual:naidan-boundary-strings/pack/';
@@ -159,21 +164,27 @@ export function packModuleId({ boundaryId, locale }: {
   return `${BOUNDARY_STRINGS_PACK_MODULE_PREFIX}${locale}/${boundaryId}`;
 }
 
-export function createBoundaryRegistrationModuleSource({ boundary }: {
+export function createBoundaryRegistrationModuleSource({ boundary, compactionState }: {
   boundary: BoundaryStringBoundaryDefinition;
+  compactionState: BoundaryStringsCompactionState | undefined;
 }): string {
-  const loaders = Object.fromEntries(BOUNDARY_STRING_LOCALES.map((locale) => {
-    return [locale, `__BOUNDARY_STRINGS_LOADER__${packModuleId({ boundaryId: boundary.id, locale })}`];
-  }));
-  const serializedLoaders = JSON.stringify(loaders, undefined, 2)
-    .replaceAll(/"__BOUNDARY_STRINGS_LOADER__([^"]+)"/g, '() => import("$1")');
+  const keys = compactionState === undefined
+    ? boundary.keys
+    : boundary.keys.map((key) => compactedMessageKey({ key, state: compactionState }));
+  const serializedLoaders = `{\n${BOUNDARY_STRING_LOCALES.map((locale) => {
+    const moduleId = JSON.stringify(packModuleId({ boundaryId: boundary.id, locale }));
+    const loader = compactionState === undefined
+      ? `() => import(${moduleId})`
+      : `() => import(${moduleId}).then((module) => module.default)`;
+    return `  ${locale}: ${loader}`;
+  }).join(',\n')}\n}`;
 
   return `\
 import { registerStringBoundary } from "/src/strings/runtime.ts";
 
 registerStringBoundary({
   boundaryId: ${JSON.stringify(boundary.id)},
-  keys: ${JSON.stringify(boundary.keys, undefined, 2)},
+  keys: ${JSON.stringify(keys, undefined, 2)},
   loaders: ${serializedLoaders},
 });
 `;
@@ -181,23 +192,39 @@ registerStringBoundary({
 
 export function createBoundaryStringsPackModuleSource({
   boundary,
+  compactionState,
   locale,
   messages,
 }: {
   boundary: BoundaryStringBoundaryDefinition;
+  compactionState: BoundaryStringsCompactionState | undefined;
   locale: BoundaryStringLocale;
   messages: readonly BoundaryStringMessageDefinition[];
 }): string {
   const messagesByKey = new Map(messages.map((message) => [message.key, message]));
-  const reExports = boundary.keys.map((key) => {
+  if (compactionState === undefined) {
+    const reExports = boundary.keys.map((key) => {
+      const message = messagesByKey.get(key);
+      if (message === undefined) {
+        throw new Error(`[naidan-boundary-strings] Unknown message key "${key}" in ${boundary.moduleId}.`);
+      }
+      return `export { ${key} } from ${JSON.stringify(message.localeModulePaths[locale])};`;
+    });
+    return `${reExports.join('\n')}\n`;
+  }
+
+  // Production packs use compact object properties because a general property
+  // mangler cannot coordinate call sites, boundary metadata, locale modules,
+  // and the runtime registry without risking mismatched message lookups.
+  const imports: string[] = [];
+  const properties: string[] = [];
+  for (const key of boundary.keys) {
     const message = messagesByKey.get(key);
     if (message === undefined) {
-      throw new Error(
-        `[naidan-boundary-strings] Unknown message key "${key}" in ${boundary.moduleId}.`,
-      );
+      throw new Error(`[naidan-boundary-strings] Unknown message key "${key}" in ${boundary.moduleId}.`);
     }
-    return `export { ${key} } from ${JSON.stringify(message.localeModulePaths[locale])};`;
-  });
-
-  return `${reExports.join('\n')}\n`;
+    imports.push(`import { ${key} } from ${JSON.stringify(message.localeModulePaths[locale])};`);
+    properties.push(`${compactedMessageKey({ key, state: compactionState })}: ${key}`);
+  }
+  return `${imports.join('\n')}\n\nexport default {\n  ${properties.join(',\n  ')},\n};\n`;
 }

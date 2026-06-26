@@ -30,7 +30,6 @@ async function lint({ code }: {
       },
     },
   });
-
   return eslint.lintText(code, { filePath: 'fixture.ts' });
 }
 
@@ -46,7 +45,6 @@ await ensureStrings.ChatInput__failed_to_copy({
 });
 `,
     });
-
     expect(result?.messages).toEqual([]);
   });
 
@@ -60,12 +58,32 @@ const message = lazyStrings.ChatInput__type_a_message;
 localizedStrings.ChatInput__type_a_message();
 `,
     });
-
     expect(result?.messages.map((message) => message.messageId)).toEqual([
       'noAlias',
       'directCall',
       'directCall',
       'directCall',
+    ]);
+  });
+
+  it('rejects indirect, spread, and computed message argument objects', async () => {
+    const [result] = await lint({
+      code: `\
+import { ensureStrings } from '@/strings';
+const args = { name: 'folder', errorMessage: 'failed' };
+await ensureStrings.ChatInput__failed_to_copy(args);
+await ensureStrings.ChatInput__failed_to_copy({ ...args });
+const parameterName = 'name';
+await ensureStrings.ChatInput__failed_to_copy({
+  [parameterName]: 'folder',
+  errorMessage: 'failed',
+});
+`,
+    });
+    expect(result?.messages.map((message) => message.messageId)).toEqual([
+      'directArguments',
+      'directArguments',
+      'directArguments',
     ]);
   });
 });
