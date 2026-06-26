@@ -6,6 +6,7 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { storageService } from '@/services/storage';
 import { computed, nextTick, ref } from 'vue';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock vuedraggable
 vi.mock('vuedraggable', () => ({
@@ -42,7 +43,8 @@ describe('HistoryManipulationModal', () => {
     systemPromptMessages: ['Inherited Prompt'],
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     vi.mocked(useCurrentChatState).mockReturnValue({
       currentChatId: computed(() => toChatId({ raw: 'chat-1' })),

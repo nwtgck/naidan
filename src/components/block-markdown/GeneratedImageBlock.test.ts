@@ -40,13 +40,12 @@ describe('GeneratedImageBlock', () => {
     seed: 42,
   };
   const json = JSON.stringify(blockData);
+  let revokeObjectUrlSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn().mockReturnValue('blob:mock-url'),
-      revokeObjectURL: vi.fn(),
-    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+    revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   });
 
   it('renders loading skeleton initially', async () => {
@@ -209,7 +208,7 @@ describe('GeneratedImageBlock', () => {
     await flushPromises();
     wrapper.unmount();
 
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith('blob:mock-url');
   });
 
   it('handles invalid JSON gracefully', () => {

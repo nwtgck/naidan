@@ -6,6 +6,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useTheme } from '@/composables/useTheme';
 import { transformersJsService } from '@/services/transformers-js';
 import TransformersJsManager from './TransformersJsManager.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 const mockAddToast = vi.fn();
@@ -87,7 +88,8 @@ describe('Transformers.js Onboarding Integration', () => {
   const mockIsOnboardingDismissed = ref(false);
   const mockOnboardingDraft = ref<any>(null);
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mockIsOnboardingDismissed.value = false;
     mockOnboardingDraft.value = null;

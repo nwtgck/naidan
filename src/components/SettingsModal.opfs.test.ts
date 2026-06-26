@@ -6,7 +6,7 @@ import SettingsModal from './SettingsModal.vue';
 import StorageTab from './StorageTab.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
-import { ensureStrings } from '@/strings';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock vue-router
 vi.mock('vue-router', () => ({
@@ -69,7 +69,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
   const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     vi.unstubAllGlobals();
 
@@ -116,10 +117,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await wait();
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
-    const unsupportedLabel = await ensureStrings.StorageTab__unsupported();
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
-    await flushPromises();
-    expect(opfsOption.text()).toContain(unsupportedLabel);
+    expect(opfsOption.text()).toContain('Unsupported');
   });
 
   it('should disable OPFS option if not in secure context', async () => {
@@ -144,10 +143,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await wait();
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
-    const unsupportedLabel = await ensureStrings.StorageTab__unsupported();
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
-    await flushPromises();
-    expect(opfsOption.text()).toContain(unsupportedLabel);
+    expect(opfsOption.text()).toContain('Unsupported');
   });
 
   it('should enable OPFS option if supported and secure', async () => {
@@ -176,9 +173,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await wait();
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
-    const unsupportedLabel = await ensureStrings.StorageTab__unsupported();
     expect(opfsOption.classes()).not.toContain('cursor-not-allowed');
-    expect(opfsOption.text()).not.toContain(unsupportedLabel);
+    expect(opfsOption.text()).not.toContain('Unsupported');
   });
 
   it('should show error dialog if save/migration fails', async () => {

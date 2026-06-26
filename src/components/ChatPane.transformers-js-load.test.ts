@@ -8,6 +8,7 @@ import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { transformersJsService } from '@/services/transformers-js';
 import { setupScrollToMock } from '@/utils/test-utils';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock router
 const router = createRouter({
@@ -304,6 +305,7 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
   let wrapper: VueWrapper<any>;
 
   beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     setupScrollToMock();
     vi.clearAllMocks();
     mockActiveMessages.value = [
