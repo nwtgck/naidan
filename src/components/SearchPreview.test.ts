@@ -41,9 +41,11 @@ describe('SearchPreview Component', () => {
     vi.clearAllMocks();
   });
 
-  it('should show empty state when no match or chat is provided', () => {
+  it('should show empty state when no match or chat is provided', async () => {
     const wrapper = mount(SearchPreview);
-    expect(wrapper.text()).toContain('Select an item to preview');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Select an item to preview');
+    });
   });
 
   it('should load and display context when match is provided', async () => {

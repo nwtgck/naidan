@@ -36,11 +36,13 @@ describe('DeveloperOpenStateLinks', () => {
     });
   });
 
-  it('groups all deployment domains into Production and develop branch', () => {
+  it('groups all deployment domains into Production and develop branch', async () => {
     const wrapper = mount(DeveloperOpenStateLinks);
 
-    expect(wrapper.find('[data-testid="open-current-state-group-production"]').text()).toContain('Production');
-    expect(wrapper.find('[data-testid="open-current-state-group-develop"]').text()).toContain('develop branch');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="open-current-state-group-production"]').text()).toContain('Production');
+      expect(wrapper.find('[data-testid="open-current-state-group-develop"]').text()).toContain('develop branch');
+    });
     expect(wrapper.text()).toContain('naidan.pages.dev');
     expect(wrapper.text()).toContain('naidan-only-local.pages.dev');
     expect(wrapper.text()).toContain('naidan-curated.pages.dev');
@@ -124,9 +126,11 @@ describe('DeveloperOpenStateLinks', () => {
     await wrapper.find('[data-testid="copy-current-state-naidan-curated.pages.dev"]').trigger('click');
 
     expect(writeText).toHaveBeenCalledWith('https://naidan-curated.pages.dev/#/?storage-type=local&data-zip=abc');
-    expect(addToast).toHaveBeenCalledWith({
-      message: 'Copied URL for naidan-curated.pages.dev',
-      duration: 3000,
+    await vi.waitFor(() => {
+      expect(addToast).toHaveBeenCalledWith({
+        message: 'Copied URL for naidan-curated.pages.dev',
+        duration: 3000,
+      });
     });
   });
 
@@ -136,9 +140,11 @@ describe('DeveloperOpenStateLinks', () => {
 
     await wrapper.find('[data-testid="open-current-state-naidan.pages.dev"]').trigger('click');
 
-    expect(addToast).toHaveBeenCalledWith({
-      message: 'Failed to open current state URL: too large',
-      duration: 5000,
+    await vi.waitFor(() => {
+      expect(addToast).toHaveBeenCalledWith({
+        message: 'Failed to open current state URL: too large',
+        duration: 5000,
+      });
     });
     expect(openSpy).not.toHaveBeenCalled();
   });

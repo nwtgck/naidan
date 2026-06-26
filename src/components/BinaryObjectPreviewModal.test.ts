@@ -14,12 +14,6 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-// Mock URL.createObjectURL and URL.revokeObjectURL
-vi.stubGlobal('URL', {
-  createObjectURL: vi.fn(() => 'blob:mock-url'),
-  revokeObjectURL: vi.fn(),
-});
-
 // --- Test Data ---
 
 const mockObjects: BinaryObject[] = [
@@ -39,6 +33,8 @@ describe('BinaryObjectPreviewModal.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:mock-url') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['mock data'], { type: 'image/png' }));
   });
 
@@ -312,6 +308,8 @@ describe('BinaryObjectPreviewModal.vue', () => {
     await vi.runAllTimersAsync();
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Preview Unavailable');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Preview Unavailable');
+    });
   });
 });

@@ -1,0 +1,1 @@
+export const DeveloperTab__reset_all_app_data_warning = (): string => 'Are you sure you want to reset all app data? This will delete all chats, chat groups, and settings for the current storage location.';

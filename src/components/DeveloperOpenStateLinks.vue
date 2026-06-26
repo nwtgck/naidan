@@ -1,49 +1,50 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { CopyIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-vue-next';
 import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
 import { useExportExclusions } from '@/composables/useExportExclusions';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 type DeploymentTarget = {
-  readonly kind: 'Standard' | 'Local only' | 'Curated',
+  readonly kind: string,
   readonly host: string,
   readonly baseUrl: string,
 };
 
 type DeploymentGroup = {
   readonly id: 'production' | 'develop',
-  readonly label: 'Production' | 'develop branch',
+  readonly label: string,
   readonly dotClass: string,
   readonly targets: readonly DeploymentTarget[],
 };
 
-const DEPLOYMENT_GROUPS = [
+const DEPLOYMENT_GROUPS = computed<readonly DeploymentGroup[]>(() => [
   {
     id: 'production',
-    label: 'Production',
+    label: lazyStrings.DeveloperOpenStateLinks__production(),
     dotClass: 'bg-emerald-600/60 dark:bg-emerald-400/60',
     targets: [
-      { kind: 'Standard', host: 'naidan.pages.dev', baseUrl: 'https://naidan.pages.dev' },
-      { kind: 'Local only', host: 'naidan-only-local.pages.dev', baseUrl: 'https://naidan-only-local.pages.dev' },
-      { kind: 'Curated', host: 'naidan-curated.pages.dev', baseUrl: 'https://naidan-curated.pages.dev' },
+      { kind: lazyStrings.DeveloperOpenStateLinks__standard(), host: 'naidan.pages.dev', baseUrl: 'https://naidan.pages.dev' },
+      { kind: lazyStrings.DeveloperOpenStateLinks__local_only(), host: 'naidan-only-local.pages.dev', baseUrl: 'https://naidan-only-local.pages.dev' },
+      { kind: lazyStrings.DeveloperOpenStateLinks__curated(), host: 'naidan-curated.pages.dev', baseUrl: 'https://naidan-curated.pages.dev' },
     ],
   },
   {
     id: 'develop',
-    label: 'develop branch',
+    label: lazyStrings.DeveloperOpenStateLinks__develop_branch(),
     dotClass: 'bg-violet-500/50 dark:bg-violet-300/60',
     targets: [
-      { kind: 'Standard', host: 'develop.naidan.pages.dev', baseUrl: 'https://develop.naidan.pages.dev' },
-      { kind: 'Local only', host: 'develop.naidan-only-local.pages.dev', baseUrl: 'https://develop.naidan-only-local.pages.dev' },
-      { kind: 'Curated', host: 'develop.naidan-curated.pages.dev', baseUrl: 'https://develop.naidan-curated.pages.dev' },
+      { kind: lazyStrings.DeveloperOpenStateLinks__standard(), host: 'develop.naidan.pages.dev', baseUrl: 'https://develop.naidan.pages.dev' },
+      { kind: lazyStrings.DeveloperOpenStateLinks__local_only(), host: 'develop.naidan-only-local.pages.dev', baseUrl: 'https://develop.naidan-only-local.pages.dev' },
+      { kind: lazyStrings.DeveloperOpenStateLinks__curated(), host: 'develop.naidan-curated.pages.dev', baseUrl: 'https://develop.naidan-curated.pages.dev' },
     ],
   },
-] as const satisfies readonly DeploymentGroup[];
+]);
 
-const DEPLOYMENT_TARGETS: readonly DeploymentTarget[] = DEPLOYMENT_GROUPS.flatMap(
+const DEPLOYMENT_TARGETS = computed<readonly DeploymentTarget[]>(() => DEPLOYMENT_GROUPS.value.flatMap(
   group => [...group.targets],
-);
+));
 
 const { addToast } = useToast();
 const activeAction = ref<{ type: 'copy' | 'open', host: string } | null>(null);
@@ -69,11 +70,11 @@ async function copyCurrentStateURL({ target }: { target: DeploymentTarget }) {
   try {
     const url = await createCurrentStateURL({ target });
     await navigator.clipboard.writeText(url);
-    addToast({ message: `Copied URL for ${target.host}`, duration: 3000 });
+    addToast({ message: await ensureStrings.DeveloperOpenStateLinks__copied_url_for_host({ host: target.host }), duration: 3000 });
   } catch (err) {
     console.error('Failed to copy current state URL:', err);
     addToast({
-      message: `Failed to copy current state URL: ${err instanceof Error ? err.message : String(err)}`,
+      message: await ensureStrings.DeveloperOpenStateLinks__failed_to_copy_state_url({ errorMessage: err instanceof Error ? err.message : String(err) }),
       duration: 5000,
     });
   } finally {
@@ -91,7 +92,7 @@ async function openCurrentState({ target }: { target: DeploymentTarget }) {
   } catch (err) {
     console.error('Failed to open current state URL:', err);
     addToast({
-      message: `Failed to open current state URL: ${err instanceof Error ? err.message : String(err)}`,
+      message: await ensureStrings.DeveloperOpenStateLinks__failed_to_open_state_url({ errorMessage: err instanceof Error ? err.message : String(err) }),
       duration: 5000,
     });
   } finally {
@@ -113,23 +114,23 @@ defineExpose({
 <template>
   <div class="space-y-4" data-testid="developer-open-state-links">
     <div>
-      <h3 class="ml-1 text-sm font-bold uppercase tracking-widest text-gray-500">Open Current State</h3>
+      <h3 class="ml-1 text-sm font-bold uppercase tracking-widest text-gray-500">{{ lazyStrings.DeveloperOpenStateLinks__open_current_state() }}</h3>
       <p class="ml-1 mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
-        Open this storage state in another deployment using the same URL import format as Share via URL.
+        {{ lazyStrings.DeveloperOpenStateLinks__open_state_description() }}
       </p>
     </div>
 
     <div class="overflow-hidden rounded-2xl border border-gray-200/80 bg-white/60 shadow-sm dark:border-gray-800 dark:bg-gray-900/30">
       <div class="flex flex-col gap-3 border-b border-gray-200/80 bg-gray-50/70 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/30 sm:flex-row sm:items-center sm:justify-between">
         <div class="min-w-0">
-          <h4 class="text-xs font-bold text-gray-800 dark:text-gray-200">State contents</h4>
+          <h4 class="text-xs font-bold text-gray-800 dark:text-gray-200">{{ lazyStrings.DeveloperOpenStateLinks__state_contents() }}</h4>
           <p class="mt-0.5 text-[10px] font-medium leading-relaxed text-gray-500 dark:text-gray-400">
-            Choose which data should be omitted from the generated URL.
+            {{ lazyStrings.DeveloperOpenStateLinks__choose_data_to_omit() }}
           </p>
         </div>
 
         <fieldset class="flex shrink-0 flex-wrap gap-1.5">
-          <legend class="sr-only">Excluded data</legend>
+          <legend class="sr-only">{{ lazyStrings.DeveloperOpenStateLinks__excluded_data() }}</legend>
           <label class="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200">
             <input
               v-model="excludeChats"
@@ -137,7 +138,7 @@ defineExpose({
               class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
               data-testid="open-current-state-exclude-chats"
             />
-            Exclude Chats
+            {{ lazyStrings.DeveloperOpenStateLinks__exclude_chats() }}
           </label>
           <label
             class="flex h-7 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
@@ -150,7 +151,7 @@ defineExpose({
               class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-700"
               data-testid="open-current-state-exclude-chat-history"
             />
-            Exclude Chat History
+            {{ lazyStrings.DeveloperOpenStateLinks__exclude_chat_history() }}
           </label>
           <label class="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200">
             <input
@@ -159,7 +160,7 @@ defineExpose({
               class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
               data-testid="open-current-state-exclude-attachments"
             />
-            Exclude Attachments
+            {{ lazyStrings.DeveloperOpenStateLinks__exclude_attachments() }}
           </label>
         </fieldset>
       </div>
@@ -197,7 +198,7 @@ defineExpose({
                   type="button"
                   :disabled="activeAction !== null"
                   class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                  :title="`Copy URL for ${target.host}`"
+                  :title="lazyStrings.DeveloperOpenStateLinks__copy_url_for_host({ host: target.host })"
                   :data-testid="`copy-current-state-${target.host}`"
                   @click="copyCurrentStateURL({ target })"
                 >
@@ -208,7 +209,7 @@ defineExpose({
                   type="button"
                   :disabled="activeAction !== null"
                   class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                  :title="`Open ${target.host}`"
+                  :title="lazyStrings.DeveloperOpenStateLinks__open_host({ host: target.host })"
                   :data-testid="`open-current-state-${target.host}`"
                   @click="openCurrentState({ target })"
                 >

@@ -68,7 +68,8 @@ describe('ConnectionTab Ollama management integration', () => {
     const management = wrapper.find('[data-testid="ollama-management-stub"]');
     expect(management.exists()).toBe(true);
     expect(wrapper.find('[data-testid="ollama-management-transition"]').exists()).toBe(true);
-    expect(wrapper.text().indexOf('Ollama management')).toBeLessThan(wrapper.text().indexOf('Model Selection'));
+    const modelSelection = wrapper.get('[data-testid="connection-model-selection"]');
+    expect(management.element.compareDocumentPosition(modelSelection.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('does not show Ollama management for other providers', async () => {

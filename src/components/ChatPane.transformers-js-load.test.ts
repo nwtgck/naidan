@@ -371,7 +371,12 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     const messageItems = wrapper.findAllComponents({ name: 'MessageItem' });
     const assistantItem = messageItems.find(m => m.props('message').role === 'assistant');
     expect(assistantItem?.find('div').exists()).toBe(true);
-    expect(assistantItem?.text()).toContain('Waiting for response...');
+    await vi.waitFor(() => {
+      const updatedAssistantItem = wrapper
+        .findAllComponents({ name: 'MessageItem' })
+        .find(m => m.props('message').role === 'assistant');
+      expect(updatedAssistantItem?.text()).toContain('Waiting for response...');
+    }, { timeout: 5000 });
   });
 
   it('shows assistant message immediately if engine is already ready', async () => {

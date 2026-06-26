@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { RotateCwIcon } from 'lucide-vue-next';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useLayout } from '@/composables/useLayout';
@@ -36,7 +37,7 @@ defineExpose({
           <RotateCwIcon class="w-3.5 h-3.5 transition-all duration-500 group-hover:rotate-180" />
         </div>
 
-        <span class="tracking-widest uppercase opacity-90 group-hover:opacity-100 transition-opacity">Reload to Update</span>
+        <span class="tracking-widest uppercase opacity-90 group-hover:opacity-100 transition-opacity">{{ lazyStrings.PWAUpdateNotification__reload_to_update() }}</span>
       </button>
     </div>
   </Transition>

@@ -16,6 +16,7 @@ import { useToast } from '@/composables/useToast';
 import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useExportExclusions } from '@/composables/useExportExclusions';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 // Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
 const ImportExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImportExportModal.vue') });
@@ -67,11 +68,12 @@ onMounted(() => {
 
 async function handleEnablePersistence() {
   if (typeof navigator === 'undefined' || !navigator.storage || !navigator.storage.persist) {
-    await showConfirm({
-      title: 'Not Supported',
-      message: 'Persistent storage is not supported by the browser.',
-      confirmButtonText: 'Understand',
-    });
+    const [title, message, confirmButtonText] = await Promise.all([
+      ensureStrings.StorageTab__not_supported(),
+      ensureStrings.StorageTab__persistent_storage_not_supported(),
+      ensureStrings.StorageTab__understand(),
+    ]);
+    await showConfirm({ title, message, confirmButtonText });
     return;
   }
 
@@ -79,19 +81,21 @@ async function handleEnablePersistence() {
     const persistent = await navigator.storage.persist();
     storagePersistenceStatus.value = persistent ? 'persisted' : 'not-persisted';
     if (!persistent) {
-      await showConfirm({
-        title: 'Persistence Denied',
-        message: 'The browser declined the request for persistent storage. This can happen if the site has not been used enough or if the browser settings prevent it.',
-        confirmButtonText: 'Understand',
-      });
+      const [title, message, confirmButtonText] = await Promise.all([
+        ensureStrings.StorageTab__persistence_denied(),
+        ensureStrings.StorageTab__browser_declined_persistence(),
+        ensureStrings.StorageTab__understand(),
+      ]);
+      await showConfirm({ title, message, confirmButtonText });
     }
   } catch (err) {
     console.error('Failed to enable persistence:', err);
-    await showConfirm({
-      title: 'Error',
-      message: `An error occurred while enabling persistent storage: ${err instanceof Error ? err.message : String(err)}`,
-      confirmButtonText: 'Understand',
-    });
+    const [title, message, confirmButtonText] = await Promise.all([
+      ensureStrings.StorageTab__error(),
+      ensureStrings.StorageTab__failed_to_enable_persistence({ errorMessage: err instanceof Error ? err.message : String(err) }),
+      ensureStrings.StorageTab__understand(),
+    ]);
+    await showConfirm({ title, message, confirmButtonText });
   }
 }
 
@@ -104,33 +108,35 @@ async function handleStorageChange({ targetType }: { targetType: 'local' | 'opfs
   if ((currentProviderType === 'opfs' || currentProviderType === 'memory') && targetType === 'local') {
     const hasFiles = await storageService.hasAttachments();
     if (hasFiles) {
-      const confirmed = await showConfirm({
-        title: 'Attachments will be inaccessible',
-        message: 'Local Storage does not support permanent file storage, so current attachments will not be accessible after switching. Are you sure you want to continue?',
-        confirmButtonText: 'Switch and Lose Attachments',
-        confirmButtonVariant: 'danger',
-      });
+      const [title, message, confirmButtonText] = await Promise.all([
+        ensureStrings.StorageTab__attachments_will_be_inaccessible(),
+        ensureStrings.StorageTab__local_storage_loses_attachments(),
+        ensureStrings.StorageTab__switch_and_lose_attachments(),
+      ]);
+      const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
       if (!confirmed) {
         return;
       }
     }
   }
 
-  const confirmed = await showConfirm({
-    title: 'Confirm Storage Switch',
-    message: `Are you sure you want to switch to ${(() => {
-      switch (targetType) {
-      case 'opfs': return 'OPFS';
-      case 'local': return 'Local Storage';
-      case 'memory': return 'Ephemeral';
-      default: {
-        const _ex: never = targetType;
-        return _ex;
-      }
-      }
-    })()}? This will migrate all your data and the application will reload.`,
-    confirmButtonText: 'Switch and Migrate',
-  });
+  const storageName = await (() => {
+    switch (targetType) {
+    case 'opfs': return ensureStrings.StorageTab__origin_private_file_system();
+    case 'local': return ensureStrings.StorageTab__local_storage();
+    case 'memory': return ensureStrings.StorageTab__ephemeral();
+    default: {
+      const _ex: never = targetType;
+      return _ex;
+    }
+    }
+  })();
+  const [title, message, confirmButtonText] = await Promise.all([
+    ensureStrings.StorageTab__confirm_storage_switch(),
+    ensureStrings.StorageTab__confirm_switch_to_storage({ storageName }),
+    ensureStrings.StorageTab__switch_and_migrate(),
+  ]);
+  const confirmed = await showConfirm({ title, message, confirmButtonText });
 
   if (!confirmed) {
     return;
@@ -142,21 +148,22 @@ async function handleStorageChange({ targetType }: { targetType: 'local' | 'opfs
     emit('update:storageType', targetType);
   } catch (err) {
     console.error('Failed to migrate storage:', err);
-    await showConfirm({
-      title: 'Migration Failed',
-      message: `Failed to migrate data. ${err instanceof Error ? err.message : String(err)}`,
-      confirmButtonText: 'Understand',
-    });
+    const [title, message, confirmButtonText] = await Promise.all([
+      ensureStrings.StorageTab__migration_failed(),
+      ensureStrings.StorageTab__failed_to_migrate_data({ errorMessage: err instanceof Error ? err.message : String(err) }),
+      ensureStrings.StorageTab__understand(),
+    ]);
+    await showConfirm({ title, message, confirmButtonText });
   }
 }
 
 async function handleDeleteAllHistory() {
-  const confirmed = await showConfirm({
-    title: 'Clear History',
-    message: 'Are you absolutely sure you want to delete ALL chats and chat groups? This action cannot be undone.',
-    confirmButtonText: 'Clear All',
-    confirmButtonVariant: 'danger',
-  });
+  const [title, message, confirmButtonText] = await Promise.all([
+    ensureStrings.StorageTab__clear_history(),
+    ensureStrings.StorageTab__delete_all_chats_warning(),
+    ensureStrings.StorageTab__clear_all(),
+  ]);
+  const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
 
   if (confirmed) {
     await chatLifecycle.deleteAllChats();
@@ -175,11 +182,11 @@ async function handleCopyExportURL() {
       baseUrl: window.location.href,
     });
     await navigator.clipboard.writeText(url);
-    addToast({ message: 'Export URL copied to clipboard!', duration: 3000 });
+    addToast({ message: await ensureStrings.StorageTab__export_url_copied(), duration: 3000 });
   } catch (err) {
     console.error('Failed to copy export URL:', err);
     addToast({
-      message: `Failed to generate export URL: ${err instanceof Error ? err.message : String(err)}`,
+      message: await ensureStrings.StorageTab__failed_to_generate_export_url({ errorMessage: err instanceof Error ? err.message : String(err) }),
       duration: 5000,
     });
   } finally {
@@ -199,19 +206,19 @@ defineExpose({
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
         <ShieldCheckIcon class="w-5 h-5 text-blue-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Durability</h2>
+        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.StorageTab__data_durability() }}</h2>
       </div>
 
       <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
         <div class="space-y-1">
           <h4 class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
-            Persistent Storage
-            <span v-if="storagePersistenceStatus === 'persisted'" class="text-[9px] px-1.5 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg font-bold uppercase tracking-wider border border-green-100 dark:border-green-900/30">Active</span>
-            <span v-else-if="storagePersistenceStatus === 'not-persisted'" class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">Best Effort</span>
-            <span v-else class="text-[9px] px-1.5 py-0.5 bg-gray-50 dark:bg-gray-800 text-gray-400 rounded-lg font-bold uppercase tracking-wider border border-gray-100 dark:border-gray-700">Checking...</span>
+            {{ lazyStrings.StorageTab__persistent_storage() }}
+            <span v-if="storagePersistenceStatus === 'persisted'" class="text-[9px] px-1.5 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg font-bold uppercase tracking-wider border border-green-100 dark:border-green-900/30">{{ lazyStrings.StorageTab__active() }}</span>
+            <span v-else-if="storagePersistenceStatus === 'not-persisted'" class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">{{ lazyStrings.StorageTab__best_effort() }}</span>
+            <span v-else class="text-[9px] px-1.5 py-0.5 bg-gray-50 dark:bg-gray-800 text-gray-400 rounded-lg font-bold uppercase tracking-wider border border-gray-100 dark:border-gray-700">{{ lazyStrings.StorageTab__checking() }}</span>
           </h4>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400 leading-relaxed">
-            Enable persistent storage to prevent the browser from automatically deleting your chat history and settings during storage pressure.
+            {{ lazyStrings.StorageTab__persistent_storage_description() }}
           </p>
         </div>
         <button
@@ -221,11 +228,11 @@ defineExpose({
           data-testid="setting-enable-persistence-button"
         >
           <ShieldCheckIcon class="w-4 h-4" />
-          Enable
+          {{ lazyStrings.StorageTab__enable() }}
         </button>
         <div v-else class="flex items-center gap-2 px-4 py-2 text-green-600 dark:text-green-400 text-xs font-bold">
           <CheckCircle2Icon class="w-4 h-4" />
-          Protected
+          {{ lazyStrings.StorageTab__protected() }}
         </div>
       </div>
     </section>
@@ -233,17 +240,17 @@ defineExpose({
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
         <FileArchiveIcon class="w-5 h-5 text-blue-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Backup & Restore</h2>
+        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.StorageTab__backup_and_restore() }}</h2>
       </div>
 
       <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
         <div class="space-y-1">
           <h4 class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
-            Export / Import
-            <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">Experimental</span>
+            {{ lazyStrings.StorageTab__export_import() }}
+            <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">{{ lazyStrings.StorageTab__experimental() }}</span>
           </h4>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400 leading-relaxed">
-            Backup your entire chat history and settings to a ZIP file, or restore from a previous export.
+            {{ lazyStrings.StorageTab__backup_restore_description() }}
           </p>
         </div>
         <button
@@ -252,18 +259,18 @@ defineExpose({
           data-testid="setting-import-export-button"
         >
           <FileArchiveIcon class="w-4 h-4" />
-          Manage Data
+          {{ lazyStrings.StorageTab__manage_data() }}
         </button>
       </div>
 
       <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
         <div class="space-y-1">
           <h4 class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
-            Share via URL
+            {{ lazyStrings.StorageTab__share_via_url() }}
           </h4>
           <p class="text-xs font-medium text-gray-500 dark:text-gray-400 leading-relaxed">
-            Generate a link containing your entire chat history (Base64 encoded) and copy it to the clipboard.
-            <span class="block mt-1 text-gray-400 dark:text-gray-500 italic">Note: If storage is too large, the link may fail to copy or open.</span>
+            {{ lazyStrings.StorageTab__share_url_description() }}
+            <span class="block mt-1 text-gray-400 dark:text-gray-500 italic">{{ lazyStrings.StorageTab__large_storage_link_warning() }}</span>
           </p>
 
           <div class="mt-4 flex flex-wrap gap-4">
@@ -274,7 +281,7 @@ defineExpose({
                 data-testid="setting-exclude-chats-checkbox"
                 class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
               />
-              <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chats</span>
+              <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_chats() }}</span>
             </label>
             <label
               class="flex items-center gap-2 group"
@@ -287,7 +294,7 @@ defineExpose({
                 data-testid="setting-exclude-chat-history-checkbox"
                 class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 disabled:cursor-not-allowed"
               />
-              <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chat History</span>
+              <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_chat_history() }}</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer group">
               <input
@@ -296,7 +303,7 @@ defineExpose({
                 data-testid="setting-exclude-attachments-checkbox"
                 class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
               />
-              <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Attachments</span>
+              <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.StorageTab__exclude_attachments() }}</span>
             </label>
           </div>
         </div>
@@ -308,8 +315,8 @@ defineExpose({
         >
           <Loader2Icon v-if="isExportingURL" class="w-4 h-4 animate-spin" />
           <LinkIcon v-else class="w-4 h-4" />
-          <span v-if="isExportingURL">Generating...</span>
-          <span v-else>Copy Link</span>
+          <span v-if="isExportingURL">{{ lazyStrings.StorageTab__generating() }}</span>
+          <span v-else>{{ lazyStrings.StorageTab__copy_link() }}</span>
         </button>
       </div>
     </section>
@@ -317,11 +324,11 @@ defineExpose({
     <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
         <DatabaseIcon class="w-5 h-5 text-blue-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Storage Management</h2>
+        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.StorageTab__storage_management() }}</h2>
       </div>
 
       <div class="space-y-6">
-        <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Active Storage Provider</label>
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.StorageTab__active_storage_provider() }}</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <button
             @click="handleStorageChange({ targetType: 'opfs' })"
@@ -338,12 +345,12 @@ defineExpose({
               <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
                 <HardDriveIcon class="w-4 h-4 text-gray-600 dark:text-gray-300" />
               </div>
-              <span v-if="isOPFSSupported" class="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600/80 dark:text-green-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Recommended</span>
-              <span v-else class="text-[10px] bg-red-50 dark:bg-red-900/20 text-red-600/80 dark:text-red-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Unsupported</span>
+              <span v-if="isOPFSSupported" class="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600/80 dark:text-green-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">{{ lazyStrings.StorageTab__recommended() }}</span>
+              <span v-else class="text-[10px] bg-red-50 dark:bg-red-900/20 text-red-600/80 dark:text-red-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">{{ lazyStrings.StorageTab__unsupported() }}</span>
             </div>
             <div>
-              <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Origin Private File System (OPFS)</div>
-              <div class="text-xs font-medium text-gray-500 leading-relaxed">Save locally in the browser's high-capacity file system. Optimized for large data and attachments.</div>
+              <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">{{ lazyStrings.StorageTab__origin_private_file_system() }}</div>
+              <div class="text-xs font-medium text-gray-500 leading-relaxed">{{ lazyStrings.StorageTab__opfs_description() }}</div>
             </div>
           </button>
           <button
@@ -359,8 +366,8 @@ defineExpose({
               </div>
             </div>
             <div>
-              <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Local Storage</div>
-              <div class="text-xs font-medium text-gray-500 leading-relaxed">Save locally in the standard browser storage. Limited size (5-10MB). Sent images are NOT persisted.</div>
+              <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">{{ lazyStrings.StorageTab__local_storage() }}</div>
+              <div class="text-xs font-medium text-gray-500 leading-relaxed">{{ lazyStrings.StorageTab__local_storage_description() }}</div>
             </div>
           </button>
           <button
@@ -376,15 +383,15 @@ defineExpose({
               </div>
             </div>
             <div>
-              <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Ephemeral</div>
-              <div class="text-xs font-medium text-gray-500 leading-relaxed">In-memory storage. All data will be lost on page reload or tab closure. No persistent footprint.</div>
+              <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">{{ lazyStrings.StorageTab__ephemeral() }}</div>
+              <div class="text-xs font-medium text-gray-500 leading-relaxed">{{ lazyStrings.StorageTab__ephemeral_description() }}</div>
             </div>
           </button>
         </div>
 
         <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
           <InfoIcon class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
-          <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, chat groups, and settings to the new location. This process will start automatically after you confirm the switch.</p>
+          <p class="leading-relaxed">{{ lazyStrings.StorageTab__storage_migration_description() }}</p>
         </div>
       </div>
     </section>
@@ -392,14 +399,14 @@ defineExpose({
     <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
       <div class="flex items-center gap-2 pb-3">
         <Trash2Icon class="w-5 h-5 text-red-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Cleanup</h2>
+        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.StorageTab__data_cleanup() }}</h2>
       </div>
 
       <div class="p-6 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
         <div>
-          <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">Clear Conversation History</h4>
+          <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">{{ lazyStrings.StorageTab__clear_conversation_history() }}</h4>
           <p class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
-            This will permanently delete all your chats and chat groups. Your settings and provider profiles will be preserved.
+            {{ lazyStrings.StorageTab__clear_history_description() }}
           </p>
         </div>
         <button
@@ -408,7 +415,7 @@ defineExpose({
           data-testid="setting-clear-history-button"
         >
           <Trash2Icon class="w-4 h-4" />
-          Clear All Conversation History
+          {{ lazyStrings.StorageTab__clear_all_conversation_history() }}
         </button>
       </div>
     </section>

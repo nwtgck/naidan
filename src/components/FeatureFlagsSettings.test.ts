@@ -162,8 +162,10 @@ describe('FeatureFlagsSettings.vue', () => {
     await wrapper.find('[data-testid="feature-flag-volume-toggle"]').trigger('click');
     await wrapper.find('[data-testid="feature-flag-volume-toggle"]').trigger('click');
 
-    expect(mockShowConfirm).toHaveBeenCalled();
-    expect(useFeatureFlags().isFeatureEnabled({ feature: 'volume' })).toBe(true);
+    await vi.waitFor(() => {
+      expect(mockShowConfirm).toHaveBeenCalled();
+      expect(useFeatureFlags().isFeatureEnabled({ feature: 'volume' })).toBe(true);
+    });
   });
 
   it('describes persistence across Global, Chat Group, and Chat layers', () => {

@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { ShieldCheckIcon, DownloadIcon, GhostIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
+import { lazyStrings } from '@/strings';
 
 defineProps<{
   hasInput?: boolean,
@@ -34,12 +36,12 @@ const isHosted = (() => {
   }
 })();
 
-const suggestions = [
-  { label: 'Write a story', text: 'Write a short story about a time-traveling detective in a cyberpunk city.' },
-  { label: 'Code help', text: 'Explain how to use Vue 3 Composition API with TypeScript and provide a small example.' },
-  { label: 'Brainstorm', text: 'Give me 5 creative ideas for a weekend project involving home automation.' },
-  { label: 'Summarize', text: 'Summarize the key differences between various local LLM architectures.' },
-];
+const suggestions = computed(() => [
+  { label: lazyStrings.WelcomeScreen__write_a_story(), text: lazyStrings.WelcomeScreen__write_a_time_travel_detective_story() },
+  { label: lazyStrings.WelcomeScreen__code_help(), text: lazyStrings.WelcomeScreen__explain_vue_composition_api() },
+  { label: lazyStrings.WelcomeScreen__brainstorm(), text: lazyStrings.WelcomeScreen__home_automation_project_ideas() },
+  { label: lazyStrings.WelcomeScreen__summarize(), text: lazyStrings.WelcomeScreen__summarize_local_lm_architectures() },
+]);
 
 
 defineExpose({
@@ -75,18 +77,18 @@ defineExpose({
           <div class="space-y-1 sm:space-y-2">
             <h2 class="text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-tight">
               <template v-if="settings.storageType === 'memory'">
-                Conversations are stored in-memory.
+                {{ lazyStrings.WelcomeScreen__conversations_are_stored_in_memory() }}
               </template>
               <template v-else>
-                All conversations are stored locally.
+                {{ lazyStrings.WelcomeScreen__all_conversations_are_stored_locally() }}
               </template>
             </h2>
             <p class="text-gray-500 dark:text-gray-400 text-xs sm:text-base font-medium max-w-sm mx-auto leading-relaxed">
               <template v-if="settings.storageType === 'memory'">
-                Data is cleared on reload.
+                {{ lazyStrings.WelcomeScreen__data_is_cleared_on_reload() }}
               </template>
               <template v-else>
-                Your data stays on your device.
+                {{ lazyStrings.WelcomeScreen__your_data_stays_on_your_device() }}
               </template>
             </p>
           </div>
@@ -97,10 +99,10 @@ defineExpose({
               href="./naidan-standalone.zip"
               :download="'naidan-standalone-v' + appVersion + '.zip'"
               class="group/btn flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md transition-all duration-300"
-              title="Download standalone portable version"
+              :title="lazyStrings.WelcomeScreen__download_standalone_portable_version()"
             >
               <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover/btn:text-emerald-600 dark:group-hover/btn:text-emerald-400 transition-colors">Download portable app</span>
+              <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover/btn:text-emerald-600 dark:group-hover/btn:text-emerald-400 transition-colors">{{ lazyStrings.WelcomeScreen__download_portable_app() }}</span>
               <DownloadIcon class="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-300 dark:text-gray-600 group-hover/btn:text-emerald-500 dark:group-hover/btn:text-emerald-400 group-hover/btn:translate-y-0.5 transition-all" />
             </a>
           </div>

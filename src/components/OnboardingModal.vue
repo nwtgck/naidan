@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { ensureStrings, lazyStrings } from '@/strings';
 import type { LmProvider } from '@/services/lm/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
 import { type EndpointType, type Settings as SettingsType } from '@/models/types';
@@ -244,20 +245,20 @@ function selectPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   availableModels.value = [];
 }
 
-function handleCancelConnect() {
+async function handleCancelConnect() {
   if (abortController) {
     abortController.abort();
     abortController = null;
   }
   isTesting.value = false;
-  error.value = 'Connection attempt cancelled.';
+  error.value = await ensureStrings.OnboardingModal__connection_attempt_cancelled();
 }
 
 async function handleConnect() {
   const url = getNormalizedUrl();
 
   if (!url && !isTransformersJs.value) {
-    error.value = 'Please enter a valid URL (e.g., localhost:11434)';
+    error.value = await ensureStrings.OnboardingModal__enter_valid_url();
     return;
   }
 
@@ -286,7 +287,7 @@ async function handleConnect() {
     const models = await provider.listModels({ signal: abortController.signal });
 
     if (models.length === 0) {
-      throw new Error('No models found at this endpoint.');
+      throw new Error(await ensureStrings.OnboardingModal__no_models_found());
     }
 
     availableModels.value = models;
@@ -296,7 +297,7 @@ async function handleConnect() {
     if ((e as Error).name === 'AbortError') {
       return;
     }
-    error.value = e instanceof Error ? e.message : 'Failed to connect to the endpoint.';
+    error.value = e instanceof Error ? e.message : await ensureStrings.OnboardingModal__failed_to_connect();
   } finally {
     isTesting.value = false;
     abortController = null;
@@ -319,7 +320,7 @@ async function handleFinish() {
   const type = effectiveType.value;
 
   if (!url && !isTransformersJs.value) {
-    error.value = 'Please enter a valid URL (e.g., localhost:11434)';
+    error.value = await ensureStrings.OnboardingModal__enter_valid_url();
     return;
   }
 
@@ -351,7 +352,7 @@ async function handleFinish() {
     setOnboardingDraft({ draft: null });
     setIsOnboardingDismissed({ dismissed: true });
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to save settings.';
+    error.value = e instanceof Error ? e.message : await ensureStrings.OnboardingModal__failed_to_save_settings();
   }
 }
 
@@ -384,8 +385,8 @@ defineExpose({
           <Logo class="w-6 h-6 md:w-8 md:h-8" />
         </div>
         <div class="text-left flex-1">
-          <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">Setup Endpoint</h2>
-          <p class="hidden sm:block text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
+          <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.OnboardingModal__setup_endpoint() }}</h2>
+          <p class="hidden sm:block text-xs text-gray-600 dark:text-gray-400">{{ lazyStrings.OnboardingModal__setup_endpoint_description() }}</p>
         </div>
         <div class="w-24 md:w-32 flex-shrink-0 mr-8">
           <ThemeToggle />
@@ -408,29 +409,29 @@ defineExpose({
                   <div>
                     <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
                       <FlaskConicalIcon class="w-4 h-4 text-purple-500" />
-                      In-Browser AI
-                      <span class="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-bold uppercase tracking-wider">Experimental</span>
+                      {{ lazyStrings.OnboardingModal__in_browser_ai() }}
+                      <span class="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-bold uppercase tracking-wider">{{ lazyStrings.OnboardingModal__experimental() }}</span>
                     </h3>
-                    <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Run models locally in your browser using Transformers.js. No server required.</p>
+                    <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{{ lazyStrings.OnboardingModal__run_models_in_browser() }}</p>
                   </div>
                   <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit shrink-0">
                     <button
                       @click="selectedType = 'openai'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400"
                       :class="effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : ''"
-                    >OpenAI-compatible</button>
+                    >{{ lazyStrings.OnboardingModal__openai_compatible() }}</button>
 
                     <button
                       @click="selectedType = 'ollama'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400"
                       :class="effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : ''"
-                    >Ollama</button>
+                    >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
                     <button
                       @click="selectedType = 'transformers_js'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
                       :class="effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400'"
-                    >Transformers.js</button>
+                    >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
                   </div>
                 </div>
 
@@ -443,11 +444,11 @@ defineExpose({
                     class="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                   >
                     <PlayIcon class="w-5 h-5 fill-current" />
-                    <span>Get Started</span>
+                    <span>{{ lazyStrings.OnboardingModal__get_started() }}</span>
                   </button>
                   <p class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
                     <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
-                    Settings will be saved for local inference.
+                    {{ lazyStrings.OnboardingModal__settings_saved_for_local_inference() }}
                   </p>
                 </div>
               </div>
@@ -459,7 +460,7 @@ defineExpose({
 
 
               <div>
-                <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 ml-1">Quick Presets</label>
+                <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 ml-1">{{ lazyStrings.OnboardingModal__quick_presets() }}</label>
                 <div class="flex flex-wrap gap-1.5">
                   <button
                     v-for="preset in ENDPOINT_PRESETS"
@@ -474,19 +475,19 @@ defineExpose({
               </div>
               <div class="space-y-3">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Endpoint Configuration</label>
+                  <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ lazyStrings.OnboardingModal__endpoint_configuration() }}</label>
                   <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
                     <button
                       @click="selectedType = 'openai'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
                       :class="effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
-                    >OpenAI-compatible</button>
+                    >{{ lazyStrings.OnboardingModal__openai_compatible() }}</button>
 
                     <button
                       @click="selectedType = 'ollama'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors"
                       :class="effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
-                    >Ollama</button>
+                    >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
                     <button
                       @click="selectedType = 'transformers_js'; availableModels = []"
@@ -494,7 +495,7 @@ defineExpose({
                       :class="effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'"
                     >
                       <FlaskConicalIcon class="w-2.5 h-2.5" />
-                      Transformers.js
+                      {{ lazyStrings.OnboardingModal__transformers_js() }}
                     </button>
                   </div>
 
@@ -511,14 +512,14 @@ defineExpose({
                 <!-- Custom HTTP Headers -->
                 <div class="space-y-3" v-if="!isTransformersJs">
                   <div class="flex items-center justify-between ml-1">
-                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">{{ lazyStrings.OnboardingModal__custom_http_headers() }}</label>
                     <button
                       @click="addHeader"
                       type="button"
                       class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
                     >
                       <PlusIcon class="w-2.5 h-2.5" />
-                      Add Header
+                      {{ lazyStrings.OnboardingModal__add_header() }}
                     </button>
                   </div>
 
@@ -532,13 +533,13 @@ defineExpose({
                         v-model="header[0]"
                         type="text"
                         class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
-                        placeholder="Name"
+                        :placeholder="lazyStrings.OnboardingModal__name()"
                       />
                       <input
                         v-model="header[1]"
                         type="text"
                         class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
-                        placeholder="Value"
+                        :placeholder="lazyStrings.OnboardingModal__value()"
                       />
                       <button
                         @click="removeHeader({ index })"
@@ -565,11 +566,11 @@ defineExpose({
                   >
                     <template v-if="isTesting">
                       <span class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                      <span>Connecting...</span>
+                      <span>{{ lazyStrings.OnboardingModal__connecting() }}</span>
                     </template>
                     <template v-else>
                       <ActivityIcon class="w-5 h-5" />
-                      <span>Check Connection</span>
+                      <span>{{ lazyStrings.OnboardingModal__check_connection() }}</span>
                     </template>
                   </button>
                   <button
@@ -577,13 +578,13 @@ defineExpose({
                     @click="handleCancelConnect"
                     class="px-4 py-3.5 md:px-5 md:py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/10 transition-all flex items-center gap-2 text-sm"
                   >
-                    <span>Cancel</span>
+                    <span>{{ lazyStrings.OnboardingModal__cancel() }}</span>
                   </button>
                 </div>
 
                 <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
                   <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
-                  You can change these settings later in the settings menu.
+                  {{ lazyStrings.OnboardingModal__settings_can_be_changed_later() }}
                 </p>
               </div>
             </template>
@@ -596,21 +597,21 @@ defineExpose({
                     <CheckCircle2Icon class="w-6 h-6" />
                   </div>
                   <div class="overflow-hidden">
-                    <p class="text-sm font-bold text-green-800 dark:text-green-300">Successfully Connected!</p>
+                    <p class="text-sm font-bold text-green-800 dark:text-green-300">{{ lazyStrings.OnboardingModal__successfully_connected() }}</p>
                     <p class="text-xs text-green-600 dark:text-green-400 opacity-80 truncate">{{ customUrl }}</p>
                   </div>
                 </div>
 
                 <div class="space-y-2">
                   <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Default Model
+                    {{ lazyStrings.OnboardingModal__default_model() }}
                   </label>
                   <ModelSelector
                     v-model="selectedModel"
                     :models="sortedModels"
                     :loading="isTesting"
                     @refresh="handleConnect"
-                    placeholder="Select a model"
+                    :placeholder="lazyStrings.OnboardingModal__select_a_model()"
                   />
                 </div>
 
@@ -624,7 +625,7 @@ defineExpose({
                     class="px-4 py-3.5 md:px-5 md:py-4 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center gap-2 text-sm"
                   >
                     <ArrowLeftIcon class="w-5 h-5" />
-                    <span>Back</span>
+                    <span>{{ lazyStrings.OnboardingModal__back() }}</span>
                   </button>
                   <button
                     @click="handleFinish"
@@ -632,13 +633,13 @@ defineExpose({
                     data-testid="onboarding-finish-button"
                   >
                     <PlayIcon class="w-5 h-5 fill-current" />
-                    <span>Get Started</span>
+                    <span>{{ lazyStrings.OnboardingModal__get_started() }}</span>
                   </button>
                 </div>
 
                 <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
                   <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
-                  You can change these settings later in the settings menu.
+                  {{ lazyStrings.OnboardingModal__settings_can_be_changed_later() }}
                 </p>
               </div>
             </template>
@@ -647,14 +648,14 @@ defineExpose({
           <!-- Right Column: Setup Guide (Secondary/Auxiliary) -->
           <div v-if="!isTransformersJs" class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
             <div class="flex items-center gap-2 mb-4">
-              <span class="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-widest">Help & Guide</span>
+              <span class="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-widest">{{ lazyStrings.OnboardingModal__help_and_guide() }}</span>
             </div>
-            <h3 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4">Don't have a server yet?</h3>
+            <h3 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4">{{ lazyStrings.OnboardingModal__do_not_have_a_server() }}</h3>
             <div class="opacity-70 hover:opacity-100 transition-opacity">
               <ServerSetupGuide />
             </div>
             <p class="mt-6 text-[10px] text-gray-400 leading-relaxed italic">
-              * If you already have Ollama or llama-server running, just enter the URL on the left.
+              {{ lazyStrings.OnboardingModal__enter_existing_server_url() }}
             </p>
           </div>
         </div>

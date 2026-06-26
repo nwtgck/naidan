@@ -2,7 +2,6 @@
 import { ref, watch, computed, nextTick } from 'vue';
 import { FolderIcon, MessageSquareIcon, Loader2Icon, ChevronRightIcon } from 'lucide-vue-next';
 import { storageService, type ChatSummary } from '@/services/storage';
-import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import type { SearchResultItem } from '@/composables/useChatSearch';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
@@ -11,6 +10,7 @@ import { scrollIntoViewSafe } from '@/utils/dom';
 import SearchPreview from './SearchPreview.vue';
 import { idToRaw } from '@/models/ids';
 import type { ChatId } from '@/models/ids';
+import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
   groupId: string,
@@ -141,11 +141,11 @@ watch(() => props.groupId, loadChats, { immediate: true });
         </div>
         <div>
           <h3 class="text-sm font-black text-gray-900 dark:text-gray-100 tracking-wider">{{ groupName }}</h3>
-          <p class="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Group Preview</p>
+          <p class="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">{{ lazyStrings.ChatGroupSearchPreview__group_preview() }}</p>
         </div>
       </div>
       <div class="text-[10px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
-        {{ chats.length }} CHATS
+        {{ lazyStrings.ChatGroupSearchPreview__chat_count({ count: chats.length }) }}
       </div>
     </div>
 
@@ -158,7 +158,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
         </div>
         <div v-else-if="chats.length === 0" class="flex-1 flex flex-col items-center justify-center p-6 text-center">
           <MessageSquareIcon class="w-8 h-8 text-gray-200 dark:text-gray-800 mb-2" />
-          <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Empty Group</p>
+          <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ChatGroupSearchPreview__empty_group() }}</p>
         </div>
         <div v-else ref="chatListContainer" class="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-hide">
           <div
@@ -177,7 +177,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
 
             <div class="flex-1 min-w-0 flex flex-col justify-center">
               <span class="text-[11px] font-bold truncate" :class="selectedChatId === chat.id ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'">
-                {{ chat.title || UNTITLED_CHAT_TITLE }}
+                {{ chat.title || lazyStrings.ChatGroupSearchPreview__untitled_chat() }}
               </span>
               <span class="text-[8px] text-gray-400 font-medium truncate">{{ formatTime({ timestamp: chat.updatedAt }) }}</span>
             </div>
@@ -186,7 +186,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
             <button
               @click.stop="selectAndNavigate({ chatId: chat.id })"
               class="shrink-0 p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm hover:text-blue-600 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
-              title="Open Chat"
+              :title="lazyStrings.ChatGroupSearchPreview__open_chat()"
             >
               <ChevronRightIcon class="w-3.5 h-3.5" />
             </button>
@@ -205,7 +205,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
           class="!border-l-0"
         />
         <div v-else class="h-full flex items-center justify-center text-gray-300 p-8 text-center uppercase text-[10px] font-black tracking-[0.2em]">
-          Select a chat to preview
+          {{ lazyStrings.ChatGroupSearchPreview__select_a_chat_to_preview() }}
         </div>
       </div>
     </div>

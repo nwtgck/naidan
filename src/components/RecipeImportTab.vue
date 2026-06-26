@@ -10,6 +10,7 @@ import { ChatGroupRecipeSchema } from '@/models/recipe';
 import type { ChatGroupRecipe } from '@/models/recipe';
 import ModelSelector from './ModelSelector.vue';
 import { naturalSort } from '@/utils/string';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 const props = defineProps<{
   availableModels: readonly string[],
@@ -44,7 +45,7 @@ function getSortedModels({ matchedModelId }: { matchedModelId?: string }) {
   return models;
 }
 
-function handleAnalyzeRecipes() {
+async function handleAnalyzeRecipes(): Promise<void> {
   const trimmed = recipeJsonInput.value.trim();
   if (!trimmed) {
     analyzedRecipes.value = [];
@@ -58,13 +59,13 @@ function handleAnalyzeRecipes() {
 
   for (const result of parseResults) {
     if (!result.success) {
-      recipeAnalysisError.value = `Parse error: ${result.error}`;
+      recipeAnalysisError.value = await ensureStrings.RecipeImportTab__parse_error({ errorMessage: result.error });
       continue;
     }
 
     const validation = ChatGroupRecipeSchema.safeParse(result.data);
     if (!validation.success) {
-      recipeAnalysisError.value = `Validation error: ${validation.error.message}`;
+      recipeAnalysisError.value = await ensureStrings.RecipeImportTab__validation_error({ errorMessage: validation.error.message });
       continue;
     }
 
@@ -82,7 +83,7 @@ function handleAnalyzeRecipes() {
   }
 
   if (newAnalyzed.length === 0 && !recipeAnalysisError.value) {
-    recipeAnalysisError.value = 'No valid recipes found in input.';
+    recipeAnalysisError.value = await ensureStrings.RecipeImportTab__no_valid_recipes_found_in_input();
   }
 
   analyzedRecipes.value = newAnalyzed;
@@ -90,7 +91,7 @@ function handleAnalyzeRecipes() {
 
 // Automatically analyze on input change
 watch(recipeJsonInput, () => {
-  handleAnalyzeRecipes();
+  void handleAnalyzeRecipes();
 });
 
 function handleImportRecipes() {
@@ -121,15 +122,15 @@ defineExpose({
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
         <ChefHatIcon class="w-5 h-5 text-blue-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Recipes</h2>
+        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.RecipeImportTab__recipes() }}</h2>
       </div>
 
       <p class="text-sm font-medium text-gray-500">
-        Import predefined chat group settings (prompts, parameters, and model rules) from JSON.
+        {{ lazyStrings.RecipeImportTab__import_chat_group_recipes() }}
       </p>
 
       <div class="space-y-4">
-        <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Paste Recipe JSON (Concatenated JSON objects supported)</label>
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.RecipeImportTab__paste_recipe_json_concatenated_json_objects_supported() }}</label>
         <textarea
           v-model="recipeJsonInput"
           rows="8"
@@ -158,14 +159,14 @@ defineExpose({
       <!-- Analyzed Recipes List -->
       <div v-if="analyzedRecipes.length > 0" class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800 animate-in fade-in slide-in-from-top-2 duration-300">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest ml-1">Detected Recipes ({{ analyzedRecipes.length }})</h3>
+          <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.RecipeImportTab__detected_recipes({ recipeCount: analyzedRecipes.length }) }}</h3>
           <button
             @click="handleImportRecipes"
             class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-green-500/30 transition-all active:scale-95 flex items-center gap-2"
             data-testid="recipe-import-button"
           >
             <SaveIcon class="w-4 h-4" />
-            Import Selected
+            {{ lazyStrings.RecipeImportTab__import_selected() }}
           </button>
         </div>
 
@@ -182,24 +183,24 @@ defineExpose({
             >
             <div class="flex-1 min-w-0 space-y-3">
               <div class="flex flex-col gap-1.5">
-                <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">Chat Group Name</label>
+                <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">{{ lazyStrings.RecipeImportTab__chat_group_name() }}</label>
                 <input
                   v-model="item.newName"
                   class="bg-transparent border-b border-gray-100 dark:border-gray-700 hover:border-blue-500 focus:border-blue-500 focus:outline-none text-base font-bold text-gray-800 dark:text-white transition-all w-full pb-1"
-                  placeholder="Chat Group Name"
+                  :placeholder="lazyStrings.RecipeImportTab__chat_group_name()"
                 />
                 <p v-if="item.recipe.description" class="text-xs text-gray-500 dark:text-gray-400 font-medium ml-0.5 mt-1">{{ item.recipe.description }}</p>
               </div>
 
               <div class="space-y-2">
-                <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">Model Selection</label>
+                <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">{{ lazyStrings.RecipeImportTab__model_selection() }}</label>
                 <div class="flex flex-col gap-2">
                   <ModelSelector
                     v-model="item.matchedModelId"
                     :models="getSortedModels({ matchedModelId: item.matchedModelId })"
-                    placeholder="Use Default Model"
+                    :placeholder="lazyStrings.RecipeImportTab__use_default_model()"
                     allow-clear
-                    clear-label="Use Default Model"
+                    :clear-label="lazyStrings.RecipeImportTab__use_default_model()"
                   />
                   <div v-if="item.matchError" class="text-[10px] px-2 py-1 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-800 rounded-lg font-bold flex items-center gap-1.5 w-fit">
                     <AlertTriangleIcon class="w-3 h-3" />
@@ -209,7 +210,7 @@ defineExpose({
               </div>
 
               <div v-if="item.recipe.systemPrompt" class="p-3 bg-gray-50 dark:bg-black/20 rounded-xl border border-gray-100/50 dark:border-gray-800/50">
-                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">System Prompt ({{ item.recipe.systemPrompt.behavior }})</div>
+                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">{{ lazyStrings.RecipeImportTab__system_prompt({ behavior: item.recipe.systemPrompt.behavior }) }}</div>
                 <p class="text-[11px] text-gray-600 dark:text-gray-400 line-clamp-2 italic font-medium">"{{ item.recipe.systemPrompt.content }}"</p>
               </div>
             </div>

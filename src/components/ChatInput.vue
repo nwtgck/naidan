@@ -23,6 +23,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
@@ -398,7 +399,10 @@ async function attachCopyAsVolume({ entries, name }: {
     await finishMount({ volumeId: vol.id, name });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
-      addToast({ message: `Failed to copy "${name}": ${(e as Error).message}` });
+      addToast({ message: await ensureStrings.ChatInput__failed_to_copy({
+        name,
+        errorMessage: (e as Error).message,
+      }) });
     }
   } finally {
     activeCopies.value = activeCopies.value.filter(c => c.id !== copyId);
@@ -414,7 +418,9 @@ async function attachLinkAsVolume() {
     await finishMount({ volumeId: vol.id, name: vol.name });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
-      addToast({ message: `Failed to link folder: ${(e as Error).message}` });
+      addToast({ message: await ensureStrings.ChatInput__failed_to_link_folder({
+        errorMessage: (e as Error).message,
+      }) });
     }
   }
 }
@@ -585,28 +591,36 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
     }
   }
 
-  let title: string;
-  let message: string;
-  let confirmButtonText: string;
-  switch (volumeType) {
-  case 'host':
-    title = 'Unlink Folder';
-    message = 'Stop using this folder in this chat? Your original files on disk stay safe and intact.';
-    confirmButtonText = 'Unlink';
-    break;
-  case 'opfs':
-  case undefined:
-    title = 'Remove Folder';
-    message = 'Remove the copied folder from this chat? The copy stored in the browser will be deleted.';
-    confirmButtonText = 'Remove';
-    break;
-  default: {
-    const _ex: never = volumeType;
-    throw new Error(`Unhandled volume type: ${_ex}`);
-  }
-  }
+  const confirmCopy = await (async () => {
+    switch (volumeType) {
+    case 'host': {
+      const [title, message, confirmButtonText] = await Promise.all([
+        ensureStrings.ChatInput__unlink_folder(),
+        ensureStrings.ChatInput__stop_using_folder(),
+        ensureStrings.ChatInput__unlink(),
+      ]);
+      return { title, message, confirmButtonText };
+    }
+    case 'opfs':
+    case undefined: {
+      const [title, message, confirmButtonText] = await Promise.all([
+        ensureStrings.ChatInput__remove_folder(),
+        ensureStrings.ChatInput__remove_browser_copy(),
+        ensureStrings.ChatInput__remove(),
+      ]);
+      return { title, message, confirmButtonText };
+    }
+    default: {
+      const _ex: never = volumeType;
+      throw new Error(`Unhandled volume type: ${_ex}`);
+    }
+    }
+  })();
 
-  const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
+  const confirmed = await showConfirm({
+    ...confirmCopy,
+    confirmButtonVariant: 'danger',
+  });
   if (!confirmed) return;
   await chatMounts.removeMount({
     chatId: props.chatId,
@@ -1189,7 +1203,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
         @keydown.esc.prevent="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
-        placeholder="Type a message..."
+        :placeholder="lazyStrings.ChatInput__type_a_message()"
         class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
         data-testid="chat-input"

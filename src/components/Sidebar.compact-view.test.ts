@@ -241,7 +241,9 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     const showMoreBtn = wrapper.find('[data-testid="show-more-button"]');
     expect(showMoreBtn.exists()).toBe(true);
-    expect(showMoreBtn.text()).toContain('Show 2 more');
+    await vi.waitFor(() => {
+      expect(showMoreBtn.text()).toContain('Show 2 more');
+    });
   });
 
   it('shows all items when "Show more" is clicked', async () => {

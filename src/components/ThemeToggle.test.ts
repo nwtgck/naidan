@@ -15,7 +15,7 @@ describe('ThemeToggle.vue', () => {
     vi.clearAllMocks();
   });
 
-  it('renders correctly with default state', () => {
+  it('renders correctly with default state', async () => {
     (useTheme as Mock).mockReturnValue({
       themeMode: 'system',
       setTheme,
@@ -27,10 +27,12 @@ describe('ThemeToggle.vue', () => {
     const buttons = wrapper.findAll('button');
     expect(buttons).toHaveLength(3);
 
-    // Check titles
-    expect(buttons[0]!.attributes('title')).toBe('Light Mode');
-    expect(buttons[1]!.attributes('title')).toBe('Dark Mode');
-    expect(buttons[2]!.attributes('title')).toBe('System Mode');
+    // Check titles after the lazy string boundary is registered.
+    await vi.waitFor(() => {
+      expect(buttons[0]!.attributes('title')).toBe('Light Mode');
+      expect(buttons[1]!.attributes('title')).toBe('Dark Mode');
+      expect(buttons[2]!.attributes('title')).toBe('System Mode');
+    });
   });
 
   it('calls setTheme when buttons are clicked', async () => {

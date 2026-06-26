@@ -257,15 +257,15 @@ describe('BinaryObjectsTab.vue', () => {
     const wrapper = mount(BinaryObjectsTab, { global: { stubs: globalStubs } });
     await flushPromises();
 
-    const nameHeader = wrapper.findAll('th').find(th => th.text().includes('Name'));
-    await nameHeader?.trigger('click');
+    const nameHeader = wrapper.get('[data-testid="binary-sort-name"]');
+    await nameHeader.trigger('click');
 
     let rows = wrapper.findAll('[data-testid^="binary-object-row-"]');
     expect(rows[0]!.text()).toContain('a.png');
     expect(rows[1]!.text()).toContain('b.png');
     expect(rows[2]!.text()).toContain('c.png');
 
-    await nameHeader?.trigger('click'); // Toggle to desc
+    await nameHeader.trigger('click'); // Toggle to desc
     rows = wrapper.findAll('[data-testid^="binary-object-row-"]');
     expect(rows[0]!.text()).toContain('c.png');
     expect(rows[1]!.text()).toContain('b.png');

@@ -1,0 +1,1 @@
+export const DeveloperTab__clear_cache_storage_warning = (): string => "Are you sure you want to delete all entries in the browser's Cache Storage API? This will force the application to redownload all assets on the next reload.";

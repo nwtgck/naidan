@@ -305,7 +305,9 @@ describe('Sidebar Logic Stability', () => {
 
       const selector = wrapper.find('[data-testid="model-selector-mock"]');
       expect(selector.exists()).toBe(true);
-      expect(wrapper.text()).toContain('Default model');
+      await vi.waitFor(() => {
+        expect(wrapper.text()).toContain('Default model');
+      });
     });
 
     it('does not render the selector if endpointUrl is missing', async () => {
@@ -621,7 +623,9 @@ describe('Sidebar Logic Stability', () => {
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
-      expect(mockShowConfirm).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalled();
+      });
     });
 
     it('should prompt for confirmation when deleting an empty group with custom settings', async () => {
@@ -642,7 +646,9 @@ describe('Sidebar Logic Stability', () => {
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
-      expect(mockShowConfirm).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalled();
+      });
     });
 
     it('should delete IMMEDIATELY without confirmation for an empty group with no settings', async () => {
@@ -684,10 +690,9 @@ describe('Sidebar Logic Stability', () => {
       await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
 
-      await nextTick();
-      await nextTick();
-
-      expect(mockDeleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
+      await vi.waitFor(() => {
+        expect(mockDeleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
+      });
     });
 
     it('should NOT call deleteChatGroup if confirmation is cancelled', async () => {
@@ -708,9 +713,9 @@ describe('Sidebar Logic Stability', () => {
       await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
 
-      await nextTick();
-      await nextTick();
-
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalled();
+      });
       expect(mockDeleteChatGroup).not.toHaveBeenCalled();
     });
   });

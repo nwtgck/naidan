@@ -154,8 +154,13 @@ describe('Transformers.js Onboarding Integration', () => {
     const wrapper = mountModal();
 
     // Switch to Transformers.js
-    const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    let tfBtn: ReturnType<typeof wrapper.findAll>[number] | undefined;
+    await vi.waitFor(() => {
+      tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
+      expect(tfBtn).toBeDefined();
+    });
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     // Right column (guide) should be hidden
@@ -168,9 +173,12 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('renders Experimental badge and Transformers.js Manager in the integrated view', async () => {
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     expect(wrapper.text()).toContain('In-Browser AI');
@@ -180,9 +188,12 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('disables "Get Started" button when no model is active in Transformers.js mode', async () => {
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     const getStartedBtn = wrapper.findAll('button').find(b => b.text().includes('Get Started'));
@@ -198,9 +209,11 @@ describe('Transformers.js Onboarding Integration', () => {
     });
 
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
     await flushPromises();
 
     // Mock engine becoming ready with a model
@@ -224,9 +237,11 @@ describe('Transformers.js Onboarding Integration', () => {
     ]);
 
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
     await flushPromises();
     await nextTick();
 
@@ -235,9 +250,12 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('updates selectedModel when TransformersJsManager emits model-loaded', async () => {
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     const manager = wrapper.getComponent({ name: 'TransformersJsManager' });
@@ -252,8 +270,12 @@ describe('Transformers.js Onboarding Integration', () => {
     const wrapper = mountModal();
 
     // Switch to TF.js
+    await flushPromises();
+
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     // Mock a model loaded via emit
@@ -275,9 +297,11 @@ describe('Transformers.js Onboarding Integration', () => {
   it('automatically loads model after successful download in TransformersJsManager (Integrated flow)', async () => {
     // This test uses the real component but mocks the service
     const wrapper = mount(OnboardingModal);
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
     await flushPromises();
 
     const manager = wrapper.getComponent(TransformersJsManager);

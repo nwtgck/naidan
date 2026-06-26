@@ -14,8 +14,8 @@ import type {
   ImportConfig,
   ImportPreview,
 } from '@/services/import-export/types';
-import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { useExportExclusions } from '@/composables/useExportExclusions';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -165,7 +165,7 @@ watch(() => props.isOpen, (isOpen) => {
 
 async function handleExport() {
   mode.value = 'processing';
-  processingMessage.value = 'Compressing data...';
+  processingMessage.value = await ensureStrings.ImportExportModal__compressing_data();
   error.value = null;
 
   try {
@@ -186,10 +186,10 @@ async function handleExport() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    addToast({ message: 'Export successful!', duration: 3000 });
+    addToast({ message: await ensureStrings.ImportExportModal__export_successful(), duration: 3000 });
     emit('close');
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Export failed';
+    error.value = e instanceof Error ? e.message : await ensureStrings.ImportExportModal__export_failed();
     mode.value = 'export';
   }
 }
@@ -205,14 +205,14 @@ async function handleFileSelect({ event }: { event: Event }) {
   selectedFile.value = file;
 
   mode.value = 'processing';
-  processingMessage.value = 'Analyzing file...';
+  processingMessage.value = await ensureStrings.ImportExportModal__analyzing_file();
   error.value = null;
 
   try {
     importPreview.value = await service.analyze({ zipFile: file });
     mode.value = 'import_preview';
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to analyze file';
+    error.value = e instanceof Error ? e.message : await ensureStrings.ImportExportModal__failed_to_analyze_file();
     mode.value = 'menu';
   } finally {
     target.value = '';
@@ -224,7 +224,7 @@ async function handleImportExecute() {
   if (!file) return;
 
   mode.value = 'processing';
-  processingMessage.value = 'Verifying integrity...';
+  processingMessage.value = await ensureStrings.ImportExportModal__verifying_integrity();
   error.value = null;
 
   try {
@@ -232,16 +232,16 @@ async function handleImportExecute() {
     await service.verify({ zipFile: file, config: importConfig.value });
 
     // 2. Execute
-    processingMessage.value = 'Importing data...';
+    processingMessage.value = await ensureStrings.ImportExportModal__importing_data();
     await service.executeImport({ zipFile: file, config: importConfig.value });
 
-    addToast({ message: 'Import successful!', duration: 3000 });
+    addToast({ message: await ensureStrings.ImportExportModal__import_successful(), duration: 3000 });
 
     setTimeout(() => {
       window.location.reload();
     }, 1000);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Import failed';
+    error.value = e instanceof Error ? e.message : await ensureStrings.ImportExportModal__import_failed();
     mode.value = 'import_config';
   }
 }
@@ -276,10 +276,10 @@ defineExpose({
             </div>
             <div>
               <h2 class="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                Import / Export
-                <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">Experimental</span>
+                {{ lazyStrings.ImportExportModal__import_export() }}
+                <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">{{ lazyStrings.ImportExportModal__experimental() }}</span>
               </h2>
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Portable Data</p>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.ImportExportModal__portable_data() }}</p>
             </div>
           </div>
         </div>
@@ -291,7 +291,7 @@ defineExpose({
           <div v-if="error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-2xl flex items-start gap-3">
             <AlertTriangleIcon class="w-5 h-5 text-red-500 shrink-0" />
             <div class="flex-1">
-              <h4 class="text-sm font-bold text-red-800 dark:text-red-400">Error</h4>
+              <h4 class="text-sm font-bold text-red-800 dark:text-red-400">{{ lazyStrings.ImportExportModal__error() }}</h4>
               <p class="text-xs text-red-600 dark:text-red-300 mt-1">{{ error }}</p>
             </div>
           </div>
@@ -308,8 +308,8 @@ defineExpose({
                 <component :is="ExportIcon" class="w-6 h-6" />
               </div>
               <div>
-                <h3 class="text-lg font-bold text-gray-800 dark:text-white text-left">Export</h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed text-left">Download a full backup of your chats and settings.</p>
+                <h3 class="text-lg font-bold text-gray-800 dark:text-white text-left">{{ lazyStrings.ImportExportModal__export() }}</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed text-left">{{ lazyStrings.ImportExportModal__download_full_backup() }}</p>
               </div>
             </div>
 
@@ -320,8 +320,8 @@ defineExpose({
                 <component :is="ImportIcon" class="w-6 h-6" />
               </div>
               <div>
-                <h3 class="text-lg font-bold text-gray-800 dark:text-white text-left">Import</h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed text-left">Upload a backup ZIP to restore or merge your data.</p>
+                <h3 class="text-lg font-bold text-gray-800 dark:text-white text-left">{{ lazyStrings.ImportExportModal__import() }}</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed text-left">{{ lazyStrings.ImportExportModal__upload_backup_to_restore_or_merge() }}</p>
               </div>
             </label>
           </div>
@@ -333,17 +333,17 @@ defineExpose({
                 <FileArchiveIcon class="w-8 h-8" />
               </div>
               <div class="space-y-1">
-                <h3 class="text-lg font-bold text-gray-800 dark:text-white">Ready to Export</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">By default, prepare a ZIP file containing all your chats, groups, attachments, and configuration.</p>
+                <h3 class="text-lg font-bold text-gray-800 dark:text-white">{{ lazyStrings.ImportExportModal__ready_to_export() }}</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.ImportExportModal__zip_contains_all_data_by_default() }}</p>
               </div>
 
               <div class="w-full space-y-3 pt-2">
                 <div class="space-y-1.5 text-left max-w-sm mx-auto">
-                  <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Filename Tag (Optional)</label>
+                  <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ImportExportModal__filename_tag_optional() }}</label>
                   <input
                     v-model="exportName"
                     type="text"
-                    placeholder="e.g. before-update"
+                    :placeholder="lazyStrings.ImportExportModal__filename_tag_example()"
                     class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs font-bold focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                   />
                 </div>
@@ -356,7 +356,7 @@ defineExpose({
                       type="checkbox"
                       class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
                     />
-                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chats</span>
+                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.ImportExportModal__exclude_chats() }}</span>
                   </label>
                   <label
                     class="flex items-center gap-2 group"
@@ -369,7 +369,7 @@ defineExpose({
                       type="checkbox"
                       class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 disabled:cursor-not-allowed"
                     />
-                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chat History</span>
+                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.ImportExportModal__exclude_chat_history() }}</span>
                   </label>
                   <label class="flex items-center gap-2 cursor-pointer group">
                     <input
@@ -378,13 +378,13 @@ defineExpose({
                       type="checkbox"
                       class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
                     />
-                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Attachments</span>
+                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">{{ lazyStrings.ImportExportModal__exclude_attachments() }}</span>
                   </label>
                 </div>
 
                 <div class="flex flex-col items-center gap-4">
                   <div class="w-full max-w-md bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-3 flex flex-col gap-1.5 shadow-inner">
-                    <span class="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Output Filename</span>
+                    <span class="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">{{ lazyStrings.ImportExportModal__output_filename() }}</span>
                     <p class="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 break-all text-center">
                       {{ previewFilename }}
                     </p>
@@ -396,7 +396,7 @@ defineExpose({
                     @click="handleExport"
                   >
                     <component :is="ExportIcon" class="w-6 h-6" />
-                    Export Now
+                    {{ lazyStrings.ImportExportModal__export_now() }}
                   </button>
                 </div>
               </div>
@@ -404,7 +404,7 @@ defineExpose({
 
             <div class="flex justify-start pt-4 border-t border-gray-100 dark:border-gray-800">
               <button @click="mode = 'menu'" class="px-4 py-2 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                &larr; Back to Menu
+                {{ lazyStrings.ImportExportModal__back_to_menu() }}
               </button>
             </div>
           </div>
@@ -414,39 +414,39 @@ defineExpose({
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 text-center">
                 <div class="text-2xl font-black text-gray-800 dark:text-white">{{ importPreview.stats.chatGroupsCount }}</div>
-                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Groups</div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ImportExportModal__groups() }}</div>
               </div>
               <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 text-center">
                 <div class="text-2xl font-black text-gray-800 dark:text-white">{{ importPreview.stats.chatsCount }}</div>
-                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Chats</div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ImportExportModal__chats() }}</div>
               </div>
               <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 text-center">
                 <div class="text-2xl font-black text-gray-800 dark:text-white">{{ importPreview.stats.attachmentsCount }}</div>
-                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Files</div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ImportExportModal__files() }}</div>
               </div>
               <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 text-center">
                 <div class="text-2xl font-black text-gray-800 dark:text-white">{{ importPreview.stats.providerProfilesCount }}</div>
-                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Profiles</div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ImportExportModal__profiles() }}</div>
               </div>
             </div>
 
             <div class="max-h-60 overflow-y-auto p-4 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-2 overscroll-contain">
-              <h4 class="text-xs font-bold text-gray-400 uppercase tracking-widest sticky top-0 bg-white dark:bg-gray-900 pb-2">Content Preview</h4>
+              <h4 class="text-xs font-bold text-gray-400 uppercase tracking-widest sticky top-0 bg-white dark:bg-gray-900 pb-2">{{ lazyStrings.ImportExportModal__content_preview() }}</h4>
               <div v-for="(item, idx) in importPreview.items" :key="idx" class="text-sm">
                 <div v-if="item.type === 'chat_group'" class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                  <FolderInputIcon class="w-4 h-4" /> {{ item.data.name }} ({{ item.data.items.length }} chats)
+                  <FolderInputIcon class="w-4 h-4" /> {{ item.data.name }} ({{ lazyStrings.ImportExportModal__chat_count({ count: item.data.items.length }) }})
                 </div>
                 <div v-else class="pl-6 text-gray-600 dark:text-gray-300 flex items-center gap-2">
                   <div class="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></div>
-                  {{ item.data.title || UNTITLED_CHAT_TITLE }}
+                  {{ item.data.title || lazyStrings.ImportExportModal__untitled_chat() }}
                 </div>
               </div>
             </div>
 
             <div class="flex justify-end gap-3 pt-4">
-              <button @click="resetState" class="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
+              <button @click="resetState" class="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">{{ lazyStrings.ImportExportModal__cancel() }}</button>
               <button @click="mode = 'import_config'" class="px-8 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95 flex items-center gap-2">
-                Next
+                {{ lazyStrings.ImportExportModal__next() }}
                 <ArrowRightIcon class="w-4 h-4" />
               </button>
             </div>
@@ -460,16 +460,16 @@ defineExpose({
               <div class="flex items-center justify-between">
                 <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
                   <DatabaseIcon class="w-4 h-4 text-blue-500" />
-                  Mode & Data Strategy
+                  {{ lazyStrings.ImportExportModal__mode_and_data_strategy() }}
                 </h3>
                 <div class="flex gap-2">
                   <button v-if="activePreset === 'custom'"
                           @click="applyPreset({ preset: importConfig.data.mode })"
                           class="text-[9px] font-black uppercase tracking-widest bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800/50 hover:bg-amber-200 transition-colors">
-                    Custom (Click to Reset)
+                    {{ lazyStrings.ImportExportModal__custom_click_to_reset() }}
                   </button>
                   <span v-else class="text-[9px] font-black uppercase tracking-widest bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/50">
-                    {{ activePreset === 'append' ? 'Append Preset' : 'Restore Preset' }}
+                    {{ activePreset === 'append' ? lazyStrings.ImportExportModal__append_preset() : lazyStrings.ImportExportModal__restore_preset() }}
                   </span>
                 </div>
               </div>
@@ -479,22 +479,22 @@ defineExpose({
                        :class="activePreset === 'append' ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300'">
                   <div class="flex items-center justify-between">
                     <div class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                      <CopyPlusIcon class="w-4 h-4" /> Append (Merge)
+                      <CopyPlusIcon class="w-4 h-4" /> {{ lazyStrings.ImportExportModal__append_merge() }}
                     </div>
                     <input type="radio" :checked="activePreset === 'append'" @change="applyPreset({ preset: 'append' })" class="w-4 h-4 accent-blue-600" />
                   </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">Add new items from the ZIP file while keeping your current data intact.</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImportExportModal__append_keeps_current_data() }}</p>
                 </label>
 
                 <label class="cursor-pointer p-4 rounded-2xl border-2 transition-all flex flex-col gap-2"
                        :class="activePreset === 'replace' ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300'">
                   <div class="flex items-center justify-between">
                     <div class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                      <RefreshCwIcon class="w-4 h-4" /> Replace (Restore)
+                      <RefreshCwIcon class="w-4 h-4" /> {{ lazyStrings.ImportExportModal__replace_restore() }}
                     </div>
                     <input type="radio" :checked="activePreset === 'replace'" @change="applyPreset({ preset: 'replace' })" class="w-4 h-4 accent-blue-600" />
                   </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">Clear current data and restore state from the ZIP file.</p>
+                  <p class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ImportExportModal__replace_clears_current_data() }}</p>
                 </label>
               </div>
 
@@ -502,11 +502,11 @@ defineExpose({
               <div v-if="importConfig.data.mode === 'append'" class="p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl space-y-4 animate-in fade-in slide-in-from-top-2">
                 <div class="grid grid-cols-2 gap-4">
                   <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Chat Title Prefix</label>
+                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ImportExportModal__chat_title_prefix() }}</label>
                     <input v-model="importConfig.data.chatTitlePrefix" class="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold" />
                   </div>
                   <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Group Name Prefix</label>
+                    <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ImportExportModal__group_name_prefix() }}</label>
                     <input v-model="importConfig.data.chatGroupNamePrefix" class="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-xs font-bold" />
                   </div>
                 </div>
@@ -518,79 +518,79 @@ defineExpose({
               <div class="flex items-center justify-between">
                 <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
                   <Settings2Icon class="w-4 h-4 text-blue-500" />
-                  Settings & Profiles
+                  {{ lazyStrings.ImportExportModal__settings_and_profiles() }}
                 </h3>
               </div>
 
               <div v-if="importPreview?.stats.hasSettings" class="space-y-3 p-4 border border-gray-100 dark:border-gray-700 rounded-2xl flex flex-col gap-1">
                 <!-- Endpoint -->
                 <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">URL & HTTP Headers</span>
+                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.ImportExportModal__url_and_http_headers() }}</span>
                   <select v-model="importConfig.settings.endpoint" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
-                    <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
-                    <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                    <option value="replace">{{ lazyStrings.ImportExportModal__overwrite() }} {{ activePreset === 'replace' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
+                    <option value="none">{{ lazyStrings.ImportExportModal__keep_current() }} {{ activePreset === 'append' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
                   </select>
                 </div>
 
                 <!-- Default Model -->
                 <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Default Model</span>
+                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.ImportExportModal__default_model() }}</span>
                   <select v-model="importConfig.settings.model" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
-                    <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
-                    <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                    <option value="replace">{{ lazyStrings.ImportExportModal__overwrite() }} {{ activePreset === 'replace' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
+                    <option value="none">{{ lazyStrings.ImportExportModal__keep_current() }} {{ activePreset === 'append' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
                   </select>
                 </div>
 
                 <!-- Title Model -->
                 <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Title Generation Model</span>
+                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.ImportExportModal__title_generation_model() }}</span>
                   <select v-model="importConfig.settings.titleModel" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
-                    <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
-                    <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                    <option value="replace">{{ lazyStrings.ImportExportModal__overwrite() }} {{ activePreset === 'replace' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
+                    <option value="none">{{ lazyStrings.ImportExportModal__keep_current() }} {{ activePreset === 'append' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
                   </select>
                 </div>
 
                 <!-- Profiles -->
                 <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Provider Profiles</span>
+                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.ImportExportModal__provider_profiles() }}</span>
                   <select v-model="importConfig.settings.providerProfiles" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
-                    <option value="append">Add New {{ activePreset === 'append' ? '(Default)' : '' }}</option>
-                    <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
-                    <option value="none">Ignore</option>
+                    <option value="append">{{ lazyStrings.ImportExportModal__add_new() }} {{ activePreset === 'append' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
+                    <option value="replace">{{ lazyStrings.ImportExportModal__overwrite() }} {{ activePreset === 'replace' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
+                    <option value="none">{{ lazyStrings.ImportExportModal__ignore() }}</option>
                   </select>
                 </div>
 
                 <!-- System Prompt -->
                 <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Global System Prompt</span>
+                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.ImportExportModal__global_system_prompt() }}</span>
                   <select v-model="importConfig.settings.systemPrompt" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
-                    <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
-                    <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                    <option value="replace">{{ lazyStrings.ImportExportModal__overwrite() }} {{ activePreset === 'replace' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
+                    <option value="none">{{ lazyStrings.ImportExportModal__keep_current() }} {{ activePreset === 'append' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
                   </select>
                 </div>
 
                 <!-- LM Parameters -->
                 <div class="flex items-center justify-between">
-                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">LM Parameters (Temp, etc.)</span>
+                  <span class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.ImportExportModal__lm_parameters() }}</span>
                   <select v-model="importConfig.settings.lmParameters" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
-                    <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
-                    <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                    <option value="replace">{{ lazyStrings.ImportExportModal__overwrite() }} {{ activePreset === 'replace' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
+                    <option value="none">{{ lazyStrings.ImportExportModal__keep_current() }} {{ activePreset === 'append' ? lazyStrings.ImportExportModal__default_marker() : '' }}</option>
                   </select>
                 </div>
               </div>
               <div v-else class="p-6 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-2xl text-center">
-                <p class="text-xs font-bold text-gray-400">No settings or profiles found in this backup.</p>
+                <p class="text-xs font-bold text-gray-400">{{ lazyStrings.ImportExportModal__no_settings_or_profiles() }}</p>
               </div>
             </section>
 
             <div class="flex justify-end gap-3 pt-4">
-              <button @click="mode = 'import_preview'" class="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Back</button>
+              <button @click="mode = 'import_preview'" class="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">{{ lazyStrings.ImportExportModal__back() }}</button>
               <button
                 @click="handleImportExecute"
                 class="px-8 py-2.5 rounded-xl font-bold text-white shadow-lg transition-all active:scale-95 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 shadow-blue-500/20"
               >
                 <CheckCircle2Icon class="w-4 h-4" />
-                Import
+                {{ lazyStrings.ImportExportModal__import() }}
               </button>
             </div>
           </div>

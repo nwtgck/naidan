@@ -5,6 +5,7 @@ import type { Chat, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/mo
 import { storageService } from '@/services/storage';
 import { useChatTools } from '@/composables/useChatTools';
 import { useToast } from '@/composables/useToast';
+import { ensureStrings } from '@/strings';
 import {
   chatRuntimeStore,
   clearChatTmpDirectories,
@@ -165,9 +166,15 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       await storageService.deleteChat({ id });
     };
 
+    const [message, actionLabel] = await Promise.all([
+      ensureStrings.useChatLifecycle__chat_was_deleted({
+        chatTitle: chat.title ?? undefined,
+      }),
+      ensureStrings.useChatLifecycle__undo(),
+    ]);
     const toastId = (injectAddToast ?? addToast)({
-      message: `Chat "${chat.title || 'Untitled'}" deleted`,
-      actionLabel: 'Undo',
+      message,
+      actionLabel,
       onAction: async () => {
         const originalGroupId = chat.groupId;
         await storageService.updateHierarchy({ updater: ({ current }) => {

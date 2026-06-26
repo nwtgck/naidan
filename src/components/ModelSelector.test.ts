@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import ModelSelector from './ModelSelector.vue';
 import { useSettings } from '@/composables/useSettings';
 import { ref, nextTick } from 'vue';
@@ -8,6 +8,8 @@ import { ref, nextTick } from 'vue';
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
+
+enableAutoUnmount(afterEach);
 
 // Mock @vueuse/core for positioning tests
 const mockBounding = {
@@ -53,7 +55,8 @@ describe('ModelSelector.vue', () => {
     document.body.innerHTML = '';
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await flushPromises();
     document.body.innerHTML = '';
   });
 
@@ -76,15 +79,19 @@ describe('ModelSelector.vue', () => {
 
     const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
     await trigger.trigger('click');
+    await flushPromises();
 
     // Teleported to body
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+    });
     const dropdown = document.body.querySelector('.animate-in');
-    expect(dropdown).toBeTruthy();
-    expect(dropdown?.querySelector('input[placeholder="Filter models..."]')).toBeTruthy();
+    expect(dropdown?.querySelector('[data-testid="model-selector-filter"]')).toBeTruthy();
     expect(dropdown?.textContent).toContain('model-b');
     expect(dropdown?.textContent).toContain('model-c');
 
     await trigger.trigger('click');
+    await flushPromises();
     expect(document.body.querySelector('.animate-in')).toBeFalsy();
   });
 
@@ -98,8 +105,9 @@ describe('ModelSelector.vue', () => {
 
     const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
     await trigger.trigger('click');
+    await flushPromises();
 
-    const input = document.body.querySelector('input[placeholder="Filter models..."]') as HTMLInputElement;
+    const input = document.body.querySelector('[data-testid="model-selector-filter"]') as HTMLInputElement;
     expect(document.activeElement).toBe(input);
 
     wrapper.unmount();
@@ -113,8 +121,9 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
 
-    const input = document.body.querySelector('input[placeholder="Filter models..."]') as HTMLInputElement;
+    const input = document.body.querySelector('[data-testid="model-selector-filter"]') as HTMLInputElement;
     input.value = 'model-b';
     input.dispatchEvent(new Event('input'));
     await nextTick();
@@ -141,8 +150,9 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
 
-    const input = document.body.querySelector('input[placeholder="Filter models..."]') as HTMLInputElement;
+    const input = document.body.querySelector('[data-testid="model-selector-filter"]') as HTMLInputElement;
 
     // Case 1: "gpt 4" should match "openai/gpt-4o"
     input.value = 'gpt 4';
@@ -179,6 +189,7 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
 
     const options = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
       .filter(b => b.textContent?.includes('model-c'));
@@ -202,6 +213,7 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
 
     const clearBtn = document.body.querySelector('[data-testid="model-selector-clear"]') as HTMLElement;
     expect(clearBtn.textContent).toContain('Global Default');
@@ -223,6 +235,7 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
     expect(document.body.querySelector('[data-testid="model-selector-clear"]')).toBeFalsy();
 
     wrapper.unmount();
@@ -236,6 +249,7 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
 
     const refreshBtn = Array.from(document.body.querySelectorAll('button'))
       .find(b => b.getAttribute('title') === 'Refresh model list');
@@ -267,6 +281,7 @@ describe('ModelSelector.vue', () => {
       });
 
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
 
       expect(dropdown.style.position).toBe('fixed');
@@ -281,6 +296,7 @@ describe('ModelSelector.vue', () => {
       });
 
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
       const modelSpan = document.body.querySelector('.custom-scrollbar button span.break-all');
 
       expect(modelSpan).toBeTruthy();
@@ -300,6 +316,7 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+    await flushPromises();
 
     const spans = Array.from(document.body.querySelectorAll('.custom-scrollbar button span.break-all'));
     const displayedOrder = spans.map(span => span.textContent);
@@ -313,6 +330,7 @@ describe('ModelSelector.vue', () => {
     it('opens downward by default when space is available', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
 
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       expect(dropdown.classList.contains('slide-in-from-top-2')).toBe(true);
@@ -328,6 +346,7 @@ describe('ModelSelector.vue', () => {
 
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
 
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       expect(dropdown.classList.contains('slide-in-from-bottom-2')).toBe(true);
@@ -343,6 +362,7 @@ describe('ModelSelector.vue', () => {
 
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
 
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       const leftValue = parseFloat(dropdown.style.left);
@@ -356,7 +376,10 @@ describe('ModelSelector.vue', () => {
     it('closes on window width resize but stays open on height resize', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+      await flushPromises();
+      await vi.waitFor(() => {
+        expect(document.body.querySelector('.animate-in')).toBeTruthy();
+      });
 
       // Height change (like keyboard opening) - should STAY OPEN
       mockWindowSize.height.value = 400;
@@ -379,6 +402,7 @@ describe('ModelSelector.vue', () => {
       });
 
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
 
       // Find the mousedown listener
@@ -403,6 +427,7 @@ describe('ModelSelector.vue', () => {
       mockBounding.width.value = 150;
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
 
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       expect(parseFloat(dropdown.style.width)).toBe(480);
@@ -417,6 +442,7 @@ describe('ModelSelector.vue', () => {
 
       // 1. Open dropdown
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
       expect(document.body.querySelector('.animate-in')).toBeTruthy();
 
       // 2. Search input is automatically focused on toggle
@@ -452,6 +478,7 @@ describe('ModelSelector.vue', () => {
         },
       });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
 
       const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
 
@@ -485,6 +512,7 @@ describe('ModelSelector.vue', () => {
     it('selects the highlighted model when Enter is pressed', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
       const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
 
       // Move down to model-b (index 1 if allowClear is false)
@@ -499,6 +527,7 @@ describe('ModelSelector.vue', () => {
     it('closes the dropdown when Escape is pressed', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
       const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
 
       expect(document.body.querySelector('.animate-in')).toBeTruthy();
@@ -510,6 +539,7 @@ describe('ModelSelector.vue', () => {
     it('resets highlighted index when search query changes', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      await flushPromises();
 
       const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
       const input = document.body.querySelector('input') as HTMLInputElement;

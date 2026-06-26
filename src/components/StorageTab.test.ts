@@ -225,8 +225,7 @@ describe('StorageTab.vue Tests', () => {
       await wrapper.find('input[data-testid="setting-url-input"]').setValue('http://example.com');
       await wait();
 
-      const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
-      await storageTab?.trigger('click');
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await wait();
@@ -507,8 +506,7 @@ describe('StorageTab.vue Tests', () => {
       await flushPromises();
       await vi.dynamicImportSettled();
 
-      const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
-      await storageTab?.trigger('click');
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await wait();
@@ -574,10 +572,12 @@ describe('StorageTab.vue Tests', () => {
       await saveButton.trigger('click');
 
       expect(mockSaveFail).toHaveBeenCalled();
-      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Save Failed',
-        message: expect.stringContaining('Migration Security Error'),
-      }));
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+          title: 'Save Failed',
+          message: expect.stringContaining('Migration Security Error'),
+        }));
+      });
     });
   });
 });

@@ -1119,6 +1119,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const deleteBtn = wrapper.find('[data-testid="provider-profile-delete-button"]');
       await deleteBtn.trigger('click');
+      await flushPromises();
 
       // Should be deleted immediately
       expect(vm.form.providerProfiles).toHaveLength(0);

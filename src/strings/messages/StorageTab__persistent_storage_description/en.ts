@@ -1,0 +1,1 @@
+export const StorageTab__persistent_storage_description = (): string => 'Enable persistent storage to prevent the browser from automatically deleting your chat history and settings during storage pressure.';

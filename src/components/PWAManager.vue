@@ -3,6 +3,7 @@ import { watch } from 'vue';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { ensureStrings } from '@/strings';
 
 const {
   offlineReady,
@@ -13,11 +14,11 @@ const {
 const { setNeedRefresh } = usePWAUpdate();
 const { addInfoEvent } = useGlobalEvents();
 
-watch(offlineReady, (ready) => {
+watch(offlineReady, async (ready) => {
   if (ready) {
     addInfoEvent({
       source: 'PWA',
-      message: 'App ready to work offline',
+      message: await ensureStrings.PWAManager__app_ready_to_work_offline(),
     });
   }
 });

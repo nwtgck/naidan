@@ -9,6 +9,7 @@ import {
   BookmarkPlusIcon, PencilIcon, TrashIcon, CheckIcon,
 } from 'lucide-vue-next';
 import { capitalize } from '@/utils/string';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 const props = defineProps<{
   profiles: ProviderProfile[],
@@ -39,8 +40,8 @@ async function handleDeleteProviderProfile({ id }: { id: ProviderProfileId }) {
   await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(newProfiles)) });
 
   addToast({
-    message: `Profile "${deletedProfile.name}" deleted`,
-    actionLabel: 'Undo',
+    message: await ensureStrings.ProviderProfilesTab__profile_was_deleted({ profileName: deletedProfile.name }),
+    actionLabel: await ensureStrings.ProviderProfilesTab__undo(),
     onAction: async () => {
       const restoredProfiles = [...newProfiles];
       restoredProfiles.splice(index, 0, deletedProfile);
@@ -84,21 +85,21 @@ defineExpose({
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
         <BookmarkPlusIcon class="w-5 h-5 text-blue-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Provider Profiles</h2>
+        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ProviderProfilesTab__provider_profiles() }}</h2>
       </div>
 
-      <p class="text-sm font-medium text-gray-500">Save and switch between different AI provider configurations easily.</p>
+      <p class="text-sm font-medium text-gray-500">{{ lazyStrings.ProviderProfilesTab__save_and_switch_provider_configurations() }}</p>
 
       <div v-if="!profiles || profiles.length === 0" class="flex flex-col items-center justify-center p-16 bg-gray-50 dark:bg-gray-800/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-800">
         <div class="p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
           <BookmarkPlusIcon class="w-12 h-12 text-gray-300" />
         </div>
-        <p class="text-sm text-gray-400 font-bold mb-6">No profiles saved yet.</p>
+        <p class="text-sm text-gray-400 font-bold mb-6">{{ lazyStrings.ProviderProfilesTab__no_profiles_saved_yet() }}</p>
         <button
           @click="emit('goToConnection')"
           class="px-8 py-3 bg-blue-600 text-white text-sm font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95"
         >
-          Go to Connection to Create One
+          {{ lazyStrings.ProviderProfilesTab__go_to_connection_to_create_one() }}
         </button>
       </div>
 
@@ -127,8 +128,8 @@ defineExpose({
             </div>
             <div class="text-xs font-medium text-gray-400 mt-1.5 truncate">{{ providerProfile.endpointUrl }}</div>
             <div class="text-[11px] font-bold text-gray-500 mt-2 flex items-center gap-3">
-              <span class="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700">{{ providerProfile.defaultModelId || 'No default model' }}</span>
-              <span v-if="providerProfile.titleModelId" class="text-[9px] opacity-60 px-2 py-0.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-transparent">Title: {{ providerProfile.titleModelId }}</span>
+              <span class="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700">{{ providerProfile.defaultModelId || lazyStrings.ProviderProfilesTab__no_default_model() }}</span>
+              <span v-if="providerProfile.titleModelId" class="text-[9px] opacity-60 px-2 py-0.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-transparent">{{ lazyStrings.ProviderProfilesTab__title_model({ modelId: providerProfile.titleModelId }) }}</span>
             </div>
           </div>
 
@@ -136,7 +137,7 @@ defineExpose({
             <button
               @click="startRename({ providerProfile })"
               class="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"
-              title="Rename Profile"
+              :title="lazyStrings.ProviderProfilesTab__rename_profile()"
               data-testid="provider-profile-rename-button"
             >
               <PencilIcon class="w-4 h-4" />
@@ -144,7 +145,7 @@ defineExpose({
             <button
               @click="handleDeleteProviderProfile({ id: providerProfile.id })"
               class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"
-              title="Delete Profile"
+              :title="lazyStrings.ProviderProfilesTab__delete_profile()"
               data-testid="provider-profile-delete-button"
             >
               <TrashIcon class="w-4 h-4" />

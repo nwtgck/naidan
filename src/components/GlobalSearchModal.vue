@@ -8,7 +8,6 @@ import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
@@ -17,6 +16,7 @@ import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { highlightSearchTextAsHtml } from '@/lib/security/allowedHtml';
 import type { AllowedHtml } from '@/lib/security/allowedHtml';
 import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
+import { lazyStrings } from '@/strings';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
 const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupSearchPreview.vue') });
@@ -142,10 +142,38 @@ const selectedGroups = computed(() => {
 const targetChatTitle = computed(() => {
   if (!chatId.value) return undefined;
   // If it's the current chat, we can get it from currentChat
-  if (currentChat.value && idToRaw({ id: currentChat.value.id }) === chatId.value) return currentChat.value.title || UNTITLED_CHAT_TITLE;
+  if (currentChat.value && idToRaw({ id: currentChat.value.id }) === chatId.value) return currentChat.value.title || lazyStrings.GlobalSearchModal__untitled_chat();
   // Otherwise we'd need to fetch it or rely on a generic name
-  return 'Filtered Chat';
+  return lazyStrings.GlobalSearchModal__filtered_chat();
 });
+
+
+function searchScopeLabel({ scope }: { scope: SearchScope }): string {
+  switch (scope) {
+  case 'all': return lazyStrings.GlobalSearchModal__all();
+  case 'current_thread': return lazyStrings.GlobalSearchModal__current_thread();
+  case 'title_only': return lazyStrings.GlobalSearchModal__title_only();
+  default: { const _ex: never = scope; return _ex; }
+  }
+}
+
+function searchRoleLabel({ role }: { role: SearchRoleFilter }): string {
+  switch (role) {
+  case 'all': return lazyStrings.GlobalSearchModal__all();
+  case 'user': return lazyStrings.GlobalSearchModal__user();
+  case 'assistant': return lazyStrings.GlobalSearchModal__assistant();
+  default: { const _ex: never = role; return _ex; }
+  }
+}
+
+function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): string {
+  switch (mode) {
+  case 'always': return lazyStrings.GlobalSearchModal__on();
+  case 'peek': return lazyStrings.GlobalSearchModal__peek();
+  case 'disabled': return lazyStrings.GlobalSearchModal__off();
+  default: { const _ex: never = mode; return _ex; }
+  }
+}
 
 function toggleGroupFilter({ groupId }: { groupId: string }) {
   const index = chatGroupIds.value.indexOf(groupId);
@@ -453,8 +481,8 @@ defineExpose({
             @keydown="handleKeydown({ event: $event })"
             type="text"
             class="flex-1 bg-transparent border-none outline-none text-lg text-gray-900 dark:text-gray-100 placeholder-gray-400"
-            placeholder="Search chats and messages..."
-            aria-label="Search"
+            :placeholder="lazyStrings.GlobalSearchModal__search_chats_and_messages()"
+            :aria-label="lazyStrings.GlobalSearchModal__search()"
             data-testid="search-input"
           />
           <button @click="closeSearch" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
@@ -476,14 +504,14 @@ defineExpose({
                   :class="searchScope === scope ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                   :data-testid="'scope-button-' + scope"
                 >
-                  {{ scope.replace('_', ' ') }}
+                  {{ searchScopeLabel({ scope }) }}
                 </button>
               </div>
 
               <div class="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1 shrink-0"></div>
 
               <div v-if="shouldShowRoleFilter" class="flex items-center gap-1.5 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 px-2.5 py-1">
-                <span class="text-[8px] font-black uppercase tracking-[0.16em] text-gray-400">Role</span>
+                <span class="text-[8px] font-black uppercase tracking-[0.16em] text-gray-400">{{ lazyStrings.GlobalSearchModal__role() }}</span>
                 <select
                   :value="searchRoleFilter"
                   @change="searchRoleFilter = ($event.target as HTMLSelectElement).value as SearchRoleFilter"
@@ -495,7 +523,7 @@ defineExpose({
                     :key="role"
                     :value="role"
                   >
-                    {{ role }}
+                    {{ searchRoleLabel({ role }) }}
                   </option>
                 </select>
               </div>
@@ -511,7 +539,7 @@ defineExpose({
                   data-testid="group-filter-button"
                 >
                   <FilterIcon class="w-3 h-3" />
-                  <span>Groups</span>
+                  <span>{{ lazyStrings.GlobalSearchModal__groups() }}</span>
                   <span v-if="chatGroupIds.length > 0" class="ml-1 px-1.5 py-0.5 bg-indigo-600 text-white rounded-full text-[8px]">{{ chatGroupIds.length }}</span>
                 </button>
 
@@ -522,7 +550,7 @@ defineExpose({
                     @click.stop
                     data-testid="group-selector-dropdown"
                   >
-                    <div class="px-3 py-2 border-b border-gray-50 dark:border-gray-700/50 text-[10px] font-black text-gray-400 uppercase tracking-widest">Filter by Group</div>
+                    <div class="px-3 py-2 border-b border-gray-50 dark:border-gray-700/50 text-[10px] font-black text-gray-400 uppercase tracking-widest">{{ lazyStrings.GlobalSearchModal__filter_by_group() }}</div>
                     <div class="max-h-64 overflow-y-auto p-1">
                       <button
                         v-for="group in chatGroups"
@@ -538,10 +566,10 @@ defineExpose({
                         </div>
                         <CheckIcon v-if="chatGroupIds.includes(idToRaw({ id: group.id }))" class="w-3.5 h-3.5 shrink-0" />
                       </button>
-                      <div v-if="chatGroups.length === 0" class="p-4 text-center text-[10px] text-gray-400 italic">No groups available</div>
+                      <div v-if="chatGroups.length === 0" class="p-4 text-center text-[10px] text-gray-400 italic">{{ lazyStrings.GlobalSearchModal__no_groups_available() }}</div>
                     </div>
                     <div v-if="chatGroupIds.length > 0" class="p-1 border-t border-gray-50 dark:border-gray-700/50">
-                      <button @click="chatGroupIds = []" class="w-full px-3 py-2 text-[10px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest text-center transition-colors">Clear All Filters</button>
+                      <button @click="chatGroupIds = []" class="w-full px-3 py-2 text-[10px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest text-center transition-colors">{{ lazyStrings.GlobalSearchModal__clear_all_filters() }}</button>
                     </div>
                   </div>
                 </Transition>
@@ -576,7 +604,7 @@ defineExpose({
 
             <div class="flex flex-wrap items-center gap-4 text-[10px] font-bold text-gray-400 xl:ml-4 xl:justify-end">
               <div class="flex items-center gap-2">
-                <span>PREVIEW</span>
+                <span>{{ lazyStrings.GlobalSearchModal__preview() }}</span>
                 <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
                   <button
                     v-for="mode in (['always', 'peek', 'disabled'] as const)"
@@ -585,13 +613,13 @@ defineExpose({
                     class="px-2 py-1 rounded-md transition-all uppercase tracking-tighter"
                     :class="searchPreviewMode === mode ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
                   >
-                    {{ mode === 'always' ? 'on' : mode === 'disabled' ? 'off' : mode }}
+                    {{ previewModeLabel({ mode }) }}
                   </button>
                 </div>
               </div>
 
               <div v-if="isPreviewVisible" class="flex items-center gap-2">
-                <span>CONTEXT</span>
+                <span>{{ lazyStrings.GlobalSearchModal__context() }}</span>
                 <select
                   :value="searchContextSize === Infinity ? 'max' : searchContextSize"
                   @change="e => setSearchContextSize({ size: (e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value) })"
@@ -601,7 +629,7 @@ defineExpose({
                   <option :value="2">2</option>
                   <option :value="3">3</option>
                   <option :value="5">5</option>
-                  <option value="max">FULL</option>
+                  <option value="max">{{ lazyStrings.GlobalSearchModal__full() }}</option>
                 </select>
               </div>
             </div>
@@ -624,11 +652,11 @@ defineExpose({
             ]"
           >
             <div v-if="!query && !isSearching && searchScope !== 'title_only'" class="p-8 text-center text-gray-400 text-sm">
-              Type to search...
+              {{ lazyStrings.GlobalSearchModal__type_to_search() }}
             </div>
 
             <div v-else-if="results.length === 0 && !isSearching" class="p-8 text-center text-gray-500 text-sm">
-              No results found for "{{ query }}"
+              {{ lazyStrings.GlobalSearchModal__no_results_for({ query }) }}
             </div>
 
             <template v-else>
@@ -662,7 +690,7 @@ defineExpose({
                       />
                       <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.name }}</span>
                       <div class="flex items-center gap-1.5 shrink-0">
-                        <span class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ entry.item.chatCount }} chats</span>
+                        <span class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ lazyStrings.GlobalSearchModal__chat_count({ count: entry.item.chatCount }) }}</span>
                       </div>
                     </div>
                   </div>
@@ -679,10 +707,10 @@ defineExpose({
                         <AllowedHtmlView
                           v-if="isHighlightingEnabled"
                           as="span"
-                          :html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"
+                          :html="highlight({ text: entry.item.title || lazyStrings.GlobalSearchModal__untitled_chat(), query, color: 'indigo' })"
                           class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
                         />
-                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || UNTITLED_CHAT_TITLE }}</span>
+                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || lazyStrings.GlobalSearchModal__untitled_chat() }}</span>
                         <span v-if="entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
                           <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
                           <AllowedHtmlView
@@ -697,7 +725,7 @@ defineExpose({
                     </div>
                     <div class="flex items-center gap-1.5 mt-0.5">
                       <ClockIcon class="w-3 h-3 text-gray-300" />
-                      <span class="text-[10px] text-gray-400">Chat</span>
+                      <span class="text-[10px] text-gray-400">{{ lazyStrings.GlobalSearchModal__chat() }}</span>
                     </div>
                   </div>
                 </div>
@@ -721,7 +749,7 @@ defineExpose({
 
                     <div v-if="!entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
                       <GitBranchIcon class="w-2.5 h-2.5" />
-                      <span>ALT BRANCH</span>
+                      <span>{{ lazyStrings.GlobalSearchModal__alt_branch() }}</span>
                     </div>
                   </div>
                 </div>
@@ -729,7 +757,7 @@ defineExpose({
 
               <div v-if="isScanningContent" class="p-4 flex items-center justify-center text-gray-400 gap-2 border-t border-gray-50 dark:border-gray-800/50 mt-2">
                 <Loader2Icon class="w-4 h-4 animate-spin" />
-                <span class="text-[11px] font-bold">SCANNING CONTENT...</span>
+                <span class="text-[11px] font-bold">{{ lazyStrings.GlobalSearchModal__scanning_content() }}</span>
               </div>
             </template>
           </div>
@@ -763,7 +791,7 @@ defineExpose({
             <div v-else class="h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/20">
               <div class="flex flex-col items-center gap-2 opacity-20">
                 <EyeIcon class="w-8 h-8 text-gray-400" />
-                <span class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Peek</span>
+                <span class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">{{ lazyStrings.GlobalSearchModal__peek() }}</span>
               </div>
             </div>
           </div>
@@ -772,12 +800,12 @@ defineExpose({
         <!-- Footer -->
         <div class="p-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50 text-[10px] font-bold text-gray-400 flex justify-between px-6 shrink-0">
           <div class="flex gap-6">
-            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↑↓</kbd> NAVIGATE</span>
-            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↵</kbd> SELECT</span>
+            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↑↓</kbd> {{ lazyStrings.GlobalSearchModal__navigate() }}</span>
+            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↵</kbd> {{ lazyStrings.GlobalSearchModal__select() }}</span>
           </div>
           <div class="flex items-center gap-4">
-            <span>{{ results.length }} CHATS FOUND</span>
-            <span v-if="totalItems > 0">{{ totalItems }} TOTAL MATCHES</span>
+            <span>{{ lazyStrings.GlobalSearchModal__chats_found({ count: results.length }) }}</span>
+            <span v-if="totalItems > 0">{{ lazyStrings.GlobalSearchModal__total_matches({ count: totalItems }) }}</span>
           </div>
         </div>
       </div>

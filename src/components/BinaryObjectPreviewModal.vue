@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { BinaryObject } from '@/models/types';
 import { idToRaw } from '@/models/ids';
+import { lazyStrings } from '@/strings';
 import type { BinaryObjectId } from '@/models/ids';
 import { storageService } from '@/services/storage';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
@@ -242,7 +243,7 @@ defineExpose({
           <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center z-30 pointer-events-none bg-black/20 backdrop-blur-sm transition-opacity">
             <div class="flex flex-col items-center gap-4 text-white">
               <RefreshCwIcon class="w-10 h-10 animate-spin text-blue-500" />
-              <p class="text-xs font-bold tracking-widest opacity-50">LOADING...</p>
+              <p class="text-xs font-bold tracking-widest opacity-50">{{ lazyStrings.binaryObjects__loading() }}</p>
             </div>
           </div>
 
@@ -267,8 +268,8 @@ defineExpose({
                   <FileIcon class="w-24 h-24 text-white/20" />
                 </div>
                 <div class="space-y-2">
-                  <p class="text-sm font-bold text-white/40 tracking-widest uppercase">Preview Unavailable</p>
-                  <p class="text-xs font-medium text-white/30 max-w-[240px] mx-auto">This file type cannot be previewed directly.</p>
+                  <p class="text-sm font-bold text-white/40 tracking-widest uppercase">{{ lazyStrings.binaryObjects__preview_unavailable() }}</p>
+                  <p class="text-xs font-medium text-white/30 max-w-[240px] mx-auto">{{ lazyStrings.binaryObjects__file_type_cannot_be_previewed() }}</p>
                 </div>
               </div>
             </div>
@@ -318,12 +319,12 @@ defineExpose({
                   :title="currentObject.name"
                   data-testid="preview-filename"
                 >
-                  {{ currentObject.name || 'Unnamed' }}
+                  {{ currentObject.name || lazyStrings.binaryObjects__unnamed() }}
                 </h3>
                 <button
                   @click="copyName"
                   class="p-1 text-white/30 hover:text-white transition-colors shrink-0"
-                  title="Copy Name"
+                  :title="lazyStrings.binaryObjects__copy_name()"
                   data-testid="preview-copy-name-btn"
                 >
                   <CopyIcon v-if="!isCopied" class="w-3.5 h-3.5" data-testid="icon-copy" />
@@ -341,25 +342,25 @@ defineExpose({
           <div class="flex items-center gap-3 shrink-0">
             <!-- Zoom Controls -->
             <div v-if="isImage" class="flex items-center bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 p-1 mr-2">
-              <button @click="zoom = Math.max(0.1, zoom / 1.2)" class="p-2 text-white/60 hover:text-white transition-colors" title="Zoom Out" data-testid="preview-zoom-out-btn">
+              <button @click="zoom = Math.max(0.1, zoom / 1.2)" class="p-2 text-white/60 hover:text-white transition-colors" :title="lazyStrings.binaryObjects__zoom_out()" data-testid="preview-zoom-out-btn">
                 <ZoomOutIcon class="w-4 h-4" />
               </button>
-              <button @click="resetZoom" class="px-2 text-[10px] font-bold text-white/60 hover:text-white transition-colors min-w-[56px]" title="Reset Zoom" data-testid="preview-zoom-reset-btn">
+              <button @click="resetZoom" class="px-2 text-[10px] font-bold text-white/60 hover:text-white transition-colors min-w-[56px]" :title="lazyStrings.binaryObjects__reset_zoom()" data-testid="preview-zoom-reset-btn">
                 {{ Math.round(zoom * 100) }}%
               </button>
-              <button @click="zoom = Math.min(20, zoom * 1.2)" class="p-2 text-white/60 hover:text-white transition-colors" title="Zoom In" data-testid="preview-zoom-in-btn">
+              <button @click="zoom = Math.min(20, zoom * 1.2)" class="p-2 text-white/60 hover:text-white transition-colors" :title="lazyStrings.binaryObjects__zoom_in()" data-testid="preview-zoom-in-btn">
                 <ZoomInIcon class="w-4 h-4" />
               </button>
             </div>
 
-            <button @click="emit('download', currentObject)" class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition-all active:scale-95" title="Download" data-testid="preview-download-btn">
+            <button @click="emit('download', currentObject)" class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition-all active:scale-95" :title="lazyStrings.binaryObjects__download()" data-testid="preview-download-btn">
               <DownloadIcon class="w-5 h-5" />
             </button>
-            <button @click="emit('delete', currentObject)" class="p-3 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-2xl border border-red-500/20 transition-all active:scale-95" title="Delete" data-testid="preview-delete-btn">
+            <button @click="emit('delete', currentObject)" class="p-3 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-2xl border border-red-500/20 transition-all active:scale-95" :title="lazyStrings.binaryObjects__delete()" data-testid="preview-delete-btn">
               <Trash2Icon class="w-5 h-5" />
             </button>
             <div class="w-px h-8 bg-white/10 mx-1"></div>
-            <button @click="emit('close')" class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition-all active:scale-95" title="Close (Esc)" data-testid="preview-close-btn">
+            <button @click="emit('close')" class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition-all active:scale-95" :title="lazyStrings.binaryObjects__close_with_escape()" data-testid="preview-close-btn">
               <XIcon class="w-5 h-5" />
             </button>
           </div>
