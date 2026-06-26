@@ -3,7 +3,12 @@ import { useSettings } from './useSettings';
 import { DEFAULT_SETTINGS } from '@/models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
 import { flushPromises } from '@vue/test-utils';
-import { currentLocale, setLocale as setStringLocale } from '@/strings/runtime';
+import {
+  currentLocale,
+  registerStringBoundary,
+  setLocale as setStringLocale,
+  type StringBoundaryModule,
+} from '@/strings/runtime';
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmLanguagePacks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
@@ -120,6 +125,50 @@ describe('useSettings Initialization and Bootstrap', () => {
       locale: 'ja',
     });
     expect(currentLocale.value).toBe('ja');
+  });
+
+  it('applies overlapping explicit locale changes in request order', async () => {
+    const current = {
+      ...DEFAULT_SETTINGS,
+      endpointType: 'openai' as const,
+      storageType: 'local' as const,
+      experimental: {
+        fakeLm: 'disabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(current);
+    const { setLocale, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: current });
+
+    let resolveJapaneseModule: ((module: StringBoundaryModule) => void) | undefined;
+    const japaneseModule = new Promise<StringBoundaryModule>((resolve) => {
+      resolveJapaneseModule = resolve;
+    });
+    const japaneseLoader = vi.fn(async () => japaneseModule);
+    registerStringBoundary({
+      boundaryId: 'language-selector',
+      keys: ['Test__locale_change_queue'],
+      loaders: {
+        en: async () => ({
+          Test__locale_change_queue: () => 'Language',
+        }),
+        ja: japaneseLoader,
+      },
+    });
+
+    const firstChange = setLocale({ locale: 'ja' });
+    await vi.waitFor(() => {
+      expect(japaneseLoader).toHaveBeenCalledOnce();
+    });
+    const secondChange = setLocale({ locale: 'en' });
+
+    resolveJapaneseModule?.({
+      Test__locale_change_queue: () => '言語',
+    });
+    await Promise.all([firstChange, secondChange]);
+
+    expect(currentLocale.value).toBe('en');
+    expect(settings.value.experimental?.locale).toBe('en');
   });
 
   it('keeps the current locale unchanged when persistence fails', async () => {

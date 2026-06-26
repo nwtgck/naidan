@@ -139,7 +139,14 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       }
     }
 
-    const boundaryId = createBoundaryId({ moduleId });
+    const relativeModulePath = projectRelativeModulePath({
+      moduleId,
+      root: requireResolvedConfig().root,
+    });
+    if (relativeModulePath === undefined) {
+      throw new Error(`[naidan-boundary-strings] Boundary module is outside the project root: ${moduleId}.`);
+    }
+    const boundaryId = createBoundaryId({ moduleId: relativeModulePath });
     const previousBoundary = boundaries.get(boundaryId);
     if (previousBoundary !== undefined && previousBoundary.moduleId !== moduleId) {
       throw new Error(

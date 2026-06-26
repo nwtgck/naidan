@@ -179,13 +179,24 @@ function scheduleBoundaryWarmup({ boundaryId }: {
     return;
   }
 
+  const registration = boundaryRegistrations.get(boundaryId);
+  if (registration === undefined) {
+    throw new Error(`Missing Boundary Strings registration for ${boundaryId}.`);
+  }
+
   const run = () => {
     scheduledBoundaryWarmups.delete(boundaryId);
+    if (boundaryRegistrations.get(boundaryId) !== registration) {
+      return;
+    }
     warmedBoundaryIds.add(boundaryId);
     void ensureBoundaryLoaded({
       boundaryId,
       locale: currentLocaleState.value,
     }).catch((error: unknown) => {
+      if (boundaryRegistrations.get(boundaryId) !== registration) {
+        return;
+      }
       warmedBoundaryIds.delete(boundaryId);
       console.error('[Boundary Strings] Failed to warm a message boundary.', error);
     });
@@ -362,14 +373,23 @@ export const ensureStrings = new Proxy({}, {
 export async function prepareLocale({ locale }: {
   locale: UiLocale;
 }): Promise<void> {
-  promoteScheduledBoundaryWarmups();
-  const activeBoundaryIds = new Set([
-    ...usedBoundaryIds,
-    ...warmedBoundaryIds,
-  ]);
-  await Promise.all([...activeBoundaryIds].map(async (boundaryId) => {
-    await ensureBoundaryLoaded({ boundaryId, locale });
-  }));
+  while (true) {
+    promoteScheduledBoundaryWarmups();
+    const activeBoundaryIds = new Set([
+      ...usedBoundaryIds,
+      ...warmedBoundaryIds,
+    ]);
+    await Promise.all([...activeBoundaryIds].map(async (boundaryId) => {
+      await ensureBoundaryLoaded({ boundaryId, locale });
+    }));
+
+    const hasUnpreparedBoundary = [...usedBoundaryIds, ...warmedBoundaryIds].some((boundaryId) => {
+      return !loadedBoundaryModules[locale].has(boundaryId);
+    });
+    if (!hasUnpreparedBoundary && scheduledBoundaryWarmups.size === 0) {
+      return;
+    }
+  }
 }
 
 export async function setLocale({ locale }: {

@@ -139,6 +139,17 @@ const rows = [];
     })).toEqual(['ChatInput__real']);
   });
 
+  it('rejects direct locale implementation imports written as static template literals', () => {
+    expect(() => collectBoundaryStringKeys({
+      moduleId: '/src/example.ts',
+      sourceCode: `\
+export async function loadMessage(): Promise<unknown> {
+  return import(\`@/strings/messages/ChatInput__type_a_message/en\`);
+}
+`,
+    })).toThrow('Application code must access messages through @/strings.');
+  });
+
   it('rejects direct locale implementation imports from application code', () => {
     expect(() => collectBoundaryStringKeys({
       moduleId: '/src/example.ts',

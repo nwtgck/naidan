@@ -73,6 +73,15 @@ describe('Boundary Strings virtual modules', () => {
     })).toThrow('Invalid boundary module ID');
   });
 
+  it('rejects a project without the English catalog', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-boundary-strings-'));
+    temporaryDirectories.push(root);
+
+    expect(() => readBoundaryStringMessages({ root })).toThrow(
+      'English locale catalog was not found.',
+    );
+  });
+
   it('reads locale modules without creating generated source files', () => {
     const root = createFixtureRoot();
     expect(readBoundaryStringMessages({ root })).toEqual([{

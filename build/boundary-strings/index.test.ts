@@ -128,6 +128,33 @@ afterEach(() => {
 });
 
 describe('Boundary Strings Vite plugin', () => {
+  it('creates stable boundary IDs across different checkout directories', async () => {
+    const roots = [createFixtureRoot(), createFixtureRoot()];
+    const boundaryModuleIds: string[][] = [];
+
+    for (const root of roots) {
+      writeFile({
+        filePath: path.join(root, 'src/main.ts'),
+        source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+      });
+      const chunks = await buildFixture({
+        plugins: createBoundaryStringsPlugin(),
+        root,
+      });
+      boundaryModuleIds.push(chunks.flatMap((chunk) => {
+        return Object.keys(chunk.modules).filter((moduleId) => {
+          return moduleId.startsWith('\0virtual:naidan-boundary-strings/boundary/');
+        });
+      }).sort());
+    }
+
+    expect(boundaryModuleIds[0]).toEqual(boundaryModuleIds[1]);
+  });
+
   it('keeps root-boundary locale implementations out of the initial static graph', async () => {
     const root = createFixtureRoot();
     writeFile({

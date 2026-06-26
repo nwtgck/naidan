@@ -73,6 +73,7 @@ interface UseSettingsApi {
 }
 
 let initPromise: Promise<void> | null = null;
+let localeChangeQueue: Promise<void> = Promise.resolve();
 
 // --- Synchronization ---
 
@@ -434,14 +435,20 @@ export function useSettings(): UseSettingsApi {
   async function setLocale({ locale }: {
     locale: UiLocale,
   }): Promise<void> {
-    await prepareLocale({ locale });
-    await updateExperimental({
-      updater: ({ experimental }) => ({
-        ...experimental,
-        locale,
-      }),
+    const operation = localeChangeQueue.catch(() => {
+      // A failed locale change must not prevent a later explicit request.
+    }).then(async () => {
+      await prepareLocale({ locale });
+      await updateExperimental({
+        updater: ({ experimental }) => ({
+          ...experimental,
+          locale,
+        }),
+      });
+      await setStringLocale({ locale });
     });
-    await setStringLocale({ locale });
+    localeChangeQueue = operation;
+    await operation;
   }
 
   function setSearchPreviewMode({ mode }: { mode: SearchPreviewMode }) {
@@ -469,6 +476,7 @@ export function useSettings(): UseSettingsApi {
     isFetchingModels.value = false;
     _searchPreviewMode.value = 'always';
     initPromise = null;
+    localeChangeQueue = Promise.resolve();
   }
 
   return {

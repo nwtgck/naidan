@@ -275,7 +275,7 @@ export function readBoundaryStringMessages({ root }: {
 }): readonly BoundaryStringMessageDefinition[] {
   const englishCatalogPath = path.resolve(root, 'src/strings/catalogs/en.ts');
   if (!fs.existsSync(englishCatalogPath)) {
-    return [];
+    throw new Error('[naidan-boundary-strings] English locale catalog was not found.');
   }
 
   const englishKeys = parseCatalog({

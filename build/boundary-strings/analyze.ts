@@ -274,7 +274,7 @@ function validateNoDirectLocaleImports({ moduleId, sourceFile }: {
       const argument = node.arguments[0];
       if (
         argument !== undefined
-        && ts.isStringLiteral(argument)
+        && ts.isStringLiteralLike(argument)
         && isDirectLocaleModuleSpecifier({ moduleId, moduleSpecifier: argument.text })
       ) {
         reject({ moduleSpecifier: argument.text });

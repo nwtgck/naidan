@@ -306,6 +306,77 @@ describe('Boundary Strings runtime', () => {
     expect(newLoader).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a replacement boundary warmed when the obsolete warmup fails later', async () => {
+    vi.useFakeTimers();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let rejectOld: ((error: Error) => void) | undefined;
+    const oldModule = new Promise<StringBoundaryModule>((_resolve, reject) => {
+      rejectOld = reject;
+    });
+    registerStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__type_a_message'],
+      loaders: {
+        en: async () => oldModule,
+        ja: resolvedModule({ module: { ChatInput__type_a_message: () => '古い' } }),
+      },
+    });
+    await vi.advanceTimersByTimeAsync(200);
+
+    registerStringBoundary({
+      boundaryId: 'chat-input',
+      keys: ['ChatInput__type_a_message'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__type_a_message: () => 'New message' } }),
+        ja: resolvedModule({ module: { ChatInput__type_a_message: () => '新しい' } }),
+      },
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(TEST_ONLY.warmedBoundaryIds.has('chat-input')).toBe(true);
+
+    rejectOld?.(new Error('Obsolete warmup failed'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(TEST_ONLY.warmedBoundaryIds.has('chat-input')).toBe(true);
+    errorSpy.mockRestore();
+  });
+
+  it('includes a boundary registered while a locale switch is in flight', async () => {
+    let resolveFirstJapanese: ((module: StringBoundaryModule) => void) | undefined;
+    const firstJapaneseModule = new Promise<StringBoundaryModule>((resolve) => {
+      resolveFirstJapanese = resolve;
+    });
+    const secondJapaneseLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'キャンセル' },
+    }));
+    registerStringBoundary({
+      boundaryId: 'first-boundary',
+      keys: ['ChatInput__type_a_message'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        ja: async () => firstJapaneseModule,
+      },
+    });
+
+    const switching = setLocale({ locale: 'ja' });
+    registerStringBoundary({
+      boundaryId: 'second-boundary',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__cancel: () => 'Cancel' } }),
+        ja: secondJapaneseLoader,
+      },
+    });
+    resolveFirstJapanese?.({ ChatInput__type_a_message: () => 'メッセージを入力...' });
+
+    await switching;
+
+    expect(currentLocale.value).toBe('ja');
+    expect(secondJapaneseLoader).toHaveBeenCalledTimes(1);
+    expect(lazyStrings.ChatInput__cancel()).toBe('キャンセル');
+  });
+
   it('keeps the latest locale request when switches overlap', async () => {
     let resolveJapanese: ((module: StringBoundaryModule) => void) | undefined;
     const japaneseModule = new Promise<StringBoundaryModule>((resolve) => {
