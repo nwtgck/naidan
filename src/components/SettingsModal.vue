@@ -182,7 +182,7 @@ const recipeJsonInput = ref('');
 const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
 const recipeAnalysisError = ref<string | null>(null);
 
-async function handleAnalyzeRecipes(): Promise<void> {
+function handleAnalyzeRecipes() {
   const trimmed = recipeJsonInput.value.trim();
   if (!trimmed) {
     analyzedRecipes.value = [];
@@ -196,13 +196,15 @@ async function handleAnalyzeRecipes(): Promise<void> {
 
   for (const result of parseResults) {
     if (!result.success) {
-      recipeAnalysisError.value = await ensureStrings.SettingsModal__parse_error({ errorMessage: result.error });
+      // TODO: Localize analysis errors without making synchronous parsing state asynchronous.
+      recipeAnalysisError.value = `Parse error: ${result.error}`;
       continue;
     }
 
     const validation = ChatGroupRecipeSchema.safeParse(result.data);
     if (!validation.success) {
-      recipeAnalysisError.value = await ensureStrings.SettingsModal__validation_error({ errorMessage: validation.error.message });
+      // TODO: Localize analysis errors without making synchronous parsing state asynchronous.
+      recipeAnalysisError.value = `Validation error: ${validation.error.message}`;
       continue;
     }
 
@@ -220,7 +222,8 @@ async function handleAnalyzeRecipes(): Promise<void> {
   }
 
   if (newAnalyzed.length === 0 && !recipeAnalysisError.value) {
-    recipeAnalysisError.value = await ensureStrings.SettingsModal__no_valid_recipes_found_in_input();
+    // TODO: Localize this validation result without changing the synchronous analysis contract.
+    recipeAnalysisError.value = 'No valid recipes found in input.';
   }
 
   analyzedRecipes.value = newAnalyzed;
@@ -228,7 +231,7 @@ async function handleAnalyzeRecipes(): Promise<void> {
 
 // Automatically analyze on input change
 watch(recipeJsonInput, () => {
-  void handleAnalyzeRecipes();
+  handleAnalyzeRecipes();
 });
 
 // Watch for modal open to reset form

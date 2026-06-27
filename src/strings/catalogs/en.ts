@@ -9,17 +9,12 @@ import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/en';
 import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/en';
 import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/en';
 import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/en';
-import { SHARED__default } from '@/strings/messages/SHARED__default/en';
 import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/en';
 import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/en';
 import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/en';
 import { SHARED__mount } from '@/strings/messages/SHARED__mount/en';
 import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/en';
 import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/en';
-import { SHARED__use_global } from '@/strings/messages/SHARED__use_global/en';
-import { SHARED__use_group } from '@/strings/messages/SHARED__use_group/en';
-import { SHARED__value_from_global } from '@/strings/messages/SHARED__value_from_global/en';
-import { SHARED__value_from_group } from '@/strings/messages/SHARED__value_from_group/en';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/en';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/en';
 
@@ -50,6 +45,7 @@ import { ChatAttachMenu__requires_a_chromium_based_browser } from '@/strings/mes
 import { ChatAttachMenu__what_is_folder_copy } from '@/strings/messages/ChatAttachMenu__what_is_folder_copy/en';
 import { ChatAttachMenu__what_is_folder_link } from '@/strings/messages/ChatAttachMenu__what_is_folder_link/en';
 import { ChatAttachMenu__why_is_folder_link_unavailable } from '@/strings/messages/ChatAttachMenu__why_is_folder_link_unavailable/en';
+import { ChatDebugInspector__active } from '@/strings/messages/ChatDebugInspector__active/en';
 import { ChatDebugInspector__chat_inspector } from '@/strings/messages/ChatDebugInspector__chat_inspector/en';
 import { ChatDebugInspector__collapse_tree } from '@/strings/messages/ChatDebugInspector__collapse_tree/en';
 import { ChatDebugInspector__context_path } from '@/strings/messages/ChatDebugInspector__context_path/en';
@@ -57,12 +53,14 @@ import { ChatDebugInspector__data_explorer } from '@/strings/messages/ChatDebugI
 import { ChatDebugInspector__expand_tree } from '@/strings/messages/ChatDebugInspector__expand_tree/en';
 import { ChatDebugInspector__fake_lm } from '@/strings/messages/ChatDebugInspector__fake_lm/en';
 import { ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds } from '@/strings/messages/ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds/en';
+import { ChatDebugInspector__full_json } from '@/strings/messages/ChatDebugInspector__full_json/en';
 import { ChatDebugInspector__on } from '@/strings/messages/ChatDebugInspector__on/en';
 import { ChatDebugInspector__open_at_this_message } from '@/strings/messages/ChatDebugInspector__open_at_this_message/en';
 import { ChatDebugInspector__select_a_node_to_inspect } from '@/strings/messages/ChatDebugInspector__select_a_node_to_inspect/en';
 import { ChatDebugInspector__set_this_chat_to_ollama_and_enable_global_fake_lm_debug_mode } from '@/strings/messages/ChatDebugInspector__set_this_chat_to_ollama_and_enable_global_fake_lm_debug_mode/en';
 import { ChatDebugInspector__toggle_content_collapse } from '@/strings/messages/ChatDebugInspector__toggle_content_collapse/en';
 import { ChatDebugInspector__toggle_highlighting } from '@/strings/messages/ChatDebugInspector__toggle_highlighting/en';
+import { ChatDebugInspector__tree } from '@/strings/messages/ChatDebugInspector__tree/en';
 import { ChatDebugTreeNode__collapse_content } from '@/strings/messages/ChatDebugTreeNode__collapse_content/en';
 import { ChatDebugTreeNode__error } from '@/strings/messages/ChatDebugTreeNode__error/en';
 import { ChatDebugTreeNode__generated_image_reference } from '@/strings/messages/ChatDebugTreeNode__generated_image_reference/en';
@@ -164,7 +162,6 @@ import { ChatMediaShelf__close_shelf } from '@/strings/messages/ChatMediaShelf__
 import { ChatMediaShelf__copied } from '@/strings/messages/ChatMediaShelf__copied/en';
 import { ChatMediaShelf__currently_forward_1_n_first } from '@/strings/messages/ChatMediaShelf__currently_forward_1_n_first/en';
 import { ChatMediaShelf__currently_reverse_n_n_first } from '@/strings/messages/ChatMediaShelf__currently_reverse_n_n_first/en';
-import { ChatMediaShelf__failed_to_embed_metadata_in_image } from '@/strings/messages/ChatMediaShelf__failed_to_embed_metadata_in_image/en';
 import { ChatMediaShelf__forward } from '@/strings/messages/ChatMediaShelf__forward/en';
 import { ChatMediaShelf__generated_image } from '@/strings/messages/ChatMediaShelf__generated_image/en';
 import { ChatMediaShelf__jump } from '@/strings/messages/ChatMediaShelf__jump/en';
@@ -206,9 +203,9 @@ import { ChatPane__ai } from '@/strings/messages/ChatPane__ai/en';
 import { ChatPane__arguments } from '@/strings/messages/ChatPane__arguments/en';
 import { ChatPane__binary_error_detail_missing } from '@/strings/messages/ChatPane__binary_error_detail_missing/en';
 import { ChatPane__binary_object_missing } from '@/strings/messages/ChatPane__binary_object_missing/en';
-import { ChatPane__chat } from '@/strings/messages/ChatPane__chat/en';
 import { ChatPane__drop_files_or_folders_to_attach } from '@/strings/messages/ChatPane__drop_files_or_folders_to_attach/en';
 import { ChatPane__failed_to_generate_share_url } from '@/strings/messages/ChatPane__failed_to_generate_share_url/en';
+import { ChatPane__fake_lm_enabled_for_this_chat_via } from '@/strings/messages/ChatPane__fake_lm_enabled_for_this_chat_via/en';
 import { ChatPane__process_sequence } from '@/strings/messages/ChatPane__process_sequence/en';
 import { ChatPane__result } from '@/strings/messages/ChatPane__result/en';
 import { ChatPane__share_url_copied_to_clipboard } from '@/strings/messages/ChatPane__share_url_copied_to_clipboard/en';
@@ -325,7 +322,6 @@ import { ConnectionTab__save_as_new_profile } from '@/strings/messages/Connectio
 import { ConnectionTab__save_changes } from '@/strings/messages/ConnectionTab__save_changes/en';
 import { ConnectionTab__save_failed } from '@/strings/messages/ConnectionTab__save_failed/en';
 import { ConnectionTab__settings_saved } from '@/strings/messages/ConnectionTab__settings_saved/en';
-import { ConnectionTab__setup_url_copied } from '@/strings/messages/ConnectionTab__setup_url_copied/en';
 import { ConnectionTab__title_generation_model } from '@/strings/messages/ConnectionTab__title_generation_model/en';
 import { ConnectionTab__transformers_js_experimental } from '@/strings/messages/ConnectionTab__transformers_js_experimental/en';
 import { ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions } from '@/strings/messages/ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions/en';
@@ -353,13 +349,11 @@ import { DebugIndexPage__debug_tools } from '@/strings/messages/DebugIndexPage__
 import { DebugIndexPage__file_protocol_standalone_verification } from '@/strings/messages/DebugIndexPage__file_protocol_standalone_verification/en';
 import { DebugIndexPage__open_an_isolated_diagnostic_page_without_adding_debug_only_behavior_to_the_normal_application_flow } from '@/strings/messages/DebugIndexPage__open_an_isolated_diagnostic_page_without_adding_debug_only_behavior_to_the_normal_application_flow/en';
 import { DebugIndexPage__verify_generated_scripts_routing_lazy_styles_systemjs_recovery_and_the_reusable_worker_factory } from '@/strings/messages/DebugIndexPage__verify_generated_scripts_routing_lazy_styles_systemjs_recovery_and_the_reusable_worker_factory/en';
-import { DebugPanel__application_state_synchronized } from '@/strings/messages/DebugPanel__application_state_synchronized/en';
 import { DebugPanel__clear_logs } from '@/strings/messages/DebugPanel__clear_logs/en';
 import { DebugPanel__close_panel } from '@/strings/messages/DebugPanel__close_panel/en';
 import { DebugPanel__development_tools } from '@/strings/messages/DebugPanel__development_tools/en';
 import { DebugPanel__error_count } from '@/strings/messages/DebugPanel__error_count/en';
 import { DebugPanel__explore_opfs } from '@/strings/messages/DebugPanel__explore_opfs/en';
-import { DebugPanel__intentional_test_error_triggered_by_user } from '@/strings/messages/DebugPanel__intentional_test_error_triggered_by_user/en';
 import { DebugPanel__no_events_recorded } from '@/strings/messages/DebugPanel__no_events_recorded/en';
 import { DebugPanel__system_events } from '@/strings/messages/DebugPanel__system_events/en';
 import { DebugPanel__total_count } from '@/strings/messages/DebugPanel__total_count/en';
@@ -512,8 +506,10 @@ import { ImageDownloadButton__with_metadata } from '@/strings/messages/ImageDown
 import { ImageEditor__apply_resize } from '@/strings/messages/ImageEditor__apply_resize/en';
 import { ImageEditor__black } from '@/strings/messages/ImageEditor__black/en';
 import { ImageEditor__close } from '@/strings/messages/ImageEditor__close/en';
+import { ImageEditor__close_and_discard_unsaved_changes } from '@/strings/messages/ImageEditor__close_and_discard_unsaved_changes/en';
 import { ImageEditor__crop } from '@/strings/messages/ImageEditor__crop/en';
 import { ImageEditor__crop_to_selection } from '@/strings/messages/ImageEditor__crop_to_selection/en';
+import { ImageEditor__discard } from '@/strings/messages/ImageEditor__discard/en';
 import { ImageEditor__discard_changes } from '@/strings/messages/ImageEditor__discard_changes/en';
 import { ImageEditor__elliptical_selection } from '@/strings/messages/ImageEditor__elliptical_selection/en';
 import { ImageEditor__fill_everything_outside_selection } from '@/strings/messages/ImageEditor__fill_everything_outside_selection/en';
@@ -526,6 +522,7 @@ import { ImageEditor__image_editor } from '@/strings/messages/ImageEditor__image
 import { ImageEditor__maintain_aspect_ratio } from '@/strings/messages/ImageEditor__maintain_aspect_ratio/en';
 import { ImageEditor__mask_in } from '@/strings/messages/ImageEditor__mask_in/en';
 import { ImageEditor__mask_out } from '@/strings/messages/ImageEditor__mask_out/en';
+import { ImageEditor__original } from '@/strings/messages/ImageEditor__original/en';
 import { ImageEditor__output_format } from '@/strings/messages/ImageEditor__output_format/en';
 import { ImageEditor__pick_color_from_canvas } from '@/strings/messages/ImageEditor__pick_color_from_canvas/en';
 import { ImageEditor__recent } from '@/strings/messages/ImageEditor__recent/en';
@@ -765,7 +762,6 @@ import { OnboardingModal__back } from '@/strings/messages/OnboardingModal__back/
 import { OnboardingModal__cancel } from '@/strings/messages/OnboardingModal__cancel/en';
 import { OnboardingModal__check_connection } from '@/strings/messages/OnboardingModal__check_connection/en';
 import { OnboardingModal__connecting } from '@/strings/messages/OnboardingModal__connecting/en';
-import { OnboardingModal__connection_attempt_cancelled } from '@/strings/messages/OnboardingModal__connection_attempt_cancelled/en';
 import { OnboardingModal__custom_http_headers } from '@/strings/messages/OnboardingModal__custom_http_headers/en';
 import { OnboardingModal__default_model } from '@/strings/messages/OnboardingModal__default_model/en';
 import { OnboardingModal__do_not_have_a_server } from '@/strings/messages/OnboardingModal__do_not_have_a_server/en';
@@ -791,7 +787,6 @@ import { OnboardingModal__setup_endpoint_description } from '@/strings/messages/
 import { OnboardingModal__successfully_connected } from '@/strings/messages/OnboardingModal__successfully_connected/en';
 import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingModal__transformers_js/en';
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/en';
-import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/en';
 import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/en';
 import { ProviderProfilePreview__configuration_preview } from '@/strings/messages/ProviderProfilePreview__configuration_preview/en';
 import { ProviderProfilePreview__endpoint_url } from '@/strings/messages/ProviderProfilePreview__endpoint_url/en';
@@ -855,13 +850,10 @@ import { RecipeImportTab__detected_recipes } from '@/strings/messages/RecipeImpo
 import { RecipeImportTab__import_chat_group_recipes } from '@/strings/messages/RecipeImportTab__import_chat_group_recipes/en';
 import { RecipeImportTab__import_selected } from '@/strings/messages/RecipeImportTab__import_selected/en';
 import { RecipeImportTab__model_selection } from '@/strings/messages/RecipeImportTab__model_selection/en';
-import { RecipeImportTab__no_valid_recipes_found_in_input } from '@/strings/messages/RecipeImportTab__no_valid_recipes_found_in_input/en';
-import { RecipeImportTab__parse_error } from '@/strings/messages/RecipeImportTab__parse_error/en';
 import { RecipeImportTab__paste_recipe_json_concatenated_json_objects_supported } from '@/strings/messages/RecipeImportTab__paste_recipe_json_concatenated_json_objects_supported/en';
 import { RecipeImportTab__recipes } from '@/strings/messages/RecipeImportTab__recipes/en';
 import { RecipeImportTab__system_prompt } from '@/strings/messages/RecipeImportTab__system_prompt/en';
 import { RecipeImportTab__use_default_model } from '@/strings/messages/RecipeImportTab__use_default_model/en';
-import { RecipeImportTab__validation_error } from '@/strings/messages/RecipeImportTab__validation_error/en';
 import { RelativeTime__days_ago } from '@/strings/messages/RelativeTime__days_ago/en';
 import { RelativeTime__hours_ago } from '@/strings/messages/RelativeTime__hours_ago/en';
 import { RelativeTime__just_now } from '@/strings/messages/RelativeTime__just_now/en';
@@ -892,8 +884,6 @@ import { SettingsModal__failed_to_import_recipes } from '@/strings/messages/Sett
 import { SettingsModal__files } from '@/strings/messages/SettingsModal__files/en';
 import { SettingsModal__folders } from '@/strings/messages/SettingsModal__folders/en';
 import { SettingsModal__keep_editing } from '@/strings/messages/SettingsModal__keep_editing/en';
-import { SettingsModal__no_valid_recipes_found_in_input } from '@/strings/messages/SettingsModal__no_valid_recipes_found_in_input/en';
-import { SettingsModal__parse_error } from '@/strings/messages/SettingsModal__parse_error/en';
 import { SettingsModal__provider_profiles } from '@/strings/messages/SettingsModal__provider_profiles/en';
 import { SettingsModal__recipes } from '@/strings/messages/SettingsModal__recipes/en';
 import { SettingsModal__settings } from '@/strings/messages/SettingsModal__settings/en';
@@ -902,7 +892,6 @@ import { SettingsModal__storage } from '@/strings/messages/SettingsModal__storag
 import { SettingsModal__successfully_imported_recipes_as_chat_groups } from '@/strings/messages/SettingsModal__successfully_imported_recipes_as_chat_groups/en';
 import { SettingsModal__tools } from '@/strings/messages/SettingsModal__tools/en';
 import { SettingsModal__transformers_js } from '@/strings/messages/SettingsModal__transformers_js/en';
-import { SettingsModal__validation_error } from '@/strings/messages/SettingsModal__validation_error/en';
 import { SidebarDebugControls__debug_events } from '@/strings/messages/SidebarDebugControls__debug_events/en';
 import { SidebarDebugControls__file_explorer } from '@/strings/messages/SidebarDebugControls__file_explorer/en';
 import { SidebarDebugControls__more_actions } from '@/strings/messages/SidebarDebugControls__more_actions/en';
@@ -951,9 +940,6 @@ import { StandaloneVerificationPage__these_checks_require_a_standalone_build_ope
 import { StandaloneVerificationPage__verification_failed_to_run } from '@/strings/messages/StandaloneVerificationPage__verification_failed_to_run/en';
 import { StandaloneVerificationPage__verification_summary } from '@/strings/messages/StandaloneVerificationPage__verification_summary/en';
 import { StorageService__an_error_occurred_during_a_storage_operation } from '@/strings/messages/StorageService__an_error_occurred_during_a_storage_operation/en';
-import { StorageService__storage_is_busy_waiting_for_other_tabs } from '@/strings/messages/StorageService__storage_is_busy_waiting_for_other_tabs/en';
-import { StorageService__storage_operation_completed } from '@/strings/messages/StorageService__storage_operation_completed/en';
-import { StorageService__storage_operation_is_taking_longer_than_expected } from '@/strings/messages/StorageService__storage_operation_is_taking_longer_than_expected/en';
 import { StorageTab__active } from '@/strings/messages/StorageTab__active/en';
 import { StorageTab__active_storage_provider } from '@/strings/messages/StorageTab__active_storage_provider/en';
 import { StorageTab__attachments_will_be_inaccessible } from '@/strings/messages/StorageTab__attachments_will_be_inaccessible/en';
@@ -1013,6 +999,7 @@ import { StorageTab__unsupported } from '@/strings/messages/StorageTab__unsuppor
 import { ThemeToggle__dark_mode } from '@/strings/messages/ThemeToggle__dark_mode/en';
 import { ThemeToggle__light_mode } from '@/strings/messages/ThemeToggle__light_mode/en';
 import { ThemeToggle__system_mode } from '@/strings/messages/ThemeToggle__system_mode/en';
+import { ToolCallGroupItem__used_tools } from '@/strings/messages/ToolCallGroupItem__used_tools/en';
 import { ToolConfigHierarchySettings__access_global_knowledge } from '@/strings/messages/ToolConfigHierarchySettings__access_global_knowledge/en';
 import { ToolConfigHierarchySettings__calculator } from '@/strings/messages/ToolConfigHierarchySettings__calculator/en';
 import { ToolConfigHierarchySettings__choices } from '@/strings/messages/ToolConfigHierarchySettings__choices/en';
@@ -1027,6 +1014,8 @@ import { ToolConfigHierarchySettings__solve_math_expressions } from '@/strings/m
 import { ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here } from '@/strings/messages/ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here/en';
 import { ToolConfigHierarchySettings__turn_off } from '@/strings/messages/ToolConfigHierarchySettings__turn_off/en';
 import { ToolConfigHierarchySettings__turn_on } from '@/strings/messages/ToolConfigHierarchySettings__turn_on/en';
+import { ToolConfigHierarchySettings__use_global } from '@/strings/messages/ToolConfigHierarchySettings__use_global/en';
+import { ToolConfigHierarchySettings__use_group } from '@/strings/messages/ToolConfigHierarchySettings__use_group/en';
 import { ToolConfigHierarchySettings__wikipedia } from '@/strings/messages/ToolConfigHierarchySettings__wikipedia/en';
 import { TransformersJsLoadingIndicator__downloading_model } from '@/strings/messages/TransformersJsLoadingIndicator__downloading_model/en';
 import { TransformersJsLoadingIndicator__downloading_model_weights_from_hugging_face_this_only_happens_once_per_model } from '@/strings/messages/TransformersJsLoadingIndicator__downloading_model_weights_from_hugging_face_this_only_happens_once_per_model/en';
@@ -1183,7 +1172,6 @@ import { blockMarkdown__copied } from '@/strings/messages/blockMarkdown__copied/
 import { blockMarkdown__copy_code } from '@/strings/messages/blockMarkdown__copy_code/en';
 import { blockMarkdown__copy_source } from '@/strings/messages/blockMarkdown__copy_source/en';
 import { blockMarkdown__external_image } from '@/strings/messages/blockMarkdown__external_image/en';
-import { blockMarkdown__failed_to_embed_metadata_in_image } from '@/strings/messages/blockMarkdown__failed_to_embed_metadata_in_image/en';
 import { blockMarkdown__failed_to_load_image } from '@/strings/messages/blockMarkdown__failed_to_load_image/en';
 import { blockMarkdown__failed_to_render_mermaid_diagram } from '@/strings/messages/blockMarkdown__failed_to_render_mermaid_diagram/en';
 import { blockMarkdown__image_not_found_in_storage } from '@/strings/messages/blockMarkdown__image_not_found_in_storage/en';
@@ -1271,7 +1259,6 @@ import { fileExplorer__file_is_too_large_to_preview } from '@/strings/messages/f
 import { fileExplorer__files } from '@/strings/messages/fileExplorer__files/en';
 import { fileExplorer__filter_by_name } from '@/strings/messages/fileExplorer__filter_by_name/en';
 import { fileExplorer__folder } from '@/strings/messages/fileExplorer__folder/en';
-import { fileExplorer__folder_is_no_longer_available } from '@/strings/messages/fileExplorer__folder_is_no_longer_available/en';
 import { fileExplorer__format } from '@/strings/messages/fileExplorer__format/en';
 import { fileExplorer__get_info } from '@/strings/messages/fileExplorer__get_info/en';
 import { fileExplorer__go_back } from '@/strings/messages/fileExplorer__go_back/en';
@@ -1306,6 +1293,9 @@ import { fileExplorer__unlock_to_enable } from '@/strings/messages/fileExplorer_
 import { fileExplorer__unlocked_click_to_lock } from '@/strings/messages/fileExplorer__unlocked_click_to_lock/en';
 import { fileExplorer__upload_files } from '@/strings/messages/fileExplorer__upload_files/en';
 import { fileExplorer__upload_files_unlock_to_enable } from '@/strings/messages/fileExplorer__upload_files_unlock_to_enable/en';
+import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/en';
+import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/en';
+import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/en';
 import { toolCall__arguments } from '@/strings/messages/toolCall__arguments/en';
 import { toolCall__code } from '@/strings/messages/toolCall__code/en';
 import { toolCall__disable_wrap } from '@/strings/messages/toolCall__disable_wrap/en';
@@ -1319,8 +1309,6 @@ import { toolCall__raw_json } from '@/strings/messages/toolCall__raw_json/en';
 import { toolCall__result } from '@/strings/messages/toolCall__result/en';
 import { toolCall__show_tools_count } from '@/strings/messages/toolCall__show_tools_count/en';
 import { toolCall__tool_executions } from '@/strings/messages/toolCall__tool_executions/en';
-import { toolCall__used_tools } from '@/strings/messages/toolCall__used_tools/en';
-import { toolCall__used_tools_and_more } from '@/strings/messages/toolCall__used_tools_and_more/en';
 import { useBinaryActions__delete_binary_object } from '@/strings/messages/useBinaryActions__delete_binary_object/en';
 import { useBinaryActions__delete_binary_object_warning } from '@/strings/messages/useBinaryActions__delete_binary_object_warning/en';
 import { useBinaryActions__delete_permanently } from '@/strings/messages/useBinaryActions__delete_permanently/en';
@@ -1332,10 +1320,10 @@ import { useChatDisplayFlow__tool_results } from '@/strings/messages/useChatDisp
 import { useChatDisplayFlow__used_tools } from '@/strings/messages/useChatDisplayFlow__used_tools/en';
 import { useChatLifecycle__chat_was_deleted } from '@/strings/messages/useChatLifecycle__chat_was_deleted/en';
 import { useChatLifecycle__undo } from '@/strings/messages/useChatLifecycle__undo/en';
+import { useChatOrganization__copy_of_chat_group } from '@/strings/messages/useChatOrganization__copy_of_chat_group/en';
 import { useImageGeneration__failed_to_generate_image } from '@/strings/messages/useImageGeneration__failed_to_generate_image/en';
 import { useImageGeneration__failed_to_reencode_image } from '@/strings/messages/useImageGeneration__failed_to_reencode_image/en';
 import { useImageGeneration__no_suitable_image_generation_model_found } from '@/strings/messages/useImageGeneration__no_suitable_image_generation_model_found/en';
-import { usePrompt__prompt } from '@/strings/messages/usePrompt__prompt/en';
 import { useSettings__data_successfully_imported_from_url } from '@/strings/messages/useSettings__data_successfully_imported_from_url/en';
 import { useSettings__failed_to_fetch_models_for_settings } from '@/strings/messages/useSettings__failed_to_fetch_models_for_settings/en';
 import { useSettings__failed_to_import_data_from_url } from '@/strings/messages/useSettings__failed_to_import_data_from_url/en';
@@ -1396,7 +1384,6 @@ import { volumes__linked_folder } from '@/strings/messages/volumes__linked_folde
 import { volumes__linking_external_folders_not_supported } from '@/strings/messages/volumes__linking_external_folders_not_supported/en';
 import { volumes__more_actions } from '@/strings/messages/volumes__more_actions/en';
 import { volumes__mount_path_already_in_use } from '@/strings/messages/volumes__mount_path_already_in_use/en';
-import { volumes__name_cannot_be_empty } from '@/strings/messages/volumes__name_cannot_be_empty/en';
 import { volumes__no_folders_configured } from '@/strings/messages/volumes__no_folders_configured/en';
 import { volumes__not_in_use } from '@/strings/messages/volumes__not_in_use/en';
 import { volumes__not_in_use_globally } from '@/strings/messages/volumes__not_in_use_globally/en';
@@ -1445,17 +1432,12 @@ export const en = {
   SHARED__connection_failed_check_url_or_provider,
   SHARED__current_chat,
   SHARED__current_chat_plus_chat_group,
-  SHARED__default,
   SHARED__expose_chat_discovery_paths,
   SHARED__generated_image,
   SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp,
   SHARED__mount,
   SHARED__new_chat,
   SHARED__no_models_found_at_this_endpoint,
-  SHARED__use_global,
-  SHARED__use_group,
-  SHARED__value_from_global,
-  SHARED__value_from_group,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
 
@@ -1486,6 +1468,7 @@ export const en = {
   ChatAttachMenu__what_is_folder_copy,
   ChatAttachMenu__what_is_folder_link,
   ChatAttachMenu__why_is_folder_link_unavailable,
+  ChatDebugInspector__active,
   ChatDebugInspector__chat_inspector,
   ChatDebugInspector__collapse_tree,
   ChatDebugInspector__context_path,
@@ -1493,12 +1476,14 @@ export const en = {
   ChatDebugInspector__expand_tree,
   ChatDebugInspector__fake_lm,
   ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds,
+  ChatDebugInspector__full_json,
   ChatDebugInspector__on,
   ChatDebugInspector__open_at_this_message,
   ChatDebugInspector__select_a_node_to_inspect,
   ChatDebugInspector__set_this_chat_to_ollama_and_enable_global_fake_lm_debug_mode,
   ChatDebugInspector__toggle_content_collapse,
   ChatDebugInspector__toggle_highlighting,
+  ChatDebugInspector__tree,
   ChatDebugTreeNode__collapse_content,
   ChatDebugTreeNode__error,
   ChatDebugTreeNode__generated_image_reference,
@@ -1600,7 +1585,6 @@ export const en = {
   ChatMediaShelf__copied,
   ChatMediaShelf__currently_forward_1_n_first,
   ChatMediaShelf__currently_reverse_n_n_first,
-  ChatMediaShelf__failed_to_embed_metadata_in_image,
   ChatMediaShelf__forward,
   ChatMediaShelf__generated_image,
   ChatMediaShelf__jump,
@@ -1642,9 +1626,9 @@ export const en = {
   ChatPane__arguments,
   ChatPane__binary_error_detail_missing,
   ChatPane__binary_object_missing,
-  ChatPane__chat,
   ChatPane__drop_files_or_folders_to_attach,
   ChatPane__failed_to_generate_share_url,
+  ChatPane__fake_lm_enabled_for_this_chat_via,
   ChatPane__process_sequence,
   ChatPane__result,
   ChatPane__share_url_copied_to_clipboard,
@@ -1761,7 +1745,6 @@ export const en = {
   ConnectionTab__save_changes,
   ConnectionTab__save_failed,
   ConnectionTab__settings_saved,
-  ConnectionTab__setup_url_copied,
   ConnectionTab__title_generation_model,
   ConnectionTab__transformers_js_experimental,
   ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions,
@@ -1789,13 +1772,11 @@ export const en = {
   DebugIndexPage__file_protocol_standalone_verification,
   DebugIndexPage__open_an_isolated_diagnostic_page_without_adding_debug_only_behavior_to_the_normal_application_flow,
   DebugIndexPage__verify_generated_scripts_routing_lazy_styles_systemjs_recovery_and_the_reusable_worker_factory,
-  DebugPanel__application_state_synchronized,
   DebugPanel__clear_logs,
   DebugPanel__close_panel,
   DebugPanel__development_tools,
   DebugPanel__error_count,
   DebugPanel__explore_opfs,
-  DebugPanel__intentional_test_error_triggered_by_user,
   DebugPanel__no_events_recorded,
   DebugPanel__system_events,
   DebugPanel__total_count,
@@ -1948,8 +1929,10 @@ export const en = {
   ImageEditor__apply_resize,
   ImageEditor__black,
   ImageEditor__close,
+  ImageEditor__close_and_discard_unsaved_changes,
   ImageEditor__crop,
   ImageEditor__crop_to_selection,
+  ImageEditor__discard,
   ImageEditor__discard_changes,
   ImageEditor__elliptical_selection,
   ImageEditor__fill_everything_outside_selection,
@@ -1962,6 +1945,7 @@ export const en = {
   ImageEditor__maintain_aspect_ratio,
   ImageEditor__mask_in,
   ImageEditor__mask_out,
+  ImageEditor__original,
   ImageEditor__output_format,
   ImageEditor__pick_color_from_canvas,
   ImageEditor__recent,
@@ -2201,7 +2185,6 @@ export const en = {
   OnboardingModal__cancel,
   OnboardingModal__check_connection,
   OnboardingModal__connecting,
-  OnboardingModal__connection_attempt_cancelled,
   OnboardingModal__custom_http_headers,
   OnboardingModal__default_model,
   OnboardingModal__do_not_have_a_server,
@@ -2227,7 +2210,6 @@ export const en = {
   OnboardingModal__successfully_connected,
   OnboardingModal__transformers_js,
   OnboardingModal__value,
-  PWAManager__app_ready_to_work_offline,
   PWAUpdateNotification__reload_to_update,
   ProviderProfilePreview__configuration_preview,
   ProviderProfilePreview__endpoint_url,
@@ -2291,13 +2273,10 @@ export const en = {
   RecipeImportTab__import_chat_group_recipes,
   RecipeImportTab__import_selected,
   RecipeImportTab__model_selection,
-  RecipeImportTab__no_valid_recipes_found_in_input,
-  RecipeImportTab__parse_error,
   RecipeImportTab__paste_recipe_json_concatenated_json_objects_supported,
   RecipeImportTab__recipes,
   RecipeImportTab__system_prompt,
   RecipeImportTab__use_default_model,
-  RecipeImportTab__validation_error,
   RelativeTime__days_ago,
   RelativeTime__hours_ago,
   RelativeTime__just_now,
@@ -2328,8 +2307,6 @@ export const en = {
   SettingsModal__files,
   SettingsModal__folders,
   SettingsModal__keep_editing,
-  SettingsModal__no_valid_recipes_found_in_input,
-  SettingsModal__parse_error,
   SettingsModal__provider_profiles,
   SettingsModal__recipes,
   SettingsModal__settings,
@@ -2338,7 +2315,6 @@ export const en = {
   SettingsModal__successfully_imported_recipes_as_chat_groups,
   SettingsModal__tools,
   SettingsModal__transformers_js,
-  SettingsModal__validation_error,
   SidebarDebugControls__debug_events,
   SidebarDebugControls__file_explorer,
   SidebarDebugControls__more_actions,
@@ -2387,9 +2363,6 @@ export const en = {
   StandaloneVerificationPage__verification_failed_to_run,
   StandaloneVerificationPage__verification_summary,
   StorageService__an_error_occurred_during_a_storage_operation,
-  StorageService__storage_is_busy_waiting_for_other_tabs,
-  StorageService__storage_operation_completed,
-  StorageService__storage_operation_is_taking_longer_than_expected,
   StorageTab__active,
   StorageTab__active_storage_provider,
   StorageTab__attachments_will_be_inaccessible,
@@ -2449,6 +2422,7 @@ export const en = {
   ThemeToggle__dark_mode,
   ThemeToggle__light_mode,
   ThemeToggle__system_mode,
+  ToolCallGroupItem__used_tools,
   ToolConfigHierarchySettings__access_global_knowledge,
   ToolConfigHierarchySettings__calculator,
   ToolConfigHierarchySettings__choices,
@@ -2463,6 +2437,8 @@ export const en = {
   ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here,
   ToolConfigHierarchySettings__turn_off,
   ToolConfigHierarchySettings__turn_on,
+  ToolConfigHierarchySettings__use_global,
+  ToolConfigHierarchySettings__use_group,
   ToolConfigHierarchySettings__wikipedia,
   TransformersJsLoadingIndicator__downloading_model,
   TransformersJsLoadingIndicator__downloading_model_weights_from_hugging_face_this_only_happens_once_per_model,
@@ -2619,7 +2595,6 @@ export const en = {
   blockMarkdown__copy_code,
   blockMarkdown__copy_source,
   blockMarkdown__external_image,
-  blockMarkdown__failed_to_embed_metadata_in_image,
   blockMarkdown__failed_to_load_image,
   blockMarkdown__failed_to_render_mermaid_diagram,
   blockMarkdown__image_not_found_in_storage,
@@ -2707,7 +2682,6 @@ export const en = {
   fileExplorer__files,
   fileExplorer__filter_by_name,
   fileExplorer__folder,
-  fileExplorer__folder_is_no_longer_available,
   fileExplorer__format,
   fileExplorer__get_info,
   fileExplorer__go_back,
@@ -2742,6 +2716,9 @@ export const en = {
   fileExplorer__unlocked_click_to_lock,
   fileExplorer__upload_files,
   fileExplorer__upload_files_unlock_to_enable,
+  formatSettingsSourceLabel__default,
+  formatSettingsSourceLabel__value_from_global,
+  formatSettingsSourceLabel__value_from_group,
   toolCall__arguments,
   toolCall__code,
   toolCall__disable_wrap,
@@ -2755,8 +2732,6 @@ export const en = {
   toolCall__result,
   toolCall__show_tools_count,
   toolCall__tool_executions,
-  toolCall__used_tools,
-  toolCall__used_tools_and_more,
   useBinaryActions__delete_binary_object,
   useBinaryActions__delete_binary_object_warning,
   useBinaryActions__delete_permanently,
@@ -2768,10 +2743,10 @@ export const en = {
   useChatDisplayFlow__used_tools,
   useChatLifecycle__chat_was_deleted,
   useChatLifecycle__undo,
+  useChatOrganization__copy_of_chat_group,
   useImageGeneration__failed_to_generate_image,
   useImageGeneration__failed_to_reencode_image,
   useImageGeneration__no_suitable_image_generation_model_found,
-  usePrompt__prompt,
   useSettings__data_successfully_imported_from_url,
   useSettings__failed_to_fetch_models_for_settings,
   useSettings__failed_to_import_data_from_url,
@@ -2832,7 +2807,6 @@ export const en = {
   volumes__linking_external_folders_not_supported,
   volumes__more_actions,
   volumes__mount_path_already_in_use,
-  volumes__name_cannot_be_empty,
   volumes__no_folders_configured,
   volumes__not_in_use,
   volumes__not_in_use_globally,

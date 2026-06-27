@@ -1,1 +1,1 @@
-export const GlobalSearchModal__peek = (): string => 'ピーク';
+export const GlobalSearchModal__peek = (): string => '一時表示';

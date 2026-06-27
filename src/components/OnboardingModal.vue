@@ -247,13 +247,14 @@ function selectPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   availableModels.value = [];
 }
 
-async function handleCancelConnect() {
+function handleCancelConnect() {
   if (abortController) {
     abortController.abort();
     abortController = null;
   }
   isTesting.value = false;
-  error.value = await ensureStrings.OnboardingModal__connection_attempt_cancelled();
+  // TODO: Localize this reactive error without making cancellation itself asynchronous.
+  error.value = 'Connection attempt cancelled.';
 }
 
 async function handleConnect() {

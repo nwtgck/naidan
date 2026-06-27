@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { ensureStrings, lazyStrings } from '@/strings';
+import { lazyStrings } from '@/strings';
 import type { ObjectDirective } from 'vue';
 import type { Volume, Mount } from '@/models/types';
 import { idToRaw } from '@/models/ids';
@@ -111,10 +111,11 @@ function cancelEditingName() {
   editingNameValue.value = '';
 }
 
-async function saveVolumeName({ volId }: { volId: VolumeId }): Promise<void> {
+function saveVolumeName({ volId }: { volId: VolumeId }) {
   const trimmed = editingNameValue.value.trim();
   if (!trimmed) {
-    addToast({ message: await ensureStrings.volumes__name_cannot_be_empty() });
+    // TODO: Localize this validation toast without changing the synchronous rename action.
+    addToast({ message: 'Name cannot be empty' });
     return;
   }
   emit('rename-volume', { volumeId: volId, name: trimmed });

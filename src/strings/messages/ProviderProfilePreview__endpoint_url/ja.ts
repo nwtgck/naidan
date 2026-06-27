@@ -1,1 +1,1 @@
-export const ProviderProfilePreview__endpoint_url = (): string => 'エンドポイントURL';
+export const ProviderProfilePreview__endpoint_url = (): string => 'エンドポイント URL';

@@ -529,10 +529,11 @@ async function openChatFileExplorer() {
   } });
 }
 
-async function handlePrint(): Promise<void> {
+function handlePrint() {
   if (chat.value) {
     usePrint().print({
-      title: chat.value.title || await ensureStrings.ChatPane__chat(),
+      // TODO: Localize the fallback title without changing print into an asynchronous action.
+      title: chat.value.title || 'Chat',
       mode: 'chat',
     });
   }
@@ -1042,7 +1043,7 @@ async function handleEnableFakeLmForChat() {
   });
 
   addToast({
-    message: `Fake LM enabled for this chat via ${FAKE_LM_ENDPOINT_URL}`,
+    message: await ensureStrings.ChatPane__fake_lm_enabled_for_this_chat_via({ endpointUrl: FAKE_LM_ENDPOINT_URL }),
     duration: 3000,
   });
 }

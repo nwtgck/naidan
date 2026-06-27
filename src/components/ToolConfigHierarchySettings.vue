@@ -135,14 +135,14 @@ function inheritanceLabel({ key }: { key: BuiltinToolKey }): string {
   case 'global':
     throw new Error('Global tool settings do not inherit from another configurable layer');
   case 'chat_group':
-    return lazyStrings.SHARED__use_global();
+    return lazyStrings.ToolConfigHierarchySettings__use_global();
   case 'chat': {
     const source = props.inheritanceSourceByKey?.[key];
     switch (source) {
     case 'global':
-      return lazyStrings.SHARED__use_global();
+      return lazyStrings.ToolConfigHierarchySettings__use_global();
     case 'group':
-      return lazyStrings.SHARED__use_group();
+      return lazyStrings.ToolConfigHierarchySettings__use_group();
     case undefined:
       throw new Error(`Missing Chat tool inheritance source: ${key}`);
     default: {

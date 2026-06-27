@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ensureStrings, lazyStrings } from '@/strings';
+import { lazyStrings } from '@/strings';
 import { ref } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
@@ -16,10 +16,11 @@ const { isDebugOpen, toggleDebug } = useLayout();
 const isMenuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
 
-async function triggerTestError() {
+function triggerTestError() {
+  // TODO: Localize diagnostic event snapshots without changing these synchronous debug actions.
   addErrorEvent({
     source: 'DevTools',
-    message: await ensureStrings.DebugPanel__intentional_test_error_triggered_by_user(),
+    message: 'Intentional test error triggered by user',
     details: {
       hint: 'This is used to verify the error event system UI.',
       browser: navigator.userAgent,
@@ -28,10 +29,11 @@ async function triggerTestError() {
   isMenuOpen.value = false;
 }
 
-async function triggerTestInfo() {
+function triggerTestInfo() {
+  // TODO: Localize diagnostic event snapshots without changing these synchronous debug actions.
   addInfoEvent({
     source: 'DevTools',
-    message: await ensureStrings.DebugPanel__application_state_synchronized(),
+    message: 'Application state synchronized',
     details: {
       status: 'success',
       timestamp: new Date().toISOString(),

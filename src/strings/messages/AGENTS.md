@@ -89,6 +89,8 @@ materially.
 Identifiers, comments, and tests remain English. Locale message implementations
 may contain their target natural language.
 
+Prefer direct, neutral Japanese UI copy over formal business-style phrasing.
+
 Naidan UI around Wesh is eligible for Boundary Strings. Wesh command output,
 usage text, diagnostics, shell transcript content, and raw worker errors remain
 English and must not be moved into this directory.

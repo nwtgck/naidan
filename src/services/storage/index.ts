@@ -572,25 +572,28 @@ export class StorageService {
   private getLockOptions({ source, custom = {} }: { source: string, custom?: { notifyLockWaitAfterMs?: number } }) {
     return {
       ...custom,
-      onLockWait: async () => {
+      onLockWait: () => {
         const { addInfoEvent } = useGlobalEvents();
+        // TODO: Localize lock lifecycle snapshots without changing these void callback contracts.
         addInfoEvent({
           source: `StorageService:${source}`,
-          message: await ensureStrings.StorageService__storage_is_busy_waiting_for_other_tabs(),
+          message: 'Storage is busy. Waiting for other tabs to finish...',
         });
       },
-      onTaskSlow: async () => {
+      onTaskSlow: () => {
         const { addInfoEvent } = useGlobalEvents();
+        // TODO: Localize lock lifecycle snapshots without changing these void callback contracts.
         addInfoEvent({
           source: `StorageService:${source}`,
-          message: await ensureStrings.StorageService__storage_operation_is_taking_longer_than_expected(),
+          message: 'Storage operation is taking longer than expected...',
         });
       },
-      onFinalize: async () => {
+      onFinalize: () => {
         const { addInfoEvent } = useGlobalEvents();
+        // TODO: Localize lock lifecycle snapshots without changing these void callback contracts.
         addInfoEvent({
           source: `StorageService:${source}`,
-          message: await ensureStrings.StorageService__storage_operation_completed(),
+          message: 'Storage operation completed.',
         });
       },
     };

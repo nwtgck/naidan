@@ -1,16 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick } from 'vue'; // Imported nextTick from vue
 import { usePrompt } from './usePrompt';
-import { flushPromises, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
-
-vi.mock('@/strings', () => ({
-  ensureStrings: {
-    SHARED__cancel: async () => 'Cancel',
-    SHARED__confirm: async () => 'Confirm',
-    usePrompt__prompt: async () => 'Prompt',
-  },
-}));
 
 // Mock the global CustomDialog component
 const MockCustomDialog = defineComponent({
@@ -79,7 +71,7 @@ describe('usePrompt', () => {
 
   it('showPrompt resolves with the input value on confirmation', async () => {
     const promptPromise = promptHook.showPrompt({ message: 'Enter value:', defaultValue: 'initial' });
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    await nextTick(); // Wait for the dialog state to update
 
     // Simulate user input
     promptHook.promptInputValue.value = 'test input';
@@ -94,7 +86,7 @@ describe('usePrompt', () => {
 
   it('showPrompt resolves to null on cancellation', async () => {
     const promptPromise = promptHook.showPrompt({ message: 'Enter value:' });
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    await nextTick(); // Wait for the dialog state to update
 
     // Simulate cancellation by calling the composable's handler
     promptHook.handlePromptCancel();
@@ -116,7 +108,7 @@ describe('usePrompt', () => {
       cancelButtonText: 'No Thanks',
     };
     promptHook.showPrompt(options);
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    await nextTick(); // Wait for the dialog state to update
 
     expect(promptHook.isPromptOpen.value).toBe(true);
     expect(promptHook.promptTitle.value).toBe(options.title);

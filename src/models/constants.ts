@@ -1,3 +1,4 @@
+// TODO: Localize endpoint preset labels without changing this shared preset data contract.
 export const ENDPOINT_PRESETS = [
   { name: 'Ollama (local)', type: 'ollama', url: 'http://localhost:11434' },
   { name: 'LM Studio (local)', type: 'openai', url: 'http://localhost:1234/v1' },

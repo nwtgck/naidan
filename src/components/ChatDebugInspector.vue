@@ -234,7 +234,7 @@ defineExpose({
             <!-- Mode Switcher -->
             <div class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner">
               <button
-                v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: 'Active'}, {id: 'tree', icon: NetworkIcon, label: 'Tree'}, {id: 'raw', icon: FileCodeIcon, label: 'Full JSON'}] as const)"
+                v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: lazyStrings.ChatDebugInspector__active()}, {id: 'tree', icon: NetworkIcon, label: lazyStrings.ChatDebugInspector__tree()}, {id: 'raw', icon: FileCodeIcon, label: lazyStrings.ChatDebugInspector__full_json()}] as const)"
                 :key="m.id"
                 @click="mode = m.id"
                 class="px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider"

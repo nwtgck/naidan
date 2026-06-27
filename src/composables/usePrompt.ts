@@ -1,4 +1,3 @@
-import { ensureStrings } from '@/strings';
 import { ref, type Component, shallowRef } from 'vue';
 
 interface PromptOptions {
@@ -14,26 +13,21 @@ interface PromptOptions {
 const isPromptOpen = ref(false);
 const promptTitle = ref('');
 const promptMessage = ref('');
-const promptConfirmButtonText = ref('');
-const promptCancelButtonText = ref('');
+const promptConfirmButtonText = ref('Confirm');
+const promptCancelButtonText = ref('Cancel');
 const promptInputValue = ref('');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const promptBodyComponent = shallowRef<Component | any | null>(null);
 let resolvePromptPromise: ReturnType<typeof Promise.withResolvers<string | null>>['resolve'] | undefined;
 
 export function usePrompt() {
-  const showPrompt = async ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {
-    const [resolvedTitle, resolvedConfirmButtonText, resolvedCancelButtonText] = await Promise.all([
-      title || ensureStrings.usePrompt__prompt(),
-      confirmButtonText || ensureStrings.SHARED__confirm(),
-      cancelButtonText || ensureStrings.SHARED__cancel(),
-    ]);
-
+  const showPrompt = ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {
     return new Promise((resolve) => {
-      promptTitle.value = resolvedTitle;
+      // TODO: Localize default prompt copy without delaying the established synchronous open path.
+      promptTitle.value = title || 'Prompt';
       promptMessage.value = message || '';
-      promptConfirmButtonText.value = resolvedConfirmButtonText;
-      promptCancelButtonText.value = resolvedCancelButtonText;
+      promptConfirmButtonText.value = confirmButtonText || 'Confirm';
+      promptCancelButtonText.value = cancelButtonText || 'Cancel';
       promptInputValue.value = defaultValue || '';
       promptBodyComponent.value = bodyComponent || null;
       isPromptOpen.value = true;

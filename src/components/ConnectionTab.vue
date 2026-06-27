@@ -68,7 +68,7 @@ const selectedProviderProfileId = ref('');
 
 const copied = ref(false);
 
-async function copySetupUrl() {
+function copySetupUrl() {
   const baseUrl = window.location.origin + window.location.pathname;
   const params = new URLSearchParams();
 
@@ -101,12 +101,14 @@ async function copySetupUrl() {
   const queryString = params.toString();
   const fullUrl = queryString ? `${baseUrl}#/?${queryString}` : baseUrl;
 
-  await navigator.clipboard.writeText(fullUrl);
-  copied.value = true;
-  addToast({ message: await ensureStrings.ConnectionTab__setup_url_copied(), duration: 2000 });
-  setTimeout(() => {
-    copied.value = false;
-  }, 2000);
+  void navigator.clipboard.writeText(fullUrl).then(() => {
+    copied.value = true;
+    // TODO: Localize this toast without changing copySetupUrl's synchronous event-handler contract.
+    addToast({ message: 'Setup URL copied to clipboard', duration: 2000 });
+    setTimeout(() => {
+      copied.value = false;
+    }, 2000);
+  });
 }
 
 function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {

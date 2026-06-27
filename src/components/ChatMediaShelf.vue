@@ -226,9 +226,10 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem, withMet
       model: item.model,
       withMetadata: true,
       storageService,
-      onError: async ({ error }) => addErrorEvent({
+      onError: ({ error }) => addErrorEvent({
         source: 'MediaShelf:Download',
-        message: await ensureStrings.ChatMediaShelf__failed_to_embed_metadata_in_image(),
+        // TODO: Localize this event snapshot without changing the hydrator's void callback contract.
+        message: 'Failed to embed metadata in image.',
 
         details: error instanceof Error ? error.message : String(error),
       }),

@@ -24,9 +24,10 @@ function getParentPath({ path }: { path: string }): string {
   return `/${segments.slice(0, -1).join('/')}`;
 }
 
-async function formatDirectoryLoadError({ error }: { error: unknown }): Promise<string> {
+function formatDirectoryLoadError({ error }: { error: unknown }): string {
   if (error instanceof DOMException && error.name === 'NotFoundError') {
-    return ensureStrings.fileExplorer__folder_is_no_longer_available();
+    // TODO: Localize this normalized error without changing the formatter's pure synchronous contract.
+    return 'This folder is no longer available. It may have been moved, deleted, or its access was revoked in the browser.';
   }
   return error instanceof Error ? error.message : String(error);
 }
@@ -71,7 +72,7 @@ export function useFileExplorerNavigation({
       entries.value = response.entries;
     } catch (error) {
       loadError.value = await ensureStrings.fileExplorer__failed_to_load_directory({
-        errorMessage: await formatDirectoryLoadError({ error }),
+        errorMessage: formatDirectoryLoadError({ error }),
       });
     } finally {
       isLoading.value = false;

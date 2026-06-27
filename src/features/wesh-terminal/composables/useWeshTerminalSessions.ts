@@ -117,6 +117,7 @@ export function createWeshTerminalSessions({
     const id = `session-${nextSessionNumber++}`;
     const session: InternalSession = {
       id,
+      // TODO: Localize session titles without adding delayed mutation to stored session state.
       title: `Session ${nextSessionNumber - 1}`,
       lines: [],
       state: 'initializing',

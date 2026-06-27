@@ -1,4 +1,5 @@
 import { toRaw } from 'vue';
+import { ensureStrings } from '@/strings';
 import { generateId } from '@/utils/id';
 import type { ChatGroupId, ChatId } from '@/models/ids';
 import { cloneToolConfigs } from '@/services/tools/tool-config';
@@ -152,7 +153,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     const newGroup: ChatGroup = {
       ...toRaw(originalGroup),
       id: newId,
-      name: `Copy of ${originalGroup.name}`,
+      name: await ensureStrings.useChatOrganization__copy_of_chat_group({ groupName: originalGroup.name }),
       items: [],
       toolConfigs: cloneToolConfigs({ toolConfigs: originalGroup.toolConfigs }),
       updatedAt: Date.now(),

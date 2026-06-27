@@ -105,9 +105,10 @@ async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
     model: undefined, // Model info not directly available in the block JSON currently
     withMetadata,
     storageService,
-    onError: async ({ error }) => addErrorEvent({
+    onError: ({ error }) => addErrorEvent({
       source: 'GeneratedImageBlock:Download',
-      message: await ensureStrings.blockMarkdown__failed_to_embed_metadata_in_image(),
+      // TODO: Localize this event snapshot without changing the hydrator's void callback contract.
+      message: 'Failed to embed metadata in image.',
       details: error instanceof Error ? error.message : String(error),
     }),
   });

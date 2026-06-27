@@ -8,12 +8,12 @@ export function formatSettingsSourceLabel({
   value: string | undefined,
   source: SettingsSource | undefined,
 }) {
-  if (!value) return lazyStrings.SHARED__default();
+  if (!value) return lazyStrings.formatSettingsSourceLabel__default();
   switch (source) {
   case 'chat_group':
-    return lazyStrings.SHARED__value_from_group({ value });
+    return lazyStrings.formatSettingsSourceLabel__value_from_group({ value });
   case 'global':
-    return lazyStrings.SHARED__value_from_global({ value });
+    return lazyStrings.formatSettingsSourceLabel__value_from_global({ value });
   case 'chat':
   case undefined:
     return value;
