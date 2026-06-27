@@ -328,28 +328,31 @@ async function handleFinish() {
 
   try {
     const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
-    await save({ patch: {
-      ...baseSettings,
-      endpointType: type,
-      endpointUrl: url || undefined,
-      endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
-      defaultModelId: selectedModel.value || undefined,
-      // Transformers.js currently supports only one active model at a time.
-      // We set titleModelId to undefined to prevent the main model from being unloaded during title generation.
-      titleModelId: (() => {
-        switch (type) {
-        case 'transformers_js':
-          return undefined;
-        case 'openai':
-        case 'ollama':
-          return selectedModel.value || undefined;
-        default: {
-          const _ex: never = type;
-          return _ex;
-        }
-        }
-      })(),
-    } });
+    await save({
+      patch: {
+        ...baseSettings,
+        endpointType: type,
+        endpointUrl: url || undefined,
+        endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
+        defaultModelId: selectedModel.value || undefined,
+        // Transformers.js currently supports only one active model at a time.
+        // We set titleModelId to undefined to prevent the main model from being unloaded during title generation.
+        titleModelId: (() => {
+          switch (type) {
+          case 'transformers_js':
+            return undefined;
+          case 'openai':
+          case 'ollama':
+            return selectedModel.value || undefined;
+          default: {
+            const _ex: never = type;
+            return _ex;
+          }
+          }
+        })(),
+      },
+      modelRefresh: 'await',
+    });
 
     setOnboardingDraft({ draft: null });
     setIsOnboardingDismissed({ dismissed: true });

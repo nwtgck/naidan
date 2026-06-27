@@ -185,6 +185,7 @@ describe('FeatureFlagsSettings.vue', () => {
           toolConfigPersistence: 'enabled',
         },
       },
+      modelRefresh: 'await',
     });
   });
 
@@ -198,6 +199,7 @@ describe('FeatureFlagsSettings.vue', () => {
           sidebarSendMessageReorder: 'move_sent_chat',
         },
       },
+      modelRefresh: 'await',
     });
   });
 

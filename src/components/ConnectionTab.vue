@@ -165,16 +165,19 @@ async function fetchModels() {
 
 async function handleSave() {
   try {
-    await save({ patch: {
-      endpointType: form.value.endpointType,
-      endpointUrl: form.value.endpointUrl,
-      endpointHttpHeaders: form.value.endpointHttpHeaders,
-      defaultModelId: form.value.defaultModelId,
-      titleModelId: form.value.titleModelId,
-      autoTitleEnabled: form.value.autoTitleEnabled,
-      systemPrompt: form.value.systemPrompt,
-      lmParameters: form.value.lmParameters,
-    } });
+    await save({
+      patch: {
+        endpointType: form.value.endpointType,
+        endpointUrl: form.value.endpointUrl,
+        endpointHttpHeaders: form.value.endpointHttpHeaders,
+        defaultModelId: form.value.defaultModelId,
+        titleModelId: form.value.titleModelId,
+        autoTitleEnabled: form.value.autoTitleEnabled,
+        systemPrompt: form.value.systemPrompt,
+        lmParameters: form.value.lmParameters,
+      },
+      modelRefresh: 'await',
+    });
 
     emit('save');
     saveSuccess.value = true;

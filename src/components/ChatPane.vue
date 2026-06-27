@@ -754,7 +754,10 @@ async function updateActiveTitleModel({
     return;
   case 'chat_group':
     if (chatGroupId === undefined) {
-      await saveSettings({ patch: { titleModelId: modelId } });
+      await saveSettings({
+        patch: { titleModelId: modelId },
+        modelRefresh: 'await',
+      });
       return;
     }
     await chatGroups.updateScopedSettings({
@@ -765,7 +768,10 @@ async function updateActiveTitleModel({
     });
     return;
   case 'global':
-    await saveSettings({ patch: { titleModelId: modelId } });
+    await saveSettings({
+      patch: { titleModelId: modelId },
+      modelRefresh: 'await',
+    });
     return;
   default: {
     const _ex: never = source;

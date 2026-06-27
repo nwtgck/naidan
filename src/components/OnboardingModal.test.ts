@@ -200,11 +200,14 @@ describe('OnboardingModal.vue', () => {
     await wrapper.find('[data-testid="onboarding-finish-button"]').trigger('click'); // "Get Started" button
     await flushPromises();
 
-    expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
-      endpointUrl: 'http://api.openai.com',
-      defaultModelId: 'model-1',
-      titleModelId: 'model-1',
-    }) });
+    expect(mockSave).toHaveBeenCalledWith({
+      patch: expect.objectContaining({
+        endpointUrl: 'http://api.openai.com',
+        defaultModelId: 'model-1',
+        titleModelId: 'model-1',
+      }),
+      modelRefresh: 'await',
+    });
     expect(mockOnboardingDraft.value).toBe(null); // Draft cleared on success
     expect(mockIsOnboardingDismissed.value).toBe(true);
   });
@@ -490,11 +493,14 @@ describe('OnboardingModal.vue', () => {
       await finishBtn?.trigger('click');
       await flushPromises();
 
-      expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
-        endpointType: 'transformers_js',
-        defaultModelId: 'Xenova/gpt2',
-        titleModelId: undefined,
-      }) });
+      expect(mockSave).toHaveBeenCalledWith({
+        patch: expect.objectContaining({
+          endpointType: 'transformers_js',
+          defaultModelId: 'Xenova/gpt2',
+          titleModelId: undefined,
+        }),
+        modelRefresh: 'await',
+      });
     });
   });
 });

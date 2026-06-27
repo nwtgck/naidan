@@ -5,7 +5,6 @@ import App from './App.vue';
 import type { Chat } from './models/types';
 import { useRouter, useRoute } from 'vue-router';
 import { useSettings } from './composables/useSettings';
-import { useConfirm } from './composables/useConfirm';
 import { useLayout } from './composables/useLayout';
 
 // Define mock refs in module scope so they can be shared
@@ -98,19 +97,6 @@ vi.mock('./composables/useLayout', () => ({
   useLayout: vi.fn(),
 }));
 
-vi.mock('./composables/useConfirm', () => ({
-  useConfirm: vi.fn(() => ({
-    isConfirmOpen: ref(false),
-    confirmTitle: ref(''),
-    confirmMessage: ref(''),
-    confirmConfirmButtonText: ref(''),
-    confirmCancelButtonText: ref(''),
-    confirmButtonVariant: ref('default'),
-    handleConfirm: vi.fn(),
-    handleCancel: vi.fn(),
-  })),
-}));
-
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
   useRoute: vi.fn(),
@@ -124,24 +110,6 @@ vi.mock('./components/Sidebar.vue', () => ({
   default: {
     name: 'Sidebar',
     template: '<div data-testid="sidebar"></div>',
-  },
-}));
-
-vi.mock('./components/OnboardingModal.vue', () => ({
-  default: {
-    name: 'OnboardingModal',
-    setup() {
-      const { initialized, isOnboardingDismissed } = useSettings();
-      return { show: computed(() => initialized.value && !isOnboardingDismissed.value) };
-    },
-    template: '<div v-if="show" data-testid="onboarding-modal"></div>',
-  },
-}));
-
-vi.mock('./components/ToastContainer.vue', () => ({
-  default: {
-    name: 'ToastContainer',
-    template: '<div data-testid="toast-container"></div>',
   },
 }));
 
@@ -206,19 +174,6 @@ describe('App', () => {
         'DebugPanel': {
           template: '<div data-testid="debug-panel"></div>',
         },
-        CustomDialog: {
-          props: ['show', 'title', 'message', 'confirmButtonText', 'cancelButtonText', 'confirmButtonVariant', 'showInput', 'inputValue'],
-          emits: ['confirm', 'cancel', 'update:inputValue'],
-          template: `
-            <div v-if="show" data-testid="custom-dialog" :data-confirm-variant="confirmButtonVariant">
-              <h3 data-testid="dialog-title">{{ title }}</h3>
-              <p data-testid="dialog-message">{{ message }}</p>
-              <input v-if="showInput" :value="inputValue" @input="$emit('update:inputValue', $event.target.value)" data-testid="dialog-input" />
-              <button @click="$emit('cancel')" data-testid="dialog-cancel-button">{{ cancelButtonText }}</button>
-              <button @click="$emit('confirm')" :class="confirmButtonVariant === 'danger' ? 'bg-red-600' : ''" data-testid="dialog-confirm-button">{{ confirmButtonText }}</button>
-            </div>
-          `,
-        },
         ChatGroupSettingsPanel: true,
         DebugWeshTerminalModal: true,
       },
@@ -235,7 +190,6 @@ describe('App', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="toast-container"]').exists()).toBe(true);
   });
 
   it('does not render debug panel when isDebugOpen is false (prevents black bar glitch)', async () => {
@@ -553,46 +507,6 @@ describe('App', () => {
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
   });
 
-  it('shows OnboardingModal when endpointUrl is missing', async () => {
-    (useSettings as unknown as Mock).mockReturnValue({
-      init: mockInit,
-      initialized: ref(true),
-      isOnboardingDismissed: ref(false),
-      settings: ref({ endpointUrl: '' }),
-    });
-
-    const wrapper = mountApp();
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
-  });
-
-  it('toggles OnboardingModal visibility based on isOnboardingDismissed state', async () => {
-    const isOnboardingDismissed = ref(false);
-    (useSettings as unknown as Mock).mockReturnValue({
-      init: mockInit,
-      initialized: ref(true),
-      isOnboardingDismissed,
-      settings: ref({ endpointUrl: '' }),
-    });
-
-    const wrapper = mountApp();
-    await flushPromises();
-
-    // Initially shown
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
-
-    // Simulate dismissal (Skip)
-    isOnboardingDismissed.value = true;
-    await nextTick();
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
-
-    // Simulate undoing dismissal
-    isOnboardingDismissed.value = false;
-    await nextTick();
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
-  });
-
   it('triggers createNewChat and navigates on Ctrl+Shift+O', async () => {
     mockCreateNewChat.mockImplementation(async () => {
       mockCurrentChat.value = { id: 'new-chat-id' } as unknown as Chat;
@@ -669,43 +583,4 @@ describe('App', () => {
     expect(mockToggleRecent).toHaveBeenCalled();
   });
 
-  it('shows CustomDialog with danger variant for confirm button when requested', async () => {
-    const mockIsConfirmOpen = ref(false);
-    const mockConfirmTitle = ref('');
-    const mockConfirmMessage = ref('');
-    const mockConfirmConfirmButtonText = ref('');
-    const mockConfirmCancelButtonText = ref('');
-    const mockConfirmButtonVariant = ref('default');
-    const mockHandleConfirm = vi.fn();
-    const mockHandleCancel = vi.fn();
-
-    (useConfirm as unknown as Mock).mockReturnValue({
-      isConfirmOpen: mockIsConfirmOpen,
-      confirmTitle: mockConfirmTitle,
-      confirmMessage: mockConfirmMessage,
-      confirmConfirmButtonText: mockConfirmConfirmButtonText,
-      confirmCancelButtonText: mockConfirmCancelButtonText,
-      confirmButtonVariant: mockConfirmButtonVariant,
-      handleConfirm: mockHandleConfirm,
-      handleCancel: mockHandleCancel,
-    });
-
-    const wrapper = mountApp();
-    await flushPromises();
-
-    // Simulate opening the dialog with danger variant
-    mockIsConfirmOpen.value = true;
-    mockConfirmTitle.value = 'Confirm Reset';
-    mockConfirmMessage.value = 'Are you sure you want to reset data?';
-    mockConfirmConfirmButtonText.value = 'Reset';
-    mockConfirmCancelButtonText.value = 'Cancel';
-    mockConfirmButtonVariant.value = 'danger';
-
-    await nextTick();
-
-    const confirmButton = wrapper.find('[data-testid="custom-dialog"] [data-testid="dialog-confirm-button"]');
-    expect(confirmButton.exists()).toBe(true);
-    expect(confirmButton.text()).toBe('Reset');
-    expect(confirmButton.classes()).toContain('bg-red-600');
-  });
 });

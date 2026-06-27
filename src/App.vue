@@ -7,12 +7,10 @@ import { useChatLifecycle } from './composables/chat/ui/useChatLifecycle';
 import { useChatListData } from './composables/chat/ui/useChatListData';
 import { useChatOrganization } from './composables/chat/ui/useChatOrganization';
 import { useSettings } from './composables/useSettings';
-import { useConfirm } from './composables/useConfirm'; // Import useConfirm
-import { usePrompt } from './composables/usePrompt';   // Import usePrompt
 import { useFileExplorerModal } from './composables/useFileExplorerModal';
-import { useTheme } from './composables/useTheme';
 import { usePrint } from './composables/usePrint';
 import Sidebar from './components/Sidebar.vue';
+import MainLayoutFrame from './components/layout/MainLayoutFrame.vue';
 import { idToRaw, toChatId } from '@/models/ids';
 import type { ChatGroupId } from '@/models/ids';
 
@@ -20,14 +18,10 @@ import type { ChatGroupId } from '@/models/ids';
 const PrintView = defineAsyncComponent(() => import('./components/PrintView.vue'));
 const ChatPrintContent = defineAsyncComponent(() => import('./components/ChatPrintContent.vue'));
 
-// IMPORTANT: OnboardingModal is imported synchronously to ensure a smooth first-time user experience.
-import OnboardingModal from './components/OnboardingModal.vue';
-import ToastContainer from './components/ToastContainer.vue';
 import { useLayout } from './composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from './utils/vue';
 import { useGlobalSearch } from './composables/useGlobalSearch';
 import { useRecentChats } from './composables/useRecentChats';
-import type { EndpointType } from './models/types';
 
 // PWA manager (only for hosted mode)
 const PWAManager = __BUILD_MODE_IS_HOSTED__
@@ -39,7 +33,6 @@ const DebugWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: ()
 const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/GlobalSearchModal.vue') });
 const RecentChatsModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/RecentChatsModal.vue') });
 const DebugPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/DebugPanel.vue') });
-const CustomDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/CustomDialog.vue') });
 const FileExplorerModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/FileExplorerModal.vue') });
 
 const currentChatState = useCurrentChatState();
@@ -49,6 +42,7 @@ const chatOrganization = useChatOrganization();
 const settingsStore = useSettings();
 const { addRecentChat, toggleRecent } = useRecentChats();
 const { isSidebarOpen, isDebugOpen, isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
+const sidebarWidth = computed(() => isSidebarOpen.value ? 'expanded' as const : 'collapsed' as const);
 const { activePrintMode } = usePrint();
 const router = useRouter();
 const route = useRoute();
@@ -80,63 +74,6 @@ const closeSettings = () => {
 };
 
 const { isFileExplorerOpen } = useFileExplorerModal();
-
-// Initialize theme application logic
-useTheme();
-
-// Initialize useConfirm
-const {
-  isConfirmOpen, confirmTitle, confirmMessage,
-  confirmConfirmButtonText, confirmCancelButtonText,
-  confirmButtonVariant, confirmIcon,
-  handleConfirm, handleCancel,
-} = useConfirm();
-
-// Initialize usePrompt
-const {
-  isPromptOpen, promptTitle, promptMessage,
-  promptConfirmButtonText, promptCancelButtonText, promptInputValue,
-  promptBodyComponent,
-  handlePromptConfirm, handlePromptCancel,
-} = usePrompt();
-
-// Synchronize Global Endpoint Settings from URL Query Parameters
-watch(
-  [
-    () => route.query['global-endpoint-type'],
-    () => route.query['global-endpoint-url'],
-    () => settingsStore.initialized.value,
-  ],
-  async ([type, url, initialized]) => {
-    if (!initialized) return;
-    if (typeof type === 'string' && typeof url === 'string') {
-      const isEndpointType = (val: string): val is EndpointType =>
-        ['openai', 'ollama'].includes(val);
-
-      if (isEndpointType(type)) {
-        await settingsStore.updateGlobalEndpoint({          type,
-          url,
-        });
-      }
-    }
-  },
-  { immediate: true },
-);
-
-// Synchronize Global Model from URL Query Parameters
-watch(
-  [
-    () => route.query['global-model'],
-    () => settingsStore.initialized.value,
-  ],
-  async ([modelId, initialized]) => {
-    if (!initialized) return;
-    if (typeof modelId === 'string') {
-      await settingsStore.updateGlobalModel({ modelId });
-    }
-  },
-  { immediate: true },
-);
 
 // Automatically create a new chat if the list becomes empty while on the landing page
 // OR if a query parameter 'q' is provided on the landing page
@@ -251,15 +188,12 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex h-dvh bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden transition-colors duration-300">
-    <div
-      class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full transition-all duration-300 ease-in-out relative z-30"
-      :class="isSidebarOpen ? 'w-64' : 'w-10'"
-    >
+  <MainLayoutFrame :sidebar-width="sidebarWidth">
+    <template #sidebar>
       <Sidebar />
-    </div>
+    </template>
 
-    <main class="flex-1 relative flex flex-col min-w-0 bg-transparent z-30">
+    <template #main>
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
       <div class="flex-1 relative min-h-0">
         <router-view v-slot="{ Component }">
@@ -269,58 +203,25 @@ defineExpose({
       <Transition name="debug-panel">
         <DebugPanel v-if="isDebugOpen" />
       </Transition>
-    </main>
+    </template>
+  </MainLayoutFrame>
 
-    <SettingsModal
-      :is-open="isSettingsOpen"
-      @close="closeSettings"
-    />
+  <SettingsModal
+    :is-open="isSettingsOpen"
+    @close="closeSettings"
+  />
 
-    <DebugWeshTerminalModal
-      :is-open="isWeshTerminalOpen"
-      @close="toggleWeshTerminal"
-    />
+  <DebugWeshTerminalModal
+    :is-open="isWeshTerminalOpen"
+    @close="toggleWeshTerminal"
+  />
 
-    <Transition name="modal">
-      <OnboardingModal v-if="settingsStore.initialized.value && !settingsStore.isOnboardingDismissed.value" />
-    </Transition>
-    <GlobalSearchModal />
-    <RecentChatsModal />
+  <GlobalSearchModal />
+  <RecentChatsModal />
 
-    <ToastContainer />
-    <PWAManager v-if="PWAManager" />
+  <PWAManager v-if="PWAManager" />
 
-    <!-- Global Custom Confirm Dialog -->
-    <CustomDialog
-      :show="isConfirmOpen"
-      :title="confirmTitle"
-      :icon="confirmIcon"
-      :message="confirmMessage"
-      :confirmButtonText="confirmConfirmButtonText"
-      :cancelButtonText="confirmCancelButtonText"
-      :confirmButtonVariant="confirmButtonVariant"
-      @confirm="handleConfirm"
-      @cancel="handleCancel"
-    />
-
-    <!-- Global Custom Prompt Dialog -->
-    <CustomDialog
-      :show="isPromptOpen"
-      :title="promptTitle"
-      :message="promptMessage"
-      :confirmButtonText="promptConfirmButtonText"
-      :cancelButtonText="promptCancelButtonText"
-      :confirmButtonVariant="'default'"
-      :showInput="true"
-      :inputValue="promptInputValue"
-      :bodyComponent="promptBodyComponent"
-      @update:inputValue="promptInputValue = $event"
-      @confirm="handlePromptConfirm"
-      @cancel="handlePromptCancel"
-    />
-
-    <FileExplorerModal v-if="isFileExplorerOpen" />
-  </div>
+  <FileExplorerModal v-if="isFileExplorerOpen" />
 
   <!-- Print-only Layer: Conditionally rendered only when activePrintMode is set. -->
   <PrintView v-if="activePrintMode !== undefined">
@@ -331,28 +232,6 @@ defineExpose({
 <style scoped>
 .fade-enter-from,
 .fade-leave-to {
-  opacity: 0;
-}
-
-/* Modal Transition */
-.modal-enter-active,
-.modal-leave-active {
-  transition: all 0.3s ease;
-}
-
-.modal-enter-active :deep(.modal-content-zoom),
-.modal-leave-active :deep(.modal-content-zoom) {
-  transition: all 0.3s cubic-bezier(0.34, 1.05, 0.64, 1);
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-from :deep(.modal-content-zoom),
-.modal-leave-to :deep(.modal-content-zoom) {
-  transform: scale(0.9);
   opacity: 0;
 }
 

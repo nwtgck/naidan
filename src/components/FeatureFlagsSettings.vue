@@ -88,12 +88,15 @@ async function handleToolConfigPersistenceToggle() {
     }
     }
   })();
-  await save({ patch: {
-    experimental: {
-      ...settings.value.experimental,
-      toolConfigPersistence: next,
+  await save({
+    patch: {
+      experimental: {
+        ...settings.value.experimental,
+        toolConfigPersistence: next,
+      },
     },
-  } });
+    modelRefresh: 'await',
+  });
 }
 
 async function handleSidebarSendMessageReorderToggle() {
@@ -109,12 +112,15 @@ async function handleSidebarSendMessageReorderToggle() {
     }
     }
   })();
-  await save({ patch: {
-    experimental: {
-      ...settings.value.experimental,
-      sidebarSendMessageReorder: next,
+  await save({
+    patch: {
+      experimental: {
+        ...settings.value.experimental,
+        sidebarSendMessageReorder: next,
+      },
     },
-  } });
+    modelRefresh: 'await',
+  });
 }
 
 async function handleFakeLmDebugModeToggle() {

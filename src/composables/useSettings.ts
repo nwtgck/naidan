@@ -49,7 +49,10 @@ interface UseSettingsApi {
   searchPreviewMode: Readonly<Ref<SearchPreviewMode>>,
   searchContextSize: Readonly<Ref<number>>,
   init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>,
-  save: ({ patch }: { patch: Partial<Settings> }) => Promise<void>,
+  save: ({ patch, modelRefresh }: {
+    patch: Partial<Settings>,
+    modelRefresh: 'await' | 'background',
+  }) => Promise<void>,
   updateExperimental: ({ updater }: {
     updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
   }) => Promise<void>,
@@ -303,7 +306,10 @@ export function useSettings(): UseSettingsApi {
     }
   }
 
-  async function save({ patch }: { patch: Partial<Settings> }) {
+  async function save({ patch, modelRefresh }: {
+    patch: Partial<Settings>,
+    modelRefresh: 'await' | 'background',
+  }) {
     const oldUrl = _settings.value.endpointUrl;
     const oldType = _settings.value.endpointType;
 
@@ -325,7 +331,23 @@ export function useSettings(): UseSettingsApi {
     const urlChanged = patch.endpointUrl !== undefined && patch.endpointUrl !== oldUrl;
     const typeChanged = patch.endpointType !== undefined && patch.endpointType !== oldType;
     if (urlChanged || typeChanged) {
-      await fetchModels({});
+      switch (modelRefresh) {
+      case 'await':
+        await fetchModels({});
+        break;
+      case 'background':
+        // URL-provided connection settings must become usable before a network
+        // model-list request completes. Waiting here would put endpoint latency
+        // back on the onboarding critical path that this startup refactor removes.
+        void fetchModels({}).catch(() => {
+          // fetchModels already records the user-visible/global error details.
+        });
+        break;
+      default: {
+        const _ex: never = modelRefresh;
+        return _ex;
+      }
+      }
     }
   }
 

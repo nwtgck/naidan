@@ -231,11 +231,14 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
     // (spread of settings.value should include the detected 'opfs')
-    await save({ patch: {
-      ...JSON.parse(JSON.stringify(settings.value)),
-      endpointUrl: 'http://new-endpoint',
-      endpointType: 'ollama',
-    } });
+    await save({
+      patch: {
+        ...JSON.parse(JSON.stringify(settings.value)),
+        endpointUrl: 'http://new-endpoint',
+        endpointType: 'ollama',
+      },
+      modelRefresh: 'await',
+    });
 
     expect(settings.value.storageType).toBe('opfs');
     expect(mocks.updateSettings).toHaveBeenCalled();
