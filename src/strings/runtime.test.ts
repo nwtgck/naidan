@@ -1,3 +1,5 @@
+import { mount } from '@vue/test-utils';
+import { defineComponent, h } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -47,6 +49,268 @@ describe('Boundary Strings runtime', () => {
     await expect(Promise.resolve(ensureStrings)).resolves.toBe(ensureStrings);
     expect(String(lazyStrings)).toBe('[object Object]');
     expect(JSON.stringify(lazyStrings)).toBe('{}');
+  });
+
+  it('reuses one accessor function per message key', () => {
+    expect(lazyStrings.ChatInput__type_a_message).toBe(
+      lazyStrings.ChatInput__type_a_message,
+    );
+    expect(ensureStrings.ChatInput__type_a_message).toBe(
+      ensureStrings.ChatInput__type_a_message,
+    );
+  });
+
+  it('rerenders only components that use a newly loaded message', async () => {
+    let resolveMessage: ((module: StringBoundaryModule) => void) | undefined;
+    let resolveCancel: ((module: StringBoundaryModule) => void) | undefined;
+    const messageModule = new Promise<StringBoundaryModule>((resolve) => {
+      resolveMessage = resolve;
+    });
+    const cancelModule = new Promise<StringBoundaryModule>((resolve) => {
+      resolveCancel = resolve;
+    });
+    registerStringBoundary({
+      boundaryId: 'message-boundary',
+      keys: ['ChatInput__type_a_message'],
+      loaders: {
+        en: async () => messageModule,
+        ja: resolvedModule({ module: { ChatInput__type_a_message: () => 'メッセージを入力...' } }),
+      },
+    });
+    registerStringBoundary({
+      boundaryId: 'cancel-boundary',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: async () => cancelModule,
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+
+    let messageRenderCount = 0;
+    let cancelRenderCount = 0;
+    const messageWrapper = mount(defineComponent({
+      name: 'MessageStringConsumer',
+      setup() {
+        return () => {
+          messageRenderCount += 1;
+          return h('span', lazyStrings.ChatInput__type_a_message());
+        };
+      },
+    }));
+    const cancelWrapper = mount(defineComponent({
+      name: 'CancelStringConsumer',
+      setup() {
+        return () => {
+          cancelRenderCount += 1;
+          return h('span', lazyStrings.ChatInput__cancel());
+        };
+      },
+    }));
+
+    expect(messageRenderCount).toBe(1);
+    expect(cancelRenderCount).toBe(1);
+    resolveMessage?.({ ChatInput__type_a_message: () => 'Type a message...' });
+
+    await vi.waitFor(() => {
+      expect(messageWrapper.text()).toBe('Type a message...');
+    });
+    expect(messageRenderCount).toBe(2);
+    expect(cancelRenderCount).toBe(1);
+
+    resolveCancel?.({ ChatInput__cancel: () => 'Cancel' });
+    await vi.waitFor(() => {
+      expect(cancelWrapper.text()).toBe('Cancel');
+    });
+    messageWrapper.unmount();
+    cancelWrapper.unmount();
+  });
+
+  it('batches multiple message additions from one boundary into one component update', async () => {
+    let resolveBoundary: ((module: StringBoundaryModule) => void) | undefined;
+    const boundaryModule = new Promise<StringBoundaryModule>((resolve) => {
+      resolveBoundary = resolve;
+    });
+    registerStringBoundary({
+      boundaryId: 'chat-input-boundary',
+      keys: ['ChatInput__type_a_message', 'ChatInput__cancel'],
+      loaders: {
+        en: async () => boundaryModule,
+        ja: resolvedModule({
+          module: {
+            ChatInput__type_a_message: () => 'メッセージを入力...',
+            ChatInput__cancel: () => 'キャンセル',
+          },
+        }),
+      },
+    });
+
+    let renderCount = 0;
+    const wrapper = mount(defineComponent({
+      name: 'MultipleStringConsumer',
+      setup() {
+        return () => {
+          renderCount += 1;
+          return h('span', [
+            lazyStrings.ChatInput__type_a_message(),
+            lazyStrings.ChatInput__cancel(),
+          ]);
+        };
+      },
+    }));
+
+    expect(renderCount).toBe(1);
+    resolveBoundary?.({
+      ChatInput__type_a_message: () => 'Type a message...',
+      ChatInput__cancel: () => 'Cancel',
+    });
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toBe('Type a message...Cancel');
+    });
+    expect(renderCount).toBe(2);
+    wrapper.unmount();
+  });
+
+  it('rerenders after each independently loaded message used by one component', async () => {
+    let resolveMessage: ((module: StringBoundaryModule) => void) | undefined;
+    let resolveCancel: ((module: StringBoundaryModule) => void) | undefined;
+    const messageModule = new Promise<StringBoundaryModule>((resolve) => {
+      resolveMessage = resolve;
+    });
+    const cancelModule = new Promise<StringBoundaryModule>((resolve) => {
+      resolveCancel = resolve;
+    });
+    registerStringBoundary({
+      boundaryId: 'message-boundary',
+      keys: ['ChatInput__type_a_message'],
+      loaders: {
+        en: async () => messageModule,
+        ja: resolvedModule({ module: { ChatInput__type_a_message: () => 'メッセージを入力...' } }),
+      },
+    });
+    registerStringBoundary({
+      boundaryId: 'cancel-boundary',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: async () => cancelModule,
+        ja: resolvedModule({ module: { ChatInput__cancel: () => 'キャンセル' } }),
+      },
+    });
+
+    let renderCount = 0;
+    const wrapper = mount(defineComponent({
+      name: 'SplitBoundaryStringConsumer',
+      setup() {
+        return () => {
+          renderCount += 1;
+          return h('span', [
+            lazyStrings.ChatInput__type_a_message(),
+            lazyStrings.ChatInput__cancel(),
+          ]);
+        };
+      },
+    }));
+
+    resolveMessage?.({ ChatInput__type_a_message: () => 'Type a message...' });
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toBe('Type a message...');
+    });
+    expect(renderCount).toBe(2);
+
+    resolveCancel?.({ ChatInput__cancel: () => 'Cancel' });
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toBe('Type a message...Cancel');
+    });
+    expect(renderCount).toBe(3);
+    wrapper.unmount();
+  });
+
+  it('rerenders all message consumers when the locale changes', async () => {
+    registerStringBoundary({
+      boundaryId: 'chat-input-boundary',
+      keys: ['ChatInput__type_a_message', 'ChatInput__cancel'],
+      loaders: {
+        en: resolvedModule({
+          module: {
+            ChatInput__type_a_message: () => 'Type a message...',
+            ChatInput__cancel: () => 'Cancel',
+          },
+        }),
+        ja: resolvedModule({
+          module: {
+            ChatInput__type_a_message: () => 'メッセージを入力...',
+            ChatInput__cancel: () => 'キャンセル',
+          },
+        }),
+      },
+    });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'chat-input-boundary', locale: 'en' });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'chat-input-boundary', locale: 'ja' });
+
+    let messageRenderCount = 0;
+    let cancelRenderCount = 0;
+    const messageWrapper = mount(defineComponent({
+      name: 'LocalizedMessageStringConsumer',
+      setup() {
+        return () => {
+          messageRenderCount += 1;
+          return h('span', lazyStrings.ChatInput__type_a_message());
+        };
+      },
+    }));
+    const cancelWrapper = mount(defineComponent({
+      name: 'LocalizedCancelStringConsumer',
+      setup() {
+        return () => {
+          cancelRenderCount += 1;
+          return h('span', lazyStrings.ChatInput__cancel());
+        };
+      },
+    }));
+
+    await setLocale({ locale: 'ja' });
+    await vi.waitFor(() => {
+      expect(messageWrapper.text()).toBe('メッセージを入力...');
+      expect(cancelWrapper.text()).toBe('キャンセル');
+    });
+    expect(messageRenderCount).toBe(2);
+    expect(cancelRenderCount).toBe(2);
+    messageWrapper.unmount();
+    cancelWrapper.unmount();
+  });
+
+  it('reactively replaces a loaded message after boundary re-registration', async () => {
+    registerStringBoundary({
+      boundaryId: 'chat-input-boundary',
+      keys: ['ChatInput__type_a_message'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__type_a_message: () => 'Old message' } }),
+        ja: resolvedModule({ module: { ChatInput__type_a_message: () => '古いメッセージ' } }),
+      },
+    });
+    await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'chat-input-boundary', locale: 'en' });
+
+    const wrapper = mount(defineComponent({
+      name: 'ReloadedStringConsumer',
+      setup() {
+        return () => h('span', lazyStrings.ChatInput__type_a_message());
+      },
+    }));
+    expect(wrapper.text()).toBe('Old message');
+
+    registerStringBoundary({
+      boundaryId: 'chat-input-boundary',
+      keys: ['ChatInput__type_a_message'],
+      loaders: {
+        en: resolvedModule({ module: { ChatInput__type_a_message: () => 'New message' } }),
+        ja: resolvedModule({ module: { ChatInput__type_a_message: () => '新しいメッセージ' } }),
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toBe('New message');
+    });
+    wrapper.unmount();
   });
 
   it('rejects a boundary pack that omits a registered message', async () => {

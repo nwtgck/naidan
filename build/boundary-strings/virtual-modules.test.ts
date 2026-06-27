@@ -115,6 +115,30 @@ describe('Boundary Strings virtual modules', () => {
     );
   });
 
+  it('ignores empty message directories that are not registered in the English catalog', () => {
+    const root = createFixtureRoot();
+    fs.mkdirSync(
+      path.join(root, 'src/strings/messages/LanguageSelector__english'),
+      { recursive: true },
+    );
+
+    expect(() => readBoundaryStringMessages({ root })).not.toThrow();
+  });
+
+  it('rejects an empty message directory that is registered in the English catalog', () => {
+    const root = createFixtureRoot();
+    const messageDirectory = path.join(
+      root,
+      'src/strings/messages/ChatInput__type_a_message',
+    );
+    fs.rmSync(messageDirectory, { recursive: true });
+    fs.mkdirSync(messageDirectory, { recursive: true });
+
+    expect(() => readBoundaryStringMessages({ root })).toThrow(
+      'Missing en.ts for catalog message "ChatInput__type_a_message".',
+    );
+  });
+
   it('rejects message directories that are not registered in the English catalog', () => {
     const root = createFixtureRoot();
     const orphanDirectory = path.join(root, 'src/strings/messages/LanguageSelector__english');

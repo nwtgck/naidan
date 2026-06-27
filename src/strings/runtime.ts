@@ -1,4 +1,4 @@
-import { readonly, shallowRef } from 'vue';
+import { readonly, shallowReactive, shallowRef } from 'vue';
 
 import type { Strings, StringKey } from '@/strings/catalogs/en';
 import type { UiLocale } from '@/strings/types';
@@ -16,10 +16,10 @@ type StringBoundaryRegistration = {
   loaders: StringBoundaryLoaders;
 };
 
-const registries: Record<UiLocale, StringBoundaryModule> = {
-  en: {},
-  ja: {},
-};
+const registries = {
+  en: shallowReactive<StringBoundaryModule>({}),
+  ja: shallowReactive<StringBoundaryModule>({}),
+} satisfies Record<UiLocale, StringBoundaryModule>;
 const boundaryRegistrations = new Map<string, StringBoundaryRegistration>();
 const boundaryIdsByKey = new Map<string, Set<string>>();
 const loadedBoundaryModules: Record<UiLocale, Map<string, StringBoundaryModule>> = {
@@ -35,7 +35,13 @@ const nonMessageAccessorProperties = new Set([
   'then',
   'toJSON',
 ]);
-const revision = shallowRef(0);
+/* eslint-disable local-rules-named-args/require-named-args -- Proxy adapters preserve each message's zero-argument or one-object call signature. */
+type LazyStringAccessor = (...args: readonly unknown[]) => string;
+type EnsureStringAccessor = (...args: readonly unknown[]) => Promise<string>;
+/* eslint-enable local-rules-named-args/require-named-args */
+
+const lazyStringAccessorCache = new Map<string, LazyStringAccessor>();
+const ensureStringAccessorCache = new Map<string, EnsureStringAccessor>();
 let localeSwitchRequest = 0;
 
 export function resolveBrowserLocale(): UiLocale {
@@ -102,9 +108,6 @@ async function ensureBoundaryLoaded({ boundaryId, locale }: {
       }
       loadedBoundaryModules[locale].set(boundaryId, loadedMessages);
       Object.assign(registries[locale], loadedMessages);
-      if (locale === currentLocaleState.value) {
-        revision.value += 1;
-      }
     })();
     loadingBoundaries.set(loadKey, promise);
     try {
@@ -244,6 +247,39 @@ function rebuildRegistryMessage({ key, locale }: {
   delete registries[locale][key];
 }
 
+function clearRegistry({ registry }: {
+  registry: StringBoundaryModule;
+}): void {
+  for (const key of Object.keys(registry)) {
+    delete registry[key];
+  }
+}
+
+function getLazyStringAccessor({ key }: {
+  key: string;
+}): LazyStringAccessor {
+  const cached = lazyStringAccessorCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  // This Proxy adapter must preserve both zero-argument and one-object message signatures.
+  // eslint-disable-next-line local-rules-named-args/require-named-args
+  const accessor = (...args: readonly unknown[]): string => {
+    const locale = currentLocaleState.value;
+    const message = getLoadedMessage({ key, locale });
+    if (message === undefined) {
+      void ensureKeyLoaded({ key, locale }).catch((error: unknown) => {
+        console.error('[Boundary Strings] Failed to load a message boundary.', error);
+      });
+      return '';
+    }
+    return Reflect.apply(message, undefined, args) as string;
+  };
+  lazyStringAccessorCache.set(key, accessor);
+  return accessor;
+}
+
 export function registerStringBoundary({ boundaryId, keys, loaders }: {
   boundaryId: string;
   keys: readonly string[];
@@ -297,7 +333,7 @@ export function registerStringBoundary({ boundaryId, keys, loaders }: {
  *
  * A missing locale boundary starts loading and returns an empty string. Callers
  * must therefore use this accessor only where Vue will evaluate the expression
- * again after the boundary registration updates the reactive revision.
+ * again after the reactive locale registry receives the message implementation.
  */
 export const lazyStrings = new Proxy({}, {
   get(target, property) {
@@ -309,21 +345,7 @@ export const lazyStrings = new Proxy({}, {
     ) {
       return Reflect.get(target, property);
     }
-    const key = property;
-    // This Proxy adapter must preserve both zero-argument and one-object message signatures.
-    // eslint-disable-next-line local-rules-named-args/require-named-args
-    return (...args: readonly unknown[]): string => {
-      void revision.value;
-      const locale = currentLocaleState.value;
-      const message = getLoadedMessage({ key, locale });
-      if (message === undefined) {
-        void ensureKeyLoaded({ key, locale }).catch((error: unknown) => {
-          console.error('[Boundary Strings] Failed to load a message boundary.', error);
-        });
-        return '';
-      }
-      return Reflect.apply(message, undefined, args) as string;
-    };
+    return getLazyStringAccessor({ key: property });
   },
 }) as Strings;
 
@@ -338,6 +360,29 @@ type EnsureString<Message> = Message extends () => infer Result
 export type EnsureStrings = {
   readonly [Key in keyof Strings]: EnsureString<Strings[Key]>;
 };
+
+function getEnsureStringAccessor({ key }: {
+  key: string;
+}): EnsureStringAccessor {
+  const cached = ensureStringAccessorCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  // This Proxy adapter must preserve both zero-argument and one-object message signatures.
+  // eslint-disable-next-line local-rules-named-args/require-named-args
+  const accessor = async (...args: readonly unknown[]): Promise<string> => {
+    const locale = currentLocaleState.value;
+    await ensureKeyLoaded({ key, locale });
+    const message = getLoadedMessage({ key, locale });
+    if (message === undefined) {
+      throw new Error(`Boundary Strings message ${String(key)} was not registered.`);
+    }
+    return Reflect.apply(message, undefined, args) as string;
+  };
+  ensureStringAccessorCache.set(key, accessor);
+  return accessor;
+}
 
 /**
  * Ensures the current-locale boundary is loaded before resolving a message.
@@ -355,18 +400,7 @@ export const ensureStrings = new Proxy({}, {
     ) {
       return Reflect.get(target, property);
     }
-    const key = property;
-    // This Proxy adapter must preserve both zero-argument and one-object message signatures.
-    // eslint-disable-next-line local-rules-named-args/require-named-args
-    return async (...args: readonly unknown[]): Promise<string> => {
-      const locale = currentLocaleState.value;
-      await ensureKeyLoaded({ key, locale });
-      const message = getLoadedMessage({ key, locale });
-      if (message === undefined) {
-        throw new Error(`Boundary Strings message ${String(key)} was not registered.`);
-      }
-      return Reflect.apply(message, undefined, args) as string;
-    };
+    return getEnsureStringAccessor({ key: property });
   },
 }) as EnsureStrings;
 
@@ -404,7 +438,6 @@ export async function setLocale({ locale }: {
   if (currentLocaleState.value !== locale) {
     currentLocaleState.value = locale;
     applyDocumentLocale({ locale });
-    revision.value += 1;
   }
 }
 
@@ -420,15 +453,14 @@ export const TEST_ONLY = {
     }));
     currentLocaleState.value = locale;
     applyDocumentLocale({ locale });
-    revision.value += 1;
   },
   loadedBoundaryModules,
   loadingBoundaries,
   registries,
   resolveBrowserLocale,
   reset(): void {
-    registries.en = {};
-    registries.ja = {};
+    clearRegistry({ registry: registries.en });
+    clearRegistry({ registry: registries.ja });
     boundaryRegistrations.clear();
     boundaryIdsByKey.clear();
     loadedBoundaryModules.en.clear();
@@ -443,7 +475,6 @@ export const TEST_ONLY = {
     localeSwitchRequest = 0;
     currentLocaleState.value = 'en';
     applyDocumentLocale({ locale: 'en' });
-    revision.value += 1;
   },
   scheduledBoundaryWarmups,
   usedBoundaryIds,

@@ -243,7 +243,13 @@ function validateMessageDirectories({ catalogKeys, root }: {
   }
   const catalogKeySet = new Set(catalogKeys);
   const orphanDirectories = fs.readdirSync(messagesDirectory, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !catalogKeySet.has(entry.name))
+    .filter((entry) => {
+      if (!entry.isDirectory() || catalogKeySet.has(entry.name)) {
+        return false;
+      }
+      const messageDirectory = path.join(messagesDirectory, entry.name);
+      return fs.readdirSync(messageDirectory).length > 0;
+    })
     .map((entry) => entry.name)
     .sort();
   if (orphanDirectories.length > 0) {
