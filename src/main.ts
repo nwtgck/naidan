@@ -1,32 +1,22 @@
-import { createApp } from 'vue';
+import { createApp, shallowRef } from 'vue';
 import './style.css';
-import App from './App.vue';
+import StartupRoot from './StartupRoot.vue';
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import { useSettings } from './composables/useSettings';
-import { useChatBootstrap } from './composables/chat/ui/useChatBootstrap';
+import { initializeThemeController } from './composables/useTheme';
+import type { StartupState } from './models/startup';
 import { scheduleFileProtocolStandaloneWorkerHubWarmup } from './services/worker-hub-standalone-loader';
 import { scheduleAppStartup } from './services/app-startup';
-import { reportAppStartupFailure } from './services/app-startup-failure';
+import {
+  recordAppStartupFailure,
+  reportAppStartupFailure,
+} from './services/app-startup-failure';
+import { startApplication } from './services/startup/application-startup';
+import { createInitialNavigationGate } from './services/startup/initial-navigation-gate';
 import {
   debugRecordFileProtocolStandaloneStartupCheckpoint,
 } from './services/debug-file-protocol-standalone/startup';
-
-const router = createRouter({
-  history: createWebHashHistory(),
-  routes,
-});
-
-const app = createApp(App);
-// Keep this assignment visible: it reports unhandled Vue rendering and
-// lifecycle errors in both hosted and standalone builds.
-app.config.errorHandler = (error, instance, info) => {
-  console.error('Vue Error:', error);
-  console.error('Vue Instance:', instance);
-  console.error('Error Info:', info);
-};
-
-app.use(router);
 
 async function bootstrapApp(): Promise<void> {
   debugRecordFileProtocolStandaloneStartupCheckpoint({
@@ -39,52 +29,32 @@ async function bootstrapApp(): Promise<void> {
     throw new Error('The #app mount element is missing.');
   }
 
-  // Initialize global state (storage, settings, chat list) before rendering a
-  // route component that may access those stores during setup.
-  const settingsStore = useSettings();
-  const chatBootstrap = useChatBootstrap();
+  // The document bootstrap has already painted the saved theme. Initialize the
+  // single reactive owner before mounting so onboarding never falls back to a
+  // different theme while the normal application remains deferred.
+  initializeThemeController({ window, document });
 
-  debugRecordFileProtocolStandaloneStartupCheckpoint({
-    checkpoint: 'waiting-router',
-    details: undefined,
+  const startupState = shallowRef<StartupState>({
+    kind: 'initializing-foundation',
   });
-  await router.isReady();
-
-  const storageTypeQuery = router.currentRoute.value.query['storage-type'];
-  const storageTypeOverride = Array.isArray(storageTypeQuery) ? storageTypeQuery[0] : storageTypeQuery;
-
-  // Use a block scope to ensure dataZipBase64 can be GC'd as soon as init is done.
-  {
-    const dataZipQuery = router.currentRoute.value.query['data-zip'];
-    const dataZipBase64 = Array.isArray(dataZipQuery) ? dataZipQuery[0] : dataZipQuery;
-
-    // Clear the large data-zip parameter from the URL after extraction to keep
-    // it clean and help with GC. Preserve storage-type because it remains useful
-    // when the URL is inspected or bookmarked.
-    if (dataZipBase64) {
-      const newQuery = { ...router.currentRoute.value.query };
-      delete newQuery['data-zip'];
-      void router.replace({ query: newQuery });
-    }
-
-    debugRecordFileProtocolStandaloneStartupCheckpoint({
-      checkpoint: 'initializing-settings',
-      details: {
-        hasStorageTypeOverride: storageTypeOverride !== undefined,
-        hasDataZip: dataZipBase64 !== undefined,
-      },
-    });
-    await settingsStore.init({
-      storageTypeOverride: storageTypeOverride || undefined,
-      dataZipBase64: dataZipBase64 || undefined,
-    });
-  }
-
-  debugRecordFileProtocolStandaloneStartupCheckpoint({
-    checkpoint: 'loading-chats',
-    details: undefined,
+  const router = createRouter({
+    history: createWebHashHistory(),
+    routes,
   });
-  await chatBootstrap.loadChats();
+  const navigationGate = createInitialNavigationGate({ router });
+  const app = createApp(StartupRoot, {
+    startupState,
+  });
+
+  // Keep this assignment visible: it reports unhandled Vue rendering and
+  // lifecycle errors in both hosted and standalone builds.
+  app.config.errorHandler = (error, instance, info) => {
+    console.error('Vue Error:', error);
+    console.error('Vue Instance:', instance);
+    console.error('Error Info:', info);
+  };
+
+  app.use(router);
 
   debugRecordFileProtocolStandaloneStartupCheckpoint({
     checkpoint: 'mounting-vue',
@@ -92,9 +62,46 @@ async function bootstrapApp(): Promise<void> {
   });
   app.mount(appElement);
   debugRecordFileProtocolStandaloneStartupCheckpoint({
-    checkpoint: 'mounted',
+    checkpoint: 'startup-root-mounted',
     details: undefined,
   });
+
+  try {
+    await startApplication({
+      startupState,
+      settingsStore: useSettings(),
+      router,
+      navigationGate,
+      window,
+    });
+  } catch (error) {
+    recordAppStartupFailure({ error });
+    const state = startupState.value;
+    switch (state.kind) {
+    case 'initializing-foundation':
+      startupState.value = {
+        kind: 'foundation-failed',
+        error,
+      };
+      break;
+    case 'starting-main':
+    case 'rendering-main':
+    case 'ready':
+      startupState.value = {
+        kind: 'main-failed',
+        error,
+      };
+      break;
+    case 'foundation-failed':
+    case 'main-failed':
+      break;
+    default: {
+      const _ex: never = state;
+      throw new Error(`Unhandled startup state: ${JSON.stringify(_ex)}`);
+    }
+    }
+    return;
+  }
 
   if (__BUILD_MODE_IS_STANDALONE__) {
     scheduleFileProtocolStandaloneWorkerHubWarmup();

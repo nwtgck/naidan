@@ -61,11 +61,18 @@ vi.mock('@/composables/chat/ui/useChatNavigation', () => ({
   }),
 }));
 
-import { useChatBootstrap } from './useChatBootstrap';
+import { loadChatsForApplicationStartup, useChatBootstrap } from './useChatBootstrap';
 
 describe('useChatBootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('hydrates chat data without activating runtime listeners', async () => {
+    await loadChatsForApplicationStartup();
+
+    expect(mockLoadData).toHaveBeenCalledWith();
+    expect(mockInstallChatBootstrap).not.toHaveBeenCalled();
   });
 
   it('delegates load and open actions', async () => {

@@ -12,7 +12,7 @@
     overscroll-behavior-y: none; /* Prevent pull-to-refresh */
     -webkit-tap-highlight-color: transparent; /* Remove blue flash on tap */
     -webkit-touch-callout: none; /* Disable default context menu on long press */
-    @apply bg-gray-50 text-gray-900 antialiased transition-colors duration-300;
+    @apply bg-gray-50 text-gray-900 antialiased;
   }
 
   /* Allow text selection only where needed */
@@ -35,6 +35,11 @@
   
   html.dark, html.dark body {
     @apply bg-gray-950 text-gray-100;
+  }
+
+  html[data-naidan-theme-control='application-managed'],
+  html[data-naidan-theme-control='application-managed'] body {
+    @apply transition-colors duration-300;
   }
 
   #app {

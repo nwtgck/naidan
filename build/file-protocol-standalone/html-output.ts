@@ -5,6 +5,8 @@ import {
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS,
+  FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE,
+  FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE,
 } from '../../src/file-protocol-standalone-protocol';
 import type { BuiltFileProtocolStandaloneWorkerArtifact } from './worker';
 
@@ -36,6 +38,27 @@ function isExecutableScriptType({ type }: { type: string | null }): boolean {
   }
   const normalized = type.split(';', 1)[0]?.trim().toLowerCase() ?? '';
   return executableScriptTypes.has(normalized);
+}
+
+function isPreservedPreRuntimeScript({ script }: {
+  script: HTMLScriptElement,
+}): boolean {
+  return script.getAttribute(FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE)
+    === FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE;
+}
+
+function assertValidPreservedPreRuntimeScript({ script }: {
+  script: HTMLScriptElement,
+}): void {
+  if (script.id === '') {
+    throw new Error(`[${pluginName}] A preserved pre-runtime script must have a stable id.`);
+  }
+  if (script.hasAttribute('src')) {
+    throw new Error(`[${pluginName}] Preserved pre-runtime script ${JSON.stringify(script.id)} must be inline.`);
+  }
+  if (script.parentElement?.tagName !== 'HEAD') {
+    throw new Error(`[${pluginName}] Preserved pre-runtime script ${JSON.stringify(script.id)} must be in <head>.`);
+  }
 }
 
 export function parseRelativeOutputFileName({ value, attribute }: {
@@ -125,6 +148,18 @@ export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
 
   const executableScripts = Array.from(document.querySelectorAll('script'))
     .filter((script) => isExecutableScriptType({ type: script.getAttribute('type') }));
+  /**
+   * WHY: The saved theme must run before the external SystemJS runtime to avoid
+   * the measured white first paint. Preserve only explicitly marked inline head
+   * scripts so the standalone transform remains fail-closed for every other
+   * executable script.
+   */
+  const preservedPreRuntimeScripts = executableScripts.filter((script) => (
+    isPreservedPreRuntimeScript({ script })
+  ));
+  for (const script of preservedPreRuntimeScripts) {
+    assertValidPreservedPreRuntimeScript({ script });
+  }
   const legacyEntries = executableScripts.filter((script) => script.id === 'vite-legacy-entry');
   if (legacyEntries.length !== 1) {
     throw new Error(`[${pluginName}] Expected exactly one @vitejs/plugin-legacy entry script; found ${legacyEntries.length}.`);
@@ -149,7 +184,10 @@ export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
     );
   }
 
-  const unexpectedScripts = executableScripts.filter((script) => script !== legacyEntry);
+  const unexpectedScripts = executableScripts.filter((script) => (
+    script !== legacyEntry
+    && !isPreservedPreRuntimeScript({ script })
+  ));
   if (unexpectedScripts.length > 0) {
     const descriptions = unexpectedScripts.map((script) => {
       const id = script.id === '' ? '(no id)' : script.id;
@@ -221,10 +259,30 @@ export function assertValidFileProtocolStandaloneHtml({ html }: { html: string }
   const dom = new JSDOM(html);
   const executableScripts = Array.from(dom.window.document.querySelectorAll('script'))
     .filter((script) => isExecutableScriptType({ type: script.getAttribute('type') }));
+  const preservedPreRuntimeScripts = executableScripts.filter((script) => (
+    isPreservedPreRuntimeScript({ script })
+  ));
+  for (const script of preservedPreRuntimeScripts) {
+    assertValidPreservedPreRuntimeScript({ script });
+  }
+
+  const generatedExecutableScripts = executableScripts.filter((script) => (
+    !isPreservedPreRuntimeScript({ script })
+  ));
   const expectedIds = FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS;
-  const actualIds = executableScripts.map((script) => script.id);
+  const actualIds = generatedExecutableScripts.map((script) => script.id);
   if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) {
     throw new Error(`[${pluginName}] Final executable script order is invalid: ${actualIds.join(', ')}.`);
+  }
+
+  const firstGeneratedScript = generatedExecutableScripts[0];
+  if (firstGeneratedScript === undefined) {
+    throw new Error(`[${pluginName}] Final executable scripts are missing.`);
+  }
+  for (const script of preservedPreRuntimeScripts) {
+    if ((script.compareDocumentPosition(firstGeneratedScript) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
+      throw new Error(`[${pluginName}] Preserved pre-runtime script ${JSON.stringify(script.id)} must run before generated runtime scripts.`);
+    }
   }
   for (const id of FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS) {
     const matches = Array.from(dom.window.document.querySelectorAll('[id]')).filter((element) => element.id === id);

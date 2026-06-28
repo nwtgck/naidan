@@ -13,6 +13,17 @@ import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { setupScrollToMock } from '@/utils/test-utils';
 
 
+
+vi.mock('@/composables/useApplicationPresentation', () => ({
+  isApplicationInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useApplicationPresentation: () => ({
+    applicationInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));

@@ -5,6 +5,9 @@
  */
 export const FILE_PROTOCOL_STANDALONE_GLOBAL_NAME = '__FILE_PROTOCOL_STANDALONE__' as const;
 
+export const FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE = 'data-file-protocol-standalone-script-phase' as const;
+export const FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE = 'pre-runtime' as const;
+
 export const DEBUG_FILE_PROTOCOL_STANDALONE_STARTUP_FORMAT = 'file-protocol-standalone-startup-v2' as const;
 export const DEBUG_FILE_PROTOCOL_STANDALONE_DIAGNOSTICS_FORMAT = 'file-protocol-standalone-diagnostics-v2' as const;
 export const DEBUG_FILE_PROTOCOL_STANDALONE_BUILD_REPORT_FORMAT = 'file-protocol-standalone-build-report-v5' as const;

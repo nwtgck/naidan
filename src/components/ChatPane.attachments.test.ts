@@ -22,6 +22,17 @@ const mockStreaming = ref(false);
 const mockSendMessage = vi.fn().mockResolvedValue(true);
 
 // Mock dependencies
+
+vi.mock('@/composables/useApplicationPresentation', () => ({
+  isApplicationInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useApplicationPresentation: () => ({
+    applicationInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,

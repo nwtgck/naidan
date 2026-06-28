@@ -197,11 +197,88 @@ export function createChatDataStore({
   const THROTTLE_MS = 200;
   let lastSidebarReload = 0;
 
-  function loadData() {
-    return storageService.getSidebarStructure().then((sidebarStructure) => {
-      rootItems.value = sidebarStructure;
-      syncLiveInstancesWithSidebar();
-    });
+  type SidebarLoadState =
+    | {
+      kind: 'idle',
+    }
+    | {
+      kind: 'loading',
+      latestRequestedVersion: number,
+      promise: Promise<void>,
+    };
+
+  let sidebarLoadState: SidebarLoadState = {
+    kind: 'idle',
+  };
+  let nextSidebarLoadVersion = 0;
+
+  function requireLoadingSidebarState({ state }: {
+    state: SidebarLoadState,
+  }): Extract<SidebarLoadState, { kind: 'loading' }> {
+    switch (state.kind) {
+    case 'idle':
+      throw new Error('Sidebar load state became idle while loading.');
+    case 'loading':
+      return state;
+    default: {
+      const _ex: never = state;
+      return _ex;
+    }
+    }
+  }
+
+  async function runSidebarLoad(): Promise<void> {
+    try {
+      while (true) {
+        const state = requireLoadingSidebarState({
+          state: sidebarLoadState,
+        });
+        const requestedVersion = state.latestRequestedVersion;
+        const sidebarStructure = await storageService.getSidebarStructure();
+        const currentState = requireLoadingSidebarState({
+          state: sidebarLoadState,
+        });
+
+        if (currentState.latestRequestedVersion !== requestedVersion) {
+          continue;
+        }
+
+        rootItems.value = sidebarStructure;
+        syncLiveInstancesWithSidebar();
+        sidebarLoadState = {
+          kind: 'idle',
+        };
+        return;
+      }
+    } catch (error) {
+      sidebarLoadState = {
+        kind: 'idle',
+      };
+      throw error;
+    }
+  }
+
+  function loadData(): Promise<void> {
+    const requestedVersion = ++nextSidebarLoadVersion;
+    const state = sidebarLoadState;
+    switch (state.kind) {
+    case 'idle': {
+      const promise = Promise.resolve().then(runSidebarLoad);
+      sidebarLoadState = {
+        kind: 'loading',
+        latestRequestedVersion: requestedVersion,
+        promise,
+      };
+      return promise;
+    }
+    case 'loading':
+      state.latestRequestedVersion = requestedVersion;
+      return state.promise;
+    default: {
+      const _ex: never = state;
+      return _ex;
+    }
+    }
   }
 
   function replaceSidebarItems({

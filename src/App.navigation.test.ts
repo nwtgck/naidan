@@ -99,6 +99,18 @@ vi.mock('./composables/chat/ui/useChatOrganization', () => ({
   }),
 }));
 
+vi.mock('./composables/useApplicationPresentation', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('./composables/useApplicationPresentation')
+  >();
+  return {
+    ...actual,
+    useApplicationPresentation: () => ({
+      applicationInteraction: ref('enabled'),
+    }),
+  };
+});
+
 vi.mock('./composables/useSettings', () => ({
   useSettings: () => ({
     init: vi.fn(),

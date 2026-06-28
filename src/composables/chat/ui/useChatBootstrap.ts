@@ -21,6 +21,15 @@ export type ChatBootstrapAdapter = {
   TEST_ONLY: Record<never, never>,
 };
 
+export async function loadChatsForApplicationStartup(): Promise<void> {
+  /**
+   * WHY: Startup may hydrate the Sidebar while onboarding is still visible,
+   * but runtime listeners must remain inactive until the real application has
+   * mounted. Keep data hydration separate from runtime activation.
+   */
+  await loadData();
+}
+
 export function useChatBootstrap(): ChatBootstrapAdapter {
   const { settings } = useSettings();
   const chatModels = useChatModels();
@@ -77,7 +86,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   });
 
   async function loadChats() {
-    await loadData();
+    await loadChatsForApplicationStartup();
   }
 
   async function openChat({

@@ -237,3 +237,61 @@ describe('chat data store scoped settings updates', () => {
   });
 
 });
+
+describe('chat data store sidebar loading', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSubscribeToChanges.mockReturnValue(() => undefined);
+  });
+
+  it('coalesces concurrent loads and commits only the latest requested snapshot', async () => {
+    let resolveFirst!: (items: Array<{ type: 'chat', chat: ChatMeta }>) => void;
+    let resolveSecond!: (items: Array<{ type: 'chat', chat: ChatMeta }>) => void;
+    const first = new Promise<Array<{ type: 'chat', chat: ChatMeta }>>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const second = new Promise<Array<{ type: 'chat', chat: ChatMeta }>>((resolve) => {
+      resolveSecond = resolve;
+    });
+    mockGetSidebarStructure
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second);
+
+    const store = createStore();
+    const firstLoad = store.loadData();
+    await vi.waitFor(() => {
+      expect(mockGetSidebarStructure).toHaveBeenCalledOnce();
+    });
+    const secondLoad = store.loadData();
+
+    expect(secondLoad).toBe(firstLoad);
+    resolveFirst([{
+      type: 'chat',
+      chat: {
+        ...createChatMeta(),
+        title: 'Old',
+      },
+    }]);
+
+    await vi.waitFor(() => {
+      expect(mockGetSidebarStructure).toHaveBeenCalledTimes(2);
+    });
+
+    resolveSecond([{
+      type: 'chat',
+      chat: {
+        ...createChatMeta(),
+        title: 'New',
+      },
+    }]);
+    await Promise.all([firstLoad, secondLoad]);
+
+    expect(store.rootItems.value).toHaveLength(1);
+    const item = store.rootItems.value[0];
+    expect(item?.type).toBe('chat');
+    if (item?.type !== 'chat') {
+      throw new Error('Expected a chat sidebar item.');
+    }
+    expect(item.chat.title).toBe('New');
+  });
+});

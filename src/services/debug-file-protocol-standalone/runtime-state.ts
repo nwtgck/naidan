@@ -14,6 +14,9 @@ export type DebugFileProtocolStandaloneStartupCheckpointName =
   | 'initializing-settings'
   | 'loading-chats'
   | 'mounting-vue'
+  | 'startup-root-mounted'
+  | 'waiting-onboarding'
+  | 'loading-main-application'
   | 'mounted'
   | 'bootstrap-failed';
 

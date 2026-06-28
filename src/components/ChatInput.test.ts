@@ -62,9 +62,21 @@ const mockGetChatTmpDirectory = vi.fn();
 const mockGetNaidanSysfsAccessScope = vi.fn();
 
 const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
+const mockApplicationInteraction = ref<
+  | 'blocked-by-startup'
+  | 'blocked-by-onboarding'
+  | 'enabled'
+>('enabled');
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: mockSettings,
+  }),
+}));
+
+vi.mock('@/composables/useApplicationPresentation', () => ({
+  isApplicationInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useApplicationPresentation: () => ({
+    applicationInteraction: mockApplicationInteraction,
   }),
 }));
 
@@ -448,13 +460,18 @@ describe('ChatInput Integration', () => {
     mockCurrentChat.value = { id: 'chat-1', modelId: 'model-1' };
     mockCurrentChatGroup.value = null;
     mockSettings.value = { storageType: 'opfs', mounts: [] };
+    mockApplicationInteraction.value = 'enabled';
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
     mockGetNaidanSysfsAccessScope.mockReturnValue('none');
     mockSendMessageForChat.mockResolvedValue(true);
+    mockChatStore.fetchAvailableModels.mockReset();
+    mockChatStore.fetchAvailableModels.mockResolvedValue([]);
   });
 
-  const getWrapper = () => mount(ChatInput, {
+  const getWrapper = ({ autoSendPrompt }: {
+    autoSendPrompt?: string,
+  } = {}) => mount(ChatInput, {
     props: {
       chatId: toChatId({ raw: 'chat-1' }),
       chat: mockCurrentChat.value!,
@@ -469,6 +486,7 @@ describe('ChatInput Integration', () => {
       hasImageModel: true,
       availableImageModels: [],
       isAnimatingHeight: false,
+      autoSendPrompt,
     },
     global: {
       stubs: {
@@ -480,6 +498,48 @@ describe('ChatInput Integration', () => {
         },
       },
     },
+  });
+
+  it('waits to auto-send until onboarding no longer blocks interaction', async () => {
+    mockApplicationInteraction.value = 'blocked-by-onboarding';
+    getWrapper({ autoSendPrompt: 'Hello after onboarding' });
+    await flushPromises();
+
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+
+    mockApplicationInteraction.value = 'enabled';
+    await nextTick();
+    await flushPromises();
+
+    expect(mockSendMessageForChat).toHaveBeenCalledOnce();
+    expect(mockSendMessageForChat).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'Hello after onboarding',
+    }));
+  });
+
+  it('does not focus or auto-send when onboarding reopens before scheduled interaction', async () => {
+    let resolveModels!: (models: string[]) => void;
+    const models = new Promise<string[]>((resolve) => {
+      resolveModels = resolve;
+    });
+    mockChatStore.fetchAvailableModels.mockReturnValueOnce(models);
+
+    const wrapper = getWrapper({ autoSendPrompt: 'Do not send while blocked' });
+    const textarea = wrapper.find('[data-testid="chat-input"]').element;
+
+    mockApplicationInteraction.value = 'blocked-by-onboarding';
+    await nextTick();
+    await flushPromises();
+
+    expect(mockChatStore.fetchAvailableModels).toHaveBeenCalledOnce();
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(textarea);
+
+    resolveModels(['model-1']);
+    await flushPromises();
+
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(textarea);
   });
 
   it('does not synchronize currentLeafId changes into the URL query', async () => {
@@ -728,6 +788,8 @@ describe('ChatInput Integration', () => {
 
   it('should clear attachments after successful message send', async () => {
     mockSendMessageForChat.mockResolvedValue(true);
+    mockChatStore.fetchAvailableModels.mockReset();
+    mockChatStore.fetchAvailableModels.mockResolvedValue([]);
     const wrapper = getWrapper();
     wrapper.vm.input = 'test message';
     wrapper.vm.TEST_ONLY.attachments.value = [

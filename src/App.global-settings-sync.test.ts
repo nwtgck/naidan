@@ -1,224 +1,75 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
-import { nextTick, computed } from 'vue';
-import { createRouter, createWebHistory } from 'vue-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
+import { ref, type Ref } from 'vue';
+import { createMemoryHistory, createRouter, type Router } from 'vue-router';
+import type { useSettings } from '@/composables/useSettings';
+import {
+  applyInitialGlobalSettingsQuery,
+  installGlobalSettingsQuerySync,
+} from '@/services/global-settings-query';
+import type { Settings } from '@/models/types';
 
-vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
+type SettingsStore = ReturnType<typeof useSettings>;
 
-// 1. Mock LM providers to prevent real network calls
-const mockListModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
-vi.mock('./services/lm/openai', () => ({
-  OpenAIProvider: class {
-    constructor() {}
-    listModels = mockListModels;
-  },
-}));
+type TestGlobalSettings = {
+  endpointType: NonNullable<Settings['endpointType']>,
+  endpointUrl: string,
+  defaultModelId: string,
+};
 
-vi.mock('./services/lm/ollama', () => ({
-  OllamaProvider: class {
-    constructor() {}
-    listModels = mockListModels;
-  },
-}));
 
-// 2. Mock storage service
-const storageMocks = vi.hoisted(() => ({
-  init: vi.fn(),
-  loadSettings: vi.fn().mockResolvedValue(null),
-  updateSettings: vi.fn(),
-  switchProvider: vi.fn(),
-  getCurrentType: vi.fn().mockReturnValue('local'),
-  subscribeToChanges: vi.fn().mockReturnValue(() => {}),
-  notify: vi.fn(),
-}));
-
-vi.mock('./services/storage', () => ({
-  storageService: storageMocks,
-}));
-
-vi.mock('./services/storage/opfs-detection', () => ({
-  checkOPFSSupport: vi.fn().mockResolvedValue(true),
-}));
-
-// 3. Mock useSettings with internal state and reset helpers
-vi.mock('./composables/useSettings', async () => {
-  const vue = await import('vue');
-
-  // Singleton state for the mock
-  const settings = vue.ref({ endpointUrl: '', endpointType: 'openai', defaultModelId: '' });
-  const manualDismiss = vue.ref(false);
-  const initialized = vue.ref(true);
-  const isFetchingModels = vue.ref(false);
-  const availableModels = vue.ref([]);
-
-  const isOnboardingDismissed = vue.computed(() => {
-    const hasEndpoint = !!settings.value.endpointUrl || settings.value.endpointType === 'transformers_js';
-    const hasModel = !!settings.value.defaultModelId;
-    return manualDismiss.value || (hasEndpoint && hasModel);
-  });
-
-  return {
-    useSettings: () => ({
-      init: vi.fn(),
-      initialized,
-      isOnboardingDismissed,
-      isFetchingModels,
-      settings,
-      availableModels,
-      updateGlobalEndpoint: async (options: any) => {
-        settings.value = { ...settings.value, endpointType: options.type, endpointUrl: options.url };
-      },
-      updateGlobalModel: async ({ modelId }: { modelId: string }) => {
-        settings.value = { ...settings.value, defaultModelId: modelId };
-      },
-      // Test Helpers
-      __reset: () => {
-        settings.value = { endpointUrl: '', endpointType: 'openai', defaultModelId: '' };
-        manualDismiss.value = false;
-        initialized.value = true;
-      },
-    }),
-  };
-});
-
-// 4. Mock other composables/components
-vi.mock('./composables/useChat', () => ({
-  useChat: () => ({
-    createNewChat: vi.fn(),
-    createChatGroup: vi.fn(),
-    loadChats: vi.fn(),
-    currentChat: { value: null },
-    currentChatGroup: { value: null },
-    chats: { value: [] },
-    chatGroups: { value: [] },
-    isProcessing: () => false,
-    sidebarItems: { value: [] },
-    persistSidebarStructure: vi.fn(),
-    openChat: vi.fn(),
-  }),
-}));
-
-vi.mock('./composables/chat/ui/useCurrentChatState', () => ({
-  useCurrentChatState: () => ({
-    currentChat: computed(() => null),
-    currentChatGroup: computed(() => null),
-    currentChatId: computed(() => undefined),
-    activeMessages: computed(() => []),
-    allMessages: computed(() => []),
-    resolvedSettings: computed(() => null),
-    inheritedSettings: computed(() => null),
-    chatGroups: computed(() => []),
-    sidebarItems: computed(() => []),
-    TEST_ONLY: {},
-  }),
-}));
-
-vi.mock('./composables/chat/ui/useChatListData', () => ({
-  useChatListData: () => ({
-    chats: { value: [] },
-  }),
-}));
-
-vi.mock('./composables/chat/ui/useChatLifecycle', () => ({
-  useChatLifecycle: () => ({
-    createNewChat: vi.fn(),
-    deleteChat: vi.fn(),
-    deleteAllChats: vi.fn(),
-    TEST_ONLY: {},
-  }),
-}));
-
-vi.mock('./composables/chat/ui/useChatOrganization', () => ({
-  useChatOrganization: () => ({
-    createChatGroup: vi.fn(),
-    deleteChatGroup: vi.fn(),
-    duplicateChatGroup: vi.fn(),
-    renameChatGroup: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    moveChatToGroup: vi.fn(),
-    reorderSidebarChatAfterSend: vi.fn(),
-    TEST_ONLY: {},
-  }),
-}));
-
-vi.mock('./composables/useConfirm', () => ({
-  useConfirm: () => ({
-    isConfirmOpen: { value: false },
-    handleConfirm: vi.fn(),
-    handleCancel: vi.fn(),
-    showConfirm: vi.fn(),
-  }),
-}));
-
-vi.mock('./composables/usePrompt', () => ({
-  usePrompt: () => ({
-    isPromptOpen: { value: false },
-    handlePromptConfirm: vi.fn(),
-    handlePromptCancel: vi.fn(),
-  }),
-}));
-
-vi.mock('./composables/useLayout', () => ({
-  useLayout: () => ({
-    isSidebarOpen: { value: true },
-    activeFocusArea: { value: 'chat' },
-    setActiveFocusArea: vi.fn(),
-    toggleSidebar: vi.fn(),
-  }),
-}));
-
-vi.mock('./composables/useTheme', () => ({ useTheme: vi.fn() }));
-vi.mock('./composables/useGlobalSearch', () => ({ useGlobalSearch: () => ({ toggleSearch: vi.fn() }) }));
-
-vi.mock('./components/Sidebar.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
-vi.mock('./components/ToastContainer.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
-vi.mock('./components/SettingsModal.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
-vi.mock('./components/DebugPanel.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
-vi.mock('./components/CustomDialog.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
-vi.mock('./components/GlobalSearchModal.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
-
-vi.mock('./components/OnboardingModal.vue', () => ({
-  __esModule: true,
-  default: { template: '<div data-testid="onboarding-modal"></div>' },
-}));
-
-import App from './App.vue';
-import { useSettings } from './composables/useSettings';
-
-describe('App Global Settings Sync', () => {
-  let router: any;
+describe('global settings query sync', () => {
+  let router: Router;
+  let dispose: (() => void) | undefined;
+  let settings: Ref<TestGlobalSettings>;
+  let save: ReturnType<typeof vi.fn>;
+  let settingsStore: SettingsStore;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    (useSettings() as any).__reset(); // Reset the shared state in the mock
+    settings = ref({
+      endpointType: 'openai',
+      endpointUrl: '',
+      defaultModelId: '',
+    });
+    save = vi.fn(async ({ patch }: { patch: Partial<Settings> }) => {
+      settings.value = {
+        endpointType: patch.endpointType ?? settings.value.endpointType,
+        endpointUrl: patch.endpointUrl ?? settings.value.endpointUrl,
+        defaultModelId: patch.defaultModelId ?? settings.value.defaultModelId,
+      };
+    });
+    settingsStore = {
+      save,
+    } as unknown as SettingsStore;
 
     router = createRouter({
-      history: createWebHistory(),
-      routes: [{ path: '/', component: { template: '<div></div>' } }],
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: { template: '<div />' } }],
     });
-
     await router.push('/');
     await router.isReady();
+
+    const initialFingerprint = await applyInitialGlobalSettingsQuery({
+      query: router.currentRoute.value.query,
+      settingsStore,
+    });
+    dispose = installGlobalSettingsQuerySync({
+      router,
+      settingsStore,
+      initialFingerprint,
+    });
   });
 
-  it('hides onboarding modal when both endpoint and model are provided in query', async () => {
-    const wrapper = mount(App, {
-      global: {
-        plugins: [router],
-        stubs: {
-          'transition': true,
-          'OnboardingModal': false,
-          'DebugWeshTerminalModal': true,
-        },
-      },
-    });
+  afterEach(() => {
+    dispose?.();
+  });
 
-    await flushPromises();
+  function onboardingIsDismissed(): boolean {
+    return settings.value.endpointUrl.length > 0
+      && settings.value.defaultModelId.length > 0;
+  }
 
-    // Initial state: Onboarding is visible
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
-
-    // Provide both endpoint and model via query parameters
+  it('hides onboarding when both endpoint and model are provided in query', async () => {
     await router.push({
       path: '/',
       query: {
@@ -227,28 +78,12 @@ describe('App Global Settings Sync', () => {
         'global-model': 'llama3',
       },
     });
-
     await flushPromises();
-    await nextTick();
 
-    // Onboarding should be hidden
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
+    expect(onboardingIsDismissed()).toBe(true);
   });
 
-  it('keeps onboarding modal if only endpoint is provided', async () => {
-    const wrapper = mount(App, {
-      global: {
-        plugins: [router],
-        stubs: {
-          'transition': true,
-          'OnboardingModal': false,
-          'DebugWeshTerminalModal': true,
-        },
-      },
-    });
-
-    await flushPromises();
-
+  it('keeps onboarding when only endpoint is provided', async () => {
     await router.push({
       path: '/',
       query: {
@@ -256,22 +91,27 @@ describe('App Global Settings Sync', () => {
         'global-endpoint-url': 'http://localhost:11434',
       },
     });
-
     await flushPromises();
-    await nextTick();
 
-    // Still visible because model is missing
-    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
+    expect(onboardingIsDismissed()).toBe(false);
+  });
+
+  it('ignores an invalid endpoint type instead of applying an unvalidated setting', async () => {
+    await router.push({
+      path: '/',
+      query: {
+        'global-endpoint-type': 'unsupported',
+        'global-endpoint-url': 'http://localhost:11434',
+      },
+    });
+    await flushPromises();
+
+    expect(settings.value.endpointType).toBe('openai');
+    expect(settings.value.endpointUrl).toBe('');
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('syncs global endpoint settings from query parameters', async () => {
-    mount(App, {
-      global: {
-        plugins: [router],
-        stubs: { 'transition': true, 'DebugWeshTerminalModal': true },
-      },
-    });
-
     await router.push({
       path: '/',
       query: {
@@ -281,19 +121,18 @@ describe('App Global Settings Sync', () => {
     });
     await flushPromises();
 
-    const { settings } = useSettings();
     expect(settings.value.endpointType).toBe('ollama');
     expect(settings.value.endpointUrl).toBe('http://localhost:11434');
+    expect(save).toHaveBeenLastCalledWith({
+      patch: {
+        endpointType: 'ollama',
+        endpointUrl: 'http://localhost:11434',
+      },
+      modelRefresh: 'background',
+    });
   });
 
   it('syncs global model from query parameters', async () => {
-    mount(App, {
-      global: {
-        plugins: [router],
-        stubs: { 'transition': true, 'DebugWeshTerminalModal': true },
-      },
-    });
-
     await router.push({
       path: '/',
       query: {
@@ -302,18 +141,10 @@ describe('App Global Settings Sync', () => {
     });
     await flushPromises();
 
-    const { settings } = useSettings();
     expect(settings.value.defaultModelId).toBe('llama3');
   });
 
-  it('syncs both endpoint and model when both are provided', async () => {
-    mount(App, {
-      global: {
-        plugins: [router],
-        stubs: { 'transition': true, 'DebugWeshTerminalModal': true },
-      },
-    });
-
+  it('syncs endpoint and model in one persisted patch', async () => {
     await router.push({
       path: '/',
       query: {
@@ -324,9 +155,15 @@ describe('App Global Settings Sync', () => {
     });
     await flushPromises();
 
-    const { settings } = useSettings();
-    expect(settings.value.endpointType).toBe('openai');
     expect(settings.value.endpointUrl).toBe('https://api.openai.com/v1');
     expect(settings.value.defaultModelId).toBe('gpt-4');
+    expect(save).toHaveBeenLastCalledWith({
+      patch: {
+        endpointType: 'openai',
+        endpointUrl: 'https://api.openai.com/v1',
+        defaultModelId: 'gpt-4',
+      },
+      modelRefresh: 'background',
+    });
   });
 });

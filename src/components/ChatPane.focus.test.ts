@@ -34,6 +34,17 @@ const mockSetActiveFocusArea = vi.fn(({ area }: { area: FocusArea }) => {
   mockActiveFocusArea.value = area;
 });
 
+
+vi.mock('@/composables/useApplicationPresentation', () => ({
+  isApplicationInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useApplicationPresentation: () => ({
+    applicationInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),
