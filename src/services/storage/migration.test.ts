@@ -98,9 +98,7 @@ const mockChat: Chat = {
   systemPrompt: undefined,
   debugEnabled: false,
   currentLeafId: undefined,
-  endpointType: undefined,
-  endpointUrl: undefined,
-  endpointHttpHeaders: undefined,
+  endpoint: undefined,
   lmParameters: undefined,
   modelId: undefined,
   originChatId: undefined,
@@ -118,9 +116,7 @@ const mockChatGroup: ChatGroup = {
 };
 
 const mockSettings: Settings = {
-  endpointType: 'openai',
-  endpointUrl: undefined,
-  endpointHttpHeaders: undefined,
+  endpoint: { type: 'openai', url: '' },
   autoTitleEnabled: true,
   storageType: 'local',
   mounts: [],

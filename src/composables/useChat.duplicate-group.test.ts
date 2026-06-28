@@ -21,7 +21,7 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: reactive({ endpointType: 'openai', autoTitleEnabled: true }),
+    settings: reactive({ endpoint: { type: 'openai', url: '' }, autoTitleEnabled: true }),
   }),
 }));
 

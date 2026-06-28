@@ -22,7 +22,7 @@ describe('DTO Backward Compatibility', () => {
       modelId: 'gpt-3.5-turbo',
       createdAt: 1700000000000,
       updatedAt: 1700000000000,
-      // Note: debugEnabled, endpointType, etc. are missing
+      // Note: debugEnabled, endpoint, etc. are missing
     };
 
     // 1. Validate DTO parsing (Zod should handle defaults/optionals)
@@ -34,7 +34,7 @@ describe('DTO Backward Compatibility', () => {
     // 3. Verify expectations
     expect(domain.id).toBe(v1LegacyData.id);
     expect(domain.debugEnabled).toBe(false); // Default should be applied
-    expect(domain.endpointType).toBeUndefined(); // Should be optional
+    expect(domain.endpoint).toBeUndefined(); // Should be optional
 
     // In new tree structure, we check root.items
     expect(domain.root.items[0]?.id).toBe(v1LegacyData.messages[0]?.id);

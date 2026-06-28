@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { ScopedSettingChange } from '@/models/scoped-setting-change';
-import type { Chat, Endpoint, Reasoning } from '@/models/types';
+import type { Chat, Reasoning } from '@/models/types';
 import {
   getLiveChatById,
   loadData,
@@ -13,15 +13,13 @@ import {
   createSystemPromptSettingChange,
 } from '@/utils/scoped-setting-changes';
 import type { ChatGroupId, ChatId } from '@/models/ids';
-import { storageService } from '@/services/storage';
+import { cloneEndpoint } from '@/models/endpoint';
 
 type ReasoningEffort = Reasoning['effort'];
 
 type ChatSettingsUpdate = Partial<Pick<
   Chat,
-  | 'endpointType'
-  | 'endpointUrl'
-  | 'endpointHttpHeaders'
+  | 'endpoint'
   | 'modelId'
   | 'autoTitleEnabled'
   | 'titleModelId'
@@ -30,9 +28,7 @@ type ChatSettingsUpdate = Partial<Pick<
 >>;
 
 const chatSettingsUpdateKeyRecord: Readonly<Record<keyof ChatSettingsUpdate, true>> = {
-  endpointType: true,
-  endpointUrl: true,
-  endpointHttpHeaders: true,
+  endpoint: true,
   modelId: true,
   autoTitleEnabled: true,
   titleModelId: true,
@@ -44,84 +40,28 @@ const CHAT_SETTINGS_UPDATE_KEYS = Object.keys(
   chatSettingsUpdateKeyRecord,
 ) as (keyof ChatSettingsUpdate)[];
 
-async function legacyUpdatesToChanges({
-  chatId,
+function chatSettingsUpdatesToChanges({
   updates,
 }: {
-  chatId: ChatId,
   updates: ChatSettingsUpdate,
-}): Promise<ScopedSettingChange[]> {
+}): ScopedSettingChange[] {
   const changes: ScopedSettingChange[] = [];
-  const liveChat = getLiveChatById({ chatId });
-  const hasEndpointUpdate = Object.hasOwn(updates, 'endpointType')
-    || Object.hasOwn(updates, 'endpointUrl')
-    || Object.hasOwn(updates, 'endpointHttpHeaders');
 
-  if (hasEndpointUpdate) {
-    if (Object.hasOwn(updates, 'endpointType') && updates.endpointType === undefined) {
-      changes.push({ field: 'endpoint', behavior: 'inherit' });
-    } else {
-      let currentEndpoint: Endpoint | undefined = liveChat?.endpointType === undefined
-        ? undefined
-        : {
-          type: liveChat.endpointType,
-          url: liveChat.endpointUrl,
-          httpHeaders: liveChat.endpointHttpHeaders,
-        };
-
-      // A compatibility update may target a chat that is not currently live.
-      // Read metadata only when an omitted endpoint type cannot be recovered
-      // from memory; explicit endpoint updates stay on the fast path.
-      if (
-        !Object.hasOwn(updates, 'endpointType')
-        && currentEndpoint === undefined
-      ) {
-        currentEndpoint = (await storageService.loadChatMeta({ id: chatId }))?.endpoint;
-      }
-
-      const endpointType = Object.hasOwn(updates, 'endpointType')
-        ? updates.endpointType
-        : currentEndpoint?.type;
-      if (endpointType === undefined) {
-        throw new Error('Endpoint override requires an endpoint type');
-      }
-
-      const endpoint: Endpoint = (() => {
-        switch (endpointType) {
-        case 'transformers_js':
-          return { type: endpointType };
-        case 'openai':
-        case 'ollama':
-          return {
-            type: endpointType,
-            url: Object.hasOwn(updates, 'endpointUrl')
-              ? updates.endpointUrl
-              : currentEndpoint?.url,
-            httpHeaders: Object.hasOwn(updates, 'endpointHttpHeaders')
-              ? updates.endpointHttpHeaders
-              : currentEndpoint?.httpHeaders,
-          };
-        default: {
-          const _ex: never = endpointType;
-          throw new Error(`Unhandled endpoint type: ${_ex}`);
-        }
-        }
-      })();
-      changes.push({ field: 'endpoint', behavior: 'override', value: endpoint });
-    }
-  }
-
-  // Keep the compatibility surface exhaustive. If another legacy update key is
-  // introduced, Record<> and the `never` branch force its conversion semantics
-  // to be reviewed instead of silently dropping the update.
+  // Keep the update surface exhaustive. If another update key is introduced,
+  // Record<> and the `never` branch force its conversion semantics to be
+  // reviewed instead of silently dropping the update.
   for (const key of CHAT_SETTINGS_UPDATE_KEYS) {
     if (!Object.hasOwn(updates, key)) continue;
 
     switch (key) {
-    case 'endpointType':
-    case 'endpointUrl':
-    case 'endpointHttpHeaders':
-      // Endpoint subfields are converted atomically above.
+    case 'endpoint':
+      changes.push(updates.endpoint === undefined
+        ? { field: 'endpoint', behavior: 'inherit' }
+        : {
+          field: 'endpoint',
+          behavior: 'override',
+          value: cloneEndpoint({ endpoint: updates.endpoint }),
+        });
       break;
     case 'modelId':
       changes.push(updates.modelId === undefined
@@ -322,7 +262,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
   }): Promise<void> {
     await updateScopedSettings({
       chatId,
-      changes: await legacyUpdatesToChanges({ chatId, updates }),
+      changes: chatSettingsUpdatesToChanges({ updates }),
     });
   }
 

@@ -15,7 +15,11 @@ const mockCurrentChat = ref<Chat | null>(null);
 const mockCurrentChatGroup = ref(null);
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
-const mockResolvedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
+const mockResolvedSettings = ref({
+  endpoint: { type: 'openai' as const, url: '' },
+  modelId: 'm1',
+  sources: { modelId: 'global', titleModelId: 'global' },
+});
 const mockInheritedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
 
 const mockActiveFocusArea = ref('chat');
@@ -115,7 +119,7 @@ vi.mock('../composables/chat/ui/useChatPaneState', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({}),
+    settings: ref({ endpoint: { type: 'openai', url: '' } }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
   }),

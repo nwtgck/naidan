@@ -17,7 +17,7 @@ vi.mock('vue-router', () => ({
 // Mock dependencies
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
-    settings: ref({ storageType: 'local', providerProfiles: [] }),
+    settings: ref({ endpoint: { type: 'openai', url: '' }, storageType: 'local', providerProfiles: [] }),
     save: vi.fn(),
     updateProviderProfiles: vi.fn(),
     availableModels: ref([]),
@@ -192,7 +192,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     const mockShowConfirm = vi.fn().mockResolvedValue(true);
 
     vi.mocked(useSettings).mockReturnValue({
-      settings: ref({ storageType: 'local', providerProfiles: [], endpointUrl: '' }),
+      settings: ref({ storageType: 'local', providerProfiles: [], endpoint: { type: 'openai', url: '' } }),
       save: mockSave,
       updateProviderProfiles: vi.fn(),
       initialized: ref(true),
@@ -240,7 +240,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await flushPromises();
 
     // Simulate a change to enable save button
-    (wrapper.vm as any).form.endpointUrl = 'http://new-url';
+    (wrapper.vm as any).form.endpoint = { type: 'openai', url: 'http://new-url' };
     await wrapper.vm.$nextTick();
 
     const saveButton = wrapper.find('[data-testid="setting-save-button"]');

@@ -10,7 +10,7 @@ function resetSharedStorage() {
   shared[STORAGE_KEY] = {
     chats: new Map(),
     groups: new Map(),
-    settings: { endpointType: 'openai', endpointUrl: 'http://localhost', autoTitleEnabled: false, defaultModelId: 'gpt-4' },
+    settings: { endpoint: { type: 'openai', url: 'http://localhost' }, autoTitleEnabled: false, defaultModelId: 'gpt-4' },
     hierarchy: { items: [] },
     listeners: new Set(),
   };

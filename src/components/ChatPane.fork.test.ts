@@ -37,8 +37,16 @@ const mockCurrentChat = ref<{
 });
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
-const mockResolvedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
-const mockInheritedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
+const mockResolvedSettings = ref<any>({
+  endpoint: { type: 'openai', url: 'http://localhost' },
+  modelId: 'm1',
+  sources: { endpoint: 'global', modelId: 'global' },
+});
+const mockInheritedSettings = ref<any>({
+  endpoint: { type: 'openai', url: 'http://localhost' },
+  modelId: 'm1',
+  sources: { endpoint: 'global', modelId: 'global' },
+});
 
 
 vi.mock('@/composables/useAppPresentation', () => ({
@@ -269,7 +277,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'global-default-model' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'global-default-model' }),
   }),
 }));
 

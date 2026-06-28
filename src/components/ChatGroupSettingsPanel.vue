@@ -29,6 +29,13 @@ import type {
   SystemPrompt,
 } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import {
+  areOptionalEndpointsEqual,
+  cloneEndpoint,
+  cloneOptionalEndpoint,
+  isHttpEndpoint,
+  selectHttpEndpointSeed,
+} from '@/models/endpoint';
 import type { ChatGroupId, VolumeId } from '@/models/ids';
 import { idToRaw } from '@/models/ids';
 import VolumeCreator from './VolumeCreator.vue';
@@ -168,18 +175,9 @@ function emptyDraft(): GroupSettingsDraft {
   };
 }
 
-function cloneEndpoint({ endpoint }: { endpoint: Endpoint | undefined }): Endpoint | undefined {
-  if (endpoint === undefined) return undefined;
-  return {
-    type: endpoint.type,
-    url: endpoint.url,
-    httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
-  };
-}
-
 function cloneDraft({ draft }: { draft: GroupSettingsDraft }): GroupSettingsDraft {
   return {
-    endpoint: cloneEndpoint({ endpoint: draft.endpoint }),
+    endpoint: cloneOptionalEndpoint({ endpoint: draft.endpoint }),
     modelId: draft.modelId,
     autoTitleEnabled: draft.autoTitleEnabled,
     titleModelId: draft.titleModelId,
@@ -192,37 +190,13 @@ function draftFromCurrent(): GroupSettingsDraft | undefined {
   const group = currentChatGroup.value;
   if (group === null || group === undefined) return undefined;
   return {
-    endpoint: cloneEndpoint({ endpoint: group.endpoint }),
+    endpoint: cloneOptionalEndpoint({ endpoint: group.endpoint }),
     modelId: group.modelId,
     autoTitleEnabled: group.autoTitleEnabled,
     titleModelId: group.titleModelId,
     systemPrompt: group.systemPrompt === undefined ? undefined : { ...group.systemPrompt },
     lmParameters: cloneLmParameters({ lmParameters: group.lmParameters }),
   };
-}
-
-function areHeadersEqual({
-  left,
-  right,
-}: {
-  left: [string, string][] | undefined,
-  right: [string, string][] | undefined,
-}): boolean {
-  if (left === right) return true;
-  if (left === undefined || right === undefined || left.length !== right.length) return false;
-  return left.every(([name, value], index) => name === right[index]?.[0] && value === right[index]?.[1]);
-}
-
-function areEndpointsEqual({
-  left,
-  right,
-}: {
-  left: Endpoint | undefined,
-  right: Endpoint | undefined,
-}): boolean {
-  return left?.type === right?.type
-    && left?.url === right?.url
-    && areHeadersEqual({ left: left?.httpHeaders, right: right?.httpHeaders });
 }
 
 function areSystemPromptsEqual({
@@ -265,7 +239,7 @@ function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): st
 }
 
 function globalEndpointTypeLabel(): string | undefined {
-  const endpointType = endpointTypeLabel({ endpointType: settings.value.endpointType });
+  const endpointType = endpointTypeLabel({ endpointType: settings.value.endpoint.type });
   if (endpointType === undefined) return undefined;
   return lazyStrings.ChatGroupSettingsPanel__global_endpoint_type({ endpointType });
 }
@@ -303,10 +277,14 @@ function createChanges({
   for (const field of SCOPED_SETTING_FIELDS) {
     switch (field) {
     case 'endpoint':
-      if (!areEndpointsEqual({ left: previous.endpoint, right: next.endpoint })) {
+      if (!areOptionalEndpointsEqual({ left: previous.endpoint, right: next.endpoint })) {
         changes.push(next.endpoint === undefined
           ? { field: 'endpoint', behavior: 'inherit' }
-          : { field: 'endpoint', behavior: 'override', value: next.endpoint });
+          : {
+            field: 'endpoint',
+            behavior: 'override',
+            value: cloneEndpoint({ endpoint: next.endpoint }),
+          });
       }
       break;
     case 'model_id':
@@ -364,7 +342,44 @@ const saveQueues = new Map<ChatGroupId, Promise<void>>();
 const saveError = ref<string | null>(null);
 let nextSaveRevision = 0;
 
-const effectiveEndpointType = computed(() => localSettings.value.endpoint?.type || settings.value.endpointType);
+const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? settings.value.endpoint);
+const effectiveEndpointType = computed(() => effectiveEndpoint.value.type);
+
+const localEndpointUrl = computed({
+  get: () => {
+    const endpoint = localSettings.value.endpoint;
+    return endpoint !== undefined && isHttpEndpoint(endpoint)
+      ? endpoint.url
+      : '';
+  },
+  set: (url: string) => {
+    const endpoint = localSettings.value.endpoint ?? settings.value.endpoint;
+    if (!isHttpEndpoint(endpoint)) return;
+    localSettings.value.endpoint = {
+      type: endpoint.type,
+      url,
+      httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
+    };
+  },
+});
+
+const localEndpointHttpHeaders = computed<[string, string][] | undefined>({
+  get: () => {
+    const endpoint = localSettings.value.endpoint;
+    return endpoint !== undefined && isHttpEndpoint(endpoint)
+      ? endpoint.httpHeaders
+      : undefined;
+  },
+  set: (httpHeaders) => {
+    const endpoint = localSettings.value.endpoint ?? settings.value.endpoint;
+    if (!isHttpEndpoint(endpoint)) return;
+    localSettings.value.endpoint = {
+      type: endpoint.type,
+      url: endpoint.url,
+      httpHeaders,
+    };
+  },
+});
 const hasActiveOverrides = computed(() => hasGroupOverrides({ group: localSettings.value })
   || (currentChatGroup.value?.toolConfigs?.length ?? 0) > 0);
 
@@ -437,7 +452,7 @@ function applyFieldFromDraft({
 }): void {
   switch (field) {
   case 'endpoint':
-    target.endpoint = cloneEndpoint({ endpoint: source.endpoint });
+    target.endpoint = cloneOptionalEndpoint({ endpoint: source.endpoint });
     return;
   case 'model_id':
     target.modelId = source.modelId;
@@ -619,8 +634,9 @@ async function saveChangesFromUi(): Promise<void> {
 onMounted(() => {
   syncLocalWithCurrent({ preserveDirty: false });
   if (currentChatGroup.value) {
-    const url = localSettings.value.endpoint?.url || settings.value.endpointUrl;
-    const type = localSettings.value.endpoint?.type || settings.value.endpointType;
+    const endpoint = effectiveEndpoint.value;
+    const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
+    const type = endpoint.type;
     if (type === 'transformers_js' || isLocalhost({ url })) void fetchModels();
   }
   setActiveFocusArea({ area: 'chat-settings' });
@@ -681,13 +697,18 @@ async function updateEndpointType({
     localSettings.value.endpoint = { type: endpointType };
     break;
   case 'openai':
-  case 'ollama':
+  case 'ollama': {
+    const seed = selectHttpEndpointSeed({
+      preferred: localSettings.value.endpoint,
+      fallback: settings.value.endpoint,
+    });
     localSettings.value.endpoint = {
       type: endpointType,
-      url: localSettings.value.endpoint?.url ?? '',
-      httpHeaders: localSettings.value.endpoint?.httpHeaders,
+      url: seed?.url ?? '',
+      httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
     };
     break;
+  }
   default: {
     const _ex: never = endpointType;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -706,25 +727,7 @@ async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number]
 async function handleQuickProviderProfileChange() {
   const providerProfile = settings.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
-    switch (providerProfile.endpointType) {
-    case 'transformers_js':
-      // Keep the draft valid even when persistence fails: in-process endpoints
-      // cannot retain URL or HTTP header fields from another profile.
-      localSettings.value.endpoint = { type: providerProfile.endpointType };
-      break;
-    case 'openai':
-    case 'ollama':
-      localSettings.value.endpoint = {
-        type: providerProfile.endpointType,
-        url: providerProfile.endpointUrl,
-        httpHeaders: providerProfile.endpointHttpHeaders?.map(([name, value]) => [name, value]),
-      };
-      break;
-    default: {
-      const _ex: never = providerProfile.endpointType;
-      throw new Error(`Unhandled provider profile endpoint type: ${_ex}`);
-    }
-    }
+    localSettings.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     localSettings.value.modelId = providerProfile.defaultModelId;
     localSettings.value.systemPrompt = providerProfile.systemPrompt
       ? { content: providerProfile.systemPrompt, behavior: 'override' }
@@ -737,36 +740,34 @@ async function handleQuickProviderProfileChange() {
 }
 
 function addHeader() {
-  if (!localSettings.value.endpoint) {
-    localSettings.value.endpoint = { type: 'openai', url: '', httpHeaders: [] };
-  }
-  if (!localSettings.value.endpoint.httpHeaders) localSettings.value.endpoint.httpHeaders = [];
-  localSettings.value.endpoint.httpHeaders.push(['', '']);
+  const endpoint = effectiveEndpoint.value;
+  if (!isHttpEndpoint(endpoint)) return;
+  localEndpointHttpHeaders.value = [
+    ...(endpoint.httpHeaders ?? []),
+    ['', ''],
+  ];
 }
 
 async function removeHeader({ index }: { index: number }) {
-  localSettings.value.endpoint?.httpHeaders?.splice(index, 1);
+  const headers = localEndpointHttpHeaders.value;
+  if (headers !== undefined) {
+    localEndpointHttpHeaders.value = headers.filter((_, headerIndex) => headerIndex !== index);
+  }
   await saveChangesFromUi();
 }
 
 async function fetchModels() {
   if (!currentChatGroup.value) return;
   error.value = null;
-  const type = localSettings.value.endpoint?.type || settings.value.endpointType;
-  const url = localSettings.value.endpoint?.url || settings.value.endpointUrl || '';
-  const headers = localSettings.value.endpoint?.httpHeaders || settings.value.endpointHttpHeaders;
-  if (!url && type !== 'transformers_js') {
+  const endpoint = effectiveEndpoint.value;
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     groupModels.value = [];
     return;
   }
 
   try {
     const models = await chatModels.fetchForEndpoint({
-      customEndpoint: {
-        type,
-        url,
-        headers: headers?.map(([name, value]) => [name, value]),
-      },
+      endpoint: cloneEndpoint({ endpoint }),
     });
     groupModels.value = models;
     if (models.length === 0) error.value = await ensureStrings.SHARED__no_models_found_at_this_endpoint();
@@ -781,10 +782,7 @@ async function fetchModels() {
   }
 }
 
-watch([
-  () => localSettings.value.endpoint?.url,
-  () => localSettings.value.endpoint?.type,
-], ([url, type]) => {
+watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
   if (type === 'transformers_js' || (url && isLocalhost({ url }))) void fetchModels();
 });
@@ -958,7 +956,7 @@ defineExpose({
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
               >
                 <option value="" disabled>{{ lazyStrings.ChatGroupSettingsPanel__load_from_saved_profiles() }}</option>
-                <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpointType }) }})</option>
+                <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpoint.type }) }})</option>
               </select>
             </div>
 
@@ -972,7 +970,7 @@ defineExpose({
                   @click="applyPreset({ preset })"
                   type="button"
                   class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
-                  :class="localSettings.endpoint?.url === preset.url && localSettings.endpoint?.type === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
+                  :class="localEndpointUrl === preset.url && localSettings.endpoint?.type === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
                 >
                   {{ preset.name }}
                 </button>
@@ -1005,12 +1003,12 @@ defineExpose({
             <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatGroupSettingsPanel__endpoint_url() }}</label>
             <input
               v-if="localSettings.endpoint"
-              v-model="localSettings.endpoint.url"
+              v-model="localEndpointUrl"
               @input="error = null"
               @blur="saveChangesFromUi"
               type="text"
               class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-              :placeholder="settings.endpointUrl"
+              :placeholder="isHttpEndpoint(settings.endpoint) ? settings.endpoint.url : undefined"
               data-testid="group-setting-url-input"
             />
             <div v-if="error" class="mt-2">
@@ -1031,9 +1029,9 @@ defineExpose({
               </button>
             </div>
 
-            <div v-if="localSettings.endpoint?.httpHeaders && localSettings.endpoint.httpHeaders.length > 0" class="space-y-2">
+            <div v-if="localEndpointHttpHeaders && localEndpointHttpHeaders.length > 0" class="space-y-2">
               <div
-                v-for="(header, index) in localSettings.endpoint.httpHeaders"
+                v-for="(header, index) in localEndpointHttpHeaders"
                 :key="index"
                 class="flex gap-2"
               >

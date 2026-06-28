@@ -55,8 +55,10 @@ vi.mock('./useSettings', () => ({
   useSettings: () => ({
     settings: {
       value: {
-        endpointType: 'openai',
-        endpointUrl: 'http://global-url',
+        endpoint: {
+          type: 'openai',
+          url: 'http://global-url',
+        },
         defaultModelId: 'global-model',
       },
     },

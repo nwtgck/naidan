@@ -51,7 +51,7 @@ vi.mock('@/services/transformers-js', () => ({
 
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai' } },
+    settings: { value: { endpoint: { type: 'openai', url: '' } } },
   }),
 }));
 

@@ -47,7 +47,7 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ autoTitleEnabled: true, endpointUrl: 'http://localhost', endpointType: 'openai', defaultModelId: 'm1' }),
+    settings: ref({ autoTitleEnabled: true, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'm1' }),
     isOnboardingDismissed: ref(true),
     onboardingDraft: ref(null),
   }),

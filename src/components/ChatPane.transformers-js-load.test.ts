@@ -83,15 +83,19 @@ const mockCurrentChat = ref<any>({
   root: { items: [] },
   currentLeafId: 'msg-2',
   debugEnabled: false,
-  endpointType: 'transformers_js',
+  endpoint: { type: 'transformers_js' },
 });
 const mockActiveMessages = ref<any[]>([]);
 const mockResolvedSettings = ref<any>({
-  endpointType: 'transformers_js',
+  endpoint: { type: 'transformers_js' },
   modelId: 'm',
-  sources: { modelId: 'global' },
+  sources: { endpoint: 'global', modelId: 'global' },
 });
-const mockInheritedSettings = ref<any>({ modelId: 'm', sources: { modelId: 'global' } });
+const mockInheritedSettings = ref<any>({
+  endpoint: { type: 'transformers_js' },
+  modelId: 'm',
+  sources: { endpoint: 'global', modelId: 'global' },
+});
 const mockChatGroups = ref<any[]>([]);
 const mockFetchingModels = ref(false);
 const mockAvailableModels = ref<string[]>([]);
@@ -303,7 +307,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointType: 'transformers_js' }),
+    settings: ref({ endpoint: { type: 'transformers_js' } }),
     availableModels: mockAvailableModels,
   }),
 }));
@@ -417,9 +421,9 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
 
     // 2. Set endpoint to OpenAI
     mockResolvedSettings.value = {
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'gpt-4o',
-      sources: { modelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'global' },
     };
 
     wrapper = mountChatPane( {

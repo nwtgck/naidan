@@ -15,6 +15,13 @@ import type {
   SystemPrompt,
 } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import {
+  areOptionalEndpointsEqual,
+  cloneEndpoint,
+  cloneOptionalEndpoint,
+  isHttpEndpoint,
+  selectHttpEndpointSeed,
+} from '@/models/endpoint';
 import type { ChatId } from '@/models/ids';
 import { idToRaw } from '@/models/ids';
 import {
@@ -65,9 +72,7 @@ const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
 type ChatSettingsDraft = {
-  endpointType: EndpointType | undefined,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint | undefined,
   modelId: string | undefined,
   autoTitleEnabled: boolean | undefined,
   titleModelId: string | undefined,
@@ -77,9 +82,7 @@ type ChatSettingsDraft = {
 
 function emptyDraft(): ChatSettingsDraft {
   return {
-    endpointType: undefined,
-    endpointUrl: undefined,
-    endpointHttpHeaders: undefined,
+    endpoint: undefined,
     modelId: undefined,
     autoTitleEnabled: undefined,
     titleModelId: undefined,
@@ -90,9 +93,7 @@ function emptyDraft(): ChatSettingsDraft {
 
 function cloneDraft({ draft }: { draft: ChatSettingsDraft }): ChatSettingsDraft {
   return {
-    endpointType: draft.endpointType,
-    endpointUrl: draft.endpointUrl,
-    endpointHttpHeaders: draft.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+    endpoint: cloneOptionalEndpoint({ endpoint: draft.endpoint }),
     modelId: draft.modelId,
     autoTitleEnabled: draft.autoTitleEnabled,
     titleModelId: draft.titleModelId,
@@ -103,27 +104,13 @@ function cloneDraft({ draft }: { draft: ChatSettingsDraft }): ChatSettingsDraft 
 
 function draftFromChat({ chat }: { chat: Chat }): ChatSettingsDraft {
   return {
-    endpointType: chat.endpointType,
-    endpointUrl: chat.endpointUrl,
-    endpointHttpHeaders: chat.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+    endpoint: cloneOptionalEndpoint({ endpoint: chat.endpoint }),
     modelId: chat.modelId,
     autoTitleEnabled: chat.autoTitleEnabled,
     titleModelId: chat.titleModelId,
     systemPrompt: chat.systemPrompt === undefined ? undefined : { ...chat.systemPrompt },
     lmParameters: cloneLmParameters({ lmParameters: chat.lmParameters }),
   };
-}
-
-function areHeadersEqual({
-  left,
-  right,
-}: {
-  left: [string, string][] | undefined,
-  right: [string, string][] | undefined,
-}): boolean {
-  if (left === right) return true;
-  if (left === undefined || right === undefined || left.length !== right.length) return false;
-  return left.every(([name, value], index) => name === right[index]?.[0] && value === right[index]?.[1]);
 }
 
 function areSystemPromptsEqual({
@@ -166,18 +153,18 @@ function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): st
 }
 
 function inheritedEndpointTypeLabel(): string | undefined {
-  const endpointType = resolvedSettings.value?.endpointType;
+  const endpointType = inheritedSettings.value?.endpoint.type;
   if (endpointType === undefined) {
     return formatSettingsSourceLabel({
       value: undefined,
-      source: resolvedSettings.value?.sources.endpointType,
+      source: inheritedSettings.value?.sources.endpoint,
     });
   }
   const label = endpointTypeLabel({ endpointType });
   if (label === undefined) return undefined;
   return formatSettingsSourceLabel({
     value: label,
-    source: resolvedSettings.value?.sources.endpointType,
+    source: inheritedSettings.value?.sources.endpoint,
   });
 }
 
@@ -198,40 +185,12 @@ function titleModelExplanation(): string | undefined {
   });
 }
 
-function endpointFromDraft({
-  draft,
-  inheritedEndpointType,
-}: {
-  draft: ChatSettingsDraft,
-  inheritedEndpointType: EndpointType | undefined,
-}): Endpoint | undefined {
-  const endpointType = draft.endpointType ?? inheritedEndpointType;
-  if (endpointType === undefined) return undefined;
-  switch (endpointType) {
-  case 'transformers_js':
-    return { type: endpointType };
-  case 'openai':
-  case 'ollama':
-    return {
-      type: endpointType,
-      url: draft.endpointUrl,
-      httpHeaders: draft.endpointHttpHeaders?.map(([name, value]) => [name, value]),
-    };
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
-  }
-  }
-}
-
 function createChanges({
   previous,
   next,
-  inheritedEndpointType,
 }: {
   previous: ChatSettingsDraft,
   next: ChatSettingsDraft,
-  inheritedEndpointType: EndpointType | undefined,
 }): ScopedSettingChange[] {
   const changes: ScopedSettingChange[] = [];
   const lmChanges = new Map(
@@ -245,26 +204,17 @@ function createChanges({
   // fails typechecking here until draft comparison semantics are implemented.
   for (const field of SCOPED_SETTING_FIELDS) {
     switch (field) {
-    case 'endpoint': {
-      const endpointChanged = previous.endpointType !== next.endpointType
-        || previous.endpointUrl !== next.endpointUrl
-        || !areHeadersEqual({ left: previous.endpointHttpHeaders, right: next.endpointHttpHeaders });
-      if (!endpointChanged) break;
-
-      // The persisted Chat model can contain legacy URL/header-only states.
-      // Treat a fully empty next draft as an explicit return to inheritance even
-      // when the previous endpoint type was already missing.
-      const inheritsEndpoint = next.endpointType === undefined
-        && next.endpointUrl === undefined
-        && next.endpointHttpHeaders === undefined;
-      const endpoint = inheritsEndpoint
-        ? undefined
-        : endpointFromDraft({ draft: next, inheritedEndpointType });
-      changes.push(endpoint === undefined
-        ? { field: 'endpoint', behavior: 'inherit' }
-        : { field: 'endpoint', behavior: 'override', value: endpoint });
+    case 'endpoint':
+      if (!areOptionalEndpointsEqual({ left: previous.endpoint, right: next.endpoint })) {
+        changes.push(next.endpoint === undefined
+          ? { field: 'endpoint', behavior: 'inherit' }
+          : {
+            field: 'endpoint',
+            behavior: 'override',
+            value: cloneEndpoint({ endpoint: next.endpoint }),
+          });
+      }
       break;
-    }
     case 'model_id':
       if (previous.modelId !== next.modelId) {
         changes.push(next.modelId === undefined
@@ -315,14 +265,64 @@ function createChanges({
 const localSettings = ref<ChatSettingsDraft>(emptyDraft());
 const baselineSettings = ref<ChatSettingsDraft>(emptyDraft());
 const editingChatId = ref<ChatId | undefined>(undefined);
-const editingInheritedEndpointType = ref<EndpointType | undefined>(undefined);
 const pendingFieldRevisions = new Map<ScopedSettingChange['field'], number>();
 const saveQueues = new Map<ChatId, Promise<void>>();
 const saveError = ref<string | null>(null);
 let nextSaveRevision = 0;
 
 const hasActiveOverrides = computed(() => hasChatOverrides({ chat: localSettings.value }));
-const effectiveEndpointType = computed(() => localSettings.value.endpointType || resolvedSettings?.value?.endpointType);
+const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? inheritedSettings.value?.endpoint);
+const effectiveEndpointType = computed(() => effectiveEndpoint.value?.type);
+
+const localEndpointUrl = computed({
+  get: () => {
+    const endpoint = localSettings.value.endpoint;
+    return endpoint !== undefined && isHttpEndpoint(endpoint)
+      ? endpoint.url
+      : '';
+  },
+  set: (url: string) => {
+    const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint;
+    if (!endpoint || !isHttpEndpoint(endpoint)) return;
+    localSettings.value.endpoint = {
+      type: endpoint.type,
+      url,
+      httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
+    };
+  },
+});
+
+const localEndpointHttpHeaders = computed<[string, string][] | undefined>({
+  get: () => {
+    const endpoint = localSettings.value.endpoint;
+    return endpoint !== undefined && isHttpEndpoint(endpoint)
+      ? endpoint.httpHeaders
+      : undefined;
+  },
+  set: (httpHeaders) => {
+    const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint;
+    if (!endpoint || !isHttpEndpoint(endpoint)) return;
+    localSettings.value.endpoint = {
+      type: endpoint.type,
+      url: endpoint.url,
+      httpHeaders,
+    };
+  },
+});
+
+const inheritedEndpointUrlPlaceholder = computed(() => {
+  const inherited = inheritedSettings.value;
+  if (inherited === null || inherited === undefined || !isHttpEndpoint(inherited.endpoint)) {
+    return formatSettingsSourceLabel({
+      value: undefined,
+      source: inherited?.sources.endpoint,
+    });
+  }
+  return formatSettingsSourceLabel({
+    value: inherited.endpoint.url,
+    source: inherited.sources.endpoint,
+  });
+});
 
 // Keep field synchronization exhaustive. A new LM setting command must
 // fail typechecking here until clean/dirty draft merge semantics are defined.
@@ -393,9 +393,7 @@ function applyFieldFromDraft({
 }): void {
   switch (field) {
   case 'endpoint':
-    target.endpointType = source.endpointType;
-    target.endpointUrl = source.endpointUrl;
-    target.endpointHttpHeaders = source.endpointHttpHeaders?.map(([name, value]) => [name, value]);
+    target.endpoint = cloneOptionalEndpoint({ endpoint: source.endpoint });
     return;
   case 'model_id':
     target.modelId = source.modelId;
@@ -434,7 +432,6 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
     pendingFieldRevisions.clear();
     saveError.value = null;
     editingChatId.value = chat.id;
-    editingInheritedEndpointType.value = inheritedSettings.value?.endpointType;
     localSettings.value = cloneDraft({ draft: current });
     baselineSettings.value = cloneDraft({ draft: current });
     return;
@@ -444,7 +441,6 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
     ...createChanges({
       previous: baselineSettings.value,
       next: localSettings.value,
-      inheritedEndpointType: editingInheritedEndpointType.value,
     }).map(change => change.field),
     ...pendingFieldRevisions.keys(),
   ]);
@@ -453,9 +449,6 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
     if (dirtyFields.has(field)) continue;
     applyFieldFromDraft({ field, target: localSettings.value, source: current });
     applyFieldFromDraft({ field, target: baselineSettings.value, source: current });
-  }
-  if (!dirtyFields.has('endpoint')) {
-    editingInheritedEndpointType.value = inheritedSettings.value?.endpointType;
   }
 }
 
@@ -466,7 +459,6 @@ function saveChangesForChat({ chatId }: { chatId: ChatId | undefined }): Promise
   // for this chat settle. This lets a close or navigation wait for an in-flight
   // blur save and retry its draft if that earlier save failed.
   const snapshot = cloneDraft({ draft: localSettings.value });
-  const inheritedEndpointType = editingInheritedEndpointType.value;
   const previous = saveQueues.get(chatId) ?? Promise.resolve();
   const operation = previous
     .catch(() => undefined)
@@ -475,7 +467,6 @@ function saveChangesForChat({ chatId }: { chatId: ChatId | undefined }): Promise
       const changes = createChanges({
         previous: baselineSettings.value,
         next: snapshot,
-        inheritedEndpointType,
       });
       if (changes.length === 0) return;
 
@@ -557,8 +548,9 @@ async function closePanel(): Promise<void> {
 onMounted(() => {
   syncLocalWithCurrent({ preserveDirty: false });
   if (currentChat.value) {
-    const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
-    const type = currentChat.value.endpointType || settings.value.endpointType;
+    const endpoint = currentChat.value.endpoint ?? settings.value.endpoint;
+    const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
+    const type = endpoint.type;
     if (type === 'transformers_js' || isLocalhost({ url })) void fetchModels();
   }
 });
@@ -626,19 +618,24 @@ async function updateEndpointType({
 }): Promise<void> {
   switch (endpointType) {
   case undefined:
-    localSettings.value.endpointType = undefined;
-    localSettings.value.endpointUrl = undefined;
-    localSettings.value.endpointHttpHeaders = undefined;
+    localSettings.value.endpoint = undefined;
     break;
   case 'transformers_js':
-    localSettings.value.endpointType = endpointType;
-    localSettings.value.endpointUrl = undefined;
-    localSettings.value.endpointHttpHeaders = undefined;
+    localSettings.value.endpoint = { type: endpointType };
     break;
   case 'openai':
-  case 'ollama':
-    localSettings.value.endpointType = endpointType;
+  case 'ollama': {
+    const seed = selectHttpEndpointSeed({
+      preferred: localSettings.value.endpoint,
+      fallback: inheritedSettings.value?.endpoint,
+    });
+    localSettings.value.endpoint = {
+      type: endpointType,
+      url: seed?.url ?? '',
+      httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
+    };
     break;
+  }
   default: {
     const _ex: never = endpointType;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -649,8 +646,7 @@ async function updateEndpointType({
 }
 
 async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
-  localSettings.value.endpointType = preset.type;
-  localSettings.value.endpointUrl = preset.url;
+  localSettings.value.endpoint = { type: preset.type, url: preset.url };
   error.value = null;
   await saveChangesFromUi();
 }
@@ -658,25 +654,7 @@ async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number]
 async function handleQuickProviderProfileChange() {
   const providerProfile = settings.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
-    switch (providerProfile.endpointType) {
-    case 'transformers_js':
-      // Provider profiles share the EndpointType union, but Transformers.js is
-      // in-process and must not leave HTTP-only draft fields behind on failure.
-      localSettings.value.endpointType = providerProfile.endpointType;
-      localSettings.value.endpointUrl = undefined;
-      localSettings.value.endpointHttpHeaders = undefined;
-      break;
-    case 'openai':
-    case 'ollama':
-      localSettings.value.endpointType = providerProfile.endpointType;
-      localSettings.value.endpointUrl = providerProfile.endpointUrl;
-      localSettings.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders?.map(([name, value]) => [name, value]);
-      break;
-    default: {
-      const _ex: never = providerProfile.endpointType;
-      throw new Error(`Unhandled provider profile endpoint type: ${_ex}`);
-    }
-    }
+    localSettings.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     localSettings.value.modelId = providerProfile.defaultModelId;
     localSettings.value.systemPrompt = providerProfile.systemPrompt
       ? { content: providerProfile.systemPrompt, behavior: 'override' }
@@ -689,12 +667,19 @@ async function handleQuickProviderProfileChange() {
 }
 
 function addHeader() {
-  if (!localSettings.value.endpointHttpHeaders) localSettings.value.endpointHttpHeaders = [];
-  localSettings.value.endpointHttpHeaders.push(['', '']);
+  const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint;
+  if (!endpoint || !isHttpEndpoint(endpoint)) return;
+  localEndpointHttpHeaders.value = [
+    ...(endpoint.httpHeaders ?? []),
+    ['', ''],
+  ];
 }
 
 async function removeHeader({ index }: { index: number }) {
-  localSettings.value.endpointHttpHeaders?.splice(index, 1);
+  const headers = localEndpointHttpHeaders.value;
+  if (headers !== undefined) {
+    localEndpointHttpHeaders.value = headers.filter((_, headerIndex) => headerIndex !== index);
+  }
   await saveChangesFromUi();
 }
 
@@ -716,10 +701,7 @@ async function fetchModels() {
   }
 }
 
-watch([
-  () => localSettings.value.endpointUrl,
-  () => localSettings.value.endpointType,
-], ([url, type]) => {
+watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
   if (type === 'transformers_js' || (url && isLocalhost({ url }))) void fetchModels();
 });
@@ -828,7 +810,7 @@ defineExpose({
                   style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                 >
                   <option value="" disabled>{{ lazyStrings.ChatSettingsPanel__load_from_saved_profiles() }}</option>
-                  <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpointType }) }})</option>
+                  <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpoint.type }) }})</option>
                 </select>
               </div>
 
@@ -842,7 +824,7 @@ defineExpose({
                     @click="applyPreset({ preset })"
                     type="button"
                     class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
-                    :class="localSettings.endpointUrl === preset.url && localSettings.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
+                    :class="localEndpointUrl === preset.url && localSettings.endpoint?.type === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
                   >
                     {{ preset.name }}
                   </button>
@@ -856,7 +838,7 @@ defineExpose({
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_type() }}</label>
               <select
                 data-testid="chat-setting-endpoint-type-select"
-                :value="localSettings.endpointType || 'global'"
+                :value="localSettings.endpoint?.type || 'global'"
                 @change="async (e) => {
                   const value = (e.target as HTMLSelectElement).value;
                   await updateEndpointType({ endpointType: endpointTypeFromSelectValue({ value }) });
@@ -874,13 +856,13 @@ defineExpose({
             <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</label>
               <input
-                v-model="localSettings.endpointUrl"
+                v-model="localEndpointUrl"
                 @blur="saveChangesFromUi"
                 @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
                 @input="error = null"
                 type="text"
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                :placeholder="formatSettingsSourceLabel({ value: resolvedSettings?.endpointUrl, source: resolvedSettings?.sources.endpointUrl })"
+                :placeholder="inheritedEndpointUrlPlaceholder"
                 data-testid="chat-setting-url-input"
               />
               <div v-if="error" class="mt-2">
@@ -901,9 +883,9 @@ defineExpose({
                 </button>
               </div>
 
-              <div v-if="localSettings.endpointHttpHeaders && localSettings.endpointHttpHeaders.length > 0" class="space-y-2">
+              <div v-if="localEndpointHttpHeaders && localEndpointHttpHeaders.length > 0" class="space-y-2">
                 <div
-                  v-for="(header, index) in localSettings.endpointHttpHeaders"
+                  v-for="(header, index) in localEndpointHttpHeaders"
                   :key="index"
                   class="flex gap-2"
                 >

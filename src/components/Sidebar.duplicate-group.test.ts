@@ -83,7 +83,7 @@ vi.mock('../composables/chat/ui/useChatOrganization', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointUrl: 'http://localhost', defaultModelId: 'm1' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'm1' }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
     updateGlobalModel: vi.fn(),

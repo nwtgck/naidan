@@ -135,7 +135,7 @@ describe('StorageService Synchronization Wrapper', () => {
   });
 
   it('should wrap updateSettings with lock and notify after success', async () => {
-    const settings = { endpointUrl: 'test' } as any;
+    const settings = { endpoint: { type: 'openai', url: 'test' } } as any;
     const updater = vi.fn().mockResolvedValue(settings);
     await service.updateSettings({ updater: updater });
 

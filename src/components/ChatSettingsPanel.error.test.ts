@@ -42,7 +42,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointUrl: 'http://localhost' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' } }),
   }),
 }));
 
@@ -52,8 +52,10 @@ describe('ChatSettingsPanel Error Handling', () => {
     mockCurrentChat.value = {
       id: '1',
       title: 'Test Chat',
-      endpointUrl: 'http://old-url',
-      endpointType: 'openai',
+      endpoint: {
+        type: 'openai',
+        url: 'http://old-url',
+      },
       systemPrompt: null,
       lmParameters: {},
     };

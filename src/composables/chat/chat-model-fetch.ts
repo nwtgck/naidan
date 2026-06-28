@@ -1,7 +1,8 @@
 import { toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
-import type { ChatGroup, EndpointType } from '@/models/types';
+import type { ChatGroup, Endpoint } from '@/models/types';
 import type { LmProvider } from '@/services/lm/types';
+import { isHttpEndpoint } from '@/models/endpoint';
 import { createLmProvider } from '@/services/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
@@ -40,9 +41,7 @@ export async function fetchModelsForChat({
       settings: settings.value,
     });
     const models = await fetchModelsForEndpoint({
-      endpointType: endpoint.type,
-      endpointUrl: endpoint.url,
-      endpointHttpHeaders: endpoint.headers,
+      endpoint,
       errorSource,
     });
 
@@ -74,9 +73,7 @@ export async function fetchModelsForGlobalEndpoint({
       settings: settings.value,
     });
     const models = await fetchModelsForEndpoint({
-      endpointType: endpoint.type,
-      endpointUrl: endpoint.url,
-      endpointHttpHeaders: endpoint.headers,
+      endpoint,
       errorSource,
     });
     availableModels.value = models;
@@ -87,28 +84,20 @@ export async function fetchModelsForGlobalEndpoint({
 }
 
 export async function fetchModelsForEndpoint({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
   errorSource,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
   errorSource: string,
 }): Promise<string[]> {
-  if (!endpointUrl && endpointType !== 'transformers_js') {
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     return [];
   }
 
   const { addErrorEvent } = useGlobalEvents();
 
   try {
-    const provider = createProviderForEndpoint({
-      endpointType,
-      endpointUrl,
-      endpointHttpHeaders,
-    });
+    const provider = createProviderForEndpoint({ endpoint });
     const models = await provider.listModels({});
     return Array.isArray(models) ? models : [];
   } catch (error) {
@@ -141,19 +130,13 @@ function collectChatGroups({
 }
 
 function createProviderForEndpoint({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
 }): LmProvider {
   const { settings } = useSettings();
   return createLmProvider({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
+    endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }

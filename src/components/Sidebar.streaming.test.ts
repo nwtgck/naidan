@@ -103,7 +103,7 @@ vi.mock('../composables/chat/chat-activity-queries', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointUrl: 'http://localhost' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' } }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
     save: vi.fn(),

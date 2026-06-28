@@ -6,7 +6,7 @@ import { toChatGroupId, toChatId } from '@/models/ids';
 
 describe('resolveChatSettings - System Prompt Edge Cases', () => {
   const globalSettings: ResolvableSettings = {
-    endpointType: 'openai',
+    endpoint: { type: 'openai', url: '' },
     systemPrompt: 'Global Prompt',
   };
 
@@ -18,6 +18,57 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     debugEnabled: false,
     root: { items: [] },
   };
+
+  it('resolves the entire endpoint from exactly one scope', () => {
+    const globalEndpoint = {
+      type: 'openai' as const,
+      url: 'https://global.example/v1',
+      httpHeaders: [['X-Scope', 'global']] as [string, string][],
+    };
+    const groupEndpoint = {
+      type: 'ollama' as const,
+      url: 'https://group.example',
+      httpHeaders: [['X-Scope', 'group']] as [string, string][],
+    };
+    const chatEndpoint = {
+      type: 'openai' as const,
+      url: 'https://chat.example/v1',
+      httpHeaders: [['X-Scope', 'chat']] as [string, string][],
+    };
+    const group: ChatGroup = {
+      id: toChatGroupId({ raw: 'group-endpoint' }),
+      name: 'Endpoint Group',
+      isCollapsed: false,
+      updatedAt: 0,
+      items: [],
+      endpoint: groupEndpoint,
+    };
+    const settings: ResolvableSettings = { endpoint: globalEndpoint };
+
+    const chatResult = resolveChatSettings({
+      chat: { ...baseChat, groupId: group.id, endpoint: chatEndpoint },
+      groups: [group],
+      globalSettings: settings,
+    });
+    expect(chatResult.endpoint).toEqual(chatEndpoint);
+    expect(chatResult.sources.endpoint).toBe('chat');
+
+    const groupResult = resolveChatSettings({
+      chat: { ...baseChat, groupId: group.id },
+      groups: [group],
+      globalSettings: settings,
+    });
+    expect(groupResult.endpoint).toEqual(groupEndpoint);
+    expect(groupResult.sources.endpoint).toBe('chat_group');
+
+    const globalResult = resolveChatSettings({
+      chat: baseChat,
+      groups: [group],
+      globalSettings: settings,
+    });
+    expect(globalResult.endpoint).toEqual(globalEndpoint);
+    expect(globalResult.sources.endpoint).toBe('global');
+  });
 
   describe('Override Behavior', () => {
     it('should clear global prompt when override content is null (Explicit Clear)', () => {
@@ -132,7 +183,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
 
   describe('Automatic Title Settings Resolution', () => {
     const globalSettings: ResolvableSettings = {
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: '' },
       autoTitleEnabled: true,
       titleModelId: 'global-title-model',
     };
@@ -183,7 +234,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       expect(hasChatOverrides({ chat: { ...baseChat, modelId: 'm1' } })).toBe(true);
       expect(hasChatOverrides({ chat: { ...baseChat, autoTitleEnabled: false } })).toBe(true);
       expect(hasChatOverrides({ chat: { ...baseChat, titleModelId: 'tm1' } })).toBe(true);
-      expect(hasChatOverrides({ chat: { ...baseChat, endpointType: 'ollama' } })).toBe(true);
+      expect(hasChatOverrides({ chat: { ...baseChat, endpoint: { type: 'ollama', url: '' } } })).toBe(true);
     });
 
     it('hasGroupOverrides should detect various overrides', () => {
@@ -197,7 +248,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
 
   describe('LM Parameters Resolution & Reasoning Effort Inheritance', () => {
     const globalSettings: ResolvableSettings = {
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: '' },
       lmParameters: {
         ...EMPTY_LM_PARAMETERS,
         temperature: 0.7,

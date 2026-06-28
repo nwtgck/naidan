@@ -3,7 +3,8 @@ import { generateId } from '@/utils/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import type { ProviderProfile, Settings } from '@/models/types';
+import type { EndpointType, ProviderProfile, Settings } from '@/models/types';
+import { cloneEndpoint, isHttpEndpoint } from '@/models/endpoint';
 import { capitalize, naturalSort } from '@/utils/string';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
@@ -58,6 +59,59 @@ const form = computed({
   set: (val) => emit('update:modelValue', val),
 });
 
+const endpointType = computed<EndpointType>({
+  get: () => form.value.endpoint.type,
+  set: (type) => {
+    switch (type) {
+    case 'openai':
+    case 'ollama': {
+      const current = form.value.endpoint;
+      form.value.endpoint = {
+        type,
+        url: isHttpEndpoint(current) ? current.url : '',
+        httpHeaders: isHttpEndpoint(current)
+          ? current.httpHeaders?.map(([name, value]) => [name, value])
+          : undefined,
+      };
+      return;
+    }
+    case 'transformers_js':
+      form.value.endpoint = { type };
+      return;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
+  },
+});
+
+const endpointUrl = computed({
+  get: () => isHttpEndpoint(form.value.endpoint) ? form.value.endpoint.url : '',
+  set: (url: string) => {
+    const endpoint = form.value.endpoint;
+    if (!isHttpEndpoint(endpoint)) return;
+    form.value.endpoint = {
+      ...endpoint,
+      url,
+    };
+  },
+});
+
+const endpointHttpHeaders = computed<[string, string][] | undefined>({
+  get: () => isHttpEndpoint(form.value.endpoint)
+    ? form.value.endpoint.httpHeaders
+    : undefined,
+  set: (httpHeaders) => {
+    const endpoint = form.value.endpoint;
+    if (!isHttpEndpoint(endpoint)) return;
+    form.value.endpoint = {
+      ...endpoint,
+      httpHeaders,
+    };
+  },
+});
+
 const connectionSuccess = ref(false);
 
 const error = ref<string | null>(null);
@@ -76,13 +130,14 @@ async function copySetupUrl(): Promise<void> {
     params.set('storage-type', form.value.storageType);
   }
 
-  const type = form.value.endpointType;
+  const endpoint = form.value.endpoint;
+  const type = endpoint.type;
   switch (type) {
   case 'openai':
   case 'ollama':
     params.set('global-endpoint-type', type);
-    if (form.value.endpointUrl) {
-      params.set('global-endpoint-url', form.value.endpointUrl);
+    if (endpoint.url) {
+      params.set('global-endpoint-url', endpoint.url);
     }
     break;
   case 'transformers_js':
@@ -112,27 +167,23 @@ async function copySetupUrl(): Promise<void> {
 function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   form.value = {
     ...form.value,
-    endpointType: preset.type,
-    endpointUrl: preset.url,
+    endpoint: { type: preset.type, url: preset.url },
   };
 }
 
 async function fetchModels() {
-  if (!form.value.endpointUrl && form.value.endpointType !== 'transformers_js') {
+  if (isHttpEndpoint(form.value.endpoint) && form.value.endpoint.url === '') {
     return;
   }
 
   error.value = null;
   try {
-    const url = form.value.endpointUrl || '';
     // Trigger global fetch with current form values (may be unsaved)
-    const models = await fetchModelsGlobal({ overrides: {
-      url,
-      type: form.value.endpointType,
-      headers: form.value.endpointHttpHeaders,
-    } });
+    const models = await fetchModelsGlobal({
+      overrides: cloneEndpoint({ endpoint: form.value.endpoint }),
+    });
 
-    if (models.length === 0 && form.value.endpointType !== 'transformers_js') {
+    if (models.length === 0 && form.value.endpoint.type !== 'transformers_js') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
 
@@ -167,9 +218,7 @@ async function handleSave() {
   try {
     await save({
       patch: {
-        endpointType: form.value.endpointType,
-        endpointUrl: form.value.endpointUrl,
-        endpointHttpHeaders: form.value.endpointHttpHeaders,
+        endpoint: cloneEndpoint({ endpoint: form.value.endpoint }),
         defaultModelId: form.value.defaultModelId,
         titleModelId: form.value.titleModelId,
         autoTitleEnabled: form.value.autoTitleEnabled,
@@ -198,7 +247,7 @@ async function handleCreateProviderProfile() {
   const name = await showPrompt({
     title: await ensureStrings.ConnectionTab__create_new_profile(),
     message: await ensureStrings.ConnectionTab__give_configuration_a_name(),
-    defaultValue: `${capitalize({ value: form.value.endpointType })} - ${form.value.defaultModelId || await ensureStrings.ConnectionTab__default()}`,
+    defaultValue: `${capitalize({ value: form.value.endpoint.type })} - ${form.value.defaultModelId || await ensureStrings.ConnectionTab__default()}`,
     confirmButtonText: await ensureStrings.ConnectionTab__create(),
     bodyComponent: h(ProviderProfilePreview, { form: form.value }),
   });
@@ -208,9 +257,7 @@ async function handleCreateProviderProfile() {
   const newProviderProfile: ProviderProfile = {
     id: generateId<ProviderProfileId>(),
     name,
-    endpointType: form.value.endpointType,
-    endpointUrl: form.value.endpointUrl,
-    endpointHttpHeaders: form.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(form.value.endpointHttpHeaders)) : undefined,
+    endpoint: cloneEndpoint({ endpoint: form.value.endpoint }),
     defaultModelId: form.value.defaultModelId,
     titleModelId: form.value.titleModelId,
     systemPrompt: form.value.systemPrompt,
@@ -232,9 +279,7 @@ async function handleCreateProviderProfile() {
 function handleQuickProviderProfileChange() {
   const providerProfile = form.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
-    form.value.endpointType = providerProfile.endpointType;
-    form.value.endpointUrl = providerProfile.endpointUrl;
-    form.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders ? JSON.parse(JSON.stringify(providerProfile.endpointHttpHeaders)) : undefined;
+    form.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     form.value.defaultModelId = providerProfile.defaultModelId;
     form.value.titleModelId = providerProfile.titleModelId;
     form.value.systemPrompt = providerProfile.systemPrompt;
@@ -244,18 +289,22 @@ function handleQuickProviderProfileChange() {
 }
 
 function addHeader() {
-  if (!form.value.endpointHttpHeaders) form.value.endpointHttpHeaders = [];
-  form.value.endpointHttpHeaders.push(['', '']);
+  const endpoint = form.value.endpoint;
+  if (!isHttpEndpoint(endpoint)) return;
+  endpointHttpHeaders.value = [
+    ...(endpoint.httpHeaders ?? []),
+    ['', ''],
+  ];
 }
 
 function removeHeader({ index }: { index: number }) {
-  if (form.value.endpointHttpHeaders) {
-    form.value.endpointHttpHeaders.splice(index, 1);
-  }
+  const headers = endpointHttpHeaders.value;
+  if (headers === undefined) return;
+  endpointHttpHeaders.value = headers.filter((_, headerIndex) => headerIndex !== index);
 }
 
 // Auto-fetch for localhost or transformers_js
-watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url, type]) => {
+watch([endpointUrl, endpointType], ([url, type]) => {
   if (type === 'transformers_js' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
     fetchModels();
   }
@@ -287,7 +336,7 @@ defineExpose({
                 data-testid="setting-quick-provider-profile-select"
               >
                 <option value="" disabled>{{ lazyStrings.ConnectionTab__load_saved_profile() }}</option>
-                <option v-for="p in form.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ capitalize({ value: p.endpointType }) }})</option>
+                <option v-for="p in form.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ capitalize({ value: p.endpoint.type }) }})</option>
               </select>
             </div>
           </div>
@@ -314,7 +363,7 @@ defineExpose({
               <div class="space-y-2">
                 <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__api_provider() }}</label>
                 <select
-                  v-model="form.endpointType"
+                  v-model="endpointType"
                   class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                   style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                   data-testid="setting-provider-select"
@@ -328,7 +377,7 @@ defineExpose({
               </div>
 
               <!-- Endpoint URL -->
-              <div class="space-y-4" v-if="form.endpointType !== 'transformers_js'">
+              <div class="space-y-4" v-if="endpointType !== 'transformers_js'">
                 <div class="flex items-center justify-between ml-1">
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
                   <div class="flex flex-wrap gap-1.5">
@@ -338,7 +387,7 @@ defineExpose({
                       @click="applyPreset({ preset })"
                       type="button"
                       class="px-3 py-1 text-[10px] font-bold rounded-lg border transition-all"
-                      :class="form.endpointUrl === preset.url && form.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
+                      :class="endpointUrl === preset.url && endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
                       :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`"
                     >
                       {{ preset.name }}
@@ -347,7 +396,7 @@ defineExpose({
                 </div>
                 <div class="flex gap-2">
                   <input
-                    v-model="form.endpointUrl"
+                    v-model="endpointUrl"
                     type="text"
                     class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                     placeholder="http://localhost:11434"
@@ -385,7 +434,7 @@ defineExpose({
               </div>
 
               <!-- Custom HTTP Headers -->
-              <div class="space-y-4">
+              <div v-if="isHttpEndpoint(form.endpoint)" class="space-y-4">
                 <div class="flex items-center justify-between ml-1">
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__custom_http_headers() }}</label>
                   <button
@@ -398,9 +447,9 @@ defineExpose({
                   </button>
                 </div>
 
-                <div v-if="form.endpointHttpHeaders && form.endpointHttpHeaders.length > 0" class="space-y-2">
+                <div v-if="endpointHttpHeaders && endpointHttpHeaders.length > 0" class="space-y-2">
                   <div
-                    v-for="(header, index) in form.endpointHttpHeaders"
+                    v-for="(header, index) in endpointHttpHeaders"
                     :key="index"
                     class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
                   >
@@ -436,11 +485,11 @@ defineExpose({
               leave-from-class="grid-rows-[1fr] opacity-100"
               leave-to-class="grid-rows-[0fr] opacity-0"
             >
-              <div v-if="form.endpointType === 'ollama'" class="grid" data-testid="ollama-management-transition">
+              <div v-if="endpointType === 'ollama'" class="grid" data-testid="ollama-management-transition">
                 <div class="overflow-hidden">
                   <OllamaManagementView
-                    :endpoint-url="form.endpointUrl"
-                    :endpoint-http-headers="form.endpointHttpHeaders"
+                    :endpoint-url="endpointUrl"
+                    :endpoint-http-headers="endpointHttpHeaders"
                     :fake-lm-debug-mode-status="form.experimental?.fakeLm ?? 'disabled'"
                   />
                 </div>
@@ -467,7 +516,7 @@ defineExpose({
                   @refresh="fetchModels"
                   data-testid="setting-model-select"
                 />
-                <TransformersJsUpsell :show="form.endpointType === 'transformers_js'" />
+                <TransformersJsUpsell :show="endpointType === 'transformers_js'" />
                 <p class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.ConnectionTab__used_for_new_conversations() }}</p>
               </div>
 

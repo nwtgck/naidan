@@ -72,7 +72,7 @@ describe('SettingsModal Design Specifications', () => {
     (useRoute as Mock).mockReturnValue(currentRoute);
 
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: ref({ providerProfiles: [] }),
+      settings: ref({ endpoint: { type: 'openai', url: '' }, providerProfiles: [] }),
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: vi.fn(),
@@ -117,7 +117,8 @@ describe('SettingsModal Design Specifications', () => {
     // Inject a profile to check the badge
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({
-        providerProfiles: [{ id: '1', name: 'Profile-1', endpointType: 'ollama', endpointUrl: '...' }],
+        endpoint: { type: 'openai', url: '' },
+        providerProfiles: [{ id: '1', name: 'Profile-1', endpoint: { type: 'ollama', url: '...' } }],
       }),
       availableModels: ref([]),
       isFetchingModels: ref(false),

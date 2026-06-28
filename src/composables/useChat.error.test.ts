@@ -54,8 +54,7 @@ describe('useChat Error Handling', () => {
     mockListModels.mockResolvedValue(['gpt-4']);
 
     __testOnlySetSettings({ newSettings: {
-      endpointType: 'openai',
-      endpointUrl: 'https://api.openai.com',
+      endpoint: { type: 'openai', url: 'https://api.openai.com' },
       defaultModelId: 'gpt-4',
       autoTitleEnabled: false,
       storageType: 'local',

@@ -14,8 +14,10 @@ vi.mock('./useSettings', () => ({
   useSettings: vi.fn().mockReturnValue({
     settings: {
       value: {
-        endpointUrl: 'http://localhost:11434',
-        endpointType: 'openai',
+        endpoint: {
+          type: 'openai',
+          url: 'http://localhost:11434',
+        },
         defaultModelId: 'test-model',
       },
     },
@@ -116,8 +118,10 @@ describe('useChat - Attachment & Migration Logic', () => {
       heavyContentAlertDismissed: false,
       isOnboardingDismissed: true,
       defaultModelId: 'test-model',
-      endpointUrl: 'http://localhost:11434',
-      endpointType: 'openai',
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost:11434',
+      },
       providerProfiles: [],
     });
     (useSettings as any).mockReturnValue({

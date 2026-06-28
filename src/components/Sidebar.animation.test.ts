@@ -194,7 +194,7 @@ vi.mock('../composables/chat/ui/useChatOrganization', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: reactive({ endpointUrl: 'http://localhost' }),
+    settings: reactive({ endpoint: { type: 'openai', url: 'http://localhost' } }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
     updateGlobalModel: vi.fn(),

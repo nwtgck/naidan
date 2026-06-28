@@ -1,12 +1,17 @@
 import type { ChatMeta, Endpoint, Mount } from '@/models/types';
+import { cloneEndpoint, isHttpEndpoint } from '@/models/endpoint';
 
 function maskEndpoint({ endpoint }: { endpoint: Endpoint | undefined }): Endpoint | undefined {
   if (endpoint === undefined) {
     return undefined;
   }
+  const cloned = cloneEndpoint({ endpoint });
+  if (!isHttpEndpoint(cloned)) {
+    return cloned;
+  }
   return {
-    ...endpoint,
-    httpHeaders: endpoint.httpHeaders?.map(([name]) => [name, '[masked]']),
+    ...cloned,
+    httpHeaders: cloned.httpHeaders?.map(([name]) => [name, '[masked]']),
   };
 }
 

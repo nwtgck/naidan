@@ -1,5 +1,5 @@
 import { generateId } from '@/utils/id';
-import type { AssistantMessageNode, Attachment, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/models/types';
+import type { AssistantMessageNode, Attachment, ChatMessage, Endpoint, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
 import type { LmProvider } from '@/services/lm/types';
 import type { ToolExecutionResult } from '@/services/tools/types';
@@ -203,35 +203,31 @@ export function buildCompactRequestMessages({
 }
 
 export async function createProviderForCompact({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
 }): Promise<LmProvider> {
-  switch (endpointType) {
+  switch (endpoint.type) {
   case 'openai':
-    if (!endpointUrl) {
+    if (endpoint.url === '') {
       throw new Error('OpenAI compact provider requires an endpoint URL.');
     }
     return new (await import('@/services/lm/openai')).OpenAIProvider({
-      endpoint: endpointUrl,
-      headers: endpointHttpHeaders,
+      endpoint: endpoint.url,
+      headers: endpoint.httpHeaders,
     });
   case 'ollama':
-    if (!endpointUrl) {
+    if (endpoint.url === '') {
       throw new Error('Ollama compact provider requires an endpoint URL.');
     }
     return new (await import('@/services/lm/ollama')).OllamaProvider({
-      endpoint: endpointUrl,
-      headers: endpointHttpHeaders,
+      endpoint: endpoint.url,
+      headers: endpoint.httpHeaders,
     });
   case 'transformers_js':
     return new (await import('@/services/transformers-js/provider')).TransformersJsProvider();
   default: {
-    const _ex: never = endpointType;
+    const _ex: never = endpoint;
     throw new Error(`Unsupported endpoint type: ${_ex}`);
   }
   }

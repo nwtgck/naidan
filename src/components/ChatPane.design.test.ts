@@ -48,12 +48,13 @@ describe('ChatPane Design Specifications', () => {
     const mockResolvedSettings = ref({
       modelId: 'gemma3n:e2b',
       lmParameters: { reasoning: { effort: undefined } },
-      sources: { modelId: 'chat', titleModelId: 'global' },
-      endpointType: 'openai',
+      sources: { endpoint: 'global', modelId: 'chat', titleModelId: 'global' },
+      endpoint: { type: 'openai', url: 'http://localhost' },
     });
     const mockInheritedSettings = ref({
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'gemma3n:e2b',
-      sources: { modelId: 'chat', titleModelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'chat', titleModelId: 'global' },
     });
     (useCurrentChatState as unknown as Mock).mockReturnValue({
       currentChat: computed(() => mockCurrentChat.value),
@@ -89,7 +90,7 @@ describe('ChatPane Design Specifications', () => {
       isWaitingResponse: vi.fn(() => false),
     });
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: ref({ defaultModelId: 'gpt-4' }),
+      settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'gpt-4' }),
     });
   });
 

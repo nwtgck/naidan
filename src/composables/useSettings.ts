@@ -7,6 +7,7 @@ import {
 } from '@/strings';
 import {
   type Settings,
+  type Endpoint,
   type EndpointType,
   DEFAULT_SETTINGS,
   type StorageType,
@@ -22,11 +23,12 @@ import { transformersJsService } from '@/services/transformers-js';
 import { StorageTypeSchemaDto } from '@/models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useConfirm } from './useConfirm';
+import { areEndpointsEqual, cloneEndpoint, isHttpEndpoint } from '@/models/endpoint';
 
 const _settings = ref<Settings>({
   ...DEFAULT_SETTINGS,
   storageType: 'local',
-  endpointType: 'openai',
+  endpoint: { type: 'openai', url: '' },
 } as Settings);
 
 const _initialized = ref(false);
@@ -59,10 +61,10 @@ interface UseSettingsApi {
   updateExperimental: ({ updater }: {
     updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
   }) => Promise<void>,
-  fetchModels: ({ overrides }: { overrides?: { url: string, type: EndpointType, headers?: [string, string][] } }) => Promise<string[]>,
+  fetchModels: ({ overrides }: { overrides?: Endpoint }) => Promise<string[]>,
   updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>,
   updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>,
-  updateGlobalEndpoint: ({ type, url, headers }: { type: EndpointType, url: string, headers?: [string, string][] }) => Promise<void>,
+  updateGlobalEndpoint: ({ endpoint }: { endpoint: Endpoint }) => Promise<void>,
   updateSystemPrompt: ({ prompt }: { prompt: string }) => Promise<void>,
   updateStorageType: ({ type }: { type: StorageType }) => Promise<void>,
   setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => void,
@@ -101,7 +103,7 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
 } });
 
 transformersJsService.subscribeModelList({ listener: async () => {
-  const type = _settings.value.endpointType;
+  const type = _settings.value.endpoint.type;
   switch (type) {
   case 'transformers_js': {
     const { fetchModels } = useSettings();
@@ -143,7 +145,8 @@ export function useSettings(): UseSettingsApi {
   const loading = ref(false);
 
   const isOnboardingDismissed = computed(() => {
-    const hasEndpoint = !!_settings.value.endpointUrl || _settings.value.endpointType === 'transformers_js';
+    const endpoint = _settings.value.endpoint;
+    const hasEndpoint = endpoint.type === 'transformers_js' || endpoint.url !== '';
     const hasModel = !!_settings.value.defaultModelId;
     return _isOnboardingDismissed.value || (hasEndpoint && hasModel);
   });
@@ -254,7 +257,7 @@ export function useSettings(): UseSettingsApi {
           await setStringLocale({
             locale: s.experimental?.locale ?? resolveBrowserLocale(),
           });
-          if (s.endpointUrl || s.endpointType === 'transformers_js') {
+          if (s.endpoint.type === 'transformers_js' || s.endpoint.url !== '') {
             // Initial model refresh is non-blocking, but its rejection must be
             // observed because initialization intentionally does not await it.
             void fetchModels({}).catch(() => {
@@ -263,7 +266,7 @@ export function useSettings(): UseSettingsApi {
           }
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
-          _settings.value.endpointType = 'openai';
+          _settings.value.endpoint = { type: 'openai', url: '' };
           await setStringLocale({ locale: resolveBrowserLocale() });
         }
       } finally {
@@ -276,18 +279,16 @@ export function useSettings(): UseSettingsApi {
     return initPromise;
   }
 
-  async function fetchModels({ overrides }: { overrides?: { url: string, type: EndpointType, headers?: [string, string][] } }): Promise<string[]> {
+  async function fetchModels({ overrides }: { overrides?: Endpoint }): Promise<string[]> {
     const requestId = ++nextModelFetchRequestId;
     latestModelFetchRequestId = requestId;
     activeModelFetchCount += 1;
     isFetchingModels.value = true;
 
-    const url = overrides?.url ?? _settings.value.endpointUrl;
-    const type = overrides?.type ?? _settings.value.endpointType;
-    const headers = overrides?.headers ?? _settings.value.endpointHttpHeaders;
+    const endpoint = overrides ?? _settings.value.endpoint;
 
     try {
-      if (!url && type !== 'transformers_js') {
+      if (isHttpEndpoint(endpoint) && endpoint.url === '') {
         if (requestId === latestModelFetchRequestId) {
           availableModels.value = [];
         }
@@ -295,9 +296,7 @@ export function useSettings(): UseSettingsApi {
       }
 
       const provider = createLmProvider({
-        endpointType: type,
-        endpointUrl: url,
-        endpointHttpHeaders: headers,
+        endpoint,
         fakeLmDebugModeStatus: _settings.value.experimental?.fakeLm ?? 'disabled',
       });
 
@@ -327,27 +326,33 @@ export function useSettings(): UseSettingsApi {
     patch: Partial<Settings>,
     modelRefresh: 'await' | 'background',
   }) {
-    const oldUrl = _settings.value.endpointUrl;
-    const oldType = _settings.value.endpointType;
+    if (Object.hasOwn(patch, 'endpoint') && patch.endpoint === undefined) {
+      throw new Error('Global settings endpoint cannot be undefined');
+    }
+
+    const previousEndpoint = _settings.value.endpoint;
+    const normalizedPatch: Partial<Settings> = patch.endpoint === undefined
+      ? patch
+      : { ...patch, endpoint: cloneEndpoint({ endpoint: patch.endpoint }) };
 
     // Update local reactive state
-    _settings.value = { ..._settings.value, ...patch };
+    _settings.value = { ..._settings.value, ...normalizedPatch };
 
     // If storage type is changed, handle provider switching/migration
-    if (patch.storageType && patch.storageType !== storageService.getCurrentType()) {
-      await storageService.switchProvider({ type: patch.storageType });
+    if (normalizedPatch.storageType && normalizedPatch.storageType !== storageService.getCurrentType()) {
+      await storageService.switchProvider({ type: normalizedPatch.storageType });
     }
 
     // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
     await storageService.updateSettings({ updater: ({ current: curr }) => {
       const base = curr || _settings.value;
-      return { ...base, ...patch } as Settings;
+      return { ...base, ...normalizedPatch } as Settings;
     } });
 
     // Re-fetch models if connection changed
-    const urlChanged = patch.endpointUrl !== undefined && patch.endpointUrl !== oldUrl;
-    const typeChanged = patch.endpointType !== undefined && patch.endpointType !== oldType;
-    if (urlChanged || typeChanged) {
+    const endpointChanged = normalizedPatch.endpoint !== undefined
+      && !areEndpointsEqual({ left: previousEndpoint, right: normalizedPatch.endpoint });
+    if (endpointChanged) {
       switch (modelRefresh) {
       case 'await':
         await fetchModels({});
@@ -403,22 +408,18 @@ export function useSettings(): UseSettingsApi {
     await storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), defaultModelId: modelId }) });
   }
 
-  async function updateGlobalEndpoint({ type, url, headers }: { type: EndpointType, url: string, headers?: [string, string][] }) {
-    const oldUrl = _settings.value.endpointUrl;
-    const oldType = _settings.value.endpointType;
+  async function updateGlobalEndpoint({ endpoint }: { endpoint: Endpoint }) {
+    const previousEndpoint = _settings.value.endpoint;
+    const nextEndpoint = cloneEndpoint({ endpoint });
 
-    _settings.value.endpointType = type;
-    _settings.value.endpointUrl = url;
-    _settings.value.endpointHttpHeaders = headers;
+    _settings.value.endpoint = nextEndpoint;
 
     await storageService.updateSettings({ updater: ({ current: curr }) => ({
       ...(curr || _settings.value),
-      endpointType: type,
-      endpointUrl: url,
-      endpointHttpHeaders: headers,
+      endpoint: cloneEndpoint({ endpoint: nextEndpoint }),
     }) });
 
-    if (url !== oldUrl || type !== oldType) {
+    if (!areEndpointsEqual({ left: previousEndpoint, right: nextEndpoint })) {
       await fetchModels({});
     }
   }
@@ -509,7 +510,7 @@ export function useSettings(): UseSettingsApi {
     _settings.value = {
       ...DEFAULT_SETTINGS,
       storageType: 'local',
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: '' },
     } as Settings;
     availableModels.value = [];
     isFetchingModels.value = false;

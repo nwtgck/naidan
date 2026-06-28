@@ -9,7 +9,7 @@ import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockSettings = reactive({
-  endpointUrl: 'http://localhost:11434',
+  endpoint: { type: 'openai' as const, url: 'http://localhost:11434' },
   defaultModelId: 'llama3',
 });
 

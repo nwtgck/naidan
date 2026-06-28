@@ -40,7 +40,7 @@ describe('useChatTools', () => {
         mounts: [],
         heavyContentAlertDismissed: false,
         storageType: 'local',
-        endpointType: 'openai',
+        endpoint: { type: 'openai', url: '' },
         experimental: {
           toolConfigPersistence: persistence,
         },
@@ -294,7 +294,7 @@ describe('useChatTools', () => {
           mounts: [],
           heavyContentAlertDismissed: false,
           storageType: 'local',
-          endpointType: 'openai',
+          endpoint: { type: 'openai', url: '' },
           experimental: {
             toolConfigPersistence: 'enabled',
             toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }],
@@ -331,7 +331,7 @@ describe('useChatTools', () => {
           mounts: [],
           heavyContentAlertDismissed: false,
           storageType: 'local',
-          endpointType: 'openai',
+          endpoint: { type: 'openai', url: '' },
           experimental: {
             toolConfigPersistence: 'enabled',
             toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }],

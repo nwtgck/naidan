@@ -39,8 +39,7 @@ const mockGroup = reactive<ChatGroup>({
 const mockCurrentGroup = ref<ChatGroup>(mockGroup);
 
 const mockSettings = reactive<Settings>({
-  endpointType: 'openai',
-  endpointUrl: 'http://global-url',
+  endpoint: { type: 'openai', url: 'http://global-url' },
   defaultModelId: 'global-model',
   autoTitleEnabled: true,
   storageType: 'opfs',
@@ -185,12 +184,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
       fetchingModels: computed(() => mocks.fetchingModels.value),
       fetchForChat: vi.fn(),
       fetchForGlobalEndpoint: vi.fn(),
-      fetchForEndpoint: async ({ customEndpoint }) => {
-        return await mockFetchAvailableModels({
-          endpointType: customEndpoint.type,
-          endpointUrl: customEndpoint.url,
-          endpointHttpHeaders: customEndpoint.headers,
-        });
+      fetchForEndpoint: async ({ endpoint }) => {
+        return await mockFetchAvailableModels({ endpoint });
       },
       TEST_ONLY: {},
     });
@@ -282,8 +277,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     });
     mockCurrentGroup.value = mockGroup;
     // Default global settings
-    mockSettings.endpointType = 'openai';
-    mockSettings.endpointUrl = 'http://global-url';
+    mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     mockSettings.providerProfiles = [];
     mockSettings.experimental = { toolConfigPersistence: 'enabled' };
   });
@@ -347,15 +341,15 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const select = wrapper.get('[data-testid="group-setting-endpoint-type-select"]');
     const inheritedOption = () => select.find('option[value="global"]');
 
-    mockSettings.endpointType = 'openai';
+    mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     await nextTick();
     expect(inheritedOption().text()).toBe('Global (OpenAI)');
 
-    mockSettings.endpointType = 'ollama';
+    mockSettings.endpoint = { type: 'ollama', url: 'http://global-url' };
     await nextTick();
     expect(inheritedOption().text()).toBe('Global (Ollama)');
 
-    mockSettings.endpointType = 'transformers_js';
+    mockSettings.endpoint = { type: 'transformers_js' };
     await nextTick();
     expect(inheritedOption().text()).toBe('Global (Transformers.js)');
   });
@@ -384,13 +378,37 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(true);
   });
 
+  it('uses the global HTTP endpoint when switching from transformers_js to HTTP', async () => {
+    mockSettings.endpoint = {
+      type: 'openai',
+      url: 'http://global-url/v1',
+      httpHeaders: [['X-Global', 'value']],
+    };
+    mockGroup.endpoint = { type: 'transformers_js' };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-endpoint-type-select"]').setValue('ollama');
+    await flushPromises();
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        endpoint: {
+          type: 'ollama',
+          url: 'http://global-url/v1',
+          httpHeaders: [['X-Global', 'value']],
+        },
+      },
+    });
+  });
+
   it('removes_HTTP_fields_when_applying_a_transformers_js_profile', async () => {
     mockSettings.providerProfiles = [{
       id: toProviderProfileId({ raw: 'p-transformers' }),
       name: 'Transformers.js Profile',
-      endpointType: 'transformers_js',
-      endpointUrl: 'http://stale.test/v1',
-      endpointHttpHeaders: [['Authorization', 'Bearer stale']],
+      endpoint: { type: 'transformers_js' },
     }];
     mockGroup.endpoint = {
       type: 'openai',
@@ -435,27 +453,27 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
   it('hides endpoint URL when effective type is transformers_js', async () => {
     // 1. Local override is transformers_js
-    mockGroup.endpoint = { type: 'transformers_js', url: '' };
+    mockGroup.endpoint = { type: 'transformers_js' };
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(false);
 
     // 2. Local is undefined (global inherit), and global is transformers_js
     mockGroup.endpoint = undefined;
-    mockSettings.endpointType = 'transformers_js';
+    mockSettings.endpoint = { type: 'transformers_js' };
     const wrapper2 = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
     expect(wrapper2.find('[data-testid="group-setting-url-input"]').exists()).toBe(false);
   });
 
   it('shows upsell component when effective type is transformers_js', async () => {
-    mockSettings.endpointType = 'openai'; // Start with openai
+    mockSettings.endpoint = { type: 'openai', url: 'http://global-url' }; // Start with openai
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await flushPromises();
     await vi.dynamicImportSettled();
 
     // Switch to transformers_js
-    mockSettings.endpointType = 'transformers_js';
+    mockSettings.endpoint = { type: 'transformers_js' };
     await nextTick();
     await flushPromises();
     await vi.dynamicImportSettled();

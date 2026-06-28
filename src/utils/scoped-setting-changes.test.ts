@@ -43,13 +43,9 @@ function createChatMeta(): ChatMeta {
 }
 
 function createChat(): Chat {
-  const meta = createChatMeta();
   return {
-    ...meta,
+    ...createChatMeta(),
     root: { items: [] },
-    endpointType: meta.endpoint?.type,
-    endpointUrl: meta.endpoint?.url,
-    endpointHttpHeaders: meta.endpoint?.httpHeaders,
   };
 }
 
@@ -160,17 +156,13 @@ describe('scoped setting changes', () => {
     })).toBeUndefined();
   });
 
-  it('removes HTTP-only fields from transformers_js endpoint overrides', () => {
+  it('replaces an HTTP endpoint with a transformers_js endpoint atomically', () => {
     const updated = applyScopedSettingChangesToChatMeta({
       current: createChatMeta(),
       changes: [{
         field: 'endpoint',
         behavior: 'override',
-        value: {
-          type: 'transformers_js',
-          url: 'https://must-not-survive.example',
-          httpHeaders: [['Authorization', 'Bearer must-not-survive']],
-        },
+        value: { type: 'transformers_js' },
       }],
       updatedAt: 3,
     });
@@ -178,36 +170,24 @@ describe('scoped setting changes', () => {
     expect(updated.endpoint).toEqual({ type: 'transformers_js' });
   });
 
-  it('preserves_flat_legacy_endpoint_fields_when_endpoint_is_not_changed', () => {
-    const current = {
-      ...createChat(),
-      endpointType: undefined,
-      endpointUrl: 'https://legacy-url-only.example/v1',
-      endpointHttpHeaders: [['X-Legacy', 'value']] as [string, string][],
-    };
-
+  it('preserves and clones the Chat endpoint when another setting changes', () => {
+    const current = createChat();
     const updated = applyScopedSettingChangesToChat({
       current,
       changes: [{ field: 'model_id', behavior: 'override', value: 'new-model' }],
       updatedAt: 3,
     });
 
-    expect(updated.endpointType).toBeUndefined();
-    expect(updated.endpointUrl).toBe('https://legacy-url-only.example/v1');
-    expect(updated.endpointHttpHeaders).toEqual([['X-Legacy', 'value']]);
-    expect(updated.endpointHttpHeaders).not.toBe(current.endpointHttpHeaders);
+    expect(updated.endpoint).toEqual(current.endpoint);
+    expect(updated.endpoint).not.toBe(current.endpoint);
+    if (updated.endpoint?.type !== 'openai' || current.endpoint?.type !== 'openai') {
+      throw new Error('Expected OpenAI endpoints');
+    }
+    expect(updated.endpoint.httpHeaders).not.toBe(current.endpoint.httpHeaders);
   });
 
-  it('preserves_stored_endpoint_fields_when_endpoint_is_not_changed', () => {
-    const current = {
-      ...createChatMeta(),
-      endpoint: {
-        type: 'transformers_js' as const,
-        url: 'https://legacy-transformers.example/v1',
-        httpHeaders: [['X-Legacy', 'value']] as [string, string][],
-      },
-    };
-
+  it('preserves and clones the ChatMeta endpoint when another setting changes', () => {
+    const current = createChatMeta();
     const updated = applyScopedSettingChangesToChatMeta({
       current,
       changes: [{ field: 'model_id', behavior: 'override', value: 'new-model' }],
@@ -216,10 +196,13 @@ describe('scoped setting changes', () => {
 
     expect(updated.endpoint).toEqual(current.endpoint);
     expect(updated.endpoint).not.toBe(current.endpoint);
-    expect(updated.endpoint?.httpHeaders).not.toBe(current.endpoint.httpHeaders);
+    if (updated.endpoint?.type !== 'openai' || current.endpoint?.type !== 'openai') {
+      throw new Error('Expected OpenAI endpoints');
+    }
+    expect(updated.endpoint.httpHeaders).not.toBe(current.endpoint.httpHeaders);
   });
 
-  it('applies atomic endpoint changes to flat Chat endpoint fields', () => {
+  it('applies atomic endpoint inheritance to Chat', () => {
     const current = createChat();
     const updated = applyScopedSettingChangesToChat({
       current,
@@ -227,9 +210,7 @@ describe('scoped setting changes', () => {
       updatedAt: 3,
     });
 
-    expect(updated.endpointType).toBeUndefined();
-    expect(updated.endpointUrl).toBeUndefined();
-    expect(updated.endpointHttpHeaders).toBeUndefined();
+    expect(updated.endpoint).toBeUndefined();
     expect(updated.modelId).toBe(current.modelId);
   });
 
@@ -257,7 +238,7 @@ describe('scoped setting changes', () => {
         {
           field: 'endpoint',
           behavior: 'override',
-          value: { type: 'openai', httpHeaders: headers },
+          value: { type: 'openai', url: 'https://example.test/v1', httpHeaders: headers },
         },
         { field: 'lm_param_stop', behavior: 'override', value: stop },
       ],
@@ -270,7 +251,7 @@ describe('scoped setting changes', () => {
       {
         field: 'endpoint',
         behavior: 'override',
-        value: { type: 'openai', httpHeaders: [['Authorization', 'Bearer old']] },
+        value: { type: 'openai', url: 'https://example.test/v1', httpHeaders: [['Authorization', 'Bearer old']] },
       },
       { field: 'lm_param_stop', behavior: 'override', value: ['OLD'] },
     ]);

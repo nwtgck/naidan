@@ -7,13 +7,12 @@ import {
   applyInitialGlobalSettingsQuery,
   installGlobalSettingsQuerySync,
 } from '@/services/global-settings-query';
-import type { Settings } from '@/models/types';
+import type { HttpEndpoint, Settings } from '@/models/types';
 
 type SettingsStore = ReturnType<typeof useSettings>;
 
 type TestGlobalSettings = {
-  endpointType: NonNullable<Settings['endpointType']>,
-  endpointUrl: string,
+  endpoint: HttpEndpoint,
   defaultModelId: string,
 };
 
@@ -27,14 +26,14 @@ describe('global settings query sync', () => {
 
   beforeEach(async () => {
     settings = ref({
-      endpointType: 'openai',
-      endpointUrl: '',
+      endpoint: { type: 'openai', url: '' },
       defaultModelId: '',
     });
     save = vi.fn(async ({ patch }: { patch: Partial<Settings> }) => {
       settings.value = {
-        endpointType: patch.endpointType ?? settings.value.endpointType,
-        endpointUrl: patch.endpointUrl ?? settings.value.endpointUrl,
+        endpoint: patch.endpoint === undefined
+          ? settings.value.endpoint
+          : patch.endpoint as HttpEndpoint,
         defaultModelId: patch.defaultModelId ?? settings.value.defaultModelId,
       };
     });
@@ -65,7 +64,7 @@ describe('global settings query sync', () => {
   });
 
   function onboardingIsDismissed(): boolean {
-    return settings.value.endpointUrl.length > 0
+    return settings.value.endpoint.url.length > 0
       && settings.value.defaultModelId.length > 0;
   }
 
@@ -106,8 +105,7 @@ describe('global settings query sync', () => {
     });
     await flushPromises();
 
-    expect(settings.value.endpointType).toBe('openai');
-    expect(settings.value.endpointUrl).toBe('');
+    expect(settings.value.endpoint).toEqual({ type: 'openai', url: '' });
     expect(save).not.toHaveBeenCalled();
   });
 
@@ -121,12 +119,13 @@ describe('global settings query sync', () => {
     });
     await flushPromises();
 
-    expect(settings.value.endpointType).toBe('ollama');
-    expect(settings.value.endpointUrl).toBe('http://localhost:11434');
+    expect(settings.value.endpoint).toEqual({
+      type: 'ollama',
+      url: 'http://localhost:11434',
+    });
     expect(save).toHaveBeenLastCalledWith({
       patch: {
-        endpointType: 'ollama',
-        endpointUrl: 'http://localhost:11434',
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       },
       modelRefresh: 'background',
     });
@@ -155,12 +154,14 @@ describe('global settings query sync', () => {
     });
     await flushPromises();
 
-    expect(settings.value.endpointUrl).toBe('https://api.openai.com/v1');
+    expect(settings.value.endpoint).toEqual({
+      type: 'openai',
+      url: 'https://api.openai.com/v1',
+    });
     expect(settings.value.defaultModelId).toBe('gpt-4');
     expect(save).toHaveBeenLastCalledWith({
       patch: {
-        endpointType: 'openai',
-        endpointUrl: 'https://api.openai.com/v1',
+        endpoint: { type: 'openai', url: 'https://api.openai.com/v1' },
         defaultModelId: 'gpt-4',
       },
       modelRefresh: 'background',

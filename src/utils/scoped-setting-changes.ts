@@ -8,6 +8,7 @@ import type {
   SystemPrompt,
 } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { cloneEndpoint } from '@/models/endpoint';
 import {
   cloneLmParameters,
   LM_PARAMETER_KEYS,
@@ -255,10 +256,7 @@ export function cloneScopedSettingChanges({
       case 'override':
         return {
           ...change,
-          value: {
-            ...change.value,
-            httpHeaders: change.value.httpHeaders?.map(([name, value]) => [name, value]),
-          },
+          value: cloneEndpoint({ endpoint: change.value }),
         };
       default: {
         const _ex: never = change;
@@ -295,29 +293,8 @@ export function cloneScopedSettingChanges({
   });
 }
 
-function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
-  return {
-    type: endpoint.type,
-    url: endpoint.url,
-    httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
-  };
-}
-
 function normalizeEndpointOverride({ endpoint }: { endpoint: Endpoint }): Endpoint {
-  switch (endpoint.type) {
-  case 'openai':
-  case 'ollama':
-    return cloneEndpoint({ endpoint });
-  case 'transformers_js':
-    // Normalize only an explicit endpoint override. Unrelated setting changes
-    // must preserve the existing stored endpoint byte-for-byte (apart from
-    // defensive array cloning), including legacy states awaiting migration.
-    return { type: 'transformers_js' };
-  default: {
-    const _ex: never = endpoint.type;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
-  }
-  }
+  return cloneEndpoint({ endpoint });
 }
 
 function assertUniqueFields({
@@ -632,13 +609,7 @@ export function applyScopedSettingChangesToChat({
 
   const next = applyChanges({
     current: {
-      endpoint: current.endpointType === undefined
-        ? undefined
-        : {
-          type: current.endpointType,
-          url: current.endpointUrl,
-          httpHeaders: current.endpointHttpHeaders,
-        },
+      endpoint: current.endpoint,
       modelId: current.modelId,
       autoTitleEnabled: current.autoTitleEnabled,
       titleModelId: current.titleModelId,
@@ -648,20 +619,9 @@ export function applyScopedSettingChangesToChat({
     changes,
   });
 
-  const updatesEndpoint = changes.some(change => change.field === 'endpoint');
-
   return {
     ...current,
-    endpointType: updatesEndpoint ? next.endpoint?.type : current.endpointType,
-    endpointUrl: updatesEndpoint ? next.endpoint?.url : current.endpointUrl,
-    endpointHttpHeaders: updatesEndpoint
-      ? next.endpoint?.httpHeaders
-      : current.endpointHttpHeaders?.map(([name, value]) => [name, value]),
-    modelId: next.modelId,
-    autoTitleEnabled: next.autoTitleEnabled,
-    titleModelId: next.titleModelId,
-    systemPrompt: next.systemPrompt,
-    lmParameters: next.lmParameters,
+    ...next,
     updatedAt,
   };
 }

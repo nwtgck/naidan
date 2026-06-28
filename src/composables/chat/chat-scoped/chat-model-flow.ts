@@ -1,4 +1,4 @@
-import type { EndpointType } from '@/models/types';
+import type { Endpoint } from '@/models/types';
 import type { ChatId } from '@/models/ids';
 import {
   fetchModelsForChat,
@@ -37,20 +37,14 @@ export async function fetchAvailableModelsForGlobalEndpoint({
 }
 
 export async function fetchAvailableModelsForEndpoint({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
   errorSource,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
   errorSource: string,
 }): Promise<string[]> {
   return await fetchModelsForEndpoint({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
+    endpoint,
     errorSource,
   });
 }

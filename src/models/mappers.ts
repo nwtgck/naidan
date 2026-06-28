@@ -37,7 +37,6 @@ import type {
   ChatSidebarItem,
   SidebarItem,
   Settings,
-  EndpointType,
   Endpoint,
   StorageType,
   SystemPrompt,
@@ -262,28 +261,9 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
   updatedAt: dto.updatedAt,
   debugEnabled: dto.debugEnabled,
   modelId: dto.modelId,
-  endpoint: dto.endpoint ? (() => {
-    const endpoint = dto.endpoint;
-    switch (endpoint.type) {
-    case 'openai':
-    case 'ollama':
-      return {
-        type: endpoint.type as EndpointType,
-        url: endpoint.url || undefined,
-        httpHeaders: endpoint.httpHeaders,
-      };
-    case 'transformers_js':
-      return {
-        type: endpoint.type as EndpointType,
-        url: undefined,
-        httpHeaders: undefined,
-      };
-    default: {
-      const _ex: never = endpoint;
-      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
-    }
-    }
-  })() : undefined,
+  endpoint: dto.endpoint === undefined
+    ? undefined
+    : endpointToDomain({ dto: dto.endpoint }),
   systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
   lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
   autoTitleEnabled: dto.autoTitleEnabled,
@@ -328,28 +308,9 @@ export const chatGroupToDomain = (
     isCollapsed: dto.isCollapsed,
     updatedAt: dto.updatedAt,
     items,
-    endpoint: dto.endpoint ? (() => {
-      const endpoint = dto.endpoint;
-      switch (endpoint.type) {
-      case 'openai':
-      case 'ollama':
-        return {
-          type: endpoint.type as EndpointType,
-          url: endpoint.url || undefined,
-          httpHeaders: endpoint.httpHeaders,
-        };
-      case 'transformers_js':
-        return {
-          type: endpoint.type as EndpointType,
-          url: undefined,
-          httpHeaders: undefined,
-        };
-      default: {
-        const _ex: never = endpoint;
-        throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
-      }
-      }
-    })() : undefined,
+    endpoint: dto.endpoint === undefined
+      ? undefined
+      : endpointToDomain({ dto: dto.endpoint }),
     modelId: dto.modelId,
     autoTitleEnabled: dto.autoTitleEnabled,
     titleModelId: dto.titleModelId,
@@ -494,23 +455,38 @@ export const lmParametersToDto = (
   return dto;
 };
 
-export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
-  const type = endpoint.type;
-  switch (type) {
+export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
+  switch (dto.type) {
   case 'openai':
   case 'ollama':
     return {
-      type: type,
-      url: endpoint.url || '',
-      httpHeaders: endpoint.httpHeaders,
+      type: dto.type,
+      url: dto.url,
+      httpHeaders: dto.httpHeaders?.map(([name, value]) => [name, value]),
     };
   case 'transformers_js':
-    return {
-      type: 'transformers_js',
-    };
+    return { type: 'transformers_js' };
   default: {
-    const _ex: never = type;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
+    const _ex: never = dto;
+    throw new Error(`Unhandled endpoint DTO: ${String(_ex)}`);
+  }
+  }
+};
+
+export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
+  switch (endpoint.type) {
+  case 'openai':
+  case 'ollama':
+    return {
+      type: endpoint.type,
+      url: endpoint.url,
+      httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
+    };
+  case 'transformers_js':
+    return { type: 'transformers_js' };
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
   }
   }
 };
@@ -909,32 +885,6 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     systemPrompt, lmParameters,
   } = dto;
 
-  const endpointInfo = endpoint ? (() => {
-    switch (endpoint.type) {
-    case 'openai':
-    case 'ollama':
-      return {
-        endpointType: endpoint.type as EndpointType,
-        endpointUrl: endpoint.url || undefined,
-        endpointHttpHeaders: endpoint.httpHeaders as [string, string][] | undefined,
-      };
-    case 'transformers_js':
-      return {
-        endpointType: endpoint.type as EndpointType,
-        endpointUrl: undefined,
-        endpointHttpHeaders: undefined,
-      };
-    default: {
-      const _ex: never = endpoint;
-      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
-    }
-    }
-  })() : {
-    endpointType: undefined,
-    endpointUrl: undefined,
-    endpointHttpHeaders: undefined,
-  };
-
   return {
     id: toChatId({ raw: id }),
     title,
@@ -943,7 +893,7 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     createdAt,
     updatedAt,
     debugEnabled: debugEnabled ?? false,
-    ...endpointInfo,
+    endpoint: endpoint === undefined ? undefined : endpointToDomain({ dto: endpoint }),
     modelId,
     autoTitleEnabled: dto.autoTitleEnabled,
     titleModelId: dto.titleModelId,
@@ -994,7 +944,7 @@ export const chatContentToDomain = ({ dto }: { dto: ChatContentDto }): ChatConte
 export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
   const {
     id, title, root, currentLeafId, createdAt, updatedAt,
-    debugEnabled, endpointType, endpointUrl, endpointHttpHeaders,
+    debugEnabled, endpoint,
     modelId, originChatId, originMessageId, systemPrompt, lmParameters,
   } = domain;
 
@@ -1006,11 +956,7 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
     createdAt,
     updatedAt,
     debugEnabled,
-    endpoint: endpointType ? endpointToDto({ endpoint: {
-      type: endpointType,
-      url: endpointUrl,
-      httpHeaders: endpointHttpHeaders,
-    } }) : undefined,
+    endpoint: endpoint === undefined ? undefined : endpointToDto({ endpoint }),
     modelId,
     autoTitleEnabled: domain.autoTitleEnabled,
     titleModelId: domain.titleModelId,
@@ -1082,31 +1028,9 @@ export const buildSidebarItemsFromHierarchy = (
 export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
   const { endpoint, providerProfiles, storageType, ...rest } = dto;
 
-  const endpointInfo = (() => {
-    switch (endpoint.type) {
-    case 'openai':
-    case 'ollama':
-      return {
-        endpointType: endpoint.type as EndpointType,
-        endpointUrl: endpoint.url || undefined,
-        endpointHttpHeaders: endpoint.httpHeaders as [string, string][] | undefined,
-      };
-    case 'transformers_js':
-      return {
-        endpointType: endpoint.type as EndpointType,
-        endpointUrl: undefined,
-        endpointHttpHeaders: undefined,
-      };
-    default: {
-      const _ex: never = endpoint;
-      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
-    }
-    }
-  })();
-
   return {
     ...rest,
-    ...endpointInfo,
+    endpoint: endpointToDomain({ dto: endpoint }),
     storageType: storageType as StorageType,
     experimental: {
       ...(rest.experimental?.locale === undefined
@@ -1124,33 +1048,12 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
         : { unreadable: rest.experimental.unreadable }),
     },
     providerProfiles: providerProfiles?.map(p => {
-      const { endpoint: pEndpoint, ...pRest } = p;
-      const pEndpointInfo = (() => {
-        switch (pEndpoint.type) {
-        case 'openai':
-        case 'ollama':
-          return {
-            endpointType: pEndpoint.type as EndpointType,
-            endpointUrl: pEndpoint.url || undefined,
-            endpointHttpHeaders: pEndpoint.httpHeaders as [string, string][] | undefined,
-          };
-        case 'transformers_js':
-          return {
-            endpointType: pEndpoint.type as EndpointType,
-            endpointUrl: undefined,
-            endpointHttpHeaders: undefined,
-          };
-        default: {
-          const _ex: never = pEndpoint;
-          throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
-        }
-        }
-      })();
+      const { endpoint: profileEndpoint, ...profileRest } = p;
       return {
-        ...pRest,
-        id: toProviderProfileId({ raw: pRest.id }),
-        ...pEndpointInfo,
-        lmParameters: lmParametersToDomain({ dto: pRest.lmParameters }),
+        ...profileRest,
+        id: toProviderProfileId({ raw: profileRest.id }),
+        endpoint: endpointToDomain({ dto: profileEndpoint }),
+        lmParameters: lmParametersToDomain({ dto: profileRest.lmParameters }),
       };
     }) ?? [],
     lmParameters: lmParametersToDomain({ dto: rest.lmParameters }),
@@ -1159,41 +1062,23 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
 };
 
 export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => {
-  const {
-    endpointType, endpointUrl, endpointHttpHeaders,
-    storageType, providerProfiles, ...rest
-  } = domain;
+  const { endpoint, storageType, providerProfiles, ...rest } = domain;
 
   return {
-    endpoint: endpointToDto({ endpoint: {
-      type: endpointType,
-      url: endpointUrl,
-      httpHeaders: endpointHttpHeaders,
-    } }),
+    endpoint: endpointToDto({ endpoint }),
     defaultModelId: rest.defaultModelId,
     titleModelId: rest.titleModelId,
     autoTitleEnabled: rest.autoTitleEnabled,
     storageType: storageType as StorageTypeDto,
-    providerProfiles: (providerProfiles || []).map(p => {
-      const {
-        endpointType: pType, endpointUrl: pUrl, endpointHttpHeaders: pHeaders,
-        ...pRest
-      } = p;
-
-      return {
-        id: idToRaw({ id: pRest.id }),
-        name: pRest.name,
-        endpoint: endpointToDto({ endpoint: {
-          type: pType,
-          url: pUrl,
-          httpHeaders: pHeaders,
-        } }),
-        defaultModelId: pRest.defaultModelId,
-        titleModelId: pRest.titleModelId,
-        systemPrompt: pRest.systemPrompt,
-        lmParameters: lmParametersToDto({ domain: pRest.lmParameters }),
-      };
-    }),
+    providerProfiles: (providerProfiles || []).map(profile => ({
+      id: idToRaw({ id: profile.id }),
+      name: profile.name,
+      endpoint: endpointToDto({ endpoint: profile.endpoint }),
+      defaultModelId: profile.defaultModelId,
+      titleModelId: profile.titleModelId,
+      systemPrompt: profile.systemPrompt,
+      lmParameters: lmParametersToDto({ domain: profile.lmParameters }),
+    })),
     heavyContentAlertDismissed: rest.heavyContentAlertDismissed,
     systemPrompt: rest.systemPrompt,
     lmParameters: lmParametersToDto({ domain: rest.lmParameters }),

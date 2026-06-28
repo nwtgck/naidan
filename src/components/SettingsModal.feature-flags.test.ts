@@ -15,9 +15,11 @@ vi.mock('@/composables/useFeatureFlags', () => ({
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost:1234/v1',
-      endpointHttpHeaders: [],
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost:1234/v1',
+        httpHeaders: [],
+      },
       defaultModelId: 'model-1',
       titleModelId: 'model-1',
       autoTitleEnabled: true,

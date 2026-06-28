@@ -5,6 +5,7 @@ import { useToast } from '@/composables/useToast';
 import { idToRaw } from '@/models/ids';
 import type { ProviderProfileId } from '@/models/ids';
 import type { ProviderProfile } from '@/models/types';
+import { isHttpEndpoint } from '@/models/endpoint';
 import {
   BookmarkPlusIcon, PencilIcon, TrashIcon, CheckIcon,
 } from 'lucide-vue-next';
@@ -124,9 +125,9 @@ defineExpose({
             </div>
             <div v-else class="flex items-center gap-4">
               <h3 class="text-base font-bold text-gray-800 dark:text-white truncate">{{ providerProfile.name }}</h3>
-              <span class="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-900/30" data-testid="provider-type-badge">{{ capitalize({ value: providerProfile.endpointType }) }}</span>
+              <span class="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-900/30" data-testid="provider-type-badge">{{ capitalize({ value: providerProfile.endpoint.type }) }}</span>
             </div>
-            <div class="text-xs font-medium text-gray-400 mt-1.5 truncate">{{ providerProfile.endpointUrl }}</div>
+            <div class="text-xs font-medium text-gray-400 mt-1.5 truncate">{{ isHttpEndpoint(providerProfile.endpoint) ? providerProfile.endpoint.url : '' }}</div>
             <div class="text-[11px] font-bold text-gray-500 mt-2 flex items-center gap-3">
               <span class="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700">{{ providerProfile.defaultModelId || lazyStrings.ProviderProfilesTab__no_default_model() }}</span>
               <span v-if="providerProfile.titleModelId" class="text-[9px] opacity-60 px-2 py-0.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-transparent">{{ lazyStrings.ProviderProfilesTab__title_model({ modelId: providerProfile.titleModelId }) }}</span>

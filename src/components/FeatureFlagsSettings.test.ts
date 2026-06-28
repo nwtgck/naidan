@@ -17,8 +17,10 @@ const {
 const mockShowConfirm = vi.fn();
 const mockSaveSettings = vi.fn();
 const mockSettings = ref({
-  endpointType: 'openai',
-  endpointUrl: 'http://localhost',
+  endpoint: {
+    type: 'openai',
+    url: 'http://localhost',
+  },
   storageType: 'local',
   autoTitleEnabled: true,
   defaultModelId: 'gpt-4',

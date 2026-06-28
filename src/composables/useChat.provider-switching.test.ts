@@ -61,8 +61,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
 
     // Reset Settings
     __testOnlySetSettings({ newSettings: {
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost:1234/v1',
+      endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
       defaultModelId: 'gpt-4',
       autoTitleEnabled: false,
       storageType: 'local',
@@ -96,13 +95,16 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOpenAIChat.mock.calls[0]![0].model).toBe('gpt-4');
 
     // 2. Ollama (gpt-4-showcase -> resolves to llama3)
-    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), endpointType: 'ollama' } });
+    __testOnlySetSettings({ newSettings: {
+      ...JSON.parse(JSON.stringify(settings.value)),
+      endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+    } });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('llama3');
 
     // 3. Custom Override (gpt-3.5-turbo)
-    await updateChatSettings({ id: idToRaw({ id: chatObj.id }), updates: { endpointType: 'openai' } });
+    await updateChatSettings({ id: idToRaw({ id: chatObj.id }), updates: { endpoint: { type: 'openai', url: 'http://localhost:1234/v1' } } });
     await updateChatModel({ id: idToRaw({ id: chatObj.id }), modelId: 'gpt-3.5-turbo' });
     await sendMessage({ content: 'M3' });
     await vi.waitUntil(() => !chatStore.streaming.value);
@@ -112,7 +114,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
   it('should fallback to first available model if defaultModelId is also missing', async () => {
     __testOnlySetSettings({ newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
-      endpointType: 'ollama',
+      endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       defaultModelId: 'missing-default',
     } });
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);

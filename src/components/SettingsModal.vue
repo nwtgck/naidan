@@ -72,9 +72,7 @@ const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
 
 function pickConnectionFields({ settings }: { settings: Settings }) {
   return {
-    endpointType: settings.endpointType,
-    endpointUrl: settings.endpointUrl,
-    endpointHttpHeaders: JSON.stringify(settings.endpointHttpHeaders),
+    endpoint: JSON.stringify(settings.endpoint),
     defaultModelId: settings.defaultModelId,
     titleModelId: settings.titleModelId,
     autoTitleEnabled: settings.autoTitleEnabled,

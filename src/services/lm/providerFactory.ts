@@ -1,4 +1,4 @@
-import type { EndpointType } from '@/models/types';
+import type { Endpoint } from '@/models/types';
 import { createFakeLmFetchForEndpoint, type FakeLmDebugModeStatus } from '@/services/fake-lm';
 import { getDefaultLmFetch, type LmFetch } from '@/services/lm/fetch';
 import { OllamaProvider } from '@/services/lm/ollama';
@@ -6,32 +6,31 @@ import { OpenAIProvider } from '@/services/lm/openai';
 import type { LmProvider } from '@/services/lm/types';
 import { TransformersJsProvider } from '@/services/transformers-js/provider';
 
-export function createLmProvider({ endpointType, endpointUrl, endpointHttpHeaders, fakeLmDebugModeStatus }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+export function createLmProvider({ endpoint, fakeLmDebugModeStatus }: {
+  endpoint: Endpoint,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): LmProvider {
-  const headers = cloneEndpointHttpHeaders({ headers: endpointHttpHeaders });
-
-  switch (endpointType) {
+  switch (endpoint.type) {
   case 'openai':
     return new OpenAIProvider({
-      endpoint: endpointUrl ?? '',
-      headers,
-      fetcher: createLmFetch({ endpointUrl, fakeLmDebugModeStatus }),
+      endpoint: endpoint.url,
+      headers: cloneEndpointHttpHeaders({ headers: endpoint.httpHeaders }),
+      fetcher: createLmFetch({
+        endpointUrl: endpoint.url,
+        fakeLmDebugModeStatus,
+      }),
     });
   case 'ollama':
     return createOllamaProvider({
-      endpointUrl,
-      endpointHttpHeaders,
+      endpointUrl: endpoint.url,
+      endpointHttpHeaders: endpoint.httpHeaders,
       fakeLmDebugModeStatus,
     });
   case 'transformers_js':
     return new TransformersJsProvider();
   default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
   }
   }
 }

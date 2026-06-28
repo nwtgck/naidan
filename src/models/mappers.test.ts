@@ -211,11 +211,25 @@ describe('Settings Mapping', () => {
     expect(domain.experimental?.locale).toBeUndefined();
   });
 
+  it('preserves an empty HTTP URL through settings mapping', () => {
+    const domain: Settings = {
+      endpoint: { type: 'openai', url: '' },
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+    };
+
+    const dto = settingsToDto({ domain });
+    const mapped = settingsToDomain({ dto });
+
+    expect(dto.endpoint).toEqual({ type: 'openai', url: '' });
+    expect(mapped.endpoint).toEqual({ type: 'openai', url: '' });
+  });
+
   it('omits disabled fake LM mode from the settings DTO', () => {
     const domain: Settings = {
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost',
-      endpointHttpHeaders: undefined,
+      endpoint: { type: 'openai', url: 'http://localhost' },
       defaultModelId: 'gpt-4',
       titleModelId: undefined,
       autoTitleEnabled: true,
@@ -235,9 +249,7 @@ describe('Settings Mapping', () => {
 
   it('preserves experimental settings through settings mapping', () => {
     const domain: Settings = {
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost',
-      endpointHttpHeaders: undefined,
+      endpoint: { type: 'openai', url: 'http://localhost' },
       defaultModelId: 'gpt-4',
       titleModelId: undefined,
       autoTitleEnabled: true,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import type { Settings } from '@/models/types';
+import type { EndpointType, Settings } from '@/models/types';
 import ConnectionTab from './ConnectionTab.vue';
 
 vi.mock('@/composables/useSettings', () => ({
@@ -24,12 +24,16 @@ vi.mock('@/composables/usePrompt', () => ({
 }));
 
 function createSettings({ endpointType }: {
-  endpointType: Settings['endpointType'],
+  endpointType: EndpointType,
 }): Settings {
   return {
-    endpointType,
-    endpointUrl: 'https://ollama.example',
-    endpointHttpHeaders: [['X-Test', 'value']],
+    endpoint: endpointType === 'transformers_js'
+      ? { type: endpointType }
+      : {
+        type: endpointType,
+        url: 'https://ollama.example',
+        httpHeaders: [['X-Test', 'value']],
+      },
     defaultModelId: '',
     titleModelId: '',
     autoTitleEnabled: true,

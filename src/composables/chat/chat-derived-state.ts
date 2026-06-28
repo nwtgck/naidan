@@ -88,9 +88,7 @@ export function createChatDerivedState({
     const virtualChat: Chat = {
       ...chat,
       modelId: undefined,
-      endpointType: undefined,
-      endpointUrl: undefined,
-      endpointHttpHeaders: undefined,
+      endpoint: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     };

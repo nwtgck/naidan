@@ -14,8 +14,10 @@ const { mocks } = vi.hoisted(() => ({
   mocks: {
     capturedListener: null as (({ event }: { event: any }) => void | Promise<void>) | null,
     settings: {
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost',
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost',
+      },
       storageType: 'local',
       autoTitleEnabled: true,
       defaultModelId: 'gpt-4',

@@ -7,7 +7,7 @@ import { useChatGroupToolConfigs } from './useChatGroupToolConfigs';
 
 const mocks = vi.hoisted(() => ({ updateToolConfigs: vi.fn() }));
 const settings = ref<Settings>({
-  endpointType: 'openai',
+  endpoint: { type: 'openai', url: '' },
   autoTitleEnabled: true,
   storageType: 'local',
   providerProfiles: [],

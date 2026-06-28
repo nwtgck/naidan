@@ -46,7 +46,7 @@ vi.mock('../composables/useChat', () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: ref(null),
     chatGroups: mockChatGroups,
-    resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
+    resolvedSettings: mockResolvedSettings.value || ref({ endpoint: { type: 'openai', url: 'http://localhost' }, lmParameters: { reasoning: { effort: undefined } } }),
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
     updateChatModel: vi.fn(),
@@ -277,7 +277,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'global-default-model' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'global-default-model' }),
     availableModels: mockAvailableModels,
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
@@ -308,8 +308,9 @@ describe('ChatPane Auto-send', () => {
       updatedAt: Date.now(),
     };
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'model-1',
-      sources: { modelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'global' },
     };
     mockSendMessage.mockResolvedValue(true);
   });

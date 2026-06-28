@@ -38,7 +38,7 @@ describe('useChatWeshPreferences', () => {
         mounts: [],
         heavyContentAlertDismissed: false,
         storageType: 'local',
-        endpointType: 'openai',
+        endpoint: { type: 'openai', url: '' },
         experimental: {
           toolConfigPersistence: persistence,
         },

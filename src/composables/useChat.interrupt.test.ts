@@ -6,8 +6,10 @@ import { useChat } from './useChat';
 vi.mock('./useSettings', () => ({
   useSettings: vi.fn().mockReturnValue({
     settings: ref({
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost:11434/v1',
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost:11434/v1',
+      },
       defaultModelId: 'gpt-4',
       autoTitleEnabled: true,
     }),

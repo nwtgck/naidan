@@ -76,9 +76,7 @@ describe('ImportExportService', () => {
   });
 
   const createValidSettings = (overrides: Partial<Settings> = {}): Settings => ({
-    endpointType: 'ollama',
-    endpointUrl: 'http://localhost:11434',
-    endpointHttpHeaders: undefined,
+    endpoint: { type: 'ollama', url: 'http://localhost:11434' },
     storageType: 'local',
     autoTitleEnabled: true,
     providerProfiles: [],
@@ -142,8 +140,7 @@ describe('ImportExportService', () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: {
-            endpointType: 'openai',
-            endpointUrl: '',
+            endpoint: { type: 'openai', url: '' },
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: [],
@@ -163,8 +160,7 @@ describe('ImportExportService', () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: {
-            endpointType: 'openai',
-            endpointUrl: '',
+            endpoint: { type: 'openai', url: '' },
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: [],
@@ -225,8 +221,7 @@ describe('ImportExportService', () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: {
-            endpointType: 'openai',
-            endpointUrl: '',
+            endpoint: { type: 'openai', url: '' },
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: [],
@@ -268,8 +263,7 @@ describe('ImportExportService', () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: {
-            endpointType: 'openai',
-            endpointUrl: '',
+            endpoint: { type: 'openai', url: '' },
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: [],
@@ -650,8 +644,7 @@ ${JSON.stringify({
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: {
-            endpointType: 'openai',
-            endpointUrl: 'http://localhost:11434',
+            endpoint: { type: 'openai', url: 'http://localhost:11434' },
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: [],
@@ -720,8 +713,7 @@ ${JSON.stringify({
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: {
-            endpointType: 'ollama',
-            endpointUrl: 'http://localhost:11434',
+            endpoint: { type: 'ollama', url: 'http://localhost:11434' },
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: [],
@@ -757,7 +749,7 @@ ${JSON.stringify({
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: {
-            endpointType: 'transformers_js',
+            endpoint: { type: 'transformers_js' },
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: [],
@@ -1247,7 +1239,7 @@ ${JSON.stringify({
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       mockStorage.loadSettings.mockResolvedValue({
-        endpointType: 'ollama',
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
         lmParameters: { temperature: 0.9, maxCompletionTokens: 500, stop: ['OLD'] },
       } as any);
 
@@ -1323,8 +1315,11 @@ ${JSON.stringify({
       const updater = mockStorage.updateSettings.mock.calls[0]![0].updater;
       const result = await updater({ current: await mockStorage.loadSettings() });
       expect(result.heavyContentAlertDismissed).toBe(true);
-      expect(result.endpointUrl).toBe('http://imported');
-      expect(result.endpointHttpHeaders).toEqual([['X-Test', 'imported']]);
+      expect(result.endpoint).toEqual({
+        type: 'openai',
+        url: 'http://imported',
+        httpHeaders: [['X-Test', 'imported']],
+      });
     });
 
     it('regenerates IDs for provider profiles when using append strategy', async () => {
@@ -1335,9 +1330,13 @@ ${JSON.stringify({
       })));
 
       mockStorage.loadSettings.mockResolvedValue({
-        endpointType: 'ollama',
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
         storageType: 'local',
-        providerProfiles: [{ id: '018d476a-7b3a-73fd-8000-000000000009', name: 'Existing', endpointType: 'openai', endpointUrl: '' }],
+        providerProfiles: [{
+          id: '018d476a-7b3a-73fd-8000-000000000009',
+          name: 'Existing',
+          endpoint: { type: 'openai', url: '' },
+        }],
       } as any);
 
       await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {

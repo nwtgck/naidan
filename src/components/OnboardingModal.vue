@@ -5,7 +5,7 @@ import { useLayout } from '@/composables/useLayout';
 import { ensureStrings, lazyStrings } from '@/strings';
 import type { LmProvider } from '@/services/lm/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
-import { type EndpointType, type Settings as SettingsType } from '@/models/types';
+import { type Endpoint, type EndpointType, type Settings as SettingsType } from '@/models/types';
 import { ENDPOINT_PRESETS } from '@/models/constants';
 
 // IMPORTANT: ThemeToggle is part of the core onboarding UI.
@@ -241,6 +241,32 @@ function isLocalhost({ url }: { url: string | undefined }) {
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
+function createEndpoint({
+  type,
+  url,
+  httpHeaders,
+}: {
+  type: EndpointType,
+  url: string | null,
+  httpHeaders: [string, string][],
+}): Endpoint {
+  switch (type) {
+  case 'openai':
+  case 'ollama':
+    return {
+      type,
+      url: url ?? '',
+      httpHeaders: httpHeaders.length > 0 ? httpHeaders : undefined,
+    };
+  case 'transformers_js':
+    return { type };
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
+  }
+}
+
 // Auto-fetch for localhost or transformers_js when URL/Type changes
 watch([selectedType, customUrl], async ([_type, url]) => {
   error.value = null;
@@ -321,9 +347,11 @@ async function handleConnect() {
     }
 
     const provider: LmProvider = createLmProvider({
-      endpointType: effectiveType.value,
-      endpointUrl: url ?? undefined,
-      endpointHttpHeaders: customHeaders.value,
+      endpoint: createEndpoint({
+        type: effectiveType.value,
+        url,
+        httpHeaders: customHeaders.value,
+      }),
       fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
     });
     const models = await provider.listModels({ signal: abortController.signal });
@@ -371,9 +399,11 @@ async function handleFinish() {
     await save({
       patch: {
         ...baseSettings,
-        endpointType: type,
-        endpointUrl: url || undefined,
-        endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
+        endpoint: createEndpoint({
+          type,
+          url,
+          httpHeaders: customHeaders.value,
+        }),
         defaultModelId: selectedModel.value || undefined,
         // Transformers.js currently supports only one active model at a time.
         // We set titleModelId to undefined to prevent the main model from being unloaded during title generation.

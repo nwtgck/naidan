@@ -22,7 +22,6 @@ import type {
 
 export type Role = 'user' | 'assistant' | 'system' | 'tool';
 export type StorageType = 'local' | 'opfs' | 'memory';
-export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
 export type ToolConfigPersistence = 'disabled' | 'enabled';
 export type UiLocale = 'en' | 'ja';
 
@@ -59,11 +58,18 @@ export type SystemPrompt =
   | { behavior: 'override', content: string | null }
   | { behavior: 'append', content: string };
 
-export interface Endpoint {
-  type: EndpointType,
-  url?: string,
+export type HttpEndpoint = {
+  type: 'openai' | 'ollama',
+  url: string,
   httpHeaders?: [string, string][],
-}
+};
+
+export type TransformersJsEndpoint = {
+  type: 'transformers_js',
+};
+
+export type Endpoint = HttpEndpoint | TransformersJsEndpoint;
+export type EndpointType = Endpoint['type'];
 
 export type MultimodalContent =
   | { type: 'text', text: string }
@@ -178,11 +184,7 @@ export interface Chat {
   updatedAt: number,
   debugEnabled: boolean,
 
-  // TODO: Refactor into atomic endpoint object (e.g. endpoint: { type, url, httpHeaders })
-  // to ensure data consistency and prevent invalid states (e.g. type without URL).
-  endpointType?: EndpointType,
-  endpointUrl?: string,
-  endpointHttpHeaders?: [string, string][],
+  endpoint?: Endpoint,
   modelId?: string,
   autoTitleEnabled?: boolean,
   titleModelId?: string,
@@ -343,9 +345,7 @@ export interface StorageSnapshot {
 export interface ProviderProfile {
   id: ProviderProfileId,
   name: string,
-  endpointType: EndpointType,
-  endpointUrl?: string,
-  endpointHttpHeaders?: [string, string][],
+  endpoint: Endpoint,
   defaultModelId?: string,
   titleModelId?: string,
   systemPrompt?: string,
@@ -353,9 +353,7 @@ export interface ProviderProfile {
 }
 
 export interface Settings {
-  endpointType: EndpointType,
-  endpointUrl?: string,
-  endpointHttpHeaders?: [string, string][],
+  endpoint: Endpoint,
   defaultModelId?: string,
   titleModelId?: string,
   autoTitleEnabled: boolean,
@@ -386,7 +384,7 @@ export interface Settings {
   },
 }
 
-export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpointType'> = {
+export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
   autoTitleEnabled: true,
   providerProfiles: [],
   mounts: [],

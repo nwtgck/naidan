@@ -59,7 +59,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
     },
     subscribeModelList: () => {
       return transformersJsService.subscribeModelList({ listener: async () => {
-        const type = chatDerivedState.resolvedSettings.value?.endpointType;
+        const type = chatDerivedState.resolvedSettings.value?.endpoint.type;
         if (type === undefined) {
           return;
         }

@@ -698,7 +698,7 @@ defineExpose({ scrollToBottom, container, inputVisibility,
 });
 
 const canGenerateImage = computed(() => {
-  const type = resolvedSettings.value?.endpointType;
+  const type = resolvedSettings.value?.endpoint.type;
   if (!type) return false;
 
   const isOllama = (() => {
@@ -1323,7 +1323,7 @@ watch(
                       :is-processing="isChatStreaming"
                       :is-generating="isChatStreaming && subItem.node.id === chat?.currentLeafId"
                       :available-image-models="availableImageModels"
-                      :endpoint-type="resolvedSettings?.endpointType"
+                      :endpoint-type="resolvedSettings?.endpoint.type"
                       :flow="subItem.flow"
                       :mode="subItem.mode"
                       :part-content="subItem.partContent"
@@ -1357,7 +1357,7 @@ watch(
                 :is-processing="isChatStreaming"
                 :is-generating="isChatStreaming && flowItem.node.id === chat?.currentLeafId"
                 :available-image-models="availableImageModels"
-                :endpoint-type="resolvedSettings?.endpointType"
+                :endpoint-type="resolvedSettings?.endpoint.type"
                 :flow="flowItem.flow"
                 :mode="flowItem.mode"
                 :part-content="flowItem.partContent"
@@ -1384,7 +1384,7 @@ watch(
 
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->
             <TransformersJsLoadingIndicator
-              v-if="resolvedSettings?.endpointType === 'transformers_js'"
+              v-if="resolvedSettings?.endpoint.type === 'transformers_js'"
               mode="full"
             />
             <div

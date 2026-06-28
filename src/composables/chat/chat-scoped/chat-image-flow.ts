@@ -162,8 +162,8 @@ export async function generateImageForChat({
     groups: chatGroups,
     globalSettings: settings,
   });
-  if (resolved.endpointUrl === undefined) {
-    throw new Error('Image generation requires an endpoint URL');
+  if (resolved.endpoint.type !== 'ollama' || resolved.endpoint.url === '') {
+    throw new Error('Image generation requires an Ollama endpoint URL');
   }
 
   return await imageGeneration.performBase64Generation({
@@ -174,8 +174,10 @@ export async function generateImageForChat({
     steps,
     seed,
     images,
-    endpointUrl: resolved.endpointUrl,
-    endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+    endpointUrl: resolved.endpoint.url,
+    endpointHttpHeaders: resolved.endpoint.httpHeaders
+      ? [...resolved.endpoint.httpHeaders]
+      : undefined,
     onProgress: ({ currentStep: _currentStep, totalSteps: _totalSteps }) => {},
     signal,
   });

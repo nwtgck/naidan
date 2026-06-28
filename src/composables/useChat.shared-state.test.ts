@@ -34,8 +34,10 @@ vi.mock('./useSettings', () => ({
   useSettings: () => ({
     settings: {
       value: {
-        endpointType: 'openai',
-        endpointUrl: 'http://localhost',
+        endpoint: {
+          type: 'openai',
+          url: 'http://localhost',
+        },
         storageType: 'local',
         defaultModelId: 'gpt-4',
       },

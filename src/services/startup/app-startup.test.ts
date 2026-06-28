@@ -44,7 +44,7 @@ function createSettingsStore({ onboardingDismissed }: {
   const save = vi.fn(async ({ patch }: {
     patch: Partial<Settings>,
   }) => {
-    if (patch.endpointUrl !== undefined && patch.defaultModelId !== undefined) {
+    if (patch.endpoint !== undefined && patch.defaultModelId !== undefined) {
       isOnboardingDismissed.value = true;
     }
   });
@@ -275,8 +275,7 @@ describe('app startup', () => {
 
     expect(settings.save).toHaveBeenCalledWith({
       patch: {
-        endpointType: 'ollama',
-        endpointUrl: 'http://localhost:11434',
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
         defaultModelId: 'llama3',
       },
       modelRefresh: 'background',

@@ -1,4 +1,4 @@
-import type { Chat, ChatGroup, EndpointType, LmParameters, Reasoning, SystemPrompt } from '@/models/types';
+import type { Chat, ChatGroup, Endpoint, LmParameters, Reasoning, SystemPrompt } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import {
   hasLmParameterOverrides,
@@ -14,9 +14,7 @@ export type ResolvableLmParameters = Readonly<
 }>;
 
 export interface ResolvableSettings {
-  endpointType: EndpointType,
-  endpointUrl?: string,
-  endpointHttpHeaders?: readonly (readonly [string, string])[],
+  endpoint: Endpoint,
   defaultModelId?: string,
   titleModelId?: string,
   autoTitleEnabled?: boolean,
@@ -86,11 +84,7 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
 
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
 
-  const endpointType = chat.endpointType || group?.endpoint?.type || globalSettings.endpointType;
-
-
-  const endpointUrl = chat.endpointUrl || group?.endpoint?.url || globalSettings.endpointUrl || '';
-  const endpointHttpHeaders = (chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || globalSettings.endpointHttpHeaders) as [string, string][] | undefined;
+  const endpoint = chat.endpoint ?? group?.endpoint ?? globalSettings.endpoint;
   const modelId = chat.modelId || group?.modelId || globalSettings.defaultModelId || '';
 
   const autoTitleEnabled = chat.autoTitleEnabled !== undefined ? chat.autoTitleEnabled : (group?.autoTitleEnabled !== undefined ? group.autoTitleEnabled : globalSettings.autoTitleEnabled ?? true);
@@ -145,10 +139,9 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
   }
 
   return {
-    endpointType, endpointUrl, endpointHttpHeaders, modelId, autoTitleEnabled, titleModelId, systemPromptMessages: systemPrompts, lmParameters,
+    endpoint, modelId, autoTitleEnabled, titleModelId, systemPromptMessages: systemPrompts, lmParameters,
     sources: {
-      endpointType: chat.endpointType ? 'chat' : (group?.endpoint?.type ? 'chat_group' : 'global'),
-      endpointUrl: chat.endpointUrl ? 'chat' : (group?.endpoint?.url ? 'chat_group' : 'global'),
+      endpoint: chat.endpoint !== undefined ? 'chat' : (group?.endpoint !== undefined ? 'chat_group' : 'global'),
       modelId: chat.modelId ? 'chat' : (group?.modelId ? 'chat_group' : 'global'),
       autoTitleEnabled: chat.autoTitleEnabled !== undefined ? 'chat' : (group?.autoTitleEnabled !== undefined ? 'chat_group' : 'global'),
       titleModelId: chat.titleModelId ? 'chat' : (group?.titleModelId ? 'chat_group' : 'global'),
@@ -161,9 +154,7 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
  */
 export function hasChatOverrides({ chat }: {
   chat: {
-    endpointType?: EndpointType,
-    endpointUrl?: string,
-    endpointHttpHeaders?: readonly (readonly [string, string])[],
+    endpoint?: Endpoint,
     modelId?: string,
     autoTitleEnabled?: boolean,
     titleModelId?: string,
@@ -172,9 +163,7 @@ export function hasChatOverrides({ chat }: {
   },
 }): boolean {
   return !!(
-    chat.endpointType ||
-    chat.endpointUrl ||
-    (chat.endpointHttpHeaders && chat.endpointHttpHeaders.length > 0) ||
+    chat.endpoint ||
     chat.modelId ||
     chat.autoTitleEnabled !== undefined ||
     chat.titleModelId ||
@@ -188,11 +177,7 @@ export function hasChatOverrides({ chat }: {
  */
 export function hasGroupOverrides({ group }: {
   group: {
-    endpoint?: {
-      type: EndpointType,
-      url?: string,
-      httpHeaders?: readonly (readonly [string, string])[],
-    },
+    endpoint?: Endpoint,
     modelId?: string,
     autoTitleEnabled?: boolean,
     titleModelId?: string,

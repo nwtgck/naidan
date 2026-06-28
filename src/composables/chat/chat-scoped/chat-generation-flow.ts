@@ -1,7 +1,8 @@
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
-import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/models/types';
+import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, Endpoint, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { isHttpEndpoint } from '@/models/endpoint';
 import type { LmProvider } from '@/services/lm/types';
 import type { Tool } from '@/services/tools/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
@@ -81,9 +82,7 @@ type PersistedToolContent =
   | { type: 'binary_object', id: BinaryObjectId };
 
 type ResolvedGenerationSettings = {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
   modelId: string,
   lmParameters: LmParameters | undefined,
   systemPromptMessages: string[],
@@ -163,11 +162,31 @@ export async function sendMessageToTargetChat({
     const resolved = resolveGenerationSettings({
       chat: mutableChat,
     });
-    const type = resolved.endpointType;
-    const url = resolved.endpointUrl;
+    const endpoint = resolved.endpoint;
+    const { hasReachableEndpoint, url, type } = (() => {
+      switch (endpoint.type) {
+      case 'openai':
+      case 'ollama':
+        return {
+          hasReachableEndpoint: endpoint.url !== '',
+          url: endpoint.url,
+          type: endpoint.type,
+        };
+      case 'transformers_js':
+        return {
+          hasReachableEndpoint: true,
+          url: undefined,
+          type: endpoint.type,
+        };
+      default: {
+        const _ex: never = endpoint;
+        throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+      }
+      }
+    })();
     let resolvedModel = mutableChat.modelId || resolved.modelId;
 
-    if (url || type === 'transformers_js') {
+    if (hasReachableEndpoint) {
       const models = await fetchAvailableModelsForChat({
         chatId: mutableChat.id,
         errorSource: 'chat-generation-flow:resolve-models',
@@ -182,7 +201,7 @@ export async function sendMessageToTargetChat({
       }
     }
 
-    if ((!url && type !== 'transformers_js') || !resolvedModel) {
+    if (!hasReachableEndpoint || !resolvedModel) {
       showOnboardingDraft({
         url,
         type,
@@ -428,9 +447,7 @@ export async function generateResponseForAssistant({
     }
 
     const provider = createGenerationProvider({
-      endpointType: resolved.endpointType,
-      endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders,
+      endpoint: resolved.endpoint,
     });
     const finalMessages = await buildGenerationMessages({
       chat: mutableChat,
@@ -877,9 +894,7 @@ function resolveGenerationSettings({
     globalSettings: settings.value,
   });
   return {
-    endpointType: resolved.endpointType,
-    endpointUrl: resolved.endpointUrl,
-    endpointHttpHeaders: resolved.endpointHttpHeaders,
+    endpoint: resolved.endpoint,
     modelId: resolved.modelId,
     lmParameters: resolved.lmParameters,
     systemPromptMessages: resolved.systemPromptMessages,
@@ -963,23 +978,17 @@ function showOnboardingDraft({
 }
 
 function createGenerationProvider({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
 }): LmProvider {
-  if (endpointUrl === undefined && endpointType !== 'transformers_js') {
-    throw new Error(`${endpointType} generation requires an endpoint URL`);
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
+    throw new Error(`${endpoint.type} generation requires an endpoint URL`);
   }
 
   const { settings } = useSettings();
   return createLmProvider({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
+    endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }
@@ -1183,8 +1192,8 @@ async function handleImageGenerationWithDefaults({
   }
 
   const resolved = resolveGenerationSettings({ chat: targetChat });
-  if (resolved.endpointUrl === undefined) {
-    throw new Error('Image generation requires an endpoint URL');
+  if (resolved.endpoint.type !== 'ollama' || resolved.endpoint.url === '') {
+    throw new Error('Image generation requires an Ollama endpoint URL');
   }
 
   await handleImageGenerationForChat({
@@ -1200,8 +1209,10 @@ async function handleImageGenerationWithDefaults({
     images,
     model,
     availableModels: availableModels.value,
-    endpointUrl: resolved.endpointUrl,
-    endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+    endpointUrl: resolved.endpoint.url,
+    endpointHttpHeaders: resolved.endpoint.httpHeaders
+      ? [...resolved.endpoint.httpHeaders]
+      : undefined,
     storageType: useSettings().settings.value.storageType,
     signal,
     getLiveChat,

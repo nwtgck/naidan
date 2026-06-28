@@ -62,8 +62,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
     // Default Global Settings
     __testOnlySetSettings({ newSettings: {
-      endpointType: 'openai',
-      endpointUrl: 'http://global-openai',
+      endpoint: { type: 'openai', url: 'http://global-openai' },
       defaultModelId: 'global-gpt',
       autoTitleEnabled: false,
       storageType: 'local',
@@ -102,8 +101,7 @@ describe('useChat Advanced Settings Resolution', () => {
         providerProfiles: [{
           id: 'p1',
           name: 'Profile 1',
-          endpointType: 'openai',
-          endpointUrl: 'http://global-openai',
+          endpoint: { type: 'openai', url: 'http://global-openai' },
           systemPrompt: 'Profile Prompt',
         }],
       } });
@@ -131,8 +129,7 @@ describe('useChat Advanced Settings Resolution', () => {
         providerProfiles: [{
           id: 'p1',
           name: 'Profile 1',
-          endpointType: 'openai',
-          endpointUrl: 'http://global-openai',
+          endpoint: { type: 'openai', url: 'http://global-openai' },
           systemPrompt: 'Profile Prompt',
         } as any],
       } });
@@ -162,8 +159,7 @@ describe('useChat Advanced Settings Resolution', () => {
         providerProfiles: [{
           id: 'p1',
           name: 'P1',
-          endpointType: 'openai',
-          endpointUrl: 'http://global-openai',
+          endpoint: { type: 'openai', url: 'http://global-openai' },
           lmParameters: {
             ...EMPTY_LM_PARAMETERS,
             temperature: 0.5,
@@ -245,9 +241,8 @@ describe('useChat Advanced Settings Resolution', () => {
 });
 
 // Regression test: Chat Specific Overrides endpoint settings must persist across reload.
-// Bug: updateChatSettings spread Chat flat fields (endpointType/endpointUrl/endpointHttpHeaders)
-// directly onto ChatMeta, but the storage layer only reads the nested `endpoint` object.
-// On reload, the endpoint reverted because the flat fields were never saved correctly.
+// Endpoint overrides must be written through the atomic domain field so the mapper
+// persists the same nested object that it reads after a reload.
 describe('Chat Specific Overrides - Endpoint Persistence', () => {
   const { TEST_ONLY: { __testOnlySetSettings } } = useSettings();
   const { currentChat, createNewChat, openChat, updateChatSettings, renameChat } = useChat();
@@ -255,8 +250,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     __testOnlySetSettings({ newSettings: {
-      endpointType: 'openai',
-      endpointUrl: 'http://global-openai',
+      endpoint: { type: 'openai', url: 'http://global-openai' },
       defaultModelId: 'global-gpt',
       autoTitleEnabled: false,
       storageType: 'local',
@@ -283,9 +277,11 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
 
     await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: {
-      endpointType: 'openai',
-      endpointUrl: 'http://chat-specific-url',
-      endpointHttpHeaders: [['Authorization', 'Bearer secret']],
+      endpoint: {
+        type: 'openai',
+        url: 'http://chat-specific-url',
+        httpHeaders: [['Authorization', 'Bearer secret']],
+      },
     } });
 
     expect(capturedStorageUpdater).toBeDefined();
@@ -309,22 +305,25 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
 
   // Regression test for the bug where non-settings updateChatMeta calls (title rename,
   // streaming completion, auto-title, etc.) silently dropped the endpoint override from
-  // storage. The composable loaded a Chat (flat fields) via loadChat, spread it, then
-  // returned it cast as ChatMeta — but chatMetaToDto only reads domain.endpoint (nested),
-  // so the endpoint was written as undefined on every chat activity.
+  // storage. Non-settings metadata updates must preserve the same atomic endpoint
+  // object instead of dropping it while reconstructing ChatMeta.
   it('preserves endpoint override when updateChatMeta is called via a non-settings path (e.g. renameChat)', async () => {
     // First updateChatMeta is from updateChatSettings — just let it resolve.
     vi.mocked(storageService.updateChatMeta).mockImplementationOnce(({ updater: _updater }) => Promise.resolve(undefined as any));
 
     await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: {
-      endpointType: 'openai',
-      endpointUrl: 'http://chat-specific-url',
-      endpointHttpHeaders: [['Authorization', 'Bearer secret']],
+      endpoint: {
+        type: 'openai',
+        url: 'http://chat-specific-url',
+        httpHeaders: [['Authorization', 'Bearer secret']],
+      },
     } });
 
-    // In-memory chat now has the flat endpoint fields set.
-    expect(currentChat.value?.endpointType).toBe('openai');
-    expect(currentChat.value?.endpointUrl).toBe('http://chat-specific-url');
+    expect(currentChat.value?.endpoint).toEqual({
+      type: 'openai',
+      url: 'http://chat-specific-url',
+      httpHeaders: [['Authorization', 'Bearer secret']],
+    });
 
     // Second updateChatMeta is from renameChat — capture its storage updater.
     let capturedStorageUpdater: (({ current }: { current: unknown }) => Promise<unknown>) | undefined;
@@ -332,8 +331,8 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
       capturedStorageUpdater = updater as typeof capturedStorageUpdater;
       return Promise.resolve(undefined as any);
     });
-    // loadChat is called by the inner wrapper; return the in-memory chat which
-    // carries the endpoint as flat fields (endpointType / endpointUrl / etc.).
+    // loadChat is called by the inner wrapper; return the in-memory chat carrying
+    // the atomic endpoint override.
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
 
     await renameChat({ id: idToRaw({ id: currentChat.value!.id }), newTitle: 'New Title' });
@@ -355,7 +354,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     expect(saved['title']).toBe('New Title');
   });
 
-  it('clears the stored endpoint object when endpointType is unset', async () => {
+  it('keeps the stored endpoint unset when only another setting changes', async () => {
     let capturedStorageUpdater: (({ current }: { current: unknown }) => Promise<unknown>) | undefined;
     vi.mocked(storageService.updateChatMeta).mockImplementationOnce(({ updater }) => {
       capturedStorageUpdater = updater as typeof capturedStorageUpdater;
@@ -363,7 +362,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     });
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
 
-    // Omitting endpointType means no chat-specific endpoint override.
+    // No endpoint change means the chat continues to inherit its endpoint.
     await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { modelId: 'custom-model' } });
 
     const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };

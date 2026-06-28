@@ -24,7 +24,7 @@ type ParsedGlobalSettingsQuery =
   | {
     kind: 'settings',
     fingerprint: string,
-    patch: Pick<Partial<Settings>, 'endpointType' | 'endpointUrl' | 'defaultModelId'>,
+    patch: Pick<Partial<Settings>, 'endpoint' | 'defaultModelId'>,
   };
 
 function parseGlobalSettingsQuery({ query }: {
@@ -41,10 +41,12 @@ function parseGlobalSettingsQuery({ query }: {
     value: query['global-model'],
   });
 
-  const patch: Pick<Partial<Settings>, 'endpointType' | 'endpointUrl' | 'defaultModelId'> = {};
+  const patch: Pick<Partial<Settings>, 'endpoint' | 'defaultModelId'> = {};
   if (endpointTypeResult.success && endpointUrl !== undefined) {
-    patch.endpointType = endpointTypeResult.data;
-    patch.endpointUrl = endpointUrl;
+    patch.endpoint = {
+      type: endpointTypeResult.data,
+      url: endpointUrl,
+    };
   }
   if (modelId !== undefined) {
     patch.defaultModelId = modelId;

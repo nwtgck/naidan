@@ -87,9 +87,7 @@ export function useChatPaneState({
     const virtualChat: Chat = {
       ...chat.value,
       modelId: undefined,
-      endpointType: undefined,
-      endpointUrl: undefined,
-      endpointHttpHeaders: undefined,
+      endpoint: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     };

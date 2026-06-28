@@ -24,8 +24,8 @@ const mockChatStore = {
   activeMessages: mockActiveMessages,
   fetchingModels: ref(false),
   availableModels: ref(['m1', 'x/z-image-turbo:v1']),
-  resolvedSettings: ref({ endpointType: 'ollama', modelId: 'm1', sources: {} }),
-  inheritedSettings: ref({ sources: {} }),
+  resolvedSettings: ref({ endpoint: { type: 'ollama', url: 'http://localhost' }, modelId: 'm1', sources: {} }),
+  inheritedSettings: ref({ endpoint: { type: 'ollama', url: 'http://localhost' }, sources: {} }),
   isProcessing: vi.fn(() => false),
   isImageMode: vi.fn(() => mockIsImageMode.value),
   toggleImageMode: vi.fn(() => {

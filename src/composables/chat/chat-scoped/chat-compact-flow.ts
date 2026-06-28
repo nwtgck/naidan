@@ -116,7 +116,9 @@ export async function runCompactCurrentBranchForChat({
     });
     const resolvedModel = mutableChat.modelId || resolved.modelId;
 
-    if (!resolvedModel || (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js')) {
+    const hasReachableEndpoint = resolved.endpoint.type === 'transformers_js'
+      || resolved.endpoint.url !== '';
+    if (!resolvedModel || !hasReachableEndpoint) {
       const message = await ensureStrings.contextCompact__requires_a_configured_model_and_endpoint();
       addErrorEvent({
         source: 'useChat:compactCurrentBranch',
@@ -158,9 +160,7 @@ export async function runCompactCurrentBranchForChat({
       messages: requestMessages,
     });
     const provider = await createProviderForCompact({
-      endpointType: resolved.endpointType,
-      endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders,
+      endpoint: resolved.endpoint,
     });
 
     let compactContent = '';

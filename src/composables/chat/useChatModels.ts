@@ -1,5 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { EndpointType } from '@/models/types';
+import type { Endpoint } from '@/models/types';
 import type { ChatId } from '@/models/ids';
 import {
   availableModels,
@@ -10,12 +10,6 @@ import {
   fetchModelsForEndpoint,
   fetchModelsForGlobalEndpoint,
 } from '@/composables/chat/chat-model-fetch';
-
-type FetchAvailableModelsCustomEndpoint = {
-  type: EndpointType,
-  url: string,
-  headers: [string, string][] | undefined,
-};
 
 export type ChatModelsAdapter = {
   availableModels: Ref<string[]>,
@@ -30,9 +24,9 @@ export type ChatModelsAdapter = {
   fetchForGlobalEndpoint(): Promise<string[]>,
 
   fetchForEndpoint({
-    customEndpoint,
+    endpoint,
   }: {
-    customEndpoint: FetchAvailableModelsCustomEndpoint,
+    endpoint: Endpoint,
   }): Promise<string[]>,
 
   TEST_ONLY: Record<never, never>,
@@ -59,14 +53,12 @@ export function useChatModels(): ChatModelsAdapter {
   }
 
   async function fetchForEndpoint({
-    customEndpoint,
+    endpoint,
   }: {
-    customEndpoint: FetchAvailableModelsCustomEndpoint,
+    endpoint: Endpoint,
   }): Promise<string[]> {
     return await fetchModelsForEndpoint({
-      endpointType: customEndpoint.type,
-      endpointUrl: customEndpoint.url,
-      endpointHttpHeaders: customEndpoint.headers,
+      endpoint,
       errorSource: 'useChatModels:fetchForEndpoint',
     });
   }

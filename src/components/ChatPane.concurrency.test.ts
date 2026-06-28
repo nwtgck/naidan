@@ -34,11 +34,16 @@ const mockCurrentChat = ref<any>(null);
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>({
+  endpoint: { type: 'openai', url: 'http://localhost' },
   lmParameters: { reasoning: { effort: undefined } },
   modelId: 'm1',
-  sources: { modelId: 'global' },
+  sources: { endpoint: 'global', modelId: 'global' },
 });
-const mockInheritedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
+const mockInheritedSettings = ref<any>({
+  endpoint: { type: 'openai', url: 'http://localhost' },
+  modelId: 'm1',
+  sources: { endpoint: 'global', modelId: 'global' },
+});
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -253,7 +258,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'gpt-4' } },
   }),
 }));
 
@@ -332,8 +337,8 @@ describe('ChatPane Concurrency Button State', () => {
       isTaskRunning: vi.fn((id: string) => mockActiveGenerations.has(id)),
       isProcessing: vi.fn((id: string) => mockActiveGenerations.has(id)),
       abortChat: vi.fn(),
-      resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
-      inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+      resolvedSettings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'm1', sources: { endpoint: 'global', modelId: 'global' } }),
+      inheritedSettings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'm1', sources: { endpoint: 'global', modelId: 'global' } }),
       availableModels: ref([]),
       isImageMode: vi.fn(() => false),
       toggleImageMode: vi.fn(),

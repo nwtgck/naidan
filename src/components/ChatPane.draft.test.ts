@@ -268,7 +268,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost'  }}),
   }),
 }));
 
@@ -290,12 +290,14 @@ describe('ChatPane Draft Maintenance', () => {
       updatedAt: Date.now(),
     };
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'm1',
-      sources: { modelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'global' },
     };
     mockInheritedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'm1',
-      sources: { modelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'global' },
     };
   });
 

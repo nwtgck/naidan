@@ -85,7 +85,7 @@ vi.mock('lucide-vue-next', () => ({
 
 describe('Transformers.js Onboarding Integration', () => {
   const mockSave = vi.fn();
-  const mockSettings = { value: { endpointType: 'openai', autoTitleEnabled: true } };
+  const mockSettings = { value: { endpoint: { type: 'openai', url: '' }, autoTitleEnabled: true } };
   const mockIsOnboardingDismissed = ref(false);
   const mockOnboardingDraft = ref<any>(null);
 
@@ -293,7 +293,7 @@ describe('Transformers.js Onboarding Integration', () => {
 
     expect(mockSave).toHaveBeenCalledWith({
       patch: expect.objectContaining({
-        endpointType: 'transformers_js',
+        endpoint: { type: 'transformers_js' },
         defaultModelId: 'downloaded-model',
       }),
       modelRefresh: 'await',

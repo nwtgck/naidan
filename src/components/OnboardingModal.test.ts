@@ -50,7 +50,12 @@ vi.mock('../composables/useLayout', () => ({
 
 describe('OnboardingModal.vue', () => {
   const mockSave = vi.fn();
-  const mockSettings = { value: { endpointType: 'openai', autoTitleEnabled: true } };
+  const mockSettings = {
+    value: {
+      endpoint: { type: 'openai' as const, url: '' },
+      autoTitleEnabled: true,
+    },
+  };
   const mockIsOnboardingDismissed = ref(false);
   const mockOnboardingDraft = ref<{ url: string, type: EndpointType, headers: [string, string][], models: string[], selectedModel: string } | null>(null);
   const listModelsMock = vi.fn();
@@ -202,7 +207,7 @@ describe('OnboardingModal.vue', () => {
 
     expect(mockSave).toHaveBeenCalledWith({
       patch: expect.objectContaining({
-        endpointUrl: 'http://api.openai.com',
+        endpoint: { type: 'openai', url: 'http://api.openai.com' },
         defaultModelId: 'model-1',
         titleModelId: 'model-1',
       }),
@@ -509,7 +514,7 @@ describe('OnboardingModal.vue', () => {
 
       expect(mockSave).toHaveBeenCalledWith({
         patch: expect.objectContaining({
-          endpointType: 'transformers_js',
+          endpoint: { type: 'transformers_js' },
           defaultModelId: 'Xenova/gpt2',
           titleModelId: undefined,
         }),

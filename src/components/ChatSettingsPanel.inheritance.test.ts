@@ -39,8 +39,10 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
 describe('ChatSettingsPanel Inheritance UI', () => {
   const mockCurrentChat = ref<any>(null);
   const mockSettings = ref<any>({
-    endpointType: 'openai',
-    endpointUrl: 'http://global-url',
+    endpoint: {
+      type: 'openai',
+      url: 'http://global-url',
+    },
     defaultModelId: 'global-model',
   });
 
@@ -63,7 +65,7 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     vi.clearAllMocks();
     mockCurrentChat.value = {
       id: 'chat-1',
-      endpointUrl: undefined,
+      endpoint: undefined,
       modelId: undefined,
     };
 
@@ -72,12 +74,13 @@ describe('ChatSettingsPanel Inheritance UI', () => {
       const chat = mockCurrentChat.value;
       const isGroup = chat.groupId === 'group-1';
       return {
-        endpointType: isGroup ? 'ollama' : 'openai',
-        endpointUrl: isGroup ? 'http://group-url' : 'http://global-url',
+        endpoint: {
+          type: isGroup ? 'ollama' : 'openai',
+          url: isGroup ? 'http://group-url' : 'http://global-url',
+        },
         modelId: isGroup ? 'group-model' : 'global-model',
         sources: {
-          endpointType: isGroup ? 'chat_group' : 'global',
-          endpointUrl: isGroup ? 'chat_group' : 'global',
+          endpoint: isGroup ? 'chat_group' : 'global',
           modelId: isGroup ? 'chat_group' : 'global',
         },
       };

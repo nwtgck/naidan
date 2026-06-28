@@ -30,7 +30,7 @@ const router = createRouter({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'gpt-4' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),

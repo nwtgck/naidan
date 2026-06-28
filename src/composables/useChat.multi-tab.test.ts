@@ -70,7 +70,7 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: false, defaultModelId: 'gpt-4', lmParameters: {}, providerProfiles: [] } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', autoTitleEnabled: false, defaultModelId: 'gpt-4', lmParameters: {}, providerProfiles: [] } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),

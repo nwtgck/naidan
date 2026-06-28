@@ -3,14 +3,16 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
+import type { ChatGroup, ChatSummary, Endpoint, SidebarItem } from '@/models/types';
 
 // --- Mocks Data ---
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
-const mockSettings = reactive({
-  endpointUrl: undefined as string | undefined,
-  endpointType: 'openai' as 'openai' | 'ollama' | 'transformers_js',
+const mockSettings = reactive<{
+  endpoint: Endpoint,
+  defaultModelId: string,
+}>({
+  endpoint: { type: 'openai', url: '' },
   defaultModelId: 'llama3',
 });
 const mockAvailableModels = ref(['model-1', 'model-2']);
@@ -90,16 +92,14 @@ describe('Sidebar Transformers.js Support', () => {
   };
 
   beforeEach(() => {
-    mockSettings.endpointUrl = undefined;
-    mockSettings.endpointType = 'openai';
+    mockSettings.endpoint = { type: 'openai', url: '' };
     mockSettings.defaultModelId = 'model-1';
     mockAvailableModels.value = ['model-1', 'model-2'];
     vi.clearAllMocks();
   });
 
-  it('renders the model selector when endpointType is transformers_js even if endpointUrl is missing', async () => {
-    mockSettings.endpointType = 'transformers_js';
-    mockSettings.endpointUrl = undefined;
+  it('renders the model selector when the endpoint is transformers_js without a URL', async () => {
+    mockSettings.endpoint = { type: 'transformers_js' };
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
@@ -113,9 +113,8 @@ describe('Sidebar Transformers.js Support', () => {
     });
   });
 
-  it('does not render the selector if endpointUrl is missing and type is NOT transformers_js', async () => {
-    mockSettings.endpointType = 'openai';
-    mockSettings.endpointUrl = undefined;
+  it('does not render the selector if an HTTP endpoint URL is empty', async () => {
+    mockSettings.endpoint = { type: 'openai', url: '' };
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
@@ -127,7 +126,7 @@ describe('Sidebar Transformers.js Support', () => {
   });
 
   it('calls updateGlobalModel when model is changed in transformers_js mode', async () => {
-    mockSettings.endpointType = 'transformers_js';
+    mockSettings.endpoint = { type: 'transformers_js' };
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },

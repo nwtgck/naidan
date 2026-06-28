@@ -49,7 +49,7 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'ollama', endpointUrl: 'http://localhost', storageType: 'local', defaultModelId: 'llama3' } },
+    settings: { value: { endpoint: { type: 'ollama', url: 'http://localhost' }, storageType: 'local', defaultModelId: 'llama3' } },
     setIsOnboardingDismissed: vi.fn(),
     setOnboardingDraft: vi.fn(),
   }),

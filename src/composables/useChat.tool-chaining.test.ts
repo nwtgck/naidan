@@ -37,7 +37,7 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
     setHeavyContentAlertDismissed: vi.fn(),
@@ -133,8 +133,10 @@ describe('useChat Tool Chaining', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: true,
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost',
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost',
+      },
       modelId: 'gpt-4',
     });
     __testOnlySetCurrentChat({ chat });
@@ -218,8 +220,10 @@ describe('useChat Tool Chaining', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: true,
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost',
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost',
+      },
       modelId: 'gpt-4',
     });
     __testOnlySetCurrentChat({ chat });

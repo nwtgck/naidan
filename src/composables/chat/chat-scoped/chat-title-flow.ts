@@ -1,4 +1,5 @@
-import type { Chat, ChatMessage } from '@/models/types';
+import type { Chat, ChatMessage, Endpoint } from '@/models/types';
+import { isHttpEndpoint } from '@/models/endpoint';
 import type { ChatId } from '@/models/ids';
 import type { LmProvider } from '@/services/lm/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
@@ -90,9 +91,7 @@ export async function generateChatTitleForChat({
     }
 
     const provider = createTitleProvider({
-      endpointType: resolved.endpointType,
-      endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders,
+      endpoint: resolved.endpoint,
     });
 
     const { language } = getTitleLanguage({ content });
@@ -167,12 +166,11 @@ function resolveTitleSettings({
   });
 
   return {
-    endpointType: resolved.endpointType,
-    endpointUrl: resolved.endpointUrl,
-    endpointHttpHeaders: resolved.endpointHttpHeaders,
+    endpoint: resolved.endpoint,
     modelId: resolved.modelId,
     titleModelId: resolved.titleModelId,
-    hasReachableEndpoint: Boolean(resolved.endpointUrl) || resolved.endpointType === 'transformers_js',
+    hasReachableEndpoint: !isHttpEndpoint(resolved.endpoint)
+      || resolved.endpoint.url !== '',
   };
 }
 
@@ -220,23 +218,17 @@ function getTitleLanguage({
 }
 
 function createTitleProvider({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
 }: {
-  endpointType: NonNullable<Chat['endpointType']>,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
 }): LmProvider {
-  if (endpointUrl === undefined && endpointType !== 'transformers_js') {
-    throw new Error(`${endpointType} title generation requires an endpoint URL`);
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
+    throw new Error(`${endpoint.type} title generation requires an endpoint URL`);
   }
 
   const { settings } = useSettings();
   return createLmProvider({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
+    endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }

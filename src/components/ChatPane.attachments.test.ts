@@ -16,7 +16,11 @@ const mockCurrentChat = ref({
 });
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
-const mockResolvedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
+const mockResolvedSettings = ref<any>({
+  endpoint: { type: 'openai', url: '' },
+  modelId: 'm1',
+  sources: { modelId: 'global' },
+});
 const mockInheritedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
 const mockStreaming = ref(false);
 const mockSendMessage = vi.fn().mockResolvedValue(true);
@@ -260,6 +264,7 @@ vi.mock('vue-router', () => ({
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({
+      endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       provider: 'ollama',
       ollama: {
         baseUrl: 'http://localhost:11434',

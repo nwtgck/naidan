@@ -32,7 +32,7 @@ describe('generateChatShareURL', () => {
   const validSettings = {
     autoTitleEnabled: true,
     storageType: 'local' as const,
-    endpointType: 'openai' as const,
+    endpoint: { type: 'openai' as const, url: '' },
     providerProfiles: [],
   };
 

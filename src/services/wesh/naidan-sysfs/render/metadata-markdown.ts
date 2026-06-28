@@ -1,5 +1,6 @@
 import { idToRaw } from '@/models/ids';
-import type { ChatMeta } from '@/models/types';
+import type { ChatMeta, Endpoint } from '@/models/types';
+import { cloneEndpoint, isHttpEndpoint } from '@/models/endpoint';
 
 function formatValue({ value }: { value: unknown }): string {
   if (value === undefined) {
@@ -12,6 +13,16 @@ function formatValue({ value }: { value: unknown }): string {
     return value;
   }
   return JSON.stringify(value);
+}
+
+function maskEndpoint({ endpoint }: { endpoint: Endpoint | undefined }): Endpoint | undefined {
+  if (endpoint === undefined) return undefined;
+  const cloned = cloneEndpoint({ endpoint });
+  if (!isHttpEndpoint(cloned)) return cloned;
+  return {
+    ...cloned,
+    httpHeaders: cloned.httpHeaders?.map(([name]) => [name, '[masked]']),
+  };
 }
 
 // Sensitive fields must be masked before rendering. Do not emit raw secret values here.
@@ -33,10 +44,7 @@ originChatId: ${formatValue({ value: metadata.originChatId === undefined ? undef
 originMessageId: ${formatValue({ value: metadata.originMessageId === undefined ? undefined : idToRaw({ id: metadata.originMessageId }) })}
 systemPrompt: ${formatValue({ value: metadata.systemPrompt })}
 lmParameters: ${formatValue({ value: metadata.lmParameters })}
-endpoint: ${formatValue({ value: metadata.endpoint ? {
-    ...metadata.endpoint,
-    httpHeaders: metadata.endpoint.httpHeaders?.map(([name]) => [name, '[masked]']),
-  } : undefined })}
+endpoint: ${formatValue({ value: maskEndpoint({ endpoint: metadata.endpoint }) })}
 mounts: ${formatValue({ value: metadata.mounts })}
 `;
 }

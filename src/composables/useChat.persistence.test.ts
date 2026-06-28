@@ -91,8 +91,10 @@ describe('useChat Persistence Timing', () => {
     const settings = useSettings();
     await settings.save({
       patch: {
-        endpointType: 'openai',
-        endpointUrl: 'http://localhost:11434',
+        endpoint: {
+          type: 'openai',
+          url: 'http://localhost:11434',
+        },
         defaultModelId: 'gpt-4',
         autoTitleEnabled: false,
         storageType: 'local',

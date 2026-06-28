@@ -42,6 +42,7 @@ import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-gener
 import { createWebZipCompressionCodec, StreamingZipWriter } from '@/lib/zip-stream';
 import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/lib/zip-stream/memory';
 import { openIndexedZipArchive, type IndexedZipArchive } from './zip-archive';
+import { cloneEndpoint } from '@/models/endpoint';
 
 // Helper to format date YYYY-MM-DD
 function formatDate({ date }: { date: Date }): string {
@@ -838,9 +839,11 @@ export class ImportExportService {
         }
       };
 
-      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointType, targetKey: 'endpointType' });
-      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointUrl, targetKey: 'endpointUrl' });
-      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointHttpHeaders, targetKey: 'endpointHttpHeaders' });
+      applyField({
+        strategy: strategies.endpoint,
+        newValue: cloneEndpoint({ endpoint: newSettingsDomain.endpoint }),
+        targetKey: 'endpoint',
+      });
       applyField({ strategy: strategies.model, newValue: newSettingsDomain.defaultModelId, targetKey: 'defaultModelId' });
       applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleModelId, targetKey: 'titleModelId' });
       applyField({ strategy: strategies.systemPrompt, newValue: newSettingsDomain.systemPrompt, targetKey: 'systemPrompt' });
@@ -859,7 +862,11 @@ export class ImportExportService {
         finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
         break;
       case 'append': {
-        const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: generateId<ProviderProfileId>() }));
+        const appended = newSettingsDomain.providerProfiles.map(profile => ({
+          ...profile,
+          id: generateId<ProviderProfileId>(),
+          endpoint: cloneEndpoint({ endpoint: profile.endpoint }),
+        }));
         finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
         break;
       }
@@ -968,8 +975,7 @@ export class ImportExportService {
           providerProfiles: [],
           mounts: [],
           storageType: 'local',
-          endpointType: 'openai',
-          endpointUrl: '',
+          endpoint: { type: 'openai', url: '' },
         } as Settings,
         hierarchy,
         chatMetas,
@@ -1184,8 +1190,7 @@ export class ImportExportService {
           providerProfiles: [],
           mounts: [],
           storageType: 'local',
-          endpointType: 'openai',
-          endpointUrl: '',
+          endpoint: { type: 'openai', url: '' },
         } as Settings,
         hierarchy: mergedHierarchy,
         chatMetas,

@@ -135,8 +135,7 @@ const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
 const mockSettings = ref<any>({
-  endpointType: 'openai',
-  endpointUrl: 'http://localhost',
+  endpoint: { type: 'openai', url: 'http://localhost' },
   defaultModelId: 'global-default-model',
   storageType: 'opfs',
   mounts: [],
@@ -159,7 +158,10 @@ vi.mock('../composables/useChat', () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
     chatGroups: mockChatGroups,
-    resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
+    resolvedSettings: mockResolvedSettings.value || ref({
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      lmParameters: { reasoning: { effort: undefined } },
+    }),
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
     renameChat: mockRenameChat,
@@ -745,11 +747,13 @@ function resetMocks() {
   mockFetchingModels.value = false;
   mockContextCompactProgress.value = { phase: 'idle' };
   mockResolvedSettings.value = {
+    endpoint: { type: 'openai', url: 'http://localhost' },
     modelId: 'global-default-model',
     titleModelId: undefined,
     sources: { modelId: 'global', titleModelId: 'global' },
   };
   mockInheritedSettings.value = {
+    endpoint: { type: 'openai', url: 'http://localhost' },
     modelId: 'global-default-model',
     sources: { modelId: 'global' },
   };
@@ -765,8 +769,7 @@ function resetMocks() {
     updatedAt: Date.now(),
   };
   mockSettings.value = {
-    endpointType: 'openai',
-    endpointUrl: 'http://localhost',
+    endpoint: { type: 'openai', url: 'http://localhost' },
     defaultModelId: 'global-default-model',
     storageType: 'opfs',
     mounts: [],
@@ -1157,8 +1160,7 @@ Question`,
   it('should configure the current chat for fake LM from the inspector shortcut', async () => {
     if (mockCurrentChat.value) {
       mockCurrentChat.value.debugEnabled = true;
-      mockCurrentChat.value.endpointType = 'openai';
-      mockCurrentChat.value.endpointUrl = 'https://example.com';
+      mockCurrentChat.value.endpoint = { type: 'openai', url: 'https://example.com' };
     }
 
     wrapper = mountChatPane({
@@ -1183,8 +1185,10 @@ Question`,
         },
       }],
     });
-    expect(mockCurrentChat.value?.endpointType).toBe('ollama');
-    expect(mockCurrentChat.value?.endpointUrl).toBe('https://fake-lm.invalid');
+    expect(mockCurrentChat.value?.endpoint).toEqual({
+      type: 'ollama',
+      url: 'https://fake-lm.invalid',
+    });
     expect(mockAddToast).toHaveBeenCalledWith({
       message: 'Fake LM enabled for this chat via https://fake-lm.invalid',
       duration: 3000,
@@ -1195,8 +1199,7 @@ Question`,
     mockFakeLmDebugModeAvailability.value = 'unavailable_in_standalone';
     if (mockCurrentChat.value) {
       mockCurrentChat.value.debugEnabled = true;
-      mockCurrentChat.value.endpointType = 'openai';
-      mockCurrentChat.value.endpointUrl = 'https://example.com';
+      mockCurrentChat.value.endpoint = { type: 'openai', url: 'https://example.com' };
     }
 
     wrapper = mountChatPane({
@@ -1211,8 +1214,10 @@ Question`,
 
     expect(mockSetFakeLmDebugModeStatus).not.toHaveBeenCalled();
     expect(mockUpdateChatScopedSettings).not.toHaveBeenCalled();
-    expect(mockCurrentChat.value?.endpointType).toBe('openai');
-    expect(mockCurrentChat.value?.endpointUrl).toBe('https://example.com');
+    expect(mockCurrentChat.value?.endpoint).toEqual({
+      type: 'openai',
+      url: 'https://example.com',
+    });
   });
 
   it('should open the title dialog and save a manual title', async () => {
@@ -1363,6 +1368,7 @@ Question`,
   it('should update the chat title model override when the active title model source is chat', async () => {
     mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
       titleModelId: 'model-2',
       sources: { modelId: 'global', titleModelId: 'chat' },
@@ -1394,6 +1400,7 @@ Question`,
   it('should update the group title model override when the active title model source is group', async () => {
     mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
       titleModelId: 'model-2',
       sources: { modelId: 'global', titleModelId: 'chat_group' },
@@ -1660,10 +1667,10 @@ Question`,
   });
 
   describe('Custom Overrides Indicator', () => {
-    it('shows indicator when endpointType is overridden', async () => {
+    it('shows indicator when endpoint is overridden', async () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
-        endpointType: 'ollama',
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
         modelId: undefined, createdAt: 0, updatedAt: 0,
       }) as any;

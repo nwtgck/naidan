@@ -22,7 +22,7 @@ describe('WelcomeScreen.vue', () => {
   it('renders ephemeral storage message when memory storage is active', async () => {
     TEST_ONLY.__testOnlySetSettings({ newSettings: {
       storageType: 'memory',
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: '' },
       autoTitleEnabled: true,
       providerProfiles: [],
       mounts: [],

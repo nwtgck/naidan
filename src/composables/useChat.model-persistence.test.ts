@@ -29,8 +29,10 @@ vi.mock('../services/storage', () => ({
 
 // Mock settings
 const mockSettings = {
-  endpointType: 'openai' as const,
-  endpointUrl: 'http://localhost',
+  endpoint: {
+    type: 'openai' as const,
+    url: 'http://localhost',
+  },
   storageType: 'local' as const,
   mounts: [],
   autoTitleEnabled: true,

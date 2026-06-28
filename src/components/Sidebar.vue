@@ -1289,7 +1289,7 @@ defineExpose({
     <!-- Footer -->
     <div class="border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]'">
       <!-- Global Model Selector -->
-      <div v-if="isSidebarOpen && (settings.endpointUrl || settings.endpointType === 'transformers_js')" class="px-1 space-y-2 animate-in fade-in duration-300">
+      <div v-if="isSidebarOpen && (settings.endpoint.type === 'transformers_js' || settings.endpoint.url !== '')" class="px-1 space-y-2 animate-in fade-in duration-300">
         <div class="flex items-center justify-between px-1">
           <label class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
             <BotIcon class="w-3 h-3" />

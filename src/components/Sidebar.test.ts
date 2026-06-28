@@ -18,7 +18,7 @@ const mockUpdateGlobalModel = vi.fn();
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockSettings = ref({
-  endpointUrl: 'http://localhost:11434',
+  endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' },
   defaultModelId: 'llama3',
   storageType: 'local' as StorageType,
   autoTitleEnabled: true,
@@ -287,7 +287,7 @@ describe('Sidebar Logic Stability', () => {
   beforeEach(() => {
     mockChatGroups.value = [];
     mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Initial Chat', updatedAt: 0 }];
-    mockSettings.value.endpointUrl = 'http://localhost:11434';
+    mockSettings.value.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
     mockSettings.value.defaultModelId = 'llama3';
     mockSettings.value.storageType = 'local';
     mockAvailableModels.value = ['llama3', 'mistral', 'phi3'];
@@ -311,7 +311,7 @@ describe('Sidebar Logic Stability', () => {
     });
 
     it('does not render the selector if endpointUrl is missing', async () => {
-      mockSettings.value.endpointUrl = '';
+      mockSettings.value.endpoint = { type: 'ollama', url: '' };
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });

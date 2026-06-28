@@ -48,8 +48,7 @@ describe('useChat System Prompt Clear Policy', () => {
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
     __testOnlySetSettings({ newSettings: {
-      endpointType: 'openai',
-      endpointUrl: 'http://global',
+      endpoint: { type: 'openai', url: 'http://global' },
       defaultModelId: 'gpt',
       systemPrompt: 'Global System Prompt',
       autoTitleEnabled: false,
