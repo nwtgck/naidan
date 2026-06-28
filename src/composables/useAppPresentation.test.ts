@@ -1,11 +1,11 @@
 import { defineComponent, ref, shallowRef } from 'vue';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { StartupState } from '@/models/startup';
-import { TEST_ONLY } from './useApplicationPresentation';
+import { TEST_ONLY } from './useAppPresentation';
 
 const settingsInitialized = ref(false);
 const isOnboardingDismissed = ref(false);
-const MainApplication = defineComponent({
+const MainApp = defineComponent({
   template: '<div />',
 });
 
@@ -13,7 +13,7 @@ const startupState = shallowRef<StartupState>({
   kind: 'initializing-foundation',
 });
 
-describe('application presentation', () => {
+describe('app presentation', () => {
   beforeEach(() => {
     settingsInitialized.value = false;
     isOnboardingDismissed.value = false;
@@ -23,7 +23,7 @@ describe('application presentation', () => {
   });
 
   function createPresentation() {
-    return TEST_ONLY.createApplicationPresentation({
+    return TEST_ONLY.createAppPresentation({
       startupState,
       settingsInitialized,
       isOnboardingDismissed,
@@ -33,31 +33,31 @@ describe('application presentation', () => {
   it('derives interaction from the startup union and onboarding presentation', () => {
     const {
       onboardingPresentation,
-      applicationInteraction,
+      appInteraction,
     } = createPresentation();
 
     expect(onboardingPresentation.value).toBe('hidden');
-    expect(applicationInteraction.value).toBe('blocked-by-startup');
+    expect(appInteraction.value).toBe('blocked-by-startup');
 
     settingsInitialized.value = true;
     expect(onboardingPresentation.value).toBe('visible');
-    expect(applicationInteraction.value).toBe('blocked-by-startup');
+    expect(appInteraction.value).toBe('blocked-by-startup');
 
     startupState.value = {
       kind: 'ready',
-      mainApplication: MainApplication,
+      mainApp: MainApp,
     };
-    expect(applicationInteraction.value).toBe('blocked-by-onboarding');
+    expect(appInteraction.value).toBe('blocked-by-onboarding');
 
     isOnboardingDismissed.value = true;
     expect(onboardingPresentation.value).toBe('hidden');
-    expect(applicationInteraction.value).toBe('enabled');
+    expect(appInteraction.value).toBe('enabled');
   });
 
   it('allows an error view to be used when onboarding is hidden', () => {
     const {
       onboardingPresentation,
-      applicationInteraction,
+      appInteraction,
     } = createPresentation();
 
     settingsInitialized.value = true;
@@ -68,11 +68,11 @@ describe('application presentation', () => {
     };
 
     expect(onboardingPresentation.value).toBe('hidden');
-    expect(applicationInteraction.value).toBe('enabled');
+    expect(appInteraction.value).toBe('enabled');
   });
 
   it('keeps an error view behind onboarding blocked while onboarding is visible', () => {
-    const { applicationInteraction } = createPresentation();
+    const { appInteraction } = createPresentation();
 
     settingsInitialized.value = true;
     isOnboardingDismissed.value = false;
@@ -81,6 +81,6 @@ describe('application presentation', () => {
       error: new Error('failed'),
     };
 
-    expect(applicationInteraction.value).toBe('blocked-by-onboarding');
+    expect(appInteraction.value).toBe('blocked-by-onboarding');
   });
 });

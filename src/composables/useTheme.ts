@@ -54,7 +54,7 @@ function applyCurrentTheme({ document, mediaQueryList }: {
   applyResolvedTheme({
     document,
     resolvedTheme,
-    control: 'application-managed',
+    control: 'app-managed',
   });
 }
 

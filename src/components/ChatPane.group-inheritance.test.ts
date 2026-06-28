@@ -15,10 +15,10 @@ import type { Attachment, LmParameters } from '@/models/types';
 
 
 
-vi.mock('@/composables/useApplicationPresentation', () => ({
-  isApplicationInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
-  useApplicationPresentation: () => ({
-    applicationInteraction: {
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
       __v_isRef: true,
       value: 'enabled',
     },

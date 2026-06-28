@@ -98,7 +98,7 @@ export function recordAppStartupFailure({ error }: {
 
 /**
  * Report a failure that occurs before Vue can own the startup UI. Once the
- * StartupRoot is mounted, callers use recordAppStartupFailure() and render the
+ * App is mounted, callers use recordAppStartupFailure() and render the
  * typed error state instead of replacing the already-live Vue tree.
  */
 export function reportAppStartupFailure({ document, error }: {

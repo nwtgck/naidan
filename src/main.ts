@@ -1,18 +1,18 @@
 import { createApp, shallowRef } from 'vue';
 import './style.css';
-import StartupRoot from './StartupRoot.vue';
+import App from './App.vue';
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import { useSettings } from './composables/useSettings';
 import { initializeThemeController } from './composables/useTheme';
 import type { StartupState } from './models/startup';
 import { scheduleFileProtocolStandaloneWorkerHubWarmup } from './services/worker-hub-standalone-loader';
-import { scheduleAppStartup } from './services/app-startup';
+import { scheduleAppBootstrap } from './services/app-bootstrap';
 import {
   recordAppStartupFailure,
   reportAppStartupFailure,
 } from './services/app-startup-failure';
-import { startApplication } from './services/startup/application-startup';
+import { startApp } from './services/startup/app-startup';
 import { createInitialNavigationGate } from './services/startup/initial-navigation-gate';
 import {
   debugRecordFileProtocolStandaloneStartupCheckpoint,
@@ -31,7 +31,7 @@ async function bootstrapApp(): Promise<void> {
 
   // The document bootstrap has already painted the saved theme. Initialize the
   // single reactive owner before mounting so onboarding never falls back to a
-  // different theme while the normal application remains deferred.
+  // different theme while the normal app remains deferred.
   initializeThemeController({ window, document });
 
   const startupState = shallowRef<StartupState>({
@@ -42,7 +42,7 @@ async function bootstrapApp(): Promise<void> {
     routes,
   });
   const navigationGate = createInitialNavigationGate({ router });
-  const app = createApp(StartupRoot, {
+  const app = createApp(App, {
     startupState,
   });
 
@@ -62,12 +62,12 @@ async function bootstrapApp(): Promise<void> {
   });
   app.mount(appElement);
   debugRecordFileProtocolStandaloneStartupCheckpoint({
-    checkpoint: 'startup-root-mounted',
+    checkpoint: 'app-mounted',
     details: undefined,
   });
 
   try {
-    await startApplication({
+    await startApp({
       startupState,
       settingsStore: useSettings(),
       router,
@@ -112,7 +112,7 @@ debugRecordFileProtocolStandaloneStartupCheckpoint({
   checkpoint: 'entry-evaluated',
   details: undefined,
 });
-scheduleAppStartup({
+scheduleAppBootstrap({
   document,
   bootstrap: bootstrapApp,
   onWaitingForDom: () => {

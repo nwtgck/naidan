@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useRoute, useRouter } from 'vue-router';
-import ApplicationAuxiliaryUi from './ApplicationAuxiliaryUi.vue';
+import AppAuxiliaryUi from './AppAuxiliaryUi.vue';
 
 vi.mock('vue-router', () => ({
   useRoute: vi.fn(),
@@ -88,7 +88,7 @@ vi.mock('@/components/ChatPrintContent.vue', () => ({
   default: { template: '<div />' },
 }));
 
-describe('ApplicationAuxiliaryUi', () => {
+describe('AppAuxiliaryUi', () => {
   const route = reactive({
     path: '/',
     fullPath: '/',
@@ -108,7 +108,7 @@ describe('ApplicationAuxiliaryUi', () => {
   });
 
   it('does not mount closed auxiliary overlays', async () => {
-    const wrapper = mount(ApplicationAuxiliaryUi);
+    const wrapper = mount(AppAuxiliaryUi);
     await flushPromises();
 
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
@@ -116,7 +116,7 @@ describe('ApplicationAuxiliaryUi', () => {
 
   it('opens settings after post-startup UI is activated', async () => {
     route.query = { settings: '1' };
-    const wrapper = mount(ApplicationAuxiliaryUi);
+    const wrapper = mount(AppAuxiliaryUi);
     await flushPromises();
 
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
@@ -126,7 +126,7 @@ describe('ApplicationAuxiliaryUi', () => {
   it('preserves the complete initial non-settings location for path-based settings close', () => {
     route.path = '/chat/chat-1';
     route.fullPath = '/chat/chat-1?leaf=message-1';
-    const wrapper = mount(ApplicationAuxiliaryUi);
+    const wrapper = mount(AppAuxiliaryUi);
 
     (wrapper.vm as unknown as { TEST_ONLY: { closeSettings(): void } }).TEST_ONLY.closeSettings();
 

@@ -2,9 +2,9 @@
 import { ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import {
-  isApplicationInteractionEnabled,
-  useApplicationPresentation,
-} from '@/composables/useApplicationPresentation';
+  isAppInteractionEnabled,
+  useAppPresentation,
+} from '@/composables/useAppPresentation';
 import { generateId, generateOpaqueId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
@@ -51,7 +51,7 @@ const { openFileExplorer } = useFileExplorerModal();
 const { showConfirm } = useConfirm();
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
-const { applicationInteraction } = useApplicationPresentation();
+const { appInteraction } = useAppPresentation();
 
 const props = defineProps<{
   chatId: ChatId,
@@ -174,7 +174,7 @@ function handleUpdateImageModel({ modelId }: { modelId: string }) {
 }
 
 async function fetchModels() {
-  if (!isApplicationInteractionEnabled({ interaction: applicationInteraction.value })) return;
+  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
   await chatModels.fetchForChat({
     chatId: props.chatId,
   });
@@ -968,15 +968,15 @@ const autoSendState = ref<
 function isInteractiveChatCurrent({ chatValue }: {
   chatValue: NonNullable<typeof chat.value>,
 }): boolean {
-  return isApplicationInteractionEnabled({
-    interaction: applicationInteraction.value,
+  return isAppInteractionEnabled({
+    interaction: appInteraction.value,
   }) && chat.value === chatValue;
 }
 
 watch(
   [
     () => chat.value,
-    applicationInteraction,
+    appInteraction,
   ],
   async ([chatValue, interaction]) => {
     if (interaction !== 'enabled' || !chatValue) return;
@@ -1050,7 +1050,7 @@ function focusInput({
   visibilityPolicy?: FocusInputVisibilityPolicy,
 } = {}) {
   const applyFocus = () => {
-    if (!isApplicationInteractionEnabled({ interaction: applicationInteraction.value })) return;
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
     switch (activeFocusArea.value) {
     case 'sidebar':
     case 'search':

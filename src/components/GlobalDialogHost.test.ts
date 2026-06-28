@@ -83,7 +83,7 @@ describe('GlobalDialogHost', () => {
     });
   });
 
-  it('shows the danger confirm dialog while the normal application is not mounted', async () => {
+  it('shows the danger confirm dialog while the normal app is not mounted', async () => {
     const wrapper = mount(GlobalDialogHost);
     await flushPromises();
 

@@ -65,7 +65,7 @@ export function createInitialThemeBootstrapSource(): string {
  * PERFORMANCE-CRITICAL PERSISTENCE EXCEPTION
  *
  * Measurements showed the browser's default white page remained visible until
- * the normal application module graph and Vue startup completed. This generated
+ * the normal app module graph and Vue startup completed. This generated
  * reader intentionally validates ${THEME_MODE_STORAGE_KEY} without Zod so the
  * correct page background can be applied before the first paint. This is the
  * only approved non-Zod persistence read in Naidan. It is read-only, falls back

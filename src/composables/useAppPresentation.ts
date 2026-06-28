@@ -14,20 +14,20 @@ export type OnboardingPresentation =
   | 'hidden'
   | 'visible';
 
-export type ApplicationInteraction =
+export type AppInteraction =
   | 'blocked-by-startup'
   | 'blocked-by-onboarding'
   | 'enabled';
 
-type ApplicationPresentation = Readonly<{
+type AppPresentation = Readonly<{
   onboardingPresentation: ComputedRef<OnboardingPresentation>,
-  applicationInteraction: ComputedRef<ApplicationInteraction>,
+  appInteraction: ComputedRef<AppInteraction>,
 }>;
 
-const applicationPresentationKey: InjectionKey<ApplicationPresentation> = Symbol('application-presentation');
+const appPresentationKey: InjectionKey<AppPresentation> = Symbol('app-presentation');
 
-export function isApplicationInteractionEnabled({ interaction }: {
-  interaction: ApplicationInteraction,
+export function isAppInteractionEnabled({ interaction }: {
+  interaction: AppInteraction,
 }): boolean {
   switch (interaction) {
   case 'blocked-by-startup':
@@ -42,7 +42,7 @@ export function isApplicationInteractionEnabled({ interaction }: {
   }
 }
 
-function createApplicationPresentation({
+function createAppPresentation({
   startupState,
   settingsInitialized,
   isOnboardingDismissed,
@@ -50,7 +50,7 @@ function createApplicationPresentation({
   startupState: ShallowRef<StartupState>,
   settingsInitialized: Readonly<Ref<boolean>>,
   isOnboardingDismissed: Readonly<Ref<boolean>>,
-}): ApplicationPresentation {
+}): AppPresentation {
   const onboardingPresentation = computed<OnboardingPresentation>(() => {
     if (!settingsInitialized.value) {
       return 'hidden';
@@ -61,7 +61,7 @@ function createApplicationPresentation({
       : 'visible';
   });
 
-  const applicationInteraction = computed<ApplicationInteraction>(() => {
+  const appInteraction = computed<AppInteraction>(() => {
     const state = startupState.value;
     switch (state.kind) {
     case 'initializing-foundation':
@@ -93,31 +93,31 @@ function createApplicationPresentation({
 
   return {
     onboardingPresentation,
-    applicationInteraction,
+    appInteraction,
   };
 }
 
-export function provideApplicationPresentation({ startupState }: {
+export function provideAppPresentation({ startupState }: {
   startupState: ShallowRef<StartupState>,
-}): ApplicationPresentation {
+}): AppPresentation {
   const settingsStore = useSettings();
-  const presentation = createApplicationPresentation({
+  const presentation = createAppPresentation({
     startupState,
     settingsInitialized: settingsStore.initialized,
     isOnboardingDismissed: settingsStore.isOnboardingDismissed,
   });
-  provide(applicationPresentationKey, presentation);
+  provide(appPresentationKey, presentation);
   return presentation;
 }
 
-export function useApplicationPresentation(): ApplicationPresentation {
-  const presentation = inject(applicationPresentationKey);
+export function useAppPresentation(): AppPresentation {
+  const presentation = inject(appPresentationKey);
   if (presentation === undefined) {
-    throw new Error('Application presentation was used outside StartupRoot.');
+    throw new Error('App presentation was used outside App.');
   }
   return presentation;
 }
 
 export const TEST_ONLY = {
-  createApplicationPresentation,
+  createAppPresentation,
 };

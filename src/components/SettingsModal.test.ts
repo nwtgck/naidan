@@ -417,7 +417,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(settingsModalElement.classes()).toContain('z-[100]'); // Ensure modal's z-index class remains as expected
 
       // Note: Directly testing the global dialog's z-index from this unit test is complex
-      // as it's rendered in App.vue's wrapper. This test confirms the modal doesn't
+      // as it's rendered in MainApp.vue's wrapper. This test confirms the modal doesn't
       // inadvertently raise its own z-index, allowing the global dialog (z-[110]) to overlay it.
     });
   });
@@ -873,7 +873,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await wrapper.find('[data-testid="setting-clear-history-button"]').trigger('click');
       await flushPromises();
 
-      // Ensure the store value (which App.vue uses) would remain true if endpoint is there.
+      // Ensure the store value (which MainApp.vue uses) would remain true if endpoint is there.
       // Since we already removed the code that sets it to false, this is indirectly tested.
       expect(mockDeleteAllChats).toHaveBeenCalled();
     });

@@ -14,10 +14,10 @@ export type DebugFileProtocolStandaloneStartupCheckpointName =
   | 'initializing-settings'
   | 'loading-chats'
   | 'mounting-vue'
-  | 'startup-root-mounted'
-  | 'waiting-onboarding'
-  | 'loading-main-application'
-  | 'mounted'
+  | 'app-mounted'
+  | 'painting-onboarding'
+  | 'loading-main-app'
+  | 'app-ready'
   | 'bootstrap-failed';
 
 export type DebugFileProtocolStandaloneStartupCheckpointSource = 'entry-loader' | 'naidan-app';

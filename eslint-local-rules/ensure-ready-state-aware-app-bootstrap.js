@@ -1,11 +1,11 @@
 /**
- * Enforce the ready-state-aware application startup boundary.
+ * Enforce the ready-state-aware app bootstrap boundary.
  *
  * The standalone entry is evaluated asynchronously through SystemJS. On a
  * sufficiently large module graph, DOMContentLoaded may have fired before
  * main.ts executes, so requiring app.mount() inside a future-only event listener
  * recreates the exact white-screen failure this rule is intended to prevent.
- * main.ts must delegate to the ready-state-aware scheduleAppStartup helper and
+ * main.ts must delegate to the ready-state-aware scheduleAppBootstrap helper and
  * the scheduled bootstrap function must own the Vue mount.
  */
 export const rule = {
@@ -42,7 +42,7 @@ export const rule = {
           }
         }
 
-        if (node.callee.type !== 'Identifier' || node.callee.name !== 'scheduleAppStartup') return;
+        if (node.callee.type !== 'Identifier' || node.callee.name !== 'scheduleAppBootstrap') return;
         const argument = node.arguments[0];
         if (argument?.type !== 'ObjectExpression') return;
         const bootstrapProperty = argument.properties.find((property) => (
@@ -60,14 +60,14 @@ export const rule = {
         if (bootstrapFunctionName === undefined) {
           context.report({
             node,
-            message: 'To support asynchronous file-protocol entry loading, main.ts must call scheduleAppStartup() with a bootstrap function.',
+            message: 'To support asynchronous file-protocol entry loading, main.ts must call scheduleAppBootstrap() with a bootstrap function.',
           });
           return;
         }
         if (!functionsContainingMount.has(bootstrapFunctionName)) {
           context.report({
             node,
-            message: 'The bootstrap function passed to scheduleAppStartup() must contain app.mount().',
+            message: 'The bootstrap function passed to scheduleAppBootstrap() must contain app.mount().',
           });
         }
       },
@@ -78,13 +78,13 @@ export const rule = {
 export default {
   files: ['src/main.ts'],
   plugins: {
-    'local-rules-ready-state-startup': {
+    'local-rules-ready-state-bootstrap': {
       rules: {
-        'ensure-ready-state-aware-app-startup': rule,
+        'ensure-ready-state-aware-app-bootstrap': rule,
       },
     },
   },
   rules: {
-    'local-rules-ready-state-startup/ensure-ready-state-aware-app-startup': 'error',
+    'local-rules-ready-state-bootstrap/ensure-ready-state-aware-app-bootstrap': 'error',
   },
 };

@@ -58,7 +58,7 @@ describe('theme controller', () => {
 
     expect(useTheme().themeMode.value).toBe('dark');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
-    expect(document.documentElement.getAttribute(THEME_CONTROL_ATTRIBUTE_NAME)).toBe('application-managed');
+    expect(document.documentElement.getAttribute(THEME_CONTROL_ATTRIBUTE_NAME)).toBe('app-managed');
   });
 
   it('persists and applies explicit theme changes', () => {

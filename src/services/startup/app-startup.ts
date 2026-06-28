@@ -16,7 +16,7 @@ import {
 
 type SettingsStore = ReturnType<typeof useSettings>;
 
-export async function startApplication({ startupState, settingsStore, router, navigationGate, window }: {
+export async function startApp({ startupState, settingsStore, router, navigationGate, window }: {
   startupState: ShallowRef<StartupState>,
   settingsStore: SettingsStore,
   router: Router,
@@ -56,7 +56,7 @@ export async function startApplication({ startupState, settingsStore, router, na
 
   if (!settingsStore.isOnboardingDismissed.value) {
     debugRecordFileProtocolStandaloneStartupCheckpoint({
-      checkpoint: 'waiting-onboarding',
+      checkpoint: 'painting-onboarding',
       details: undefined,
     });
 
@@ -74,22 +74,22 @@ export async function startApplication({ startupState, settingsStore, router, na
     details: undefined,
   });
   const chatStartupModule = await import('@/composables/chat/ui/useChatBootstrap');
-  await chatStartupModule.loadChatsForApplicationStartup();
+  await chatStartupModule.loadChatsForAppStartup();
 
   debugRecordFileProtocolStandaloneStartupCheckpoint({
-    checkpoint: 'loading-main-application',
+    checkpoint: 'loading-main-app',
     details: undefined,
   });
-  const appModule = await import('@/App.vue');
-  const mainApplication = markRaw(appModule.default);
+  const mainAppModule = await import('@/MainApp.vue');
+  const mainApp = markRaw(mainAppModule.default);
 
   startupState.value = {
     kind: 'rendering-main',
-    mainApplication,
+    mainApp,
   };
 
   /**
-   * WHY: Mount the real application before releasing route navigation so the
+   * WHY: Mount the real main app before releasing route navigation so the
    * real Sidebar can paint first. Interaction remains blocked until the router
    * is ready, preventing START_LOCATION from triggering normal commands.
    */
@@ -119,10 +119,10 @@ export async function startApplication({ startupState, settingsStore, router, na
 
   startupState.value = {
     kind: 'ready',
-    mainApplication,
+    mainApp,
   };
   debugRecordFileProtocolStandaloneStartupCheckpoint({
-    checkpoint: 'mounted',
+    checkpoint: 'app-ready',
     details: undefined,
   });
   return disposeGlobalSettingsQuerySync;

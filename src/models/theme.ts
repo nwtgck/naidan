@@ -19,7 +19,7 @@ export type ResolvedTheme = typeof RESOLVED_THEME_VALUES[number];
 
 export const THEME_CONTROL_VALUES = [
   'document-bootstrap',
-  'application-managed',
+  'app-managed',
 ] as const;
 
 export type ThemeControl = typeof THEME_CONTROL_VALUES[number];

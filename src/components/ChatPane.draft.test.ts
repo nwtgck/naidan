@@ -41,10 +41,10 @@ const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
 
 
-vi.mock('@/composables/useApplicationPresentation', () => ({
-  isApplicationInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
-  useApplicationPresentation: () => ({
-    applicationInteraction: {
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
       __v_isRef: true,
       value: 'enabled',
     },

@@ -37,8 +37,8 @@
     @apply bg-gray-950 text-gray-100;
   }
 
-  html[data-naidan-theme-control='application-managed'],
-  html[data-naidan-theme-control='application-managed'] body {
+  html[data-naidan-theme-control='app-managed'],
+  html[data-naidan-theme-control='app-managed'] body {
     @apply transition-colors duration-300;
   }
 

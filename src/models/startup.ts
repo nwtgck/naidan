@@ -9,11 +9,11 @@ export type StartupState =
   }
   | {
     kind: 'rendering-main',
-    mainApplication: Component,
+    mainApp: Component,
   }
   | {
     kind: 'ready',
-    mainApplication: Component,
+    mainApp: Component,
   }
   | {
     kind: 'foundation-failed',

@@ -6,24 +6,24 @@ import type { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/models/types';
 import type { StartupState } from '@/models/startup';
 import { createInitialNavigationGate } from '@/services/startup/initial-navigation-gate';
-import { startApplication } from './application-startup';
+import { startApp } from './app-startup';
 
-const MainApplication = defineComponent({
+const MainApp = defineComponent({
   template: '<div />',
 });
-const loadChatsForApplicationStartup = vi.hoisted(() => vi.fn(async () => {}));
+const loadChatsForAppStartup = vi.hoisted(() => vi.fn(async () => {}));
 const activateChatBootstrap = vi.hoisted(() => vi.fn());
 
-vi.mock('@/App.vue', () => ({
-  default: MainApplication,
+vi.mock('@/MainApp.vue', () => ({
+  default: MainApp,
 }));
 
 vi.mock('@/composables/chat/ui/useChatBootstrap', () => ({
-  loadChatsForApplicationStartup,
+  loadChatsForAppStartup,
   useChatBootstrap: () => {
     activateChatBootstrap();
     return {
-      loadChats: loadChatsForApplicationStartup,
+      loadChats: loadChatsForAppStartup,
       openChat: async () => undefined,
       TEST_ONLY: {},
     };
@@ -118,9 +118,9 @@ function flushPresentationPaint({ callbacks }: {
   flushAnimationFrame({ callbacks, timestamp: 16 });
 }
 
-describe('application startup', () => {
+describe('app startup', () => {
   beforeEach(() => {
-    loadChatsForApplicationStartup.mockClear();
+    loadChatsForAppStartup.mockClear();
     activateChatBootstrap.mockClear();
   });
 
@@ -128,7 +128,7 @@ describe('application startup', () => {
     const settings = createSettingsStore({ onboardingDismissed: true });
     const harness = createStartupHarness();
 
-    const startup = startApplication({
+    const startup = startApp({
       startupState: harness.startupState,
       settingsStore: settings.settingsStore,
       router: harness.router,
@@ -138,10 +138,10 @@ describe('application startup', () => {
     await flushPromises();
 
     expect(settings.init).toHaveBeenCalledOnce();
-    expect(loadChatsForApplicationStartup).toHaveBeenCalledOnce();
+    expect(loadChatsForAppStartup).toHaveBeenCalledOnce();
     expect(harness.startupState.value).toEqual({
       kind: 'rendering-main',
-      mainApplication: MainApplication,
+      mainApp: MainApp,
     });
     expect(harness.loadRouteComponent).not.toHaveBeenCalled();
 
@@ -152,17 +152,17 @@ describe('application startup', () => {
     expect(harness.loadRouteComponent).toHaveBeenCalledOnce();
     expect(harness.startupState.value).toEqual({
       kind: 'ready',
-      mainApplication: MainApplication,
+      mainApp: MainApp,
     });
 
     dispose();
   });
 
-  it('gives onboarding one paint and then renders the real application before dismissal', async () => {
+  it('gives onboarding one paint and then renders the real app before dismissal', async () => {
     const settings = createSettingsStore({ onboardingDismissed: false });
     const harness = createStartupHarness();
 
-    const startup = startApplication({
+    const startup = startApp({
       startupState: harness.startupState,
       settingsStore: settings.settingsStore,
       router: harness.router,
@@ -174,17 +174,17 @@ describe('application startup', () => {
     expect(harness.startupState.value).toEqual({
       kind: 'starting-main',
     });
-    expect(loadChatsForApplicationStartup).not.toHaveBeenCalled();
+    expect(loadChatsForAppStartup).not.toHaveBeenCalled();
     expect(harness.animationFrameCallbacks).toHaveLength(1);
 
     flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
     await flushPromises();
 
     expect(settings.isOnboardingDismissed.value).toBe(false);
-    expect(loadChatsForApplicationStartup).toHaveBeenCalledOnce();
+    expect(loadChatsForAppStartup).toHaveBeenCalledOnce();
     expect(harness.startupState.value).toEqual({
       kind: 'rendering-main',
-      mainApplication: MainApplication,
+      mainApp: MainApp,
     });
     expect(harness.loadRouteComponent).not.toHaveBeenCalled();
 
@@ -196,7 +196,7 @@ describe('application startup', () => {
     expect(harness.loadRouteComponent).toHaveBeenCalledOnce();
     expect(harness.startupState.value).toEqual({
       kind: 'ready',
-      mainApplication: MainApplication,
+      mainApp: MainApp,
     });
 
     dispose();
@@ -208,7 +208,7 @@ describe('application startup', () => {
       path: '/?storage-type=opfs&data-zip=encoded-state',
     });
 
-    const startup = startApplication({
+    const startup = startApp({
       startupState: harness.startupState,
       settingsStore: settings.settingsStore,
       router: harness.router,
@@ -236,7 +236,7 @@ describe('application startup', () => {
       path: '/chat/chat-1?leaf=message-2',
     });
 
-    const startup = startApplication({
+    const startup = startApp({
       startupState: harness.startupState,
       settingsStore: settings.settingsStore,
       router: harness.router,
@@ -264,7 +264,7 @@ describe('application startup', () => {
       path: '/?global-endpoint-type=ollama&global-endpoint-url=http%3A%2F%2Flocalhost%3A11434&global-model=llama3',
     });
 
-    const startup = startApplication({
+    const startup = startApp({
       startupState: harness.startupState,
       settingsStore: settings.settingsStore,
       router: harness.router,

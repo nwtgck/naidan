@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
 import path from 'path';
 import * as parser from '@typescript-eslint/parser';
-import { rule } from './ensure-ready-state-aware-app-startup.js';
+import { rule } from './ensure-ready-state-aware-app-bootstrap.js';
 
-describe('ensure-ready-state-aware-app-startup rule', () => {
+describe('ensure-ready-state-aware-app-bootstrap rule', () => {
   let eslint: ESLint;
   const repoRoot = path.resolve(__dirname, '..');
 
@@ -22,14 +22,14 @@ describe('ensure-ready-state-aware-app-startup rule', () => {
           },
         },
         plugins: {
-          'local-rules-ready-state-startup': {
+          'local-rules-ready-state-bootstrap': {
             rules: {
-              'ensure-ready-state-aware-app-startup': rule,
+              'ensure-ready-state-aware-app-bootstrap': rule,
             },
           },
         },
         rules: {
-          'local-rules-ready-state-startup/ensure-ready-state-aware-app-startup': 'error',
+          'local-rules-ready-state-bootstrap/ensure-ready-state-aware-app-bootstrap': 'error',
         },
       },
     });
@@ -48,7 +48,7 @@ describe('ensure-ready-state-aware-app-startup rule', () => {
 async function bootstrapApp() {
   app.mount('#app')
 }
-scheduleAppStartup({
+scheduleAppBootstrap({
   document,
   bootstrap: bootstrapApp,
   onFailure: () => {},
@@ -67,7 +67,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.message).toContain('scheduleAppStartup');
+    expect(messages[0]?.message).toContain('scheduleAppBootstrap');
   });
 
   it('does not accept app.mount text that appears only in a comment', async () => {
@@ -76,7 +76,7 @@ window.addEventListener('DOMContentLoaded', () => {
 async function bootstrapApp() {
   // app.mount('#app')
 }
-scheduleAppStartup({
+scheduleAppBootstrap({
   document,
   bootstrap: bootstrapApp,
   onFailure: () => {},
@@ -91,7 +91,7 @@ scheduleAppStartup({
     const messages = await lintText({
       code: `\
 async function bootstrapApp() {}
-scheduleAppStartup({
+scheduleAppBootstrap({
   document,
   bootstrap: bootstrapApp,
   onFailure: () => {},

@@ -29,17 +29,17 @@ describe('theme document management', () => {
     expect(readSystemTheme({ mediaQueryList: { matches: false } })).toBe('light');
   });
 
-  it('applies dark theme and application ownership to the document', () => {
+  it('applies dark theme and app ownership to the document', () => {
     applyResolvedTheme({
       document,
       resolvedTheme: 'dark',
-      control: 'application-managed',
+      control: 'app-managed',
     });
 
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(document.documentElement.style.colorScheme).toBe('dark');
     expect(document.documentElement.getAttribute(RESOLVED_THEME_ATTRIBUTE_NAME)).toBe('dark');
-    expect(document.documentElement.getAttribute(THEME_CONTROL_ATTRIBUTE_NAME)).toBe('application-managed');
+    expect(document.documentElement.getAttribute(THEME_CONTROL_ATTRIBUTE_NAME)).toBe('app-managed');
   });
 
   it('removes dark theme when applying light mode', () => {
@@ -48,7 +48,7 @@ describe('theme document management', () => {
     applyResolvedTheme({
       document,
       resolvedTheme: 'light',
-      control: 'application-managed',
+      control: 'app-managed',
     });
 
     expect(document.documentElement.classList.contains('dark')).toBe(false);

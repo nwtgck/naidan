@@ -62,7 +62,7 @@ const mockGetChatTmpDirectory = vi.fn();
 const mockGetNaidanSysfsAccessScope = vi.fn();
 
 const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
-const mockApplicationInteraction = ref<
+const mockAppInteraction = ref<
   | 'blocked-by-startup'
   | 'blocked-by-onboarding'
   | 'enabled'
@@ -73,10 +73,10 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/composables/useApplicationPresentation', () => ({
-  isApplicationInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
-  useApplicationPresentation: () => ({
-    applicationInteraction: mockApplicationInteraction,
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: mockAppInteraction,
   }),
 }));
 
@@ -460,7 +460,7 @@ describe('ChatInput Integration', () => {
     mockCurrentChat.value = { id: 'chat-1', modelId: 'model-1' };
     mockCurrentChatGroup.value = null;
     mockSettings.value = { storageType: 'opfs', mounts: [] };
-    mockApplicationInteraction.value = 'enabled';
+    mockAppInteraction.value = 'enabled';
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
     mockGetNaidanSysfsAccessScope.mockReturnValue('none');
@@ -501,13 +501,13 @@ describe('ChatInput Integration', () => {
   });
 
   it('waits to auto-send until onboarding no longer blocks interaction', async () => {
-    mockApplicationInteraction.value = 'blocked-by-onboarding';
+    mockAppInteraction.value = 'blocked-by-onboarding';
     getWrapper({ autoSendPrompt: 'Hello after onboarding' });
     await flushPromises();
 
     expect(mockSendMessageForChat).not.toHaveBeenCalled();
 
-    mockApplicationInteraction.value = 'enabled';
+    mockAppInteraction.value = 'enabled';
     await nextTick();
     await flushPromises();
 
@@ -527,7 +527,7 @@ describe('ChatInput Integration', () => {
     const wrapper = getWrapper({ autoSendPrompt: 'Do not send while blocked' });
     const textarea = wrapper.find('[data-testid="chat-input"]').element;
 
-    mockApplicationInteraction.value = 'blocked-by-onboarding';
+    mockAppInteraction.value = 'blocked-by-onboarding';
     await nextTick();
     await flushPromises();
 

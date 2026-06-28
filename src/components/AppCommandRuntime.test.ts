@@ -1,36 +1,19 @@
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
-import { ref, reactive, nextTick, computed } from 'vue';
-import ApplicationCommandRuntime from './components/ApplicationCommandRuntime.vue';
-import type { Chat } from './models/types';
-import { useRouter, useRoute } from 'vue-router';
-import { useSettings } from './composables/useSettings';
-import { useLayout } from './composables/useLayout';
+import { flushPromises, mount } from '@vue/test-utils';
+import { computed, nextTick, reactive, ref } from 'vue';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { useRoute, useRouter } from 'vue-router';
+import type { Chat } from '@/models/types';
+import AppCommandRuntime from './AppCommandRuntime.vue';
+import { useLayout } from '@/composables/useLayout';
+import { useSettings } from '@/composables/useSettings';
 
-// Define mock refs in module scope so they can be shared
 const mockCreateNewChat = vi.fn();
 const mockCreateChatGroup = vi.fn();
-const mockLoadChats = vi.fn();
 const mockCurrentChat = ref<Chat | null>(null);
 const mockChats = ref<Chat[]>([]);
-const mockChatGroups = ref<any[]>([]);
+const mockChatGroups = ref<Array<{ id: string; name: string }>>([]);
 
-vi.mock('./composables/useChat', () => ({
-  useChat: () => ({
-    createNewChat: mockCreateNewChat,
-    createChatGroup: mockCreateChatGroup,
-    loadChats: mockLoadChats,
-    currentChat: mockCurrentChat,
-    currentChatGroup: ref(null),
-    chats: mockChats,
-    chatGroups: mockChatGroups,
-    getReasoningEffort: vi.fn(),
-    updateReasoningEffort: vi.fn(),
-    getLiveChat: vi.fn().mockImplementation((c) => c),
-  }),
-}));
-
-vi.mock('./composables/chat/ui/useCurrentChatState', () => ({
+vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => mockCurrentChat.value),
     currentChatGroup: computed(() => null),
@@ -45,13 +28,13 @@ vi.mock('./composables/chat/ui/useCurrentChatState', () => ({
   }),
 }));
 
-vi.mock('./composables/chat/ui/useChatListData', () => ({
+vi.mock('@/composables/chat/ui/useChatListData', () => ({
   useChatListData: () => ({
     chats: mockChats,
   }),
 }));
 
-vi.mock('./composables/chat/ui/useChatLifecycle', () => ({
+vi.mock('@/composables/chat/ui/useChatLifecycle', () => ({
   useChatLifecycle: () => ({
     createNewChat: mockCreateNewChat,
     deleteChat: vi.fn(),
@@ -60,7 +43,7 @@ vi.mock('./composables/chat/ui/useChatLifecycle', () => ({
   }),
 }));
 
-vi.mock('./composables/chat/ui/useChatOrganization', () => ({
+vi.mock('@/composables/chat/ui/useChatOrganization', () => ({
   useChatOrganization: () => ({
     createChatGroup: mockCreateChatGroup,
     deleteChatGroup: vi.fn(),
@@ -73,97 +56,88 @@ vi.mock('./composables/chat/ui/useChatOrganization', () => ({
   }),
 }));
 
-vi.mock('./composables/useSettings', () => ({
+vi.mock('@/composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 
-const mockApplicationInteraction = ref<
+const mockAppInteraction = ref<
   | 'blocked-by-startup'
   | 'blocked-by-onboarding'
   | 'enabled'
 >('enabled');
-vi.mock('./composables/useApplicationPresentation', () => ({
-  isApplicationInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
-  useApplicationPresentation: () => ({
-    applicationInteraction: mockApplicationInteraction,
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: mockAppInteraction,
   }),
 }));
 
 const mockAddRecentChat = vi.fn();
 const mockToggleRecent = vi.fn();
-const mockCloseRecent = vi.fn();
-const mockIsRecentOpen = ref(false);
-const mockRecentChats = ref([]);
 
-vi.mock('./composables/useRecentChats', () => ({
+vi.mock('@/composables/useRecentChats', () => ({
   useRecentChats: () => ({
     addRecentChat: mockAddRecentChat,
     toggleRecent: mockToggleRecent,
-    closeRecent: mockCloseRecent,
-    isRecentOpen: mockIsRecentOpen,
-    recentChats: mockRecentChats,
   }),
 }));
 
-vi.mock('./composables/useLayout', () => ({
+vi.mock('@/composables/useGlobalSearch', () => ({
+  useGlobalSearch: () => ({
+    toggleSearch: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useLayout', () => ({
   useLayout: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
   useRoute: vi.fn(),
-  RouterView: {
-    template: '<div data-testid="router-view"><slot /></div>',
-  },
 }));
 
-// Core components are kept synchronous and mocked simply
-vi.mock('./components/Sidebar.vue', () => ({
-  default: {
-    name: 'Sidebar',
-    template: '<div data-testid="sidebar"></div>',
-  },
-}));
+describe('AppCommandRuntime', () => {
 
-// We DON'T vi.mock the components that are defineAsyncComponent in App.vue
-// Instead we stub them in the mount options.
-
-describe('ApplicationCommandRuntime', () => {
-
-
-  const mockInit = vi.fn();
-  const currentRoute = reactive({ path: '/', query: {} as any });
-  const mockRouterPush = vi.fn((p) => {
-    if (typeof p === 'string') {
-      currentRoute.path = p;
-    } else if (p && typeof p === 'object' && p.path) {
-      currentRoute.path = p.path;
+  const currentRoute = reactive<{ path: string; query: Record<string, string> }>({
+    path: '/',
+    query: {},
+  });
+  const mockRouterPush = vi.fn((location: unknown) => {
+    if (typeof location === 'string') {
+      currentRoute.path = location;
+      return;
+    }
+    if (
+      typeof location === 'object'
+      && location !== null
+      && 'path' in location
+      && typeof location.path === 'string'
+    ) {
+      currentRoute.path = location.path;
     }
   });
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCreateNewChat.mockReset();
+    mockCreateChatGroup.mockReset();
+    mockAddRecentChat.mockReset();
+    mockToggleRecent.mockReset();
     mockCurrentChat.value = null;
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    mockChatGroups.value = [];
     currentRoute.path = '/';
     currentRoute.query = {};
-    mockApplicationInteraction.value = 'enabled';
+    mockAppInteraction.value = 'enabled';
 
     (useSettings as unknown as Mock).mockReturnValue({
-      init: mockInit,
       initialized: ref(true),
       isOnboardingDismissed: ref(true),
-      isFetchingModels: ref(false),
-      settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
 
-    const isDebugOpen = ref(false);
     (useLayout as unknown as Mock).mockReturnValue({
-      isSidebarOpen: ref(true),
-      isDebugOpen,
-      toggleDebug: vi.fn(() => {
-        isDebugOpen.value = !isDebugOpen.value;
-      }),
       setActiveFocusArea: vi.fn(),
     });
 
@@ -174,7 +148,7 @@ describe('ApplicationCommandRuntime', () => {
     (useRoute as unknown as Mock).mockReturnValue(currentRoute);
   });
 
-  const mountRuntime = () => mount(ApplicationCommandRuntime);
+  const mountRuntime = () => mount(AppCommandRuntime);
 
   it('automatically creates a new chat if none exist and on root path', async () => {
     mockChats.value = [];
@@ -216,7 +190,10 @@ describe('ApplicationCommandRuntime', () => {
 
   it('automatically creates a new chat when navigating back to root from another path if history is empty', async () => {
     mockChats.value = [];
-    const currentRoute = reactive({ path: '/settings', query: {} as any });
+    const currentRoute = reactive<{ path: string; query: Record<string, string> }>({
+      path: '/settings',
+      query: {},
+    });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
       currentRoute: ref(currentRoute),
@@ -407,13 +384,13 @@ describe('ApplicationCommandRuntime', () => {
   });
 
   it('does NOT create a new chat when system-prompt is present but q is missing', async () => {
-    mockChats.value = [{ id: 'existing' } as any]; // Non-empty list
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
     const currentRoute = reactive({ path: '/', query: { 'system-prompt': 'You are a cat' } });
-    (useRouter as any).mockReturnValue({
+    (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
       currentRoute: ref(currentRoute),
     });
-    (useRoute as any).mockReturnValue(currentRoute);
+    (useRoute as unknown as Mock).mockReturnValue(currentRoute);
 
     mountRuntime();
     await flushPromises();
@@ -422,18 +399,17 @@ describe('ApplicationCommandRuntime', () => {
   });
 
   it('creates a plain chat when list is empty even if system-prompt is in URL but q is missing', async () => {
-    mockChats.value = []; // Empty list
+    mockChats.value = [];
     const currentRoute = reactive({ path: '/', query: { 'system-prompt': 'You are a cat' } });
-    (useRouter as any).mockReturnValue({
+    (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
       currentRoute: ref(currentRoute),
     });
-    (useRoute as any).mockReturnValue(currentRoute);
+    (useRoute as unknown as Mock).mockReturnValue(currentRoute);
 
     mountRuntime();
     await flushPromises();
 
-    // Should create a chat because len === 0, but parameters should be ignored
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: undefined,
       modelId: undefined,
@@ -526,7 +502,7 @@ describe('ApplicationCommandRuntime', () => {
     // Reset the mock before use
     mockToggleRecent.mockReset();
 
-    // Re-mount App to apply the new mock
+    // Re-mount the runtime after resetting the mock
     mountRuntime();
     await flushPromises();
 

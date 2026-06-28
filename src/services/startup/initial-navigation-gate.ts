@@ -17,7 +17,7 @@ export function createInitialNavigationGate({ router }: {
    * initial route resolution, and excluding the normal route reduced the
    * onboarding DOM insertion time from about 1.81 s to 0.69 s. The guard delays
    * route component loading only; after onboarding, every user still rejoins
-   * the same router and normal application initialization path.
+   * the same router and normal app initialization path.
    */
   const removeGuard = router.beforeEach(async () => {
     await promise;

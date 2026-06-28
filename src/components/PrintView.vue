@@ -27,7 +27,7 @@ defineExpose({
   GLOBAL PRINT STYLES
 */
 @media print {
-  /* 1. Hide the entire main application UI (siblings of PrintView in App.vue) */
+  /* 1. Hide the entire main app UI (siblings of PrintView in MainApp.vue) */
   #app > div:not(.naidan-print-view-layer) {
     display: none !important;
   }

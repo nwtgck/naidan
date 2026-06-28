@@ -7,9 +7,9 @@ import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatListData } from '@/composables/chat/ui/useChatListData';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import {
-  isApplicationInteractionEnabled,
-  useApplicationPresentation,
-} from '@/composables/useApplicationPresentation';
+  isAppInteractionEnabled,
+  useAppPresentation,
+} from '@/composables/useAppPresentation';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useLayout } from '@/composables/useLayout';
 import { useRecentChats } from '@/composables/useRecentChats';
@@ -21,7 +21,7 @@ const chatLifecycle = useChatLifecycle();
 const chatListData = useChatListData();
 const chatOrganization = useChatOrganization();
 const settingsStore = useSettings();
-const { applicationInteraction } = useApplicationPresentation();
+const { appInteraction } = useAppPresentation();
 const { addRecentChat, toggleRecent } = useRecentChats();
 const router = useRouter();
 const route = useRoute();
@@ -29,7 +29,7 @@ const route = useRoute();
 watch(
   () => route.path,
   () => {
-    if (!isApplicationInteractionEnabled({ interaction: applicationInteraction.value })) return;
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
     if (route.name === '/chat/[id]' && route.params.id && typeof route.params.id === 'string') {
       addRecentChat({ id: toChatId({ raw: route.params.id }) });
     }
@@ -50,7 +50,7 @@ watch(
   ],
   async ([len, path, q, chatGroupId, modelId, systemPromptStr, initialized, dismissed]) => {
     if (
-      !isApplicationInteractionEnabled({ interaction: applicationInteraction.value })
+      !isAppInteractionEnabled({ interaction: appInteraction.value })
       || !initialized
       || !dismissed
       || path !== '/'
@@ -64,7 +64,7 @@ watch(
         modelId: undefined,
         systemPrompt: undefined,
       });
-      if (!isApplicationInteractionEnabled({ interaction: applicationInteraction.value })) return;
+      if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
       if (currentChatState.currentChat.value) {
         await router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
       }
@@ -88,7 +88,7 @@ watch(
       }
     }
 
-    if (!isApplicationInteractionEnabled({ interaction: applicationInteraction.value })) return;
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
     const targetModelId = typeof modelId === 'string' ? modelId : undefined;
     const systemPrompt = typeof systemPromptStr === 'string' && systemPromptStr
       ? {
@@ -105,7 +105,7 @@ watch(
       systemPrompt,
     });
 
-    if (currentChatState.currentChat.value && isApplicationInteractionEnabled({ interaction: applicationInteraction.value })) {
+    if (currentChatState.currentChat.value && isAppInteractionEnabled({ interaction: appInteraction.value })) {
       await router.push({
         path: `/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`,
         query: { q: q.toString() },
@@ -116,7 +116,7 @@ watch(
 );
 
 onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (event) => {
-  if (!isApplicationInteractionEnabled({ interaction: applicationInteraction.value })) return;
+  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
 
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'o' || event.key === 'O')) {
     event.preventDefault();
@@ -127,7 +127,7 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (event) => {
       modelId: undefined,
       systemPrompt: undefined,
     });
-    if (currentChatState.currentChat.value && isApplicationInteractionEnabled({ interaction: applicationInteraction.value })) {
+    if (currentChatState.currentChat.value && isAppInteractionEnabled({ interaction: appInteraction.value })) {
       await router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
     }
     return;
