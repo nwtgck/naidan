@@ -23,11 +23,9 @@ let resolvePromptPromise: ReturnType<typeof Promise.withResolvers<string | null>
 
 export function usePrompt() {
   const showPrompt = async ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {
-    const [resolvedTitle, resolvedConfirmButtonText, resolvedCancelButtonText] = await Promise.all([
-      title ? Promise.resolve(title) : ensureStrings.usePrompt__prompt(),
-      confirmButtonText ? Promise.resolve(confirmButtonText) : ensureStrings.SHARED__confirm(),
-      cancelButtonText ? Promise.resolve(cancelButtonText) : ensureStrings.SHARED__cancel(),
-    ]);
+    const resolvedTitle = title || await ensureStrings.usePrompt__prompt();
+    const resolvedConfirmButtonText = confirmButtonText || await ensureStrings.SHARED__confirm();
+    const resolvedCancelButtonText = cancelButtonText || await ensureStrings.SHARED__cancel();
 
     return new Promise((resolve) => {
       promptTitle.value = resolvedTitle;

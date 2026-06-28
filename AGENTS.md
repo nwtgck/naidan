@@ -6,6 +6,15 @@
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.
+* **Boundary Strings in Tests**: When string loading is not part of the behavior under test, preload strings locally in the relevant test file or suite:
+
+```ts
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+```
+
+Do not use this in global test setup or in tests for `lazyStrings`, `ensureStrings`, boundary loading, unresolved strings, or locale switching. In those tests, exercise and await the actual loading behavior.
 
 # Function Signatures & Named Arguments
 

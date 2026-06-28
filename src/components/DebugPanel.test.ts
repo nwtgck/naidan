@@ -5,6 +5,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useLayout } from '@/composables/useLayout';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { ref } from 'vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 vi.mock('../composables/useGlobalEvents', () => ({
   useGlobalEvents: vi.fn(),
@@ -25,7 +26,8 @@ describe('DebugPanel', () => {
   const mockOpenFileExplorer = vi.fn();
   const isDebugOpen = ref(false);
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     isDebugOpen.value = false;
     (useGlobalEvents as unknown as Mock).mockReturnValue({
@@ -121,11 +123,15 @@ describe('DebugPanel', () => {
     await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
 
     await wrapper.find('[data-testid="trigger-test-info"]').trigger('click');
-    expect(mockAddInfoEvent).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(mockAddInfoEvent).toHaveBeenCalled();
+    });
 
     await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
     await wrapper.find('[data-testid="trigger-test-error"]').trigger('click');
-    expect(mockAddErrorEvent).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(mockAddErrorEvent).toHaveBeenCalled();
+    });
   });
 
   it('opens the file explorer at the OPFS root from the menu', async () => {

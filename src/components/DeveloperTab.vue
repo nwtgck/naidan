@@ -27,12 +27,12 @@ function togglePWAUpdate() {
 }
 
 async function handleResetData() {
-  const [title, message, confirmButtonText] = await Promise.all([
-    ensureStrings.DeveloperTab__confirm_data_reset(),
-    ensureStrings.DeveloperTab__reset_all_app_data_warning(),
-    ensureStrings.DeveloperTab__reset(),
-  ]);
-  const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
+  const confirmed = await showConfirm({
+    title: await ensureStrings.DeveloperTab__confirm_data_reset(),
+    message: await ensureStrings.DeveloperTab__reset_all_app_data_warning(),
+    confirmButtonText: await ensureStrings.DeveloperTab__reset(),
+    confirmButtonVariant: 'danger',
+  });
   if (confirmed) {
     await storageService.clearAll();
     window.location.reload();
@@ -40,12 +40,12 @@ async function handleResetData() {
 }
 
 async function handleClearAllCacheStorage() {
-  const [title, message, confirmButtonText] = await Promise.all([
-    ensureStrings.DeveloperTab__clear_all_cache_storage(),
-    ensureStrings.DeveloperTab__clear_cache_storage_warning(),
-    ensureStrings.DeveloperTab__clear_all(),
-  ]);
-  const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
+  const confirmed = await showConfirm({
+    title: await ensureStrings.DeveloperTab__clear_all_cache_storage(),
+    message: await ensureStrings.DeveloperTab__clear_cache_storage_warning(),
+    confirmButtonText: await ensureStrings.DeveloperTab__clear_all(),
+    confirmButtonVariant: 'danger',
+  });
   if (confirmed) {
     if (window.caches) {
       const names = await caches.keys();

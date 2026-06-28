@@ -18,15 +18,11 @@ const menuRef = ref<HTMLElement | null>(null);
 
 async function triggerTestError(): Promise<void> {
   isMenuOpen.value = false;
-  const [message, hint] = await Promise.all([
-    ensureStrings.DebugPanel__intentional_test_error_triggered_by_user(),
-    ensureStrings.DebugPanel__this_is_used_to_verify_the_error_event_system_ui(),
-  ]);
   addErrorEvent({
     source: 'DevTools',
-    message,
+    message: await ensureStrings.DebugPanel__intentional_test_error_triggered_by_user(),
     details: {
-      hint,
+      hint: await ensureStrings.DebugPanel__this_is_used_to_verify_the_error_event_system_ui(),
       browser: navigator.userAgent,
     },
   });

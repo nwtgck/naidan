@@ -68,12 +68,11 @@ onMounted(() => {
 
 async function handleEnablePersistence() {
   if (typeof navigator === 'undefined' || !navigator.storage || !navigator.storage.persist) {
-    const [title, message, confirmButtonText] = await Promise.all([
-      ensureStrings.StorageTab__not_supported(),
-      ensureStrings.StorageTab__persistent_storage_not_supported(),
-      ensureStrings.StorageTab__understand(),
-    ]);
-    await showConfirm({ title, message, confirmButtonText });
+    await showConfirm({
+      title: await ensureStrings.StorageTab__not_supported(),
+      message: await ensureStrings.StorageTab__persistent_storage_not_supported(),
+      confirmButtonText: await ensureStrings.StorageTab__understand(),
+    });
     return;
   }
 
@@ -81,21 +80,19 @@ async function handleEnablePersistence() {
     const persistent = await navigator.storage.persist();
     storagePersistenceStatus.value = persistent ? 'persisted' : 'not-persisted';
     if (!persistent) {
-      const [title, message, confirmButtonText] = await Promise.all([
-        ensureStrings.StorageTab__persistence_denied(),
-        ensureStrings.StorageTab__browser_declined_persistence(),
-        ensureStrings.StorageTab__understand(),
-      ]);
-      await showConfirm({ title, message, confirmButtonText });
+      await showConfirm({
+        title: await ensureStrings.StorageTab__persistence_denied(),
+        message: await ensureStrings.StorageTab__browser_declined_persistence(),
+        confirmButtonText: await ensureStrings.StorageTab__understand(),
+      });
     }
   } catch (err) {
     console.error('Failed to enable persistence:', err);
-    const [title, message, confirmButtonText] = await Promise.all([
-      ensureStrings.StorageTab__error(),
-      ensureStrings.StorageTab__failed_to_enable_persistence({ errorMessage: err instanceof Error ? err.message : String(err) }),
-      ensureStrings.StorageTab__understand(),
-    ]);
-    await showConfirm({ title, message, confirmButtonText });
+    await showConfirm({
+      title: await ensureStrings.StorageTab__error(),
+      message: await ensureStrings.StorageTab__failed_to_enable_persistence({ errorMessage: err instanceof Error ? err.message : String(err) }),
+      confirmButtonText: await ensureStrings.StorageTab__understand(),
+    });
   }
 }
 
@@ -108,12 +105,12 @@ async function handleStorageChange({ targetType }: { targetType: 'local' | 'opfs
   if ((currentProviderType === 'opfs' || currentProviderType === 'memory') && targetType === 'local') {
     const hasFiles = await storageService.hasAttachments();
     if (hasFiles) {
-      const [title, message, confirmButtonText] = await Promise.all([
-        ensureStrings.StorageTab__attachments_will_be_inaccessible(),
-        ensureStrings.StorageTab__local_storage_loses_attachments(),
-        ensureStrings.StorageTab__switch_and_lose_attachments(),
-      ]);
-      const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
+      const confirmed = await showConfirm({
+        title: await ensureStrings.StorageTab__attachments_will_be_inaccessible(),
+        message: await ensureStrings.StorageTab__local_storage_loses_attachments(),
+        confirmButtonText: await ensureStrings.StorageTab__switch_and_lose_attachments(),
+        confirmButtonVariant: 'danger',
+      });
       if (!confirmed) {
         return;
       }
@@ -136,12 +133,11 @@ async function handleStorageChange({ targetType }: { targetType: 'local' | 'opfs
     throw new Error(`Unhandled storage type: ${_ex}`);
   }
   }
-  const [title, message, confirmButtonText] = await Promise.all([
-    ensureStrings.StorageTab__confirm_storage_switch(),
-    ensureStrings.StorageTab__confirm_switch_to_storage({ storageName }),
-    ensureStrings.StorageTab__switch_and_migrate(),
-  ]);
-  const confirmed = await showConfirm({ title, message, confirmButtonText });
+  const confirmed = await showConfirm({
+    title: await ensureStrings.StorageTab__confirm_storage_switch(),
+    message: await ensureStrings.StorageTab__confirm_switch_to_storage({ storageName }),
+    confirmButtonText: await ensureStrings.StorageTab__switch_and_migrate(),
+  });
 
   if (!confirmed) {
     return;
@@ -153,22 +149,21 @@ async function handleStorageChange({ targetType }: { targetType: 'local' | 'opfs
     emit('update:storageType', targetType);
   } catch (err) {
     console.error('Failed to migrate storage:', err);
-    const [title, message, confirmButtonText] = await Promise.all([
-      ensureStrings.StorageTab__migration_failed(),
-      ensureStrings.StorageTab__failed_to_migrate_data({ errorMessage: err instanceof Error ? err.message : String(err) }),
-      ensureStrings.StorageTab__understand(),
-    ]);
-    await showConfirm({ title, message, confirmButtonText });
+    await showConfirm({
+      title: await ensureStrings.StorageTab__migration_failed(),
+      message: await ensureStrings.StorageTab__failed_to_migrate_data({ errorMessage: err instanceof Error ? err.message : String(err) }),
+      confirmButtonText: await ensureStrings.StorageTab__understand(),
+    });
   }
 }
 
 async function handleDeleteAllHistory() {
-  const [title, message, confirmButtonText] = await Promise.all([
-    ensureStrings.StorageTab__clear_history(),
-    ensureStrings.StorageTab__delete_all_chats_warning(),
-    ensureStrings.StorageTab__clear_all(),
-  ]);
-  const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
+  const confirmed = await showConfirm({
+    title: await ensureStrings.StorageTab__clear_history(),
+    message: await ensureStrings.StorageTab__delete_all_chats_warning(),
+    confirmButtonText: await ensureStrings.StorageTab__clear_all(),
+    confirmButtonVariant: 'danger',
+  });
 
   if (confirmed) {
     await chatLifecycle.deleteAllChats();

@@ -153,13 +153,12 @@ const activeTab = computed({
 
 async function handleCancel() {
   if (hasUnsavedConnectionChanges.value) {
-    const [title, message, confirmButtonText, cancelButtonText] = await Promise.all([
-      ensureStrings.SettingsModal__discard_unsaved_changes(),
-      ensureStrings.SettingsModal__discard_unsaved_connection_changes(),
-      ensureStrings.SettingsModal__discard(),
-      ensureStrings.SettingsModal__keep_editing(),
-    ]);
-    const confirmed = await showConfirm({ title, message, confirmButtonText, cancelButtonText });
+    const confirmed = await showConfirm({
+      title: await ensureStrings.SettingsModal__discard_unsaved_changes(),
+      message: await ensureStrings.SettingsModal__discard_unsaved_connection_changes(),
+      confirmButtonText: await ensureStrings.SettingsModal__discard(),
+      cancelButtonText: await ensureStrings.SettingsModal__keep_editing(),
+    });
     if (confirmed) {
       emit('close');
     }

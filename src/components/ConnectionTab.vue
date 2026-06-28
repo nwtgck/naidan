@@ -183,27 +183,20 @@ async function handleSave() {
     }, 2000);
   } catch (err) {
     console.error('Failed to save settings:', err);
-    const [title, message, confirmButtonText] = await Promise.all([
-      ensureStrings.ConnectionTab__save_failed(),
-      ensureStrings.ConnectionTab__failed_to_save_settings({ errorMessage: err instanceof Error ? err.message : String(err) }),
-      ensureStrings.ConnectionTab__understand(),
-    ]);
-    await showConfirm({ title, message, confirmButtonText });
+    await showConfirm({
+      title: await ensureStrings.ConnectionTab__save_failed(),
+      message: await ensureStrings.ConnectionTab__failed_to_save_settings({ errorMessage: err instanceof Error ? err.message : String(err) }),
+      confirmButtonText: await ensureStrings.ConnectionTab__understand(),
+    });
   }
 }
 
 async function handleCreateProviderProfile() {
-  const [title, message, defaultLabel, confirmButtonText] = await Promise.all([
-    ensureStrings.ConnectionTab__create_new_profile(),
-    ensureStrings.ConnectionTab__give_configuration_a_name(),
-    ensureStrings.ConnectionTab__default(),
-    ensureStrings.ConnectionTab__create(),
-  ]);
   const name = await showPrompt({
-    title,
-    message,
-    defaultValue: `${capitalize({ value: form.value.endpointType })} - ${form.value.defaultModelId || defaultLabel}`,
-    confirmButtonText,
+    title: await ensureStrings.ConnectionTab__create_new_profile(),
+    message: await ensureStrings.ConnectionTab__give_configuration_a_name(),
+    defaultValue: `${capitalize({ value: form.value.endpointType })} - ${form.value.defaultModelId || await ensureStrings.ConnectionTab__default()}`,
+    confirmButtonText: await ensureStrings.ConnectionTab__create(),
     bodyComponent: h(ProviderProfilePreview, { form: form.value }),
   });
 
@@ -225,13 +218,9 @@ async function handleCreateProviderProfile() {
   form.value.providerProfiles.push(newProviderProfile);
   await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(form.value.providerProfiles)) });
 
-  const [profileCreatedMessage, actionLabel] = await Promise.all([
-    ensureStrings.ConnectionTab__profile_created({ profileName: name }),
-    ensureStrings.ConnectionTab__view_profiles(),
-  ]);
   addToast({
-    message: profileCreatedMessage,
-    actionLabel,
+    message: await ensureStrings.ConnectionTab__profile_created({ profileName: name }),
+    actionLabel: await ensureStrings.ConnectionTab__view_profiles(),
     onAction: () => emit('goToProfiles'),
     duration: 5000,
   });

@@ -14,12 +14,12 @@ export function useBinaryActions() {
     const obj = await storageService.getBinaryObject({ binaryObjectId: id });
     const name = obj?.name || idToRaw({ id });
 
-    const [title, message, confirmButtonText] = await Promise.all([
-      ensureStrings.useBinaryActions__delete_binary_object(),
-      ensureStrings.useBinaryActions__delete_binary_object_warning({ name }),
-      ensureStrings.useBinaryActions__delete_permanently(),
-    ]);
-    const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
+    const confirmed = await showConfirm({
+      title: await ensureStrings.useBinaryActions__delete_binary_object(),
+      message: await ensureStrings.useBinaryActions__delete_binary_object_warning({ name }),
+      confirmButtonText: await ensureStrings.useBinaryActions__delete_permanently(),
+      confirmButtonVariant: 'danger',
+    });
 
     if (confirmed) {
       try {
