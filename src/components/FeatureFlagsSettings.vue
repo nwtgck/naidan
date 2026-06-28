@@ -198,13 +198,12 @@ async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool
     return;
   }
 
-  const [title, message, confirmButtonText, cancelButtonText] = await Promise.all([
-    ensureStrings.FeatureFlagsSettings__enable_experimental_feature(),
-    ensureStrings.FeatureFlagsSettings__experimental_feature_warning(),
-    ensureStrings.FeatureFlagsSettings__enable(),
-    ensureStrings.FeatureFlagsSettings__cancel(),
-  ]);
-  const confirmed = await showConfirm({ title, message, confirmButtonText, cancelButtonText });
+  const confirmed = await showConfirm({
+    title: await ensureStrings.FeatureFlagsSettings__enable_experimental_feature(),
+    message: await ensureStrings.FeatureFlagsSettings__experimental_feature_warning(),
+    confirmButtonText: await ensureStrings.FeatureFlagsSettings__enable(),
+    cancelButtonText: await ensureStrings.FeatureFlagsSettings__cancel(),
+  });
 
   if (!confirmed) {
     return;

@@ -154,30 +154,24 @@ export function useSettings(): UseSettingsApi {
         if (storageTypeOverride) {
           if (rawSavedType !== null) {
             if (storageTypeOverride !== rawSavedType) {
-              const [eventMessage, title, message, confirmButtonText] = await Promise.all([
-                ensureStrings.useSettings__storage_type_is_already_set_and_requested_type_was_ignored({
-                  savedStorageType: rawSavedType,
-                  requestedStorageType: storageTypeOverride,
-                }),
-                ensureStrings.useSettings__storage_already_initialized(),
-                ensureStrings.useSettings__request_to_use_storage_type_was_ignored({
-                  savedStorageType: rawSavedType,
-                  requestedStorageType: storageTypeOverride,
-                }),
-                ensureStrings.useSettings__ok(),
-              ]);
               const { addInfoEvent } = useGlobalEvents();
               addInfoEvent({
                 source: 'SettingsService',
-                message: eventMessage,
+                message: await ensureStrings.useSettings__storage_type_is_already_set_and_requested_type_was_ignored({
+                  savedStorageType: rawSavedType,
+                  requestedStorageType: storageTypeOverride,
+                }),
               });
 
               const { showConfirm } = useConfirm();
               // Do not await to avoid blocking initialization/mount
               showConfirm({
-                title,
-                message,
-                confirmButtonText,
+                title: await ensureStrings.useSettings__storage_already_initialized(),
+                message: await ensureStrings.useSettings__request_to_use_storage_type_was_ignored({
+                  savedStorageType: rawSavedType,
+                  requestedStorageType: storageTypeOverride,
+                }),
+                confirmButtonText: await ensureStrings.useSettings__ok(),
               });
             }
           } else {

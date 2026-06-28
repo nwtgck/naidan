@@ -44,6 +44,18 @@ imperative UI API, written into an event, or otherwise will not be revisited by
 a reactive render. Do not use test-wide eager string installation to hide an
 incorrect accessor choice.
 
+Do not use `Promise.all` to resolve multiple `ensureStrings` calls. Their
+results are usually all `string`, so an ordering mistake can remain type-correct
+while assigning the wrong copy to a title, message, button, or other field.
+Messages referenced from the same source module normally share a Boundary pack,
+so after the first `ensureStrings` call loads it, the remaining calls resolve
+without another pack load. Await each message at its named use site instead,
+preserving the original object and expression shape whenever practical.
+
+This restriction is specific to using `Promise.all` for `ensureStrings`. It is
+not a general prohibition on `Promise.all`; for other asynchronous work, decide
+whether concurrency is appropriate from the surrounding design.
+
 Do not weaken an existing API to accept `undefined`, add `?? ''` or `|| ''`, or
 use a type assertion or non-null assertion merely to accept a `lazyStrings`
 result. Instead, keep the use reactive, await `ensureStrings`, or explicitly

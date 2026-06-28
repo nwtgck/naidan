@@ -166,17 +166,13 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       await storageService.deleteChat({ id });
     };
 
-    const [message, actionLabel] = await Promise.all([
-      ensureStrings.useChatLifecycle__chat_was_deleted({
+    const toastId = (injectAddToast ?? addToast)({
+      message: await ensureStrings.useChatLifecycle__chat_was_deleted({
         chatTitle: chat.title === null
           ? { type: 'untitled' }
           : { type: 'titled', value: chat.title },
       }),
-      ensureStrings.useChatLifecycle__undo(),
-    ]);
-    const toastId = (injectAddToast ?? addToast)({
-      message,
-      actionLabel,
+      actionLabel: await ensureStrings.useChatLifecycle__undo(),
       onAction: async () => {
         const originalGroupId = chat.groupId;
         await storageService.updateHierarchy({ updater: ({ current }) => {

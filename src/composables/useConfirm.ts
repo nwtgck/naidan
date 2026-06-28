@@ -21,11 +21,9 @@ let resolvePromise: ReturnType<typeof Promise.withResolvers<boolean>>['resolve']
 
 export function useConfirm() {
   const showConfirm = async ({ title, message, confirmButtonText, cancelButtonText, confirmButtonVariant: buttonVariant, icon }: ConfirmOptions): Promise<boolean> => {
-    const [resolvedTitle, resolvedConfirmButtonText, resolvedCancelButtonText] = await Promise.all([
-      title ? Promise.resolve(title) : ensureStrings.SHARED__confirm(),
-      confirmButtonText ? Promise.resolve(confirmButtonText) : ensureStrings.SHARED__confirm(),
-      cancelButtonText ? Promise.resolve(cancelButtonText) : ensureStrings.SHARED__cancel(),
-    ]);
+    const resolvedTitle = title || await ensureStrings.SHARED__confirm();
+    const resolvedConfirmButtonText = confirmButtonText || await ensureStrings.SHARED__confirm();
+    const resolvedCancelButtonText = cancelButtonText || await ensureStrings.SHARED__cancel();
 
     return new Promise((resolve) => {
       confirmTitle.value = resolvedTitle;

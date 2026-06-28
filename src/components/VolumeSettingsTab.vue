@@ -141,22 +141,18 @@ async function handleVolumeDelete({ volumeId }: { volumeId: VolumeId }) {
 
   switch (volume.type) {
   case 'opfs':
-    [title, message, confirmButtonText, successMessage, errorMessage] = await Promise.all([
-      ensureStrings.volumes__delete_folder(),
-      ensureStrings.volumes__delete_folder_warning({ name: volume.name }),
-      ensureStrings.volumes__delete(),
-      ensureStrings.volumes__folder_deleted(),
-      ensureStrings.volumes__failed_to_delete_folder(),
-    ]);
+    title = await ensureStrings.volumes__delete_folder();
+    message = await ensureStrings.volumes__delete_folder_warning({ name: volume.name });
+    confirmButtonText = await ensureStrings.volumes__delete();
+    successMessage = await ensureStrings.volumes__folder_deleted();
+    errorMessage = await ensureStrings.volumes__failed_to_delete_folder();
     break;
   case 'host':
-    [title, message, confirmButtonText, successMessage, errorMessage] = await Promise.all([
-      ensureStrings.volumes__remove_folder(),
-      ensureStrings.volumes__remove_folder_warning({ name: volume.name }),
-      ensureStrings.volumes__remove(),
-      ensureStrings.volumes__folder_removed(),
-      ensureStrings.volumes__failed_to_remove_folder(),
-    ]);
+    title = await ensureStrings.volumes__remove_folder();
+    message = await ensureStrings.volumes__remove_folder_warning({ name: volume.name });
+    confirmButtonText = await ensureStrings.volumes__remove();
+    successMessage = await ensureStrings.volumes__folder_removed();
+    errorMessage = await ensureStrings.volumes__failed_to_remove_folder();
     break;
   default: {
     const _ex: never = volume.type;

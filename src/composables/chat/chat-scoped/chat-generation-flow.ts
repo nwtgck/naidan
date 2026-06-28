@@ -912,17 +912,11 @@ async function confirmTemporaryAttachments(): Promise<boolean> {
     return true;
   }
 
-  const [title, message, confirmButtonText, cancelButtonText] = await Promise.all([
-    ensureStrings.chatGenerationFlow__attachments_cannot_be_saved(),
-    ensureStrings.chatGenerationFlow__local_storage_attachments_are_only_available_during_this_session(),
-    ensureStrings.chatGenerationFlow__continue_anyway(),
-    ensureStrings.chatGenerationFlow__cancel(),
-  ]);
   return await useConfirm().showConfirm({
-    title,
-    message,
-    confirmButtonText,
-    cancelButtonText,
+    title: await ensureStrings.chatGenerationFlow__attachments_cannot_be_saved(),
+    message: await ensureStrings.chatGenerationFlow__local_storage_attachments_are_only_available_during_this_session(),
+    confirmButtonText: await ensureStrings.chatGenerationFlow__continue_anyway(),
+    cancelButtonText: await ensureStrings.chatGenerationFlow__cancel(),
   });
 }
 
@@ -1266,13 +1260,9 @@ async function showGenerationFailedToast({
   }
 
   const chatTitle = chat.title || await ensureStrings.SHARED__new_chat();
-  const [message, actionLabel] = await Promise.all([
-    ensureStrings.chatGenerationFlow__generation_failed_in_chat({ chatTitle }),
-    ensureStrings.chatGenerationFlow__view(),
-  ]);
   useToast().addToast({
-    message,
-    actionLabel,
+    message: await ensureStrings.chatGenerationFlow__generation_failed_in_chat({ chatTitle }),
+    actionLabel: await ensureStrings.chatGenerationFlow__view(),
     onAction: async () => {
       await useChatNavigation().openChat({ chatId: chat.id, leafId: undefined });
     },

@@ -3,6 +3,7 @@ import { nextTick } from 'vue'; // Imported nextTick from vue
 import { useConfirm } from './useConfirm';
 import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock the global CustomDialog component
 const MockCustomDialog = defineComponent({
@@ -44,7 +45,8 @@ describe('useConfirm', () => {
     `,
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mount(TestComponent, { // No longer assign to wrapper
       global: {

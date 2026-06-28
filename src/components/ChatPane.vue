@@ -357,21 +357,19 @@ function handleAbortTitleGeneration() {
 async function exportChat() {
   if (!chat.value || !chatFlow.value) return;
 
-  const [newChatTitle, userLabel, aiLabel, systemLabel, toolLabel, thoughtLabel, toolExecutionsLabel, binaryObjectMissing, binaryErrorDetailMissing, toolStillExecuting, argumentsLabel, resultLabel, processSequenceLabel] = await Promise.all([
-    ensureStrings.SHARED__new_chat(),
-    ensureStrings.ChatPane__user(),
-    ensureStrings.ChatPane__ai(),
-    ensureStrings.ChatPane__system(),
-    ensureStrings.ChatPane__tool(),
-    ensureStrings.ChatPane__thought(),
-    ensureStrings.ChatPane__tool_executions(),
-    ensureStrings.ChatPane__binary_object_missing(),
-    ensureStrings.ChatPane__binary_error_detail_missing(),
-    ensureStrings.ChatPane__tool_still_executing(),
-    ensureStrings.ChatPane__arguments(),
-    ensureStrings.ChatPane__result(),
-    ensureStrings.ChatPane__process_sequence(),
-  ]);
+  const newChatTitle = await ensureStrings.SHARED__new_chat();
+  const userLabel = await ensureStrings.ChatPane__user();
+  const aiLabel = await ensureStrings.ChatPane__ai();
+  const systemLabel = await ensureStrings.ChatPane__system();
+  const toolLabel = await ensureStrings.ChatPane__tool();
+  const thoughtLabel = await ensureStrings.ChatPane__thought();
+  const toolExecutionsLabel = await ensureStrings.ChatPane__tool_executions();
+  const binaryObjectMissing = await ensureStrings.ChatPane__binary_object_missing();
+  const binaryErrorDetailMissing = await ensureStrings.ChatPane__binary_error_detail_missing();
+  const toolStillExecuting = await ensureStrings.ChatPane__tool_still_executing();
+  const argumentsLabel = await ensureStrings.ChatPane__arguments();
+  const resultLabel = await ensureStrings.ChatPane__result();
+  const processSequenceLabel = await ensureStrings.ChatPane__process_sequence();
   let markdownContent = `# ${chat.value.title || newChatTitle}\n\n`;
 
   const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {

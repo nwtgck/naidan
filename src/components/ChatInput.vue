@@ -591,41 +591,28 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
     }
   }
 
-  let confirmCopy: {
-    title: string,
-    message: string,
-    confirmButtonText: string,
-  };
+  let title: string;
+  let message: string;
+  let confirmButtonText: string;
   switch (volumeType) {
-  case 'host': {
-    const [title, message, confirmButtonText] = await Promise.all([
-      ensureStrings.ChatInput__unlink_folder(),
-      ensureStrings.ChatInput__stop_using_folder(),
-      ensureStrings.ChatInput__unlink(),
-    ]);
-    confirmCopy = { title, message, confirmButtonText };
+  case 'host':
+    title = await ensureStrings.ChatInput__unlink_folder();
+    message = await ensureStrings.ChatInput__stop_using_folder();
+    confirmButtonText = await ensureStrings.ChatInput__unlink();
     break;
-  }
   case 'opfs':
-  case undefined: {
-    const [title, message, confirmButtonText] = await Promise.all([
-      ensureStrings.ChatInput__remove_folder(),
-      ensureStrings.ChatInput__remove_browser_copy(),
-      ensureStrings.ChatInput__remove(),
-    ]);
-    confirmCopy = { title, message, confirmButtonText };
+  case undefined:
+    title = await ensureStrings.ChatInput__remove_folder();
+    message = await ensureStrings.ChatInput__remove_browser_copy();
+    confirmButtonText = await ensureStrings.ChatInput__remove();
     break;
-  }
   default: {
     const _ex: never = volumeType;
     throw new Error(`Unhandled volume type: ${_ex}`);
   }
   }
 
-  const confirmed = await showConfirm({
-    ...confirmCopy,
-    confirmButtonVariant: 'danger',
-  });
+  const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
   if (!confirmed) return;
   await chatMounts.removeMount({
     chatId: props.chatId,
