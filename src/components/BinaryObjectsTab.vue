@@ -68,11 +68,14 @@ const filteredObjects = computed(() => {
 
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase();
-    result = result.filter(f =>
-      (f.name || lazyStrings.binaryObjects__unnamed()).toLowerCase().includes(q) ||
-      idToRaw({ id: f.id }).toLowerCase().includes(q) ||
-      f.mimeType.toLowerCase().includes(q),
-    );
+    result = result.filter((f) => {
+      const displayName = f.name || lazyStrings.binaryObjects__unnamed();
+      return (
+        displayName?.toLowerCase().includes(q) === true ||
+        idToRaw({ id: f.id }).toLowerCase().includes(q) ||
+        f.mimeType.toLowerCase().includes(q)
+      );
+    });
   }
 
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });

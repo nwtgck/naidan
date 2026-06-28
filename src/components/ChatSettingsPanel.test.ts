@@ -1023,13 +1023,13 @@ describe('ChatSettingsPanel.vue', () => {
 
       const typeSelect = wrapper.findAll('select')[1];
       const globalOption = typeSelect!.findAll('option').find(opt => opt.text().includes('(Global)'));
-      expect(globalOption!.text()).toContain('openai (Global)');
+      expect(globalOption!.text()).toContain('OpenAI (Global)');
 
       // Update global setting
       mockSettings.value.endpointType = 'ollama';
       await nextTick();
 
-      expect(globalOption!.text()).toContain('ollama (Global)');
+      expect(globalOption!.text()).toContain('Ollama (Global)');
     });
   });
 

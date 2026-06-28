@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const {
   mockFakeLmDebugModeAvailability,
@@ -62,7 +63,7 @@ vi.mock('lucide-vue-next', () => ({
 }));
 
 describe('FeatureFlagsSettings.vue', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear();
     mockShowConfirm.mockReset();
     mockSaveSettings.mockReset();
@@ -72,6 +73,7 @@ describe('FeatureFlagsSettings.vue', () => {
     mockSettings.value.experimental = undefined;
     const { TEST_ONLY } = useFeatureFlags();
     TEST_ONLY.reset();
+    await ensureAllStringsForTest({ locale: 'en' });
   });
 
   it('renders all feature controls in one vertical settings list', () => {

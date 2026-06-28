@@ -97,19 +97,33 @@ async function handlePreview() {
 async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
   if (!parsed.value) return;
 
-  await ImageDownloadHydrator.download({
+  const downloadOptions = {
     id: toBinaryObjectId({ raw: parsed.value.binaryObjectId }),
     prompt: parsed.value.prompt || '',
     steps: parsed.value.steps,
     seed: parsed.value.seed,
     model: undefined, // Model info not directly available in the block JSON currently
-    withMetadata,
     storageService,
-    onError: async ({ error }) => addErrorEvent({
-      source: 'GeneratedImageBlock:Download',
-      message: await ensureStrings.blockMarkdown__failed_to_embed_metadata_in_image(),
-      details: error instanceof Error ? error.message : String(error),
-    }),
+  };
+
+  if (withMetadata) {
+    const metadataErrorMessage = await ensureStrings.blockMarkdown__failed_to_embed_metadata_in_image();
+    await ImageDownloadHydrator.download({
+      ...downloadOptions,
+      withMetadata: true,
+      onError: ({ error }) => addErrorEvent({
+        source: 'GeneratedImageBlock:Download',
+        message: metadataErrorMessage,
+        details: error instanceof Error ? error.message : String(error),
+      }),
+    });
+    return;
+  }
+
+  await ImageDownloadHydrator.download({
+    ...downloadOptions,
+    withMetadata: false,
+    onError: () => {},
   });
 }
 

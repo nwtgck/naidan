@@ -24,6 +24,9 @@ const emit = defineEmits<{
 
 const detailsState = ref<DetailsState>('collapsed');
 const isDetailsExpanded = computed(() => detailsState.value === 'expanded');
+const detailsAriaLabel = computed(() =>
+  lazyStrings.ExperimentalFeatureRow__details_for({ title: props.title }),
+);
 
 function toggleDetails() {
   switch (detailsState.value) {
@@ -120,7 +123,7 @@ defineExpose({
       :class="isDetailsExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
       role="region"
       :aria-hidden="!isDetailsExpanded"
-      :aria-label="lazyStrings.ExperimentalFeatureRow__details_for({ title: props.title })"
+      :aria-label="detailsAriaLabel"
       :data-testid="`${props.id}-details`"
     >
       <div class="overflow-hidden">

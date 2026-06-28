@@ -1,4 +1,3 @@
-import { lazyStrings } from '@/strings';
 import { computed, type ComputedRef, toRaw } from 'vue';
 import { idToRaw } from '@/models/ids';
 import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/models/types';
@@ -45,7 +44,7 @@ export type ChatFlowItem =
       isCompletedThinking?: boolean,
     }
   | { type: 'tool_group', id: string, toolCalls: CombinedToolCall[], flow: FlowMetadata, node: MessageNode, isFirstInTurn: boolean }
-  | { type: 'process_sequence', id: string, items: ChatFlowItem[], flow: FlowMetadata, summary: string, stats: SequenceStats, isFirstInTurn: boolean };
+  | { type: 'process_sequence', id: string, items: ChatFlowItem[], flow: FlowMetadata, stats: SequenceStats, isFirstInTurn: boolean };
 
 /**
  * A "ChatFlowAtom" is an atomic unit of a message branch before grouping.
@@ -179,7 +178,8 @@ export function useChatDisplayFlow({
           }));
           yield { type: 'tool_group', id: idToRaw({ id: nodeId }), toolCalls, node, isFirstInTurn };
         } else {
-          yield { type: 'content', node, content: lazyStrings.useChatDisplayFlow__tool_results(), isFirstInNode: true, isLastInNode: true, isFirstInTurn };
+          // TODO(strings-localize): Localizing this fallback requires a semantic flow item so this synchronous structure does not store display copy.
+          yield { type: 'content', node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn };
         }
         break;
       }
@@ -228,7 +228,7 @@ export function useChatDisplayFlow({
           flow: { ...item.flow, nesting: 'inside-group' as const },
         }));
 
-        yield { type: 'process_sequence', id, items: nestedItems, flow: { position: 'standalone', nesting: 'none' }, summary: calculateSummary({ stats }), stats, isFirstInTurn: first.isFirstInTurn };
+        yield { type: 'process_sequence', id, items: nestedItems, flow: { position: 'standalone', nesting: 'none' }, stats, isFirstInTurn: first.isFirstInTurn };
       } else if (buffer.length === 1) {
         yield buffer[0]!;
       }
@@ -342,21 +342,6 @@ export function useChatDisplayFlow({
     return { thinkingSteps, toolCallCount: seenToolIds.size, toolNames: [...new Set(toolNames)], isCurrentlyThinking: false, isCurrentlyToolRunning: false, isWaiting: false };
   };
 
-  const calculateSummary = ({ stats }: { stats: SequenceStats }): string => {
-    const parts: string[] = [];
-    if (stats.thinkingSteps > 0) parts.push(lazyStrings.useChatDisplayFlow__thinking_steps({ count: stats.thinkingSteps }));
-    if (stats.toolCallCount > 0) parts.push(lazyStrings.useChatDisplayFlow__tool_executions({ count: stats.toolCallCount }));
-    if (stats.toolNames.length > 0) {
-      const limit = 2;
-      const displayed = stats.toolNames.slice(0, limit);
-      let toolStr = lazyStrings.useChatDisplayFlow__used_tools({ toolNames: displayed.join(', ') });
-      if (stats.toolNames.length > limit) {
-        toolStr += ` ${lazyStrings.useChatDisplayFlow__and_more({ count: stats.toolNames.length - limit })}`;
-      }
-      parts.push(toolStr);
-    }
-    return parts.join(' • ') || lazyStrings.useChatDisplayFlow__process_details();
-  };
 
   const chatFlow = computed<ChatFlowItem[]>(() => {
     const chatVal = chat.value;

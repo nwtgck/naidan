@@ -201,13 +201,14 @@ onUnmounted(() => {
   thumbnails.value.forEach(url => URL.revokeObjectURL(url));
 });
 
-const handlePreview = ({ item }: { item: MediaItem }) => {
+const handlePreview = async ({ item }: { item: MediaItem }): Promise<void> => {
+  const generatedImageName = await ensureStrings.ChatMediaShelf__generated_image();
   const objects: BinaryObject[] = allMediaItems.value.map(i => ({
     id: i.binaryObjectId,
     mimeType: i.mimeType,
     size: i.size,
     createdAt: 0,
-    name: i.name || i.prompt || lazyStrings.ChatMediaShelf__generated_image(),
+    name: i.name || i.prompt || generatedImageName,
   }));
 
   openPreview({
@@ -218,6 +219,7 @@ const handlePreview = ({ item }: { item: MediaItem }) => {
 
 const handleDownload = async ({ item, withMetadata }: { item: MediaItem, withMetadata: boolean }) => {
   if (withMetadata) {
+    const metadataErrorMessage = await ensureStrings.ChatMediaShelf__failed_to_embed_metadata_in_image();
     await ImageDownloadHydrator.download({
       id: item.binaryObjectId,
       prompt: item.prompt || '',
@@ -226,10 +228,9 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem, withMet
       model: item.model,
       withMetadata: true,
       storageService,
-      onError: async ({ error }) => addErrorEvent({
+      onError: ({ error }) => addErrorEvent({
         source: 'MediaShelf:Download',
-        message: await ensureStrings.ChatMediaShelf__failed_to_embed_metadata_in_image(),
-
+        message: metadataErrorMessage,
         details: error instanceof Error ? error.message : String(error),
       }),
     });

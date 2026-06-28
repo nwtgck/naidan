@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { lazyStrings } from '@/strings';
+import { ensureStrings, lazyStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon } from 'lucide-vue-next';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
@@ -107,7 +107,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
   })();
 
   // Helper to extract IDs from a node
-  const extractIds = ({ node }: { node: MessageNode }) => {
+  const extractIds = async ({ node }: { node: MessageNode }): Promise<void> => {
     // From attachments
     if (node.attachments) {
       for (const att of node.attachments) {
@@ -132,7 +132,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
           console.error('Failed to parse image block in ChatDebugInspector:', e);
           addErrorEvent({
             source: 'ChatDebugInspector:handlePreviewAttachment',
-            message: 'Failed to parse image metadata during preview collection.',
+            message: await ensureStrings.ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection(),
             details: e instanceof Error ? e.message : String(e),
           });
         }
@@ -142,7 +142,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
 
   // Traverse the relevant nodes
   for (const node of nodesToScan) {
-    extractIds({ node });
+    await extractIds({ node });
   }
 
   // Ensure the clicked one is in the set
@@ -234,7 +234,7 @@ defineExpose({
             <!-- Mode Switcher -->
             <div class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner">
               <button
-                v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: 'Active'}, {id: 'tree', icon: NetworkIcon, label: 'Tree'}, {id: 'raw', icon: FileCodeIcon, label: 'Full JSON'}] as const)"
+                v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: lazyStrings.ChatDebugInspector__active()}, {id: 'tree', icon: NetworkIcon, label: lazyStrings.ChatDebugInspector__tree()}, {id: 'raw', icon: FileCodeIcon, label: lazyStrings.ChatDebugInspector__full_json()}] as const)"
                 :key="m.id"
                 @click="mode = m.id"
                 class="px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider"

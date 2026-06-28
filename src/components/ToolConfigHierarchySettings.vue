@@ -25,13 +25,13 @@ import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 
 export type ToolConfigSettingsScope = 'global' | 'chat_group' | 'chat';
-export type ToolConfigInheritanceSource = 'global' | 'group';
+export type ToolConfigInheritanceLabel = 'Use global' | 'Use group';
 
 const props = defineProps<{
   scope: ToolConfigSettingsScope,
   toolConfigs: ToolConfig[] | undefined,
   effectiveToolConfigs: ToolConfig[],
-  inheritanceSourceByKey?: Readonly<Record<BuiltinToolKey, ToolConfigInheritanceSource>>,
+  inheritanceLabelByKey?: Readonly<Record<BuiltinToolKey, ToolConfigInheritanceLabel>>,
   isEditable: boolean,
 }>();
 
@@ -45,37 +45,53 @@ const emit = defineEmits<{
 const { isFeatureEnabled } = useFeatureFlags();
 const { settings } = useSettings();
 
-const toolDefinitions = computed<readonly {
-  key: BuiltinToolKey,
-  name: string,
-  description: string,
-  icon: Component,
-}[]>(() => [
-  {
-    key: 'builtin.calculator',
-    name: lazyStrings.ToolConfigHierarchySettings__calculator(),
-    description: lazyStrings.ToolConfigHierarchySettings__solve_math_expressions(),
-    icon: CalculatorIcon,
-  },
-  {
-    key: 'builtin.choices',
-    name: lazyStrings.ToolConfigHierarchySettings__choices(),
-    description: lazyStrings.ToolConfigHierarchySettings__choose_from_model_provided_options(),
-    icon: ListIcon,
-  },
-  {
-    key: 'builtin.wikipedia',
-    name: lazyStrings.ToolConfigHierarchySettings__wikipedia(),
-    description: lazyStrings.ToolConfigHierarchySettings__access_global_knowledge(),
-    icon: BookOpenIcon,
-  },
-  {
-    key: 'builtin.wesh',
-    name: lazyStrings.ToolConfigHierarchySettings__shell(),
-    description: lazyStrings.ToolConfigHierarchySettings__shell_in_browser(),
-    icon: TerminalIcon,
-  },
-]);
+type ToolDefinition = {
+  readonly key: BuiltinToolKey,
+  readonly name: string,
+  readonly description: string,
+  readonly icon: Component,
+};
+
+type ToolDefinitionDraft = Omit<ToolDefinition, 'name' | 'description'> & {
+  readonly name: string | undefined,
+  readonly description: string | undefined,
+};
+
+const toolDefinitions = computed<readonly ToolDefinition[]>(() => {
+  const drafts: readonly ToolDefinitionDraft[] = [
+    {
+      key: 'builtin.calculator',
+      name: lazyStrings.ToolConfigHierarchySettings__calculator(),
+      description: lazyStrings.ToolConfigHierarchySettings__solve_math_expressions(),
+      icon: CalculatorIcon,
+    },
+    {
+      key: 'builtin.choices',
+      name: lazyStrings.ToolConfigHierarchySettings__choices(),
+      description: lazyStrings.ToolConfigHierarchySettings__choose_from_model_provided_options(),
+      icon: ListIcon,
+    },
+    {
+      key: 'builtin.wikipedia',
+      name: lazyStrings.ToolConfigHierarchySettings__wikipedia(),
+      description: lazyStrings.ToolConfigHierarchySettings__access_global_knowledge(),
+      icon: BookOpenIcon,
+    },
+    {
+      key: 'builtin.wesh',
+      name: lazyStrings.ToolConfigHierarchySettings__shell(),
+      description: lazyStrings.ToolConfigHierarchySettings__shell_in_browser(),
+      icon: TerminalIcon,
+    },
+  ];
+
+  const resolved: ToolDefinition[] = [];
+  for (const draft of drafts) {
+    if (draft.name === undefined || draft.description === undefined) return [];
+    resolved.push({ ...draft, name: draft.name, description: draft.description });
+  }
+  return resolved;
+});
 
 const visibleToolDefinitions = computed(() => toolDefinitions.value.filter((tool) => {
   switch (tool.key) {
@@ -130,32 +146,51 @@ function toggleStatus({ key }: { key: BuiltinToolKey }): void {
   });
 }
 
-function inheritanceLabel({ key }: { key: BuiltinToolKey }): string {
+function inheritanceLabel({ key }: { key: BuiltinToolKey }): string | undefined {
+  let label: ToolConfigInheritanceLabel;
   switch (props.scope) {
   case 'global':
     throw new Error('Global tool settings do not inherit from another configurable layer');
   case 'chat_group':
-    return lazyStrings.SHARED__use_global();
+    label = 'Use global';
+    break;
   case 'chat': {
-    const source = props.inheritanceSourceByKey?.[key];
-    switch (source) {
-    case 'global':
-      return lazyStrings.SHARED__use_global();
-    case 'group':
-      return lazyStrings.SHARED__use_group();
-    case undefined:
-      throw new Error(`Missing Chat tool inheritance source: ${key}`);
-    default: {
-      const _ex: never = source;
-      throw new Error(`Unhandled Chat tool inheritance source: ${_ex}`);
+    const inheritedLabel = props.inheritanceLabelByKey?.[key];
+    if (inheritedLabel === undefined) {
+      throw new Error(`Missing Chat tool inheritance label: ${key}`);
     }
-    }
+    label = inheritedLabel;
+    break;
   }
   default: {
     const _ex: never = props.scope;
     throw new Error(`Unhandled tool config scope: ${_ex}`);
   }
   }
+
+  switch (label) {
+  case 'Use global':
+    return lazyStrings.ToolConfigHierarchySettings__use_global();
+  case 'Use group':
+    return lazyStrings.ToolConfigHierarchySettings__use_group();
+  default: {
+    const _ex: never = label;
+    throw new Error(`Unhandled tool inheritance label: ${_ex}`);
+  }
+  }
+}
+
+function toggleAriaLabel({
+  key,
+  toolName,
+}: {
+  key: BuiltinToolKey,
+  toolName: string | undefined,
+}): string | undefined {
+  if (toolName === undefined) return undefined;
+  return isEffectivelyEnabled({ key })
+    ? lazyStrings.ToolConfigHierarchySettings__turn_off_tool({ toolName })
+    : lazyStrings.ToolConfigHierarchySettings__turn_on_tool({ toolName });
 }
 
 function handleAccessScopeChange({ event }: { event: Event }): void {
@@ -273,7 +308,7 @@ defineExpose({
                 : 'bg-gray-300 dark:bg-gray-600'"
               :disabled="!isEditable"
               :aria-checked="isEffectivelyEnabled({ key: tool.key })"
-              :aria-label="`${isEffectivelyEnabled({ key: tool.key }) ? lazyStrings.ToolConfigHierarchySettings__turn_off() : lazyStrings.ToolConfigHierarchySettings__turn_on()} ${tool.name}`"
+              :aria-label="toggleAriaLabel({ key: tool.key, toolName: tool.name })"
               :data-testid="`tool-config-${tool.key}-toggle`"
               @click="toggleStatus({ key: tool.key })"
             >
@@ -322,7 +357,7 @@ defineExpose({
                 : 'bg-gray-300 dark:bg-gray-600'"
               :disabled="!isEditable"
               :aria-checked="isEffectivelyEnabled({ key: tool.key })"
-              :aria-label="`${isEffectivelyEnabled({ key: tool.key }) ? lazyStrings.ToolConfigHierarchySettings__turn_off() : lazyStrings.ToolConfigHierarchySettings__turn_on()} ${tool.name}`"
+              :aria-label="toggleAriaLabel({ key: tool.key, toolName: tool.name })"
               :data-testid="`tool-config-${tool.key}-toggle`"
               @click="toggleStatus({ key: tool.key })"
             >

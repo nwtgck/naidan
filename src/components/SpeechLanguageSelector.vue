@@ -17,17 +17,27 @@ const isRedetecting = ref(false);
 const selectedLang = computed(() => webSpeechService.state.preferredLang);
 const detectedLang = computed(() => webSpeechService.state.detectedLang);
 
-const languages = computed<Array<{ label: string, value: SpeechLanguage }>>(() => [
-  { label: lazyStrings.SpeechLanguageSelector__auto_detect(), value: 'auto' },
-  { label: lazyStrings.SpeechLanguageSelector__english(), value: 'en-US' },
-  { label: '日本語', value: 'ja-JP' },
-  { label: '한국어', value: 'ko-KR' },
-  { label: '中文', value: 'zh-CN' },
-  { label: 'Français', value: 'fr-FR' },
-  { label: 'Deutsch', value: 'de-DE' },
-  { label: 'Español', value: 'es-ES' },
-  { label: 'Русский', value: 'ru-RU' },
-]);
+type SpeechLanguageOption = {
+  label: string,
+  value: SpeechLanguage,
+};
+
+const languages = computed<SpeechLanguageOption[]>(() => {
+  // Keep language names self-identifying so users can recover after selecting
+  // a language they cannot otherwise read.
+  const options = [
+    { label: lazyStrings.SpeechLanguageSelector__auto_detect(), value: 'auto' as const },
+    { label: lazyStrings.SpeechLanguageSelector__english(), value: 'en-US' as const },
+    { label: '日本語', value: 'ja-JP' as const },
+    { label: '한국어', value: 'ko-KR' as const },
+    { label: '中文', value: 'zh-CN' as const },
+    { label: 'Français', value: 'fr-FR' as const },
+    { label: 'Deutsch', value: 'de-DE' as const },
+    { label: 'Español', value: 'es-ES' as const },
+    { label: 'Русский', value: 'ru-RU' as const },
+  ];
+  return options.filter((option): option is SpeechLanguageOption => option.label !== undefined);
+});
 
 function setLanguage({ lang }: { lang: SpeechLanguage }) {
   webSpeechService.setPreferredLang({ lang });

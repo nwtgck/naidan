@@ -168,7 +168,9 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
     const [message, actionLabel] = await Promise.all([
       ensureStrings.useChatLifecycle__chat_was_deleted({
-        chatTitle: chat.title ?? undefined,
+        chatTitle: chat.title === null
+          ? { type: 'untitled' }
+          : { type: 'titled', value: chat.title },
       }),
       ensureStrings.useChatLifecycle__undo(),
     ]);

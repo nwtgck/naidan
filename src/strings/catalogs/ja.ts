@@ -9,17 +9,12 @@ import { SHARED__confirm } from '@/strings/messages/SHARED__confirm/ja';
 import { SHARED__connection_failed_check_url_or_provider } from '@/strings/messages/SHARED__connection_failed_check_url_or_provider/ja';
 import { SHARED__current_chat } from '@/strings/messages/SHARED__current_chat/ja';
 import { SHARED__current_chat_plus_chat_group } from '@/strings/messages/SHARED__current_chat_plus_chat_group/ja';
-import { SHARED__default } from '@/strings/messages/SHARED__default/ja';
 import { SHARED__expose_chat_discovery_paths } from '@/strings/messages/SHARED__expose_chat_discovery_paths/ja';
 import { SHARED__generated_image } from '@/strings/messages/SHARED__generated_image/ja';
 import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp } from '@/strings/messages/SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp/ja';
 import { SHARED__mount } from '@/strings/messages/SHARED__mount/ja';
 import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/ja';
 import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/ja';
-import { SHARED__use_global } from '@/strings/messages/SHARED__use_global/ja';
-import { SHARED__use_group } from '@/strings/messages/SHARED__use_group/ja';
-import { SHARED__value_from_global } from '@/strings/messages/SHARED__value_from_global/ja';
-import { SHARED__value_from_group } from '@/strings/messages/SHARED__value_from_group/ja';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/ja';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/ja';
 
@@ -35,9 +30,13 @@ import { AboutTab__unknown_package } from '@/strings/messages/AboutTab__unknown_
 import { AboutTab__version } from '@/strings/messages/AboutTab__version/ja';
 import { AboutTab__view_license_text } from '@/strings/messages/AboutTab__view_license_text/ja';
 import { AboutTab__view_source_code_and_contribute } from '@/strings/messages/AboutTab__view_source_code_and_contribute/ja';
+import { AssistantProcessSequence__and_more } from '@/strings/messages/AssistantProcessSequence__and_more/ja';
 import { AssistantProcessSequence__less } from '@/strings/messages/AssistantProcessSequence__less/ja';
 import { AssistantProcessSequence__process_details } from '@/strings/messages/AssistantProcessSequence__process_details/ja';
 import { AssistantProcessSequence__show } from '@/strings/messages/AssistantProcessSequence__show/ja';
+import { AssistantProcessSequence__thinking_steps } from '@/strings/messages/AssistantProcessSequence__thinking_steps/ja';
+import { AssistantProcessSequence__tool_executions } from '@/strings/messages/AssistantProcessSequence__tool_executions/ja';
+import { AssistantProcessSequence__used_tools } from '@/strings/messages/AssistantProcessSequence__used_tools/ja';
 import { AssistantWaitingIndicator__waiting_for_response } from '@/strings/messages/AssistantWaitingIndicator__waiting_for_response/ja';
 import { ChatAttachMenu__a_private_copy_is_saved_in_your_browser } from '@/strings/messages/ChatAttachMenu__a_private_copy_is_saved_in_your_browser/ja';
 import { ChatAttachMenu__attach_files_or_folder } from '@/strings/messages/ChatAttachMenu__attach_files_or_folder/ja';
@@ -50,19 +49,23 @@ import { ChatAttachMenu__requires_a_chromium_based_browser } from '@/strings/mes
 import { ChatAttachMenu__what_is_folder_copy } from '@/strings/messages/ChatAttachMenu__what_is_folder_copy/ja';
 import { ChatAttachMenu__what_is_folder_link } from '@/strings/messages/ChatAttachMenu__what_is_folder_link/ja';
 import { ChatAttachMenu__why_is_folder_link_unavailable } from '@/strings/messages/ChatAttachMenu__why_is_folder_link_unavailable/ja';
+import { ChatDebugInspector__active } from '@/strings/messages/ChatDebugInspector__active/ja';
 import { ChatDebugInspector__chat_inspector } from '@/strings/messages/ChatDebugInspector__chat_inspector/ja';
 import { ChatDebugInspector__collapse_tree } from '@/strings/messages/ChatDebugInspector__collapse_tree/ja';
 import { ChatDebugInspector__context_path } from '@/strings/messages/ChatDebugInspector__context_path/ja';
 import { ChatDebugInspector__data_explorer } from '@/strings/messages/ChatDebugInspector__data_explorer/ja';
 import { ChatDebugInspector__expand_tree } from '@/strings/messages/ChatDebugInspector__expand_tree/ja';
+import { ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection } from '@/strings/messages/ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection/ja';
 import { ChatDebugInspector__fake_lm } from '@/strings/messages/ChatDebugInspector__fake_lm/ja';
 import { ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds } from '@/strings/messages/ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds/ja';
+import { ChatDebugInspector__full_json } from '@/strings/messages/ChatDebugInspector__full_json/ja';
 import { ChatDebugInspector__on } from '@/strings/messages/ChatDebugInspector__on/ja';
 import { ChatDebugInspector__open_at_this_message } from '@/strings/messages/ChatDebugInspector__open_at_this_message/ja';
 import { ChatDebugInspector__select_a_node_to_inspect } from '@/strings/messages/ChatDebugInspector__select_a_node_to_inspect/ja';
 import { ChatDebugInspector__set_this_chat_to_ollama_and_enable_global_fake_lm_debug_mode } from '@/strings/messages/ChatDebugInspector__set_this_chat_to_ollama_and_enable_global_fake_lm_debug_mode/ja';
 import { ChatDebugInspector__toggle_content_collapse } from '@/strings/messages/ChatDebugInspector__toggle_content_collapse/ja';
 import { ChatDebugInspector__toggle_highlighting } from '@/strings/messages/ChatDebugInspector__toggle_highlighting/ja';
+import { ChatDebugInspector__tree } from '@/strings/messages/ChatDebugInspector__tree/ja';
 import { ChatDebugTreeNode__collapse_content } from '@/strings/messages/ChatDebugTreeNode__collapse_content/ja';
 import { ChatDebugTreeNode__error } from '@/strings/messages/ChatDebugTreeNode__error/ja';
 import { ChatDebugTreeNode__generated_image_reference } from '@/strings/messages/ChatDebugTreeNode__generated_image_reference/ja';
@@ -209,6 +212,7 @@ import { ChatPane__binary_object_missing } from '@/strings/messages/ChatPane__bi
 import { ChatPane__chat } from '@/strings/messages/ChatPane__chat/ja';
 import { ChatPane__drop_files_or_folders_to_attach } from '@/strings/messages/ChatPane__drop_files_or_folders_to_attach/ja';
 import { ChatPane__failed_to_generate_share_url } from '@/strings/messages/ChatPane__failed_to_generate_share_url/ja';
+import { ChatPane__fake_lm_enabled_for_this_chat_via } from '@/strings/messages/ChatPane__fake_lm_enabled_for_this_chat_via/ja';
 import { ChatPane__process_sequence } from '@/strings/messages/ChatPane__process_sequence/ja';
 import { ChatPane__result } from '@/strings/messages/ChatPane__result/ja';
 import { ChatPane__share_url_copied_to_clipboard } from '@/strings/messages/ChatPane__share_url_copied_to_clipboard/ja';
@@ -362,6 +366,7 @@ import { DebugPanel__explore_opfs } from '@/strings/messages/DebugPanel__explore
 import { DebugPanel__intentional_test_error_triggered_by_user } from '@/strings/messages/DebugPanel__intentional_test_error_triggered_by_user/ja';
 import { DebugPanel__no_events_recorded } from '@/strings/messages/DebugPanel__no_events_recorded/ja';
 import { DebugPanel__system_events } from '@/strings/messages/DebugPanel__system_events/ja';
+import { DebugPanel__this_is_used_to_verify_the_error_event_system_ui } from '@/strings/messages/DebugPanel__this_is_used_to_verify_the_error_event_system_ui/ja';
 import { DebugPanel__total_count } from '@/strings/messages/DebugPanel__total_count/ja';
 import { DebugPanel__trigger_test_error } from '@/strings/messages/DebugPanel__trigger_test_error/ja';
 import { DebugPanel__trigger_test_info } from '@/strings/messages/DebugPanel__trigger_test_info/ja';
@@ -512,8 +517,10 @@ import { ImageDownloadButton__with_metadata } from '@/strings/messages/ImageDown
 import { ImageEditor__apply_resize } from '@/strings/messages/ImageEditor__apply_resize/ja';
 import { ImageEditor__black } from '@/strings/messages/ImageEditor__black/ja';
 import { ImageEditor__close } from '@/strings/messages/ImageEditor__close/ja';
+import { ImageEditor__close_and_discard_unsaved_changes } from '@/strings/messages/ImageEditor__close_and_discard_unsaved_changes/ja';
 import { ImageEditor__crop } from '@/strings/messages/ImageEditor__crop/ja';
 import { ImageEditor__crop_to_selection } from '@/strings/messages/ImageEditor__crop_to_selection/ja';
+import { ImageEditor__discard } from '@/strings/messages/ImageEditor__discard/ja';
 import { ImageEditor__discard_changes } from '@/strings/messages/ImageEditor__discard_changes/ja';
 import { ImageEditor__elliptical_selection } from '@/strings/messages/ImageEditor__elliptical_selection/ja';
 import { ImageEditor__fill_everything_outside_selection } from '@/strings/messages/ImageEditor__fill_everything_outside_selection/ja';
@@ -526,6 +533,7 @@ import { ImageEditor__image_editor } from '@/strings/messages/ImageEditor__image
 import { ImageEditor__maintain_aspect_ratio } from '@/strings/messages/ImageEditor__maintain_aspect_ratio/ja';
 import { ImageEditor__mask_in } from '@/strings/messages/ImageEditor__mask_in/ja';
 import { ImageEditor__mask_out } from '@/strings/messages/ImageEditor__mask_out/ja';
+import { ImageEditor__original } from '@/strings/messages/ImageEditor__original/ja';
 import { ImageEditor__output_format } from '@/strings/messages/ImageEditor__output_format/ja';
 import { ImageEditor__pick_color_from_canvas } from '@/strings/messages/ImageEditor__pick_color_from_canvas/ja';
 import { ImageEditor__recent } from '@/strings/messages/ImageEditor__recent/ja';
@@ -640,7 +648,6 @@ import { ImportExportService__invalid_zip_file } from '@/strings/messages/Import
 import { LanguageSelector__language } from '@/strings/messages/LanguageSelector__language/ja';
 import { LmParametersEditor__default } from '@/strings/messages/LmParametersEditor__default/ja';
 import { LmParametersEditor__empty_fields_use_provider_defaults } from '@/strings/messages/LmParametersEditor__empty_fields_use_provider_defaults/ja';
-import { LmParametersEditor__frequency_penalty } from '@/strings/messages/LmParametersEditor__frequency_penalty/ja';
 import { LmParametersEditor__invalid_json } from '@/strings/messages/LmParametersEditor__invalid_json/ja';
 import { LmParametersEditor__lm_parameters } from '@/strings/messages/LmParametersEditor__lm_parameters/ja';
 import { LmParametersEditor__max_tokens } from '@/strings/messages/LmParametersEditor__max_tokens/ja';
@@ -855,13 +862,10 @@ import { RecipeImportTab__detected_recipes } from '@/strings/messages/RecipeImpo
 import { RecipeImportTab__import_chat_group_recipes } from '@/strings/messages/RecipeImportTab__import_chat_group_recipes/ja';
 import { RecipeImportTab__import_selected } from '@/strings/messages/RecipeImportTab__import_selected/ja';
 import { RecipeImportTab__model_selection } from '@/strings/messages/RecipeImportTab__model_selection/ja';
-import { RecipeImportTab__no_valid_recipes_found_in_input } from '@/strings/messages/RecipeImportTab__no_valid_recipes_found_in_input/ja';
-import { RecipeImportTab__parse_error } from '@/strings/messages/RecipeImportTab__parse_error/ja';
 import { RecipeImportTab__paste_recipe_json_concatenated_json_objects_supported } from '@/strings/messages/RecipeImportTab__paste_recipe_json_concatenated_json_objects_supported/ja';
 import { RecipeImportTab__recipes } from '@/strings/messages/RecipeImportTab__recipes/ja';
 import { RecipeImportTab__system_prompt } from '@/strings/messages/RecipeImportTab__system_prompt/ja';
 import { RecipeImportTab__use_default_model } from '@/strings/messages/RecipeImportTab__use_default_model/ja';
-import { RecipeImportTab__validation_error } from '@/strings/messages/RecipeImportTab__validation_error/ja';
 import { RelativeTime__days_ago } from '@/strings/messages/RelativeTime__days_ago/ja';
 import { RelativeTime__hours_ago } from '@/strings/messages/RelativeTime__hours_ago/ja';
 import { RelativeTime__just_now } from '@/strings/messages/RelativeTime__just_now/ja';
@@ -892,8 +896,6 @@ import { SettingsModal__failed_to_import_recipes } from '@/strings/messages/Sett
 import { SettingsModal__files } from '@/strings/messages/SettingsModal__files/ja';
 import { SettingsModal__folders } from '@/strings/messages/SettingsModal__folders/ja';
 import { SettingsModal__keep_editing } from '@/strings/messages/SettingsModal__keep_editing/ja';
-import { SettingsModal__no_valid_recipes_found_in_input } from '@/strings/messages/SettingsModal__no_valid_recipes_found_in_input/ja';
-import { SettingsModal__parse_error } from '@/strings/messages/SettingsModal__parse_error/ja';
 import { SettingsModal__provider_profiles } from '@/strings/messages/SettingsModal__provider_profiles/ja';
 import { SettingsModal__recipes } from '@/strings/messages/SettingsModal__recipes/ja';
 import { SettingsModal__settings } from '@/strings/messages/SettingsModal__settings/ja';
@@ -902,7 +904,6 @@ import { SettingsModal__storage } from '@/strings/messages/SettingsModal__storag
 import { SettingsModal__successfully_imported_recipes_as_chat_groups } from '@/strings/messages/SettingsModal__successfully_imported_recipes_as_chat_groups/ja';
 import { SettingsModal__tools } from '@/strings/messages/SettingsModal__tools/ja';
 import { SettingsModal__transformers_js } from '@/strings/messages/SettingsModal__transformers_js/ja';
-import { SettingsModal__validation_error } from '@/strings/messages/SettingsModal__validation_error/ja';
 import { SidebarDebugControls__debug_events } from '@/strings/messages/SidebarDebugControls__debug_events/ja';
 import { SidebarDebugControls__file_explorer } from '@/strings/messages/SidebarDebugControls__file_explorer/ja';
 import { SidebarDebugControls__more_actions } from '@/strings/messages/SidebarDebugControls__more_actions/ja';
@@ -951,9 +952,6 @@ import { StandaloneVerificationPage__these_checks_require_a_standalone_build_ope
 import { StandaloneVerificationPage__verification_failed_to_run } from '@/strings/messages/StandaloneVerificationPage__verification_failed_to_run/ja';
 import { StandaloneVerificationPage__verification_summary } from '@/strings/messages/StandaloneVerificationPage__verification_summary/ja';
 import { StorageService__an_error_occurred_during_a_storage_operation } from '@/strings/messages/StorageService__an_error_occurred_during_a_storage_operation/ja';
-import { StorageService__storage_is_busy_waiting_for_other_tabs } from '@/strings/messages/StorageService__storage_is_busy_waiting_for_other_tabs/ja';
-import { StorageService__storage_operation_completed } from '@/strings/messages/StorageService__storage_operation_completed/ja';
-import { StorageService__storage_operation_is_taking_longer_than_expected } from '@/strings/messages/StorageService__storage_operation_is_taking_longer_than_expected/ja';
 import { StorageTab__active } from '@/strings/messages/StorageTab__active/ja';
 import { StorageTab__active_storage_provider } from '@/strings/messages/StorageTab__active_storage_provider/ja';
 import { StorageTab__attachments_will_be_inaccessible } from '@/strings/messages/StorageTab__attachments_will_be_inaccessible/ja';
@@ -1013,6 +1011,7 @@ import { StorageTab__unsupported } from '@/strings/messages/StorageTab__unsuppor
 import { ThemeToggle__dark_mode } from '@/strings/messages/ThemeToggle__dark_mode/ja';
 import { ThemeToggle__light_mode } from '@/strings/messages/ThemeToggle__light_mode/ja';
 import { ThemeToggle__system_mode } from '@/strings/messages/ThemeToggle__system_mode/ja';
+import { ToolCallGroupItem__used_tools } from '@/strings/messages/ToolCallGroupItem__used_tools/ja';
 import { ToolConfigHierarchySettings__access_global_knowledge } from '@/strings/messages/ToolConfigHierarchySettings__access_global_knowledge/ja';
 import { ToolConfigHierarchySettings__calculator } from '@/strings/messages/ToolConfigHierarchySettings__calculator/ja';
 import { ToolConfigHierarchySettings__choices } from '@/strings/messages/ToolConfigHierarchySettings__choices/ja';
@@ -1025,8 +1024,10 @@ import { ToolConfigHierarchySettings__shell_in_browser } from '@/strings/message
 import { ToolConfigHierarchySettings__shell_settings } from '@/strings/messages/ToolConfigHierarchySettings__shell_settings/ja';
 import { ToolConfigHierarchySettings__solve_math_expressions } from '@/strings/messages/ToolConfigHierarchySettings__solve_math_expressions/ja';
 import { ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here } from '@/strings/messages/ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here/ja';
-import { ToolConfigHierarchySettings__turn_off } from '@/strings/messages/ToolConfigHierarchySettings__turn_off/ja';
-import { ToolConfigHierarchySettings__turn_on } from '@/strings/messages/ToolConfigHierarchySettings__turn_on/ja';
+import { ToolConfigHierarchySettings__turn_off_tool } from '@/strings/messages/ToolConfigHierarchySettings__turn_off_tool/ja';
+import { ToolConfigHierarchySettings__turn_on_tool } from '@/strings/messages/ToolConfigHierarchySettings__turn_on_tool/ja';
+import { ToolConfigHierarchySettings__use_global } from '@/strings/messages/ToolConfigHierarchySettings__use_global/ja';
+import { ToolConfigHierarchySettings__use_group } from '@/strings/messages/ToolConfigHierarchySettings__use_group/ja';
 import { ToolConfigHierarchySettings__wikipedia } from '@/strings/messages/ToolConfigHierarchySettings__wikipedia/ja';
 import { TransformersJsLoadingIndicator__downloading_model } from '@/strings/messages/TransformersJsLoadingIndicator__downloading_model/ja';
 import { TransformersJsLoadingIndicator__downloading_model_weights_from_hugging_face_this_only_happens_once_per_model } from '@/strings/messages/TransformersJsLoadingIndicator__downloading_model_weights_from_hugging_face_this_only_happens_once_per_model/ja';
@@ -1192,7 +1193,6 @@ import { blockMarkdown__preview } from '@/strings/messages/blockMarkdown__previe
 import { blockMarkdown__split_view } from '@/strings/messages/blockMarkdown__split_view/ja';
 import { blockMarkdown__toggle_line_wrap } from '@/strings/messages/blockMarkdown__toggle_line_wrap/ja';
 import { blockMarkdown__unknown_token_type } from '@/strings/messages/blockMarkdown__unknown_token_type/ja';
-import { chatApproval__allow } from '@/strings/messages/chatApproval__allow/ja';
 import { chatApproval__allow_action } from '@/strings/messages/chatApproval__allow_action/ja';
 import { chatApproval__allow_for_this_chat } from '@/strings/messages/chatApproval__allow_for_this_chat/ja';
 import { chatApproval__allow_globally } from '@/strings/messages/chatApproval__allow_globally/ja';
@@ -1289,7 +1289,6 @@ import { fileExplorer__new_file_unlock_to_enable } from '@/strings/messages/file
 import { fileExplorer__new_folder } from '@/strings/messages/fileExplorer__new_folder/ja';
 import { fileExplorer__new_folder_unlock_to_enable } from '@/strings/messages/fileExplorer__new_folder_unlock_to_enable/ja';
 import { fileExplorer__open } from '@/strings/messages/fileExplorer__open/ja';
-import { fileExplorer__opfs_root } from '@/strings/messages/fileExplorer__opfs_root/ja';
 import { fileExplorer__paste } from '@/strings/messages/fileExplorer__paste/ja';
 import { fileExplorer__preview } from '@/strings/messages/fileExplorer__preview/ja';
 import { fileExplorer__refresh } from '@/strings/messages/fileExplorer__refresh/ja';
@@ -1306,6 +1305,9 @@ import { fileExplorer__unlock_to_enable } from '@/strings/messages/fileExplorer_
 import { fileExplorer__unlocked_click_to_lock } from '@/strings/messages/fileExplorer__unlocked_click_to_lock/ja';
 import { fileExplorer__upload_files } from '@/strings/messages/fileExplorer__upload_files/ja';
 import { fileExplorer__upload_files_unlock_to_enable } from '@/strings/messages/fileExplorer__upload_files_unlock_to_enable/ja';
+import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/ja';
+import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/ja';
+import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/ja';
 import { toolCall__arguments } from '@/strings/messages/toolCall__arguments/ja';
 import { toolCall__code } from '@/strings/messages/toolCall__code/ja';
 import { toolCall__disable_wrap } from '@/strings/messages/toolCall__disable_wrap/ja';
@@ -1319,19 +1321,12 @@ import { toolCall__raw_json } from '@/strings/messages/toolCall__raw_json/ja';
 import { toolCall__result } from '@/strings/messages/toolCall__result/ja';
 import { toolCall__show_tools_count } from '@/strings/messages/toolCall__show_tools_count/ja';
 import { toolCall__tool_executions } from '@/strings/messages/toolCall__tool_executions/ja';
-import { toolCall__used_tools } from '@/strings/messages/toolCall__used_tools/ja';
-import { toolCall__used_tools_and_more } from '@/strings/messages/toolCall__used_tools_and_more/ja';
 import { useBinaryActions__delete_binary_object } from '@/strings/messages/useBinaryActions__delete_binary_object/ja';
 import { useBinaryActions__delete_binary_object_warning } from '@/strings/messages/useBinaryActions__delete_binary_object_warning/ja';
 import { useBinaryActions__delete_permanently } from '@/strings/messages/useBinaryActions__delete_permanently/ja';
-import { useChatDisplayFlow__and_more } from '@/strings/messages/useChatDisplayFlow__and_more/ja';
-import { useChatDisplayFlow__process_details } from '@/strings/messages/useChatDisplayFlow__process_details/ja';
-import { useChatDisplayFlow__thinking_steps } from '@/strings/messages/useChatDisplayFlow__thinking_steps/ja';
-import { useChatDisplayFlow__tool_executions } from '@/strings/messages/useChatDisplayFlow__tool_executions/ja';
-import { useChatDisplayFlow__tool_results } from '@/strings/messages/useChatDisplayFlow__tool_results/ja';
-import { useChatDisplayFlow__used_tools } from '@/strings/messages/useChatDisplayFlow__used_tools/ja';
 import { useChatLifecycle__chat_was_deleted } from '@/strings/messages/useChatLifecycle__chat_was_deleted/ja';
 import { useChatLifecycle__undo } from '@/strings/messages/useChatLifecycle__undo/ja';
+import { useChatOrganization__copy_of_chat_group } from '@/strings/messages/useChatOrganization__copy_of_chat_group/ja';
 import { useImageGeneration__failed_to_generate_image } from '@/strings/messages/useImageGeneration__failed_to_generate_image/ja';
 import { useImageGeneration__failed_to_reencode_image } from '@/strings/messages/useImageGeneration__failed_to_reencode_image/ja';
 import { useImageGeneration__no_suitable_image_generation_model_found } from '@/strings/messages/useImageGeneration__no_suitable_image_generation_model_found/ja';
@@ -1427,6 +1422,7 @@ import { weshTerminal__debug_terminal } from '@/strings/messages/weshTerminal__d
 import { weshTerminal__initializing_worker } from '@/strings/messages/weshTerminal__initializing_worker/ja';
 import { weshTerminal__new } from '@/strings/messages/weshTerminal__new/ja';
 import { weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell } from '@/strings/messages/weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell/ja';
+import { weshTerminal__session } from '@/strings/messages/weshTerminal__session/ja';
 import { weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue } from '@/strings/messages/weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue/ja';
 import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__wesh_terminal/ja';
 
@@ -1442,17 +1438,12 @@ export const ja = {
   SHARED__connection_failed_check_url_or_provider,
   SHARED__current_chat,
   SHARED__current_chat_plus_chat_group,
-  SHARED__default,
   SHARED__expose_chat_discovery_paths,
   SHARED__generated_image,
   SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp,
   SHARED__mount,
   SHARED__new_chat,
   SHARED__no_models_found_at_this_endpoint,
-  SHARED__use_global,
-  SHARED__use_group,
-  SHARED__value_from_global,
-  SHARED__value_from_group,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
 
@@ -1468,9 +1459,13 @@ export const ja = {
   AboutTab__version,
   AboutTab__view_license_text,
   AboutTab__view_source_code_and_contribute,
+  AssistantProcessSequence__and_more,
   AssistantProcessSequence__less,
   AssistantProcessSequence__process_details,
   AssistantProcessSequence__show,
+  AssistantProcessSequence__thinking_steps,
+  AssistantProcessSequence__tool_executions,
+  AssistantProcessSequence__used_tools,
   AssistantWaitingIndicator__waiting_for_response,
   ChatAttachMenu__a_private_copy_is_saved_in_your_browser,
   ChatAttachMenu__attach_files_or_folder,
@@ -1483,19 +1478,23 @@ export const ja = {
   ChatAttachMenu__what_is_folder_copy,
   ChatAttachMenu__what_is_folder_link,
   ChatAttachMenu__why_is_folder_link_unavailable,
+  ChatDebugInspector__active,
   ChatDebugInspector__chat_inspector,
   ChatDebugInspector__collapse_tree,
   ChatDebugInspector__context_path,
   ChatDebugInspector__data_explorer,
   ChatDebugInspector__expand_tree,
+  ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection,
   ChatDebugInspector__fake_lm,
   ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds,
+  ChatDebugInspector__full_json,
   ChatDebugInspector__on,
   ChatDebugInspector__open_at_this_message,
   ChatDebugInspector__select_a_node_to_inspect,
   ChatDebugInspector__set_this_chat_to_ollama_and_enable_global_fake_lm_debug_mode,
   ChatDebugInspector__toggle_content_collapse,
   ChatDebugInspector__toggle_highlighting,
+  ChatDebugInspector__tree,
   ChatDebugTreeNode__collapse_content,
   ChatDebugTreeNode__error,
   ChatDebugTreeNode__generated_image_reference,
@@ -1642,6 +1641,7 @@ export const ja = {
   ChatPane__chat,
   ChatPane__drop_files_or_folders_to_attach,
   ChatPane__failed_to_generate_share_url,
+  ChatPane__fake_lm_enabled_for_this_chat_via,
   ChatPane__process_sequence,
   ChatPane__result,
   ChatPane__share_url_copied_to_clipboard,
@@ -1795,6 +1795,7 @@ export const ja = {
   DebugPanel__intentional_test_error_triggered_by_user,
   DebugPanel__no_events_recorded,
   DebugPanel__system_events,
+  DebugPanel__this_is_used_to_verify_the_error_event_system_ui,
   DebugPanel__total_count,
   DebugPanel__trigger_test_error,
   DebugPanel__trigger_test_info,
@@ -1945,8 +1946,10 @@ export const ja = {
   ImageEditor__apply_resize,
   ImageEditor__black,
   ImageEditor__close,
+  ImageEditor__close_and_discard_unsaved_changes,
   ImageEditor__crop,
   ImageEditor__crop_to_selection,
+  ImageEditor__discard,
   ImageEditor__discard_changes,
   ImageEditor__elliptical_selection,
   ImageEditor__fill_everything_outside_selection,
@@ -1959,6 +1962,7 @@ export const ja = {
   ImageEditor__maintain_aspect_ratio,
   ImageEditor__mask_in,
   ImageEditor__mask_out,
+  ImageEditor__original,
   ImageEditor__output_format,
   ImageEditor__pick_color_from_canvas,
   ImageEditor__recent,
@@ -2073,7 +2077,6 @@ export const ja = {
   LanguageSelector__language,
   LmParametersEditor__default,
   LmParametersEditor__empty_fields_use_provider_defaults,
-  LmParametersEditor__frequency_penalty,
   LmParametersEditor__invalid_json,
   LmParametersEditor__lm_parameters,
   LmParametersEditor__max_tokens,
@@ -2288,13 +2291,10 @@ export const ja = {
   RecipeImportTab__import_chat_group_recipes,
   RecipeImportTab__import_selected,
   RecipeImportTab__model_selection,
-  RecipeImportTab__no_valid_recipes_found_in_input,
-  RecipeImportTab__parse_error,
   RecipeImportTab__paste_recipe_json_concatenated_json_objects_supported,
   RecipeImportTab__recipes,
   RecipeImportTab__system_prompt,
   RecipeImportTab__use_default_model,
-  RecipeImportTab__validation_error,
   RelativeTime__days_ago,
   RelativeTime__hours_ago,
   RelativeTime__just_now,
@@ -2325,8 +2325,6 @@ export const ja = {
   SettingsModal__files,
   SettingsModal__folders,
   SettingsModal__keep_editing,
-  SettingsModal__no_valid_recipes_found_in_input,
-  SettingsModal__parse_error,
   SettingsModal__provider_profiles,
   SettingsModal__recipes,
   SettingsModal__settings,
@@ -2335,7 +2333,6 @@ export const ja = {
   SettingsModal__successfully_imported_recipes_as_chat_groups,
   SettingsModal__tools,
   SettingsModal__transformers_js,
-  SettingsModal__validation_error,
   SidebarDebugControls__debug_events,
   SidebarDebugControls__file_explorer,
   SidebarDebugControls__more_actions,
@@ -2384,9 +2381,6 @@ export const ja = {
   StandaloneVerificationPage__verification_failed_to_run,
   StandaloneVerificationPage__verification_summary,
   StorageService__an_error_occurred_during_a_storage_operation,
-  StorageService__storage_is_busy_waiting_for_other_tabs,
-  StorageService__storage_operation_completed,
-  StorageService__storage_operation_is_taking_longer_than_expected,
   StorageTab__active,
   StorageTab__active_storage_provider,
   StorageTab__attachments_will_be_inaccessible,
@@ -2446,6 +2440,7 @@ export const ja = {
   ThemeToggle__dark_mode,
   ThemeToggle__light_mode,
   ThemeToggle__system_mode,
+  ToolCallGroupItem__used_tools,
   ToolConfigHierarchySettings__access_global_knowledge,
   ToolConfigHierarchySettings__calculator,
   ToolConfigHierarchySettings__choices,
@@ -2458,8 +2453,10 @@ export const ja = {
   ToolConfigHierarchySettings__shell_settings,
   ToolConfigHierarchySettings__solve_math_expressions,
   ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here,
-  ToolConfigHierarchySettings__turn_off,
-  ToolConfigHierarchySettings__turn_on,
+  ToolConfigHierarchySettings__turn_off_tool,
+  ToolConfigHierarchySettings__turn_on_tool,
+  ToolConfigHierarchySettings__use_global,
+  ToolConfigHierarchySettings__use_group,
   ToolConfigHierarchySettings__wikipedia,
   TransformersJsLoadingIndicator__downloading_model,
   TransformersJsLoadingIndicator__downloading_model_weights_from_hugging_face_this_only_happens_once_per_model,
@@ -2625,7 +2622,6 @@ export const ja = {
   blockMarkdown__split_view,
   blockMarkdown__toggle_line_wrap,
   blockMarkdown__unknown_token_type,
-  chatApproval__allow,
   chatApproval__allow_action,
   chatApproval__allow_for_this_chat,
   chatApproval__allow_globally,
@@ -2722,7 +2718,6 @@ export const ja = {
   fileExplorer__new_folder,
   fileExplorer__new_folder_unlock_to_enable,
   fileExplorer__open,
-  fileExplorer__opfs_root,
   fileExplorer__paste,
   fileExplorer__preview,
   fileExplorer__refresh,
@@ -2739,6 +2734,9 @@ export const ja = {
   fileExplorer__unlocked_click_to_lock,
   fileExplorer__upload_files,
   fileExplorer__upload_files_unlock_to_enable,
+  formatSettingsSourceLabel__default,
+  formatSettingsSourceLabel__value_from_global,
+  formatSettingsSourceLabel__value_from_group,
   toolCall__arguments,
   toolCall__code,
   toolCall__disable_wrap,
@@ -2752,19 +2750,12 @@ export const ja = {
   toolCall__result,
   toolCall__show_tools_count,
   toolCall__tool_executions,
-  toolCall__used_tools,
-  toolCall__used_tools_and_more,
   useBinaryActions__delete_binary_object,
   useBinaryActions__delete_binary_object_warning,
   useBinaryActions__delete_permanently,
-  useChatDisplayFlow__and_more,
-  useChatDisplayFlow__process_details,
-  useChatDisplayFlow__thinking_steps,
-  useChatDisplayFlow__tool_executions,
-  useChatDisplayFlow__tool_results,
-  useChatDisplayFlow__used_tools,
   useChatLifecycle__chat_was_deleted,
   useChatLifecycle__undo,
+  useChatOrganization__copy_of_chat_group,
   useImageGeneration__failed_to_generate_image,
   useImageGeneration__failed_to_reencode_image,
   useImageGeneration__no_suitable_image_generation_model_found,
@@ -2860,6 +2851,7 @@ export const ja = {
   weshTerminal__initializing_worker,
   weshTerminal__new,
   weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell,
+  weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
 } satisfies Strings;

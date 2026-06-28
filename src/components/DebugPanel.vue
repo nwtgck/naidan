@@ -16,19 +16,24 @@ const { isDebugOpen, toggleDebug } = useLayout();
 const isMenuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
 
-async function triggerTestError() {
+async function triggerTestError(): Promise<void> {
+  isMenuOpen.value = false;
+  const [message, hint] = await Promise.all([
+    ensureStrings.DebugPanel__intentional_test_error_triggered_by_user(),
+    ensureStrings.DebugPanel__this_is_used_to_verify_the_error_event_system_ui(),
+  ]);
   addErrorEvent({
     source: 'DevTools',
-    message: await ensureStrings.DebugPanel__intentional_test_error_triggered_by_user(),
+    message,
     details: {
-      hint: 'This is used to verify the error event system UI.',
+      hint,
       browser: navigator.userAgent,
     },
   });
-  isMenuOpen.value = false;
 }
 
-async function triggerTestInfo() {
+async function triggerTestInfo(): Promise<void> {
+  isMenuOpen.value = false;
   addInfoEvent({
     source: 'DevTools',
     message: await ensureStrings.DebugPanel__application_state_synchronized(),
@@ -37,7 +42,6 @@ async function triggerTestInfo() {
       timestamp: new Date().toISOString(),
     },
   });
-  isMenuOpen.value = false;
 }
 
 function formatTime({ timestamp }: { timestamp: number }) {

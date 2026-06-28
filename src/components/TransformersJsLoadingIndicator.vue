@@ -35,9 +35,15 @@ const originalTitle = ref(typeof document !== 'undefined' ? document.title : 'Na
 watchEffect(() => {
   if (typeof document === 'undefined') return;
   switch (status.value) {
-  case 'loading':
-    document.title = lazyStrings.TransformersJsLoadingIndicator__loading_model_progress({ progress: progress.value });
+  case 'loading': {
+    const title = lazyStrings.TransformersJsLoadingIndicator__loading_model_progress({
+      progress: progress.value,
+    });
+    if (title !== undefined) {
+      document.title = title;
+    }
     break;
+  }
   case 'idle':
   case 'ready':
   case 'error':
@@ -57,6 +63,7 @@ const statusText = computed(() => {
     return lazyStrings.TransformersJsLoadingIndicator__transformers_js_error();
   case 'loading': {
     const modelName = loadingModelId.value?.split('/').pop() ?? lazyStrings.TransformersJsLoadingIndicator__model();
+    if (modelName === undefined) return undefined;
     if (isLoadingFromCache.value) {
       return lazyStrings.TransformersJsLoadingIndicator__initializing_model({ modelName });
     }

@@ -10,7 +10,7 @@ import { ChatGroupRecipeSchema } from '@/models/recipe';
 import type { ChatGroupRecipe } from '@/models/recipe';
 import ModelSelector from './ModelSelector.vue';
 import { naturalSort } from '@/utils/string';
-import { lazyStrings, ensureStrings } from '@/strings';
+import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
   availableModels: readonly string[],
@@ -45,7 +45,7 @@ function getSortedModels({ matchedModelId }: { matchedModelId?: string }) {
   return models;
 }
 
-async function handleAnalyzeRecipes(): Promise<void> {
+function handleAnalyzeRecipes() {
   const trimmed = recipeJsonInput.value.trim();
   if (!trimmed) {
     analyzedRecipes.value = [];
@@ -59,13 +59,15 @@ async function handleAnalyzeRecipes(): Promise<void> {
 
   for (const result of parseResults) {
     if (!result.success) {
-      recipeAnalysisError.value = await ensureStrings.RecipeImportTab__parse_error({ errorMessage: result.error });
+      // TODO(strings-localize): Localize analysis errors without making synchronous parsing state asynchronous.
+      recipeAnalysisError.value = `Parse error: ${result.error}`;
       continue;
     }
 
     const validation = ChatGroupRecipeSchema.safeParse(result.data);
     if (!validation.success) {
-      recipeAnalysisError.value = await ensureStrings.RecipeImportTab__validation_error({ errorMessage: validation.error.message });
+      // TODO(strings-localize): Localize analysis errors without making synchronous parsing state asynchronous.
+      recipeAnalysisError.value = `Validation error: ${validation.error.message}`;
       continue;
     }
 
@@ -83,7 +85,8 @@ async function handleAnalyzeRecipes(): Promise<void> {
   }
 
   if (newAnalyzed.length === 0 && !recipeAnalysisError.value) {
-    recipeAnalysisError.value = await ensureStrings.RecipeImportTab__no_valid_recipes_found_in_input();
+    // TODO(strings-localize): Localize this validation result without changing the synchronous analysis contract.
+    recipeAnalysisError.value = 'No valid recipes found in input.';
   }
 
   analyzedRecipes.value = newAnalyzed;
@@ -91,7 +94,7 @@ async function handleAnalyzeRecipes(): Promise<void> {
 
 // Automatically analyze on input change
 watch(recipeJsonInput, () => {
-  void handleAnalyzeRecipes();
+  handleAnalyzeRecipes();
 });
 
 function handleImportRecipes() {

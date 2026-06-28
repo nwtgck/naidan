@@ -56,38 +56,53 @@ interface GuideStep {
   runCommand: string,
 }
 
-const guides = computed<{
+type Guides = {
   ollama: Record<'windows' | 'mac' | 'linux', GuideStep>,
   'llama-server': { all: GuideStep },
-}>(() => ({
-  ollama: {
-    windows: {
-      install: lazyStrings.ServerSetupGuide__download_the_installer_from_the_official_website(),
-      downloadUrl: 'https://ollama.com/download/windows',
-      serveCommand: 'ollama serve',
-      runCommand: 'ollama run gemma3n:e2b',
+};
+
+const guides = computed<Guides | undefined>(() => {
+  const windowsInstall = lazyStrings.ServerSetupGuide__download_the_installer_from_the_official_website();
+  const macInstall = lazyStrings.ServerSetupGuide__install_using_homebrew();
+  const linuxInstall = lazyStrings.ServerSetupGuide__run_the_installation_script();
+  const llamaServerInstall = lazyStrings.ServerSetupGuide__download_the_latest_binary_or_build_from_source();
+  if (
+    windowsInstall === undefined ||
+    macInstall === undefined ||
+    linuxInstall === undefined ||
+    llamaServerInstall === undefined
+  ) return undefined;
+
+  return {
+    ollama: {
+      windows: {
+        install: windowsInstall,
+        downloadUrl: 'https://ollama.com/download/windows',
+        serveCommand: 'ollama serve',
+        runCommand: 'ollama run gemma3n:e2b',
+      },
+      mac: {
+        install: macInstall,
+        installCommand: 'brew install ollama',
+        serveCommand: 'ollama serve',
+        runCommand: 'ollama run gemma3n:e2b',
+      },
+      linux: {
+        install: linuxInstall,
+        installCommand: 'curl -fsSL https://ollama.com/install.sh | sh',
+        serveCommand: 'ollama serve',
+        runCommand: 'ollama run gemma3n:e2b',
+      },
     },
-    mac: {
-      install: lazyStrings.ServerSetupGuide__install_using_homebrew(),
-      installCommand: 'brew install ollama',
-      serveCommand: 'ollama serve',
-      runCommand: 'ollama run gemma3n:e2b',
+    'llama-server': {
+      all: {
+        install: llamaServerInstall,
+        downloadUrl: 'https://github.com/ggerganov/llama.cpp/releases',
+        runCommand: './llama-server -hf ggml-org/gemma-3n-E2B-it-GGUF',
+      },
     },
-    linux: {
-      install: lazyStrings.ServerSetupGuide__run_the_installation_script(),
-      installCommand: 'curl -fsSL https://ollama.com/install.sh | sh',
-      serveCommand: 'ollama serve',
-      runCommand: 'ollama run gemma3n:e2b',
-    },
-  },
-  'llama-server': {
-    all: {
-      install: lazyStrings.ServerSetupGuide__download_the_latest_binary_or_build_from_source(),
-      downloadUrl: 'https://github.com/ggerganov/llama.cpp/releases',
-      runCommand: './llama-server -hf ggml-org/gemma-3n-E2B-it-GGUF',
-    },
-  },
-}));
+  };
+});
 
 
 defineExpose({
@@ -129,7 +144,7 @@ defineExpose({
         </button>
       </div>
 
-      <div class="space-y-3">
+      <div v-if="guides" class="space-y-3">
         <div v-if="activeServer === 'ollama'">
           <div class="space-y-3">
             <div class="flex items-start gap-2">

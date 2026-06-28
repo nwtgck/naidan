@@ -948,6 +948,12 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
   }
 });
 
+function newChatInGroupTitle(): string | undefined {
+  const groupName = currentChatGroup.value?.name || lazyStrings.Sidebar__current_group();
+  if (groupName === undefined) return undefined;
+  return lazyStrings.Sidebar__new_chat_in_group({ groupName });
+}
+
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
@@ -1014,7 +1020,7 @@ defineExpose({
           @click="handleNewChat({ groupId: (currentChatGroup?.id || currentChat?.groupId) ?? undefined })"
           class="flex items-center justify-center bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-all shadow-sm w-8 h-8"
           data-testid="new-chat-in-group-button"
-          :title="lazyStrings.Sidebar__new_chat_in_group({ groupName: currentChatGroup?.name || lazyStrings.Sidebar__current_group() })"
+          :title="newChatInGroupTitle()"
         >
           <MessageSquarePlusIcon class="w-4 h-4 shrink-0" />
         </button>

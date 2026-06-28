@@ -1,5 +1,4 @@
 import { generateId } from '@/utils/id';
-import { lazyStrings } from '@/strings';
 import type { AssistantMessageNode, Attachment, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
 import type { LmProvider } from '@/services/lm/types';
@@ -678,83 +677,30 @@ export function toContextCompactDisplayProgress({
   nowMs: number,
 }): {
   percent: number,
-  title: string,
-  detail: string,
   isRunning: boolean,
 } {
   void nowMs;
 
   switch (progress.phase) {
   case 'idle':
-    return {
-      percent: 0,
-      title: '',
-      detail: '',
-      isRunning: false,
-    };
+    return { percent: 0, isRunning: false };
   case 'preparing':
-    return {
-      percent: 5,
-      title: lazyStrings.contextCompact__compacting_context(),
-      detail: lazyStrings.contextCompact__preparing_messages_and_keeping_recent_messages({
-        compactedMessageCount: progress.compactedMessageCount,
-        suffixMessageCount: progress.suffixMessageCount,
-      }),
-      isRunning: true,
-    };
+    return { percent: 5, isRunning: true };
   case 'building_request':
-    return {
-      percent: 15,
-      title: lazyStrings.contextCompact__compacting_context(),
-      detail: lazyStrings.contextCompact__building_compact_request(),
-      isRunning: true,
-    };
+    return { percent: 15, isRunning: true };
   case 'requesting_model':
+    return { percent: 25, isRunning: true };
+  case 'receiving_compact':
     return {
-      percent: 25,
-      title: lazyStrings.contextCompact__compacting_context(),
-      detail: lazyStrings.contextCompact__waiting_for_the_model(),
+      percent: Math.min(85, 30 + Math.floor(Math.sqrt(progress.outputChars) * 0.6)),
       isRunning: true,
     };
-  case 'receiving_compact': {
-    const percent = Math.min(85, 30 + Math.floor(Math.sqrt(progress.outputChars) * 0.6));
-    return {
-      percent,
-      title: lazyStrings.contextCompact__compacting_context(),
-      detail: lazyStrings.contextCompact__generating_compact_context_with_characters_received({
-        outputChars: progress.outputChars,
-      }),
-      isRunning: true,
-    };
-  }
   case 'applying_branch':
-    return {
-      percent: 95,
-      title: lazyStrings.contextCompact__compacting_context(),
-      detail: lazyStrings.contextCompact__applying_compact_branch(),
-      isRunning: true,
-    };
+    return { percent: 95, isRunning: true };
   case 'complete':
-    return {
-      percent: 100,
-      title: lazyStrings.contextCompact__compacting_context(),
-      detail: lazyStrings.contextCompact__complete(),
-      isRunning: false,
-    };
   case 'failed':
-    return {
-      percent: 100,
-      title: lazyStrings.contextCompact__compacting_context_failed(),
-      detail: progress.message,
-      isRunning: false,
-    };
   case 'aborted':
-    return {
-      percent: 100,
-      title: lazyStrings.contextCompact__compacting_context(),
-      detail: lazyStrings.contextCompact__aborted(),
-      isRunning: false,
-    };
+    return { percent: 100, isRunning: false };
   default: {
     const _ex: never = progress;
     throw new Error(`Unhandled context compact progress: ${_ex}`);

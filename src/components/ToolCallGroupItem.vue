@@ -29,13 +29,12 @@ const toolNamesDisplay = computed(() => {
   const names = props.toolCalls.map(tc => tc.call.function.name);
   const limit = 3;
   const displayedNames = names.slice(0, limit);
-  const remaining = names.length - limit;
+  const remainingCount = names.length - limit;
 
-  let base = `Used ${displayedNames.join(', ')}`;
-  if (remaining > 0) {
-    base += ` and ${remaining} more`;
-  }
-  return base;
+  return lazyStrings.ToolCallGroupItem__used_tools({
+    toolNames: displayedNames,
+    remainingCount,
+  });
 });
 
 const isNested = computed(() => props.flow.nesting === 'inside-group');

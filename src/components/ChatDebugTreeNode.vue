@@ -84,6 +84,7 @@ const inlineImages = computed(() => {
         images.push(result.data);
       } else {
         console.warn('Failed to validate inline image schema in ChatDebugTreeNode:', result.error);
+        // TODO(strings-localize): Localize this event after inline image parsing is moved out of the synchronous computed getter.
         addErrorEvent({
           source: 'ChatDebugTreeNode:inlineImages',
           message: 'Failed to validate generated image metadata.',
@@ -92,6 +93,7 @@ const inlineImages = computed(() => {
       }
     } catch (e) {
       console.error('Failed to parse inline image JSON in ChatDebugTreeNode:', e);
+      // TODO(strings-localize): Localize this event after inline image parsing is moved out of the synchronous computed getter.
       addErrorEvent({
         source: 'ChatDebugTreeNode:inlineImages',
         message: 'Failed to parse generated image metadata.',

@@ -102,7 +102,7 @@ defineExpose({
               ]"
             ></div>
           </div>
-          <span class="text-[10px] font-mono font-bold text-blue-400/60" data-testid="image-count-label">
+          <span v-if="currentNumber !== undefined" class="text-[10px] font-mono font-bold text-blue-400/60" data-testid="image-count-label">
             {{ lazyStrings.ImageConjuringLoader__image_count({ current: currentNumber, total: totalCount }) }}
           </span>
         </div>

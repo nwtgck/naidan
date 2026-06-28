@@ -1,1 +1,1 @@
-export const FeatureFlagsSettings__disable_fake_lm = (): string => 'Fake LMデバッグモードを無効にする';
+export const FeatureFlagsSettings__disable_fake_lm = (): string => 'Fake LM デバッグモードを無効にする';

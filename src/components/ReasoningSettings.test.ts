@@ -1,15 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { nextTick } from 'vue';
+import type { Reasoning } from '@/models/types';
 
 describe('ReasoningSettings Component', () => {
-  const getWrapper = (selectedEffort: any = undefined) => mount(ReasoningSettings, {
-    props: { selectedEffort },
-  });
+  const getWrapper = async (selectedEffort: Reasoning['effort'] = undefined) => {
+    const wrapper = mount(ReasoningSettings, {
+      props: { selectedEffort },
+    });
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="reasoning-effort-default"]').exists()).toBe(true);
+    });
+    return wrapper;
+  };
 
-  it('renders all effort options with segmented control style', () => {
-    const wrapper = getWrapper();
+  it('renders all effort options with segmented control style', async () => {
+    const wrapper = await getWrapper();
     // Labels are: Default, Off, Low, Medium, High -> toLowerCase()
     const options = ['default', 'off', 'low', 'medium', 'high'];
 
@@ -19,7 +26,7 @@ describe('ReasoningSettings Component', () => {
   });
 
   it('emits update:effort when a button is clicked', async () => {
-    const wrapper = getWrapper();
+    const wrapper = await getWrapper();
 
     await wrapper.find('[data-testid="reasoning-effort-high"]').trigger('click');
     expect(wrapper.emitted('update:effort')).toEqual([['high']]);
@@ -28,8 +35,8 @@ describe('ReasoningSettings Component', () => {
     expect(wrapper.emitted('update:effort')).toContainEqual(['none']);
   });
 
-  it('highlights the correctly selected effort button', () => {
-    const wrapper = getWrapper('medium');
+  it('highlights the correctly selected effort button', async () => {
+    const wrapper = await getWrapper('medium');
 
     const medBtn = wrapper.find('[data-testid="reasoning-effort-medium"]');
     expect(medBtn.classes()).toContain('text-blue-600');
@@ -39,8 +46,8 @@ describe('ReasoningSettings Component', () => {
     expect(highBtn.classes()).not.toContain('text-blue-600');
   });
 
-  it('applies flex-[1.4] to the Default button for better readability', () => {
-    const wrapper = getWrapper();
+  it('applies flex-[1.4] to the Default button for better readability', async () => {
+    const wrapper = await getWrapper();
     const defaultBtn = wrapper.find('[data-testid="reasoning-effort-default"]');
     expect(defaultBtn.classes()).toContain('flex-[1.4]');
 
@@ -50,7 +57,7 @@ describe('ReasoningSettings Component', () => {
   });
 
   it('initializes slider position on mount', async () => {
-    const wrapper = getWrapper('high');
+    const wrapper = await getWrapper('high');
     await nextTick();
 
     // Use a simpler class search for the slider background

@@ -1,16 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick } from 'vue'; // Imported nextTick from vue
 import { usePrompt } from './usePrompt';
-import { flushPromises, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
-
-vi.mock('@/strings', () => ({
-  ensureStrings: {
-    SHARED__cancel: async () => 'Cancel',
-    SHARED__confirm: async () => 'Confirm',
-    usePrompt__prompt: async () => 'Prompt',
-  },
-}));
 
 // Mock the global CustomDialog component
 const MockCustomDialog = defineComponent({
@@ -72,14 +64,21 @@ describe('usePrompt', () => {
     });
   });
 
-  it('showPrompt returns a promise', () => {
+  it('showPrompt returns a promise', async () => {
     const promise = promptHook.showPrompt({ message: 'Enter name:' });
     expect(promise).toBeInstanceOf(Promise);
+    await vi.waitFor(() => {
+      expect(promptHook.promptMessage.value).toBe('Enter name:');
+    });
+    promptHook.handlePromptCancel();
+    await expect(promise).resolves.toBeNull();
   });
 
   it('showPrompt resolves with the input value on confirmation', async () => {
     const promptPromise = promptHook.showPrompt({ message: 'Enter value:', defaultValue: 'initial' });
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    await vi.waitFor(() => {
+      expect(promptHook.promptMessage.value).toBe('Enter value:');
+    });
 
     // Simulate user input
     promptHook.promptInputValue.value = 'test input';
@@ -94,7 +93,10 @@ describe('usePrompt', () => {
 
   it('showPrompt resolves to null on cancellation', async () => {
     const promptPromise = promptHook.showPrompt({ message: 'Enter value:' });
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    await vi.waitFor(() => {
+      expect(promptHook.isPromptOpen.value).toBe(true);
+      expect(promptHook.promptInputValue.value).toBe('');
+    });
 
     // Simulate cancellation by calling the composable's handler
     promptHook.handlePromptCancel();
@@ -115,15 +117,18 @@ describe('usePrompt', () => {
       confirmButtonText: 'Submit',
       cancelButtonText: 'No Thanks',
     };
-    promptHook.showPrompt(options);
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    const promptPromise = promptHook.showPrompt(options);
+    await vi.waitFor(() => {
+      expect(promptHook.promptTitle.value).toBe(options.title);
+    });
 
-    expect(promptHook.isPromptOpen.value).toBe(true);
     expect(promptHook.promptTitle.value).toBe(options.title);
     expect(promptHook.promptMessage.value).toBe(options.message);
     expect(promptHook.promptInputValue.value).toBe(options.defaultValue);
     // Note: inputType and inputPlaceholder are not exposed by usePrompt, but passed to CustomDialog
     expect(promptHook.promptConfirmButtonText.value).toBe(options.confirmButtonText);
     expect(promptHook.promptCancelButtonText.value).toBe(options.cancelButtonText);
+    promptHook.handlePromptCancel();
+    await expect(promptPromise).resolves.toBeNull();
   });
 });

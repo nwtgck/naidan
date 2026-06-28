@@ -1,5 +1,5 @@
-import { ensureStrings } from '@/strings';
 import { ref, type Component, shallowRef } from 'vue';
+import { ensureStrings } from '@/strings';
 
 interface PromptOptions {
   title?: string,
@@ -14,8 +14,8 @@ interface PromptOptions {
 const isPromptOpen = ref(false);
 const promptTitle = ref('');
 const promptMessage = ref('');
-const promptConfirmButtonText = ref('');
-const promptCancelButtonText = ref('');
+const promptConfirmButtonText = ref('Confirm');
+const promptCancelButtonText = ref('Cancel');
 const promptInputValue = ref('');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const promptBodyComponent = shallowRef<Component | any | null>(null);
@@ -24,9 +24,9 @@ let resolvePromptPromise: ReturnType<typeof Promise.withResolvers<string | null>
 export function usePrompt() {
   const showPrompt = async ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {
     const [resolvedTitle, resolvedConfirmButtonText, resolvedCancelButtonText] = await Promise.all([
-      title || ensureStrings.usePrompt__prompt(),
-      confirmButtonText || ensureStrings.SHARED__confirm(),
-      cancelButtonText || ensureStrings.SHARED__cancel(),
+      title ? Promise.resolve(title) : ensureStrings.usePrompt__prompt(),
+      confirmButtonText ? Promise.resolve(confirmButtonText) : ensureStrings.SHARED__confirm(),
+      cancelButtonText ? Promise.resolve(cancelButtonText) : ensureStrings.SHARED__cancel(),
     ]);
 
     return new Promise((resolve) => {

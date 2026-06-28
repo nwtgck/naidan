@@ -8,12 +8,10 @@ const props = withDefaults(defineProps<{
   items: ChatFlowItem[],
   isProcessing: boolean,
   flow?: FlowMetadata,
-  summary?: string,
   stats?: SequenceStats,
   isFirstInTurn?: boolean,
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
-  summary: '',
   stats: () => ({
     thinkingSteps: 0,
     toolCallCount: 0,
@@ -42,7 +40,31 @@ async function toggle() {
 }
 
 const displaySummary = computed(() => {
-  return props.summary || lazyStrings.AssistantProcessSequence__process_details();
+  const parts: string[] = [];
+  if (props.stats.thinkingSteps > 0) {
+    const thinkingSteps = lazyStrings.AssistantProcessSequence__thinking_steps({ count: props.stats.thinkingSteps });
+    if (thinkingSteps === undefined) return undefined;
+    parts.push(thinkingSteps);
+  }
+  if (props.stats.toolCallCount > 0) {
+    const toolExecutions = lazyStrings.AssistantProcessSequence__tool_executions({ count: props.stats.toolCallCount });
+    if (toolExecutions === undefined) return undefined;
+    parts.push(toolExecutions);
+  }
+  if (props.stats.toolNames.length > 0) {
+    const displayedToolNames = props.stats.toolNames.slice(0, 2);
+    const usedTools = lazyStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
+    if (usedTools === undefined) return undefined;
+    let toolSummary = usedTools;
+    if (props.stats.toolNames.length > displayedToolNames.length) {
+      const moreTools = lazyStrings.AssistantProcessSequence__and_more({ count: props.stats.toolNames.length - displayedToolNames.length });
+      if (moreTools === undefined) return undefined;
+      toolSummary += ` ${moreTools}`;
+    }
+    parts.push(toolSummary);
+  }
+  if (parts.length > 0) return parts.join(' • ');
+  return lazyStrings.AssistantProcessSequence__process_details();
 });
 
 const modelId = computed(() => {

@@ -1081,7 +1081,7 @@ defineExpose({
             <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__output_format() }}</span>
             <div class="bg-gray-800 p-1 rounded-xl border border-gray-700 grid grid-cols-2 gap-1">
               <button
-                v-for="format in ([{ label: 'Orig.', value: 'original' }, { label: 'PNG', value: 'image/png' }, { label: 'JPG', value: 'image/jpeg' }, { label: 'WebP', value: 'image/webp' }] as const)"
+                v-for="format in ([{ label: lazyStrings.ImageEditor__original(), value: 'original' }, { label: 'PNG', value: 'image/png' }, { label: 'JPG', value: 'image/jpeg' }, { label: 'WebP', value: 'image/webp' }] as const)"
                 :key="format.value"
                 @click="selectedFormat = format.value"
                 class="py-1 rounded-lg text-[9px] font-bold transition-all text-center"
@@ -1099,8 +1099,8 @@ defineExpose({
     <CustomDialog
       :show="showCloseConfirm"
       :title="lazyStrings.ImageEditor__discard_changes()"
-      message="You have unsaved changes. Are you sure you want to close and discard them?"
-      confirm-button-text="Discard"
+      :message="lazyStrings.ImageEditor__close_and_discard_unsaved_changes()"
+      :confirm-button-text="lazyStrings.ImageEditor__discard()"
       confirm-button-variant="danger"
       @confirm="confirmClose"
       @cancel="showCloseConfirm = false"

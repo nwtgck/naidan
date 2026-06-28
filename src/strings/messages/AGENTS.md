@@ -33,12 +33,39 @@ messages from different scopes into different output files.
 
 ## Accessor selection
 
+`lazyStrings` intentionally returns `string | undefined`. The unresolved value
+is a design signal requiring the call site to choose an appropriate contract;
+it is not a type error to suppress locally.
+
 Use `lazyStrings` only where Vue or another reactive path will evaluate the
 message again after its boundary loads, such as a template or computed value.
 Use `ensureStrings` when a completed string is stored, emitted, passed to an
 imperative UI API, written into an event, or otherwise will not be revisited by
 a reactive render. Do not use test-wide eager string installation to hide an
 incorrect accessor choice.
+
+Do not weaken an existing API to accept `undefined`, add `?? ''` or `|| ''`, or
+use a type assertion or non-null assertion merely to accept a `lazyStrings`
+result. Instead, keep the use reactive, await `ensureStrings`, or explicitly
+defer the operation or UI until the message resolves.
+
+Adding `async` for `ensureStrings` is acceptable only when the change remains
+local and does not alter an existing public, callback, event, parser, getter, or
+other synchronous contract. Do not force asynchronous behavior through callers,
+use `.then()` or a fire-and-forget async wrapper to avoid a contract decision,
+or convert a value API to `ComputedRef` or a getter solely to bypass the error.
+Reactive arguments require a review of the consumer, storage, rendering,
+lifetime, and tests because they are a different API contract.
+
+When localization requires such a wider redesign, leave the existing English
+copy in place and add this exact searchable marker with a concrete reason:
+
+```typescript
+// TODO(strings-localize): Localize this copy after the synchronous callback contract is redesigned.
+```
+
+Do not add this marker to intentionally English Wesh command output,
+diagnostics, shell transcript content, or raw worker errors.
 
 ## Shared copy ownership
 
@@ -89,6 +116,8 @@ materially.
 Identifiers, comments, and tests remain English. Locale message implementations
 may contain their target natural language.
 
+Prefer direct, neutral Japanese UI copy over formal business-style phrasing.
+
 Naidan UI around Wesh is eligible for Boundary Strings. Wesh command output,
 usage text, diagnostics, shell transcript content, and raw worker errors remain
 English and must not be moved into this directory.
@@ -99,8 +128,8 @@ Each locale module must use a named export whose identifier exactly matches the
 message directory and catalog key. Individual message modules must not use a
 default export. Message functions must return `string` synchronously. Do not add
 `async` message functions or `Promise<string>` results; asynchronous localization
-requires a separate API because `lazyStrings` must be able to return a temporary
-empty string before a pack is available.
+requires a separate API because `lazyStrings` returns `undefined` until a pack is
+available.
 
 Do not import the English message type into every locale module and do not add
 per-message `satisfies` expressions. Each locale implementation declares its

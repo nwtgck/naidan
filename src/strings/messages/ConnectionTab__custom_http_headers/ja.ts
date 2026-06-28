@@ -1,1 +1,1 @@
-export const ConnectionTab__custom_http_headers = (): string => 'カスタムHTTPヘッダー';
+export const ConnectionTab__custom_http_headers = (): string => 'カスタム HTTP ヘッダー';

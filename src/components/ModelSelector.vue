@@ -32,6 +32,9 @@ const displayModelName = computed(() => props.modelValue || props.placeholder ||
 
 const modelNameParts = computed(() => {
   const name = displayModelName.value;
+  if (name === undefined) {
+    return { prefix: '', suffix: undefined };
+  }
   const lastSlashIndex = name.lastIndexOf('/');
   if (lastSlashIndex === -1) {
     return { prefix: '', suffix: name };

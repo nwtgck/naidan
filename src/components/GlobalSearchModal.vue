@@ -148,7 +148,7 @@ const targetChatTitle = computed(() => {
 });
 
 
-function searchScopeLabel({ scope }: { scope: SearchScope }): string {
+function searchScopeLabel({ scope }: { scope: SearchScope }): string | undefined {
   switch (scope) {
   case 'all': return lazyStrings.GlobalSearchModal__all();
   case 'current_thread': return lazyStrings.GlobalSearchModal__current_thread();
@@ -157,7 +157,7 @@ function searchScopeLabel({ scope }: { scope: SearchScope }): string {
   }
 }
 
-function searchRoleLabel({ role }: { role: SearchRoleFilter }): string {
+function searchRoleLabel({ role }: { role: SearchRoleFilter }): string | undefined {
   switch (role) {
   case 'all': return lazyStrings.GlobalSearchModal__all();
   case 'user': return lazyStrings.GlobalSearchModal__user();
@@ -166,7 +166,7 @@ function searchRoleLabel({ role }: { role: SearchRoleFilter }): string {
   }
 }
 
-function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): string {
+function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): string | undefined {
   switch (mode) {
   case 'always': return lazyStrings.GlobalSearchModal__on();
   case 'peek': return lazyStrings.GlobalSearchModal__peek();
@@ -705,9 +705,9 @@ defineExpose({
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex flex-col overflow-hidden">
                         <AllowedHtmlView
-                          v-if="isHighlightingEnabled"
+                          v-if="isHighlightingEnabled && entry.item.title"
                           as="span"
-                          :html="highlight({ text: entry.item.title || lazyStrings.SHARED__new_chat(), query, color: 'indigo' })"
+                          :html="highlight({ text: entry.item.title, query, color: 'indigo' })"
                           class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
                         />
                         <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || lazyStrings.SHARED__new_chat() }}</span>

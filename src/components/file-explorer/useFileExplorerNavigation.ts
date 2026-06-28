@@ -24,9 +24,9 @@ function getParentPath({ path }: { path: string }): string {
   return `/${segments.slice(0, -1).join('/')}`;
 }
 
-async function formatDirectoryLoadError({ error }: { error: unknown }): Promise<string> {
+async function resolveDirectoryLoadError({ error }: { error: unknown }): Promise<string> {
   if (error instanceof DOMException && error.name === 'NotFoundError') {
-    return ensureStrings.fileExplorer__folder_is_no_longer_available();
+    return await ensureStrings.fileExplorer__folder_is_no_longer_available();
   }
   return error instanceof Error ? error.message : String(error);
 }
@@ -71,7 +71,7 @@ export function useFileExplorerNavigation({
       entries.value = response.entries;
     } catch (error) {
       loadError.value = await ensureStrings.fileExplorer__failed_to_load_directory({
-        errorMessage: await formatDirectoryLoadError({ error }),
+        errorMessage: await resolveDirectoryLoadError({ error }),
       });
     } finally {
       isLoading.value = false;
@@ -224,7 +224,7 @@ export function useFileExplorerNavigation({
     TEST_ONLY: {
       normalizeExplorerPath,
       getParentPath,
-      formatDirectoryLoadError,
+      resolveDirectoryLoadError,
     },
   };
 }

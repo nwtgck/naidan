@@ -15,12 +15,13 @@ const { setNeedRefresh } = usePWAUpdate();
 const { addInfoEvent } = useGlobalEvents();
 
 watch(offlineReady, async (ready) => {
-  if (ready) {
-    addInfoEvent({
-      source: 'PWA',
-      message: await ensureStrings.PWAManager__app_ready_to_work_offline(),
-    });
-  }
+  if (!ready) return;
+  const message = await ensureStrings.PWAManager__app_ready_to_work_offline();
+  if (!offlineReady.value) return;
+  addInfoEvent({
+    source: 'PWA',
+    message,
+  });
 });
 
 watch(needRefresh, (refresh) => {

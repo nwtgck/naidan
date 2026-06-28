@@ -16,13 +16,25 @@ const emit = defineEmits<{
   (e: 'update:effort', effort: Reasoning['effort']): void,
 }>();
 
-const effortOptions = computed((): { label: string, shortLabel: string, testId: string, value: Reasoning['effort'] }[] => [
-  { label: lazyStrings.ReasoningSettings__default(), shortLabel: lazyStrings.ReasoningSettings__default(), testId: 'default', value: undefined },
-  { label: lazyStrings.ReasoningSettings__off(), shortLabel: lazyStrings.ReasoningSettings__off(), testId: 'off', value: 'none' },
-  { label: lazyStrings.ReasoningSettings__low(), shortLabel: lazyStrings.ReasoningSettings__low(), testId: 'low', value: 'low' },
-  { label: lazyStrings.ReasoningSettings__medium(), shortLabel: lazyStrings.ReasoningSettings__med(), testId: 'medium', value: 'medium' },
-  { label: lazyStrings.ReasoningSettings__high(), shortLabel: lazyStrings.ReasoningSettings__high(), testId: 'high', value: 'high' },
-]);
+type EffortOption = {
+  label: string,
+  shortLabel: string,
+  testId: string,
+  value: Reasoning['effort'],
+};
+
+const effortOptions = computed<EffortOption[]>(() => {
+  const options = [
+    { label: lazyStrings.ReasoningSettings__default(), shortLabel: lazyStrings.ReasoningSettings__default(), testId: 'default', value: undefined },
+    { label: lazyStrings.ReasoningSettings__off(), shortLabel: lazyStrings.ReasoningSettings__off(), testId: 'off', value: 'none' as const },
+    { label: lazyStrings.ReasoningSettings__low(), shortLabel: lazyStrings.ReasoningSettings__low(), testId: 'low', value: 'low' as const },
+    { label: lazyStrings.ReasoningSettings__medium(), shortLabel: lazyStrings.ReasoningSettings__med(), testId: 'medium', value: 'medium' as const },
+    { label: lazyStrings.ReasoningSettings__high(), shortLabel: lazyStrings.ReasoningSettings__high(), testId: 'high', value: 'high' as const },
+  ];
+  return options.filter((option): option is EffortOption => (
+    option.label !== undefined && option.shortLabel !== undefined
+  ));
+});
 
 const buttonRefs = ref<(HTMLElement | null)[]>([]);
 const isInitialized = ref(false);

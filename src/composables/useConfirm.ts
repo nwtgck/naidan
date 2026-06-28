@@ -1,5 +1,5 @@
-import { ensureStrings } from '@/strings';
 import { ref, shallowRef, type Component } from 'vue';
+import { ensureStrings } from '@/strings';
 
 interface ConfirmOptions {
   title?: string,
@@ -13,8 +13,8 @@ interface ConfirmOptions {
 const isConfirmOpen = ref(false);
 const confirmTitle = ref('');
 const confirmMessage = ref('');
-const confirmConfirmButtonText = ref('');
-const confirmCancelButtonText = ref('');
+const confirmConfirmButtonText = ref('Confirm');
+const confirmCancelButtonText = ref('Cancel');
 const confirmButtonVariant = ref<'default' | 'danger'>('default'); // New ref for variant
 const confirmIcon = shallowRef<Component | undefined>(undefined); // Use shallowRef for components
 let resolvePromise: ReturnType<typeof Promise.withResolvers<boolean>>['resolve'] | undefined;
@@ -22,9 +22,9 @@ let resolvePromise: ReturnType<typeof Promise.withResolvers<boolean>>['resolve']
 export function useConfirm() {
   const showConfirm = async ({ title, message, confirmButtonText, cancelButtonText, confirmButtonVariant: buttonVariant, icon }: ConfirmOptions): Promise<boolean> => {
     const [resolvedTitle, resolvedConfirmButtonText, resolvedCancelButtonText] = await Promise.all([
-      title || ensureStrings.SHARED__confirm(),
-      confirmButtonText || ensureStrings.SHARED__confirm(),
-      cancelButtonText || ensureStrings.SHARED__cancel(),
+      title ? Promise.resolve(title) : ensureStrings.SHARED__confirm(),
+      confirmButtonText ? Promise.resolve(confirmButtonText) : ensureStrings.SHARED__confirm(),
+      cancelButtonText ? Promise.resolve(cancelButtonText) : ensureStrings.SHARED__cancel(),
     ]);
 
     return new Promise((resolve) => {

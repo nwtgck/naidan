@@ -1,1 +1,1 @@
-export const ImageConjuringLoader__image_count = ({ current, total }: { current: number | undefined; total: number }): string => `画像 ${current} / ${total}`;
+export const ImageConjuringLoader__image_count = ({ current, total }: { current: number; total: number }): string => `画像 ${current} / ${total}`;

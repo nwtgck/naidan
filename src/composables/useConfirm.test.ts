@@ -1,15 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick } from 'vue'; // Imported nextTick from vue
 import { useConfirm } from './useConfirm';
-import { flushPromises, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
-
-vi.mock('@/strings', () => ({
-  ensureStrings: {
-    SHARED__cancel: async () => 'Cancel',
-    SHARED__confirm: async () => 'Confirm',
-  },
-}));
 
 // Mock the global CustomDialog component
 const MockCustomDialog = defineComponent({
@@ -62,14 +55,21 @@ describe('useConfirm', () => {
     });
   });
 
-  it('showConfirm returns a promise', () => {
+  it('showConfirm returns a promise', async () => {
     const promise = confirmHook.showConfirm({ message: 'Are you sure?' });
     expect(promise).toBeInstanceOf(Promise);
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmMessage.value).toBe('Are you sure?');
+    });
+    confirmHook.handleCancel();
+    await expect(promise).resolves.toBe(false);
   });
 
   it('showConfirm resolves to true on confirmation', async () => {
     const confirmPromise = confirmHook.showConfirm({ message: 'Confirm this?' });
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmMessage.value).toBe('Confirm this?');
+    });
 
     // Simulate confirmation by calling the composable's handler
     confirmHook.handleConfirm();
@@ -82,7 +82,9 @@ describe('useConfirm', () => {
 
   it('showConfirm resolves to false on cancellation', async () => {
     const confirmPromise = confirmHook.showConfirm({ message: 'Cancel this?' });
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmMessage.value).toBe('Cancel this?');
+    });
 
     // Simulate cancellation by calling the composable's handler
     confirmHook.handleCancel();
@@ -101,21 +103,27 @@ describe('useConfirm', () => {
       cancelButtonText: 'Go Back',
       confirmButtonVariant: 'danger' as const,
     };
-    confirmHook.showConfirm(options);
-    await flushPromises(); // Wait for the localized defaults and dialog state to update
+    const confirmPromise = confirmHook.showConfirm(options);
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmTitle.value).toBe(options.title);
+    });
 
-    expect(confirmHook.isConfirmOpen.value).toBe(true);
     expect(confirmHook.confirmTitle.value).toBe(options.title);
     expect(confirmHook.confirmMessage.value).toBe(options.message);
     expect(confirmHook.confirmConfirmButtonText.value).toBe(options.confirmButtonText);
     expect(confirmHook.confirmCancelButtonText.value).toBe(options.cancelButtonText);
     expect(confirmHook.confirmButtonVariant.value).toBe(options.confirmButtonVariant);
+    confirmHook.handleCancel();
+    await expect(confirmPromise).resolves.toBe(false);
   });
 
   it('passes icon correctly', async () => {
     const MockIcon = { template: '<div>Icon</div>' };
-    confirmHook.showConfirm({ icon: MockIcon });
-    await flushPromises();
-    expect(confirmHook.confirmIcon.value).toStrictEqual(MockIcon);
+    const confirmPromise = confirmHook.showConfirm({ icon: MockIcon });
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmIcon.value).toStrictEqual(MockIcon);
+    });
+    confirmHook.handleCancel();
+    await expect(confirmPromise).resolves.toBe(false);
   });
 });

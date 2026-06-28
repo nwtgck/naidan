@@ -32,7 +32,7 @@ defineProps<{
   chatGroups: readonly HeaderChatGroup[],
   chatGroupBadge: HeaderChatGroup | undefined,
   activeMessageCount: number,
-  modelLabel: string,
+  modelLabel: string | undefined,
   hasOverrides: boolean,
   showChatSettings: boolean,
   outlineVisibility: 'hidden' | 'visible',

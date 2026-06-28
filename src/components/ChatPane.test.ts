@@ -2457,7 +2457,6 @@ describe('ChatPane Scrolling Logic', () => {
         id: 'seq-1',
         items: [],
         flow: { position: 'standalone', nesting: 'none' },
-        summary: 'Process Details',
         stats: {
           thinkingSteps: 0,
           toolCallCount: 1,

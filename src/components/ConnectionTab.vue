@@ -68,7 +68,7 @@ const selectedProviderProfileId = ref('');
 
 const copied = ref(false);
 
-async function copySetupUrl() {
+async function copySetupUrl(): Promise<void> {
   const baseUrl = window.location.origin + window.location.pathname;
   const params = new URLSearchParams();
 

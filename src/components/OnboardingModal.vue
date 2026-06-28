@@ -247,7 +247,7 @@ function selectPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   availableModels.value = [];
 }
 
-async function handleCancelConnect() {
+async function handleCancelConnect(): Promise<void> {
   if (abortController) {
     abortController.abort();
     abortController = null;

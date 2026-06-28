@@ -11,7 +11,7 @@ const props = defineProps<{
 
 const actionLabel = computed(() => resolveActionLabel({ actionId: props.request.action.id }));
 
-function resolveActionLabel({ actionId }: { actionId: ApprovalActionId }): string {
+function resolveActionLabel({ actionId }: { actionId: ApprovalActionId }): string | undefined {
   switch (actionId) {
   case 'tool.wikipedia.search':
     return lazyStrings.chatApproval__search_wikipedia();
@@ -23,6 +23,11 @@ function resolveActionLabel({ actionId }: { actionId: ApprovalActionId }): strin
   }
   }
 }
+
+const approvalTitle = computed(() => {
+  if (actionLabel.value === undefined) return undefined;
+  return lazyStrings.chatApproval__allow_action({ actionLabel: actionLabel.value });
+});
 
 const emit = defineEmits<{
   (event: 'decide', decision: ApprovalUiDecision): void,
@@ -52,7 +57,7 @@ defineExpose({
     <div class="flex flex-col gap-2.5">
       <div class="min-w-0">
         <div class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-          {{ lazyStrings.chatApproval__allow_action({ actionLabel: actionLabel }) }}
+          {{ approvalTitle }}
         </div>
       </div>
 
@@ -64,6 +69,7 @@ defineExpose({
       </div>
 
       <ChatApprovalDecisionList
+        v-if="actionLabel !== undefined"
         :action-label="actionLabel"
         @decide="decision => decide({ decision })"
       />

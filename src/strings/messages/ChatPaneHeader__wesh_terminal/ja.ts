@@ -1,1 +1,1 @@
-export const ChatPaneHeader__wesh_terminal = (): string => 'Weshターミナル';
+export const ChatPaneHeader__wesh_terminal = (): string => 'Wesh ターミナル';

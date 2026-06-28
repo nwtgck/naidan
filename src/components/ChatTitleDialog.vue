@@ -106,6 +106,12 @@ function titleModelSourceLabel({ source }: { source: 'chat' | 'chat_group' | 'gl
   }
 }
 
+function activeTitleModelSourceDescription(): string | undefined {
+  const sourceLabel = titleModelSourceLabel({ source: props.titleModelSource });
+  if (sourceLabel === undefined) return undefined;
+  return lazyStrings.ChatTitleDialog__editing_source_because_that_is_the_active_source_for_this_chat({ sourceLabel });
+}
+
 function toggleDetails() {
   const currentVisibility = detailVisibility.value;
   switch (currentVisibility) {
@@ -218,7 +224,7 @@ defineExpose({
                 <div>
                   <h4 class="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title_model() }}</h4>
                   <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                    {{ lazyStrings.ChatTitleDialog__editing_source_because_that_is_the_active_source_for_this_chat({ sourceLabel: titleModelSourceLabel({ source: titleModelSource }) }) }}
+                    {{ activeTitleModelSourceDescription() }}
                   </p>
                 </div>
 

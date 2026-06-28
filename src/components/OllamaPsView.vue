@@ -348,7 +348,7 @@ function getModelActionState({ modelName }: {
 
 function getUnloadButtonLabel({ modelName }: {
   modelName: string,
-}): string {
+}): string | undefined {
   const actionState = getModelActionState({ modelName });
   switch (actionState) {
   case 'idle':
@@ -389,7 +389,9 @@ function getModelDetails({ model }: {
       ? undefined
       : { label: lazyStrings.OllamaPsView__parent_model(), value: model.details.parentModel },
     model.digest === undefined || model.digest === '' ? undefined : { label: lazyStrings.OllamaPsView__digest(), value: model.digest },
-  ].filter((value): value is { readonly label: string, readonly value: string } => value !== undefined);
+  ].filter((value): value is { readonly label: string, readonly value: string } => (
+    value !== undefined && value.label !== undefined
+  ));
 }
 
 function formatBytes({ value, kind }: {

@@ -150,7 +150,7 @@ function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType
   throw new Error(`Unhandled endpoint type value: ${value}`);
 }
 
-function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string {
+function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string | undefined {
   switch (endpointType) {
   case 'openai':
     return 'OpenAI';
@@ -163,6 +163,39 @@ function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): st
     throw new Error(`Unhandled endpoint type: ${_ex}`);
   }
   }
+}
+
+function inheritedEndpointTypeLabel(): string | undefined {
+  const endpointType = resolvedSettings.value?.endpointType;
+  if (endpointType === undefined) {
+    return formatSettingsSourceLabel({
+      value: undefined,
+      source: resolvedSettings.value?.sources.endpointType,
+    });
+  }
+  const label = endpointTypeLabel({ endpointType });
+  if (label === undefined) return undefined;
+  return formatSettingsSourceLabel({
+    value: label,
+    source: resolvedSettings.value?.sources.endpointType,
+  });
+}
+
+function titleModelExplanation(): string | undefined {
+  const source = resolvedSettings.value?.sources.autoTitleEnabled;
+  if (localSettings.value.autoTitleEnabled !== undefined || source === undefined) {
+    return lazyStrings.ChatSettingsPanel__title_model_explanation({
+      inheritance: { type: 'none' },
+    });
+  }
+
+  return lazyStrings.ChatSettingsPanel__title_model_explanation({
+    inheritance: {
+      type: 'inherited',
+      state: resolvedSettings.value?.autoTitleEnabled ? 'enabled' : 'disabled',
+      source,
+    },
+  });
 }
 
 function endpointFromDraft({
@@ -831,7 +864,7 @@ defineExpose({
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
               >
-                <option value="global">{{ formatSettingsSourceLabel({ value: resolvedSettings?.endpointType === 'transformers_js' ? lazyStrings.ChatSettingsPanel__transformers_js() : resolvedSettings?.endpointType, source: resolvedSettings?.sources.endpointType }) }}</option>
+                <option value="global">{{ inheritedEndpointTypeLabel() }}</option>
                 <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                 <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
                 <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
@@ -981,12 +1014,7 @@ defineExpose({
               </div>
               <div class="flex items-center">
                 <p class="text-[10px] text-gray-400 italic leading-relaxed">
-                  {{ lazyStrings.ChatSettingsPanel__title_model_explanation({
-                    inheritedState: localSettings.autoTitleEnabled === undefined
-                      ? (resolvedSettings?.autoTitleEnabled ? lazyStrings.ChatSettingsPanel__enabled() : lazyStrings.ChatSettingsPanel__disabled())
-                      : undefined,
-                    source: resolvedSettings?.sources.autoTitleEnabled,
-                  }) }}
+                  {{ titleModelExplanation() }}
                 </p>
               </div>
             </div>

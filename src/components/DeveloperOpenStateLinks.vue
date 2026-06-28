@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import { CopyIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-vue-next';
 import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
@@ -7,44 +7,72 @@ import { useExportExclusions } from '@/composables/useExportExclusions';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 type DeploymentTarget = {
-  readonly kind: string,
+  readonly kind: 'Standard' | 'Local only' | 'Curated',
   readonly host: string,
   readonly baseUrl: string,
 };
 
 type DeploymentGroup = {
   readonly id: 'production' | 'develop',
-  readonly label: string,
+  readonly label: 'Production' | 'develop branch',
   readonly dotClass: string,
   readonly targets: readonly DeploymentTarget[],
 };
 
-const DEPLOYMENT_GROUPS = computed<readonly DeploymentGroup[]>(() => [
+const DEPLOYMENT_GROUPS = [
   {
     id: 'production',
-    label: lazyStrings.DeveloperOpenStateLinks__production(),
+    label: 'Production',
     dotClass: 'bg-emerald-600/60 dark:bg-emerald-400/60',
     targets: [
-      { kind: lazyStrings.DeveloperOpenStateLinks__standard(), host: 'naidan.pages.dev', baseUrl: 'https://naidan.pages.dev' },
-      { kind: lazyStrings.DeveloperOpenStateLinks__local_only(), host: 'naidan-only-local.pages.dev', baseUrl: 'https://naidan-only-local.pages.dev' },
-      { kind: lazyStrings.DeveloperOpenStateLinks__curated(), host: 'naidan-curated.pages.dev', baseUrl: 'https://naidan-curated.pages.dev' },
+      { kind: 'Standard', host: 'naidan.pages.dev', baseUrl: 'https://naidan.pages.dev' },
+      { kind: 'Local only', host: 'naidan-only-local.pages.dev', baseUrl: 'https://naidan-only-local.pages.dev' },
+      { kind: 'Curated', host: 'naidan-curated.pages.dev', baseUrl: 'https://naidan-curated.pages.dev' },
     ],
   },
   {
     id: 'develop',
-    label: lazyStrings.DeveloperOpenStateLinks__develop_branch(),
+    label: 'develop branch',
     dotClass: 'bg-violet-500/50 dark:bg-violet-300/60',
     targets: [
-      { kind: lazyStrings.DeveloperOpenStateLinks__standard(), host: 'develop.naidan.pages.dev', baseUrl: 'https://develop.naidan.pages.dev' },
-      { kind: lazyStrings.DeveloperOpenStateLinks__local_only(), host: 'develop.naidan-only-local.pages.dev', baseUrl: 'https://develop.naidan-only-local.pages.dev' },
-      { kind: lazyStrings.DeveloperOpenStateLinks__curated(), host: 'develop.naidan-curated.pages.dev', baseUrl: 'https://develop.naidan-curated.pages.dev' },
+      { kind: 'Standard', host: 'develop.naidan.pages.dev', baseUrl: 'https://develop.naidan.pages.dev' },
+      { kind: 'Local only', host: 'develop.naidan-only-local.pages.dev', baseUrl: 'https://develop.naidan-only-local.pages.dev' },
+      { kind: 'Curated', host: 'develop.naidan-curated.pages.dev', baseUrl: 'https://develop.naidan-curated.pages.dev' },
     ],
   },
-]);
+] as const satisfies readonly DeploymentGroup[];
 
-const DEPLOYMENT_TARGETS = computed<readonly DeploymentTarget[]>(() => DEPLOYMENT_GROUPS.value.flatMap(
+const DEPLOYMENT_TARGETS: readonly DeploymentTarget[] = DEPLOYMENT_GROUPS.flatMap(
   group => [...group.targets],
-));
+);
+
+function deploymentGroupLabel({ label }: { label: DeploymentGroup['label'] }): string | undefined {
+  switch (label) {
+  case 'Production':
+    return lazyStrings.DeveloperOpenStateLinks__production();
+  case 'develop branch':
+    return lazyStrings.DeveloperOpenStateLinks__develop_branch();
+  default: {
+    const _ex: never = label;
+    throw new Error(`Unhandled deployment group label: ${_ex}`);
+  }
+  }
+}
+
+function deploymentTargetKindLabel({ kind }: { kind: DeploymentTarget['kind'] }): string | undefined {
+  switch (kind) {
+  case 'Standard':
+    return lazyStrings.DeveloperOpenStateLinks__standard();
+  case 'Local only':
+    return lazyStrings.DeveloperOpenStateLinks__local_only();
+  case 'Curated':
+    return lazyStrings.DeveloperOpenStateLinks__curated();
+  default: {
+    const _ex: never = kind;
+    throw new Error(`Unhandled deployment target kind: ${_ex}`);
+  }
+  }
+}
 
 const { addToast } = useToast();
 const activeAction = ref<{ type: 'copy' | 'open', host: string } | null>(null);
@@ -174,7 +202,7 @@ defineExpose({
         >
           <h4 class="mb-2 flex items-center gap-1.5 text-xs font-bold text-gray-800 dark:text-gray-200">
             <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="group.dotClass" aria-hidden="true"></span>
-            {{ group.label }}
+            {{ deploymentGroupLabel({ label: group.label }) }}
           </h4>
 
           <div class="space-y-1.5">
@@ -186,7 +214,7 @@ defineExpose({
             >
               <div class="min-w-0">
                 <span class="block text-[8px] font-extrabold uppercase leading-tight tracking-wider text-gray-400 dark:text-gray-500">
-                  {{ target.kind }}
+                  {{ deploymentTargetKindLabel({ kind: target.kind }) }}
                 </span>
                 <span class="mt-0.5 block truncate font-mono text-[10px] font-semibold leading-snug text-gray-700 dark:text-gray-300">
                   {{ target.host }}

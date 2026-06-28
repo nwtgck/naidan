@@ -47,9 +47,10 @@ const groupNameMap = computed(() => {
 const filteredRecentChats = computed(() => {
   const q = filterQuery.value.trim().toLowerCase();
   if (!q) return recentChats.value;
-  return recentChats.value.filter(chat =>
-    (chat.title || lazyStrings.SHARED__new_chat()).toLowerCase().includes(q),
-  );
+  return recentChats.value.filter((chat) => {
+    const displayTitle = chat.title || lazyStrings.SHARED__new_chat();
+    return displayTitle?.toLowerCase().includes(q) === true;
+  });
 });
 
 const handlePreviewMouseEnter = () => {
@@ -203,7 +204,7 @@ watch(isRecentOpen, (isOpen) => {
 });
 
 
-function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): string {
+function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): string | undefined {
   switch (mode) {
   case 'always': return lazyStrings.RecentChatsModal__on();
   case 'peek': return lazyStrings.RecentChatsModal__peek();

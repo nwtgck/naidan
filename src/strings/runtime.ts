@@ -36,7 +36,7 @@ const nonMessageAccessorProperties = new Set([
   'toJSON',
 ]);
 /* eslint-disable local-rules-named-args/require-named-args -- Proxy adapters preserve each message's zero-argument or one-object call signature. */
-type LazyStringAccessor = (...args: readonly unknown[]) => string;
+type LazyStringAccessor = (...args: readonly unknown[]) => string | undefined;
 type EnsureStringAccessor = (...args: readonly unknown[]) => Promise<string>;
 /* eslint-enable local-rules-named-args/require-named-args */
 
@@ -265,14 +265,14 @@ function getLazyStringAccessor({ key }: {
 
   // This Proxy adapter must preserve both zero-argument and one-object message signatures.
   // eslint-disable-next-line local-rules-named-args/require-named-args
-  const accessor = (...args: readonly unknown[]): string => {
+  const accessor = (...args: readonly unknown[]): string | undefined => {
     const locale = currentLocaleState.value;
     const message = getLoadedMessage({ key, locale });
     if (message === undefined) {
       void ensureKeyLoaded({ key, locale }).catch((error: unknown) => {
         console.error('[Boundary Strings] Failed to load a message boundary.', error);
       });
-      return '';
+      return undefined;
     }
     return Reflect.apply(message, undefined, args) as string;
   };
@@ -331,10 +331,22 @@ export function registerStringBoundary({ boundaryId, keys, loaders }: {
 /**
  * Reads a message synchronously for a reactive render path.
  *
- * A missing locale boundary starts loading and returns an empty string. Callers
+ * A missing locale boundary starts loading and returns undefined. Callers
  * must therefore use this accessor only where Vue will evaluate the expression
  * again after the reactive locale registry receives the message implementation.
  */
+/* eslint-disable local-rules-named-args/require-named-args -- This type adapter preserves the exact zero-argument or one-object message contract. */
+type LazyString<Message> = Message extends () => infer Result
+  ? () => Awaited<Result> | undefined
+  : Message extends (args: infer Args) => infer Result
+    ? (args: Args) => Awaited<Result> | undefined
+    : never;
+/* eslint-enable local-rules-named-args/require-named-args */
+
+export type LazyStrings = {
+  readonly [Key in keyof Strings]: LazyString<Strings[Key]>;
+};
+
 export const lazyStrings = new Proxy({}, {
   get(target, property) {
     if (
@@ -347,7 +359,7 @@ export const lazyStrings = new Proxy({}, {
     }
     return getLazyStringAccessor({ key: property });
   },
-}) as Strings;
+}) as LazyStrings;
 
 /* eslint-disable local-rules-named-args/require-named-args -- This type adapter preserves the exact zero-argument or one-object message contract. */
 type EnsureString<Message> = Message extends () => infer Result

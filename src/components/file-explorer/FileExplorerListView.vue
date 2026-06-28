@@ -12,12 +12,22 @@ import { useVirtualizedFileExplorerList } from './useVirtualizedFileExplorerList
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
 const scrollContainerRef = ref<HTMLElement | undefined>(undefined);
 
-const columns = computed<Array<{ label: string, field: SortField, class: string }>>(() => [
-  { label: lazyStrings.fileExplorer__name(), field: 'name', class: 'flex-1 min-w-0' },
-  { label: lazyStrings.fileExplorer__size(), field: 'size', class: 'w-16 text-right shrink-0' },
-  { label: lazyStrings.fileExplorer__modified(), field: 'dateModified', class: 'w-28 text-right shrink-0 hidden md:block' },
-  { label: lazyStrings.fileExplorer__type(), field: 'type', class: 'w-16 text-right shrink-0 hidden lg:block' },
-]);
+type FileExplorerColumn = { readonly label: string, readonly field: SortField, readonly class: string };
+
+const columns = computed<FileExplorerColumn[]>(() => {
+  const name = lazyStrings.fileExplorer__name();
+  const size = lazyStrings.fileExplorer__size();
+  const modified = lazyStrings.fileExplorer__modified();
+  const type = lazyStrings.fileExplorer__type();
+  if (name === undefined || size === undefined || modified === undefined || type === undefined) return [];
+
+  return [
+    { label: name, field: 'name', class: 'flex-1 min-w-0' },
+    { label: size, field: 'size', class: 'w-16 text-right shrink-0' },
+    { label: modified, field: 'dateModified', class: 'w-28 text-right shrink-0 hidden md:block' },
+    { label: type, field: 'type', class: 'w-16 text-right shrink-0 hidden lg:block' },
+  ];
+});
 
 const sortedFilteredEntriesRef = computed(() => ctx.sortedFilteredEntries);
 

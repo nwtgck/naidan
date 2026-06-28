@@ -249,7 +249,7 @@ function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType
   throw new Error(`Unhandled endpoint type value: ${value}`);
 }
 
-function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string {
+function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string | undefined {
   switch (endpointType) {
   case 'openai':
     return 'OpenAI';
@@ -262,6 +262,25 @@ function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): st
     throw new Error(`Unhandled endpoint type: ${_ex}`);
   }
   }
+}
+
+function globalEndpointTypeLabel(): string | undefined {
+  const endpointType = endpointTypeLabel({ endpointType: settings.value.endpointType });
+  if (endpointType === undefined) return undefined;
+  return lazyStrings.ChatGroupSettingsPanel__global_endpoint_type({ endpointType });
+}
+
+function titleModelExplanation(): string | undefined {
+  const inheritance = localSettings.value.autoTitleEnabled === undefined
+    ? (settings.value.autoTitleEnabled ? 'enabled' : 'disabled')
+    : 'none';
+  return lazyStrings.ChatGroupSettingsPanel__title_model_explanation({ inheritance });
+}
+
+function globalModelLabel({ modelId }: { modelId: string | undefined }): string | undefined {
+  const resolvedModelId = modelId || lazyStrings.ChatGroupSettingsPanel__none();
+  if (resolvedModelId === undefined) return undefined;
+  return lazyStrings.ChatGroupSettingsPanel__global_model({ modelId: resolvedModelId });
 }
 
 function createChanges({
@@ -975,7 +994,7 @@ defineExpose({
               class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
               style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
             >
-              <option value="global">{{ lazyStrings.ChatGroupSettingsPanel__global_endpoint_type({ endpointType: settings.endpointType === 'transformers_js' ? lazyStrings.ChatGroupSettingsPanel__transformers_js() : settings.endpointType }) }}</option>
+              <option value="global">{{ globalEndpointTypeLabel() }}</option>
               <option value="openai">{{ lazyStrings.ChatGroupSettingsPanel__openai_compatible() }}</option>
               <option value="ollama">{{ lazyStrings.ChatGroupSettingsPanel__ollama() }}</option>
               <option value="transformers_js">{{ lazyStrings.ChatGroupSettingsPanel__transformers_js_experimental() }}</option>
@@ -1062,7 +1081,7 @@ defineExpose({
                 @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
                 :loading="isFetchingModels"
                 :models="sortedGroupModels"
-                :placeholder="lazyStrings.ChatGroupSettingsPanel__global_model({ modelId: settings.defaultModelId || lazyStrings.ChatGroupSettingsPanel__none() })"
+                :placeholder="globalModelLabel({ modelId: settings.defaultModelId })"
                 :allow-clear="true"
                 @refresh="fetchModels"
                 data-testid="group-setting-model-select"
@@ -1128,7 +1147,7 @@ defineExpose({
                 @update:model-value="val => { localSettings.titleModelId = val; saveChangesFromUi(); }"
                 :models="sortedGroupModels"
                 :loading="isFetchingModels"
-                :placeholder="lazyStrings.ChatGroupSettingsPanel__global_model({ modelId: settings.titleModelId || lazyStrings.ChatGroupSettingsPanel__none() })"
+                :placeholder="globalModelLabel({ modelId: settings.titleModelId })"
                 :allow-clear="true"
                 @refresh="fetchModels"
                 data-testid="group-setting-title-model-select"
@@ -1136,11 +1155,7 @@ defineExpose({
             </div>
             <div class="flex items-center">
               <p class="text-[10px] text-gray-400 italic leading-relaxed">
-                {{ lazyStrings.ChatGroupSettingsPanel__title_model_explanation({
-                  inheritedState: localSettings.autoTitleEnabled === undefined
-                    ? (settings.autoTitleEnabled ? lazyStrings.ChatGroupSettingsPanel__enabled() : lazyStrings.ChatGroupSettingsPanel__disabled())
-                    : undefined,
-                }) }}
+                {{ titleModelExplanation() }}
               </p>
             </div>
           </div>

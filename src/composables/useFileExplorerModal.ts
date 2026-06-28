@@ -1,4 +1,3 @@
-import { lazyStrings } from '@/strings';
 import { ref, shallowRef } from 'vue';
 import type { WeshMount } from '@/services/wesh/types';
 import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
@@ -31,7 +30,8 @@ export function mapFileExplorerModalOptionsToRootDescriptor({
   case 'opfs-root':
     return {
       kind: 'opfs-root',
-      rootName: lazyStrings.fileExplorer__opfs_root(),
+      // TODO(strings-localize): Localize this worker descriptor after the synchronous root mapping accepts a resolved display label separately.
+      rootName: 'OPFS root',
     };
   case 'native-directory':
     return {

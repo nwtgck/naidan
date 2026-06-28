@@ -115,7 +115,7 @@ describe('GeneratedImageBlock', () => {
 
   it('calls ImageDownloadHydrator.download when download is triggered', async () => {
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
-    const downloadSpy = vi.spyOn(ImageDownloadHydrator, 'download').mockResolvedValue(undefined as any);
+    const downloadSpy = vi.spyOn(ImageDownloadHydrator, 'download').mockResolvedValue(undefined);
 
     const wrapper = mount(GeneratedImageBlock, {
       props: { json },
@@ -125,15 +125,17 @@ describe('GeneratedImageBlock', () => {
     await nextTick();
 
     const downloadBtn = wrapper.findComponent({ name: 'ImageDownloadButton' });
-    await downloadBtn.vm.$emit('download', { withMetadata: true });
+    downloadBtn.vm.$emit('download', { withMetadata: true });
 
-    expect(downloadSpy).toHaveBeenCalledWith(expect.objectContaining({
-      id: binaryObjectId,
-      prompt: 'a beautiful sunset',
-      steps: 25,
-      seed: 42,
-      withMetadata: true,
-    }));
+    await vi.waitFor(() => {
+      expect(downloadSpy).toHaveBeenCalledWith(expect.objectContaining({
+        id: binaryObjectId,
+        prompt: 'a beautiful sunset',
+        steps: 25,
+        seed: 42,
+        withMetadata: true,
+      }));
+    });
   });
 
   it('opens preview when image is clicked', async () => {

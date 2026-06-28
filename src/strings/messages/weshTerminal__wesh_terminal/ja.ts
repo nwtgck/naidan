@@ -1,1 +1,1 @@
-export const weshTerminal__wesh_terminal = (): string => 'Weshターミナル';
+export const weshTerminal__wesh_terminal = (): string => 'Wesh ターミナル';

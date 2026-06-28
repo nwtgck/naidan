@@ -42,11 +42,11 @@ const defaults: ToolConfig[] = [
   },
 ];
 
-const inheritanceSources = {
-  'builtin.calculator': 'global',
-  'builtin.choices': 'global',
-  'builtin.wikipedia': 'global',
-  'builtin.wesh': 'global',
+const inheritanceLabels = {
+  'builtin.calculator': 'Use global',
+  'builtin.choices': 'Use global',
+  'builtin.wikipedia': 'Use global',
+  'builtin.wesh': 'Use global',
 } as const;
 
 function mountSettings({
@@ -54,20 +54,20 @@ function mountSettings({
   toolConfigs,
   effectiveToolConfigs = defaults,
   isEditable = true,
-  inheritanceSourceByKey = scope === 'chat' ? inheritanceSources : undefined,
+  inheritanceLabelByKey = scope === 'chat' ? inheritanceLabels : undefined,
 }: {
   scope?: 'global' | 'chat_group' | 'chat',
   toolConfigs?: ToolConfig[],
   effectiveToolConfigs?: ToolConfig[],
   isEditable?: boolean,
-  inheritanceSourceByKey?: typeof inheritanceSources,
+  inheritanceLabelByKey?: typeof inheritanceLabels,
 } = {}) {
   return mount(ToolConfigHierarchySettings, {
     props: {
       scope,
       toolConfigs,
       effectiveToolConfigs,
-      inheritanceSourceByKey,
+      inheritanceLabelByKey,
       isEditable,
     },
   });

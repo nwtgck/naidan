@@ -14,10 +14,70 @@ defineEmits<{
 }>();
 
 const display = computed(() => {
-  return toContextCompactDisplayProgress({
+  const progressDisplay = toContextCompactDisplayProgress({
     progress: props.progress,
     nowMs: Date.now(),
   });
+  const copy = (() => {
+    switch (props.progress.phase) {
+    case 'idle':
+      return { title: '', detail: '' };
+    case 'preparing':
+      return {
+        title: lazyStrings.contextCompact__compacting_context(),
+        detail: lazyStrings.contextCompact__preparing_messages_and_keeping_recent_messages({
+          compactedMessageCount: props.progress.compactedMessageCount,
+          suffixMessageCount: props.progress.suffixMessageCount,
+        }),
+      };
+    case 'building_request':
+      return {
+        title: lazyStrings.contextCompact__compacting_context(),
+        detail: lazyStrings.contextCompact__building_compact_request(),
+      };
+    case 'requesting_model':
+      return {
+        title: lazyStrings.contextCompact__compacting_context(),
+        detail: lazyStrings.contextCompact__waiting_for_the_model(),
+      };
+    case 'receiving_compact':
+      return {
+        title: lazyStrings.contextCompact__compacting_context(),
+        detail: lazyStrings.contextCompact__generating_compact_context_with_characters_received({
+          outputChars: props.progress.outputChars,
+        }),
+      };
+    case 'applying_branch':
+      return {
+        title: lazyStrings.contextCompact__compacting_context(),
+        detail: lazyStrings.contextCompact__applying_compact_branch(),
+      };
+    case 'complete':
+      return {
+        title: lazyStrings.contextCompact__compacting_context(),
+        detail: lazyStrings.contextCompact__complete(),
+      };
+    case 'failed':
+      return {
+        title: lazyStrings.contextCompact__compacting_context_failed(),
+        detail: props.progress.message,
+      };
+    case 'aborted':
+      return {
+        title: lazyStrings.contextCompact__compacting_context(),
+        detail: lazyStrings.contextCompact__aborted(),
+      };
+    default: {
+      const _ex: never = props.progress;
+      throw new Error(`Unhandled context compact copy phase: ${_ex}`);
+    }
+    }
+  })();
+
+  return {
+    ...progressDisplay,
+    ...copy,
+  };
 });
 
 const visibleDisplay = ref(display.value);

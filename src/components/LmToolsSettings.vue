@@ -51,11 +51,11 @@ const effectiveToolConfigs = computed(() => {
   return getEffectiveToolConfigsForChat({ chat });
 });
 
-const inheritanceSourceByKey = computed(() => ({
-  'builtin.calculator': chatTools.getToolInheritanceSource({ name: 'calculator' }),
-  'builtin.choices': chatTools.getToolInheritanceSource({ name: 'choices' }),
-  'builtin.wikipedia': chatTools.getToolInheritanceSource({ name: 'wikipedia_search' }),
-  'builtin.wesh': chatTools.getToolInheritanceSource({ name: 'shell_execute' }),
+const inheritanceLabelByKey = computed(() => ({
+  'builtin.calculator': chatTools.getToolInheritanceLabel({ name: 'calculator' }),
+  'builtin.choices': chatTools.getToolInheritanceLabel({ name: 'choices' }),
+  'builtin.wikipedia': chatTools.getToolInheritanceLabel({ name: 'wikipedia_search' }),
+  'builtin.wesh': chatTools.getToolInheritanceLabel({ name: 'shell_execute' }),
 } as const));
 
 async function runToolUpdate({
@@ -140,7 +140,7 @@ defineExpose({ TEST_ONLY: {} });
       scope="chat"
       :tool-configs="toolConfigs"
       :effective-tool-configs="effectiveToolConfigs"
-      :inheritance-source-by-key="inheritanceSourceByKey"
+      :inheritance-label-by-key="inheritanceLabelByKey"
       :is-editable="true"
       @set-status="setToolStatus($event)"
       @reset-tool="resetTool($event)"

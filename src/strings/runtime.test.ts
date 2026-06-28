@@ -360,7 +360,7 @@ describe('Boundary Strings runtime', () => {
     expect(largeLoader).not.toHaveBeenCalled();
   });
 
-  it('returns an empty string from lazyStrings until the render message is loaded', async () => {
+  it('returns undefined from lazyStrings until the render message is loaded', async () => {
     const englishLoader = vi.fn(resolvedModule({
       module: { ChatInput__type_a_message: () => 'Type a message...' },
     }));
@@ -372,7 +372,7 @@ describe('Boundary Strings runtime', () => {
         ja: resolvedModule({ module: { ChatInput__type_a_message: () => 'メッセージを入力...' } }),
       },
     });
-    expect(lazyStrings.ChatInput__type_a_message()).toBe('');
+    expect(lazyStrings.ChatInput__type_a_message()).toBeUndefined();
     await vi.waitFor(() => {
       expect(englishLoader).toHaveBeenCalledTimes(1);
       expect(lazyStrings.ChatInput__type_a_message()).toBe('Type a message...');

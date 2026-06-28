@@ -591,31 +591,36 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
     }
   }
 
-  const confirmCopy = await (async () => {
-    switch (volumeType) {
-    case 'host': {
-      const [title, message, confirmButtonText] = await Promise.all([
-        ensureStrings.ChatInput__unlink_folder(),
-        ensureStrings.ChatInput__stop_using_folder(),
-        ensureStrings.ChatInput__unlink(),
-      ]);
-      return { title, message, confirmButtonText };
-    }
-    case 'opfs':
-    case undefined: {
-      const [title, message, confirmButtonText] = await Promise.all([
-        ensureStrings.ChatInput__remove_folder(),
-        ensureStrings.ChatInput__remove_browser_copy(),
-        ensureStrings.ChatInput__remove(),
-      ]);
-      return { title, message, confirmButtonText };
-    }
-    default: {
-      const _ex: never = volumeType;
-      throw new Error(`Unhandled volume type: ${_ex}`);
-    }
-    }
-  })();
+  let confirmCopy: {
+    title: string,
+    message: string,
+    confirmButtonText: string,
+  };
+  switch (volumeType) {
+  case 'host': {
+    const [title, message, confirmButtonText] = await Promise.all([
+      ensureStrings.ChatInput__unlink_folder(),
+      ensureStrings.ChatInput__stop_using_folder(),
+      ensureStrings.ChatInput__unlink(),
+    ]);
+    confirmCopy = { title, message, confirmButtonText };
+    break;
+  }
+  case 'opfs':
+  case undefined: {
+    const [title, message, confirmButtonText] = await Promise.all([
+      ensureStrings.ChatInput__remove_folder(),
+      ensureStrings.ChatInput__remove_browser_copy(),
+      ensureStrings.ChatInput__remove(),
+    ]);
+    confirmCopy = { title, message, confirmButtonText };
+    break;
+  }
+  default: {
+    const _ex: never = volumeType;
+    throw new Error(`Unhandled volume type: ${_ex}`);
+  }
+  }
 
   const confirmed = await showConfirm({
     ...confirmCopy,

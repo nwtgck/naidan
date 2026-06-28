@@ -455,6 +455,7 @@ const reasoningEffortTooltip = computed(() => {
       }
       }
     })();
+    if (effortLabel === undefined) return undefined;
     return lazyStrings.MessageItem__think_effort_note({ effortLabel });
   }
   default: {
@@ -524,10 +525,10 @@ defineExpose({
             <span>{{ reasoningEffortLabel }}</span>
           </div>
           <div class="flex items-center gap-1 group/msg-header-tools">
-            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
+            <SpeechControl v-if="speechText !== undefined && !isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
 
             <!-- Header Extensions Slot (Seamless transition) -->
-            <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
+            <div v-if="showExtensions && speechText !== undefined" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
               <SpeechLanguageSelector :message-id="message.id" :content="speechText" is-mini align="down" />
               <!-- Future tools here -->
             </div>
@@ -748,6 +749,7 @@ defineExpose({
 
           <!-- Message Actions -->
           <MessageActions
+            v-if="speechText !== undefined"
             :chat-id="chatId"
             :message="message"
             :is-image-response="isImageResponse"

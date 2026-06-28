@@ -465,10 +465,29 @@ async function exportChat() {
         }
         break;
       }
-      case 'process_sequence':
-        markdownContent += `## ${processSequenceLabel}: ${item.summary}\n`;
+      case 'process_sequence': {
+        const summaryParts: string[] = [];
+        if (item.stats.thinkingSteps > 0) {
+          summaryParts.push(await ensureStrings.AssistantProcessSequence__thinking_steps({ count: item.stats.thinkingSteps }));
+        }
+        if (item.stats.toolCallCount > 0) {
+          summaryParts.push(await ensureStrings.AssistantProcessSequence__tool_executions({ count: item.stats.toolCallCount }));
+        }
+        if (item.stats.toolNames.length > 0) {
+          const displayedToolNames = item.stats.toolNames.slice(0, 2);
+          let toolSummary = await ensureStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
+          if (item.stats.toolNames.length > displayedToolNames.length) {
+            toolSummary += ` ${await ensureStrings.AssistantProcessSequence__and_more({ count: item.stats.toolNames.length - displayedToolNames.length })}`;
+          }
+          summaryParts.push(toolSummary);
+        }
+        const summary = summaryParts.length > 0
+          ? summaryParts.join(' • ')
+          : await ensureStrings.AssistantProcessSequence__process_details();
+        markdownContent += `## ${processSequenceLabel}: ${summary}\n`;
         await processFlowItems({ items: item.items });
         break;
+      }
       default: {
         const _ex: never = itemType;
         console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
@@ -1042,7 +1061,7 @@ async function handleEnableFakeLmForChat() {
   });
 
   addToast({
-    message: `Fake LM enabled for this chat via ${FAKE_LM_ENDPOINT_URL}`,
+    message: await ensureStrings.ChatPane__fake_lm_enabled_for_this_chat_via({ endpointUrl: FAKE_LM_ENDPOINT_URL }),
     duration: 3000,
   });
 }
@@ -1264,7 +1283,6 @@ watch(
                 :items="flowItem.items"
                 :is-processing="isChatStreaming"
                 :flow="flowItem.flow"
-                :summary="flowItem.summary"
                 :stats="flowItem.stats"
                 :is-first-in-turn="flowItem.isFirstInTurn"
               >

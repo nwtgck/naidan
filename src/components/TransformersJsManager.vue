@@ -586,7 +586,7 @@ defineExpose({
                 <template v-else>
                   {{ status === 'idle' ? lazyStrings.TransformersJsManager__load_a_model_from_the_list_below_to_start_in_browser_inference() :
                     status === 'loading' ? (isLoadingFromCache ? lazyStrings.TransformersJsManager__loading_from_local_storage({ progress }) : lazyStrings.TransformersJsManager__downloading_and_compiling({ progress })) :
-                    status === 'ready' ? lazyStrings.TransformersJsManager__active_model({ modelId: activeModelId }) :
+                    status === 'ready' ? (activeModelId === undefined ? lazyStrings.TransformersJsManager__engine_ready() : lazyStrings.TransformersJsManager__active_model({ modelId: activeModelId })) :
                     (lastDownloadError ? lazyStrings.TransformersJsManager__download_failed_check_details_in_the_section_below() : error) }}
                 </template>
               </p>

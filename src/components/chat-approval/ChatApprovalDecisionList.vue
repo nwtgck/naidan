@@ -18,32 +18,39 @@ type ApprovalDecisionOption = {
   testId: string,
 };
 
-const options = computed<ApprovalDecisionOption[]>(() => [
-  {
-    decision: 'allow_once',
-    label: lazyStrings.chatApproval__allow_once(),
-    targetLabel: undefined,
-    testId: 'approval-allow-once',
-  },
-  {
-    decision: 'allow_for_chat',
-    label: lazyStrings.chatApproval__allow_for_this_chat(),
-    targetLabel: props.actionLabel,
-    testId: 'approval-allow-for-chat',
-  },
-  {
-    decision: 'allow_globally',
-    label: lazyStrings.chatApproval__allow_globally(),
-    targetLabel: props.actionLabel,
-    testId: 'approval-allow-globally',
-  },
-  {
-    decision: 'deny',
-    label: lazyStrings.chatApproval__deny(),
-    targetLabel: undefined,
-    testId: 'approval-deny',
-  },
-]);
+type ApprovalDecisionOptionDraft = Omit<ApprovalDecisionOption, 'label'> & {
+  label: string | undefined,
+};
+
+const options = computed<ApprovalDecisionOption[]>(() => {
+  const values: ApprovalDecisionOptionDraft[] = [
+    {
+      decision: 'allow_once' as const,
+      label: lazyStrings.chatApproval__allow_once(),
+      targetLabel: undefined,
+      testId: 'approval-allow-once',
+    },
+    {
+      decision: 'allow_for_chat' as const,
+      label: lazyStrings.chatApproval__allow_for_this_chat(),
+      targetLabel: props.actionLabel,
+      testId: 'approval-allow-for-chat',
+    },
+    {
+      decision: 'allow_globally' as const,
+      label: lazyStrings.chatApproval__allow_globally(),
+      targetLabel: props.actionLabel,
+      testId: 'approval-allow-globally',
+    },
+    {
+      decision: 'deny' as const,
+      label: lazyStrings.chatApproval__deny(),
+      targetLabel: undefined,
+      testId: 'approval-deny',
+    },
+  ];
+  return values.filter((value): value is ApprovalDecisionOption => value.label !== undefined);
+});
 
 function decide({
   decision,

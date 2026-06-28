@@ -10,6 +10,7 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/models/ids';
 import { applyScopedSettingChangesToChatGroup } from '@/utils/scoped-setting-changes';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -337,6 +338,26 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     // The badge should disappear because there are no longer any overrides
     expect(wrapper.text()).not.toContain('Active Overrides');
+  });
+
+  it('uses localized display names in the inherited endpoint option', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+    mockGroup.endpoint = undefined;
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    const select = wrapper.get('[data-testid="group-setting-endpoint-type-select"]');
+    const inheritedOption = () => select.find('option[value="global"]');
+
+    mockSettings.endpointType = 'openai';
+    await nextTick();
+    expect(inheritedOption().text()).toBe('Global (OpenAI)');
+
+    mockSettings.endpointType = 'ollama';
+    await nextTick();
+    expect(inheritedOption().text()).toBe('Global (Ollama)');
+
+    mockSettings.endpointType = 'transformers_js';
+    await nextTick();
+    expect(inheritedOption().text()).toBe('Global (Transformers.js)');
   });
 
   it('toggles endpoint customization via select', async () => {

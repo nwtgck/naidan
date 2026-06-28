@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
 import { flushPromises } from '@vue/test-utils';
 import { useFileExplorerNavigation } from './useFileExplorerNavigation';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { SortConfig } from './types';
 import type { ExplorerDirectory, ExplorerChild } from './explorer-directory';
 import type { FileExplorerEntry, FileExplorerPathSegment } from './types';
@@ -353,7 +352,6 @@ describe('useFileExplorerNavigation', () => {
   });
 
   it('shows a clearer message when the directory is no longer accessible', async () => {
-    await ensureAllStringsForTest({ locale: 'en' });
     const client = makeClient();
     client.readDirectory = vi.fn(async () => {
       throw new DOMException(
@@ -368,7 +366,7 @@ describe('useFileExplorerNavigation', () => {
       filterQuery: defaultFilter,
       initialPath: '/missing',
     });
-    await flushPromises();
+    await nav.loadDirectory({ path: '/missing' });
     expect(nav.loadError.value).toBe(
       'Failed to load directory: This folder is no longer available. It may have been moved, deleted, or its access was revoked in the browser.',
     );

@@ -36,12 +36,22 @@ const isHosted = (() => {
   }
 })();
 
-const suggestions = computed(() => [
-  { label: lazyStrings.WelcomeScreen__write_a_story(), text: lazyStrings.WelcomeScreen__write_a_time_travel_detective_story() },
-  { label: lazyStrings.WelcomeScreen__code_help(), text: lazyStrings.WelcomeScreen__explain_vue_composition_api() },
-  { label: lazyStrings.WelcomeScreen__brainstorm(), text: lazyStrings.WelcomeScreen__home_automation_project_ideas() },
-  { label: lazyStrings.WelcomeScreen__summarize(), text: lazyStrings.WelcomeScreen__summarize_local_lm_architectures() },
-]);
+type Suggestion = {
+  label: string,
+  text: string,
+};
+
+const suggestions = computed<Suggestion[]>(() => {
+  const values = [
+    { label: lazyStrings.WelcomeScreen__write_a_story(), text: lazyStrings.WelcomeScreen__write_a_time_travel_detective_story() },
+    { label: lazyStrings.WelcomeScreen__code_help(), text: lazyStrings.WelcomeScreen__explain_vue_composition_api() },
+    { label: lazyStrings.WelcomeScreen__brainstorm(), text: lazyStrings.WelcomeScreen__home_automation_project_ideas() },
+    { label: lazyStrings.WelcomeScreen__summarize(), text: lazyStrings.WelcomeScreen__summarize_local_lm_architectures() },
+  ];
+  return values.filter((value): value is Suggestion => (
+    value.label !== undefined && value.text !== undefined
+  ));
+});
 
 
 defineExpose({

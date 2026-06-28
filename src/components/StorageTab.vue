@@ -120,17 +120,22 @@ async function handleStorageChange({ targetType }: { targetType: 'local' | 'opfs
     }
   }
 
-  const storageName = await (() => {
-    switch (targetType) {
-    case 'opfs': return ensureStrings.StorageTab__origin_private_file_system();
-    case 'local': return ensureStrings.StorageTab__local_storage();
-    case 'memory': return ensureStrings.StorageTab__ephemeral();
-    default: {
-      const _ex: never = targetType;
-      return _ex;
-    }
-    }
-  })();
+  let storageName: string;
+  switch (targetType) {
+  case 'opfs':
+    storageName = await ensureStrings.StorageTab__origin_private_file_system();
+    break;
+  case 'local':
+    storageName = await ensureStrings.StorageTab__local_storage();
+    break;
+  case 'memory':
+    storageName = await ensureStrings.StorageTab__ephemeral();
+    break;
+  default: {
+    const _ex: never = targetType;
+    throw new Error(`Unhandled storage type: ${_ex}`);
+  }
+  }
   const [title, message, confirmButtonText] = await Promise.all([
     ensureStrings.StorageTab__confirm_storage_switch(),
     ensureStrings.StorageTab__confirm_switch_to_storage({ storageName }),

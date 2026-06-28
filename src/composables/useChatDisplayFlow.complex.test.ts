@@ -57,7 +57,6 @@ describe('useChatDisplayFlow complex scenario', () => {
       {
         type: 'process_sequence',
         id: 'seq-a1-thinking',
-        summary: '2 thinking steps • 1 tool execution • Used c',
         isFirstInTurn: true,
         stats: {
           thinkingSteps: 2,
@@ -88,7 +87,6 @@ describe('useChatDisplayFlow complex scenario', () => {
       {
         type: 'process_sequence',
         id: 'seq-am-tool_calls',
-        summary: '1 thinking step • 1 tool execution • Used c',
         isFirstInTurn: false,
         stats: {
           thinkingSteps: 1,

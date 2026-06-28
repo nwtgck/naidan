@@ -26,11 +26,20 @@ async function handleFileInputChange({ event }: { event: Event }): Promise<void>
   input.value = '';
 }
 
-const viewModes = computed<Array<{ mode: ViewMode, icon: unknown, title: string }>>(() => [
-  { mode: 'icon', icon: LayoutGridIcon, title: lazyStrings.fileExplorer__icon_view() },
-  { mode: 'list', icon: ListIcon, title: lazyStrings.fileExplorer__list_view() },
-  { mode: 'column', icon: Columns3Icon, title: lazyStrings.fileExplorer__column_view() },
-]);
+type ViewModeOption = { readonly mode: ViewMode, readonly icon: unknown, readonly title: string };
+
+const viewModes = computed<ViewModeOption[]>(() => {
+  const iconView = lazyStrings.fileExplorer__icon_view();
+  const listView = lazyStrings.fileExplorer__list_view();
+  const columnView = lazyStrings.fileExplorer__column_view();
+  if (iconView === undefined || listView === undefined || columnView === undefined) return [];
+
+  return [
+    { mode: 'icon', icon: LayoutGridIcon, title: iconView },
+    { mode: 'list', icon: ListIcon, title: listView },
+    { mode: 'column', icon: Columns3Icon, title: columnView },
+  ];
+});
 
 async function handleRefresh(): Promise<void> {
   isRefreshing.value = true;

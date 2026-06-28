@@ -28,6 +28,30 @@ type MenuItem =
   | { type: 'action', action: ContextMenuAction, label: string, icon: unknown, danger?: boolean, disabled?: boolean, disabledReason?: string }
   | { type: 'divider' };
 
+type MenuItemDraft =
+  | { type: 'action', action: ContextMenuAction, label: string | undefined, icon: unknown, danger?: boolean, disabled?: boolean, disabledReason?: string }
+  | { type: 'divider' };
+
+function resolveMenuItems({ items }: { items: MenuItemDraft[] }): MenuItem[] {
+  const resolved: MenuItem[] = [];
+  for (const item of items) {
+    switch (item.type) {
+    case 'divider':
+      resolved.push(item);
+      break;
+    case 'action':
+      if (item.label === undefined) return [];
+      resolved.push({ ...item, label: item.label });
+      break;
+    default: {
+      const _ex: never = item;
+      throw new Error(`Unhandled context menu item: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  return resolved;
+}
+
 const menuItems = computed<MenuItem[]>(() => {
   const readOnly = ctx.readOnly;
   const lockedReason = readOnly ? lazyStrings.fileExplorer__unlock_to_enable() : undefined;
@@ -39,7 +63,7 @@ const menuItems = computed<MenuItem[]>(() => {
       target.value.selectedEntries.length === 1 &&
       firstEntry?.kind === 'file';
 
-    const items: MenuItem[] = [
+    const items: MenuItemDraft[] = [
       { type: 'action', action: 'open', label: lazyStrings.fileExplorer__open(), icon: FolderOpenIcon },
       { type: 'action', action: 'rename', label: lazyStrings.fileExplorer__rename(), icon: PencilIcon, disabled: readOnly, disabledReason: lockedReason },
     ];
@@ -62,10 +86,10 @@ const menuItems = computed<MenuItem[]>(() => {
     items.push({ type: 'divider' });
     items.push({ type: 'action', action: 'delete', label: lazyStrings.fileExplorer__delete(), icon: Trash2Icon, danger: true, disabled: readOnly, disabledReason: lockedReason });
 
-    return items;
+    return resolveMenuItems({ items });
   }
   case 'background': {
-    const items: MenuItem[] = [
+    const items: MenuItemDraft[] = [
       { type: 'action', action: 'newFile', label: lazyStrings.fileExplorer__new_file(), icon: FilePlusIcon, disabled: readOnly, disabledReason: lockedReason },
       { type: 'action', action: 'newFolder', label: lazyStrings.fileExplorer__new_folder(), icon: FolderPlusIcon, disabled: readOnly, disabledReason: lockedReason },
     ];
@@ -78,7 +102,7 @@ const menuItems = computed<MenuItem[]>(() => {
     items.push({ type: 'divider' });
     items.push({ type: 'action', action: 'selectAll', label: lazyStrings.fileExplorer__select_all(), icon: CheckSquareIcon });
 
-    return items;
+    return resolveMenuItems({ items });
   }
   default: {
     const _ex: never = target.value;

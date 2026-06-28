@@ -127,7 +127,7 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     expect(modelSelector.props('placeholder')).toBe('global-model (Global)');
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('openai (Global)');
+    expect(typeSelect.find('option').text()).toBe('OpenAI (Global)');
   });
 
   it('shows Group placeholders when chat belongs to a group with overrides', () => {
@@ -144,6 +144,6 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     expect(modelSelector.props('placeholder')).toBe('group-model (Group)');
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('ollama (Group)');
+    expect(typeSelect.find('option').text()).toBe('Ollama (Group)');
   });
 });
