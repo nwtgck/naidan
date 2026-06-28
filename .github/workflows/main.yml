@@ -21,7 +21,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        uses: ./.github/actions/retry-npm-ci
 
       - name: Run lint
         run: npm run lint
@@ -44,7 +44,7 @@ jobs:
 
       - name: Install dependencies
         id: npm_install
-        run: npm ci
+        uses: ./.github/actions/retry-npm-ci
 
       - name: Run tests
         if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
@@ -75,7 +75,7 @@ jobs:
 
       - name: Install dependencies
         id: npm_install
-        run: npm ci
+        uses: ./.github/actions/retry-npm-ci
 
       - name: Ensure licenses.json exists
         run: |

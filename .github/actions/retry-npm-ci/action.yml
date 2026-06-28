@@ -1,0 +1,26 @@
+name: Retry npm clean install
+description: Retry npm ci to absorb transient dependency download failures.
+
+runs:
+  using: composite
+  steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        # onnxruntime-node downloads platform artifacts during installation.
+        # Retry the clean install to absorb transient upstream network failures
+        # without changing npm's installation behavior.
+        for attempt in 1 2 3; do
+          if npm ci; then
+            exit 0
+          fi
+
+          if [ "$attempt" -eq 3 ]; then
+            echo "::error::npm ci failed after 3 attempts"
+            exit 1
+          fi
+
+          delay=$((attempt * 15 + RANDOM % 15))
+          echo "::warning::npm ci failed (attempt ${attempt}/3); retrying in ${delay} seconds"
+          sleep "$delay"
+        done
