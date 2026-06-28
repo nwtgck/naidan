@@ -6,7 +6,7 @@ import { storageService } from '@/services/storage';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 import type { MessageNode, Chat } from '@/models/types';
 import { useSettings } from '@/composables/useSettings';
-import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import { lazyStrings } from '@/strings';
 import MessageItem from './MessageItem.vue';
 import { idToRaw, toChatId, toMessageId } from '@/models/ids';
 import type { ChatId } from '@/models/ids';
@@ -96,7 +96,7 @@ defineExpose({
         <div class="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl">
           <MessageSquareIcon class="w-8 h-8 opacity-20" />
         </div>
-        <span class="text-sm font-bold uppercase tracking-widest opacity-50">Select an item to preview</span>
+        <span class="text-sm font-bold uppercase tracking-widest opacity-50">{{ lazyStrings.SearchPreview__select_an_item_to_preview() }}</span>
       </div>
     </div>
 
@@ -110,22 +110,22 @@ defineExpose({
       <!-- Context Header -->
       <div class="p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex justify-between items-center shrink-0">
         <div class="flex flex-col gap-0.5 overflow-hidden">
-          <h3 v-if="chat" class="text-xs font-black text-gray-900 dark:text-gray-100 truncate">{{ chat.title || UNTITLED_CHAT_TITLE }}</h3>
+          <h3 v-if="chat" class="text-xs font-black text-gray-900 dark:text-gray-100 truncate">{{ chat.title || lazyStrings.SHARED__new_chat() }}</h3>
           <div class="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-            <span>{{ match ? 'Conversation Match' : 'Recent History' }}</span>
-            <span class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[8px]">{{ visibleMessages.length }} messages</span>
+            <span>{{ match ? lazyStrings.SearchPreview__conversation_match() : lazyStrings.SearchPreview__recent_history() }}</span>
+            <span class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[8px]">{{ lazyStrings.SearchPreview__message_count({ count: visibleMessages.length }) }}</span>
           </div>
         </div>
 
         <div v-if="match && !match.isCurrentThread" class="flex items-center gap-1.5 text-[9px] font-bold bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded-full border border-amber-100 dark:border-amber-800/50">
           <GitBranchIcon class="w-3 h-3" />
-          <span>ALT BRANCH</span>
+          <span>{{ lazyStrings.SearchPreview__alt_branch() }}</span>
         </div>
       </div>
 
       <div class="flex-1 overflow-y-auto bg-white dark:bg-gray-900/50">
         <div v-if="matchedIndex > CONTEXT_SIZE" class="p-4 text-center">
-          <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">... previous messages ...</span>
+          <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">{{ lazyStrings.SearchPreview__previous_messages() }}</span>
         </div>
 
         <div v-for="msg in visibleMessages" :key="idToRaw({ id: msg.id })" class="relative">
@@ -143,7 +143,7 @@ defineExpose({
         </div>
 
         <div v-if="matchedIndex + CONTEXT_SIZE < branchMessages.length - 1" class="p-4 text-center">
-          <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">... following messages ...</span>
+          <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">{{ lazyStrings.SearchPreview__following_messages() }}</span>
         </div>
       </div>
     </div>

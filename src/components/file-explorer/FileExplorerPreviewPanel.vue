@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { inject, computed } from 'vue';
 import { BracesIcon, DownloadIcon, FileTextIcon, Loader2Icon, AlertCircleIcon, XIcon } from 'lucide-vue-next';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
@@ -32,12 +33,12 @@ defineExpose({
           size="sm"
         />
         <span class="text-xs font-bold text-gray-700 dark:text-gray-300 truncate">
-          {{ entry?.name ?? 'Preview' }}
+          {{ entry?.name ?? lazyStrings.fileExplorer__preview() }}
         </span>
       </div>
       <button
         class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors shrink-0 ml-1"
-        title="Close preview"
+        :title="lazyStrings.fileExplorer__close_preview()"
         @click="ctx.togglePreviewVisibility()"
       >
         <XIcon class="w-3.5 h-3.5 text-gray-400" />
@@ -60,7 +61,7 @@ defineExpose({
       <!-- No entry selected -->
       <div v-else-if="!entry" class="flex flex-col items-center justify-center flex-1 text-gray-300 dark:text-gray-700">
         <FileTextIcon class="w-10 h-10 mb-3 opacity-20" />
-        <p class="text-[10px] uppercase tracking-widest font-bold opacity-50">Select a file</p>
+        <p class="text-[10px] uppercase tracking-widest font-bold opacity-50">{{ lazyStrings.fileExplorer__select_a_file() }}</p>
       </div>
 
       <!-- Directory info -->
@@ -68,20 +69,20 @@ defineExpose({
         <div class="flex flex-col items-center py-6 gap-3 text-gray-400">
           <FileExplorerEntryIcon :kind="entry.kind" :extension="entry.extension" :mime-category="entry.mimeCategory" size="lg" />
           <p class="text-sm font-bold text-gray-700 dark:text-gray-300 text-center">{{ entry.name }}</p>
-          <p class="text-[10px] uppercase tracking-widest text-gray-400">Folder</p>
+          <p class="text-[10px] uppercase tracking-widest text-gray-400">{{ lazyStrings.fileExplorer__folder() }}</p>
         </div>
       </div>
 
       <!-- Oversized warning -->
       <div v-else-if="s.oversized" class="flex flex-col items-center justify-center flex-1 p-4 text-center gap-3">
         <FileTextIcon class="w-8 h-8 text-gray-300 dark:text-gray-600" />
-        <p class="text-xs font-bold text-gray-600 dark:text-gray-400">File is too large to preview</p>
+        <p class="text-xs font-bold text-gray-600 dark:text-gray-400">{{ lazyStrings.fileExplorer__file_is_too_large_to_preview() }}</p>
         <p class="text-[10px] text-gray-400">{{ formatSize({ bytes: entry.size }) }}</p>
         <button
           class="px-3 py-1.5 text-xs font-bold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-700 dark:text-gray-300"
           @click="ctx.loadPreviewForced({ entry })"
         >
-          Load anyway
+          {{ lazyStrings.fileExplorer__load_anyway() }}
         </button>
       </div>
 
@@ -99,7 +100,7 @@ defineExpose({
               @click="ctx.toggleJsonFormat()"
             >
               <BracesIcon class="w-3 h-3" />
-              Format
+              {{ lazyStrings.fileExplorer__format() }}
             </button>
             <button
               class="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -151,7 +152,7 @@ defineExpose({
       <div v-else-if="entry.mimeCategory === 'binary' && s.loadingState === 'loaded'" class="flex flex-col items-center justify-center flex-1 p-4 text-center gap-3">
         <FileExplorerEntryIcon :kind="entry.kind" :extension="entry.extension" :mime-category="entry.mimeCategory" size="lg" />
         <div class="space-y-1">
-          <p class="text-xs font-bold text-gray-600 dark:text-gray-400">Binary File</p>
+          <p class="text-xs font-bold text-gray-600 dark:text-gray-400">{{ lazyStrings.fileExplorer__binary_file() }}</p>
           <p class="text-[10px] text-gray-400">{{ formatSize({ bytes: entry.size }) }}</p>
           <p v-if="entry.lastModified" class="text-[10px] text-gray-400">{{ formatDate({ timestamp: entry.lastModified }) }}</p>
         </div>
@@ -160,7 +161,7 @@ defineExpose({
           @click="ctx.downloadEntry({ entry })"
         >
           <DownloadIcon class="w-3.5 h-3.5" />
-          Download
+          {{ lazyStrings.fileExplorer__download() }}
         </button>
       </div>
 
@@ -170,10 +171,10 @@ defineExpose({
         class="px-3 py-2 border-t border-gray-100 dark:border-gray-800 shrink-0 space-y-0.5"
       >
         <p class="text-[10px] text-gray-400">
-          <span class="font-bold">Size:</span> {{ formatSize({ bytes: entry.size }) }}
+          <span class="font-bold">{{ lazyStrings.fileExplorer__size_label() }}</span> {{ formatSize({ bytes: entry.size }) }}
         </p>
         <p v-if="entry.lastModified" class="text-[10px] text-gray-400">
-          <span class="font-bold">Modified:</span> {{ formatDate({ timestamp: entry.lastModified }) }}
+          <span class="font-bold">{{ lazyStrings.fileExplorer__modified_label() }}</span> {{ formatDate({ timestamp: entry.lastModified }) }}
         </p>
       </div>
     </div>

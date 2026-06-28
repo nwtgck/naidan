@@ -108,7 +108,9 @@ describe('Sidebar Transformers.js Support', () => {
 
     const selector = wrapper.find('[data-testid="model-selector-mock"]');
     expect(selector.exists()).toBe(true);
-    expect(wrapper.text()).toContain('Default model');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Default model');
+    });
   });
 
   it('does not render the selector if endpointUrl is missing and type is NOT transformers_js', async () => {

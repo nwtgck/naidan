@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { computed, ref } from 'vue';
 import { InfoIcon } from 'lucide-vue-next';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -68,7 +69,7 @@ async function runToolUpdate({
   } catch (cause: unknown) {
     saveError.value = cause instanceof Error
       ? cause.message
-      : 'Failed to save Chat tool settings.';
+      : await ensureStrings.LmToolsSettings__failed_to_save_chat_tool_settings();
   }
 }
 
@@ -122,7 +123,7 @@ defineExpose({ TEST_ONLY: {} });
     >
       <InfoIcon class="mt-0.5 h-3 w-3 shrink-0" />
       <p class="text-[9px] leading-relaxed">
-        Changes apply to this browser session only while Tool config persistence is disabled.
+        {{ lazyStrings.LmToolsSettings__changes_apply_to_this_browser_session_only_while_tool_config_persistence_is_disabled() }}
       </p>
     </div>
 

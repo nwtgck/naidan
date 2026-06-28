@@ -1,3 +1,4 @@
+import { ensureStrings } from '@/strings';
 import { generateId } from '@/utils/id';
 import type {
   ExportOptions,
@@ -550,7 +551,7 @@ export class ImportExportService {
       } catch (error: unknown) {
         this.globalEvents.addErrorEvent({
           source: 'ImportExportService',
-          message: 'Export dump failed',
+          message: await ensureStrings.ImportExportService__export_dump_failed(),
           details: error instanceof Error ? error : new Error(String(error)),
         });
         try {
@@ -809,7 +810,11 @@ export class ImportExportService {
     try {
       return await openIndexedZipArchive({ blob });
     } catch (e) {
-      this.globalEvents.addErrorEvent({ source: 'ImportExportService', message: 'Invalid ZIP file', details: e as Error });
+      this.globalEvents.addErrorEvent({
+        source: 'ImportExportService',
+        message: await ensureStrings.ImportExportService__invalid_zip_file(),
+        details: e as Error,
+      });
       throw new Error('Invalid ZIP file');
     }
   }

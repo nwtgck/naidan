@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import RecipeImportTab from './RecipeImportTab.vue';
@@ -6,12 +6,14 @@ import RecipeImportTab from './RecipeImportTab.vue';
 describe('RecipeImportTab.vue', () => {
   const mockModels = ['llama3', 'gpt-4'];
 
-  it('renders correctly with empty state', () => {
+  it('renders correctly with empty state', async () => {
     const wrapper = mount(RecipeImportTab, {
       props: { availableModels: mockModels },
     });
     expect(wrapper.find('[data-testid="recipe-json-input"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain('Recipes');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Recipes');
+    });
   });
 
   it('automatically analyzes JSON input and displays recipe list', async () => {
@@ -29,7 +31,9 @@ describe('RecipeImportTab.vue', () => {
     await textarea.setValue(JSON.stringify(recipe));
     await nextTick();
 
-    expect(wrapper.text()).toContain('Detected Recipes (1)');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Detected Recipes (1)');
+    });
     expect((wrapper.find('input[placeholder="Chat Group Name"]').element as HTMLInputElement).value).toBe('Test Recipe');
     expect(wrapper.text()).toContain('llama3');
   });
@@ -43,7 +47,9 @@ describe('RecipeImportTab.vue', () => {
     await textarea.setValue('{ invalid json }');
     await nextTick();
 
-    expect(wrapper.text()).toContain('Parse error');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Parse error');
+    });
   });
 
   it('emits import event when button is clicked', async () => {

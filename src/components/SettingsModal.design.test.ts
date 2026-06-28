@@ -1,8 +1,9 @@
 import { ref, reactive } from 'vue';
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { beforeAll, describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { useRouter, useRoute, createRouter, createMemoryHistory } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useSettings } from '@/composables/useSettings';
 import { useChat } from '@/composables/useChat';
 import { useToast } from '@/composables/useToast';
@@ -39,6 +40,10 @@ vi.mock('../composables/useSampleChat', () => ({
 }));
 
 describe('SettingsModal Design Specifications', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/', component: { template: '<div />' } }],
@@ -98,7 +103,7 @@ describe('SettingsModal Design Specifications', () => {
     const aside = wrapper.find('aside');
     expect(aside.classes()).toContain('bg-gray-50/50');
     expect(aside.classes()).toContain('border-gray-100');
-  });
+  }, 15_000);
 
   it('uses rounded-3xl for the main modal container to give a modern feel', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });

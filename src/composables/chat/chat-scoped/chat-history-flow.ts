@@ -1,3 +1,4 @@
+import { ensureStrings } from '@/strings';
 import { reactive, toRaw } from 'vue';
 import type { AssistantMessageNode, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt, ToolMessageNode, UserMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
@@ -247,11 +248,15 @@ async function forkChatFromTarget({
     clonedNodes[index]!.replies.items.push(clonedNodes[index + 1]!);
   }
 
+  const untitledChatTitle = await ensureStrings.SHARED__new_chat();
+  const forkTitle = await ensureStrings.chatHistoryFlow__fork_of_chat({
+    chatTitle: mutableChat.title || untitledChatTitle,
+  });
   const newChatId = generateId<ChatId>();
   const newChat: Chat = reactive({
     ...toRaw(mutableChat),
     id: newChatId,
-    title: `Fork of ${mutableChat.title || 'New Chat'}`,
+    title: forkTitle,
     root: { items: [clonedNodes[0]!] },
     currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
     originChatId: mutableChat.id,

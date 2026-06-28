@@ -1,0 +1,1 @@
+export const StorageTab__local_storage_loses_attachments = (): string => 'Local Storage does not support permanent file storage, so current attachments will not be accessible after switching. Are you sure you want to continue?';

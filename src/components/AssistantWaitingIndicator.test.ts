@@ -1,11 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 
 describe('AssistantWaitingIndicator', () => {
-  it('renders the label and three breathing orbs', () => {
+  it('renders the label and three breathing orbs', async () => {
     const wrapper = mount(AssistantWaitingIndicator);
-    expect(wrapper.text()).toContain('Waiting for response...');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Waiting for response...');
+    }, { timeout: 5000 });
     expect(wrapper.find('.wi-orbs').exists()).toBe(true);
     expect(wrapper.findAll('.wi-orb')).toHaveLength(3);
   });

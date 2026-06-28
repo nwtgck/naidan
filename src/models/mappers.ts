@@ -1109,6 +1109,9 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
     ...endpointInfo,
     storageType: storageType as StorageType,
     experimental: {
+      ...(rest.experimental?.locale === undefined
+        ? {}
+        : { locale: rest.experimental.locale }),
       ...(rest.experimental?.markdownRendering === undefined
         ? {}
         : { markdownRendering: rest.experimental.markdownRendering }),
@@ -1195,6 +1198,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     systemPrompt: rest.systemPrompt,
     lmParameters: lmParametersToDto({ domain: rest.lmParameters }),
     experimental: {
+      locale: rest.experimental?.locale,
       markdownRendering: rest.experimental?.markdownRendering,
       toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
         persistence: rest.experimental?.toolConfigPersistence,

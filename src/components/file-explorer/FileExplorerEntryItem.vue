@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ChevronRightIcon, LockIcon } from 'lucide-vue-next';
 import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
 import FileExplorerRenameInput from './FileExplorerRenameInput.vue';
@@ -89,7 +90,7 @@ defineExpose({
       {{ entry.kind === 'file' ? formatDate({ timestamp: entry.lastModified }) : '' }}
     </span>
     <span class="text-[10px] w-16 text-right shrink-0 hidden lg:block uppercase" :class="isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'">
-      {{ entry.kind === 'file' ? (entry.extension || '—') : 'Folder' }}
+      {{ entry.kind === 'file' ? (entry.extension || '—') : lazyStrings.fileExplorer__folder() }}
     </span>
   </div>
 

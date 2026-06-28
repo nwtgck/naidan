@@ -1,0 +1,1 @@
+export const DebugIndexPage__open_an_isolated_diagnostic_page_without_adding_debug_only_behavior_to_the_normal_application_flow = (): string => '通常のアプリケーションフローにデバッグ専用動作を追加せず、独立した診断ページを開きます。';

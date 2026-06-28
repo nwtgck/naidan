@@ -85,20 +85,22 @@ describe('DebugWeshTerminalModal', () => {
     });
     await flushPromises();
 
-    expect(mocks.createClient).toHaveBeenCalledWith(expect.objectContaining({
-      rootHandle: expect.any(Object),
-      mounts: [
-        {
-          type: 'directory',
-          path: '/data',
-          handle: expect.any(Object),
-          readOnly: true,
-        },
-      ],
-      user: 'debug',
-      initialEnv: { HOME: '/home/debug', TMPDIR: '/tmp' },
-      initialCwd: '/home/debug',
-    }));
+    await vi.waitFor(() => {
+      expect(mocks.createClient).toHaveBeenCalledWith(expect.objectContaining({
+        rootHandle: expect.any(Object),
+        mounts: [
+          {
+            type: 'directory',
+            path: '/data',
+            handle: expect.any(Object),
+            readOnly: true,
+          },
+        ],
+        user: 'debug',
+        initialEnv: { HOME: '/home/debug', TMPDIR: '/tmp' },
+        initialCwd: '/home/debug',
+      }));
+    });
     expect(wrapper.text()).toContain('Session 1');
     expect(wrapper.find('[data-testid="new-session-button"]').exists()).toBe(true);
   });

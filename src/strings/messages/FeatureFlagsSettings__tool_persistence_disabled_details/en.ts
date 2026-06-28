@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__tool_persistence_disabled_details = (): string => 'Saved settings remain active. Global and Chat Group settings are read-only, while new Chat changes last only for the current browser session.';

@@ -1,8 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 describe('ImageConjuringLoader', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   it('renders correctly', () => {
     const wrapper = mount(ImageConjuringLoader);
     expect(wrapper.find('[data-testid="image-conjuring-loader"]').exists()).toBe(true);

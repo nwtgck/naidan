@@ -30,6 +30,7 @@ export function mapFileExplorerModalOptionsToRootDescriptor({
   case 'opfs-root':
     return {
       kind: 'opfs-root',
+      // TODO(strings-localize): Localize this worker descriptor after the synchronous root mapping accepts a resolved display label separately.
       rootName: 'OPFS root',
     };
   case 'native-directory':

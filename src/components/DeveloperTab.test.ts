@@ -56,10 +56,12 @@ describe('DeveloperTab', () => {
     });
   });
 
-  it('renders correctly without a standalone fake LM action button', () => {
+  it('renders correctly without a standalone fake LM action button', async () => {
     const wrapper = mountDeveloperTab();
 
-    expect(wrapper.text()).toContain('Developer Tools');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Developer Tools');
+    });
     expect(wrapper.find('[data-testid="toggle-pwa-update-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="setting-create-long-sample-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="fake-lm-debug-mode-toggle"]').exists()).toBe(false);
@@ -113,11 +115,13 @@ describe('DeveloperTab', () => {
     const button = wrapper.find('[data-testid="clear-all-cache-storage-button"]');
     await button.trigger('click');
 
-    expect(showConfirm).toHaveBeenCalledWith({
-      title: 'Clear All Cache Storage',
-      message: expect.stringContaining("delete all entries in the browser's Cache Storage API"),
-      confirmButtonText: 'Clear All',
-      confirmButtonVariant: 'danger',
+    await vi.waitFor(() => {
+      expect(showConfirm).toHaveBeenCalledWith({
+        title: 'Clear All Cache Storage',
+        message: expect.stringContaining("delete all entries in the browser's Cache Storage API"),
+        confirmButtonText: 'Clear All',
+        confirmButtonVariant: 'danger',
+      });
     });
   });
 });

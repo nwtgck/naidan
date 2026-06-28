@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
+import { computed } from 'vue';
 import type { ApprovalUiDecision } from '@/services/approval';
 
 const props = defineProps<{
@@ -16,32 +18,39 @@ type ApprovalDecisionOption = {
   testId: string,
 };
 
-const options: ApprovalDecisionOption[] = [
-  {
-    decision: 'allow_once',
-    label: 'Allow once',
-    targetLabel: undefined,
-    testId: 'approval-allow-once',
-  },
-  {
-    decision: 'allow_for_chat',
-    label: 'Allow for this chat',
-    targetLabel: props.actionLabel,
-    testId: 'approval-allow-for-chat',
-  },
-  {
-    decision: 'allow_globally',
-    label: 'Allow globally',
-    targetLabel: props.actionLabel,
-    testId: 'approval-allow-globally',
-  },
-  {
-    decision: 'deny',
-    label: 'Deny',
-    targetLabel: undefined,
-    testId: 'approval-deny',
-  },
-];
+type ApprovalDecisionOptionDraft = Omit<ApprovalDecisionOption, 'label'> & {
+  label: string | undefined,
+};
+
+const options = computed<ApprovalDecisionOption[]>(() => {
+  const values: ApprovalDecisionOptionDraft[] = [
+    {
+      decision: 'allow_once' as const,
+      label: lazyStrings.chatApproval__allow_once(),
+      targetLabel: undefined,
+      testId: 'approval-allow-once',
+    },
+    {
+      decision: 'allow_for_chat' as const,
+      label: lazyStrings.chatApproval__allow_for_this_chat(),
+      targetLabel: props.actionLabel,
+      testId: 'approval-allow-for-chat',
+    },
+    {
+      decision: 'allow_globally' as const,
+      label: lazyStrings.chatApproval__allow_globally(),
+      targetLabel: props.actionLabel,
+      testId: 'approval-allow-globally',
+    },
+    {
+      decision: 'deny' as const,
+      label: lazyStrings.chatApproval__deny(),
+      targetLabel: undefined,
+      testId: 'approval-deny',
+    },
+  ];
+  return values.filter((value): value is ApprovalDecisionOption => value.label !== undefined);
+});
 
 function decide({
   decision,

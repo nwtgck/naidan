@@ -99,9 +99,11 @@ describe('OnboardingModal.vue', () => {
     });
   });
 
-  it('renders Step 1 by default and shows correct labels', () => {
+  it('renders Step 1 by default and shows correct labels', async () => {
     const wrapper = mount(OnboardingModal);
-    expect(wrapper.text()).toContain('Setup Endpoint');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Setup Endpoint');
+    });
     expect(wrapper.find('input').exists()).toBe(true);
     expect(wrapper.text()).toContain('OpenAI');
     expect(wrapper.text()).toContain('Ollama');

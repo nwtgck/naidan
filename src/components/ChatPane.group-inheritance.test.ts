@@ -7,6 +7,7 @@ import ChatPane from './ChatPane.vue';
 import ModelSelector from './ModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
@@ -264,7 +265,8 @@ const router = createRouter({
 });
 
 describe('ChatPane Group Inheritance UI', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     setupScrollToMock();
     vi.clearAllMocks();
     mockCurrentChat.value = {

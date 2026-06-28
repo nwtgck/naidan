@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { BrainCircuitIcon, PlusIcon } from 'lucide-vue-next';
 
 defineProps<{
@@ -21,9 +22,9 @@ defineExpose({
           <BrainCircuitIcon class="w-4 h-4 text-purple-600" />
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-[11px] font-bold text-purple-900 dark:text-purple-300">Local Browser Models</p>
+          <p class="text-[11px] font-bold text-purple-900 dark:text-purple-300">{{ lazyStrings.TransformersJsUpsell__local_browser_models() }}</p>
           <p class="text-[10px] text-purple-600/70 dark:text-purple-400/70 font-medium leading-relaxed">
-            Need more models? You can download and manage local LLMs to run directly in your browser.
+            {{ lazyStrings.TransformersJsUpsell__need_more_models_you_can_download_and_manage_local_llms_to_run_directly_in_your_browser() }}
           </p>
         </div>
       </div>
@@ -32,7 +33,7 @@ defineExpose({
         class="flex items-center justify-center gap-2 w-full py-2 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-bold rounded-xl shadow-lg shadow-purple-500/20 transition-all active:scale-[0.98] group"
       >
         <PlusIcon class="w-3 h-3 group-hover:rotate-90 transition-transform duration-300" />
-        <span>Add / Manage Models</span>
+        <span>{{ lazyStrings.TransformersJsUpsell__add_manage_models() }}</span>
       </router-link>
     </div>
   </div>

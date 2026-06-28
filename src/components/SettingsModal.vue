@@ -36,11 +36,13 @@ const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () =>
 // IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';
 import ThemeToggle from './ThemeToggle.vue';
+import LanguageSelector from './LanguageSelector.vue';
 
 import { useConfirm } from '@/composables/useConfirm'; // Import useConfirm
 import { useLayout } from '@/composables/useLayout';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { naturalSort } from '@/utils/string';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -102,13 +104,13 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string, ma
     }
 
     addToast({
-      message: `Successfully imported ${recipes.length} recipes as chat groups`,
+      message: await ensureStrings.SettingsModal__successfully_imported_recipes_as_chat_groups({ recipeCount: recipes.length }),
       duration: 3000,
     });
   } catch (err) {
     console.error('Failed to import recipes:', err);
     addToast({
-      message: `Failed to import recipes: ${err instanceof Error ? err.message : String(err)}`,
+      message: await ensureStrings.SettingsModal__failed_to_import_recipes({ errorMessage: err instanceof Error ? err.message : String(err) }),
       duration: 5000,
     });
   }
@@ -152,10 +154,10 @@ const activeTab = computed({
 async function handleCancel() {
   if (hasUnsavedConnectionChanges.value) {
     const confirmed = await showConfirm({
-      title: 'Discard Unsaved Changes?',
-      message: 'You have unsaved changes in your connection settings. Are you sure you want to discard them?',
-      confirmButtonText: 'Discard',
-      cancelButtonText: 'Keep Editing',
+      title: await ensureStrings.SettingsModal__discard_unsaved_changes(),
+      message: await ensureStrings.SettingsModal__discard_unsaved_connection_changes(),
+      confirmButtonText: await ensureStrings.SettingsModal__discard(),
+      cancelButtonText: await ensureStrings.SettingsModal__keep_editing(),
     });
     if (confirmed) {
       emit('close');
@@ -269,11 +271,14 @@ defineExpose({
         <!-- Sidebar (Tabs) -->
         <aside class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
           <!-- Header -->
-          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center gap-3 shrink-0">
-            <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-              <Settings2Icon class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center justify-between gap-3 shrink-0">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <Settings2Icon class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+              </div>
+              <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.SettingsModal__settings() }}</h2>
             </div>
-            <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">Settings</h2>
+            <LanguageSelector />
           </div>
 
           <!-- Navigation -->
@@ -285,7 +290,7 @@ defineExpose({
               data-testid="tab-connection"
             >
               <GlobeIcon class="w-4 h-4" />
-              Connection
+              {{ lazyStrings.SettingsModal__connection() }}
             </button>
             <button
               @click="activeTab = 'tools'"
@@ -294,7 +299,7 @@ defineExpose({
               data-testid="tab-tools"
             >
               <WrenchIcon class="w-4 h-4" />
-              Tools
+              {{ lazyStrings.SettingsModal__tools() }}
             </button>
             <button
               @click="activeTab = 'profiles'"
@@ -303,7 +308,7 @@ defineExpose({
               data-testid="tab-profiles"
             >
               <BookmarkPlusIcon class="w-4 h-4" />
-              Provider Profiles
+              {{ lazyStrings.SettingsModal__provider_profiles() }}
             </button>
             <button
               @click="activeTab = 'transformers_js'"
@@ -312,7 +317,7 @@ defineExpose({
               data-testid="tab-transformers-js"
             >
               <BrainCircuitIcon class="w-4 h-4" />
-              Transformers.js
+              {{ lazyStrings.SettingsModal__transformers_js() }}
             </button>
             <button
               @click="activeTab = 'recipes'"
@@ -321,7 +326,7 @@ defineExpose({
               data-testid="tab-recipes"
             >
               <ChefHatIcon class="w-4 h-4" />
-              Recipes
+              {{ lazyStrings.SettingsModal__recipes() }}
             </button>
             <button
               @click="activeTab = 'storage'"
@@ -330,7 +335,7 @@ defineExpose({
               data-testid="tab-storage"
             >
               <DatabaseIcon class="w-4 h-4" />
-              Storage
+              {{ lazyStrings.SettingsModal__storage() }}
             </button>
             <button
               @click="activeTab = 'binary_objects'"
@@ -339,7 +344,7 @@ defineExpose({
               data-testid="tab-files"
             >
               <FileIcon class="w-4 h-4" />
-              Files
+              {{ lazyStrings.SettingsModal__files() }}
             </button>
             <button
               v-if="isVolumesFeatureEnabled"
@@ -349,7 +354,7 @@ defineExpose({
               data-testid="tab-volumes"
             >
               <FolderIcon class="w-4 h-4" />
-              Folders
+              {{ lazyStrings.SettingsModal__folders() }}
             </button>
             <button
               @click="activeTab = 'developer'"
@@ -358,7 +363,7 @@ defineExpose({
               data-testid="tab-developer"
             >
               <CpuIcon class="w-4 h-4" />
-              Developer
+              {{ lazyStrings.SettingsModal__developer() }}
             </button>
             <button
               @click="activeTab = 'about'"
@@ -367,7 +372,7 @@ defineExpose({
               data-testid="tab-about"
             >
               <InfoIcon class="w-4 h-4" />
-              About
+              {{ lazyStrings.SettingsModal__about() }}
             </button>
           </nav>
 
@@ -386,7 +391,7 @@ defineExpose({
             >
               <DownloadIcon class="w-4 h-4 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
               <div class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300 truncate">
-                Standalone
+                {{ lazyStrings.SettingsModal__standalone() }}
               </div>
             </a>
           </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import logoUrl from '@/assets/logo.svg';
 
 interface Props {
@@ -34,7 +35,7 @@ defineExpose({
       :style="{ width: size + 'px', height: size + 'px' }"
       class="relative z-10 transition-all duration-500 hover:scale-110 hover:brightness-110"
       :class="className"
-      alt="Naidan Logo"
+      :alt="lazyStrings.Logo__naidan_logo()"
     />
   </div>
 </template>

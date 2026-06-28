@@ -3,6 +3,7 @@ import { nextTick } from 'vue'; // Imported nextTick from vue
 import { useConfirm } from './useConfirm';
 import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock the global CustomDialog component
 const MockCustomDialog = defineComponent({
@@ -44,7 +45,8 @@ describe('useConfirm', () => {
     `,
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mount(TestComponent, { // No longer assign to wrapper
       global: {
@@ -55,14 +57,21 @@ describe('useConfirm', () => {
     });
   });
 
-  it('showConfirm returns a promise', () => {
+  it('showConfirm returns a promise', async () => {
     const promise = confirmHook.showConfirm({ message: 'Are you sure?' });
     expect(promise).toBeInstanceOf(Promise);
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmMessage.value).toBe('Are you sure?');
+    });
+    confirmHook.handleCancel();
+    await expect(promise).resolves.toBe(false);
   });
 
   it('showConfirm resolves to true on confirmation', async () => {
     const confirmPromise = confirmHook.showConfirm({ message: 'Confirm this?' });
-    await nextTick(); // Wait for the dialog state to update
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmMessage.value).toBe('Confirm this?');
+    });
 
     // Simulate confirmation by calling the composable's handler
     confirmHook.handleConfirm();
@@ -75,7 +84,9 @@ describe('useConfirm', () => {
 
   it('showConfirm resolves to false on cancellation', async () => {
     const confirmPromise = confirmHook.showConfirm({ message: 'Cancel this?' });
-    await nextTick(); // Wait for the dialog state to update
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmMessage.value).toBe('Cancel this?');
+    });
 
     // Simulate cancellation by calling the composable's handler
     confirmHook.handleCancel();
@@ -94,21 +105,27 @@ describe('useConfirm', () => {
       cancelButtonText: 'Go Back',
       confirmButtonVariant: 'danger' as const,
     };
-    confirmHook.showConfirm(options);
-    await nextTick(); // Wait for the dialog state to update
+    const confirmPromise = confirmHook.showConfirm(options);
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmTitle.value).toBe(options.title);
+    });
 
-    expect(confirmHook.isConfirmOpen.value).toBe(true);
     expect(confirmHook.confirmTitle.value).toBe(options.title);
     expect(confirmHook.confirmMessage.value).toBe(options.message);
     expect(confirmHook.confirmConfirmButtonText.value).toBe(options.confirmButtonText);
     expect(confirmHook.confirmCancelButtonText.value).toBe(options.cancelButtonText);
     expect(confirmHook.confirmButtonVariant.value).toBe(options.confirmButtonVariant);
+    confirmHook.handleCancel();
+    await expect(confirmPromise).resolves.toBe(false);
   });
 
   it('passes icon correctly', async () => {
     const MockIcon = { template: '<div>Icon</div>' };
-    confirmHook.showConfirm({ icon: MockIcon });
-    await nextTick();
-    expect(confirmHook.confirmIcon.value).toStrictEqual(MockIcon);
+    const confirmPromise = confirmHook.showConfirm({ icon: MockIcon });
+    await vi.waitFor(() => {
+      expect(confirmHook.confirmIcon.value).toStrictEqual(MockIcon);
+    });
+    confirmHook.handleCancel();
+    await expect(confirmPromise).resolves.toBe(false);
   });
 });

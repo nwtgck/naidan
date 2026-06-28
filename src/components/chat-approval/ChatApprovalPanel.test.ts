@@ -1,7 +1,8 @@
 import { toChatId } from '@/models/ids';
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import ChatApprovalPanel from './ChatApprovalPanel.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { APPROVAL_ACTIONS } from '@/services/approval';
 
 function mountPanel({
@@ -31,6 +32,10 @@ function mountPanel({
 }
 
 describe('ChatApprovalPanel', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   it('renders compact Wikipedia search approval details', () => {
     const wrapper = mountPanel({
       preview: {

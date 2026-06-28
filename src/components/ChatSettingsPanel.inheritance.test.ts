@@ -6,6 +6,7 @@ import ModelSelector from './ModelSelector.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
   mockAvailableModelsRef: { value: [] as string[] },
   mockFetchingModelsRef: { value: false },
@@ -57,7 +58,8 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     'router-link': true,
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mockCurrentChat.value = {
       id: 'chat-1',
@@ -125,7 +127,7 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     expect(modelSelector.props('placeholder')).toBe('global-model (Global)');
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('openai (Global)');
+    expect(typeSelect.find('option').text()).toBe('OpenAI (Global)');
   });
 
   it('shows Group placeholders when chat belongs to a group with overrides', () => {
@@ -142,6 +144,6 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     expect(modelSelector.props('placeholder')).toBe('group-model (Group)');
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('ollama (Group)');
+    expect(typeSelect.find('option').text()).toBe('Ollama (Group)');
   });
 });

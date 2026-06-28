@@ -69,6 +69,7 @@ export const ImageDownloadHydrator = {
     imgEl.src = url;
     imgEl.width = parseInt(width || '512');
     imgEl.height = parseInt(height || '512');
+    // TODO(strings-localize): Localize this DOM attribute after createImageElement can receive a resolved alt value without becoming asynchronous.
     imgEl.alt = 'generated image';
     imgEl.className = 'naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity';
     imgEl.onclick = (e) => {

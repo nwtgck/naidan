@@ -1,3 +1,4 @@
+import { ensureStrings } from '@/strings';
 import { ref } from 'vue';
 import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/types';
 import type { FileExplorerEntry } from './types';
@@ -22,7 +23,7 @@ export function useFileExplorerOperations({
       await client.createFile({ parentPath: currentDirectoryPath.value, name });
       await refresh();
     } catch (error) {
-      addToast({ message: `Failed to create file: ${error instanceof Error ? error.message : String(error)}` });
+      addToast({ message: await ensureStrings.fileExplorer__failed_to_create_file({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
   }
 
@@ -31,7 +32,7 @@ export function useFileExplorerOperations({
       await client.createFolder({ parentPath: currentDirectoryPath.value, name });
       await refresh();
     } catch (error) {
-      addToast({ message: `Failed to create folder: ${error instanceof Error ? error.message : String(error)}` });
+      addToast({ message: await ensureStrings.fileExplorer__failed_to_create_folder({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
   }
 
@@ -39,15 +40,19 @@ export function useFileExplorerOperations({
     if (entries.length === 0) return;
 
     const isSingle = entries.length === 1;
-    const label = isSingle ? `"${entries[0]!.name}"` : `${entries.length} items`;
-    let singleKindLabel = 'Items';
-    if (isSingle) {
+    const label = isSingle
+      ? `"${entries[0]!.name}"`
+      : await ensureStrings.fileExplorer__item_count_label({ count: entries.length });
+    let title: string;
+    if (!isSingle) {
+      title = await ensureStrings.fileExplorer__delete_items();
+    } else {
       switch (entries[0]!.kind) {
       case 'directory':
-        singleKindLabel = 'Folder';
+        title = await ensureStrings.fileExplorer__delete_folder();
         break;
       case 'file':
-        singleKindLabel = 'File';
+        title = await ensureStrings.fileExplorer__delete_file();
         break;
       default: {
         const _exhaustiveCheck: never = entries[0]!.kind;
@@ -57,9 +62,9 @@ export function useFileExplorerOperations({
     }
 
     const confirmed = await showConfirm({
-      title: `Delete ${isSingle ? singleKindLabel : 'Items'}`,
-      message: `Are you sure you want to permanently delete ${label}? This cannot be undone.`,
-      confirmButtonText: 'Delete',
+      title,
+      message: await ensureStrings.fileExplorer__delete_confirmation({ label }),
+      confirmButtonText: await ensureStrings.fileExplorer__delete(),
       confirmButtonVariant: 'danger',
     });
     if (!confirmed) return;
@@ -68,7 +73,7 @@ export function useFileExplorerOperations({
       await client.deleteEntries({ paths: entries.map(entry => entry.path) });
       await refresh();
     } catch (error) {
-      addToast({ message: `Failed to delete: ${error instanceof Error ? error.message : String(error)}` });
+      addToast({ message: await ensureStrings.fileExplorer__failed_to_delete({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
   }
 
@@ -90,7 +95,7 @@ export function useFileExplorerOperations({
       renamingEntryName.value = undefined;
       await refresh();
     } catch (error) {
-      addToast({ message: `Failed to rename: ${error instanceof Error ? error.message : String(error)}` });
+      addToast({ message: await ensureStrings.fileExplorer__failed_to_rename({ errorMessage: error instanceof Error ? error.message : String(error) }) });
       renamingEntryName.value = undefined;
     }
   }
@@ -109,7 +114,7 @@ export function useFileExplorerOperations({
       });
       await refresh();
     } catch (error) {
-      addToast({ message: `Failed to move items: ${error instanceof Error ? error.message : String(error)}` });
+      addToast({ message: await ensureStrings.fileExplorer__failed_to_move_items({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
   }
 
@@ -127,7 +132,7 @@ export function useFileExplorerOperations({
       });
       await refresh();
     } catch (error) {
-      addToast({ message: `Failed to copy items: ${error instanceof Error ? error.message : String(error)}` });
+      addToast({ message: await ensureStrings.fileExplorer__failed_to_copy_items({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
   }
 
@@ -152,7 +157,7 @@ export function useFileExplorerOperations({
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      addToast({ message: `Failed to download: ${error instanceof Error ? error.message : String(error)}` });
+      addToast({ message: await ensureStrings.fileExplorer__failed_to_download({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
   }
 
@@ -175,7 +180,7 @@ export function useFileExplorerOperations({
       });
       await refresh();
     } catch (error) {
-      addToast({ message: `Failed to upload files: ${error instanceof Error ? error.message : String(error)}` });
+      addToast({ message: await ensureStrings.fileExplorer__failed_to_upload_files({ errorMessage: error instanceof Error ? error.message : String(error) }) });
     }
   }
 

@@ -1,3 +1,4 @@
+// TODO(strings-localize): Localize endpoint preset labels without changing this shared preset data contract.
 export const ENDPOINT_PRESETS = [
   { name: 'Ollama (local)', type: 'ollama', url: 'http://localhost:11434' },
   { name: 'LM Studio (local)', type: 'openai', url: 'http://localhost:1234/v1' },
@@ -21,6 +22,7 @@ export const LOCK_METADATA = `${STORAGE_KEY_PREFIX}sync:lock:metadata`;
 
 export const LOCK_CHAT_CONTENT_PREFIX = `${STORAGE_KEY_PREFIX}sync:lock:chat_content:`;
 
+// TODO(strings-localize): Separate the persisted title fallback and search-worker title from locale-specific display copy before localizing this shared domain value.
 export const UNTITLED_CHAT_TITLE = 'New Chat';
 /** OPFS directory used for per-session shell /tmp scratch space. */
 export const OPFS_TMP_DIR = 'naidan-tmp';

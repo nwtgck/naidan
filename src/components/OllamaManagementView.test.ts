@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import OllamaManagementView from './OllamaManagementView.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const { mockCreateOllamaProvider } = vi.hoisted(() => ({
   mockCreateOllamaProvider: vi.fn(),
@@ -16,7 +17,8 @@ describe('OllamaManagementView', () => {
     mockCreateOllamaProvider.mockReturnValue({ runtime: 'provider' });
   });
 
-  it('renders the current ps screen without a one-item tab interface', () => {
+  it('renders the current ps screen without a one-item tab interface', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     const wrapper = mount(OllamaManagementView, {
       props: {
         endpointUrl: 'http://localhost:11434',

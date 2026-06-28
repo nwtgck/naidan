@@ -4,6 +4,7 @@ import { useConfirm } from './useConfirm';
 import { useImagePreview } from './useImagePreview';
 import type { BinaryObject } from '@/models/types';
 import type { BinaryObjectId } from '@/models/ids';
+import { ensureStrings } from '@/strings';
 
 export function useBinaryActions() {
   const { showConfirm } = useConfirm();
@@ -14,9 +15,9 @@ export function useBinaryActions() {
     const name = obj?.name || idToRaw({ id });
 
     const confirmed = await showConfirm({
-      title: 'Delete Binary Object?',
-      message: `Are you sure you want to delete "${name}"? This action cannot be undone. Any chat messages referencing this file will show it as missing.`,
-      confirmButtonText: 'Delete Permanently',
+      title: await ensureStrings.useBinaryActions__delete_binary_object(),
+      message: await ensureStrings.useBinaryActions__delete_binary_object_warning({ name }),
+      confirmButtonText: await ensureStrings.useBinaryActions__delete_permanently(),
       confirmButtonVariant: 'danger',
     });
 

@@ -14,7 +14,7 @@
         <div class="px-6 py-4 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
           <div class="flex items-center gap-2 overflow-hidden">
             <component v-if="_props.icon" :is="_props.icon" class="w-4 h-4 text-blue-500 shrink-0" />
-            <h3 data-testid="dialog-title" class="text-base font-bold text-gray-800 dark:text-white tracking-tight truncate">{{ _props.title }}</h3>
+            <h3 data-testid="dialog-title" class="text-base font-bold text-gray-800 dark:text-white tracking-tight truncate">{{ _props.title || lazyStrings.CustomDialog__dialog() }}</h3>
           </div>
           <button @click="cancel" data-testid="dialog-close-x" class="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 transition-colors shrink-0">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -47,7 +47,7 @@
           <!-- Actions -->
           <div class="flex justify-end gap-3 mt-8">
             <button @click="cancel" data-testid="dialog-cancel-button" class="px-5 py-2.5 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
-              {{ _props.cancelButtonText }}
+              {{ _props.cancelButtonText || lazyStrings.SHARED__cancel() }}
             </button>
             <button
               @click="confirm"
@@ -58,7 +58,7 @@
                 'text-white bg-red-600 hover:bg-red-700 shadow-red-500/30': _props.confirmButtonVariant === 'danger',
               }"
             >
-              {{ _props.confirmButtonText }}
+              {{ _props.confirmButtonText || lazyStrings.SHARED__confirm() }}
             </button>
           </div>
         </div>
@@ -68,6 +68,7 @@
 </template>
 
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import type { Component } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 
@@ -89,11 +90,11 @@ const _props = withDefaults(defineProps<{
   bodyComponent?: Component | any | null,
 }>(), {
   show: false,
-  title: 'Dialog',
+  title: '',
   icon: null,
   message: '',
-  confirmButtonText: 'Confirm',
-  cancelButtonText: 'Cancel',
+  confirmButtonText: '',
+  cancelButtonText: '',
   showInput: false,
   inputValue: '',
   inputType: 'text',

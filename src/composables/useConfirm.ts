@@ -1,4 +1,5 @@
 import { ref, shallowRef, type Component } from 'vue';
+import { ensureStrings } from '@/strings';
 
 interface ConfirmOptions {
   title?: string,
@@ -19,12 +20,16 @@ const confirmIcon = shallowRef<Component | undefined>(undefined); // Use shallow
 let resolvePromise: ReturnType<typeof Promise.withResolvers<boolean>>['resolve'] | undefined;
 
 export function useConfirm() {
-  const showConfirm = ({ title, message, confirmButtonText, cancelButtonText, confirmButtonVariant: buttonVariant, icon }: ConfirmOptions): Promise<boolean> => {
+  const showConfirm = async ({ title, message, confirmButtonText, cancelButtonText, confirmButtonVariant: buttonVariant, icon }: ConfirmOptions): Promise<boolean> => {
+    const resolvedTitle = title || await ensureStrings.SHARED__confirm();
+    const resolvedConfirmButtonText = confirmButtonText || await ensureStrings.SHARED__confirm();
+    const resolvedCancelButtonText = cancelButtonText || await ensureStrings.SHARED__cancel();
+
     return new Promise((resolve) => {
-      confirmTitle.value = title || 'Confirm';
+      confirmTitle.value = resolvedTitle;
       confirmMessage.value = message || '';
-      confirmConfirmButtonText.value = confirmButtonText || 'Confirm';
-      confirmCancelButtonText.value = cancelButtonText || 'Cancel';
+      confirmConfirmButtonText.value = resolvedConfirmButtonText;
+      confirmCancelButtonText.value = resolvedCancelButtonText;
       confirmButtonVariant.value = buttonVariant || 'default'; // Set variant
       confirmIcon.value = icon; // Set icon
       isConfirmOpen.value = true;

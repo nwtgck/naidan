@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import AboutTab from './AboutTab.vue';
 
@@ -27,10 +27,10 @@ describe('AboutTab GitHub Link', () => {
     const githubLink = wrapper.find('a[href*="github.com/nwtgck/naidan"]');
     expect(githubLink.exists()).toBe(true);
 
-    // Check for "GitHub Repository" text
-    expect(githubLink.text()).toContain('GitHub Repository');
-
-    // Check for the description text
-    expect(githubLink.text()).toContain('View source code & contribute');
+    // Check translated copy after the lazy string boundary is registered.
+    await vi.waitFor(() => {
+      expect(githubLink.text()).toContain('GitHub Repository');
+      expect(githubLink.text()).toContain('View source code & contribute');
+    });
   });
 });

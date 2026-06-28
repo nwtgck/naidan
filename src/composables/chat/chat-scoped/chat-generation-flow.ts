@@ -1,4 +1,5 @@
 import { reactive, toRaw } from 'vue';
+import { ensureStrings } from '@/strings';
 import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { LmProvider } from '@/services/lm/types';
@@ -222,7 +223,7 @@ export async function sendMessageToTargetChat({
       if (!imageModel) {
         useGlobalEvents().addErrorEvent({
           source: 'useChat:sendMessage',
-          message: 'No image generation model found (starting with x/z-image-turbo:).',
+          message: await ensureStrings.chatGenerationFlow__no_image_generation_model_was_found(),
         });
         return false;
       }
@@ -912,10 +913,10 @@ async function confirmTemporaryAttachments(): Promise<boolean> {
   }
 
   return await useConfirm().showConfirm({
-    title: 'Attachments cannot be saved',
-    message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
-    confirmButtonText: 'Continue anyway',
-    cancelButtonText: 'Cancel',
+    title: await ensureStrings.chatGenerationFlow__attachments_cannot_be_saved(),
+    message: await ensureStrings.chatGenerationFlow__local_storage_attachments_are_only_available_during_this_session(),
+    confirmButtonText: await ensureStrings.chatGenerationFlow__continue_anyway(),
+    cancelButtonText: await ensureStrings.chatGenerationFlow__cancel(),
   });
 }
 
@@ -1258,9 +1259,10 @@ async function showGenerationFailedToast({
     return;
   }
 
+  const chatTitle = chat.title || await ensureStrings.SHARED__new_chat();
   useToast().addToast({
-    message: `Generation failed in "${chat.title || 'New Chat'}"`,
-    actionLabel: 'View',
+    message: await ensureStrings.chatGenerationFlow__generation_failed_in_chat({ chatTitle }),
+    actionLabel: await ensureStrings.chatGenerationFlow__view(),
     onAction: async () => {
       await useChatNavigation().openChat({ chatId: chat.id, leafId: undefined });
     },

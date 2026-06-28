@@ -1,3 +1,4 @@
+import { ensureStrings } from '@/strings';
 import { computed, ref } from 'vue';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import {
@@ -117,7 +118,7 @@ export function createWeshTerminalSessions({
     const id = `session-${nextSessionNumber++}`;
     const session: InternalSession = {
       id,
-      title: `Session ${nextSessionNumber - 1}`,
+      title: await ensureStrings.weshTerminal__session({ sessionNumber: nextSessionNumber - 1 }),
       lines: [],
       state: 'initializing',
       errorMessage: undefined,

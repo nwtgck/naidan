@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { computed, type Component } from 'vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
@@ -44,39 +45,55 @@ const emit = defineEmits<{
 const { isFeatureEnabled } = useFeatureFlags();
 const { settings } = useSettings();
 
-const toolDefinitions: readonly {
-  key: BuiltinToolKey,
-  name: string,
-  description: string,
-  icon: Component,
-}[] = [
-  {
-    key: 'builtin.calculator',
-    name: 'Calculator',
-    description: 'Solve math expressions',
-    icon: CalculatorIcon,
-  },
-  {
-    key: 'builtin.choices',
-    name: 'Choices',
-    description: 'Choose from model-provided options',
-    icon: ListIcon,
-  },
-  {
-    key: 'builtin.wikipedia',
-    name: 'Wikipedia',
-    description: 'Access global knowledge',
-    icon: BookOpenIcon,
-  },
-  {
-    key: 'builtin.wesh',
-    name: 'Shell',
-    description: 'Shell in browser',
-    icon: TerminalIcon,
-  },
-];
+type ToolDefinition = {
+  readonly key: BuiltinToolKey,
+  readonly name: string,
+  readonly description: string,
+  readonly icon: Component,
+};
 
-const visibleToolDefinitions = computed(() => toolDefinitions.filter((tool) => {
+type ToolDefinitionDraft = Omit<ToolDefinition, 'name' | 'description'> & {
+  readonly name: string | undefined,
+  readonly description: string | undefined,
+};
+
+const toolDefinitions = computed<readonly ToolDefinition[]>(() => {
+  const drafts: readonly ToolDefinitionDraft[] = [
+    {
+      key: 'builtin.calculator',
+      name: lazyStrings.ToolConfigHierarchySettings__calculator(),
+      description: lazyStrings.ToolConfigHierarchySettings__solve_math_expressions(),
+      icon: CalculatorIcon,
+    },
+    {
+      key: 'builtin.choices',
+      name: lazyStrings.ToolConfigHierarchySettings__choices(),
+      description: lazyStrings.ToolConfigHierarchySettings__choose_from_model_provided_options(),
+      icon: ListIcon,
+    },
+    {
+      key: 'builtin.wikipedia',
+      name: lazyStrings.ToolConfigHierarchySettings__wikipedia(),
+      description: lazyStrings.ToolConfigHierarchySettings__access_global_knowledge(),
+      icon: BookOpenIcon,
+    },
+    {
+      key: 'builtin.wesh',
+      name: lazyStrings.ToolConfigHierarchySettings__shell(),
+      description: lazyStrings.ToolConfigHierarchySettings__shell_in_browser(),
+      icon: TerminalIcon,
+    },
+  ];
+
+  const resolved: ToolDefinition[] = [];
+  for (const draft of drafts) {
+    if (draft.name === undefined || draft.description === undefined) return [];
+    resolved.push({ ...draft, name: draft.name, description: draft.description });
+  }
+  return resolved;
+});
+
+const visibleToolDefinitions = computed(() => toolDefinitions.value.filter((tool) => {
   switch (tool.key) {
   case 'builtin.calculator':
   case 'builtin.choices':
@@ -129,24 +146,51 @@ function toggleStatus({ key }: { key: BuiltinToolKey }): void {
   });
 }
 
-function inheritanceLabel({ key }: { key: BuiltinToolKey }): ToolConfigInheritanceLabel {
+function inheritanceLabel({ key }: { key: BuiltinToolKey }): string | undefined {
+  let label: ToolConfigInheritanceLabel;
   switch (props.scope) {
   case 'global':
     throw new Error('Global tool settings do not inherit from another configurable layer');
   case 'chat_group':
-    return 'Use global';
+    label = 'Use global';
+    break;
   case 'chat': {
-    const label = props.inheritanceLabelByKey?.[key];
-    if (label === undefined) {
+    const inheritedLabel = props.inheritanceLabelByKey?.[key];
+    if (inheritedLabel === undefined) {
       throw new Error(`Missing Chat tool inheritance label: ${key}`);
     }
-    return label;
+    label = inheritedLabel;
+    break;
   }
   default: {
     const _ex: never = props.scope;
     throw new Error(`Unhandled tool config scope: ${_ex}`);
   }
   }
+
+  switch (label) {
+  case 'Use global':
+    return lazyStrings.ToolConfigHierarchySettings__use_global();
+  case 'Use group':
+    return lazyStrings.ToolConfigHierarchySettings__use_group();
+  default: {
+    const _ex: never = label;
+    throw new Error(`Unhandled tool inheritance label: ${_ex}`);
+  }
+  }
+}
+
+function toggleAriaLabel({
+  key,
+  toolName,
+}: {
+  key: BuiltinToolKey,
+  toolName: string | undefined,
+}): string | undefined {
+  if (toolName === undefined) return undefined;
+  return isEffectivelyEnabled({ key })
+    ? lazyStrings.ToolConfigHierarchySettings__turn_off_tool({ toolName })
+    : lazyStrings.ToolConfigHierarchySettings__turn_on_tool({ toolName });
 }
 
 function handleAccessScopeChange({ event }: { event: Event }): void {
@@ -209,7 +253,7 @@ defineExpose({
     >
       <InfoIcon class="mt-0.5 h-3.5 w-3.5 shrink-0" />
       <p class="text-[10px] leading-relaxed">
-        Tool config persistence is disabled. Saved settings remain active, but changes cannot be saved here.
+        {{ lazyStrings.ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here() }}
       </p>
     </div>
 
@@ -264,7 +308,7 @@ defineExpose({
                 : 'bg-gray-300 dark:bg-gray-600'"
               :disabled="!isEditable"
               :aria-checked="isEffectivelyEnabled({ key: tool.key })"
-              :aria-label="`${isEffectivelyEnabled({ key: tool.key }) ? 'Turn off' : 'Turn on'} ${tool.name}`"
+              :aria-label="toggleAriaLabel({ key: tool.key, toolName: tool.name })"
               :data-testid="`tool-config-${tool.key}-toggle`"
               @click="toggleStatus({ key: tool.key })"
             >
@@ -272,7 +316,7 @@ defineExpose({
                 class="absolute inset-y-0 flex items-center text-[7px] font-black tracking-[0.08em] text-white"
                 :class="isEffectivelyEnabled({ key: tool.key }) ? 'left-1.5' : 'right-1.5'"
               >
-                {{ isEffectivelyEnabled({ key: tool.key }) ? 'ON' : 'OFF' }}
+                {{ isEffectivelyEnabled({ key: tool.key }) ? lazyStrings.ToolConfigHierarchySettings__on() : lazyStrings.ToolConfigHierarchySettings__off() }}
               </span>
               <span
                 class="absolute left-[2px] top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
@@ -313,7 +357,7 @@ defineExpose({
                 : 'bg-gray-300 dark:bg-gray-600'"
               :disabled="!isEditable"
               :aria-checked="isEffectivelyEnabled({ key: tool.key })"
-              :aria-label="`${isEffectivelyEnabled({ key: tool.key }) ? 'Turn off' : 'Turn on'} ${tool.name}`"
+              :aria-label="toggleAriaLabel({ key: tool.key, toolName: tool.name })"
               :data-testid="`tool-config-${tool.key}-toggle`"
               @click="toggleStatus({ key: tool.key })"
             >
@@ -321,7 +365,7 @@ defineExpose({
                 class="absolute inset-y-0 flex items-center text-[7px] font-black tracking-[0.08em] text-white"
                 :class="isEffectivelyEnabled({ key: tool.key }) ? 'left-1.5' : 'right-1.5'"
               >
-                {{ isEffectivelyEnabled({ key: tool.key }) ? 'ON' : 'OFF' }}
+                {{ isEffectivelyEnabled({ key: tool.key }) ? lazyStrings.ToolConfigHierarchySettings__on() : lazyStrings.ToolConfigHierarchySettings__off() }}
               </span>
               <span
                 class="absolute left-[2px] top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
@@ -340,9 +384,9 @@ defineExpose({
         data-testid="hierarchical-wesh-settings"
       >
         <header class="border-b border-gray-100 bg-blue-50/40 px-3 py-2.5 dark:border-gray-700/60 dark:bg-blue-500/5">
-          <h3 class="text-[11px] font-bold text-gray-700 dark:text-gray-200">Shell settings</h3>
+          <h3 class="text-[11px] font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.ToolConfigHierarchySettings__shell_settings() }}</h3>
           <p class="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-            Configure browser-based shell access.
+            {{ lazyStrings.SHARED__configure_browser_based_shell_access() }}
           </p>
         </header>
 
@@ -358,10 +402,10 @@ defineExpose({
           >
             <span class="min-w-0">
               <span class="block text-[11px] font-bold text-gray-700 dark:text-gray-200">
-                Mount <code class="font-mono text-[10px]">/sys/fs/naidan</code>
+                {{ lazyStrings.SHARED__mount() }} <code class="font-mono text-[10px]">/sys/fs/naidan</code>
               </span>
               <span class="mt-0.5 block text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
-                Expose chat discovery paths
+                {{ lazyStrings.SHARED__expose_chat_discovery_paths() }}
               </span>
             </span>
 
@@ -383,10 +427,10 @@ defineExpose({
             >
               <div class="min-w-0">
                 <label for="hierarchical-wesh-access-scope" class="block text-[11px] font-bold text-gray-700 dark:text-gray-200">
-                  Visibility
+                  {{ lazyStrings.SHARED__visibility() }}
                 </label>
                 <p class="mt-0.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
-                  Choose which chats are visible to the shell.
+                  {{ lazyStrings.SHARED__choose_which_chats_are_visible_to_the_shell() }}
                 </p>
               </div>
 
@@ -398,9 +442,9 @@ defineExpose({
                 data-testid="hierarchical-wesh-access-scope"
                 @change="handleAccessScopeChange({ event: $event })"
               >
-                <option value="current_chat_only">Current chat</option>
-                <option value="current_chat_with_chat_group">Current chat + chat group</option>
-                <option value="main_chats">All chats</option>
+                <option value="current_chat_only">{{ lazyStrings.SHARED__current_chat() }}</option>
+                <option value="current_chat_with_chat_group">{{ lazyStrings.SHARED__current_chat_plus_chat_group() }}</option>
+                <option value="main_chats">{{ lazyStrings.SHARED__all_chats() }}</option>
               </select>
             </div>
           </Transition>
@@ -409,7 +453,7 @@ defineExpose({
         <div class="flex items-start gap-2.5 border-t border-gray-100 bg-gray-50/50 px-3 py-2.5 dark:border-gray-700/60 dark:bg-gray-950/20">
           <InfoIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500" />
           <p class="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400" data-testid="wesh-storage-mode-note">
-            {{ hasWritableTmp ? 'Writable /tmp is available with OPFS storage.' : 'Local and memory storage expose Wesh as read-only, without /tmp.' }}
+            {{ hasWritableTmp ? lazyStrings.SHARED__writable_tmp_is_available_with_opfs_storage() : lazyStrings.SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp() }}
           </p>
         </div>
       </section>
@@ -424,7 +468,7 @@ defineExpose({
         @click="emit('reset-all')"
       >
         <RotateCcwIcon class="h-3 w-3" />
-        Reset to defaults
+        {{ lazyStrings.ToolConfigHierarchySettings__reset_to_defaults() }}
       </button>
     </div>
   </div>

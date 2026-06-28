@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { computed } from 'vue';
 import { TerminalIcon, InfoIcon } from 'lucide-vue-next';
 import { useChatTools } from '@/composables/useChatTools';
@@ -99,16 +100,16 @@ defineExpose({
 
       <div class="flex-1 min-w-0" :class="{ 'opacity-80': !isToolEnabled({ name: 'shell_execute' }) }">
         <div class="flex items-center gap-1.5">
-          <span class="text-xs font-bold tracking-tight" :class="isToolEnabled({ name: 'shell_execute' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'">Shell</span>
+          <span class="text-xs font-bold tracking-tight" :class="isToolEnabled({ name: 'shell_execute' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'">{{ lazyStrings.WeshToolSettings__shell() }}</span>
           <div v-if="isToolEnabled({ name: 'shell_execute' })" class="w-1 h-1 bg-blue-500 rounded-full"></div>
         </div>
         <div class="text-[10px] font-medium leading-tight truncate mt-0.5" :class="isToolEnabled({ name: 'shell_execute' }) ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">
           <!--
-            "Shell in browser" is user-facing copy only.
+            This label is user-facing copy only.
             Internal identifiers should stay standardized on "wesh".
             Debug-specific UI may intentionally expose "Wesh" directly instead.
           -->
-          Shell in browser
+          {{ lazyStrings.WeshToolSettings__shell_in_browser() }}
         </div>
       </div>
     </button>
@@ -122,10 +123,10 @@ defineExpose({
       <header class="flex items-start justify-between gap-3 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/60 bg-blue-50/40 dark:bg-blue-500/5">
         <div class="min-w-0">
           <h3 class="text-[11px] font-bold tracking-tight text-gray-700 dark:text-gray-200">
-            Shell settings
+            {{ lazyStrings.WeshToolSettings__shell_settings() }}
           </h3>
           <p class="mt-0.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
-            Configure browser-based shell access.
+            {{ lazyStrings.SHARED__configure_browser_based_shell_access() }}
           </p>
         </div>
       </header>
@@ -140,10 +141,10 @@ defineExpose({
         >
           <span class="min-w-0">
             <span class="block text-[11px] font-bold text-gray-700 dark:text-gray-200">
-              Mount <code class="font-mono text-[10px]">/sys/fs/naidan</code>
+              {{ lazyStrings.SHARED__mount() }} <code class="font-mono text-[10px]">/sys/fs/naidan</code>
             </span>
             <span class="block mt-0.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
-              Expose chat discovery paths
+              {{ lazyStrings.SHARED__expose_chat_discovery_paths() }}
             </span>
           </span>
 
@@ -164,10 +165,10 @@ defineExpose({
         >
           <div class="min-w-0">
             <label class="block text-[11px] font-bold text-gray-700 dark:text-gray-200" for="naidan-sysfs-access-scope-select">
-              Visibility
+              {{ lazyStrings.SHARED__visibility() }}
             </label>
             <p class="mt-0.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
-              Choose which chats are visible to the shell.
+              {{ lazyStrings.SHARED__choose_which_chats_are_visible_to_the_shell() }}
             </p>
           </div>
 
@@ -178,9 +179,9 @@ defineExpose({
             data-testid="naidan-sysfs-access-scope-select"
             @change="handleNaidanSysfsSelectionChange({ event: $event })"
           >
-            <option value="current_chat_only">Current chat</option>
-            <option value="current_chat_with_chat_group">Current chat + chat group</option>
-            <option value="main_chats">All chats</option>
+            <option value="current_chat_only">{{ lazyStrings.SHARED__current_chat() }}</option>
+            <option value="current_chat_with_chat_group">{{ lazyStrings.SHARED__current_chat_plus_chat_group() }}</option>
+            <option value="main_chats">{{ lazyStrings.SHARED__all_chats() }}</option>
           </select>
         </div>
       </div>
@@ -188,7 +189,7 @@ defineExpose({
       <div class="flex items-start gap-2.5 px-3 py-2.5 border-t border-gray-100 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-950/20">
         <InfoIcon class="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
         <p class="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400" data-testid="wesh-storage-mode-note">
-          {{ hasWritableTmp ? 'Writable /tmp is available with OPFS storage.' : 'Local and memory storage expose Wesh as read-only, without /tmp.' }}
+          {{ hasWritableTmp ? lazyStrings.SHARED__writable_tmp_is_available_with_opfs_storage() : lazyStrings.SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp() }}
         </p>
       </div>
     </section>

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ToolConfigHierarchySettings from './ToolConfigHierarchySettings.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import type { ToolConfig } from '@/services/tools/types';
 
 const featureState = vi.hoisted(() => ({ weshEnabled: true }));
@@ -88,6 +89,7 @@ describe('ToolConfigHierarchySettings', () => {
   });
 
   it('uses one effective-state toggle and keeps a separated fixed reset slot', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     const inheritedWrapper = mountSettings();
     const inheritedToggle = inheritedWrapper.get('[data-testid="tool-config-builtin.calculator-toggle"]');
 

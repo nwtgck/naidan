@@ -10,6 +10,7 @@ import {
   RefreshCwIcon,
 } from 'lucide-vue-next';
 import { useToast } from '@/composables/useToast';
+import { ensureStrings, lazyStrings } from '@/strings';
 import type { OllamaProvider, OllamaRunningModel } from '@/services/lm/ollama';
 
 type PanelState = 'collapsed' | 'expanded';
@@ -50,17 +51,17 @@ const hasEndpoint = computed(() => (props.endpointUrl?.trim().length ?? 0) > 0);
 const statusLabel = computed(() => {
   switch (requestState.value.status) {
   case 'idle':
-    return 'Not checked';
+    return lazyStrings.OllamaPsView__not_checked();
   case 'loading':
     return requestState.value.previousModels.length === 0
-      ? 'Checking…'
-      : `${requestState.value.previousModels.length} loaded`;
+      ? lazyStrings.OllamaPsView__checking()
+      : lazyStrings.OllamaPsView__loaded_count({ count: requestState.value.previousModels.length });
   case 'ready':
-    return `${requestState.value.models.length} loaded`;
+    return lazyStrings.OllamaPsView__loaded_count({ count: requestState.value.models.length });
   case 'error':
     return requestState.value.previousModels.length === 0
-      ? 'Unavailable'
-      : `${requestState.value.previousModels.length} loaded`;
+      ? lazyStrings.OllamaPsView__unavailable()
+      : lazyStrings.OllamaPsView__loaded_count({ count: requestState.value.previousModels.length });
   default: {
     const _ex: never = requestState.value;
     throw new Error(`Unhandled request state: ${String(_ex)}`);
@@ -204,7 +205,7 @@ async function unloadModel({ model }: {
     switch (confirmation.status) {
     case 'unloaded':
       addToast({
-        message: `${model.name} unloaded`,
+        message: await ensureStrings.OllamaPsView__model_unloaded({ modelName: model.name }),
         duration: 3000,
       });
       return;
@@ -212,10 +213,10 @@ async function unloadModel({ model }: {
       modelActionStates.set(model.name, 'requested');
       modelActionNotices.set(
         model.name,
-        'Unload requested. Ollama may keep showing this model until active requests finish; refresh to check again.',
+        await ensureStrings.OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again(),
       );
       addToast({
-        message: `${model.name} unload requested`,
+        message: await ensureStrings.OllamaPsView__model_unload_requested({ modelName: model.name }),
         duration: 3000,
       });
       return;
@@ -347,16 +348,16 @@ function getModelActionState({ modelName }: {
 
 function getUnloadButtonLabel({ modelName }: {
   modelName: string,
-}): string {
+}): string | undefined {
   const actionState = getModelActionState({ modelName });
   switch (actionState) {
   case 'idle':
   case 'failed':
-    return 'Unload';
+    return lazyStrings.OllamaPsView__unload();
   case 'unloading':
-    return 'Unloading…';
+    return lazyStrings.OllamaPsView__unloading();
   case 'requested':
-    return 'Unload requested';
+    return lazyStrings.OllamaPsView__unload_requested();
   default: {
     const _ex: never = actionState;
     throw new Error(`Unhandled model action state: ${_ex}`);
@@ -368,9 +369,9 @@ function getModelMetadata({ model }: {
   model: OllamaRunningModel,
 }): readonly string[] {
   return [
-    formatBytes({ value: model.size, label: 'memory' }),
-    formatBytes({ value: model.sizeVram, label: 'VRAM' }),
-    model.contextLength === undefined ? undefined : `${model.contextLength.toLocaleString()} context`,
+    formatBytes({ value: model.size, kind: 'memory' }),
+    formatBytes({ value: model.sizeVram, kind: 'vram' }),
+    model.contextLength === undefined ? undefined : lazyStrings.OllamaPsView__context_length({ length: model.contextLength.toLocaleString() }),
     formatExpiration({ value: model.expiresAt }),
   ].filter((value): value is string => value !== undefined);
 }
@@ -380,20 +381,22 @@ function getModelDetails({ model }: {
 }): readonly { readonly label: string, readonly value: string }[] {
   const families = model.details.families?.filter((family) => family.length > 0).join(', ');
   return [
-    model.model !== undefined && model.model !== '' && model.model !== model.name ? { label: 'Model', value: model.model } : undefined,
-    model.details.format === undefined || model.details.format === '' ? undefined : { label: 'Format', value: model.details.format },
-    model.details.family === undefined || model.details.family === '' ? undefined : { label: 'Family', value: model.details.family },
-    families === undefined || families === '' ? undefined : { label: 'Families', value: families },
+    model.model !== undefined && model.model !== '' && model.model !== model.name ? { label: lazyStrings.OllamaPsView__model(), value: model.model } : undefined,
+    model.details.format === undefined || model.details.format === '' ? undefined : { label: lazyStrings.OllamaPsView__format(), value: model.details.format },
+    model.details.family === undefined || model.details.family === '' ? undefined : { label: lazyStrings.OllamaPsView__family(), value: model.details.family },
+    families === undefined || families === '' ? undefined : { label: lazyStrings.OllamaPsView__families(), value: families },
     model.details.parentModel === undefined || model.details.parentModel === ''
       ? undefined
-      : { label: 'Parent model', value: model.details.parentModel },
-    model.digest === undefined || model.digest === '' ? undefined : { label: 'Digest', value: model.digest },
-  ].filter((value): value is { readonly label: string, readonly value: string } => value !== undefined);
+      : { label: lazyStrings.OllamaPsView__parent_model(), value: model.details.parentModel },
+    model.digest === undefined || model.digest === '' ? undefined : { label: lazyStrings.OllamaPsView__digest(), value: model.digest },
+  ].filter((value): value is { readonly label: string, readonly value: string } => (
+    value !== undefined && value.label !== undefined
+  ));
 }
 
-function formatBytes({ value, label }: {
+function formatBytes({ value, kind }: {
   value: number | undefined,
-  label: string,
+  kind: 'memory' | 'vram',
 }): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -401,10 +404,19 @@ function formatBytes({ value, label }: {
 
   const gibibyte = 1024 ** 3;
   const mebibyte = 1024 ** 2;
-  if (value >= gibibyte) {
-    return `${(value / gibibyte).toFixed(1)} GB ${label}`;
+  const size = value >= gibibyte
+    ? `${(value / gibibyte).toFixed(1)} GB`
+    : `${Math.max(1, Math.round(value / mebibyte)).toLocaleString()} MB`;
+  switch (kind) {
+  case 'memory':
+    return lazyStrings.OllamaPsView__memory_size({ size });
+  case 'vram':
+    return lazyStrings.OllamaPsView__vram_size({ size });
+  default: {
+    const _ex: never = kind;
+    throw new Error(`Unhandled model memory kind: ${_ex}`);
   }
-  return `${Math.max(1, Math.round(value / mebibyte)).toLocaleString()} MB ${label}`;
+  }
 }
 
 function formatExpiration({ value }: {
@@ -421,21 +433,22 @@ function formatExpiration({ value }: {
 
   const now = Date.now();
   if (timestamp - now > 1000 * 60 * 60 * 24 * 365 * 100) {
-    return 'Kept indefinitely';
+    return lazyStrings.OllamaPsView__kept_indefinitely();
   }
 
   const remainingMinutes = Math.ceil((timestamp - now) / (1000 * 60));
   if (remainingMinutes <= 1) {
-    return 'Expires soon';
+    return lazyStrings.OllamaPsView__expires_soon();
   }
   if (remainingMinutes < 60) {
-    return `Expires in ${remainingMinutes} minutes`;
+    return lazyStrings.OllamaPsView__expires_in_minutes({ minutes: remainingMinutes });
   }
 
-  return `Expires ${new Intl.DateTimeFormat(undefined, {
+  const dateTime = new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
-  }).format(new Date(timestamp))}`;
+  }).format(new Date(timestamp));
+  return lazyStrings.OllamaPsView__expires_at({ dateTime });
 }
 
 function resetForProviderChange() {
@@ -486,7 +499,7 @@ defineExpose({
 
         <span class="min-w-0 flex-1">
           <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span class="text-sm font-bold text-gray-800 dark:text-gray-100">Running Models</span>
+            <span class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.OllamaPsView__running_models() }}</span>
             <span
               class="text-[10px] font-bold text-gray-400"
               aria-live="polite"
@@ -496,7 +509,7 @@ defineExpose({
             </span>
           </span>
           <span class="mt-0.5 block text-[11px] font-medium leading-4 text-gray-400">
-            Models currently using system or video memory.
+            {{ lazyStrings.OllamaPsView__models_currently_using_system_or_video_memory() }}
           </span>
         </span>
 
@@ -512,7 +525,7 @@ defineExpose({
       class="grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
       :class="isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
       role="region"
-      aria-label="Running Ollama models"
+      :aria-label="lazyStrings.OllamaPsView__running_ollama_models()"
       :aria-hidden="!isExpanded"
       :inert="isExpanded ? undefined : true"
       data-testid="ollama-ps-content"
@@ -524,7 +537,7 @@ defineExpose({
         >
           <div v-if="hasEndpoint" class="flex flex-wrap items-center justify-between gap-3 bg-gray-50/60 px-4 py-2.5 dark:bg-gray-900/20 sm:px-5">
             <p class="text-[10px] font-medium leading-4 text-gray-400">
-              Loaded models remain available until their keep-alive period expires.
+              {{ lazyStrings.OllamaPsView__loaded_models_remain_available_until_their_keep_alive_period_expires() }}
             </p>
             <button
               type="button"
@@ -537,7 +550,7 @@ defineExpose({
                 class="h-3.5 w-3.5 motion-reduce:animate-none"
                 :class="isRefreshing ? 'animate-spin' : ''"
               />
-              {{ isRefreshing ? 'Refreshing…' : 'Refresh' }}
+              {{ isRefreshing ? lazyStrings.OllamaPsView__refreshing() : lazyStrings.OllamaPsView__refresh() }}
             </button>
           </div>
 
@@ -546,7 +559,7 @@ defineExpose({
             class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
             data-testid="ollama-ps-no-endpoint"
           >
-            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">Enter an Ollama endpoint URL to view running models.</p>
+            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__enter_an_ollama_endpoint_url_to_view_running_models() }}</p>
           </div>
 
           <div
@@ -554,7 +567,7 @@ defineExpose({
             class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
             data-testid="ollama-ps-idle"
           >
-            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">Refresh to check this Ollama server.</p>
+            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__refresh_to_check_this_ollama_server() }}</p>
           </div>
 
           <div
@@ -564,7 +577,7 @@ defineExpose({
             data-testid="ollama-ps-loading"
           >
             <Loader2Icon class="h-4 w-4 animate-spin motion-reduce:animate-none" />
-            Loading models…
+            {{ lazyStrings.OllamaPsView__loading_models() }}
           </div>
 
           <div
@@ -575,7 +588,7 @@ defineExpose({
             <div class="mx-auto flex max-w-lg items-start gap-3 rounded-2xl border border-red-100 bg-red-50/40 p-4 dark:border-red-900/30 dark:bg-red-900/10">
               <AlertCircleIcon class="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
               <div class="min-w-0 flex-1">
-                <p class="text-xs font-bold text-red-600 dark:text-red-400">Could not load running models.</p>
+                <p class="text-xs font-bold text-red-600 dark:text-red-400">{{ lazyStrings.OllamaPsView__could_not_load_running_models() }}</p>
                 <p class="mt-1 break-words text-[10px] font-medium leading-relaxed text-red-500/80 dark:text-red-300/80">
                   {{ requestState.errorMessage }}
                 </p>
@@ -586,7 +599,7 @@ defineExpose({
                 data-testid="ollama-ps-retry"
                 @click="loadRunningModels"
               >
-                Try Again
+                {{ lazyStrings.OllamaPsView__try_again() }}
               </button>
             </div>
           </div>
@@ -596,8 +609,8 @@ defineExpose({
             class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
             data-testid="ollama-ps-empty"
           >
-            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">No models are currently loaded.</p>
-            <p class="mt-1 text-[10px] font-medium text-gray-400">Models appear here after Ollama loads them for a request.</p>
+            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__no_models_are_currently_loaded() }}</p>
+            <p class="mt-1 text-[10px] font-medium text-gray-400">{{ lazyStrings.OllamaPsView__models_appear_here_after_ollama_loads_them_for_a_request() }}</p>
           </div>
 
           <div v-else class="bg-white dark:bg-gray-900/30" :aria-busy="isRefreshing">
@@ -658,7 +671,7 @@ defineExpose({
                       :data-testid="`ollama-model-${index}-details-toggle`"
                       @click="toggleModelDetails({ modelName: model.name })"
                     >
-                      Model details
+                      {{ lazyStrings.OllamaPsView__model_details() }}
                       <ChevronDownIcon
                         class="h-3 w-3 transition-transform duration-200 motion-reduce:transition-none"
                         :class="isModelDetailsExpanded({ modelName: model.name }) ? 'rotate-180' : ''"
@@ -671,7 +684,7 @@ defineExpose({
                       :class="isModelDetailsExpanded({ modelName: model.name }) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
                       role="region"
                       :aria-hidden="!isModelDetailsExpanded({ modelName: model.name })"
-                      :aria-label="`${model.name} details`"
+                      :aria-label="lazyStrings.OllamaPsView__model_details_aria({ modelName: model.name })"
                       :data-testid="`ollama-model-${index}-details`"
                     >
                       <div class="overflow-hidden">

@@ -1,3 +1,4 @@
+import { ensureStrings } from '@/strings';
 import type { ChatGroup, SidebarItem } from '@/models/types';
 import {
   buildCompactRequestMessages,
@@ -116,15 +117,16 @@ export async function runCompactCurrentBranchForChat({
     const resolvedModel = mutableChat.modelId || resolved.modelId;
 
     if (!resolvedModel || (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js')) {
+      const message = await ensureStrings.contextCompact__requires_a_configured_model_and_endpoint();
       addErrorEvent({
         source: 'useChat:compactCurrentBranch',
-        message: 'Compact Context requires a configured model and endpoint.',
+        message,
       });
       contextCompactRuntime.setProgress({
         chatId: mutableChat.id,
         progress: {
           phase: 'failed',
-          message: 'Compact Context requires a configured model and endpoint.',
+          message,
         },
       });
       return { status: 'skipped', reason: 'missing_model_or_endpoint' };
@@ -199,7 +201,7 @@ export async function runCompactCurrentBranchForChat({
         chatId: mutableChat.id,
         progress: {
           phase: 'failed',
-          message: 'Compact Context response was empty.',
+          message: await ensureStrings.contextCompact__response_was_empty(),
         },
       });
       return { status: 'skipped', reason: 'empty_response' };

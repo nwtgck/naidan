@@ -8,6 +8,7 @@ import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { transformersJsService } from '@/services/transformers-js';
 import { setupScrollToMock } from '@/utils/test-utils';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock router
 const router = createRouter({
@@ -304,6 +305,7 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
   let wrapper: VueWrapper<any>;
 
   beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     setupScrollToMock();
     vi.clearAllMocks();
     mockActiveMessages.value = [
@@ -371,7 +373,12 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     const messageItems = wrapper.findAllComponents({ name: 'MessageItem' });
     const assistantItem = messageItems.find(m => m.props('message').role === 'assistant');
     expect(assistantItem?.find('div').exists()).toBe(true);
-    expect(assistantItem?.text()).toContain('Waiting for response...');
+    await vi.waitFor(() => {
+      const updatedAssistantItem = wrapper
+        .findAllComponents({ name: 'MessageItem' })
+        .find(m => m.props('message').role === 'assistant');
+      expect(updatedAssistantItem?.text()).toContain('Waiting for response...');
+    }, { timeout: 5000 });
   });
 
   it('shows assistant message immediately if engine is already ready', async () => {

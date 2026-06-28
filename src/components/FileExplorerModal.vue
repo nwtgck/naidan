@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { computed } from 'vue';
 import { XIcon } from 'lucide-vue-next';
 import { useFileExplorerModal, mapFileExplorerModalOptionsToRootDescriptor } from '@/composables/useFileExplorerModal';
@@ -12,7 +13,7 @@ const title = computed(() => {
   const options = fileExplorerOptions.value;
   switch (options.kind) {
   case 'opfs-root':
-    return 'File Explorer (OPFS)';
+    return lazyStrings.fileExplorer__file_explorer_opfs();
   case 'native-directory':
   case 'wesh-mounts':
     return options.title;
@@ -62,7 +63,7 @@ defineExpose({
           <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ title }}</span>
           <button
             class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title="Close"
+            :title="lazyStrings.fileExplorer__close()"
             data-testid="file-explorer-modal-close"
             @click="closeFileExplorer()"
           >

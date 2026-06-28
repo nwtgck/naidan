@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import TransformersJsManager from './TransformersJsManager.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { transformersJsService } from '@/services/transformers-js';
 import * as opfsDetection from '@/services/storage/opfs-detection';
 
@@ -79,6 +80,10 @@ vi.mock('lucide-vue-next', () => ({
 }));
 
 describe('TransformersJsManager.vue', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   const mockState = {
     status: 'idle',
     progress: 0,
@@ -198,6 +203,7 @@ describe('TransformersJsManager.vue', () => {
 
     const deleteBtn = wrapper.find('button[title="Delete model"]');
     await deleteBtn.trigger('click');
+    await flushPromises();
 
     expect(mockShowConfirm).toHaveBeenCalled();
     expect(transformersJsService.deleteModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });

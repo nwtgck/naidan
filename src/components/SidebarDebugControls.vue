@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
@@ -37,7 +38,7 @@ defineExpose({
       @click="toggleDebug"
       class="p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm relative group"
       :class="{ 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-inner': isDebugOpen }"
-      title="Debug Events"
+      :title="lazyStrings.SidebarDebugControls__debug_events()"
       data-testid="sidebar-debug-button"
     >
       <TerminalIcon class="w-4 h-4" />
@@ -56,7 +57,7 @@ defineExpose({
         @click="showOpfsMenu = !showOpfsMenu"
         class="p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm"
         :class="{ 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-inner': showOpfsMenu }"
-        title="More Actions"
+        :title="lazyStrings.SidebarDebugControls__more_actions()"
         data-testid="sidebar-opfs-menu-button"
       >
         <MoreVerticalIcon class="w-4 h-4" />
@@ -71,7 +72,7 @@ defineExpose({
       >
         <div class="px-1 py-1">
           <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-            Quick Access
+            {{ lazyStrings.SidebarDebugControls__quick_access() }}
           </div>
           <button
             @click="handleOpenRecent"
@@ -80,7 +81,7 @@ defineExpose({
           >
             <div class="flex items-center gap-3">
               <HistoryIcon class="w-4 h-4" />
-              <span>Recent Chats</span>
+              <span>{{ lazyStrings.SidebarDebugControls__recent_chats() }}</span>
             </div>
             <kbd class="hidden group-hover:inline-block px-1 py-0.5 text-[9px] font-sans font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Ctrl+P</kbd>
           </button>
@@ -90,14 +91,14 @@ defineExpose({
             data-testid="sidebar-file-explorer-button"
           >
             <FolderSearchIcon class="w-4 h-4" />
-            <span>File Explorer</span>
+            <span>{{ lazyStrings.SidebarDebugControls__file_explorer() }}</span>
           </button>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"
             class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
           >
             <BoxIcon class="w-4 h-4" />
-            <span>Wesh Terminal</span>
+            <span>{{ lazyStrings.SidebarDebugControls__wesh_terminal() }}</span>
           </button>
         </div>
       </MessageActionsMenu>
@@ -108,7 +109,7 @@ defineExpose({
     @click="toggleDebug"
     class="flex items-center justify-center w-8 h-8 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 transition-all relative"
     :class="{ 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800': isDebugOpen }"
-    title="Debug Events"
+    :title="lazyStrings.SidebarDebugControls__debug_events()"
   >
     <TerminalIcon class="w-4 h-4" />
     <div

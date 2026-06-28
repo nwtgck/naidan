@@ -6,6 +6,7 @@ import SettingsModal from './SettingsModal.vue';
 import StorageTab from './StorageTab.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock vue-router
 vi.mock('vue-router', () => ({
@@ -68,7 +69,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
   const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     vi.unstubAllGlobals();
 
@@ -111,12 +113,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
     });
     await flushPromises();
 
-    const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-    if (storageTab) await storageTab.trigger('click');
+    await wrapper.get('[data-testid="tab-storage"]').trigger('click');
     await wait();
 
-    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
+    const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
     expect(opfsOption.text()).toContain('Unsupported');
   });
@@ -139,12 +139,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
     });
     await flushPromises();
 
-    const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-    if (storageTab) await storageTab.trigger('click');
+    await wrapper.get('[data-testid="tab-storage"]').trigger('click');
     await wait();
 
-    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
+    const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
     expect(opfsOption.text()).toContain('Unsupported');
   });
@@ -171,12 +169,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
     });
     await flushPromises();
 
-    const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-    if (storageTab) await storageTab.trigger('click');
+    await wrapper.get('[data-testid="tab-storage"]').trigger('click');
     await wait();
 
-    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
+    const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).not.toContain('cursor-not-allowed');
     expect(opfsOption.text()).not.toContain('Unsupported');
   });
@@ -251,9 +247,11 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await saveButton.trigger('click');
 
     expect(mockSave).toHaveBeenCalled();
-    expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Save Failed',
-      message: expect.stringContaining('Migration Security Error'),
-    }));
+    await vi.waitFor(() => {
+      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Save Failed',
+        message: expect.stringContaining('Migration Security Error'),
+      }));
+    });
   });
 });

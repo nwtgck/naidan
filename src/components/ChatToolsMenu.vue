@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, computed, watch, onMounted } from 'vue';
 import { Settings2Icon, ChevronDownIcon } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -98,7 +99,7 @@ defineExpose({
         showMenu || isImageMode || isThinkActive || hasActiveTools ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
         (isImageMode || isThinkActive || hasActiveTools) && !showMenu ? 'ring-2 ring-blue-500/20' : ''
       ]"
-      title="Tools"
+      :title="lazyStrings.ChatToolsMenu__tools()"
       data-testid="chat-tools-button"
     >
       <Settings2Icon class="w-5 h-5" />
@@ -127,7 +128,7 @@ defineExpose({
 
             <div class="flex-1 overflow-y-auto custom-scrollbar bg-white dark:bg-gray-800">
               <div class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.18em] border-b border-gray-100 dark:border-gray-700 mb-1">
-                Options/Tools
+                {{ lazyStrings.ChatToolsMenu__options_tools() }}
               </div>
 
               <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
@@ -173,7 +174,7 @@ defineExpose({
               class="w-full py-4 bg-gray-50/50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all group active:bg-gray-200 dark:active:bg-gray-700/50"
               data-testid="chat-tools-footer-close"
             >
-              <span class="text-[11px] font-bold text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors uppercase tracking-wider">Close Menu</span>
+              <span class="text-[11px] font-bold text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors uppercase tracking-wider">{{ lazyStrings.ChatToolsMenu__close_menu() }}</span>
               <ChevronDownIcon class="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-y-0.5 transition-all" />
             </button>
           </div>

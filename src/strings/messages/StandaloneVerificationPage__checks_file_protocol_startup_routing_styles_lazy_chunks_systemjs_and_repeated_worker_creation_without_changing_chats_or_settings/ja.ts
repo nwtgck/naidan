@@ -1,0 +1,1 @@
+export const StandaloneVerificationPage__checks_file_protocol_startup_routing_styles_lazy_chunks_systemjs_and_repeated_worker_creation_without_changing_chats_or_settings = (): string => 'チャットや設定を変更せずに、file プロトコルでの起動、ルーティング、スタイル、遅延チャンク、SystemJS、Worker の繰り返し作成を確認します。';

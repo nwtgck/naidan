@@ -1,0 +1,1 @@
+export const DebugIndexPage__verify_generated_scripts_routing_lazy_styles_systemjs_recovery_and_the_reusable_worker_factory = (): string => 'Verify generated scripts, routing, lazy styles, SystemJS recovery, and the reusable Worker factory.';

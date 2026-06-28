@@ -677,78 +677,30 @@ export function toContextCompactDisplayProgress({
   nowMs: number,
 }): {
   percent: number,
-  title: string,
-  detail: string,
   isRunning: boolean,
 } {
   void nowMs;
 
   switch (progress.phase) {
   case 'idle':
-    return {
-      percent: 0,
-      title: '',
-      detail: '',
-      isRunning: false,
-    };
+    return { percent: 0, isRunning: false };
   case 'preparing':
-    return {
-      percent: 5,
-      title: 'Compacting context',
-      detail: `Preparing ${progress.compactedMessageCount} messages, keeping ${progress.suffixMessageCount}.`,
-      isRunning: true,
-    };
+    return { percent: 5, isRunning: true };
   case 'building_request':
-    return {
-      percent: 15,
-      title: 'Compacting context',
-      detail: 'Building compact request.',
-      isRunning: true,
-    };
+    return { percent: 15, isRunning: true };
   case 'requesting_model':
+    return { percent: 25, isRunning: true };
+  case 'receiving_compact':
     return {
-      percent: 25,
-      title: 'Compacting context',
-      detail: 'Waiting for the model.',
+      percent: Math.min(85, 30 + Math.floor(Math.sqrt(progress.outputChars) * 0.6)),
       isRunning: true,
     };
-  case 'receiving_compact': {
-    const percent = Math.min(85, 30 + Math.floor(Math.sqrt(progress.outputChars) * 0.6));
-    return {
-      percent,
-      title: 'Compacting context',
-      detail: `Generating Compact Context, ${progress.outputChars} chars received.`,
-      isRunning: true,
-    };
-  }
   case 'applying_branch':
-    return {
-      percent: 95,
-      title: 'Compacting context',
-      detail: 'Applying compact branch.',
-      isRunning: true,
-    };
+    return { percent: 95, isRunning: true };
   case 'complete':
-    return {
-      percent: 100,
-      title: 'Compacting context',
-      detail: 'Complete.',
-      isRunning: false,
-    };
   case 'failed':
-    return {
-      percent: 100,
-      title: 'Compacting context failed',
-      detail: progress.message,
-      isRunning: false,
-    };
   case 'aborted':
-    return {
-      percent: 100,
-      title: 'Compacting context',
-      detail: 'Aborted.',
-      isRunning: false,
-    };
+    return { percent: 100, isRunning: false };
   default: {
     const _ex: never = progress;
     throw new Error(`Unhandled context compact progress: ${_ex}`);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { generateOpaqueId } from '@/utils/id';
 import { ref, computed, watch } from 'vue';
 import {
@@ -127,7 +128,7 @@ defineExpose({
           <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
             <div class="flex items-center gap-2">
               <ChefHatIcon class="w-5 h-5 text-blue-500" />
-              <h3 class="text-base font-bold text-gray-800 dark:text-white">Recipe Editor</h3>
+              <h3 class="text-base font-bold text-gray-800 dark:text-white">{{ lazyStrings.RecipeExportModal__recipe_editor() }}</h3>
             </div>
           </div>
 
@@ -135,7 +136,7 @@ defineExpose({
             <!-- Basic Info -->
             <div class="grid grid-cols-1 gap-6">
               <div class="space-y-2">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Recipe Name</label>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.RecipeExportModal__recipe_name() }}</label>
                 <input
                   v-model="recipeForm.name"
                   type="text"
@@ -144,12 +145,12 @@ defineExpose({
               </div>
 
               <div class="space-y-2">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Description</label>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.RecipeExportModal__description() }}</label>
                 <textarea
                   v-model="recipeForm.description"
                   rows="2"
                   class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none shadow-sm"
-                  placeholder="What makes this recipe special?"
+                  :placeholder="lazyStrings.RecipeExportModal__what_makes_this_recipe_special()"
                 ></textarea>
               </div>
             </div>
@@ -159,7 +160,7 @@ defineExpose({
               <div class="flex items-center justify-between ml-1">
                 <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
                   <MessageSquareQuoteIcon class="w-3 h-3" />
-                  Recipe System Prompt
+                  {{ lazyStrings.RecipeExportModal__recipe_system_prompt() }}
                 </label>
 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
@@ -168,21 +169,21 @@ defineExpose({
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="recipeForm.systemPrompt.behavior === 'override' && recipeForm.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
-                    Clear
+                    {{ lazyStrings.RecipeExportModal__clear() }}
                   </button>
                   <button
                     @click="recipeForm.systemPrompt = { behavior: 'override', content: recipeForm.systemPrompt.content ?? '' }"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="recipeForm.systemPrompt.behavior === 'override' && recipeForm.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
-                    Override
+                    {{ lazyStrings.RecipeExportModal__override() }}
                   </button>
                   <button
                     @click="recipeForm.systemPrompt = { behavior: 'append', content: recipeForm.systemPrompt.content ?? '' }"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="recipeForm.systemPrompt.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
-                    Append
+                    {{ lazyStrings.RecipeExportModal__append() }}
                   </button>
                 </div>
               </div>
@@ -191,32 +192,32 @@ defineExpose({
                 v-model="recipeForm.systemPrompt.content"
                 rows="5"
                 class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none shadow-sm"
-                placeholder="Include custom instructions in the recipe..."
+                :placeholder="lazyStrings.RecipeExportModal__include_custom_instructions_in_the_recipe()"
               ></textarea>
               <div
                 v-else
                 class="w-full bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center"
               >
-                <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
-                <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-1">This recipe will explicitly clear any inherited system instructions.</p>
+                <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.RecipeExportModal__parent_prompt_cleared() }}</p>
+                <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-1">{{ lazyStrings.RecipeExportModal__this_recipe_will_explicitly_clear_any_inherited_system_instructions() }}</p>
               </div>
             </div>
 
             <!-- Model Rules -->
             <div class="space-y-4 pt-4 border-t border-gray-100 dark:border-gray-800">
               <div class="flex items-center justify-between ml-1">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Model Matching Rules (Regex)</label>
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.RecipeExportModal__model_matching_rules_regex() }}</label>
                 <button
                   @click="addModelPattern"
                   class="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
                 >
                   <PlusIcon class="w-3 h-3" />
-                  Add Rule
+                  {{ lazyStrings.RecipeExportModal__add_rule() }}
                 </button>
               </div>
 
               <div v-if="recipeForm.models.length === 0" class="text-[11px] text-gray-400 italic ml-1 p-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
-                No matching rules. Recipe will use the default model.
+                {{ lazyStrings.RecipeExportModal__no_matching_rules_recipe_will_use_the_default_model() }}
               </div>
 
               <TransitionGroup name="list" tag="div" class="space-y-4">
@@ -226,7 +227,7 @@ defineExpose({
                       class="flex-1 bg-gray-50 dark:bg-gray-800 border rounded-xl flex overflow-hidden transition-colors"
                       :class="isRegexValid({ pattern: m.pattern }) ? 'border-gray-100 dark:border-gray-700' : 'border-red-300 dark:border-red-900/50'"
                     >
-                      <div class="bg-gray-100 dark:bg-gray-700 px-3 py-3 text-[10px] font-bold text-gray-400 flex items-center border-r border-gray-200 dark:border-gray-600 uppercase tracking-tighter">Regex</div>
+                      <div class="bg-gray-100 dark:bg-gray-700 px-3 py-3 text-[10px] font-bold text-gray-400 flex items-center border-r border-gray-200 dark:border-gray-600 uppercase tracking-tighter">{{ lazyStrings.RecipeExportModal__regex() }}</div>
                       <input
                         v-model="m.pattern"
                         type="text"
@@ -237,9 +238,9 @@ defineExpose({
                         @click="m.caseSensitive = !m.caseSensitive"
                         class="px-3 py-3 text-[9px] font-bold transition-colors border-l border-gray-200 dark:border-gray-600 tracking-tight"
                         :class="m.caseSensitive ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:text-gray-600'"
-                        title="Toggle Case Sensitivity"
+                        :title="lazyStrings.RecipeExportModal__toggle_case_sensitivity()"
                       >
-                        Aa
+                        {{ lazyStrings.RecipeExportModal__aa() }}
                       </button>
                     </div>
                     <button @click="removeModelPattern({ id: m.id })" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
@@ -248,7 +249,7 @@ defineExpose({
                   </div>
                   <div v-if="!isRegexValid({ pattern: m.pattern })" class="flex items-center gap-1.5 ml-1 text-red-500">
                     <AlertCircleIcon class="w-3 h-3" />
-                    <span class="text-[9px] font-bold uppercase tracking-wide">Invalid Regular Expression</span>
+                    <span class="text-[9px] font-bold uppercase tracking-wide">{{ lazyStrings.RecipeExportModal__invalid_regular_expression() }}</span>
                   </div>
                 </div>
               </TransitionGroup>
@@ -259,7 +260,7 @@ defineExpose({
               <div class="flex items-start gap-3">
                 <InfoIcon class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
                 <p class="text-[10px] text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
-                  Temperature, Top-P, and other LM parameters are automatically included from your current group overrides.
+                  {{ lazyStrings.RecipeExportModal__temperature_top_p_and_other_lm_parameters_are_automatically_included_from_your_current_group_overrides() }}
                 </p>
               </div>
             </div>
@@ -271,7 +272,7 @@ defineExpose({
           <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 space-y-4">
             <div class="flex items-center gap-2">
               <GlobeIcon class="w-4 h-4 text-gray-400" />
-              <h3 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Live Recipe Preview</h3>
+              <h3 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.RecipeExportModal__live_recipe_preview() }}</h3>
             </div>
 
             <button
@@ -284,7 +285,7 @@ defineExpose({
             >
               <CheckIcon v-if="copySuccess" class="w-4 h-4 animate-in zoom-in duration-300" />
               <CopyIcon v-else class="w-4 h-4" />
-              <span>{{ copySuccess ? 'Copied to Clipboard!' : 'Copy Recipe JSON' }}</span>
+              <span>{{ copySuccess ? lazyStrings.RecipeExportModal__copied_to_clipboard() : lazyStrings.RecipeExportModal__copy_recipe_json() }}</span>
             </button>
           </div>
 

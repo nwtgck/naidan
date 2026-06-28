@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 import { PlusIcon, FilesIcon, FolderSymlinkIcon, FolderDownIcon, InfoIcon } from 'lucide-vue-next';
@@ -62,7 +63,7 @@ defineExpose({
     <button
       @click="isOpen = !isOpen"
       class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-      title="Attach files or folder"
+      :title="lazyStrings.ChatAttachMenu__attach_files_or_folder()"
       data-testid="attach-button"
     >
       <PlusIcon class="w-5 h-5" />
@@ -79,7 +80,7 @@ defineExpose({
         data-testid="attach-files-button"
       >
         <FilesIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
-        Files
+        {{ lazyStrings.ChatAttachMenu__files() }}
       </button>
 
       <!-- Folder (link) -->
@@ -92,13 +93,13 @@ defineExpose({
             data-testid="attach-folder-link-button"
           >
             <FolderSymlinkIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
-            Folder (link)
+            {{ lazyStrings.ChatAttachMenu__folder_link() }}
           </button>
           <button
             @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
             class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
             :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
-            title="What is Folder (link)?"
+            :title="lazyStrings.ChatAttachMenu__what_is_folder_link()"
           >
             <InfoIcon class="w-3.5 h-3.5" />
           </button>
@@ -110,21 +111,21 @@ defineExpose({
             class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-300 dark:text-gray-600 cursor-not-allowed text-left"
           >
             <FolderSymlinkIcon class="w-4 h-4 shrink-0" />
-            Folder (link)
+            {{ lazyStrings.ChatAttachMenu__folder_link() }}
           </button>
           <button
             @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
             class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
             :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-300 dark:text-gray-600 hover:text-blue-500'"
-            title="Why is Folder (link) unavailable?"
+            :title="lazyStrings.ChatAttachMenu__why_is_folder_link_unavailable()"
           >
             <InfoIcon class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Info panel for link -->
         <div v-if="isFolderLinkInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
-          <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">Requires a Chromium-based browser</p>
-          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">Chrome, Edge, Brave, Opera — over HTTPS. Links your folder directly without copying.</p>
+          <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">{{ lazyStrings.ChatAttachMenu__requires_a_chromium_based_browser() }}</p>
+          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.ChatAttachMenu__chrome_edge_brave_opera_over_https_links_your_folder_directly_without_copying() }}</p>
         </div>
       </div>
 
@@ -137,21 +138,21 @@ defineExpose({
             data-testid="attach-folder-copy-button"
           >
             <FolderDownIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
-            Folder (copy)
+            {{ lazyStrings.ChatAttachMenu__folder_copy() }}
           </button>
           <button
             @click.stop="isFolderCopyInfoOpen = !isFolderCopyInfoOpen; isFolderLinkInfoOpen = false"
             class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
             :class="isFolderCopyInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
-            title="What is Folder (copy)?"
+            :title="lazyStrings.ChatAttachMenu__what_is_folder_copy()"
           >
             <InfoIcon class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Info panel for copy -->
         <div v-if="isFolderCopyInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
-          <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">A private copy is saved in your browser</p>
-          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">Naidan works from the copy — your original files on disk stay safe and intact.</p>
+          <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">{{ lazyStrings.ChatAttachMenu__a_private_copy_is_saved_in_your_browser() }}</p>
+          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.ChatAttachMenu__naidan_works_from_the_copy_your_original_files_on_disk_stay_safe_and_intact() }}</p>
         </div>
       </div>
     </div>

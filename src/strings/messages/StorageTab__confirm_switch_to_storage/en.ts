@@ -1,0 +1,1 @@
+export const StorageTab__confirm_switch_to_storage = ({ storageName }: { storageName: string }): string => `Are you sure you want to switch to ${storageName}? This will migrate all your data and the application will reload.`;

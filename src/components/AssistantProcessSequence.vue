@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, computed, provide, nextTick } from 'vue';
 import { Loader2Icon, EyeIcon, EyeOffIcon, BirdIcon } from 'lucide-vue-next';
 import type { ChatFlowItem, FlowMetadata, SequenceStats } from '@/composables/useChatDisplayFlow';
@@ -7,12 +8,10 @@ const props = withDefaults(defineProps<{
   items: ChatFlowItem[],
   isProcessing: boolean,
   flow?: FlowMetadata,
-  summary?: string,
   stats?: SequenceStats,
   isFirstInTurn?: boolean,
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
-  summary: '',
   stats: () => ({
     thinkingSteps: 0,
     toolCallCount: 0,
@@ -41,7 +40,31 @@ async function toggle() {
 }
 
 const displaySummary = computed(() => {
-  return props.summary || 'Process Details';
+  const parts: string[] = [];
+  if (props.stats.thinkingSteps > 0) {
+    const thinkingSteps = lazyStrings.AssistantProcessSequence__thinking_steps({ count: props.stats.thinkingSteps });
+    if (thinkingSteps === undefined) return undefined;
+    parts.push(thinkingSteps);
+  }
+  if (props.stats.toolCallCount > 0) {
+    const toolExecutions = lazyStrings.AssistantProcessSequence__tool_executions({ count: props.stats.toolCallCount });
+    if (toolExecutions === undefined) return undefined;
+    parts.push(toolExecutions);
+  }
+  if (props.stats.toolNames.length > 0) {
+    const displayedToolNames = props.stats.toolNames.slice(0, 2);
+    const usedTools = lazyStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
+    if (usedTools === undefined) return undefined;
+    let toolSummary = usedTools;
+    if (props.stats.toolNames.length > displayedToolNames.length) {
+      const moreTools = lazyStrings.AssistantProcessSequence__and_more({ count: props.stats.toolNames.length - displayedToolNames.length });
+      if (moreTools === undefined) return undefined;
+      toolSummary += ` ${moreTools}`;
+    }
+    parts.push(toolSummary);
+  }
+  if (parts.length > 0) return parts.join(' • ');
+  return lazyStrings.AssistantProcessSequence__process_details();
 });
 
 const modelId = computed(() => {
@@ -84,7 +107,7 @@ defineExpose({
         <BirdIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
       <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
-        <span>{{ modelId || 'Assistant' }}</span>
+        <span>{{ modelId || lazyStrings.SHARED__assistant() }}</span>
       </div>
     </div>
 
@@ -113,7 +136,7 @@ defineExpose({
 
         <!-- Action Label -->
         <div class="text-[8px] uppercase font-black tracking-tighter opacity-0 group-hover/seq:opacity-100 transition-opacity pl-1 border-l border-current/10 ml-0.5">
-          {{ isExpanded ? 'Less' : 'Show' }}
+          {{ isExpanded ? lazyStrings.AssistantProcessSequence__less() : lazyStrings.AssistantProcessSequence__show() }}
         </div>
       </div>
       <slot v-if="!isExpanded && isProcessing && !stats.isCurrentlyThinking && !stats.isWaiting" name="cursor" />

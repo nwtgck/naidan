@@ -1,4 +1,5 @@
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject, Volume, VolumeType, Mount } from '@/models/types';
+import { ensureStrings } from '@/strings';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
@@ -113,7 +114,7 @@ export class StorageService {
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateHierarchy' }) });
       this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'updateHierarchy' });
+      await this.handleStorageError({ error: e, source: 'updateHierarchy' });
       throw e;
     }
   }
@@ -129,7 +130,7 @@ export class StorageService {
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'updateChatMeta' });
+      await this.handleStorageError({ error: e, source: 'updateChatMeta' });
       throw e;
     }
   }
@@ -151,7 +152,7 @@ export class StorageService {
       }, lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`, ...this.getLockOptions({ source: 'updateChatContent' }) });
       this.notify({ event: { type: 'chat_content', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'updateChatContent' });
+      await this.handleStorageError({ error: e, source: 'updateChatContent' });
       throw e;
     }
   }
@@ -167,7 +168,7 @@ export class StorageService {
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChat' }) });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'deleteChat' });
+      await this.handleStorageError({ error: e, source: 'deleteChat' });
       throw e;
     }
   }
@@ -181,7 +182,7 @@ export class StorageService {
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatGroup' }) });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'updateChatGroup' });
+      await this.handleStorageError({ error: e, source: 'updateChatGroup' });
       throw e;
     }
   }
@@ -197,7 +198,7 @@ export class StorageService {
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChatGroup' }) });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'deleteChatGroup' });
+      await this.handleStorageError({ error: e, source: 'deleteChatGroup' });
       throw e;
     }
   }
@@ -228,7 +229,7 @@ export class StorageService {
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'updateSettings' }) });
       this.notify({ event: { type: 'settings', timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'updateSettings' });
+      await this.handleStorageError({ error: e, source: 'updateSettings' });
       throw e;
     }
   }
@@ -244,7 +245,7 @@ export class StorageService {
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'clearAll' }) });
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'clearAll' });
+      await this.handleStorageError({ error: e, source: 'clearAll' });
       throw e;
     }
   }
@@ -266,7 +267,7 @@ export class StorageService {
         });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'saveFile' }) });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'saveFile' });
+      await this.handleStorageError({ error: e, source: 'saveFile' });
       throw e;
     }
   }
@@ -294,7 +295,7 @@ export class StorageService {
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteBinaryObject' }) });
       this.notify({ event: { type: 'binary_objects', timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'deleteBinaryObject' });
+      await this.handleStorageError({ error: e, source: 'deleteBinaryObject' });
       throw e;
     }
   }
@@ -535,7 +536,7 @@ export class StorageService {
 
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'switchProvider' });
+      await this.handleStorageError({ error: e, source: 'switchProvider' });
       throw e;
     }
   }
@@ -563,7 +564,7 @@ export class StorageService {
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'restore', custom: { notifyLockWaitAfterMs: 5000 } }) });
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
-      this.handleStorageError({ error: e, source: 'restore' });
+      await this.handleStorageError({ error: e, source: 'restore' });
       throw e;
     }
   }
@@ -573,6 +574,7 @@ export class StorageService {
       ...custom,
       onLockWait: () => {
         const { addInfoEvent } = useGlobalEvents();
+        // TODO(strings-localize): Localize lock lifecycle snapshots without changing these void callback contracts.
         addInfoEvent({
           source: `StorageService:${source}`,
           message: 'Storage is busy. Waiting for other tabs to finish...',
@@ -580,6 +582,7 @@ export class StorageService {
       },
       onTaskSlow: () => {
         const { addInfoEvent } = useGlobalEvents();
+        // TODO(strings-localize): Localize lock lifecycle snapshots without changing these void callback contracts.
         addInfoEvent({
           source: `StorageService:${source}`,
           message: 'Storage operation is taking longer than expected...',
@@ -587,6 +590,7 @@ export class StorageService {
       },
       onFinalize: () => {
         const { addInfoEvent } = useGlobalEvents();
+        // TODO(strings-localize): Localize lock lifecycle snapshots without changing these void callback contracts.
         addInfoEvent({
           source: `StorageService:${source}`,
           message: 'Storage operation completed.',
@@ -595,11 +599,11 @@ export class StorageService {
     };
   }
 
-  private handleStorageError({ error, source }: { error: unknown, source: string }) {
+  private async handleStorageError({ error, source }: { error: unknown, source: string }) {
     const { addErrorEvent } = useGlobalEvents();
     addErrorEvent({
       source: `StorageService:${source}`,
-      message: 'An error occurred during a storage operation.',
+      message: await ensureStrings.StorageService__an_error_occurred_during_a_storage_operation(),
       details: error instanceof Error ? error : String(error),
     });
   }

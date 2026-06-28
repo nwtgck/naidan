@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { inject, computed } from 'vue';
 import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
@@ -88,7 +89,7 @@ defineExpose({
     </div>
     <div v-else class="p-1 space-y-0.5">
       <p v-if="pane.entries.length === 0" class="text-[10px] text-gray-400 text-center py-6 uppercase tracking-widest font-bold">
-        Empty
+        {{ lazyStrings.fileExplorer__empty() }}
       </p>
       <FileExplorerEntryItem
         v-for="entry in sortedEntries"

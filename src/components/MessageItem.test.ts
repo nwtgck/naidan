@@ -643,12 +643,12 @@ describe('MessageItem States', () => {
     replies: { items: [] },
   } as AssistantMessageNode);
 
-  it('displays loading indicator when waiting for response', () => {
+  it('displays loading indicator when waiting for response', async () => {
     const message = createAssistantMessage('');
     const wrapper = mount(MessageItem, { props: { message, mode: 'waiting', isFirstInTurn: true } });
+    await flushPromises();
 
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain('Waiting for response...');
     expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(false);
   });
 

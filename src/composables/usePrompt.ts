@@ -1,4 +1,5 @@
 import { ref, type Component, shallowRef } from 'vue';
+import { ensureStrings } from '@/strings';
 
 interface PromptOptions {
   title?: string,
@@ -21,12 +22,16 @@ const promptBodyComponent = shallowRef<Component | any | null>(null);
 let resolvePromptPromise: ReturnType<typeof Promise.withResolvers<string | null>>['resolve'] | undefined;
 
 export function usePrompt() {
-  const showPrompt = ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {
+  const showPrompt = async ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {
+    const resolvedTitle = title || await ensureStrings.usePrompt__prompt();
+    const resolvedConfirmButtonText = confirmButtonText || await ensureStrings.SHARED__confirm();
+    const resolvedCancelButtonText = cancelButtonText || await ensureStrings.SHARED__cancel();
+
     return new Promise((resolve) => {
-      promptTitle.value = title || 'Prompt';
+      promptTitle.value = resolvedTitle;
       promptMessage.value = message || '';
-      promptConfirmButtonText.value = confirmButtonText || 'Confirm';
-      promptCancelButtonText.value = cancelButtonText || 'Cancel';
+      promptConfirmButtonText.value = resolvedConfirmButtonText;
+      promptCancelButtonText.value = resolvedCancelButtonText;
       promptInputValue.value = defaultValue || '';
       promptBodyComponent.value = bodyComponent || null;
       isPromptOpen.value = true;

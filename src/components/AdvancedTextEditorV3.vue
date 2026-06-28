@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import {
   SearchIcon,
@@ -881,7 +882,7 @@ defineExpose({
                   v-model="findText"
                   @input="void performSearch()"
                   @keydown.enter="nextMatch"
-                  placeholder="Search..."
+                  :placeholder="lazyStrings.advancedTextEditor__search()"
                   class="w-full pl-10 pr-32 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
                   data-testid="find-input"
                 />
@@ -907,15 +908,15 @@ defineExpose({
                   @click="caseSensitive = caseSensitive === 'case-sensitive' ? 'case-insensitive' : 'case-sensitive'; void performSearch()"
                   class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
                   :class="caseSensitive === 'case-sensitive' ? 'bg-blue-500/20 text-blue-400 shadow-inner' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10'"
-                  title="Match Case"
+                  :title="lazyStrings.advancedTextEditor__match_case()"
                 >
-                  Aa
+                  {{ lazyStrings.advancedTextEditor__aa() }}
                 </button>
                 <button
                   @click="useRegex = useRegex === 'regex-on' ? 'regex-off' : 'regex-on'; void performSearch()"
                   class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
                   :class="useRegex === 'regex-on' ? 'bg-blue-500/20 text-blue-400 shadow-inner' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10'"
-                  title="Use Regex"
+                  :title="lazyStrings.advancedTextEditor__use_regex()"
                 >
                   .*
                 </button>
@@ -926,7 +927,7 @@ defineExpose({
                 <input
                   v-model="replaceText"
                   @keydown.enter="void handleReplace({ mode: 'single' })"
-                  placeholder="Replace with..."
+                  :placeholder="lazyStrings.advancedTextEditor__replace_with()"
                   class="w-full pl-10 pr-4 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
                   data-testid="replace-input"
                 />
@@ -939,7 +940,7 @@ defineExpose({
                   class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-white dark:bg-white/10 hover:bg-gray-50 dark:hover:bg-white/20 text-gray-600 dark:text-gray-200 rounded-xl transition-all border border-gray-200 dark:border-white/10 shadow-sm disabled:opacity-40"
                   data-testid="replace-button"
                 >
-                  Replace
+                  {{ lazyStrings.advancedTextEditor__replace() }}
                 </button>
                 <button
                   @click="void handleReplace({ mode: 'all' })"
@@ -947,7 +948,7 @@ defineExpose({
                   class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-lg shadow-blue-500/20 disabled:opacity-40"
                   data-testid="replace-all-button"
                 >
-                  Replace All
+                  {{ lazyStrings.advancedTextEditor__replace_all() }}
                 </button>
                 <div class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
                 <button @click="searchMode = 'hidden'" class="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl text-gray-400 transition-colors">
@@ -957,8 +958,8 @@ defineExpose({
             </div>
             <div class="flex items-center justify-between mt-1 px-1">
               <div class="text-[9px] text-gray-400 font-medium flex items-center gap-3">
-                <span class="flex items-center gap-1"><LayersIcon class="w-3 h-3" /> {{ modKeyName }}+D for Multi-Edit</span>
-                <span class="flex items-center gap-1"><CheckIcon class="w-3 h-3" /> Enter to find next</span>
+                <span class="flex items-center gap-1"><LayersIcon class="w-3 h-3" /> {{ lazyStrings.advancedTextEditor__multi_edit_occurrence_with_shortcut({ shortcut: `${modKeyName}+D` }) }}</span>
+                <span class="flex items-center gap-1"><CheckIcon class="w-3 h-3" /> {{ lazyStrings.advancedTextEditor__enter_to_find_next() }}</span>
               </div>
             </div>
           </div>
@@ -1039,14 +1040,14 @@ defineExpose({
                   <LayersIcon class="w-3.5 h-3.5" />
                 </div>
                 <div class="flex flex-col">
-                  <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Multi-Edit Mode</span>
+                  <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.advancedTextEditor__multi_edit_mode() }}</span>
                   <span class="text-[11px] text-amber-500/90 font-mono truncate max-w-[200px]" :title="multiEditInitialText">
-                    Renaming: "{{ multiEditInitialText }}"
+                    {{ lazyStrings.advancedTextEditor__renaming_text({ text: multiEditInitialText }) }}
                   </span>
                 </div>
               </div>
               <span class="text-[10px] font-bold text-amber-500/80 px-2 py-0.5 bg-amber-500/5 rounded-full border border-amber-500/20">
-                {{ multiEditMatches.length }} instances
+                {{ lazyStrings.advancedTextEditor__instance_count({ count: multiEditMatches.length }) }}
               </span>
             </div>
 
@@ -1056,22 +1057,22 @@ defineExpose({
                 v-model="multiEditReplacement"
                 @keydown.enter="applyMultiEdit"
                 @keydown.esc="exitMultiEdit"
-                placeholder="Type to replace all..."
+                :placeholder="lazyStrings.advancedTextEditor__type_to_replace_all()"
                 class="w-full px-4 py-2.5 bg-gray-50 dark:bg-black/40 border border-gray-100 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-mono placeholder:text-gray-500 text-white"
                 data-testid="multi-edit-input"
               />
               <div class="absolute right-3 top-2.5 flex items-center gap-1">
-                <button @click="applyMultiEdit" :disabled="isMultiEditBusy" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-green-500 transition-colors disabled:opacity-40" title="Confirm (Enter)">
+                <button @click="applyMultiEdit" :disabled="isMultiEditBusy" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-green-500 transition-colors disabled:opacity-40" :title="lazyStrings.advancedTextEditor__confirm_enter()">
                   <CheckIcon class="w-4 h-4" />
                 </button>
-                <button @click="exitMultiEdit" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-red-500 transition-colors" title="Cancel (Esc)">
+                <button @click="exitMultiEdit" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-red-500 transition-colors" :title="lazyStrings.advancedTextEditor__cancel_esc()">
                   <XIcon class="w-4 h-4" />
                 </button>
               </div>
             </div>
             <div class="mt-2 text-[9px] text-gray-400 text-center font-medium">
-              <span v-if="isMultiEditBusy" data-testid="multi-edit-busy-indicator">Updating...</span>
-              <span v-else>Type to rename all. <span class="text-gray-500">Enter</span> to apply, <span class="text-gray-500">Esc</span> to cancel.</span>
+              <span v-if="isMultiEditBusy" data-testid="multi-edit-busy-indicator">{{ lazyStrings.advancedTextEditor__updating() }}</span>
+              <span v-else>{{ lazyStrings.advancedTextEditor__type_to_rename_all() }} <span class="text-gray-500">{{ lazyStrings.advancedTextEditor__enter() }}</span> {{ lazyStrings.advancedTextEditor__to_apply() }} <span class="text-gray-500">{{ lazyStrings.advancedTextEditor__esc() }}</span> {{ lazyStrings.advancedTextEditor__to_cancel() }}</span>
             </div>
           </div>
         </Transition>
@@ -1079,19 +1080,19 @@ defineExpose({
         <!-- Footer Info Bar -->
         <div v-if="showStats" class="h-9 border-t border-gray-100 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#0f172a] text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 relative shrink-0">
           <div class="flex items-center gap-6">
-            <span class="flex items-center gap-1.5"><TypeIcon class="w-3 h-3 text-blue-500/50" /> {{ stats.chars }} <span class="opacity-40 font-medium">Chars</span></span>
-            <span class="flex items-center gap-1.5"><PencilLineIcon class="w-3 h-3 text-amber-500/50" /> {{ stats.words }} <span class="opacity-40 font-medium">Words</span></span>
-            <span class="flex items-center gap-1.5"><HashIcon class="w-3 h-3 text-emerald-500/50" /> {{ stats.lines }} <span class="opacity-40 font-medium">Lines</span></span>
+            <span class="flex items-center gap-1.5"><TypeIcon class="w-3 h-3 text-blue-500/50" /> {{ stats.chars }} <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__chars() }}</span></span>
+            <span class="flex items-center gap-1.5"><PencilLineIcon class="w-3 h-3 text-amber-500/50" /> {{ stats.words }} <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__words() }}</span></span>
+            <span class="flex items-center gap-1.5"><HashIcon class="w-3 h-3 text-emerald-500/50" /> {{ stats.lines }} <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__lines() }}</span></span>
           </div>
 
           <div class="flex items-center gap-4">
             <div class="flex items-center gap-1.5">
               <MousePointer2Icon class="w-3 h-3 text-purple-500/50" />
-              <span class="opacity-40 font-medium">Selection:</span>
+              <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__selection() }}</span>
               <span>{{ textareaRef?.selectionEnd ? textareaRef.selectionEnd - textareaRef.selectionStart : 0 }}</span>
             </div>
             <div class="h-3 w-px bg-gray-200 dark:border-white/10"></div>
-            <span class="text-blue-500/80">{{ historyIndex + 1 }}/{{ history.length }} <span class="opacity-40 font-medium">Steps</span></span>
+            <span class="text-blue-500/80">{{ historyIndex + 1 }}/{{ history.length }} <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__steps() }}</span></span>
           </div>
         </div>
       </div>
@@ -1101,7 +1102,7 @@ defineExpose({
         <button
           @click="handleClose"
           class="p-2.5 bg-gray-200 dark:bg-white/10 hover:bg-gray-300 dark:hover:bg-white/20 rounded-xl transition-all shadow-sm text-gray-600 dark:text-gray-300 mb-2 group"
-          title="Close Editor (Esc)"
+          :title="lazyStrings.advancedTextEditor__close_editor_esc()"
           data-testid="close-button"
         >
           <XIcon class="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
@@ -1114,7 +1115,7 @@ defineExpose({
             @click="handleUndo"
             :disabled="historyIndex <= 0"
             class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl disabled:opacity-30 transition-all hover:shadow-sm group"
-            :title="`Undo (${modKeyName}+Z)`"
+            :title="lazyStrings.advancedTextEditor__undo_with_shortcut({ shortcut: `${modKeyName}+Z` })"
           >
             <Undo2Icon class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
           </button>
@@ -1122,7 +1123,7 @@ defineExpose({
             @click="handleRedo"
             :disabled="historyIndex >= history.length - 1"
             class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl disabled:opacity-30 transition-all hover:shadow-sm group"
-            :title="`Redo (${modKeyName}+Shift+Z)`"
+            :title="lazyStrings.advancedTextEditor__redo_with_shortcut({ shortcut: `${modKeyName}+Shift+Z` })"
           >
             <Redo2Icon class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
           </button>
@@ -1135,7 +1136,7 @@ defineExpose({
             @click="toggleMode"
             class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
             :class="localMode === 'textarea' ? 'bg-orange-500/20 text-orange-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
-            :title="localMode === 'textarea' ? 'Switch to Advanced Editor' : 'Switch to Normal Textarea'"
+            :title="localMode === 'textarea' ? lazyStrings.advancedTextEditor__switch_to_advanced_editor() : lazyStrings.advancedTextEditor__switch_to_normal_textarea()"
             data-testid="toggle-mode-button"
           >
             <AlignLeftIcon class="w-4.5 h-4.5" />
@@ -1144,7 +1145,7 @@ defineExpose({
             @click="searchMode = searchMode === 'visible' ? 'hidden' : 'visible'"
             class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
             :class="searchMode === 'visible' ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
-            :title="`Find & Replace (${modKeyName}+F)`"
+            :title="lazyStrings.advancedTextEditor__find_and_replace_with_shortcut({ shortcut: `${modKeyName}+F` })"
           >
             <SearchIcon class="w-4.5 h-4.5" />
           </button>
@@ -1152,14 +1153,14 @@ defineExpose({
             @click="showStats = !showStats"
             class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
             :class="showStats ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
-            title="Toggle Stats"
+            :title="lazyStrings.advancedTextEditor__toggle_stats()"
           >
             <BarChart2Icon class="w-4.5 h-4.5" />
           </button>
           <button
             @click="void handleCmdD()"
             class="p-2.5 rounded-xl hover:bg-white dark:hover:bg-white/5 transition-all hover:shadow-sm group text-gray-500"
-            :title="`Multi-Edit Occurrence (${modKeyName}+D)`"
+            :title="lazyStrings.advancedTextEditor__multi_edit_occurrence_with_shortcut({ shortcut: `${modKeyName}+D` })"
           >
             <LayersIcon class="w-4.5 h-4.5 group-hover:text-amber-500" />
           </button>
@@ -1167,7 +1168,7 @@ defineExpose({
             @click="toggleWrap"
             class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
             :class="wrapMode === 'wrap-on' ? 'bg-indigo-500/20 text-indigo-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
-            title="Toggle Word Wrap"
+            :title="lazyStrings.advancedTextEditor__toggle_word_wrap()"
           >
             <WrapTextIcon class="w-4.5 h-4.5" />
           </button>
@@ -1177,14 +1178,14 @@ defineExpose({
           <button
             @click="copyToClipboard"
             class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl transition-all hover:shadow-sm text-gray-500 hover:text-blue-500"
-            title="Copy All"
+            :title="lazyStrings.advancedTextEditor__copy_all()"
           >
             <CopyIcon class="w-4.5 h-4.5" />
           </button>
           <button
             @click="setFullText({ text: '' })"
             class="p-2.5 hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-500 rounded-xl transition-all"
-            title="Clear All"
+            :title="lazyStrings.advancedTextEditor__clear_all()"
           >
             <Trash2Icon class="w-4.5 h-4.5" />
           </button>

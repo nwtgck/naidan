@@ -15,6 +15,7 @@ import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import { idToRaw, toBinaryObjectId } from '@/models/ids';
 import type { BinaryObjectId } from '@/models/ids';
+import { lazyStrings } from '@/strings';
 
 const objects = ref<BinaryObject[]>([]);
 const isLoading = ref(true);
@@ -67,11 +68,14 @@ const filteredObjects = computed(() => {
 
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase();
-    result = result.filter(f =>
-      (f.name || 'unnamed').toLowerCase().includes(q) ||
-      idToRaw({ id: f.id }).toLowerCase().includes(q) ||
-      f.mimeType.toLowerCase().includes(q),
-    );
+    result = result.filter((f) => {
+      const displayName = f.name || lazyStrings.binaryObjects__unnamed();
+      return (
+        displayName?.toLowerCase().includes(q) === true ||
+        idToRaw({ id: f.id }).toLowerCase().includes(q) ||
+        f.mimeType.toLowerCase().includes(q)
+      );
+    });
   }
 
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -389,7 +393,7 @@ defineExpose({
           </div>
           <div>
             <div class="flex items-center gap-2">
-              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Binary Objects</h2>
+              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.binaryObjects__binary_objects() }}</h2>
               <span
                 data-testid="binary-objects-count"
                 class="px-2 py-0.5 text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-full"
@@ -397,7 +401,7 @@ defineExpose({
                 {{ filteredObjects.length }} / {{ objects.length }}
               </span>
             </div>
-            <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Manage and browse persisted files</p>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.binaryObjects__manage_persisted_files() }}</p>
           </div>
         </div>
 
@@ -438,7 +442,7 @@ defineExpose({
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Search by name, ID, or type..."
+            :placeholder="lazyStrings.binaryObjects__search_by_name_id_or_type()"
             class="w-full pl-10 pr-4 py-2.5 bg-gray-50/50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all dark:text-gray-200"
             data-testid="binary-search-input"
           >
@@ -453,9 +457,9 @@ defineExpose({
         <table class="w-full text-left border-collapse min-w-[700px]">
           <thead>
             <tr class="bg-gray-50/50 dark:bg-black/20 border-b border-gray-100 dark:border-gray-800 sticky top-0 z-10">
-              <th @click="handleSort({ key: 'name' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+              <th data-testid="binary-sort-name" @click="handleSort({ key: 'name' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
-                  Name
+                  {{ lazyStrings.binaryObjects__name() }}
                   <span class="transition-opacity" :class="sortBy === 'name' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
                     <ArrowUpIcon v-if="sortBy === 'name' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
                     <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
@@ -464,7 +468,7 @@ defineExpose({
               </th>
               <th @click="handleSort({ key: 'size' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
-                  Size
+                  {{ lazyStrings.binaryObjects__size() }}
                   <span class="transition-opacity" :class="sortBy === 'size' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
                     <ArrowUpIcon v-if="sortBy === 'size' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
                     <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
@@ -473,7 +477,7 @@ defineExpose({
               </th>
               <th @click="handleSort({ key: 'createdAt' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
-                  Date
+                  {{ lazyStrings.binaryObjects__date() }}
                   <span class="transition-opacity" :class="sortBy === 'createdAt' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
                     <ArrowUpIcon v-if="sortBy === 'createdAt' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
                     <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
@@ -485,10 +489,10 @@ defineExpose({
           </thead>
           <tbody class="divide-y divide-gray-50 dark:divide-gray-800">
             <tr v-if="isLoading && objects.length === 0">
-              <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">Loading objects...</td>
+              <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__loading_objects() }}</td>
             </tr>
             <tr v-else-if="filteredObjects.length === 0">
-              <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">No objects found</td>
+              <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__no_objects_found() }}</td>
             </tr>
             <tr
               v-for="obj in renderedObjects"
@@ -513,7 +517,7 @@ defineExpose({
                     </div>
                   </div>
                   <div class="flex flex-col min-w-0">
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">{{ obj.name || 'Unnamed' }}</span>
+                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">{{ obj.name || lazyStrings.binaryObjects__unnamed() }}</span>
                     <span class="text-[9px] font-medium text-gray-400 truncate lowercase">{{ obj.mimeType }}</span>
                   </div>
                 </div>
@@ -529,7 +533,7 @@ defineExpose({
                   <button
                     @click.stop="handleDownload({ obj })"
                     class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
-                    title="Download"
+                    :title="lazyStrings.binaryObjects__download()"
                     :data-testid="`download-button-${idToRaw({ id: obj.id })}`"
                   >
                     <DownloadIcon class="w-4 h-4" />
@@ -537,7 +541,7 @@ defineExpose({
                   <button
                     @click.stop="handleDelete({ obj })"
                     class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
-                    title="Delete"
+                    :title="lazyStrings.binaryObjects__delete()"
                     :data-testid="`delete-button-${idToRaw({ id: obj.id })}`"
                   >
                     <Trash2Icon class="w-4 h-4" />
@@ -551,8 +555,8 @@ defineExpose({
 
       <!-- Grid/Thumbnail View -->
       <div v-else class="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        <div v-if="isLoading && objects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">Loading objects...</div>
-        <div v-else-if="filteredObjects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">No objects found</div>
+        <div v-if="isLoading && objects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__loading_objects() }}</div>
+        <div v-else-if="filteredObjects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__no_objects_found() }}</div>
 
         <div
           v-for="obj in renderedObjects"
@@ -579,7 +583,7 @@ defineExpose({
 
           <!-- Overlay Info -->
           <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-            <p class="text-[10px] font-bold text-white truncate">{{ obj.name || 'Unnamed' }}</p>
+            <p class="text-[10px] font-bold text-white truncate">{{ obj.name || lazyStrings.binaryObjects__unnamed() }}</p>
             <p class="text-[9px] text-white/70">{{ formatSize({ bytes: obj.size }) }}</p>
           </div>
         </div>
@@ -596,7 +600,7 @@ defineExpose({
           class="text-[10px] font-bold text-gray-400 hover:text-blue-500 transition-colors py-2 px-4 rounded-full hover:bg-gray-50 dark:hover:bg-white/5"
           data-testid="load-more-button"
         >
-          Loading more... (click to load manually)
+          {{ lazyStrings.binaryObjects__loading_more() }}
         </button>
       </div>
     </div>

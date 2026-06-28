@@ -26,15 +26,11 @@ vi.mock('./useImagePreview', () => ({
   })),
 }));
 
-// Mock URL and document
-vi.stubGlobal('URL', {
-  createObjectURL: vi.fn(() => 'blob:url'),
-  revokeObjectURL: vi.fn(),
-});
-
 describe('useBinaryActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:url') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
   });
 
   it('deletes object after confirmation', async () => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, computed, inject } from 'vue';
 import { ShapesIcon, BirdIcon } from 'lucide-vue-next';
 import { idToRaw } from '@/models/ids';
@@ -28,13 +29,12 @@ const toolNamesDisplay = computed(() => {
   const names = props.toolCalls.map(tc => tc.call.function.name);
   const limit = 3;
   const displayedNames = names.slice(0, limit);
-  const remaining = names.length - limit;
+  const remainingCount = names.length - limit;
 
-  let base = `Used ${displayedNames.join(', ')}`;
-  if (remaining > 0) {
-    base += ` and ${remaining} more`;
-  }
-  return base;
+  return lazyStrings.ToolCallGroupItem__used_tools({
+    toolNames: displayedNames,
+    remainingCount,
+  });
 });
 
 const isNested = computed(() => props.flow.nesting === 'inside-group');
@@ -65,7 +65,7 @@ defineExpose({
         <BirdIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
       <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
-        <span>Assistant</span>
+        <span>{{ lazyStrings.SHARED__assistant() }}</span>
       </div>
     </div>
 
@@ -90,7 +90,7 @@ defineExpose({
         ]"
       >
         <ShapesIcon class="w-3.5 h-3.5" />
-        <span>{{ isExpanded ? 'Hide Tool Executions' : toolNamesDisplay }}</span>
+        <span>{{ isExpanded ? lazyStrings.toolCall__hide_tool_executions() : toolNamesDisplay }}</span>
       </div>
 
       <!-- Content -->

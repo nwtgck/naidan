@@ -7,12 +7,12 @@ import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { idToRaw } from '@/models/ids';
 import type { ChatGroupId } from '@/models/ids';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import RecentChatListItem from './RecentChatListItem.vue';
+import { lazyStrings } from '@/strings';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
 
@@ -47,9 +47,10 @@ const groupNameMap = computed(() => {
 const filteredRecentChats = computed(() => {
   const q = filterQuery.value.trim().toLowerCase();
   if (!q) return recentChats.value;
-  return recentChats.value.filter(chat =>
-    (chat.title || UNTITLED_CHAT_TITLE).toLowerCase().includes(q),
-  );
+  return recentChats.value.filter((chat) => {
+    const displayTitle = chat.title || lazyStrings.SHARED__new_chat();
+    return displayTitle?.toLowerCase().includes(q) === true;
+  });
 });
 
 const handlePreviewMouseEnter = () => {
@@ -202,6 +203,16 @@ watch(isRecentOpen, (isOpen) => {
   }
 });
 
+
+function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): string | undefined {
+  switch (mode) {
+  case 'always': return lazyStrings.RecentChatsModal__on();
+  case 'peek': return lazyStrings.RecentChatsModal__peek();
+  case 'disabled': return lazyStrings.RecentChatsModal__off();
+  default: { const _ex: never = mode; return _ex; }
+  }
+}
+
 const mappedDeferredItem = computed(() => {
   if (!deferredSelectedItem.value) return undefined;
   return {
@@ -238,8 +249,8 @@ defineExpose({
             @keydown="event => handleKeydown({ event })"
             type="text"
             class="flex-1 bg-transparent border-none outline-none text-lg text-gray-900 dark:text-gray-100 placeholder-gray-400"
-            placeholder="Filter recent chats..."
-            aria-label="Filter"
+            :placeholder="lazyStrings.RecentChatsModal__filter_recent_chats()"
+            :aria-label="lazyStrings.RecentChatsModal__filter()"
             data-testid="recent-filter-input"
           />
           <button @click="closeRecent" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
@@ -263,7 +274,7 @@ defineExpose({
             ]"
           >
             <div v-if="filteredRecentChats.length === 0" class="p-8 text-center text-gray-500 text-sm">
-              {{ filterQuery ? 'No chats match your filter.' : 'No recent chats.' }}
+              {{ filterQuery ? lazyStrings.RecentChatsModal__no_chats_match_filter() : lazyStrings.RecentChatsModal__no_recent_chats() }}
             </div>
 
             <template v-else>
@@ -299,7 +310,7 @@ defineExpose({
             <div v-else class="h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/20">
               <div class="flex flex-col items-center gap-2 opacity-20">
                 <EyeIcon class="w-8 h-8 text-gray-400" />
-                <span class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Peek</span>
+                <span class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">{{ lazyStrings.RecentChatsModal__peek() }}</span>
               </div>
             </div>
           </div>
@@ -307,13 +318,13 @@ defineExpose({
 
         <div class="p-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50 text-[10px] font-bold text-gray-400 flex justify-between px-6 shrink-0">
           <div class="flex gap-6">
-            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↑↓</kbd> NAVIGATE</span>
-            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↵</kbd> SELECT</span>
-            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">→</kbd> PREVIEW</span>
+            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↑↓</kbd> {{ lazyStrings.RecentChatsModal__navigate() }}</span>
+            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↵</kbd> {{ lazyStrings.RecentChatsModal__select() }}</span>
+            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">→</kbd> {{ lazyStrings.RecentChatsModal__preview() }}</span>
           </div>
           <div class="flex items-center gap-4">
             <div class="flex items-center gap-2">
-              <span>PREVIEW</span>
+              <span>{{ lazyStrings.RecentChatsModal__preview() }}</span>
               <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
                 <button
                   v-for="mode in (['always', 'peek', 'disabled'] as const)"
@@ -322,7 +333,7 @@ defineExpose({
                   class="px-2 py-1 rounded-md transition-all uppercase tracking-tighter"
                   :class="searchPreviewMode === mode ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
                 >
-                  {{ mode === 'always' ? 'on' : mode === 'disabled' ? 'off' : mode }}
+                  {{ previewModeLabel({ mode }) }}
                 </button>
               </div>
             </div>

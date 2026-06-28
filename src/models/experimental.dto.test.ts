@@ -23,6 +23,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
     });
 
     expect(parsed).toEqual({
+      locale: undefined,
       markdownRendering: undefined,
       toolConfigPersistence: 'enabled',
       fakeLm: 'enabled',
@@ -41,6 +42,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
     });
 
     expect(parsed).toEqual({
+      locale: undefined,
       markdownRendering: undefined,
       toolConfigPersistence: undefined,
       fakeLm: undefined,
@@ -58,6 +60,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
     });
 
     expect(parsed).toEqual({
+      locale: undefined,
       markdownRendering: undefined,
       toolConfigPersistence: undefined,
       fakeLm: undefined,
@@ -72,6 +75,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
     const parsed = OptionalExperimentalSettingsSchemaDto.parse('future-experimental-shape');
 
     expect(parsed).toEqual({
+      locale: undefined,
       markdownRendering: undefined,
       toolConfigPersistence: undefined,
       fakeLm: undefined,
@@ -80,5 +84,14 @@ describe('optionalExperimentalFieldSchemaDto', () => {
     expect(parsed?.unreadable).toEqual({
       _root: 'future-experimental-shape',
     });
+  });
+
+  it('accepts supported persisted locales and records unsupported values as unreadable', () => {
+    const supported = OptionalExperimentalSettingsSchemaDto.parse({ locale: 'ja' });
+    expect(supported?.locale).toBe('ja');
+
+    const unsupported = OptionalExperimentalSettingsSchemaDto.parse({ locale: 'fr' });
+    expect(unsupported?.locale).toBeUndefined();
+    expect(unsupported?.unreadable).toEqual({ locale: 'fr' });
   });
 });

@@ -28,6 +28,7 @@ const MessageDiffModal = defineAsyncComponentAndLoadOnMounted({ loader: () => im
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AdvancedTextEditorV3.vue') });
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
 import { useLayout } from '@/composables/useLayout';
+import { lazyStrings } from '@/strings';
 import { useSettings } from '@/composables/useSettings';
 import { useChatImageProgress } from '@/composables/chat/useChatImageProgress';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
@@ -355,7 +356,7 @@ const speechText = computed(() => {
   case 'content': {
     const text = props.partContent !== undefined ? props.partContent : displayContent.value;
     if (!text) return '';
-    if (isImageResponse.value) return 'Image generated.';
+    if (isImageResponse.value) return lazyStrings.MessageItem__image_generated();
     return text.replace(/<[^>]*>/g, '');
   }
   case 'thinking':
@@ -404,11 +405,11 @@ const reasoningEffortLabel = computed(() => {
 
   switch (effort) {
   case 'none':
-    return 'Off';
+    return lazyStrings.MessageItem__off();
   case 'low':
   case 'medium':
   case 'high':
-    return 'Think';
+    return lazyStrings.MessageItem__think();
   default: {
     const _ex: never = effort;
     return _ex;
@@ -436,12 +437,26 @@ const reasoningEffortTooltip = computed(() => {
 
   switch (effort) {
   case 'none':
-    return 'Think: Disabled';
+    return lazyStrings.MessageItem__think_disabled();
   case 'low':
   case 'medium':
   case 'high': {
-    const label = effort.charAt(0).toUpperCase() + effort.slice(1);
-    return `Think: ${label} Effort\n(Note: Specific effort levels may be ignored by some models)`;
+    const effortLabel = (() => {
+      switch (effort) {
+      case 'low':
+        return lazyStrings.MessageItem__low();
+      case 'medium':
+        return lazyStrings.MessageItem__medium();
+      case 'high':
+        return lazyStrings.MessageItem__high();
+      default: {
+        const _ex: never = effort;
+        return _ex;
+      }
+      }
+    })();
+    if (effortLabel === undefined) return undefined;
+    return lazyStrings.MessageItem__think_effort_note({ effortLabel });
   }
   default: {
     const _ex: never = effort;
@@ -497,9 +512,9 @@ defineExpose({
         <BirdIcon v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
       <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
-        <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
+        <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">{{ lazyStrings.MessageItem__you() }}</span>
         <template v-else>
-          <span>{{ message.modelId || 'Assistant' }}</span>
+          <span>{{ message.modelId || lazyStrings.SHARED__assistant() }}</span>
           <div
             v-if="reasoningEffortLabel"
             class="flex items-center gap-1 ml-1 text-[8px] font-mono text-gray-400 dark:text-gray-500 leading-none cursor-help"
@@ -510,10 +525,10 @@ defineExpose({
             <span>{{ reasoningEffortLabel }}</span>
           </div>
           <div class="flex items-center gap-1 group/msg-header-tools">
-            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
+            <SpeechControl v-if="speechText !== undefined && !isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
 
             <!-- Header Extensions Slot (Seamless transition) -->
-            <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
+            <div v-if="showExtensions && speechText !== undefined" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
               <SpeechLanguageSelector :message-id="message.id" :content="speechText" is-mini align="down" />
               <!-- Future tools here -->
             </div>
@@ -522,7 +537,7 @@ defineExpose({
               v-if="isGenerating"
               @click="emit('abort')"
               class="p-1 rounded-lg text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              title="Stop generation"
+              :title="lazyStrings.MessageItem__stop_generation()"
               data-testid="message-abort-button"
             >
               <SquareIcon class="w-3 h-3" />
@@ -534,7 +549,7 @@ defineExpose({
               @click="showExtensions = !showExtensions"
               class="p-1 rounded-lg transition-colors"
               :class="showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
-              title="More Message Tools"
+              :title="lazyStrings.MessageItem__more_message_tools()"
             >
               <MoreHorizontalIcon class="w-3.5 h-3.5" />
             </button>
@@ -560,7 +575,7 @@ defineExpose({
               :href="attachmentUrls.get(att.id)"
               :download="att.originalName"
               class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-all z-10"
-              title="Download image"
+              :title="lazyStrings.MessageItem__download_image()"
               data-testid="download-attachment"
             >
               <DownloadIcon class="w-4 h-4" />
@@ -569,7 +584,7 @@ defineExpose({
           <template v-else>
             <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500">
               <AlertTriangleIcon class="w-3.5 h-3.5 text-amber-500" />
-              <span>Image missing ({{ att.originalName }}) - {{ formatSize({ bytes: att.size }) }}</span>
+              <span>{{ lazyStrings.MessageItem__image_missing({ fileName: att.originalName, fileSize: formatSize({ bytes: att.size }) }) }}</span>
             </div>
           </template>
         </div>
@@ -604,7 +619,7 @@ defineExpose({
                 @click="showImageSettings = !showImageSettings"
                 class="p-2 rounded-xl transition-colors"
                 :class="showImageSettings || editImageMode || editReasoningEffort !== undefined ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
-                title="Tools"
+                :title="lazyStrings.MessageItem__tools()"
                 data-testid="toggle-edit-image-mode"
               >
                 <Settings2Icon class="w-5 h-5" />
@@ -612,7 +627,7 @@ defineExpose({
               <button
                 @click="openAdvancedEditor"
                 class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                title="Open Advanced Editor"
+                :title="lazyStrings.MessageItem__open_advanced_editor()"
                 data-testid="open-advanced-editor-button"
               >
                 <FileEditIcon class="w-5 h-5" />
@@ -623,15 +638,15 @@ defineExpose({
                 v-if="editContent"
                 @click="handleClearContent"
                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                title="Clear all text"
+                :title="lazyStrings.MessageItem__clear_all_text()"
                 data-testid="clear-edit-content"
               >
                 <XCircleIcon class="w-3.5 h-3.5" />
-                <span>Clear</span>
+                <span>{{ lazyStrings.MessageItem__clear() }}</span>
               </button>
-              <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">Cancel</button>
+              <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">{{ lazyStrings.MessageItem__cancel() }}</button>
               <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
-                <span>{{ isUser ? 'Send & Branch' : 'Update & Branch' }}</span>
+                <span>{{ isUser ? lazyStrings.MessageItem__send_and_branch() : lazyStrings.MessageItem__update_and_branch() }}</span>
                 <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
               </button>
             </div>
@@ -640,7 +655,7 @@ defineExpose({
           <!-- Inline Experimental Tools (if active) -->
           <div v-if="showImageSettings" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
             <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
-              Options/Tools
+              {{ lazyStrings.MessageItem__options_tools() }}
             </div>
             <ReasoningSettings
               :selected-effort="editReasoningEffort"
@@ -698,7 +713,7 @@ defineExpose({
         <div v-if="isLastInNode && message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
           <div class="flex items-center gap-2 font-bold">
             <AlertTriangleIcon class="w-4 h-4" />
-            <span>Generation Failed</span>
+            <span>{{ lazyStrings.MessageItem__generation_failed() }}</span>
           </div>
           <div class="opacity-90">{{ message.error }}</div>
           <button
@@ -707,7 +722,7 @@ defineExpose({
             data-testid="retry-button"
           >
             <RefreshCwIcon class="w-3.5 h-3.5" />
-            <span>Retry</span>
+            <span>{{ lazyStrings.MessageItem__retry() }}</span>
           </button>
         </div>
 
@@ -734,6 +749,7 @@ defineExpose({
 
           <!-- Message Actions -->
           <MessageActions
+            v-if="speechText !== undefined"
             :chat-id="chatId"
             :message="message"
             :is-image-response="isImageResponse"

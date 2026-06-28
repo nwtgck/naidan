@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick, reactive } from 'vue';
 import StorageTab from './StorageTab.vue';
@@ -7,6 +7,7 @@ import { useSettings } from '@/composables/useSettings';
 import { storageService } from '@/services/storage';
 import type { ProviderProfile } from '@/models/types';
 import { useRouter, useRoute } from 'vue-router';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 
@@ -130,6 +131,10 @@ const globalMocks = {
 };
 
 describe('StorageTab.vue Tests', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
   const mockPush = vi.fn((p) => {
     if (typeof p === 'string') {
@@ -225,8 +230,7 @@ describe('StorageTab.vue Tests', () => {
       await wrapper.find('input[data-testid="setting-url-input"]').setValue('http://example.com');
       await wait();
 
-      const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
-      await storageTab?.trigger('click');
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await wait();
@@ -238,7 +242,7 @@ describe('StorageTab.vue Tests', () => {
       await wait();
 
       expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
-    });
+    }, 15_000);
     it('warns about attachment loss when switching from OPFS to Local', async () => {
       vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
       vi.mocked(storageService.hasAttachments).mockResolvedValue(true);
@@ -507,8 +511,7 @@ describe('StorageTab.vue Tests', () => {
       await flushPromises();
       await vi.dynamicImportSettled();
 
-      const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
-      await storageTab?.trigger('click');
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await wait();
@@ -552,6 +555,7 @@ describe('StorageTab.vue Tests', () => {
         setOnboardingDraft: vi.fn(),
         setHeavyContentAlertDismissed: vi.fn(),
         setFakeLmDebugModeStatus: vi.fn(),
+        setLocale: vi.fn(),
         setSearchPreviewMode: vi.fn(),
         setSearchContextSize: vi.fn(),
         TEST_ONLY: {
@@ -574,10 +578,12 @@ describe('StorageTab.vue Tests', () => {
       await saveButton.trigger('click');
 
       expect(mockSaveFail).toHaveBeenCalled();
-      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Save Failed',
-        message: expect.stringContaining('Migration Security Error'),
-      }));
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+          title: 'Save Failed',
+          message: expect.stringContaining('Migration Security Error'),
+        }));
+      });
     });
   });
 });

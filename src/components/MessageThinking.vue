@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { computed, ref, watch, nextTick, inject } from 'vue';
 import type { Component } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
@@ -142,10 +143,10 @@ defineExpose({
         ]"
       >
         <BrainIcon class="w-3.5 h-3.5" />
-        <span v-if="isThinkingNow">Thinking...</span>
-        <span v-else-if="mode === 'expanded'">Hide Thought Process</span>
-        <span v-else-if="inSequence">Thought Process</span>
-        <span v-else>Show Thought Process</span>
+        <span v-if="isThinkingNow">{{ lazyStrings.MessageThinking__thinking() }}</span>
+        <span v-else-if="mode === 'expanded'">{{ lazyStrings.MessageThinking__hide_thought_process() }}</span>
+        <span v-else-if="inSequence">{{ lazyStrings.MessageThinking__thought_process() }}</span>
+        <span v-else>{{ lazyStrings.MessageThinking__show_thought_process() }}</span>
       </div>
 
       <!-- In-sequence preview: height-limited content for collapsed-finished -->

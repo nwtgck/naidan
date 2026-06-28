@@ -113,24 +113,26 @@ describe('ChatWeshTerminalModal', () => {
     });
     await flushPromises();
 
-    expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
-    expect(mocks.createClient).toHaveBeenCalledWith(expect.objectContaining({
-      mounts: expect.arrayContaining([
-        expect.objectContaining({ path: '/tmp', handle: tmpHandle, readOnly: false }),
-        expect.objectContaining({
-          type: 'naidan_sysfs',
-          path: '/sys/fs/naidan',
-          visibility: 'main_chats',
-          currentChatId: 'chat-1',
-          currentChatGroupId: 'chat-group-1',
-        }),
-        expect.objectContaining({ path: '/home/user/global', readOnly: true }),
-        expect.objectContaining({ path: '/home/user/chat', readOnly: false }),
-      ]),
-      user: 'user',
-      initialEnv: { HOME: '/home/user', TMPDIR: '/tmp' },
-      initialCwd: '/home/user',
-    }));
+    await vi.waitFor(() => {
+      expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
+      expect(mocks.createClient).toHaveBeenCalledWith(expect.objectContaining({
+        mounts: expect.arrayContaining([
+          expect.objectContaining({ path: '/tmp', handle: tmpHandle, readOnly: false }),
+          expect.objectContaining({
+            type: 'naidan_sysfs',
+            path: '/sys/fs/naidan',
+            visibility: 'main_chats',
+            currentChatId: 'chat-1',
+            currentChatGroupId: 'chat-group-1',
+          }),
+          expect.objectContaining({ path: '/home/user/global', readOnly: true }),
+          expect.objectContaining({ path: '/home/user/chat', readOnly: false }),
+        ]),
+        user: 'user',
+        initialEnv: { HOME: '/home/user', TMPDIR: '/tmp' },
+        initialCwd: '/home/user',
+      }));
+    });
   });
 
   it('does not call ensureChatTmpDirectory when chatId is undefined', async () => {

@@ -1,0 +1,1 @@
+export const DeveloperTab__reset_data_provider_warning = ({ storageType }: { storageType: string }): string => `This action cannot be undone. It will permanently delete all chat history, chat groups, and settings stored in the ${storageType} provider.`;

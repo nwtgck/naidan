@@ -46,6 +46,9 @@ async function openExportMode({ wrapper }: { wrapper: ReturnType<typeof mountMod
 
 async function exportNow({ wrapper }: { wrapper: ReturnType<typeof mountModal> }) {
   await wrapper.find('[data-testid="import-export-export-now-button"]').trigger('click');
+  await vi.waitFor(() => {
+    expect(mocks.exportData).toHaveBeenCalled();
+  });
   await flushPromises();
 }
 

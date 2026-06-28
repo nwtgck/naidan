@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { lazyStrings } from '@/strings';
+import { ref, onMounted, onUnmounted, computed, watchEffect } from 'vue';
 import { transformersJsService } from '@/services/transformers-js';
 import { BrainCircuitIcon, AlertTriangleIcon, ShieldCheckIcon } from 'lucide-vue-next';
 
@@ -31,35 +32,42 @@ onUnmounted(() => {
 
 // Tab Title Progress
 const originalTitle = ref(typeof document !== 'undefined' ? document.title : 'Naidan');
-watch([status, progress], ([s, p]) => {
+watchEffect(() => {
   if (typeof document === 'undefined') return;
-  switch (s) {
-  case 'loading':
-    document.title = `(${p}%) Loading Model...`;
+  switch (status.value) {
+  case 'loading': {
+    const title = lazyStrings.TransformersJsLoadingIndicator__loading_model_progress({
+      progress: progress.value,
+    });
+    if (title !== undefined) {
+      document.title = title;
+    }
     break;
+  }
   case 'idle':
   case 'ready':
   case 'error':
     document.title = originalTitle.value;
     break;
   default: {
-    const _ex: never = s;
+    const _ex: never = status.value;
     return _ex;
   }
   }
-}, { immediate: true });
+});
 
 const statusText = computed(() => {
   const currentStatus = status.value;
   switch (currentStatus) {
   case 'error':
-    return 'Transformers.js error';
+    return lazyStrings.TransformersJsLoadingIndicator__transformers_js_error();
   case 'loading': {
-    const modelName = loadingModelId.value ? loadingModelId.value.split('/').pop() : 'model';
+    const modelName = loadingModelId.value?.split('/').pop() ?? lazyStrings.TransformersJsLoadingIndicator__model();
+    if (modelName === undefined) return undefined;
     if (isLoadingFromCache.value) {
-      return `Initializing ${modelName}...`;
+      return lazyStrings.TransformersJsLoadingIndicator__initializing_model({ modelName });
     }
-    return `Downloading ${modelName}...`;
+    return lazyStrings.TransformersJsLoadingIndicator__downloading_model({ modelName });
   }
   case 'idle':
   case 'ready':
@@ -72,9 +80,9 @@ const statusText = computed(() => {
 });
 const explanationText = computed(() => {
   if (isLoadingFromCache.value) {
-    return 'Loading model weights into browser memory for local inference.';
+    return lazyStrings.TransformersJsLoadingIndicator__loading_model_weights_into_browser_memory_for_local_inference();
   }
-  return 'Downloading model weights from Hugging Face. This only happens once per model.';
+  return lazyStrings.TransformersJsLoadingIndicator__downloading_model_weights_from_hugging_face_this_only_happens_once_per_model();
 });
 
 
@@ -119,7 +127,7 @@ defineExpose({
       <div v-if="status !== 'error'" class="ml-11 flex flex-wrap gap-3">
         <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 tracking-tight">
           <ShieldCheckIcon class="w-3 h-3 text-green-500/70" />
-          On-device Execution
+          {{ lazyStrings.TransformersJsLoadingIndicator__on_device_execution() }}
         </div>
       </div>
 

@@ -1,5 +1,18 @@
 import { ref, readonly, computed, type ComputedRef, type Ref } from 'vue';
-import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, type ProviderProfile } from '@/models/types';
+import {
+  ensureStrings,
+  prepareLocale,
+  resolveBrowserLocale,
+  setLocale as setStringLocale,
+} from '@/strings';
+import {
+  type Settings,
+  type EndpointType,
+  DEFAULT_SETTINGS,
+  type StorageType,
+  type ProviderProfile,
+  type UiLocale,
+} from '@/models/types';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
@@ -50,6 +63,7 @@ interface UseSettingsApi {
   setOnboardingDraft: ({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) => void,
   setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => void,
   setFakeLmDebugModeStatus: ({ status }: { status: FakeLmDebugModeStatus }) => Promise<void>,
+  setLocale: ({ locale }: { locale: UiLocale }) => Promise<void>,
   setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => void,
   setSearchContextSize: ({ size }: { size: number }) => void,
   TEST_ONLY: {
@@ -59,15 +73,23 @@ interface UseSettingsApi {
 }
 
 let initPromise: Promise<void> | null = null;
+let localeChangeQueue: Promise<void> = Promise.resolve();
 
 // --- Synchronization ---
 
 storageService.subscribeToChanges({ listener: async ({ event }) => {
   if (event.type === 'settings' || event.type === 'migration') {
-    const fresh = await storageService.loadSettings();
-    if (fresh) {
-      _settings.value = fresh;
-      preloadFakeLmIfEnabled({ status: fresh.experimental?.fakeLm ?? 'disabled' });
+    try {
+      const fresh = await storageService.loadSettings();
+      if (fresh) {
+        _settings.value = fresh;
+        preloadFakeLmIfEnabled({ status: fresh.experimental?.fakeLm ?? 'disabled' });
+        await setStringLocale({
+          locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
+        });
+      }
+    } catch (error) {
+      console.error('Failed to synchronize settings:', error);
     }
   }
 } });
@@ -135,15 +157,21 @@ export function useSettings(): UseSettingsApi {
               const { addInfoEvent } = useGlobalEvents();
               addInfoEvent({
                 source: 'SettingsService',
-                message: `Storage type is already set to "${rawSavedType}". The requested type "${storageTypeOverride}" via query parameter was ignored.`,
+                message: await ensureStrings.useSettings__storage_type_is_already_set_and_requested_type_was_ignored({
+                  savedStorageType: rawSavedType,
+                  requestedStorageType: storageTypeOverride,
+                }),
               });
 
               const { showConfirm } = useConfirm();
               // Do not await to avoid blocking initialization/mount
               showConfirm({
-                title: 'Storage Already Initialized',
-                message: `Storage type is already set to "${rawSavedType}". The request to use "${storageTypeOverride}" via query parameter was ignored.`,
-                confirmButtonText: 'OK',
+                title: await ensureStrings.useSettings__storage_already_initialized(),
+                message: await ensureStrings.useSettings__request_to_use_storage_type_was_ignored({
+                  savedStorageType: rawSavedType,
+                  requestedStorageType: storageTypeOverride,
+                }),
+                confirmButtonText: await ensureStrings.useSettings__ok(),
               });
             }
           } else {
@@ -161,7 +189,7 @@ export function useSettings(): UseSettingsApi {
           const { addErrorEvent } = useGlobalEvents();
           addErrorEvent({
             source: 'SettingsService',
-            message: 'Invalid storage type found in localStorage. Falling back to default detection.',
+            message: await ensureStrings.useSettings__invalid_storage_type_falling_back_to_default_detection(),
             details: validatedType.error,
           });
         }
@@ -195,14 +223,14 @@ export function useSettings(): UseSettingsApi {
             const { addInfoEvent } = useGlobalEvents();
             addInfoEvent({
               source: 'SettingsService',
-              message: 'Data successfully imported from URL.',
+              message: await ensureStrings.useSettings__data_successfully_imported_from_url(),
             });
           } catch (err) {
             console.error('Failed to import data from URL:', err);
             const { addErrorEvent } = useGlobalEvents();
             addErrorEvent({
               source: 'SettingsService',
-              message: 'Failed to import data from URL.',
+              message: await ensureStrings.useSettings__failed_to_import_data_from_url(),
               details: err instanceof Error ? err : String(err),
             });
           }
@@ -212,6 +240,9 @@ export function useSettings(): UseSettingsApi {
         if (s) {
           _settings.value = s;
           preloadFakeLmIfEnabled({ status: s.experimental?.fakeLm ?? 'disabled' });
+          await setStringLocale({
+            locale: s.experimental?.locale ?? resolveBrowserLocale(),
+          });
           if (s.endpointUrl || s.endpointType === 'transformers_js') {
             // Initial fetch of models if we have an endpoint
             fetchModels({});
@@ -219,6 +250,7 @@ export function useSettings(): UseSettingsApi {
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
           _settings.value.endpointType = 'openai';
+          await setStringLocale({ locale: resolveBrowserLocale() });
         }
       } finally {
         loading.value = false;
@@ -255,7 +287,7 @@ export function useSettings(): UseSettingsApi {
       const { addErrorEvent } = useGlobalEvents();
       addErrorEvent({
         source: 'useSettings:fetchModels',
-        message: 'Failed to fetch models for settings',
+        message: await ensureStrings.useSettings__failed_to_fetch_models_for_settings(),
         details: err instanceof Error ? err : String(err),
       });
       console.error('Failed to fetch models:', err);
@@ -394,6 +426,25 @@ export function useSettings(): UseSettingsApi {
     preloadFakeLmIfEnabled({ status });
   }
 
+  async function setLocale({ locale }: {
+    locale: UiLocale,
+  }): Promise<void> {
+    const operation = localeChangeQueue.catch(() => {
+      // A failed locale change must not prevent a later explicit request.
+    }).then(async () => {
+      await prepareLocale({ locale });
+      await updateExperimental({
+        updater: ({ experimental }) => ({
+          ...experimental,
+          locale,
+        }),
+      });
+      await setStringLocale({ locale });
+    });
+    localeChangeQueue = operation;
+    await operation;
+  }
+
   function setSearchPreviewMode({ mode }: { mode: SearchPreviewMode }) {
     _searchPreviewMode.value = mode;
   }
@@ -419,6 +470,7 @@ export function useSettings(): UseSettingsApi {
     isFetchingModels.value = false;
     _searchPreviewMode.value = 'always';
     initPromise = null;
+    localeChangeQueue = Promise.resolve();
   }
 
   return {
@@ -443,6 +495,7 @@ export function useSettings(): UseSettingsApi {
     setOnboardingDraft,
     setHeavyContentAlertDismissed,
     setFakeLmDebugModeStatus,
+    setLocale,
     setSearchPreviewMode,
     setSearchContextSize,
     TEST_ONLY: {

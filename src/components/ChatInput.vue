@@ -23,6 +23,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
@@ -398,7 +399,10 @@ async function attachCopyAsVolume({ entries, name }: {
     await finishMount({ volumeId: vol.id, name });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
-      addToast({ message: `Failed to copy "${name}": ${(e as Error).message}` });
+      addToast({ message: await ensureStrings.ChatInput__failed_to_copy({
+        name,
+        errorMessage: (e as Error).message,
+      }) });
     }
   } finally {
     activeCopies.value = activeCopies.value.filter(c => c.id !== copyId);
@@ -414,7 +418,9 @@ async function attachLinkAsVolume() {
     await finishMount({ volumeId: vol.id, name: vol.name });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
-      addToast({ message: `Failed to link folder: ${(e as Error).message}` });
+      addToast({ message: await ensureStrings.ChatInput__failed_to_link_folder({
+        errorMessage: (e as Error).message,
+      }) });
     }
   }
 }
@@ -569,8 +575,8 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
 
   openFileExplorer({ options: {
     kind: 'wesh-mounts',
-    title: 'Files',
-    rootName: 'Files',
+    title: await ensureStrings.fileExplorer__files(),
+    rootName: await ensureStrings.fileExplorer__files(),
     mounts: workerMounts,
     initialPath,
   } });
@@ -590,15 +596,15 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
   let confirmButtonText: string;
   switch (volumeType) {
   case 'host':
-    title = 'Unlink Folder';
-    message = 'Stop using this folder in this chat? Your original files on disk stay safe and intact.';
-    confirmButtonText = 'Unlink';
+    title = await ensureStrings.ChatInput__unlink_folder();
+    message = await ensureStrings.ChatInput__stop_using_folder();
+    confirmButtonText = await ensureStrings.ChatInput__unlink();
     break;
   case 'opfs':
   case undefined:
-    title = 'Remove Folder';
-    message = 'Remove the copied folder from this chat? The copy stored in the browser will be deleted.';
-    confirmButtonText = 'Remove';
+    title = await ensureStrings.ChatInput__remove_folder();
+    message = await ensureStrings.ChatInput__remove_browser_copy();
+    confirmButtonText = await ensureStrings.ChatInput__remove();
     break;
   default: {
     const _ex: never = volumeType;
@@ -1113,7 +1119,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             <div class="flex items-center justify-between mb-2">
               <span class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
                 <Loader2Icon class="w-3.5 h-3.5 animate-spin shrink-0" />
-                Copying "{{ copy.name }}"
+                {{ lazyStrings.ChatInput__copying_name({ name: copy.name }) }}
               </span>
               <div class="flex items-center gap-3">
                 <span v-if="copy.progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
@@ -1124,7 +1130,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
                   class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   data-testid="copy-cancel-btn"
                 >
-                  Cancel
+                  {{ lazyStrings.ChatInput__cancel() }}
                 </button>
               </div>
             </div>
@@ -1163,14 +1169,14 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             <button
               @click="openImageEditor({ id: att.id })"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors touch-visible"
-              title="Edit Image"
+              :title="lazyStrings.ChatInput__edit_image()"
             >
               <Edit2Icon class="w-3 h-3" />
             </button>
             <button
               @click="removeAttachment({ id: att.id })"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors touch-visible"
-              title="Remove"
+              :title="lazyStrings.ChatInput__remove()"
             >
               <XIcon class="w-3 h-3" />
             </button>
@@ -1189,7 +1195,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
         @keydown.esc.prevent="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
-        placeholder="Type a message..."
+        :placeholder="lazyStrings.ChatInput__type_a_message()"
         class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
         data-testid="chat-input"
@@ -1201,7 +1207,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           v-if="isOverLimit || isMaximized"
           @click.stop="toggleMaximized"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
+          :title="isMaximized ? lazyStrings.ChatInput__minimize_input() : lazyStrings.ChatInput__maximize_input()"
           data-testid="maximize-button"
         >
           <Minimize2Icon v-if="isMaximized" class="w-4 h-4" />
@@ -1211,7 +1217,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <button
           @click.stop="toggleSubmerged"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="visibility === 'submerged' ? 'Show Input' : 'Hide Input'"
+          :title="visibility === 'submerged' ? lazyStrings.ChatInput__show_input() : lazyStrings.ChatInput__hide_input()"
           data-testid="submerge-button"
         >
           <ChevronUpIcon v-if="visibility === 'submerged'" class="w-4 h-4" />
@@ -1221,7 +1227,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <button
           @click.stop="openAdvancedEditor"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          title="Open Advanced Editor"
+          :title="lazyStrings.ChatInput__open_advanced_editor()"
           data-testid="open-advanced-editor-button"
         >
           <FileEditIcon class="w-4 h-4" />
@@ -1279,7 +1285,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
           :disabled="!isChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
-          :title="isChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
+          :title="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
           :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"
         >
           <template v-if="isChatStreaming">

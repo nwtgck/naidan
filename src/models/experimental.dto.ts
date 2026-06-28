@@ -100,7 +100,13 @@ export const ExperimentalProviderProfileSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalCompletedMigrationSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalMigrationStateSchemaDto = EmptyExperimentalSchemaDto;
 
+export const ExperimentalSettingsLocaleSchemaDto = z.enum([
+  'en',
+  'ja',
+]);
+
 export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object({
+  locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),
   markdownRendering: missingAsUndefined(z.union([
     z.literal('block_markdown'),
     z.literal('monolithic_html'),

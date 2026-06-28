@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue';
+import { lazyStrings } from '@/strings';
+import { computed, ref, onMounted, watch, nextTick } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
 import type { Reasoning } from '@/models/types';
 
@@ -15,13 +16,25 @@ const emit = defineEmits<{
   (e: 'update:effort', effort: Reasoning['effort']): void,
 }>();
 
-const effortOptions: { label: string, shortLabel: string, value: Reasoning['effort'] }[] = [
-  { label: 'Default', shortLabel: 'Default', value: undefined },
-  { label: 'Off', shortLabel: 'Off', value: 'none' },
-  { label: 'Low', shortLabel: 'Low', value: 'low' },
-  { label: 'Medium', shortLabel: 'Med', value: 'medium' },
-  { label: 'High', shortLabel: 'High', value: 'high' },
-];
+type EffortOption = {
+  label: string,
+  shortLabel: string,
+  testId: string,
+  value: Reasoning['effort'],
+};
+
+const effortOptions = computed<EffortOption[]>(() => {
+  const options = [
+    { label: lazyStrings.ReasoningSettings__default(), shortLabel: lazyStrings.ReasoningSettings__default(), testId: 'default', value: undefined },
+    { label: lazyStrings.ReasoningSettings__off(), shortLabel: lazyStrings.ReasoningSettings__off(), testId: 'off', value: 'none' as const },
+    { label: lazyStrings.ReasoningSettings__low(), shortLabel: lazyStrings.ReasoningSettings__low(), testId: 'low', value: 'low' as const },
+    { label: lazyStrings.ReasoningSettings__medium(), shortLabel: lazyStrings.ReasoningSettings__med(), testId: 'medium', value: 'medium' as const },
+    { label: lazyStrings.ReasoningSettings__high(), shortLabel: lazyStrings.ReasoningSettings__high(), testId: 'high', value: 'high' as const },
+  ];
+  return options.filter((option): option is EffortOption => (
+    option.label !== undefined && option.shortLabel !== undefined
+  ));
+});
 
 const buttonRefs = ref<(HTMLElement | null)[]>([]);
 const isInitialized = ref(false);
@@ -33,7 +46,7 @@ const sliderStyle = ref({
 });
 
 function updateSlider({ immediate }: { immediate?: boolean }) {
-  const index = effortOptions.findIndex(o => o.value === props.selectedEffort);
+  const index = effortOptions.value.findIndex(o => o.value === props.selectedEffort);
   const el = buttonRefs.value[index];
   if (el) {
     sliderStyle.value = {
@@ -76,7 +89,7 @@ defineExpose({
   <div class="px-3 py-2 border-b dark:border-gray-700">
     <div class="flex items-center gap-2 mb-2">
       <BrainIcon class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-      <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Think</span>
+      <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ReasoningSettings__think() }}</span>
     </div>
 
     <!-- Segmented Control Container -->
@@ -101,7 +114,7 @@ defineExpose({
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
           opt.value === undefined ? 'flex-[1.4]' : 'flex-1'
         ]"
-        :data-testid="`reasoning-effort-${opt.label.toLowerCase()}`"
+        :data-testid="`reasoning-effort-${opt.testId}`"
         :title="opt.label"
       >
         {{ opt.shortLabel }}
@@ -109,7 +122,7 @@ defineExpose({
     </div>
 
     <div class="mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5">
-      * Effort levels may be ignored by some models.
+      {{ lazyStrings.ReasoningSettings__effort_levels_may_be_ignored_by_some_models() }}
     </div>
   </div>
 </template>
