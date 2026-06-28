@@ -7,14 +7,14 @@ import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import { idToRaw } from '@/models/ids';
-import type { ChatGroupId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { ChatGroupId } from '@/01-models/ids';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import RecentChatListItem from './RecentChatListItem.vue';
 import { lazyStrings } from '@/strings';
 
-const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
+const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('../features/global-search/components/SearchPreview.vue') });
 
 const router = useRouter();
 const { isRecentOpen, closeRecent, recentChats } = useRecentChats();

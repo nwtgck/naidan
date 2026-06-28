@@ -7,7 +7,7 @@ const mockUpdateChatContent = vi.fn().mockImplementation(async ({ updater }: { i
   return await updater({ current: null });
 });
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -47,14 +47,14 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     chat = vi.fn();
     listModels = mockListModels;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     async listModels() {
       return [];

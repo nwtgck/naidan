@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createBranchFromMessages, type HistoryItem } from './chat-tree';
-import { toAttachmentId, toBinaryObjectId } from '@/models/ids';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import { toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
 
 describe('chat-tree utils', () => {
   describe('createBranchFromMessages', () => {

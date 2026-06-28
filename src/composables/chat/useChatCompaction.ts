@@ -1,4 +1,4 @@
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 import {
   abortContextCompactForChat,
   runCompactCurrentBranchForChat,

@@ -1,11 +1,11 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { generateId } from '@/utils/id';
-import type { MessageId } from '@/models/ids';
+import type { MessageId } from '@/01-models/ids';
 import { describe, it, expect } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import MessageThinking from './MessageThinking.vue';
-import type { MessageNode } from '@/models/types';
+import type { MessageNode } from '@/01-models/types';
 import fs from 'fs';
 import path from 'path';
 

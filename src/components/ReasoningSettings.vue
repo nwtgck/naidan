@@ -2,7 +2,7 @@
 import { lazyStrings } from '@/strings';
 import { computed, ref, onMounted, watch, nextTick } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
-import type { Reasoning } from '@/models/types';
+import type { Reasoning } from '@/01-models/types';
 
 defineOptions({
   name: 'ReasoningSettings',

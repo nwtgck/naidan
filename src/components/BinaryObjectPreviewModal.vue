@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import type { BinaryObject } from '@/models/types';
-import { idToRaw } from '@/models/ids';
+import type { BinaryObject } from '@/01-models/types';
+import { idToRaw } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
-import type { BinaryObjectId } from '@/models/ids';
-import { storageService } from '@/services/storage';
+import type { BinaryObjectId } from '@/01-models/ids';
+import { storageService } from '@/00-storage/service';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {
   XIcon, DownloadIcon, Trash2Icon, ChevronLeftIcon, ChevronRightIcon,

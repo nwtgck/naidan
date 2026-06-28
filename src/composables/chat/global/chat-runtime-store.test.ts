@@ -1,4 +1,4 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, expect, it } from 'vitest';
 import { createChatRuntimeStore } from './chat-runtime-store';
 

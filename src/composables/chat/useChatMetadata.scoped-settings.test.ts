@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { toChatId } from '@/models/ids';
-import type { ChatMeta } from '@/models/types';
+import { toChatId } from '@/01-models/ids';
+import type { ChatMeta } from '@/01-models/types';
 import { useChatMetadata } from './useChatMetadata';
 
 const mocks = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   updateChatScopedSettings: mocks.updateChatScopedSettings,
 }));
 
-vi.mock('@/services/storage', () => ({
+vi.mock('@/00-storage/service', () => ({
   storageService: {
     loadChatMeta: mocks.loadChatMeta,
   },

@@ -1,4 +1,4 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -19,7 +19,7 @@ const {
   mockActiveGenerations: new Map<string, unknown>(),
 }));
 
-vi.mock('@/services/storage', () => ({
+vi.mock('@/00-storage/service', () => ({
   storageService: {
     notify: mockNotify,
   },

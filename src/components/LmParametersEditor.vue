@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { lazyStrings } from '@/strings';
-import type { LmParameters } from '@/models/types';
+import type { LmParameters } from '@/01-models/types';
 import { RotateCcwIcon, XIcon } from 'lucide-vue-next';
 import { hasLmParameterOverrides } from '@/utils/lm-parameters';
 

@@ -13,14 +13,14 @@ function getFacadePathFromSource({
 }) {
   const aliasMatch = source.match(/^@\/services\/(.+)\/worker\/client-(hosted|standalone)$/);
   if (aliasMatch) {
-    return `@/services/${aliasMatch[1]}/worker/client`;
+    return `@/features/${aliasMatch[1]}/worker/client`;
   }
 
   if (source.startsWith('.')) {
     const resolved = normalizePath(path.resolve(path.dirname(filePath), source));
     const resolvedMatch = resolved.match(/\/src\/services\/(.+)\/worker\/client(?:-(?:hosted|standalone))?$/);
     if (resolvedMatch) {
-      return `@/services/${resolvedMatch[1]}/worker/client`;
+      return `@/features/${resolvedMatch[1]}/worker/client`;
     }
   }
 
@@ -47,10 +47,10 @@ function getFacadeRecommendation({ filePath, source }) {
 
   const fileMatch = filePath.match(/\/src\/services\/(.+)\/worker\/[^/]+$/);
   if (fileMatch) {
-    return `@/services/${fileMatch[1]}/worker/client`;
+    return `@/features/${fileMatch[1]}/worker/client`;
   }
 
-  return '@/services/<feature>/worker/client';
+  return '@/features/<feature>/worker/client';
 }
 
 function resolvesToWorkerClientImplementation({ filePath, source }) {

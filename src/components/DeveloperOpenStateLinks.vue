@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { CopyIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-vue-next';
-import { urlImportExportLogic } from '@/services/import-export/url-logic';
+import { urlImportExportLogic } from '@/features/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
-import { useExportExclusions } from '@/composables/useExportExclusions';
+import { useExportExclusions } from '@/features/import-export/composables/useExportExclusions';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 type DeploymentTarget = {

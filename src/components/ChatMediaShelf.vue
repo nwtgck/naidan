@@ -5,8 +5,8 @@ import {
   ImageIcon, HashIcon, ZapIcon, CpuIcon,
   SortAscIcon, SortDescIcon,
 } from 'lucide-vue-next';
-import type { MessageNode, BinaryObject } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { MessageNode, BinaryObject } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
@@ -14,8 +14,8 @@ import { ensureStrings, lazyStrings } from '@/strings';
 import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageDownloadButton from './ImageDownloadButton.vue';
-import { idToRaw, toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
+import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
+import type { BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
 
 const props = defineProps<{
   chatId: ChatId,

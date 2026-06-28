@@ -7,7 +7,7 @@ import {
   parseFeatureFlag,
   type FeatureFlagName,
   type FeatureFlags,
-} from '@/models/feature-flags';
+} from '@/01-models/feature-flags';
 
 const featureFlags = useStorage<FeatureFlags>(
   FEATURE_FLAGS_STORAGE_KEY,

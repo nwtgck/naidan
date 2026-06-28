@@ -16,7 +16,7 @@ vi.mock('@/composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('@/composables/useFileExplorerModal', () => ({
+vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: () => ({
     isFileExplorerOpen: ref(false),
   }),
@@ -31,7 +31,7 @@ vi.mock('@/composables/usePrint', () => ({
 const isSearchOpen = ref(false);
 const isRecentOpen = ref(false);
 
-vi.mock('@/composables/useGlobalSearch', () => ({
+vi.mock('@/features/global-search/composables/useGlobalSearch', () => ({
   useGlobalSearch: () => ({
     isSearchOpen,
   }),
@@ -52,12 +52,12 @@ vi.mock('@/components/SettingsModal.vue', () => ({
     template: '<div v-if="isOpen" data-testid="settings-modal" />',
   },
 }));
-vi.mock('@/components/DebugWeshTerminalModal.vue', () => ({
+vi.mock('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
   default: { template: '<div />' },
 }));
-vi.mock('@/components/GlobalSearchModal.vue', () => ({
+vi.mock('@/features/global-search/components/GlobalSearchModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
   default: { template: '<div />' },
@@ -67,7 +67,7 @@ vi.mock('@/components/RecentChatsModal.vue', () => ({
   __isTeleport: false,
   default: { template: '<div />' },
 }));
-vi.mock('@/components/FileExplorerModal.vue', () => ({
+vi.mock('@/features/file-explorer/components/FileExplorerModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
   default: { template: '<div />' },

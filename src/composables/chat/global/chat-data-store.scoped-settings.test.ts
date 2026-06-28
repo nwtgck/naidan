@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { toChatId } from '@/models/ids';
-import type { Chat, ChatMeta } from '@/models/types';
+import { toChatId } from '@/01-models/ids';
+import type { Chat, ChatMeta } from '@/01-models/types';
 
 const {
   mockGetSidebarStructure,
@@ -14,7 +14,7 @@ const {
   mockUpdateChatMeta: vi.fn(),
 }));
 
-vi.mock('@/services/storage', () => ({
+vi.mock('@/00-storage/service', () => ({
   storageService: {
     getSidebarStructure: mockGetSidebarStructure,
     loadChat: mockLoadChat,

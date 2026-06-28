@@ -3,8 +3,8 @@ import { generateId } from '@/utils/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import type { EndpointType, ProviderProfile, Settings } from '@/models/types';
-import { cloneEndpoint, isHttpEndpoint } from '@/models/endpoint';
+import type { EndpointType, ProviderProfile, Settings } from '@/01-models/types';
+import { cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
 import { capitalize, naturalSort } from '@/utils/string';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
@@ -21,14 +21,14 @@ const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => 
 // Lazily load previews that are only shown during specific actions
 const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilePreview.vue') });
 // Lazily load upsell UI
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('../features/transformers-js/components/TransformersJsUpsell.vue') });
 const OllamaManagementView = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./OllamaManagementView.vue') });
 
 import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';
-import { ENDPOINT_PRESETS } from '@/models/constants';
-import { idToRaw } from '@/models/ids';
-import type { ProviderProfileId } from '@/models/ids';
+import { ENDPOINT_PRESETS } from '@/constants';
+import { idToRaw } from '@/01-models/ids';
+import type { ProviderProfileId } from '@/01-models/ids';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 const props = defineProps<{

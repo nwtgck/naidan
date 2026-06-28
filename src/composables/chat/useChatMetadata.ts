@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { ScopedSettingChange } from '@/models/scoped-setting-change';
-import type { Chat, Reasoning } from '@/models/types';
+import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
+import type { Chat, Reasoning } from '@/01-models/types';
 import {
   getLiveChatById,
   loadData,
@@ -12,8 +12,8 @@ import {
   createLmParameterSettingChanges,
   createSystemPromptSettingChange,
 } from '@/utils/scoped-setting-changes';
-import type { ChatGroupId, ChatId } from '@/models/ids';
-import { cloneEndpoint } from '@/models/endpoint';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
+import { cloneEndpoint } from '@/01-models/endpoint';
 
 type ReasoningEffort = Reasoning['effort'];
 

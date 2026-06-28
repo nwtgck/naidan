@@ -1,5 +1,5 @@
 import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
-import type { MessageId } from '@/models/ids';
+import type { MessageId } from '@/01-models/ids';
 
 type OutlineVisibility = 'hidden' | 'visible';
 

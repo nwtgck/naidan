@@ -37,7 +37,7 @@ vi.mock('../composables/useConfirm', () => ({
 vi.mock('../composables/usePrompt', () => ({
   usePrompt: () => ({ showPrompt: vi.fn() }),
 }));
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

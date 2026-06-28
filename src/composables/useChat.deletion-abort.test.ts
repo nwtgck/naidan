@@ -1,12 +1,12 @@
-import { idToRaw, toChatId } from '@/models/ids';
+import { idToRaw, toChatId } from '@/01-models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 
 // --- Shared Mocks ---
 const mockAddToast = vi.fn();
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),

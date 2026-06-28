@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { reactive, triggerRef } from 'vue';
-import type { Chat, SidebarItem } from '@/models/types';
-import { idToRaw, toChatId } from '@/models/ids';
+import type { Chat, SidebarItem } from '@/01-models/types';
+import { idToRaw, toChatId } from '@/01-models/ids';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -52,7 +52,7 @@ const mockChat = vi.fn().mockImplementation(async (params: { model: string, onCh
   params.onChunk({ chunk: 'Response from ' + params.model });
 });
 
-vi.mock('../services/lm/openai', () => {
+vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
     constructor() {}
     chat = mockChat;
@@ -63,7 +63,7 @@ vi.mock('../services/lm/openai', () => {
   };
 });
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 

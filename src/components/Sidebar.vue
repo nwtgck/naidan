@@ -12,7 +12,7 @@ import Logo from './Logo.vue';
 import ModelSelector from './ModelSelector.vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SidebarDebugControls.vue') });
-import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/models/types';
+import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/01-models/types';
 import {
   Trash2Icon, SettingsIcon,
   PencilIcon, FolderIcon, FolderPlusIcon,
@@ -20,13 +20,13 @@ import {
   BotIcon, PanelLeftIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
   SearchIcon, GhostIcon, MessageSquarePlusIcon,
 } from 'lucide-vue-next';
-import { idToRaw } from '@/models/ids';
-import type { ChatGroupId, ChatId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupActions.vue') });
 import { useLayout } from '@/composables/useLayout';
 import { useConfirm } from '@/composables/useConfirm';
-import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
 import { scrollIntoViewSafe } from '@/utils/dom';

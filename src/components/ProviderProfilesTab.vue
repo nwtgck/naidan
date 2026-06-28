@@ -2,10 +2,10 @@
 import { ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import { idToRaw } from '@/models/ids';
-import type { ProviderProfileId } from '@/models/ids';
-import type { ProviderProfile } from '@/models/types';
-import { isHttpEndpoint } from '@/models/endpoint';
+import { idToRaw } from '@/01-models/ids';
+import type { ProviderProfileId } from '@/01-models/ids';
+import type { ProviderProfile } from '@/01-models/types';
+import { isHttpEndpoint } from '@/01-models/endpoint';
 import {
   BookmarkPlusIcon, PencilIcon, TrashIcon, CheckIcon,
 } from 'lucide-vue-next';

@@ -9,8 +9,8 @@ import {
   debugRunFileProtocolStandaloneVerification,
   debugSerializeFileProtocolStandaloneVerificationReportForCopy,
   type DebugFileProtocolStandaloneVerificationReport,
-} from '@/services/debug-file-protocol-standalone/verification/report';
-import { debugVerifyFileProtocolStandaloneWorkerFactory } from '@/services/debug-file-protocol-standalone/verification/worker-probe';
+} from '@/features/file-protocol-standalone/debug/verification/report';
+import { debugVerifyFileProtocolStandaloneWorkerFactory } from '@/features/file-protocol-standalone/debug/verification/worker-probe';
 
 const route = useRoute();
 const router = useRouter();
@@ -43,7 +43,7 @@ function debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialMarker({ element
 
 async function debugLoadFileProtocolStandaloneLazyStyleProbeModule({ signal }: { signal: AbortSignal }): Promise<Readonly<{ marker: string }>> {
   signal.throwIfAborted();
-  const loaded = await import('@/services/debug-file-protocol-standalone/verification/lazy-style-probe');
+  const loaded = await import('@/features/file-protocol-standalone/debug/verification/lazy-style-probe');
   signal.throwIfAborted();
   return { marker: loaded.STANDALONE_VERIFICATION_LAZY_STYLE_MARKER };
 }

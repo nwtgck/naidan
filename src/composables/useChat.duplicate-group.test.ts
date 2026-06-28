@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { reactive } from 'vue';
-import { toChatGroupId } from '@/models/ids';
+import { toChatGroupId } from '@/01-models/ids';
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     updateChatGroup: vi.fn().mockResolvedValue(undefined),

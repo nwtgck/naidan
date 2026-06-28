@@ -1,5 +1,5 @@
 import { ensureStrings } from '@/strings';
-import type { ChatGroup, SidebarItem } from '@/models/types';
+import type { ChatGroup, SidebarItem } from '@/01-models/types';
 import {
   buildCompactRequestMessages,
   createCompactBranchFromResponse,
@@ -9,14 +9,14 @@ import {
   getHeaderCompactBoundary,
   splitCompactPath,
   type ContextCompactPromptMode,
-} from '@/services/context-compact';
+} from '@/logic/context-compact';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 import { generateId } from '@/utils/id';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
-import type { ChatId, MessageId } from '@/models/ids';
+import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import {
   chatRuntimeStore,
   contextCompactRuntime,

@@ -5,8 +5,8 @@ import { createRouter, createWebHistory } from 'vue-router';
 import Sidebar from './Sidebar.vue';
 import CurrentChatPane from './CurrentChatPane.vue';
 import { useLayout } from '@/composables/useLayout';
-import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/models/types';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/01-models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
   mockScrollIntoViewSafe: vi.fn(),

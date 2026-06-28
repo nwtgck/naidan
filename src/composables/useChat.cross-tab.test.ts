@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import type { Chat, SidebarItem, ChatSummary, Hierarchy } from '@/models/types';
+import type { Chat, SidebarItem, ChatSummary, Hierarchy } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { nextTick, reactive, toRaw } from 'vue';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 // --- Mocks ---
 
@@ -17,7 +17,7 @@ const { mocks } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
@@ -81,11 +81,11 @@ vi.mock('./useSettings', () => ({
 
 vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(() => ({ chat: vi.fn(), listModels: vi.fn().mockResolvedValue(['gpt-4']) })),
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn().mockImplementation(() => ({ chat: vi.fn(), listModels: vi.fn().mockResolvedValue(['gpt-4']) })),
 }));
 

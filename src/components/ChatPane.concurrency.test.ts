@@ -1,12 +1,12 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { nextTick, ref, computed, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
-import type { Attachment, LmParameters } from '@/models/types';
+import type { Attachment, LmParameters } from '@/01-models/types';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';

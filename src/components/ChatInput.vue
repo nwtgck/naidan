@@ -8,10 +8,10 @@ import {
 import { generateId, generateOpaqueId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
-import ChatToolsMenu from './ChatToolsMenu.vue';
+import ChatToolsMenu from '../features/tools/components/ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
-import { useChatTools } from '@/composables/useChatTools';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import { useChatTools } from '@/features/tools/composables/useChatTools';
+import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
 import { useChatConversation } from '@/composables/chat/useChatConversation';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { useChatImageGeneration } from '@/composables/chat/useChatImageGeneration';
@@ -19,19 +19,19 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
-import { storageService } from '@/services/storage';
-import { startVolumeExtensionScan } from '@/services/tools/wesh/volume-extension-cache';
-import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
+import { storageService } from '@/00-storage/service';
+import { startVolumeExtensionScan } from '@/features/tools/wesh/volume-extension-cache';
+import { checkFileSystemAccessSupport } from '@/lib/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
-const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AdvancedTextEditorV3.vue') });
+const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('../features/advanced-text-editor-v3/components/AdvancedTextEditorV3.vue') });
 
 import {
   SquareIcon, Minimize2Icon, Maximize2Icon, SendIcon,
@@ -40,9 +40,9 @@ import {
   Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
-import type { Attachment, Chat, ChatGroup, LmParameters } from '@/models/types';
-import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/models/ids';
-import type { AttachmentId, BinaryObjectId, ChatId, VolumeId } from '@/models/ids';
+import type { Attachment, Chat, ChatGroup, LmParameters } from '@/01-models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
+import type { AttachmentId, BinaryObjectId, ChatId, VolumeId } from '@/01-models/ids';
 
 const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsAccessScope } = useChatWeshPreferences();

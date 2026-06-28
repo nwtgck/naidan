@@ -1,7 +1,7 @@
 import { computed, type ComputedRef, toRaw } from 'vue';
-import { idToRaw } from '@/models/ids';
-import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/models/types';
-import type { ChatId, ToolCallId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/01-models/types';
+import type { ChatId, ToolCallId } from '@/01-models/ids';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 

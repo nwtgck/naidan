@@ -1,4 +1,4 @@
-import type { ChatId, MessageId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -7,7 +7,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
-import { idToRaw, toChatId } from '@/models/ids';
+import { idToRaw, toChatId } from '@/01-models/ids';
 
 // Mock router
 const router = createRouter({
@@ -15,7 +15,7 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode, Chat } from '@/models/types';
+import type { MessageNode, Chat } from '@/01-models/types';
 
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);

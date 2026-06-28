@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
 import { findNodeInBranch } from '@/utils/chat-tree';
-import type { ChatId, MessageId, ToolCallId } from '@/models/ids';
-import type { Chat } from '@/models/types';
+import type { ChatId, MessageId, ToolCallId } from '@/01-models/ids';
+import type { Chat } from '@/01-models/types';
 
 export type ChatVolatileState = {
   setVolatileAssistantError({

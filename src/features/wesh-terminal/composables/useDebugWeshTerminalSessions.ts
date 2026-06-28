@@ -1,7 +1,7 @@
 import { useSettings } from '@/composables/useSettings';
 import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
-import { storageService } from '@/services/storage';
-import type { WeshMount } from '@/services/wesh/types';
+import { storageService } from '@/00-storage/service';
+import type { WeshMount } from '@/features/wesh/types';
 
 const store = createWeshTerminalSessions({
   opfsRootName: 'naidan-debug-wesh',

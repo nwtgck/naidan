@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem, ChatSidebarItem } from '@/models/types';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatGroup, ChatSummary, SidebarItem, ChatSidebarItem } from '@/01-models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
   mockScrollIntoViewSafe: vi.fn(),
@@ -138,7 +138,7 @@ vi.mock('../composables/useConfirm', () => ({
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),

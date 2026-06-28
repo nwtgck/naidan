@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { GitForkIcon, PencilIcon, CopyIcon, CheckIcon, RefreshCwIcon, SendIcon, MoreVerticalIcon, HistoryIcon, MoreHorizontalIcon, LinkIcon } from 'lucide-vue-next';
-import type { MessageNode, LmParameters } from '@/models/types';
-import type { ChatId, MessageId } from '@/models/ids';
+import type { MessageNode, LmParameters } from '@/01-models/types';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { isImageGenerationPending } from '@/utils/image-generation';
 import { generateMessageLink } from '@/utils/chat-links';
 import { useToast } from '@/composables/useToast';
 import { ensureStrings, lazyStrings } from '@/strings';
-import SpeechControl from './SpeechControl.vue';
+import SpeechControl from '../features/speech/components/SpeechControl.vue';
 import MessageActionsMenu from './MessageActionsMenu.vue';
-import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
+import SpeechLanguageSelector from '../features/speech/components/SpeechLanguageSelector.vue';
 
 const props = defineProps<{
   chatId?: ChatId,

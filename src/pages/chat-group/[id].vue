@@ -3,7 +3,7 @@ import { watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import ChatGroupSettingsPanel from '@/components/ChatGroupSettingsPanel.vue';
-import { toChatGroupId } from '@/models/ids';
+import { toChatGroupId } from '@/01-models/ids';
 
 const route = useRoute();
 const chatNavigation = useChatNavigation();

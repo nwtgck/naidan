@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
-import { toVolumeId, toChatId } from '@/models/ids';
+import { toVolumeId, toChatId } from '@/01-models/ids';
 
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: {
@@ -54,7 +54,7 @@ vi.mock('lucide-vue-next', () => ({
 
 // Mock child components
 vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div></div>' } }));
-vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
+vi.mock('../features/tools/components/ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
 
 const mockOpenFileExplorer = vi.fn();
 const mockEnsureChatTmpDirectory = vi.fn();
@@ -81,12 +81,12 @@ vi.mock('@/composables/useAppPresentation', () => ({
 }));
 
 // Mock new composables and services
-vi.mock('../composables/useChatTools', () => ({
+vi.mock('../features/tools/composables/useChatTools', () => ({
   useChatTools: () => ({
     setToolEnabled: vi.fn(),
   }),
 }));
-vi.mock('../composables/useChatWeshPreferences', () => ({
+vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
     getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),
@@ -101,12 +101,12 @@ vi.mock('../composables/useConfirm', () => ({
     showConfirm: vi.fn().mockResolvedValue(true),
   }),
 }));
-vi.mock('../composables/useFileExplorerModal', () => ({
+vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: () => ({
     openFileExplorer: mockOpenFileExplorer,
   }),
 }));
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getVolume: vi.fn(),
     createVolumeFromFiles: vi.fn(),
@@ -116,7 +116,7 @@ vi.mock('../services/storage', () => ({
     listVolumes: vi.fn(),
   },
 }));
-vi.mock('../services/storage/opfs-detection', () => ({
+vi.mock('../lib/opfs-detection', () => ({
   checkFileSystemAccessSupport: vi.fn(() => false),
 }));
 
@@ -133,7 +133,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatGroupId: string | undefined,
     naidanSysfsAccessScope: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'main_chats',
   }) => {
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     const mounts: Array<{ type: string, path: string, readOnly?: boolean, visibility?: string }> = [];
 
     if (chatId !== undefined && mockSettings.value.storageType === 'opfs') {
@@ -600,7 +600,7 @@ describe('ChatInput Integration', () => {
       mounts: [],
     };
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -629,7 +629,7 @@ describe('ChatInput Integration', () => {
       mounts: [],
     };
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -657,7 +657,7 @@ describe('ChatInput Integration', () => {
       mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
     };
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -693,7 +693,7 @@ describe('ChatInput Integration', () => {
     };
     mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();

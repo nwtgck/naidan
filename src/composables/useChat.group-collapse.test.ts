@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { reactive } from 'vue';
-import type { SidebarItem, ChatGroup } from '@/models/types';
-import { toChatGroupId } from '@/models/ids';
+import type { SidebarItem, ChatGroup } from '@/01-models/types';
+import { toChatGroupId } from '@/01-models/ids';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

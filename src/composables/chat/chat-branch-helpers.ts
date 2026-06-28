@@ -1,5 +1,5 @@
-import type { MessageNode } from '@/models/types';
-import type { MessageId } from '@/models/ids';
+import type { MessageNode } from '@/01-models/types';
+import type { MessageId } from '@/01-models/ids';
 import { findParentInBranch } from '@/utils/chat-tree';
 
 export function getSiblingsInChatBranch({

@@ -1,6 +1,6 @@
 import { ensureChatTmpDirectory } from '@/composables/chat/global/chat-core-singletons';
 import type { ChatTmpDirectoryEntry } from '@/composables/chat/global/chat-tmp-directory-store';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatTmpDirectoryAdapter = {
   ensureChatTmpDirectory({

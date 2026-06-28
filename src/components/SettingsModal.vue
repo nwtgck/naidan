@@ -5,12 +5,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
-import type { Settings } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { ChatGroupRecipeSchema } from '@/models/recipe';
-import type { ChatGroupRecipe } from '@/models/recipe';
+import type { Settings } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { ChatGroupRecipeSchema } from '@/features/recipes/logic/recipe';
+import type { ChatGroupRecipe } from '@/features/recipes/logic/recipe';
 import { parseConcatenatedJson } from '@/utils/json-stream-parser';
-import { matchRecipeModels } from '@/utils/recipe-matcher';
+import { matchRecipeModels } from '@/features/recipes/logic/recipe-matcher';
 import {
   XIcon, GlobeIcon,
   DatabaseIcon, Settings2Icon, BookmarkPlusIcon,
@@ -23,19 +23,19 @@ import {
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load tabs that are not visible by default, but prefetch them when idle.
-const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeImportTab.vue') });
+const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('../features/recipes/components/RecipeImportTab.vue') });
 const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilesTab.vue') });
-const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsManager.vue') });
+const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('../features/transformers-js/components/TransformersJsManager.vue') });
 const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
 const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./VolumeSettingsTab.vue') });
 const DeveloperTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./DeveloperTab.vue') });
 const AboutTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AboutTab.vue') });
-const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./GlobalToolsSettings.vue') });
+const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('../features/tools/components/GlobalToolsSettings.vue') });
 
 // IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';
-import ThemeToggle from './ThemeToggle.vue';
+import ThemeToggle from '../features/theme/components/ThemeToggle.vue';
 import LanguageSelector from './LanguageSelector.vue';
 
 import { useConfirm } from '@/composables/useConfirm'; // Import useConfirm

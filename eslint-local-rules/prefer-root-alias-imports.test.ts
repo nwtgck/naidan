@@ -80,7 +80,7 @@ describe('prefer-root-alias-imports rule', () => {
   });
 
   it('allows root alias imports', async () => {
-    const result = await lintText({ code: `import { storageService } from '@/services/storage'` });
+    const result = await lintText({ code: `import { storageService } from '@/00-storage/service'` });
 
     expect(result.messages).toHaveLength(0);
     expect(result.output).toBeUndefined();
@@ -96,7 +96,7 @@ describe('prefer-root-alias-imports rule', () => {
   it('fixes parent-folder imports to root alias imports', async () => {
     await expectFixed({
       code: `import { storageService } from '../services/storage'`,
-      output: `import { storageService } from '@/services/storage'`,
+      output: `import { storageService } from '@/00-storage/service'`,
     });
   });
 
@@ -111,28 +111,28 @@ describe('prefer-root-alias-imports rule', () => {
   it('fixes re-exports', async () => {
     await expectFixed({
       code: `export { createStorage } from '../services/storage'`,
-      output: `export { createStorage } from '@/services/storage'`,
+      output: `export { createStorage } from '@/00-storage/service'`,
     });
   });
 
   it('fixes export-all declarations', async () => {
     await expectFixed({
       code: `export * from '../services/storage'`,
-      output: `export * from '@/services/storage'`,
+      output: `export * from '@/00-storage/service'`,
     });
   });
 
   it('fixes dynamic imports', async () => {
     await expectFixed({
       code: `const mod = await import('../services/storage')`,
-      output: `const mod = await import('@/services/storage')`,
+      output: `const mod = await import('@/00-storage/service')`,
     });
   });
 
   it('fixes TS import types', async () => {
     await expectFixed({
       code: `type Attachment = import('../models/types').Attachment`,
-      output: `type Attachment = import('@/models/types').Attachment`,
+      output: `type Attachment = import('@/01-models/types').Attachment`,
     });
   });
 
@@ -155,7 +155,7 @@ describe('prefer-root-alias-imports rule', () => {
 
   it('does not fix imports that resolve outside rootDir', async () => {
     const result = await lintText({
-      filePath: 'src/services/wesh/naidan-sysfs/constants.ts',
+      filePath: 'src/features/wesh/naidan-sysfs/constants.ts',
       code: `import packageJson from '../../../../package.json'`,
     });
 

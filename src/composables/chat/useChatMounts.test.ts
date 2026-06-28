@@ -1,7 +1,7 @@
 import { computed } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { toChatId, toVolumeId } from '@/models/ids';
-import type { ChatId } from '@/models/ids';
+import { toChatId, toVolumeId } from '@/01-models/ids';
+import type { ChatId } from '@/01-models/ids';
 
 const {
   mockCurrentChat,
@@ -29,7 +29,7 @@ const {
   };
 });
 
-vi.mock('@/services/storage', () => ({
+vi.mock('@/00-storage/service', () => ({
   storageService: {
     addMountToChat: mockAddMountToChat,
     removeMountFromChat: mockRemoveMountFromChat,

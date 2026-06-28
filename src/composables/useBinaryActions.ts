@@ -1,9 +1,9 @@
-import { storageService } from '@/services/storage';
-import { idToRaw } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import { idToRaw } from '@/01-models/ids';
 import { useConfirm } from './useConfirm';
 import { useImagePreview } from './useImagePreview';
-import type { BinaryObject } from '@/models/types';
-import type { BinaryObjectId } from '@/models/ids';
+import type { BinaryObject } from '@/01-models/types';
+import type { BinaryObjectId } from '@/01-models/ids';
 import { ensureStrings } from '@/strings';
 
 export function useBinaryActions() {

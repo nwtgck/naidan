@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
-import type { Chat, ChatGroup } from '@/models/types';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import type { Chat, ChatGroup } from '@/01-models/types';
+import { toChatGroupId, toChatId } from '@/01-models/ids';
 
 function makeChat(overrides: Partial<Chat> = {}): Chat {
   return {

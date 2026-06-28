@@ -7,7 +7,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
-import type { Chat, Endpoint } from '@/models/types';
+import type { Chat, Endpoint } from '@/01-models/types';
 
 // --- Mocks ---
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({

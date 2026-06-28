@@ -1,4 +1,4 @@
-import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
+import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -8,8 +8,8 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { setupScrollToMock } from '@/utils/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import type { WeshMount } from '@/services/wesh/types';
-import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
+import type { WeshMount } from '@/features/wesh/types';
+import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
 // Mock router
 const router = createRouter({
@@ -17,10 +17,10 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode, Chat } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { MessageNode, Chat } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
-import type { ScopedSettingChange } from '@/models/scoped-setting-change';
+import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
 
 const {
@@ -655,25 +655,25 @@ vi.mock('../composables/useToast', () => ({
   }),
 }));
 
-vi.mock('../services/import-export/chat-url-share', () => ({
+vi.mock('../features/import-export/chat-url-share', () => ({
   generateChatShareURL: mockGenerateChatShareURL,
 }));
 
 
-vi.mock('@/services/fake-lm', () => ({
+vi.mock('@/features/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
   useFakeLmDebugMode: () => ({
     fakeLmDebugModeAvailability: mockFakeLmDebugModeAvailability,
   }),
 }));
 
-vi.mock('../composables/useFileExplorerModal', () => ({
+vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: () => ({
     openFileExplorer: mockOpenFileExplorer,
   }),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
     getFile: vi.fn().mockResolvedValue(new Blob([])),
@@ -681,7 +681,7 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-vi.mock('../composables/useChatWeshPreferences', () => ({
+vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
     getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),

@@ -1,5 +1,5 @@
-import type { Chat, ChatGroup, Endpoint, Settings } from '@/models/types';
-import { cloneEndpoint } from '@/models/endpoint';
+import type { Chat, ChatGroup, Endpoint, Settings } from '@/01-models/types';
+import { cloneEndpoint } from '@/01-models/endpoint';
 
 export function resolveChatEndpointForChat({
   chat,

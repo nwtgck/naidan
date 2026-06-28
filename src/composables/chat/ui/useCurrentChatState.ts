@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from 'vue';
-import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/models/types';
-import type { Settings } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/01-models/types';
+import type { Settings } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 import { useSettings } from '@/composables/useSettings';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';

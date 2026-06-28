@@ -1,10 +1,10 @@
 import { toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
 import { generateId } from '@/utils/id';
-import type { ChatGroupId, ChatId } from '@/models/ids';
-import { cloneToolConfigs } from '@/services/tools/tool-config';
-import type { ChatGroup, HierarchyChatGroupNode, HierarchyNode } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
+import { cloneToolConfigs } from '@/features/tools/tool-config';
+import type { ChatGroup, HierarchyChatGroupNode, HierarchyNode } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import { useSettings } from '@/composables/useSettings';
 import {
   currentChatGroupRef,
@@ -358,7 +358,7 @@ function insertTopLevelChat({
   current,
   node,
 }: {
-  current: import('@/models/types').Hierarchy,
+  current: import('@/01-models/types').Hierarchy,
   node: HierarchyNode,
 }) {
   const firstChatIndex = current.items.findIndex((item) => item.type === 'chat');

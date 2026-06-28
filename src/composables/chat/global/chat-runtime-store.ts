@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
-import type { Chat } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Chat } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatRuntimeTaskKind = 'title' | 'fetch' | 'process';
 
@@ -367,4 +367,4 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
     },
   };
 }
-import { idToRaw } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';

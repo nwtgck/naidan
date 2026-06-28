@@ -4,8 +4,8 @@ import { ref, nextTick, reactive } from 'vue';
 import StorageTab from './StorageTab.vue';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '@/composables/useSettings';
-import { storageService } from '@/services/storage';
-import type { ProviderProfile } from '@/models/types';
+import { storageService } from '@/00-storage/service';
+import type { ProviderProfile } from '@/01-models/types';
 import { useRouter, useRoute } from 'vue-router';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
@@ -15,20 +15,20 @@ const exportUrlMocks = vi.hoisted(() => ({
   getExportURL: vi.fn(),
 }));
 
-vi.mock('@/services/import-export/url-logic', () => ({
+vi.mock('@/features/import-export/url-logic', () => ({
   urlImportExportLogic: {
     getExportURL: exportUrlMocks.getExportURL,
   },
 }));
 
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     listModels = mockListModels;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     listModels = mockListModels;
   },
@@ -86,7 +86,7 @@ vi.mock('../composables/useToast', () => ({
   })),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

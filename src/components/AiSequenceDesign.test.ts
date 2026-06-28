@@ -1,14 +1,14 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import ToolCallGroupItem from './ToolCallGroupItem.vue';
-import type { AssistantMessageNode, CombinedToolCall } from '@/models/types';
+import ToolCallGroupItem from '../features/tools/components/ToolCallGroupItem.vue';
+import type { AssistantMessageNode, CombinedToolCall } from '@/01-models/types';
 import { ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
-import type { MessageId, ToolCallId } from '@/models/ids';
+import type { MessageId, ToolCallId } from '@/01-models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {

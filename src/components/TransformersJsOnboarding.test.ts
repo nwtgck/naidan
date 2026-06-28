@@ -3,26 +3,26 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
 import { useSettings } from '@/composables/useSettings';
-import { useTheme } from '@/composables/useTheme';
-import { transformersJsService } from '@/services/transformers-js';
-import TransformersJsManager from './TransformersJsManager.vue';
+import { useTheme } from '@/features/theme/composables/useTheme';
+import { transformersJsService } from '@/features/transformers-js';
+import TransformersJsManager from '../features/transformers-js/components/TransformersJsManager.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 const mockAddToast = vi.fn();
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: vi.fn(),
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({ useSettings: vi.fn() }));
 vi.mock('../composables/useToast', () => ({ useToast: () => ({ addToast: mockAddToast }) }));
-vi.mock('../composables/useTheme', () => ({ useTheme: vi.fn() }));
+vi.mock('../features/theme/composables/useTheme', () => ({ useTheme: vi.fn() }));
 vi.mock('../composables/useConfirm', () => ({
   useConfirm: () => ({
     showConfirm: mockShowConfirm,
@@ -36,7 +36,7 @@ vi.mock('../composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('../services/transformers-js', () => ({
+vi.mock('../features/transformers-js', () => ({
   transformersJsService: {
     getState: vi.fn(),
     subscribe: vi.fn(),

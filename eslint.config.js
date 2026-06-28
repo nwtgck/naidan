@@ -19,6 +19,7 @@ import noInvalidAllowedHtmlTemplate from './eslint-local-rules/no-invalid-allowe
 import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
 import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
 import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
+import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -149,7 +150,7 @@ export default tseslint.config(
             message: 'Do not import @huggingface/transformers directly. Use the worker thread via transformers-js-loader to keep the UI responsive and allow proper tree-shaking in standalone mode.'
           },
           {
-            name: '@/services/transformers-js.worker',
+            name: '@/features/transformers-js.worker',
             message: 'Do not import the worker directly. Use transformers-js-loader instead.'
           },
           {
@@ -161,7 +162,7 @@ export default tseslint.config(
             message: 'Do not import highlight.js in main-thread code. Use the highlight worker client and keep highlight.js bundled only in the worker path.'
           },
           {
-            name: '@/services/highlight.worker-core',
+            name: '@/features/highlight.worker-core',
             message: 'Do not import worker-only highlight helpers from main-thread code. Use the highlight worker client or plain HTML escaping.'
           },
           {
@@ -175,14 +176,14 @@ export default tseslint.config(
   {
     // Exception: The worker itself must be allowed to import @huggingface/transformers
     files: [
-      'src/services/transformers-js.worker.ts',
-      'src/services/transformers-js.scanner.worker.ts',
-      'src/services/transformers-js.types.ts',
-      'src/services/highlight.worker.ts',
-      'src/services/highlight.worker.impl.ts',
-      'src/services/highlight.worker.types.ts',
-      'src/services/highlight.worker-core.ts',
-      'src/services/highlight.worker.test.ts'
+      'src/features/transformers-js.worker.ts',
+      'src/features/transformers-js.scanner.worker.ts',
+      'src/features/transformers-js.types.ts',
+      'src/features/highlight.worker.ts',
+      'src/features/highlight.worker.impl.ts',
+      'src/features/highlight.worker.types.ts',
+      'src/features/highlight.worker-core.ts',
+      'src/features/highlight.worker.test.ts'
     ],
     rules: {
       'no-restricted-imports': 'off'
@@ -190,7 +191,7 @@ export default tseslint.config(
   },
   {
     // Exception: The loader itself must be allowed to reference the worker (via URL)
-    files: ['src/services/transformers-js-loader.ts'],
+    files: ['src/features/transformers-js-loader.ts'],
     rules: {
       'no-restricted-imports': 'off'
     }
@@ -212,6 +213,7 @@ export default tseslint.config(
   noRawDompurify,
   noXssProneBrowserApis,
   preferRootAliasImports,
+  enforceDependencyDirections,
   {
     files: ['**/*.test.ts'],
     languageOptions: {

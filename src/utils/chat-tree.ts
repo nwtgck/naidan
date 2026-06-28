@@ -1,8 +1,11 @@
 import { generateId } from './id';
 import { toRaw } from 'vue';
-import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import type { MessageId } from '@/models/ids';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '@/01-models/types';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import type { MessageId } from '@/01-models/ids';
 
 export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -112,7 +115,8 @@ export interface HistoryItem {
   content: string,
   modelId?: string,
   thinking?: string,
-  attachments?: import('@/models/types').Attachment[],
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+  attachments?: import('@/01-models/types').Attachment[],
 }
 
 export function createBranchFromMessages({ messages }: { messages: HistoryItem[] }): MessageNode[] {

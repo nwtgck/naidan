@@ -9,9 +9,9 @@ import {
 import type { MediaShelfVisibility } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
-import type { ChatPaneHeaderMoreAction } from '@/services/context-compact';
-import { idToRaw } from '@/models/ids';
-import type { ChatGroupId, ChatId } from '@/models/ids';
+import type { ChatPaneHeaderMoreAction } from '@/logic/context-compact';
+import { idToRaw } from '@/01-models/ids';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
 
 type HeaderChat = {

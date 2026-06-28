@@ -3,7 +3,7 @@ import { watch, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import CurrentChatPane from '@/components/CurrentChatPane.vue';
-import { toChatId, toMessageId } from '@/models/ids';
+import { toChatId, toMessageId } from '@/01-models/ids';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);

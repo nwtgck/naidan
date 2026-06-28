@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue';
 import { chatVolatileState } from '@/composables/chat/global/chat-core-singletons';
-import type { ToolCallId } from '@/models/ids';
+import type { ToolCallId } from '@/01-models/ids';
 
 export type ToolCallOutputAdapter = {
   getOutput({

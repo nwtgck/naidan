@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import type { EndpointType, Settings } from '@/models/types';
+import type { EndpointType, Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 
 vi.mock('@/composables/useSettings', () => ({

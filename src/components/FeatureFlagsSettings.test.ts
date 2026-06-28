@@ -47,7 +47,7 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/services/fake-lm', () => ({
+vi.mock('@/features/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
   preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
   useFakeLmDebugMode: () => ({

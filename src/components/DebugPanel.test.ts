@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import DebugPanel from './DebugPanel.vue';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useLayout } from '@/composables/useLayout';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { ref } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
@@ -15,7 +15,7 @@ vi.mock('../composables/useLayout', () => ({
   useLayout: vi.fn(),
 }));
 
-vi.mock('../composables/useFileExplorerModal', () => ({
+vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: vi.fn(),
 }));
 

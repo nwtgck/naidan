@@ -2,8 +2,8 @@
 import { computed } from 'vue';
 import { lazyStrings } from '@/strings';
 import { ServerCogIcon } from 'lucide-vue-next';
-import type { FakeLmDebugModeStatus } from '@/services/fake-lm';
-import { createOllamaProvider } from '@/services/lm/providerFactory';
+import type { FakeLmDebugModeStatus } from '@/features/fake-lm';
+import { createOllamaProvider } from '@/features/lm/providerFactory';
 import OllamaPsView from './OllamaPsView.vue';
 
 const props = defineProps<{

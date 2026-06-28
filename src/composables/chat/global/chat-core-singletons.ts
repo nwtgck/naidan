@@ -1,11 +1,11 @@
 import { ref, toRaw, triggerRef } from 'vue';
-import { type ContextCompactProgress } from '@/services/context-compact';
+import { type ContextCompactProgress } from '@/logic/context-compact';
 import { createChatDataStore } from './chat-data-store';
 import { createChatRuntimeFacade } from './chat-runtime-facade';
 import { createChatRuntimeStore } from './chat-runtime-store';
 import { createChatVolatileState } from './chat-volatile-state';
 import { createContextCompactRuntime } from './context-compact-runtime';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 import {
   chatTmpDirectories,
   clearChatTmpDirectories,

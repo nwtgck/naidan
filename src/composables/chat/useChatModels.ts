@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { Endpoint } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Endpoint } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 import {
   availableModels,
   fetchingModels,

@@ -11,7 +11,7 @@ import {
 } from 'lucide-vue-next';
 import { useToast } from '@/composables/useToast';
 import { ensureStrings, lazyStrings } from '@/strings';
-import type { OllamaProvider, OllamaRunningModel } from '@/services/lm/ollama';
+import type { OllamaProvider, OllamaRunningModel } from '@/features/lm/ollama';
 
 type PanelState = 'collapsed' | 'expanded';
 type DetailsState = 'collapsed' | 'expanded';

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { useRecentChats } from './useRecentChats';
 import { useOverlay } from './useOverlay';
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 
 const mockChats = ref([
   { id: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1000 },

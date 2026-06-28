@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import { storageService } from '@/services/storage';
-import type { BinaryObject } from '@/models/types';
+import { storageService } from '@/00-storage/service';
+import type { BinaryObject } from '@/01-models/types';
 import {
   SearchIcon, ArrowUpIcon, ArrowDownIcon, DownloadIcon,
   EyeIcon, HardDriveIcon,
@@ -13,8 +13,8 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
-import { idToRaw, toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId } from '@/models/ids';
+import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
+import type { BinaryObjectId } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
 
 const objects = ref<BinaryObject[]>([]);

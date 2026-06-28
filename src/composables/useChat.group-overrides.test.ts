@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { reactive, nextTick } from 'vue';
-import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
+import type { Chat, ChatGroup, SidebarItem } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 // Mock storage
 const mockRootItems: SidebarItem[] = [];
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -48,7 +48,7 @@ vi.mock('./useSettings', () => ({
 }));
 
 const mockLmChat = vi.fn();
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
       chat: mockLmChat,
@@ -57,7 +57,7 @@ vi.mock('../services/lm/openai', () => ({
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
       chat: mockLmChat,
