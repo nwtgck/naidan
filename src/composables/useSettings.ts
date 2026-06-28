@@ -34,6 +34,9 @@ const _isOnboardingDismissed = ref(false);
 const _onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
 const availableModels = ref<string[]>([]);
 const isFetchingModels = ref(false);
+let nextModelFetchRequestId = 0;
+let latestModelFetchRequestId = 0;
+let activeModelFetchCount = 0;
 
 export type SearchPreviewMode = 'always' | 'disabled' | 'peek';
 const _searchPreviewMode = ref<SearchPreviewMode>('always');
@@ -49,7 +52,10 @@ interface UseSettingsApi {
   searchPreviewMode: Readonly<Ref<SearchPreviewMode>>,
   searchContextSize: Readonly<Ref<number>>,
   init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>,
-  save: ({ patch }: { patch: Partial<Settings> }) => Promise<void>,
+  save: ({ patch, modelRefresh }: {
+    patch: Partial<Settings>,
+    modelRefresh: 'await' | 'background',
+  }) => Promise<void>,
   updateExperimental: ({ updater }: {
     updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
   }) => Promise<void>,
@@ -99,7 +105,12 @@ transformersJsService.subscribeModelList({ listener: async () => {
   switch (type) {
   case 'transformers_js': {
     const { fetchModels } = useSettings();
-    await fetchModels({});
+    try {
+      await fetchModels({});
+    } catch {
+      // fetchModels records the relevant error. Subscription callbacks must not
+      // create unhandled promise rejections when a background refresh fails.
+    }
     break;
   }
   case 'openai':
@@ -244,8 +255,11 @@ export function useSettings(): UseSettingsApi {
             locale: s.experimental?.locale ?? resolveBrowserLocale(),
           });
           if (s.endpointUrl || s.endpointType === 'transformers_js') {
-            // Initial fetch of models if we have an endpoint
-            fetchModels({});
+            // Initial model refresh is non-blocking, but its rejection must be
+            // observed because initialization intentionally does not await it.
+            void fetchModels({}).catch(() => {
+              // fetchModels records the relevant error details.
+            });
           }
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
@@ -263,16 +277,23 @@ export function useSettings(): UseSettingsApi {
   }
 
   async function fetchModels({ overrides }: { overrides?: { url: string, type: EndpointType, headers?: [string, string][] } }): Promise<string[]> {
+    const requestId = ++nextModelFetchRequestId;
+    latestModelFetchRequestId = requestId;
+    activeModelFetchCount += 1;
+    isFetchingModels.value = true;
+
     const url = overrides?.url ?? _settings.value.endpointUrl;
     const type = overrides?.type ?? _settings.value.endpointType;
     const headers = overrides?.headers ?? _settings.value.endpointHttpHeaders;
 
-    if (!url && type !== 'transformers_js') {
-      availableModels.value = [];
-      return [];
-    }
-    isFetchingModels.value = true;
     try {
+      if (!url && type !== 'transformers_js') {
+        if (requestId === latestModelFetchRequestId) {
+          availableModels.value = [];
+        }
+        return [];
+      }
+
       const provider = createLmProvider({
         endpointType: type,
         endpointUrl: url,
@@ -281,23 +302,31 @@ export function useSettings(): UseSettingsApi {
       });
 
       const models = await provider.listModels({});
-      availableModels.value = models;
+      if (requestId === latestModelFetchRequestId) {
+        availableModels.value = models;
+      }
       return models;
     } catch (err) {
-      const { addErrorEvent } = useGlobalEvents();
-      addErrorEvent({
-        source: 'useSettings:fetchModels',
-        message: await ensureStrings.useSettings__failed_to_fetch_models_for_settings(),
-        details: err instanceof Error ? err : String(err),
-      });
-      console.error('Failed to fetch models:', err);
+      if (requestId === latestModelFetchRequestId) {
+        const { addErrorEvent } = useGlobalEvents();
+        addErrorEvent({
+          source: 'useSettings:fetchModels',
+          message: await ensureStrings.useSettings__failed_to_fetch_models_for_settings(),
+          details: err instanceof Error ? err : String(err),
+        });
+        console.error('Failed to fetch models:', err);
+      }
       throw err;
     } finally {
-      isFetchingModels.value = false;
+      activeModelFetchCount -= 1;
+      isFetchingModels.value = activeModelFetchCount > 0;
     }
   }
 
-  async function save({ patch }: { patch: Partial<Settings> }) {
+  async function save({ patch, modelRefresh }: {
+    patch: Partial<Settings>,
+    modelRefresh: 'await' | 'background',
+  }) {
     const oldUrl = _settings.value.endpointUrl;
     const oldType = _settings.value.endpointType;
 
@@ -319,7 +348,23 @@ export function useSettings(): UseSettingsApi {
     const urlChanged = patch.endpointUrl !== undefined && patch.endpointUrl !== oldUrl;
     const typeChanged = patch.endpointType !== undefined && patch.endpointType !== oldType;
     if (urlChanged || typeChanged) {
-      await fetchModels({});
+      switch (modelRefresh) {
+      case 'await':
+        await fetchModels({});
+        break;
+      case 'background':
+        // URL-provided connection settings must become usable before a network
+        // model-list request completes. Waiting here would put endpoint latency
+        // back on the onboarding critical path that this startup refactor removes.
+        void fetchModels({}).catch(() => {
+          // fetchModels already records the user-visible/global error details.
+        });
+        break;
+      default: {
+        const _ex: never = modelRefresh;
+        return _ex;
+      }
+      }
     }
   }
 
@@ -468,6 +513,9 @@ export function useSettings(): UseSettingsApi {
     } as Settings;
     availableModels.value = [];
     isFetchingModels.value = false;
+    nextModelFetchRequestId = 0;
+    latestModelFetchRequestId = 0;
+    activeModelFetchCount = 0;
     _searchPreviewMode.value = 'always';
     initPromise = null;
     localeChangeQueue = Promise.resolve();

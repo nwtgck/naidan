@@ -17,6 +17,17 @@ const router = createRouter({
 });
 
 // Mock transformersJsService
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../services/transformers-js', () => {
   const state = {
     status: 'idle',

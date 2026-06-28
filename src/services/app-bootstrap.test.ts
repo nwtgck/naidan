@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { scheduleAppStartup } from './app-startup';
+import { scheduleAppBootstrap } from './app-bootstrap';
 
 function setReadyState({ value }: { value: DocumentReadyState }): void {
   Object.defineProperty(document, 'readyState', {
@@ -8,7 +8,7 @@ function setReadyState({ value }: { value: DocumentReadyState }): void {
   });
 }
 
-describe('app startup scheduling', () => {
+describe('app bootstrap scheduling', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
   });
@@ -23,7 +23,7 @@ describe('app startup scheduling', () => {
     const onWaitingForDom = vi.fn();
     const onFailure = vi.fn();
 
-    scheduleAppStartup({ document, bootstrap, onWaitingForDom, onFailure });
+    scheduleAppBootstrap({ document, bootstrap, onWaitingForDom, onFailure });
     expect(bootstrap).not.toHaveBeenCalled();
     expect(onWaitingForDom).toHaveBeenCalledOnce();
 
@@ -40,7 +40,7 @@ describe('app startup scheduling', () => {
     const bootstrap = vi.fn(async () => {});
     const onWaitingForDom = vi.fn();
 
-    scheduleAppStartup({
+    scheduleAppBootstrap({
       document,
       bootstrap,
       onWaitingForDom,
@@ -57,7 +57,7 @@ describe('app startup scheduling', () => {
     const failure = new Error('storage initialization failed');
     const onFailure = vi.fn();
 
-    scheduleAppStartup({
+    scheduleAppBootstrap({
       document,
       bootstrap: async () => {
         throw failure;

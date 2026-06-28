@@ -10,6 +10,12 @@ export const ENDPOINT_PRESETS = [
 ] as const;
 
 export const STORAGE_KEY_PREFIX = 'naidan:';
+/**
+ * Exported as a narrow compromise so the generated pre-paint reader and the
+ * normal Zod-backed persistence path cannot drift to different keys. Direct
+ * localStorage access remains owned by the theme persistence/bootstrap code.
+ */
+export const THEME_MODE_STORAGE_KEY = `${STORAGE_KEY_PREFIX}theme_mode`;
 export const STORAGE_BOOTSTRAP_KEY = `${STORAGE_KEY_PREFIX}storage_type`;
 
 // Synchronization keys

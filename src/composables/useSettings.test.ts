@@ -83,6 +83,8 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockListModels.mockReset();
+    mockListModels.mockResolvedValue(['model-1', 'model-2']);
     localStorage.clear();
     __testOnlyReset();
     mocks.loadSettings.mockResolvedValue(null);
@@ -231,11 +233,14 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
     // (spread of settings.value should include the detected 'opfs')
-    await save({ patch: {
-      ...JSON.parse(JSON.stringify(settings.value)),
-      endpointUrl: 'http://new-endpoint',
-      endpointType: 'ollama',
-    } });
+    await save({
+      patch: {
+        ...JSON.parse(JSON.stringify(settings.value)),
+        endpointUrl: 'http://new-endpoint',
+        endpointType: 'ollama',
+      },
+      modelRefresh: 'await',
+    });
 
     expect(settings.value.storageType).toBe('opfs');
     expect(mocks.updateSettings).toHaveBeenCalled();
@@ -547,6 +552,50 @@ describe('useSettings Initialization and Bootstrap', () => {
 
       expect(mockListModels).toHaveBeenCalledWith({});
       expect(mockListModels).toHaveBeenCalledTimes(1);
+    });
+    it('keeps the latest model list when overlapping requests finish out of order', async () => {
+      let resolveFirst!: (models: string[]) => void;
+      let resolveSecond!: (models: string[]) => void;
+      const firstModels = new Promise<string[]>((resolve) => {
+        resolveFirst = resolve;
+      });
+      const secondModels = new Promise<string[]>((resolve) => {
+        resolveSecond = resolve;
+      });
+      mockListModels
+        .mockReturnValueOnce(firstModels)
+        .mockReturnValueOnce(secondModels);
+
+      const {
+        fetchModels,
+        availableModels,
+        isFetchingModels,
+      } = useSettings();
+      const firstRequest = fetchModels({
+        overrides: {
+          url: 'http://old-endpoint',
+          type: 'openai',
+          headers: undefined,
+        },
+      });
+      const secondRequest = fetchModels({
+        overrides: {
+          url: 'http://new-endpoint',
+          type: 'openai',
+          headers: undefined,
+        },
+      });
+
+      expect(isFetchingModels.value).toBe(true);
+      resolveSecond(['new-model']);
+      await secondRequest;
+      expect(availableModels.value).toEqual(['new-model']);
+      expect(isFetchingModels.value).toBe(true);
+
+      resolveFirst(['old-model']);
+      await firstRequest;
+      expect(availableModels.value).toEqual(['new-model']);
+      expect(isFetchingModels.value).toBe(false);
     });
   });
 

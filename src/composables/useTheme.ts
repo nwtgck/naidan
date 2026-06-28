@@ -1,56 +1,164 @@
-import { watch, onMounted } from 'vue';
-import { usePreferredDark, useStorage } from '@vueuse/core';
-import { STORAGE_KEY_PREFIX } from '@/models/constants';
+import { readonly, ref, type Ref } from 'vue';
+import type { ThemeMode } from '@/models/theme';
+import {
+  readPersistedThemeMode,
+  subscribeToPersistedThemeMode,
+  writePersistedThemeMode,
+} from '@/services/theme/theme-mode-persistence';
+import {
+  applyResolvedTheme,
+  readSystemTheme,
+  resolveTheme,
+} from '@/services/theme/theme-document';
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+interface UseThemeApi {
+  themeMode: Readonly<Ref<ThemeMode>>,
+  setTheme: ({ mode }: { mode: ThemeMode }) => void,
+  TEST_ONLY: {
+    __testOnlyReset: () => void,
+  },
+}
 
-// Global state to share across components
-const themeMode = useStorage<ThemeMode>(`${STORAGE_KEY_PREFIX}theme_mode`, 'system');
+type ThemeControllerState =
+  | {
+    kind: 'not-initialized',
+  }
+  | {
+    kind: 'initialized',
+    document: Document,
+    window: Window,
+    mediaQueryList: MediaQueryList,
+    disposePersistedThemeSubscription: () => void,
+    disposeSystemThemeSubscription: () => void,
+  };
 
-export function useTheme() {
-  const preferredDark = usePreferredDark();
+const themeMode = ref<ThemeMode>('system');
+/**
+ * WHY: Theme ownership starts in the inline document bootstrap to prevent the
+ * measured white-background flash, then transfers to exactly one reactive
+ * controller. A singleton avoids duplicate media-query and storage listeners
+ * when multiple settings/onboarding components call useTheme().
+ */
+let controllerState: ThemeControllerState = {
+  kind: 'not-initialized',
+};
 
-  function applyTheme({ mode }: { mode: ThemeMode }) {
-    const isDark = (() => {
-      switch (mode) {
-      case 'system':
-        return preferredDark.value;
-      case 'dark':
-        return true;
-      case 'light':
-        return false;
+function applyCurrentTheme({ document, mediaQueryList }: {
+  document: Document,
+  mediaQueryList: MediaQueryList,
+}): void {
+  const resolvedTheme = resolveTheme({
+    mode: themeMode.value,
+    systemTheme: readSystemTheme({ mediaQueryList }),
+  });
+  applyResolvedTheme({
+    document,
+    resolvedTheme,
+    control: 'app-managed',
+  });
+}
+
+export function initializeThemeController({ window, document }: {
+  window: Window,
+  document: Document,
+}): void {
+  switch (controllerState.kind) {
+  case 'initialized':
+    if (controllerState.window !== window || controllerState.document !== document) {
+      throw new Error('The theme controller is already initialized for a different document.');
+    }
+    return;
+  case 'not-initialized':
+    break;
+  default: {
+    const _ex: never = controllerState;
+    return _ex;
+  }
+  }
+
+  const mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
+  themeMode.value = readPersistedThemeMode({ storage: window.localStorage });
+  applyCurrentTheme({ document, mediaQueryList });
+
+  const handleSystemThemeChange = (): void => {
+    switch (themeMode.value) {
+    case 'system':
+      applyCurrentTheme({ document, mediaQueryList });
+      return;
+    case 'light':
+    case 'dark':
+      return;
+    default: {
+      const _ex: never = themeMode.value;
+      return _ex;
+    }
+    }
+  };
+  mediaQueryList.addEventListener('change', handleSystemThemeChange);
+
+  const disposePersistedThemeSubscription = subscribeToPersistedThemeMode({
+    window,
+    listener: ({ mode }) => {
+      themeMode.value = mode;
+      applyCurrentTheme({ document, mediaQueryList });
+    },
+  });
+
+  controllerState = {
+    kind: 'initialized',
+    document,
+    window,
+    mediaQueryList,
+    disposePersistedThemeSubscription,
+    disposeSystemThemeSubscription: () => {
+      mediaQueryList.removeEventListener('change', handleSystemThemeChange);
+    },
+  };
+}
+
+export function useTheme(): UseThemeApi {
+  return {
+    themeMode: readonly(themeMode),
+    setTheme: ({ mode }) => {
+      switch (controllerState.kind) {
+      case 'not-initialized':
+        throw new Error('The theme controller must be initialized before changing the theme.');
+      case 'initialized':
+        themeMode.value = mode;
+        writePersistedThemeMode({
+          storage: controllerState.window.localStorage,
+          mode,
+        });
+        applyCurrentTheme({
+          document: controllerState.document,
+          mediaQueryList: controllerState.mediaQueryList,
+        });
+        return;
       default: {
-        const _ex: never = mode;
+        const _ex: never = controllerState;
         return _ex;
       }
       }
-    })();
-
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-      // Set color-scheme for browser UI elements like scrollbars
-      document.documentElement.style.colorScheme = 'dark';
-    } else {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.style.colorScheme = 'light';
-    }
-  }
-
-  onMounted(() => {
-    applyTheme({ mode: themeMode.value });
-  });
-
-  watch([themeMode, preferredDark], () => {
-    applyTheme({ mode: themeMode.value });
-  }, { immediate: true });
-
-  return {
-    themeMode,
-    setTheme: ({ mode }: { mode: ThemeMode }) => {
-      themeMode.value = mode;
     },
     TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      __testOnlyReset: () => {
+        switch (controllerState.kind) {
+        case 'not-initialized':
+          break;
+        case 'initialized':
+          controllerState.disposePersistedThemeSubscription();
+          controllerState.disposeSystemThemeSubscription();
+          break;
+        default: {
+          const _ex: never = controllerState;
+          return _ex;
+        }
+        }
+        themeMode.value = 'system';
+        controllerState = {
+          kind: 'not-initialized',
+        };
+      },
     },
   };
 }

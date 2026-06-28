@@ -159,7 +159,7 @@ export function createFileProtocolStandaloneEntryBootstrapSource({ entryFileName
     try {
       setTimeout(function () {
         if (!debugState) return;
-        var terminalCheckpoint = debugState.checkpoint === 'mounted'
+        var terminalCheckpoint = debugState.checkpoint === 'app-ready'
           || debugState.checkpoint === 'entry-imported'
           || debugState.checkpoint === 'entry-import-failed'
           || debugState.checkpoint === 'bootstrap-failed';

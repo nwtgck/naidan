@@ -460,7 +460,7 @@ export async function debugRunFileProtocolStandaloneVerification({
   });
 
   await check({
-    id: 'startup.app-mounted',
+    id: 'startup.app-ready',
     category: 'startup',
     action: () => {
       const app = document.querySelector('#app');
@@ -468,8 +468,8 @@ export async function debugRunFileProtocolStandaloneVerification({
       assertCondition({ condition: app?.childElementCount !== 0, message: 'The Vue application is not mounted.' });
       const startup = getPluginDiagnosticsSnapshot().startup;
       assertCondition({
-        condition: startup?.checkpoint === 'mounted',
-        message: `Startup checkpoint is ${String(startup?.checkpoint)} instead of mounted.`,
+        condition: startup?.checkpoint === 'app-ready',
+        message: `Startup checkpoint is ${String(startup?.checkpoint)} instead of app-ready.`,
       });
       return {
         readyState: document.readyState,

@@ -40,6 +40,17 @@ const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
 const mockInheritedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
 
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,

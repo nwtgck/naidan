@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { ensureStrings, lazyStrings } from '@/strings';
@@ -7,7 +7,6 @@ import type { LmProvider } from '@/services/lm/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
 import { type EndpointType, type Settings as SettingsType } from '@/models/types';
 import { ENDPOINT_PRESETS } from '@/models/constants';
-import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ThemeToggle is part of the core onboarding UI.
 import ThemeToggle from './ThemeToggle.vue';
@@ -18,9 +17,9 @@ import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the core onboarding UI.
 import ModelSelector from './ModelSelector.vue';
 
-// Lazily load onboarding guides and managers, but prefetch them when idle.
-const ServerSetupGuide = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ServerSetupGuide.vue') });
-const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsManager.vue') });
+// Load onboarding subviews only when their current template branch needs them.
+const ServerSetupGuide = defineAsyncComponent(() => import('./ServerSetupGuide.vue'));
+const TransformersJsManager = defineAsyncComponent(() => import('./TransformersJsManager.vue'));
 import { transformersJsService } from '@/services/transformers-js';
 import { PlayIcon, ArrowLeftIcon, CheckCircle2Icon, ActivityIcon, SettingsIcon, XIcon, PlusIcon, Trash2Icon, FlaskConicalIcon } from 'lucide-vue-next';
 import { naturalSort } from '@/utils/string';
@@ -28,6 +27,44 @@ import { detectOllama } from '@/utils/ollama-detection';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
 const { setActiveFocusArea } = useLayout();
+const modalContent = ref<HTMLElement | undefined>(undefined);
+
+function getFocusableElements(): HTMLElement[] {
+  const root = modalContent.value;
+  if (root === undefined) return [];
+
+  return Array.from(root.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+  )).filter(element => element.offsetParent !== null);
+}
+
+function handleModalKeydown({ event }: {
+  event: KeyboardEvent,
+}): void {
+  if (event.key !== 'Tab') return;
+
+  const focusableElements = getFocusableElements();
+  if (focusableElements.length === 0) {
+    event.preventDefault();
+    modalContent.value?.focus();
+    return;
+  }
+
+  const first = focusableElements[0];
+  const last = focusableElements.at(-1);
+  if (first === undefined || last === undefined) return;
+
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === modalContent.value)) {
+    event.preventDefault();
+    last.focus();
+    return;
+  }
+
+  if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
 
 const DEFAULT_TYPE = Symbol('default');
 const selectedType = ref<EndpointType | typeof DEFAULT_TYPE>(onboardingDraft.value?.type || DEFAULT_TYPE);
@@ -89,6 +126,9 @@ const isTransformersJs = computed(() => {
 // Reactive sync with transformersJsService
 let unsubscribe: (() => void) | null = null;
 onMounted(async () => {
+  await nextTick();
+  modalContent.value?.focus();
+
   // Trigger auto-detection immediately if a URL is present from the cookie/draft
   // but the type is still the default.
   if (selectedType.value === DEFAULT_TYPE && customUrl.value && isLocalhost({ url: customUrl.value })) {
@@ -328,28 +368,31 @@ async function handleFinish() {
 
   try {
     const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
-    await save({ patch: {
-      ...baseSettings,
-      endpointType: type,
-      endpointUrl: url || undefined,
-      endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
-      defaultModelId: selectedModel.value || undefined,
-      // Transformers.js currently supports only one active model at a time.
-      // We set titleModelId to undefined to prevent the main model from being unloaded during title generation.
-      titleModelId: (() => {
-        switch (type) {
-        case 'transformers_js':
-          return undefined;
-        case 'openai':
-        case 'ollama':
-          return selectedModel.value || undefined;
-        default: {
-          const _ex: never = type;
-          return _ex;
-        }
-        }
-      })(),
-    } });
+    await save({
+      patch: {
+        ...baseSettings,
+        endpointType: type,
+        endpointUrl: url || undefined,
+        endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
+        defaultModelId: selectedModel.value || undefined,
+        // Transformers.js currently supports only one active model at a time.
+        // We set titleModelId to undefined to prevent the main model from being unloaded during title generation.
+        titleModelId: (() => {
+          switch (type) {
+          case 'transformers_js':
+            return undefined;
+          case 'openai':
+          case 'ollama':
+            return selectedModel.value || undefined;
+          default: {
+            const _ex: never = type;
+            return _ex;
+          }
+          }
+        })(),
+      },
+      modelRefresh: 'await',
+    });
 
     setOnboardingDraft({ draft: null });
     setIsOnboardingDismissed({ dismissed: true });
@@ -370,8 +413,18 @@ defineExpose({
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4">
-    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom">
+  <div
+    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4"
+    @keydown="handleModalKeydown({ event: $event })"
+  >
+    <div
+      ref="modalContent"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="onboarding-title"
+      tabindex="-1"
+      class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom outline-none"
+    >
       <!-- Header Actions (Top Right) -->
       <div class="absolute top-4 right-4 z-10 flex items-center gap-2">
         <div class="w-20 md:w-28 shrink-0">
@@ -392,7 +445,7 @@ defineExpose({
           <Logo class="w-6 h-6 md:w-8 md:h-8" />
         </div>
         <div class="text-left flex-1">
-          <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.OnboardingModal__setup_endpoint() }}</h2>
+          <h2 id="onboarding-title" class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.OnboardingModal__setup_endpoint() }}</h2>
           <p class="hidden sm:block text-xs text-gray-600 dark:text-gray-400">{{ lazyStrings.OnboardingModal__setup_endpoint_description() }}</p>
         </div>
       </div>

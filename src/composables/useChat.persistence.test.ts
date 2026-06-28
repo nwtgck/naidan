@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const chats = new Map<string, any>();
 let hierarchy = { items: [] as any[] };
 
+vi.unmock('../services/lm/openai');
+vi.unmock('../services/lm/ollama');
+vi.unmock('../services/storage');
+
 describe('useChat Persistence Timing', () => {
   let persistMock: any;
   let persistedMock: any;
@@ -10,9 +14,6 @@ describe('useChat Persistence Timing', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
-    vi.unmock('../services/lm/openai');
-    vi.unmock('../services/lm/ollama');
-    vi.unmock('../services/storage');
     chats.clear();
     hierarchy = { items: [] };
 
@@ -88,14 +89,17 @@ describe('useChat Persistence Timing', () => {
 
     const { useSettings } = await import('./useSettings');
     const settings = useSettings();
-    await settings.save({ patch: {
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost:11434',
-      defaultModelId: 'gpt-4',
-      autoTitleEnabled: false,
-      storageType: 'local',
-      providerProfiles: [],
-    } as any });
+    await settings.save({
+      patch: {
+        endpointType: 'openai',
+        endpointUrl: 'http://localhost:11434',
+        defaultModelId: 'gpt-4',
+        autoTitleEnabled: false,
+        storageType: 'local',
+        providerProfiles: [],
+      } as any,
+      modelRefresh: 'await',
+    });
   });
 
   it('should call navigator.storage.persist after the first assistant response', async () => {

@@ -291,10 +291,13 @@ describe('Transformers.js Onboarding Integration', () => {
     await getStartedBtn?.trigger('click');
     await flushPromises();
 
-    expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
-      endpointType: 'transformers_js',
-      defaultModelId: 'downloaded-model',
-    }) });
+    expect(mockSave).toHaveBeenCalledWith({
+      patch: expect.objectContaining({
+        endpointType: 'transformers_js',
+        defaultModelId: 'downloaded-model',
+      }),
+      modelRefresh: 'await',
+    });
   });
 
   it('automatically loads model after successful download in TransformersJsManager (Integrated flow)', async () => {

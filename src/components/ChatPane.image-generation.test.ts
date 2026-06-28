@@ -73,6 +73,17 @@ const mockChatStore = {
   isThinkingActive: vi.fn(() => false),
   isWaitingResponse: vi.fn(() => false),
 };
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(() => mockChatStore),
 }));

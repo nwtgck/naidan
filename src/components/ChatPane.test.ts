@@ -143,6 +143,17 @@ const mockSettings = ref<any>({
 });
 const mockTmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle;
 
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
@@ -1242,7 +1253,10 @@ Question`,
     await wrapper.findComponent({ name: 'ModelSelector' }).vm.$emit('update:modelValue', 'model-2');
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockSaveSettings).toHaveBeenCalledWith({ patch: { titleModelId: 'model-2' } });
+    expect(mockSaveSettings).toHaveBeenCalledWith({
+      patch: { titleModelId: 'model-2' },
+      modelRefresh: 'await',
+    });
     expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: 'model-2' });
   });
 

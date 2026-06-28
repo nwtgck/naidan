@@ -2,7 +2,7 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
-import ensureReadyStateAwareAppStartup from './eslint-local-rules/ensure-ready-state-aware-app-startup.js';
+import ensureReadyStateAwareAppBootstrap from './eslint-local-rules/ensure-ready-state-aware-app-bootstrap.js';
 import ensureVueErrorHandler from './eslint-local-rules/ensure-vue-error-handler.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
@@ -62,7 +62,7 @@ import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-impor
 //       }],
 //     },
 //   },
-//   ensureReadyStateAwareAppStartup,
+//   ensureReadyStateAwareAppBootstrap,
 //   ensureVueErrorHandler,
 //   {
 //     files: ['**/*.test.ts'],
@@ -195,7 +195,7 @@ export default tseslint.config(
       'no-restricted-imports': 'off'
     }
   },
-  ensureReadyStateAwareAppStartup,
+  ensureReadyStateAwareAppBootstrap,
   ensureVueErrorHandler,
   forceSwitchForUnion,
   preferMultilineTemplateLiterals,

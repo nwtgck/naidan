@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'vue';
+import { ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
 import { useLayout } from '@/composables/useLayout';
+import {
+  isAppInteractionEnabled,
+  useAppPresentation,
+} from '@/composables/useAppPresentation';
 import { generateId, generateOpaqueId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
@@ -47,6 +51,7 @@ const { openFileExplorer } = useFileExplorerModal();
 const { showConfirm } = useConfirm();
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
+const { appInteraction } = useAppPresentation();
 
 const props = defineProps<{
   chatId: ChatId,
@@ -169,6 +174,7 @@ function handleUpdateImageModel({ modelId }: { modelId: string }) {
 }
 
 async function fetchModels() {
+  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
   await chatModels.fetchForChat({
     chatId: props.chatId,
   });
@@ -946,21 +952,7 @@ watch(
 
     if (chat.value) {
       isMaximized.value = false;
-      fetchModels();
       nextTick(() => {
-        const currentVis = props.visibility;
-        switch (currentVis) {
-        case 'active':
-          focusInput();
-          break;
-        case 'submerged':
-        case 'peeking':
-          break;
-        default: {
-          const _ex: never = currentVis;
-          throw new Error(`Unhandled visibility: ${_ex}`);
-        }
-        }
         adjustTextareaHeight({});
       });
     }
@@ -968,38 +960,54 @@ watch(
   { immediate: true },
 );
 
-onMounted(async () => {
-  if (chat.value) {
-    fetchModels();
-  }
+const autoSendState = ref<
+  | 'pending'
+  | 'sent'
+>('pending');
 
-  if (props.autoSendPrompt) {
-    const doAutoSend = async () => {
-      await nextTick();
-      input.value = props.autoSendPrompt!;
-      await handleSend();
-      emit('auto-sent');
-    };
+function isInteractiveChatCurrent({ chatValue }: {
+  chatValue: NonNullable<typeof chat.value>,
+}): boolean {
+  return isAppInteractionEnabled({
+    interaction: appInteraction.value,
+  }) && chat.value === chatValue;
+}
 
-    if (chat.value) {
-      doAutoSend();
-    } else {
-      const unwatch = watch(() => chat.value, (chatValue) => {
-        if (chatValue) {
-          unwatch();
-          doAutoSend();
-        }
-      });
-    }
-  }
+watch(
+  [
+    () => chat.value,
+    appInteraction,
+  ],
+  async ([chatValue, interaction]) => {
+    if (interaction !== 'enabled' || !chatValue) return;
 
-  nextTick(() => {
-    adjustTextareaHeight({ force: false }); // Call adjustTextareaHeight on mount without forcing scroll
-    if (chat.value) {
-      focusInput();
-    }
-  });
-});
+    /**
+     * Model discovery must not delay textarea focus or URL-driven auto-send.
+     * It already reports provider failures through the chat model flow, while
+     * the interaction guard below prevents delayed UI work after onboarding
+     * reopens or the active chat changes.
+     */
+    void fetchModels();
+
+    await nextTick();
+    if (!isInteractiveChatCurrent({ chatValue })) return;
+
+    adjustTextareaHeight({ force: false });
+    focusInput({
+      timing: 'current-render',
+      visibilityPolicy: 'preserve',
+    });
+
+    if (!props.autoSendPrompt || autoSendState.value === 'sent') return;
+    if (!isInteractiveChatCurrent({ chatValue })) return;
+
+    autoSendState.value = 'sent';
+    input.value = props.autoSendPrompt;
+    await handleSend();
+    emit('auto-sent');
+  },
+  { immediate: true },
+);
 
 useEventTargetListener(window, 'resize', handleWindowResize);
 
@@ -1026,43 +1034,80 @@ function handleBlur() {
   // We no longer automatically submerge on blur to keep it 'active'
 }
 
-function focusInput() {
-  switch (activeFocusArea.value) {
-  case 'sidebar':
-  case 'search':
-    return;
-  case 'chat':
-  case 'chat-group-settings':
-  case 'chat-settings':
-  case 'settings':
-  case 'onboarding':
-  case 'dialog':
-  case 'none':
-    break;
-  default: {
-    const _ex: never = activeFocusArea.value;
-    throw new Error(`Unhandled focus area: ${_ex}`);
-  }
-  }
+type FocusInputTiming =
+  | 'current-render'
+  | 'next-render';
 
-  const currentVis = props.visibility;
-  switch (currentVis) {
-  case 'submerged':
-  case 'peeking':
-    emit('update:visibility', 'active');
-    break;
-  case 'active':
-    break;
-  default: {
-    const _ex: never = currentVis;
-    throw new Error(`Unhandled visibility: ${_ex}`);
-  }
-  }
+type FocusInputVisibilityPolicy =
+  | 'activate'
+  | 'preserve';
 
-  if (document.activeElement !== textareaRef.value) {
-    nextTick(() => {
+function focusInput({
+  timing = 'next-render',
+  visibilityPolicy = 'activate',
+}: {
+  timing?: FocusInputTiming,
+  visibilityPolicy?: FocusInputVisibilityPolicy,
+} = {}) {
+  const applyFocus = () => {
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+    switch (activeFocusArea.value) {
+    case 'sidebar':
+    case 'search':
+      return;
+    case 'chat':
+    case 'chat-group-settings':
+    case 'chat-settings':
+    case 'settings':
+    case 'onboarding':
+    case 'dialog':
+    case 'none':
+      break;
+    default: {
+      const _ex: never = activeFocusArea.value;
+      throw new Error(`Unhandled focus area: ${_ex}`);
+    }
+    }
+
+    const currentVis = props.visibility;
+    switch (currentVis) {
+    case 'submerged':
+    case 'peeking':
+      switch (visibilityPolicy) {
+      case 'activate':
+        emit('update:visibility', 'active');
+        return;
+      case 'preserve':
+        return;
+      default: {
+        const _ex: never = visibilityPolicy;
+        throw new Error(`Unhandled focus visibility policy: ${_ex}`);
+      }
+      }
+    case 'active':
+      break;
+    default: {
+      const _ex: never = currentVis;
+      throw new Error(`Unhandled visibility: ${_ex}`);
+    }
+    }
+
+    if (document.activeElement !== textareaRef.value) {
       textareaRef.value?.focus();
-    });
+    }
+  };
+
+  switch (timing) {
+  case 'current-render':
+    applyFocus();
+    return;
+  case 'next-render':
+    void nextTick(applyFocus);
+    return;
+  default: {
+    const _ex: never = timing;
+    throw new Error(`Unhandled focus timing: ${_ex}`);
+  }
   }
 }
 

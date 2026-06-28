@@ -129,14 +129,14 @@ function readMutableNamespace(): MutableStandaloneNamespace {
 function installValidGlobals(): void {
   const startup = {
     format: 'file-protocol-standalone-startup-v2' as const,
-    checkpoint: 'mounted' as const,
+    checkpoint: 'app-ready' as const,
     startedAt: 0,
     updatedAt: 1,
     documentReadyState: 'complete' as const,
     entryFileName: 'assets/index-legacy.js',
     checkpointHistory: [{
       source: 'naidan-app' as const,
-      name: 'mounted' as const,
+      name: 'app-ready' as const,
       at: 1,
       documentReadyState: 'complete' as const,
       details: undefined,
@@ -271,7 +271,7 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
     expect(report.summary).toMatchObject({ passed: 12, failed: 0 });
     expect(report.checks.map((check) => [check.id, check.status])).toEqual([
       ['environment.file-protocol', 'pass'],
-      ['startup.app-mounted', 'pass'],
+      ['startup.app-ready', 'pass'],
       ['router.current-route', 'pass'],
       ['router.query-transition', 'pass'],
       ['styles.initial', 'pass'],
@@ -444,7 +444,7 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
     expect(report.status).toBe('fail');
     expect(getDiagnostics).toHaveBeenCalledOnce();
     for (const id of [
-      'startup.app-mounted',
+      'startup.app-ready',
       'systemjs.global-diagnostics',
       'systemjs.file-patch',
       'systemjs.retry-hook',
@@ -458,7 +458,7 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
 
   it('keeps report diagnostics detached from later live runtime mutations', async () => {
     const report = await debugRunFileProtocolStandaloneVerification(createBaseArguments());
-    const startupDetails = report.checks.find(({ id }) => id === 'startup.app-mounted')?.details;
+    const startupDetails = report.checks.find(({ id }) => id === 'startup.app-ready')?.details;
 
     const internal = readMutableNamespace().internal;
     const startup = internal.debug?.startup;
@@ -488,8 +488,8 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
     };
     liveWorker.worker.objectUrlsCreated = 99;
 
-    expect(startupDetails).toHaveProperty('startup.checkpoint', 'mounted');
-    expect(report.runtime.startup).toHaveProperty('checkpoint', 'mounted');
+    expect(startupDetails).toHaveProperty('startup.checkpoint', 'app-ready');
+    expect(report.runtime.startup).toHaveProperty('checkpoint', 'app-ready');
     expect(report.runtime.systemJsPatch).toHaveProperty('patchedScripts.length', 1);
     expect(report.runtime.worker).toHaveProperty('objectUrlsCreated', 1);
   });

@@ -66,15 +66,9 @@ function renderAppStartupFailurePanel({ document, error }: {
   }
 }
 
-/**
- * Report a failed application bootstrap in both hosted and standalone builds.
- * Standalone Debug state is updated opportunistically, but the user-facing
- * failure panel is a normal application responsibility rather than Debug UI.
- */
-export function reportAppStartupFailure({ document, error }: {
-  document: Document,
+function recordAppStartupFailureDetails({ error }: {
   error: unknown,
-}): void {
+}): AppStartupErrorDetails {
   let serialized: AppStartupErrorDetails;
   try {
     serialized = serializeAppStartupError({ error });
@@ -93,6 +87,25 @@ export function reportAppStartupFailure({ document, error }: {
   } catch {
     // Failure reporting must not create another unhandled rejection.
   }
+  return serialized;
+}
+
+export function recordAppStartupFailure({ error }: {
+  error: unknown,
+}): void {
+  recordAppStartupFailureDetails({ error });
+}
+
+/**
+ * Report a failure that occurs before Vue can own the startup UI. Once the
+ * App is mounted, callers use recordAppStartupFailure() and render the
+ * typed error state instead of replacing the already-live Vue tree.
+ */
+export function reportAppStartupFailure({ document, error }: {
+  document: Document,
+  error: unknown,
+}): void {
+  const serialized = recordAppStartupFailureDetails({ error });
   try {
     renderAppStartupFailurePanel({ document, error: serialized });
   } catch (renderError) {

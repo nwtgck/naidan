@@ -5,7 +5,7 @@
  * when the DOM is already ready, while preserving the listener path for hosted
  * builds and fast standalone loads that still evaluate during parsing.
  */
-export function scheduleAppStartup({
+export function scheduleAppBootstrap({
   document,
   bootstrap,
   onWaitingForDom,

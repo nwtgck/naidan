@@ -14,6 +14,17 @@ import { setupScrollToMock } from '@/utils/test-utils';
 import type { Attachment, LmParameters } from '@/models/types';
 
 
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 // --- Mocks ---
 
 const mockCurrentChat = ref<any>(null);

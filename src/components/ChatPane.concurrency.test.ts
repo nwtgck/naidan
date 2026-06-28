@@ -11,6 +11,17 @@ import type { Attachment, LmParameters } from '@/models/types';
 
 import { setupScrollToMock } from '@/utils/test-utils';
 
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 // --- Mocks ---
 
 const router = createRouter({
