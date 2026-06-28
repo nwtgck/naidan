@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
 import { MoreHorizontalIcon, CopyIcon, Trash2Icon, SearchIcon } from 'lucide-vue-next';
-import type { ChatGroup } from '@/models/types';
+import type { ChatGroup } from '@/01-models/types';
 
 defineProps<{
   chatGroup: ChatGroup,

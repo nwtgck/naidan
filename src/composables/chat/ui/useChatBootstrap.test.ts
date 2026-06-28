@@ -1,4 +1,4 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -43,7 +43,7 @@ vi.mock('@/composables/chat/useChatModels', () => ({
   }),
 }));
 
-vi.mock('@/services/transformers-js', () => ({
+vi.mock('@/features/transformers-js', () => ({
   transformersJsService: {
     subscribeModelList: vi.fn(),
   },

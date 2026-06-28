@@ -1,8 +1,8 @@
 import { ref, computed, type ComputedRef, type Ref } from 'vue';
 import { useChatListData } from '@/composables/chat/ui/useChatListData';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 import { useOverlay } from './useOverlay';
-import type { ChatSummary } from '@/models/types';
+import type { ChatSummary } from '@/01-models/types';
 
 export interface RecentChatEntry {
   id: ChatId,

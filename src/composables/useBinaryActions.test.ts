@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useBinaryActions } from './useBinaryActions';
-import { storageService } from '@/services/storage';
-import { toBinaryObjectId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import { toBinaryObjectId } from '@/01-models/ids';
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getBinaryObject: vi.fn(),
     getFile: vi.fn(),

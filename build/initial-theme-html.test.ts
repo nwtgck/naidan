@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { THEME_MODE_STORAGE_KEY } from '../src/models/constants';
+import { THEME_MODE_STORAGE_KEY } from '../src/constants';
 import {
   FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE,
   FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE,
-} from '../src/file-protocol-standalone-protocol';
+} from '../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
 import {
   INITIAL_THEME_BOOTSTRAP_ELEMENT_ID,
   RESOLVED_THEME_ATTRIBUTE_NAME,
   THEME_CONTROL_ATTRIBUTE_NAME,
-} from '../src/models/theme';
+} from '../src/features/theme/logic/theme';
 import {
   createInitialThemeBootstrapSource,
   createInitialThemeCriticalCss,

@@ -1,4 +1,4 @@
-import { toChatId, toMessageId, toChatGroupId } from '@/models/ids';
+import { toChatId, toMessageId, toChatGroupId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -25,7 +25,7 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/composables/useChatTools', () => ({
+vi.mock('@/features/tools/composables/useChatTools', () => ({
   useChatTools: () => ({
     setCurrentChatId: mockSetCurrentChatId,
     setToolEnabled: mockSetToolEnabled,

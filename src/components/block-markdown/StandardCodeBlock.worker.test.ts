@@ -1,12 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import StandardCodeBlock from './StandardCodeBlock.vue';
-import { createHighlightWorker } from '@/services/highlight/worker/impl';
-import type { HighlightRequest, HighlightResponse } from '@/services/highlight/worker/types';
+import { createHighlightWorker } from '@/features/highlight/worker/impl';
+import type { HighlightRequest, HighlightResponse } from '@/features/highlight/worker/types';
 
 const highlightMock = vi.fn();
 
-vi.mock('@/services/highlight/worker/client-shared', () => ({
+vi.mock('@/features/highlight/worker/client-shared', () => ({
   acquireSharedHighlightWorkerClient: vi.fn(async () => ({
     highlight: highlightMock,
     dispose: vi.fn(async () => undefined),

@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 
 // --- Mocks ---
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
@@ -47,7 +47,7 @@ vi.mock('./useSettings', () => ({
 }));
 
 const mockLmChat = vi.fn();
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
       chat: mockLmChat,
@@ -56,7 +56,7 @@ vi.mock('../services/lm/openai', () => ({
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
       chat: mockLmChat,

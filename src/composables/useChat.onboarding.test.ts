@@ -3,7 +3,7 @@ import { useChat } from './useChat';
 import { reactive } from 'vue';
 
 // Mock storage service
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -54,7 +54,7 @@ vi.mock('./useSettings', () => ({
 
 // Mock LM Provider
 const mockListModels = vi.fn();
-vi.mock('../services/lm/openai', () => {
+vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
     chat = vi.fn();
     listModels = mockListModels;
@@ -64,7 +64,7 @@ vi.mock('../services/lm/openai', () => {
   };
 });
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 

@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import { useImageGeneration } from '@/composables/useImageGeneration';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatImageProgressAdapter = {
   progress: ComputedRef<{ currentStep: number, totalSteps: number } | undefined>,

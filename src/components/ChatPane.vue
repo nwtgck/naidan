@@ -27,7 +27,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously
 // to ensure the chat history displays immediately and smoothly without individual components popping in.
 import MessageItem from './MessageItem.vue';
-import ToolCallGroupItem from './ToolCallGroupItem.vue';
+import ToolCallGroupItem from '@/features/tools/components/ToolCallGroupItem.vue';
 import MessageThinking from './MessageThinking.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
@@ -35,22 +35,22 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
-import ChatApprovalPanel from './chat-approval/ChatApprovalPanel.vue';
-import ChatChoicesPanel from './chat-choices/ChatChoicesPanel.vue';
+import ChatApprovalPanel from '@/features/tools/components/chat-approval/ChatApprovalPanel.vue';
+import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoicesPanel.vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
-import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
+import TransformersJsLoadingIndicator from '@/features/transformers-js/components/TransformersJsLoadingIndicator.vue';
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 // Lazily load the outline overlay, prefetch on mounted.
 const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ConversationOutlineOverlay.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
-import type { LmParameters } from '@/models/types';
-import type { ChatId } from '@/models/ids';
-import { idToRaw, toMessageId } from '@/models/ids';
-import type { ChatGroupId, MessageId } from '@/models/ids';
+import type { LmParameters } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
+import { idToRaw, toMessageId } from '@/01-models/ids';
+import type { ChatGroupId, MessageId } from '@/01-models/ids';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -63,26 +63,26 @@ const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted({ loader: () => 
 // Lazily load the media shelf, prefetch on mounted.
 const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatMediaShelf.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatWeshTerminalModal.vue') });
+const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/wesh-terminal/components/ChatWeshTerminalModal.vue') });
 import {
   FolderInputIcon,
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
-import { useGlobalSearch } from '@/composables/useGlobalSearch';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
 import { hasChatOverrides } from '@/utils/chat-settings-resolver';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
-import { generateChatShareURL } from '@/services/import-export/chat-url-share';
+import { generateChatShareURL } from '@/features/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
-import { storageService } from '@/services/storage';
-import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/services/context-compact';
-import { useApproval } from '@/composables/useApproval';
-import { useChoices } from '@/composables/useChoices';
-import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
-import type { ApprovalUiDecision } from '@/services/approval';
+import { storageService } from '@/00-storage/service';
+import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/logic/context-compact';
+import { useApproval } from '@/features/tools/composables/useApproval';
+import { useChoices } from '@/features/tools/composables/useChoices';
+import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/features/fake-lm';
+import type { ApprovalUiDecision } from '@/features/tools/approval';
 
 const { addToast } = useToast();
 const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();

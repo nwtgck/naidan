@@ -1,4 +1,4 @@
-import type { WeshWorkerCommandEntry, WeshWorkerDirectoryEntry } from '@/services/wesh/worker/types';
+import type { WeshWorkerCommandEntry, WeshWorkerDirectoryEntry } from '@/features/wesh/worker/types';
 
 export type WeshTerminalCompletionCandidateKind = 'command' | 'file' | 'directory';
 

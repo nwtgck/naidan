@@ -11,12 +11,12 @@ import {
 } from 'lucide-vue-next';
 import type { HistoryItem } from '@/utils/chat-tree';
 import { useLayout } from '@/composables/useLayout';
-import type { Attachment, SystemPrompt } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { Attachment, SystemPrompt } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
-import { idToRaw } from '@/models/ids';
-import type { AttachmentId, BinaryObjectId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { AttachmentId, BinaryObjectId } from '@/01-models/ids';
 
 const props = defineProps<{
   isOpen: boolean,

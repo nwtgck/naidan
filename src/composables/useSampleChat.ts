@@ -1,10 +1,10 @@
 import { generateId } from '@/utils/id';
-import type { Chat, MessageNode } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { Chat, MessageNode } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import sampleContent from '@/assets/sample-showcase.md?raw';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
 import { processThinking } from '@/utils/chat-tree';
-import type { ChatId, MessageId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
 
 const longSampleTopics = [
   'release planning',

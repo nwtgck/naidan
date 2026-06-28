@@ -1,8 +1,8 @@
-import type { Chat, ChatMessage, Endpoint } from '@/models/types';
-import { isHttpEndpoint } from '@/models/endpoint';
-import type { ChatId } from '@/models/ids';
-import type { LmProvider } from '@/services/lm/types';
-import { createLmProvider } from '@/services/lm/providerFactory';
+import type { Chat, ChatMessage, Endpoint } from '@/01-models/types';
+import { isHttpEndpoint } from '@/01-models/endpoint';
+import type { ChatId } from '@/01-models/ids';
+import type { LmProvider } from '@/01-models/lm';
+import { createLmProvider } from '@/features/lm/providerFactory';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';

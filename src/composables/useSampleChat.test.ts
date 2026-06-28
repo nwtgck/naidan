@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { useSampleChat } from './useSampleChat';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
-import { storageService } from '@/services/storage';
-import { idToRaw } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import { idToRaw } from '@/01-models/ids';
 
 // Mock dependencies
 vi.mock('@/composables/chat/ui/useChatBootstrap', () => ({
   useChatBootstrap: vi.fn(),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

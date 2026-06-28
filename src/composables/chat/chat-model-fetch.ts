@@ -1,9 +1,9 @@
 import { toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
-import type { ChatGroup, Endpoint } from '@/models/types';
-import type { LmProvider } from '@/services/lm/types';
-import { isHttpEndpoint } from '@/models/endpoint';
-import { createLmProvider } from '@/services/lm/providerFactory';
+import type { ChatGroup, Endpoint } from '@/01-models/types';
+import type { LmProvider } from '@/01-models/lm';
+import { isHttpEndpoint } from '@/01-models/endpoint';
+import { createLmProvider } from '@/features/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import {
@@ -14,7 +14,7 @@ import {
   rootItems,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 import {
   resolveChatEndpointForChat,
   resolveGlobalEndpoint,

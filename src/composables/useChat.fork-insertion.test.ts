@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { ref } from 'vue';
-import { storageService } from '@/services/storage';
-import type { SidebarItem } from '@/models/types';
-import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import type { SidebarItem } from '@/01-models/types';
+import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 type TestHierarchyNode =
   | { type: 'chat', id: string }
   | { type: 'chat_group', id: string, chat_ids: string[] };
 
 // Mock storage
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

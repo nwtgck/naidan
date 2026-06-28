@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
-import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
+import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useLayout } from '@/composables/useLayout';
 import { usePrint } from '@/composables/usePrint';
 import { useRecentChats } from '@/composables/useRecentChats';
@@ -10,10 +10,10 @@ import { useRecentChats } from '@/composables/useRecentChats';
 const PrintView = defineAsyncComponent(() => import('@/components/PrintView.vue'));
 const ChatPrintContent = defineAsyncComponent(() => import('@/components/ChatPrintContent.vue'));
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'));
-const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/components/DebugWeshTerminalModal.vue'));
-const GlobalSearchModal = defineAsyncComponent(() => import('@/components/GlobalSearchModal.vue'));
+const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue'));
+const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-search/components/GlobalSearchModal.vue'));
 const RecentChatsModal = defineAsyncComponent(() => import('@/components/RecentChatsModal.vue'));
-const FileExplorerModal = defineAsyncComponent(() => import('@/components/FileExplorerModal.vue'));
+const FileExplorerModal = defineAsyncComponent(() => import('@/features/file-explorer/components/FileExplorerModal.vue'));
 const PWAManager = __BUILD_MODE_IS_HOSTED__
   ? defineAsyncComponent(() => import('@/components/PWAManager.vue'))
   : undefined;

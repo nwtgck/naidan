@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { resolveChatSettings, hasChatOverrides, hasGroupOverrides, type ResolvableSettings } from './chat-settings-resolver';
-import type { Chat, ChatGroup } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { toChatGroupId, toChatId } from '@/models/ids';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import type { Chat, ChatGroup } from '@/01-models/types';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import { toChatGroupId, toChatId } from '@/01-models/ids';
 
 describe('resolveChatSettings - System Prompt Edge Cases', () => {
   const globalSettings: ResolvableSettings = {

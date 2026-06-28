@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import { h, defineComponent } from 'vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import type { ChatFlowItem, SequenceStats } from '@/composables/useChatDisplayFlow';
-import type { MessageNode } from '@/models/types';
-import { toMessageId } from '@/models/ids';
+import type { MessageNode } from '@/01-models/types';
+import { toMessageId } from '@/01-models/ids';
 
 // Cursor stub used in place of <GeneratingIndicator> to test slot rendering.
 const CursorStub = defineComponent({

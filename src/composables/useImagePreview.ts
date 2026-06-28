@@ -1,6 +1,6 @@
 import { ref, inject, provide, type InjectionKey, type Ref } from 'vue';
-import type { BinaryObject } from '@/models/types';
-import type { BinaryObjectId } from '@/models/ids';
+import type { BinaryObject } from '@/01-models/types';
+import type { BinaryObjectId } from '@/01-models/ids';
 
 interface PreviewState {
   objects: BinaryObject[],

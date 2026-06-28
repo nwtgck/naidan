@@ -1,5 +1,5 @@
-import type { MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 import { ref, nextTick, computed } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';

@@ -1,5 +1,5 @@
 import { computed, type ComputedRef } from 'vue';
-import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Mount, Reasoning, Settings } from '@/models/types';
+import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Mount, Reasoning, Settings } from '@/01-models/types';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
 import { useImageGeneration } from '@/composables/useImageGeneration';
@@ -61,8 +61,8 @@ import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
-import type { ChatId, MessageId } from '@/models/ids';
-import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 import type { ImageRequestParams } from '@/utils/image-generation';
 
 export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';

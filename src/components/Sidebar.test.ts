@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/models/types';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/01-models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 // --- Shared Mock State ---
 // Using mock prefix to satisfy Vitest hoisting requirements
@@ -56,7 +56,7 @@ vi.mock('../composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('../composables/useFileExplorerModal', () => ({
+vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: () => ({
     openFileExplorer: mockOpenFileExplorer,
   }),
@@ -193,7 +193,7 @@ vi.mock('../composables/useConfirm', () => ({
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),

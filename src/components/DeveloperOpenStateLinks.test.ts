@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
-import { urlImportExportLogic } from '@/services/import-export/url-logic';
+import { urlImportExportLogic } from '@/features/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
 
-vi.mock('@/services/import-export/url-logic', () => ({
+vi.mock('@/features/import-export/url-logic', () => ({
   urlImportExportLogic: {
     getExportURL: vi.fn(),
   },

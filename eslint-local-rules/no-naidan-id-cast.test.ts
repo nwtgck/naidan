@@ -48,7 +48,7 @@ describe('no-naidan-id-cast rule', () => {
 
   it('reports direct assertions to a Naidan ID type outside ids.ts', async () => {
     const messages = await lintText({
-      code: `import type { ChatId } from '@/models/ids'; const chatId = raw as ChatId`,
+      code: `import type { ChatId } from '@/01-models/ids'; const chatId = raw as ChatId`,
     });
 
     expect(messages).toHaveLength(1);
@@ -57,7 +57,7 @@ describe('no-naidan-id-cast rule', () => {
 
   it('reports angle-bracket assertions to a Naidan ID type outside ids.ts', async () => {
     const messages = await lintText({
-      code: `import type { MessageId } from '@/models/ids'; const messageId = <MessageId>raw`,
+      code: `import type { MessageId } from '@/01-models/ids'; const messageId = <MessageId>raw`,
     });
 
     expect(messages).toHaveLength(1);
@@ -66,7 +66,7 @@ describe('no-naidan-id-cast rule', () => {
 
   it('allows branding inside ids.ts', async () => {
     const messages = await lintText({
-      filePath: 'src/models/ids.ts',
+      filePath: 'src/01-models/ids.ts',
       code: `export type ChatId = string & { readonly __brand: true }; const chatId = raw as ChatId`,
     });
 

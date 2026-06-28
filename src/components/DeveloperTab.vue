@@ -2,7 +2,7 @@
 import { useSampleChat } from '@/composables/useSampleChat';
 import { useConfirm } from '@/composables/useConfirm';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';

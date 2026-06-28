@@ -6,24 +6,24 @@ import { useLayout } from '@/composables/useLayout';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/models/scoped-setting-change';
+import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type {
   Chat,
   Endpoint,
   EndpointType,
   LmParameters,
   SystemPrompt,
-} from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
+} from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
   areOptionalEndpointsEqual,
   cloneEndpoint,
   cloneOptionalEndpoint,
   isHttpEndpoint,
   selectHttpEndpointSeed,
-} from '@/models/endpoint';
-import type { ChatId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
+} from '@/01-models/endpoint';
+import type { ChatId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 import {
   XIcon,
   Settings2Icon,
@@ -35,7 +35,7 @@ import {
   PlusIcon,
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-import { ENDPOINT_PRESETS } from '@/models/constants';
+import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
 import { hasChatOverrides } from '@/utils/chat-settings-resolver';
 import { formatSettingsSourceLabel } from '@/utils/settings-labels';
@@ -53,7 +53,7 @@ import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsUpsell.vue') });
 
 const props = defineProps<{
   show?: boolean,

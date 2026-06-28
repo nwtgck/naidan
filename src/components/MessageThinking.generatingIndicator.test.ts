@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { h, defineComponent, markRaw } from 'vue';
 import MessageThinking from './MessageThinking.vue';
-import type { MessageNode } from '@/models/types';
-import { toMessageId } from '@/models/ids';
+import type { MessageNode } from '@/01-models/types';
+import { toMessageId } from '@/01-models/ids';
 
 // A stub component used as trailingInline so we can assert its presence.
 const TrailingStub = markRaw(defineComponent({

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { reactive } from 'vue';
-import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import type { Chat, ChatGroup, SidebarItem } from '@/01-models/types';
+import { toChatGroupId, toChatId } from '@/01-models/ids';
 
 type TestHierarchyNode =
   | { type: 'chat', id: string }
@@ -10,7 +10,7 @@ type TestHierarchyNode =
 
 const mockGetSidebarStructure = vi.fn();
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

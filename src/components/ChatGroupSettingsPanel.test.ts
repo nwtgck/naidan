@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, ref, toRef } from 'vue';
-import type { ChatGroup, Settings } from '@/models/types';
+import type { ChatGroup, Settings } from '@/01-models/types';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
-import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/01-models/ids';
 import { applyScopedSettingChangesToChatGroup } from '@/utils/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
@@ -74,7 +74,7 @@ function expectLatestGroupUpdate({
   expect(latest).toEqual(expect.objectContaining(partial));
 }
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
     updateChatGroup: mocks.updateChatGroup,
@@ -97,7 +97,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
 }));
 
-vi.mock('../composables/useFileExplorerModal', () => ({
+vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: () => ({
     openFileExplorer: mocks.openFileExplorer,
   }),
@@ -136,7 +136,7 @@ vi.mock('../composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('../composables/useGlobalSearch', () => ({
+vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
   useGlobalSearch: () => ({
     openSearch: mocks.openSearch,
   }),

@@ -1,7 +1,7 @@
 import { computed, toRaw, type ComputedRef, type Ref } from 'vue';
-import type { Chat } from '@/models/types';
-import type { ChatId } from '@/models/ids';
-import type { ContextCompactProgress } from '@/services/context-compact';
+import type { Chat } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
+import type { ContextCompactProgress } from '@/logic/context-compact';
 import type { ContextCompactRuntime } from './context-compact-runtime';
 import type { ChatRuntimeStore } from './chat-runtime-store';
 

@@ -20,33 +20,33 @@ import {
   FolderIcon,
   WrenchIcon,
 } from 'lucide-vue-next';
-import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/models/scoped-setting-change';
+import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type {
   Endpoint,
   EndpointType,
   LmParameters,
   Mount,
   SystemPrompt,
-} from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
+} from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
   areOptionalEndpointsEqual,
   cloneEndpoint,
   cloneOptionalEndpoint,
   isHttpEndpoint,
   selectHttpEndpointSeed,
-} from '@/models/endpoint';
-import type { ChatGroupId, VolumeId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
+} from '@/01-models/endpoint';
+import type { ChatGroupId, VolumeId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 import VolumeCreator from './VolumeCreator.vue';
 import MountBadgeList from './MountBadgeList.vue';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
-import { storageService } from '@/services/storage';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
+import { storageService } from '@/00-storage/service';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
-import { ENDPOINT_PRESETS } from '@/models/constants';
+import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
 import { hasGroupOverrides } from '@/utils/chat-settings-resolver';
 import {
@@ -58,12 +58,12 @@ import {
   createChangedLmParameterSettingChanges,
   createSystemPromptSettingChange,
 } from '@/utils/scoped-setting-changes';
-import type { WeshMount } from '@/services/wesh/types';
+import type { WeshMount } from '@/features/wesh/types';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
-const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeExportModal.vue') });
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
-const ChatGroupToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupToolsSettings.vue') });
+const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/recipes/components/RecipeExportModal.vue') });
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsUpsell.vue') });
+const ChatGroupToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/tools/components/ChatGroupToolsSettings.vue') });
 
 const { currentChatGroup } = useCurrentChatState();
 const { settings } = useSettings();

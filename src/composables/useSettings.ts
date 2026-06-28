@@ -13,17 +13,18 @@ import {
   type StorageType,
   type ProviderProfile,
   type UiLocale,
-} from '@/models/types';
-import { storageService } from '@/services/storage';
-import { checkOPFSSupport } from '@/services/storage/opfs-detection';
-import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
-import { createLmProvider } from '@/services/lm/providerFactory';
-import { preloadFakeLmLanguagePacks, type FakeLmDebugModeStatus } from '@/services/fake-lm';
-import { transformersJsService } from '@/services/transformers-js';
-import { StorageTypeSchemaDto } from '@/models/dto';
+} from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
+import { checkOPFSSupport } from '@/lib/opfs-detection';
+import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
+import { createLmProvider } from '@/features/lm/providerFactory';
+import { preloadFakeLmLanguagePacks, type FakeLmDebugModeStatus } from '@/features/fake-lm';
+import { transformersJsService } from '@/features/transformers-js';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move the storage type schema into 01-models.
+import { StorageTypeSchemaDto } from '@/00-storage/00-dto/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useConfirm } from './useConfirm';
-import { areEndpointsEqual, cloneEndpoint, isHttpEndpoint } from '@/models/endpoint';
+import { areEndpointsEqual, cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
 
 const _settings = ref<Settings>({
   ...DEFAULT_SETTINGS,
@@ -230,7 +231,7 @@ export function useSettings(): UseSettingsApi {
         // Handle URL-based data import BEFORE loading existing settings to ensure append mode works correctly
         if (dataZipBase64) {
           try {
-            const { urlImportExportLogic } = await import('@/services/import-export/url-logic');
+            const { urlImportExportLogic } = await import('@/features/import-export/url-logic');
             await urlImportExportLogic.importFromBase64({ zipBase64: dataZipBase64 });
             // Clear local reference to large data to help GC
             dataZipBase64 = undefined;

@@ -2,15 +2,15 @@
 import { lazyStrings } from '@/strings';
 import { ref, computed, onUnmounted, watch } from 'vue';
 import { ChevronRightIcon, ChevronDownIcon, CopyIcon, CheckIcon, ImageIcon, CpuIcon, EyeIcon, EyeOffIcon, FileIcon } from 'lucide-vue-next';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
 import type { GeneratedImageBlock } from '@/utils/image-generation';
-import type { MessageNode } from '@/models/types';
+import type { MessageNode } from '@/01-models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
-import { idToRaw, toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId, MessageId } from '@/models/ids';
+import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
+import type { BinaryObjectId, MessageId } from '@/01-models/ids';
 
 const props = defineProps<{
   node: Readonly<MessageNode>,

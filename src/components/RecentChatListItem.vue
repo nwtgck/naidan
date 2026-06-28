@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { FolderIcon, MessageSquareIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import RelativeTime from './RelativeTime.vue';
-import type { ChatSummary } from '@/models/types';
+import type { ChatSummary } from '@/01-models/types';
 
 const props = defineProps<{
   chat: ChatSummary & { accessedAt: number },

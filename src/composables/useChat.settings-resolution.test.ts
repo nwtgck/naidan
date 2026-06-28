@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
-import { storageService } from '@/services/storage';
-import type { ChatMeta } from '@/models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
+import { storageService } from '@/00-storage/service';
+import type { ChatMeta } from '@/01-models/types';
 
 // Mock storage
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -34,7 +34,7 @@ const mockOpenAIModels = vi.fn();
 const mockOllamaModels = vi.fn();
 
 // Proper class mocking for Vitest
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOpenAIChat,
@@ -43,7 +43,7 @@ vi.mock('../services/lm/openai', () => ({
   }),
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOllamaChat,

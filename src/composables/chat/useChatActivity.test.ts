@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ContextCompactProgress } from '@/services/context-compact';
-import { toChatId } from '@/models/ids';
+import type { ContextCompactProgress } from '@/logic/context-compact';
+import { toChatId } from '@/01-models/ids';
 
 const {
   mockIsChatProcessing,

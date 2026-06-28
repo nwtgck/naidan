@@ -3,8 +3,8 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
-import { storageService } from '@/services/storage';
-import { checkOPFSSupport } from '@/services/storage/opfs-detection';
+import { storageService } from '@/00-storage/service';
+import { checkOPFSSupport } from '@/lib/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 import {
   ShieldCheckIcon, CheckCircle2Icon, FileArchiveIcon,
@@ -13,13 +13,13 @@ import {
 } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 import { useToast } from '@/composables/useToast';
-import { urlImportExportLogic } from '@/services/import-export/url-logic';
+import { urlImportExportLogic } from '@/features/import-export/url-logic';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-import { useExportExclusions } from '@/composables/useExportExclusions';
+import { useExportExclusions } from '@/features/import-export/composables/useExportExclusions';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 // Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
-const ImportExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImportExportModal.vue') });
+const ImportExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/import-export/components/ImportExportModal.vue') });
 
 const props = defineProps<{
   storageType: 'local' | 'opfs' | 'memory',

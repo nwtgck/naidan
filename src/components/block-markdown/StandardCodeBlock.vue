@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
 import { ref, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, watch } from 'vue';
-import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight/worker/client-shared';
+import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/features/highlight/worker/client-shared';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { escapeTextAsHtml, sanitizeHighlightHtml } from '@/lib/security/allowedHtml';
 import { CheckIcon, CopyIcon, TerminalIcon, WrapTextIcon } from 'lucide-vue-next';

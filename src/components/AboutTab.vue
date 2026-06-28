@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { NaidanLicense } from '@/models/naidan-license';
+import type { NaidanLicense } from '@/01-models/naidan-license';
 import { ref, onMounted } from 'vue';
 import { InfoIcon, ShieldCheckIcon, Loader2Icon, GithubIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
 import Logo from './Logo.vue';

@@ -21,14 +21,14 @@ vi.mock('./useSettings', () => ({
 
 // Mock LM providers
 const mockLmChat = vi.fn();
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     chat = mockLmChat;
     listModels = vi.fn().mockResolvedValue(['gpt-4']);
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     chat = vi.fn();
     listModels = vi.fn().mockResolvedValue([]);
@@ -36,7 +36,7 @@ vi.mock('../services/lm/ollama', () => ({
 }));
 
 // Mock storage service
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),

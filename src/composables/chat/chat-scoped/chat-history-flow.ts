@@ -1,8 +1,8 @@
 import { ensureStrings } from '@/strings';
 import { reactive, toRaw } from 'vue';
-import type { AssistantMessageNode, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt, ToolMessageNode, UserMessageNode } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { AssistantMessageNode, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt, ToolMessageNode, UserMessageNode } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import {
   createBranchFromMessages,
   findDeepestLeaf,
@@ -28,8 +28,8 @@ import {
 import {
   abortProcessingForChat,
 } from '@/composables/chat/chat-scoped/chat-processing-abort';
-import type { ChatId, ChatGroupId, MessageId } from '@/models/ids';
-import { cloneToolConfigs } from '@/services/tools/tool-config';
+import type { ChatId, ChatGroupId, MessageId } from '@/01-models/ids';
+import { cloneToolConfigs } from '@/features/tools/tool-config';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';

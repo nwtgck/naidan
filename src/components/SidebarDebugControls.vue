@@ -3,7 +3,7 @@ import { lazyStrings } from '@/strings';
 import { ref } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';

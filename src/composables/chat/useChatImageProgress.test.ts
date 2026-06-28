@@ -1,6 +1,6 @@
 import { computed } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 
 const {
   mockImageProgressMap,

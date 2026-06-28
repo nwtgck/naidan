@@ -1,9 +1,9 @@
 import { generateId } from '@/utils/id';
-import type { MessageId } from '@/models/ids';
+import type { MessageId } from '@/01-models/ids';
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageThinking from './MessageThinking.vue';
-import type { MessageNode } from '@/models/types';
+import type { MessageNode } from '@/01-models/types';
 
 describe('MessageThinking Design', () => {
   const createMessageWithThinking = (content: string): MessageNode => ({

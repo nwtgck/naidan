@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import type { ChatId, MessageId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 import { computed, nextTick, ref, watch } from 'vue';
 import { EyeIcon, ListIcon, XIcon } from 'lucide-vue-next';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
-import type { MessageNode } from '@/models/types';
+import type { MessageNode } from '@/01-models/types';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import MessageItem from './MessageItem.vue';
 

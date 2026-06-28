@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { idToRaw } from '@/models/ids';
-import type { Mount } from '@/models/types';
-import type { VolumeId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { Mount } from '@/01-models/types';
+import type { VolumeId } from '@/01-models/ids';
 import { FolderIcon, LockIcon, UnlockIcon, XIcon } from 'lucide-vue-next';
 
 const props = defineProps<{

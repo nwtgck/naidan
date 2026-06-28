@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import VolumeSettingsTab from './VolumeSettingsTab.vue';
-import { storageService } from '@/services/storage';
-import type { Volume, Mount } from '@/models/types';
-import { toVolumeId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import type { Volume, Mount } from '@/01-models/types';
+import { toVolumeId } from '@/01-models/ids';
 
 // --- Mocks ---
 
-vi.mock('@/services/storage/opfs-detection', () => ({
+vi.mock('@/lib/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
   checkFileSystemAccessSupport: vi.fn().mockReturnValue(true),
 }));
@@ -20,7 +20,7 @@ vi.mock('../composables/useConfirm', () => ({
   useConfirm: vi.fn(() => ({ showConfirm: vi.fn() })),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     listVolumes: vi.fn(),
     loadSettings: vi.fn(),

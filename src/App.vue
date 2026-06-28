@@ -5,7 +5,7 @@ import OnboardingModal from '@/components/OnboardingModal.vue';
 import ToastContainer from '@/components/ToastContainer.vue';
 import StartupErrorView from '@/components/startup/StartupErrorView.vue';
 import { provideAppPresentation } from '@/composables/useAppPresentation';
-import type { StartupState } from '@/models/startup';
+import type { StartupState } from '@/logic/startup/types';
 
 const props = defineProps<{
   startupState: ShallowRef<StartupState>,

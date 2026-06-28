@@ -2,31 +2,31 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
-import ThemeToggle from './ThemeToggle.vue';
+import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import { useSettings } from '@/composables/useSettings';
-import { useTheme } from '@/composables/useTheme';
+import { useTheme } from '@/features/theme/composables/useTheme';
 import { useToast } from '@/composables/useToast';
 import { SettingsIcon } from 'lucide-vue-next';
-import * as openaiModule from '@/services/lm/openai';
-import * as ollamaModule from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
-import { type EndpointType } from '@/models/types';
+import * as openaiModule from '@/features/lm/openai';
+import * as ollamaModule from '@/features/lm/ollama';
+import { TransformersJsProvider } from '@/features/transformers-js/provider';
+import { type EndpointType } from '@/01-models/types';
 import { detectOllama } from '@/utils/ollama-detection';
 
 // Mock the services.
-vi.mock('../services/lm/openai', () => {
+vi.mock('../features/lm/openai', () => {
   return {
     OpenAIProvider: vi.fn(),
   };
 });
 
-vi.mock('../services/lm/ollama', () => {
+vi.mock('../features/lm/ollama', () => {
   return {
     OllamaProvider: vi.fn(),
   };
 });
 
-vi.mock('../services/transformers-js/provider', () => ({
+vi.mock('../features/transformers-js/provider', () => ({
   TransformersJsProvider: vi.fn(),
 }));
 
@@ -38,7 +38,7 @@ vi.mock('../utils/ollama-detection', () => ({
 // Mock the composables
 vi.mock('../composables/useSettings', () => ({ useSettings: vi.fn() }));
 vi.mock('../composables/useToast', () => ({ useToast: vi.fn() }));
-vi.mock('../composables/useTheme', () => ({ useTheme: vi.fn() }));
+vi.mock('../features/theme/composables/useTheme', () => ({ useTheme: vi.fn() }));
 
 const mockSetActiveFocusArea = vi.fn();
 

@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BinaryObjectsTab from './BinaryObjectsTab.vue';
-import { storageService } from '@/services/storage';
-import type { BinaryObject } from '@/models/types';
-import { idToRaw, toBinaryObjectId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import type { BinaryObject } from '@/01-models/types';
+import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
 
 // --- Mocks ---
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     listBinaryObjects: vi.fn(),
     getFile: vi.fn(),

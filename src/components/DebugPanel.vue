@@ -2,7 +2,7 @@
 import { ensureStrings, lazyStrings } from '@/strings';
 import { ref } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useLayout } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {

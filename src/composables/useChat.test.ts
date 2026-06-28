@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChat, type AddToastOptions } from './useChat';
-import { storageService } from '@/services/storage';
-import { OpenAIProvider } from '@/services/lm/openai';
+import { storageService } from '@/00-storage/service';
+import { OpenAIProvider } from '@/features/lm/openai';
 import { reactive, triggerRef, toRaw } from 'vue';
-import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '@/utils/chat-tree';
-import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
@@ -32,7 +32,7 @@ const { mocks } = vi.hoisted(() => ({
 const mockRootItems: SidebarItem[] = [];
 let mockHierarchy: Hierarchy = { items: [] };
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
@@ -73,7 +73,7 @@ const mockLmChat = vi.fn().mockImplementation(async (params: { onChunk: (params:
   params.onChunk({ chunk: ' World' });
 });
 
-vi.mock('../services/lm/openai', () => {
+vi.mock('../features/lm/openai', () => {
   return {
     OpenAIProvider: function() {
       return {
@@ -84,7 +84,7 @@ vi.mock('../services/lm/openai', () => {
   };
 });
 
-vi.mock('../services/lm/ollama', () => {
+vi.mock('../features/lm/ollama', () => {
   return {
     OllamaProvider: function() {
       return {

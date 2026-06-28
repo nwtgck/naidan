@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted, watch } from 'vue';
 import { XIcon, HistoryIcon, ClockIcon, CpuIcon, ArrowDownIcon, CopyIcon, CheckIcon, ArrowRightIcon, RotateCcwIcon, EyeIcon, EyeOffIcon } from 'lucide-vue-next';
-import { idToRaw } from '@/models/ids';
-import type { MessageId } from '@/models/ids';
-import type { MessageNode } from '@/models/types';
+import { idToRaw } from '@/01-models/ids';
+import type { MessageId } from '@/01-models/ids';
+import type { MessageNode } from '@/01-models/types';
 import { computeWordDiff, type DiffPart } from '@/utils/diff';
 import { lazyStrings } from '@/strings';
 
