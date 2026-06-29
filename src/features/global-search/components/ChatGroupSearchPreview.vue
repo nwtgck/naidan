@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
-import { FolderIcon, MessageSquareIcon, Loader2Icon, ChevronRightIcon } from 'lucide-vue-next';
-import { storageService, type ChatSummary } from '@/00-storage/service';
+import { FolderIcon, MessageSquareIcon, ChevronRightIcon } from 'lucide-vue-next';
+import type { ChatSummary } from '@/01-models/types';
 import type { SearchResultItem } from '@/features/global-search/composables/useChatSearch';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useRouter } from 'vue-router';
 import { scrollIntoViewSafe } from '@/utils/dom';
@@ -20,9 +21,17 @@ const props = defineProps<{
 const router = useRouter();
 const { openChat } = useChatNavigation();
 const { closeSearch } = useGlobalSearch();
+const { sidebarItems } = useCurrentChatState();
 
-const chats = ref<ChatSummary[]>([]);
-const isLoading = ref(false);
+const chats = computed<ChatSummary[]>(() => {
+  for (const item of sidebarItems.value) {
+    if (item.type !== 'chat_group' || idToRaw({ id: item.chatGroup.id }) !== props.groupId) continue;
+    return item.chatGroup.items
+      .map(chatItem => chatItem.chat)
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  }
+  return [];
+});
 const selectedChatId = ref<ChatId | null>(null);
 const chatListContainer = ref<HTMLElement | null>(null);
 const exposedSelectedChatId = computed(() => selectedChatId.value === null ? null : idToRaw({ id: selectedChatId.value }));
@@ -107,28 +116,11 @@ const selectedSearchResultItem = computed<Extract<SearchResultItem, { type: 'cha
   };
 });
 
-async function loadChats() {
-  isLoading.value = true;
-  try {
-    const allChats = await storageService.listChats();
-    const groupChats = allChats
-      .filter(c => c.groupId !== undefined && c.groupId !== null && idToRaw({ id: c.groupId }) === props.groupId)
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+watch(chats, nextChats => {
+  if (nextChats.some(chat => chat.id === selectedChatId.value)) return;
+  selectedChatId.value = nextChats[0]?.id ?? null;
+}, { immediate: true });
 
-    chats.value = groupChats;
-    if (groupChats.length > 0 && groupChats[0]) {
-      selectedChatId.value = groupChats[0].id;
-    } else {
-      selectedChatId.value = null;
-    }
-  } catch (e) {
-    console.error('Failed to load chats for group preview:', e);
-  } finally {
-    isLoading.value = false;
-  }
-}
-
-watch(() => props.groupId, loadChats, { immediate: true });
 </script>
 
 <template>
@@ -153,10 +145,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
     <div class="flex-1 flex overflow-hidden">
       <!-- Left: Chat List inside Group -->
       <div class="w-64 border-r border-gray-100 dark:border-gray-800 flex flex-col overflow-hidden bg-gray-50/30 dark:bg-gray-950/20 shrink-0">
-        <div v-if="isLoading" class="flex-1 flex items-center justify-center">
-          <Loader2Icon class="w-5 h-5 animate-spin text-gray-300" />
-        </div>
-        <div v-else-if="chats.length === 0" class="flex-1 flex flex-col items-center justify-center p-6 text-center">
+        <div v-if="chats.length === 0" class="flex-1 flex flex-col items-center justify-center p-6 text-center">
           <MessageSquareIcon class="w-8 h-8 text-gray-200 dark:text-gray-800 mb-2" />
           <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ChatGroupSearchPreview__empty_group() }}</p>
         </div>

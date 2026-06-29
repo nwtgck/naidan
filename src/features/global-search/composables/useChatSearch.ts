@@ -1,251 +1,206 @@
-import { ref, shallowRef } from 'vue';
-import { UNTITLED_CHAT_TITLE } from '@/constants';
-import type { SidebarItem } from '@/01-models/types';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Build the search input from 01-models instead of the persisted DTO.
-import { chatContentToDto } from '@/00-storage/mapper/mappers';
+import { ref, shallowRef, type Ref } from 'vue';
+import type { SidebarItem, StorageType } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import { createGlobalSearchWorkerClient } from '@/features/global-search/worker/client';
+import { createSearchSource, filterSearchChats, searchTitles } from '@/features/global-search/logic/catalog';
+import { createSearchResultStore } from '@/features/global-search/logic/result-store';
 import type {
   ContentMatch,
   FlatSearchResultItem,
   SearchOptions,
   SearchRoleFilter,
-  SearchChatGroup,
-  SearchChatSource,
   SearchResultItem,
   SearchScope,
-  SearchSource,
 } from '@/features/global-search/types';
-import { idToRaw, toChatId } from '@/01-models/ids';
 
 export type { ContentMatch, FlatSearchResultItem, SearchResultItem, SearchRoleFilter, SearchScope };
 
-function flattenSidebarForSearch({ sidebarItems }: {
-  sidebarItems: SidebarItem[],
-}): SearchSource {
-  const chatGroups: SearchChatGroup[] = [];
-  const chats: SearchChatSource[] = [];
-
-  const flattenItems = ({ items }: { items: SidebarItem[] }) => {
-    for (const item of items) {
-      switch (item.type) {
-      case 'chat_group':
-        chatGroups.push({
-          id: idToRaw({ id: item.chatGroup.id }),
-          name: item.chatGroup.name,
-          updatedAt: item.chatGroup.updatedAt,
-          chatCount: item.chatGroup.items.length,
-        });
-        for (const chatItem of item.chatGroup.items) {
-          switch (chatItem.type) {
-          case 'chat':
-            chats.push({
-              chat: {
-                id: idToRaw({ id: chatItem.chat.id }),
-                title: chatItem.chat.title,
-                updatedAt: chatItem.chat.updatedAt,
-                groupId: chatItem.chat.groupId === undefined || chatItem.chat.groupId === null ? chatItem.chat.groupId : idToRaw({ id: chatItem.chat.groupId }),
-              },
-              groupName: item.chatGroup.name,
-            });
-            break;
-          default: {
-            const _exhaustiveCheck: never = chatItem.type;
-            throw new Error(`Unhandled chat group item type: ${_exhaustiveCheck}`);
-          }
-          }
-        }
-        break;
-      case 'chat':
-        chats.push({
-          chat: {
-            id: idToRaw({ id: item.chat.id }),
-            title: item.chat.title,
-            updatedAt: item.chat.updatedAt,
-            groupId: item.chat.groupId === undefined || item.chat.groupId === null ? item.chat.groupId : idToRaw({ id: item.chat.groupId }),
-          },
-          groupName: undefined,
-        });
-        break;
-      default: {
-        const _exhaustiveCheck: never = item;
-        throw new Error(`Unhandled sidebar item type: ${_exhaustiveCheck}`);
-      }
-      }
-    }
-  };
-
-  flattenItems({ items: sidebarItems });
-
-  return { chatGroups, chats };
-}
-
-export function useChatSearch() {
+export function useChatSearch({ sidebarItems }: {
+  sidebarItems: Readonly<Ref<SidebarItem[]>>,
+}) {
   const query = ref('');
   const isSearching = ref(false);
-  const isScanningContent = ref(false); // New flag for heavy content scanning
+  const isScanningContent = ref(false);
   const results = shallowRef<FlatSearchResultItem[]>([]);
-  let lastSearchKey: string | null = null;
-  let searchSourceCache: SearchSource | null = null;
-  let searchClient: Awaited<ReturnType<typeof createGlobalSearchWorkerClient>> | undefined;
-  let searchSessionId: string | undefined;
+  let lastSearchKey: string | undefined;
+  let lastSearchRequest: { searchQuery: string, options: SearchOptions } | undefined;
+  let searchActive = false;
+  let activeRunId = 0;
+  type SearchClient = Awaited<ReturnType<typeof createGlobalSearchWorkerClient>>;
+  let searchClient: { storageType: StorageType, client: SearchClient } | undefined;
+  let searchClientPromise: {
+    storageType: StorageType,
+    promise: Promise<SearchClient>,
+  } | undefined;
 
-  function createSearchKey({ trimmedQuery, scope, chatId, chatGroupIds, roleFilter }: {
+  function createSearchKey({ trimmedQuery, options, storageType }: {
     trimmedQuery: string,
-    scope: SearchOptions['scope'],
-    chatId: SearchOptions['chatId'],
-    chatGroupIds: SearchOptions['chatGroupIds'],
-    roleFilter: SearchOptions['roleFilter'],
+    options: SearchOptions,
+    storageType: StorageType | undefined,
   }): string {
     return JSON.stringify({
       trimmedQuery,
-      scope,
-      chatId,
-      chatGroupIds: chatGroupIds ? [...chatGroupIds] : undefined,
-      roleFilter,
+      scope: options.scope,
+      chatId: options.chatId,
+      chatGroupIds: options.chatGroupIds === undefined
+        ? undefined
+        : [...options.chatGroupIds].sort(),
+      roleFilter: options.roleFilter ?? 'all',
+      storageType,
     });
   }
 
-  async function disposeSearchClient() {
-    const client = searchClient;
-    const sessionId = searchSessionId;
-    searchClient = undefined;
-    searchSessionId = undefined;
-    searchSourceCache = null;
-
-    if (!client) {
-      return;
+  async function getSearchClient({ storageType }: {
+    storageType: StorageType,
+  }): Promise<SearchClient> {
+    if (searchClient !== undefined && searchClient.storageType === storageType) {
+      return searchClient.client;
+    }
+    if (searchClient !== undefined || (
+      searchClientPromise !== undefined
+      && searchClientPromise.storageType !== storageType
+    )) {
+      disposeSearchClient();
+    }
+    if (searchClientPromise === undefined) {
+      searchClientPromise = {
+        storageType,
+        promise: createGlobalSearchWorkerClient({ storageType }),
+      };
     }
 
+    const pending = searchClientPromise;
     try {
-      if (sessionId) {
-        await client.disposeSession({ request: { sessionId } });
+      const client = await pending.promise;
+      if (searchClientPromise === pending) {
+        searchClient = { storageType, client };
       }
+      return client;
     } finally {
-      await client.dispose();
+      if (searchClientPromise === pending) {
+        searchClientPromise = undefined;
+      }
     }
   }
 
-  /**
-   * Performs the search.
-   * Prioritizes title matches, then performs content search.
-   * Uses time-slicing to avoid blocking the main thread.
-   */
-  const search = async ({ searchQuery, options = { scope: 'all' } }: {
+  function disposeSearchClient(): void {
+    const active = searchClient;
+    const pending = searchClientPromise;
+    searchClient = undefined;
+    searchClientPromise = undefined;
+
+    if (active !== undefined) {
+      void active.client.dispose().catch(error => {
+        console.error('Failed to dispose Global Search worker client', error);
+      });
+    }
+
+    if (pending !== undefined) {
+      void pending.promise.then(async pendingClient => {
+        await pendingClient.dispose();
+      }).catch(error => {
+        console.error('Failed to dispose pending Global Search worker client', error);
+      });
+    }
+  }
+
+  const search = async ({ searchQuery, options }: {
     searchQuery: string,
-    options?: SearchOptions,
+    options: SearchOptions,
   }) => {
+    searchActive = true;
+    lastSearchRequest = {
+      searchQuery,
+      options: {
+        ...options,
+        chatGroupIds: options.chatGroupIds === undefined
+          ? undefined
+          : [...options.chatGroupIds],
+      },
+    };
     query.value = searchQuery;
     const trimmedQuery = searchQuery.trim();
     const scope = options.scope;
     const roleFilter: SearchRoleFilter = options.roleFilter ?? 'all';
+    const source = createSearchSource({ sidebarItems: sidebarItems.value });
+    const storageType = (() => {
+      switch (scope) {
+      case 'title_only':
+        return undefined;
+      case 'all':
+      case 'current_thread':
+        return storageService.getCurrentType();
+      default: {
+        const _ex: never = scope;
+        throw new Error(`Unhandled search scope: ${_ex}`);
+      }
+      }
+    })();
+    const searchKey = createSearchKey({ trimmedQuery, options, storageType });
 
     if (!trimmedQuery && scope !== 'title_only') {
+      activeRunId++;
       results.value = [];
       isSearching.value = false;
       isScanningContent.value = false;
-      lastSearchKey = null;
+      lastSearchKey = undefined;
+      disposeSearchClient();
       return;
     }
 
-    const searchKey = createSearchKey({
-      trimmedQuery,
-      scope: options.scope,
-      chatId: options.chatId,
-      chatGroupIds: options.chatGroupIds,
-      roleFilter: options.roleFilter,
-    });
-
-    if (searchKey === lastSearchKey) {
-      return;
-    }
+    if (searchKey === lastSearchKey) return;
     lastSearchKey = searchKey;
 
+    const runId = ++activeRunId;
+    if (isScanningContent.value) {
+      disposeSearchClient();
+    }
     isSearching.value = true;
     isScanningContent.value = false;
 
-    // NOTE: We do NOT clear results.value immediately here.
-    // This prevents the UI from flickering to an empty state while searching.
-    // The results will be updated as soon as title search or content matches are found.
-
     try {
-      const keywords = trimmedQuery.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
+      const keywords = trimmedQuery.toLowerCase().split(/[\s\u3000]+/).filter(keyword => keyword.length > 0);
       if (keywords.length === 0 && scope !== 'title_only') {
         results.value = [];
-        isSearching.value = false;
         return;
       }
 
-      if (!searchClient) {
-        searchClient = await createGlobalSearchWorkerClient();
-      }
-
-      if (!searchSourceCache) {
-        if (searchSessionId && searchClient) {
-          await searchClient.disposeSession({ request: { sessionId: searchSessionId } });
-          searchSessionId = undefined;
-        }
-        const sidebar = await storageService.getSidebarStructure();
-        searchSourceCache = flattenSidebarForSearch({ sidebarItems: sidebar });
-        const sessionResponse = await searchClient.prepareSession({
-          request: {
-            source: searchSourceCache,
-          },
-        });
-        searchSessionId = sessionResponse.sessionId;
-      }
-
-      if (!searchSessionId || !searchClient) {
-        throw new Error('Search worker session is not initialized');
-      }
-
-      const { chats: allChatsSource } = searchSourceCache;
-
-      // Filter by options (Groups/ChatId)
-      const chatGroupIds = options.chatGroupIds;
-      const targetChatId = options.chatId;
-      const hasGroupFilter = !!(chatGroupIds && chatGroupIds.length > 0);
-
-      const filteredChats = targetChatId
-        ? allChatsSource.filter(({ chat }) => chat.id === targetChatId)
-        : (hasGroupFilter ? allChatsSource.filter(({ chat }) => chat.groupId && chatGroupIds!.includes(chat.groupId)) : allChatsSource);
-
-      const titlesResponse = await searchClient.searchTitles({
-        request: {
-          sessionId: searchSessionId,
-          searchQuery: trimmedQuery,
-          options: {
-            scope: options.scope,
-            chatGroupIds: options.chatGroupIds ? [...options.chatGroupIds] : undefined,
-            chatId: options.chatId,
-            roleFilter,
-          },
+      const titleResults = searchTitles({
+        source,
+        searchQuery: trimmedQuery,
+        options: {
+          ...options,
+          roleFilter,
         },
       });
-      const flatResults: FlatSearchResultItem[] = [...titlesResponse.flatResults];
-      const chatHeaderMap = new Map<string, Extract<SearchResultItem, { type: 'chat' }>>();
-      for (const entry of flatResults) {
-        switch (entry.type) {
-        case 'chat':
-          chatHeaderMap.set(entry.item.chatId, entry.item);
-          break;
-        case 'chat_group':
-        case 'message':
-          break;
-        default: {
-          const _exhaustiveCheck: never = entry;
-          throw new Error(`Unhandled search result type: ${_exhaustiveCheck}`);
-        }
-        }
-      }
+      const resultStore = createSearchResultStore({ titleResults });
+      let pendingResultsFrame: number | undefined;
 
-      // Update UI with initial title results
-      results.value = [...flatResults];
+      const publishResults = () => {
+        if (pendingResultsFrame !== undefined) {
+          cancelAnimationFrame(pendingResultsFrame);
+          pendingResultsFrame = undefined;
+        }
+        if (runId === activeRunId) {
+          results.value = resultStore.toFlatResults();
+        }
+      };
 
-      // If scope is title_only, we stop here.
+      const scheduleResultsPublish = () => {
+        if (pendingResultsFrame !== undefined) return;
+        pendingResultsFrame = requestAnimationFrame(() => {
+          pendingResultsFrame = undefined;
+          if (runId === activeRunId) {
+            results.value = resultStore.toFlatResults();
+          }
+        });
+      };
+
+      if (runId !== activeRunId) return;
+      publishResults();
+
       switch (scope) {
       case 'title_only':
-        isSearching.value = false;
         return;
       case 'all':
       case 'current_thread':
@@ -256,80 +211,55 @@ export function useChatSearch() {
       }
       }
 
-      // 3. Content Search (Progressive)
       isScanningContent.value = true;
-      let processedCount = 0;
-      const CHUNK_SIZE = 1;
+      if (storageType === undefined) {
+        throw new Error('Global Search content scan requires an initialized storage type');
+      }
+      const filteredChats = filterSearchChats({ source, options });
+      if (filteredChats.length === 0) return;
 
-      for (const { chat, groupName } of filteredChats) {
-        // Yield to event loop to keep UI responsive
-        if (processedCount % CHUNK_SIZE === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
-        }
-        processedCount++;
+      const client = await getSearchClient({ storageType });
+      if (runId !== activeRunId) return;
 
-        // ABORT CHECK: If query changed while we were waiting, stop.
-        if (query.value !== trimmedQuery) {
-          return;
-        }
+      for (const sourceChat of filteredChats) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        if (runId !== activeRunId) return;
 
+        const { chat } = sourceChat;
         try {
-          const content = await storageService.loadChatContent({ id: toChatId({ raw: chat.id }) });
-          if (content) {
-            const response = await searchClient.searchChatContent({
-              request: {
-                sessionId: searchSessionId,
-                searchQuery: trimmedQuery,
-                scope,
-                roleFilter,
-                chat,
-                groupName,
-                content: chatContentToDto({ domain: content }),
-              },
-            });
-            const matches: ContentMatch[] = response.matches;
+          const response = await client.searchChatContent({
+            request: {
+              searchQuery: trimmedQuery,
+              scope,
+              roleFilter,
+              chatId: chat.id,
+            },
+          });
+          if (runId !== activeRunId) return;
 
-            if (matches.length > 0) {
-              const header = chatHeaderMap.get(chat.id);
-              if (header && header.type === 'chat') {
-                header.matchType = 'both';
-                header.contentMatches = matches;
+          const matches: ContentMatch[] = response.matches;
+          if (matches.length === 0) continue;
 
-                // Insert matches after the header to keep them grouped
-                const headerIndex = flatResults.findIndex(r => r.type === 'chat' && r.item === header);
-                if (headerIndex !== -1) {
-                  const messageEntries: FlatSearchResultItem[] = matches.map(m => ({ type: 'message', item: m, parentChat: header }));
-                  flatResults.splice(headerIndex + 1, 0, ...messageEntries);
-                }
-              } else {
-                // Header wasn't pushed yet (title didn't match), so push it now
-                const newHeader: Extract<SearchResultItem, { type: 'chat' }> = {
-                  type: 'chat',
-                  chatId: chat.id,
-                  title: chat.title || UNTITLED_CHAT_TITLE,
-                  groupName,
-                  updatedAt: chat.updatedAt,
-                  matchType: 'content',
-                  titleMatch: false,
-                  contentMatches: matches,
-                };
-                chatHeaderMap.set(chat.id, newHeader);
-                flatResults.push({ type: 'chat', item: newHeader });
-                const messageEntries: FlatSearchResultItem[] = matches.map(m => ({ type: 'message', item: m, parentChat: newHeader }));
-                flatResults.push(...messageEntries);
-              }
-              // Progressively update results
-              results.value = [...flatResults];
-            }
-          }
-        } catch (e) {
-          console.warn(`Failed to search content for chat ${chat.id}`, e);
+          resultStore.addContentMatches({
+            source: sourceChat,
+            matches,
+          });
+          scheduleResultsPublish();
+        } catch (error) {
+          console.warn(`Failed to search content for chat ${chat.id}`, error);
+          lastSearchKey = undefined;
+          disposeSearchClient();
+          break;
         }
       }
 
+      publishResults();
+    } catch (error) {
+      if (runId === activeRunId) {
+        console.error('Failed to run Global Search', error);
+      }
     } finally {
-      // Only unset loading if we are still on the same query
-      if (query.value === trimmedQuery) {
+      if (runId === activeRunId) {
         isSearching.value = false;
         isScanningContent.value = false;
       }
@@ -337,23 +267,60 @@ export function useChatSearch() {
   };
 
   const clearSearch = () => {
+    searchActive = false;
+    lastSearchRequest = undefined;
+    activeRunId++;
     query.value = '';
     results.value = [];
     isSearching.value = false;
     isScanningContent.value = false;
-    lastSearchKey = null;
-    void disposeSearchClient();
+    lastSearchKey = undefined;
+    disposeSearchClient();
   };
 
-  /**
-   * Resets searching state and invalidates cache without clearing query/results.
-   * Used when closing the modal to ensure fresh data on reopen while preserving UX.
-   */
   const stopSearch = () => {
+    searchActive = false;
+    activeRunId++;
     isSearching.value = false;
     isScanningContent.value = false;
-    lastSearchKey = null;
-    void disposeSearchClient();
+    lastSearchKey = undefined;
+    disposeSearchClient();
+  };
+
+
+  const unsubscribeStorageChanges = storageService.subscribeToChanges({
+    listener: ({ event }) => {
+      switch (event.type) {
+      case 'migration':
+        activeRunId++;
+        lastSearchKey = undefined;
+        isSearching.value = false;
+        isScanningContent.value = false;
+        disposeSearchClient();
+
+        if (searchActive && lastSearchRequest !== undefined) {
+          void search(lastSearchRequest);
+        }
+        break;
+      case 'chat_meta_and_chat_group':
+      case 'chat_content':
+      case 'chat_content_generation':
+      case 'settings':
+      case 'binary_objects':
+        break;
+      default: {
+        const _ex: never = event;
+        throw new Error(
+          `Unhandled storage change event: ${((_ex satisfies never) as { readonly type: string }).type}`,
+        );
+      }
+      }
+    },
+  });
+
+  const disposeSearch = () => {
+    stopSearch();
+    unsubscribeStorageChanges();
   };
 
   return {
@@ -364,8 +331,7 @@ export function useChatSearch() {
     search,
     clearSearch,
     stopSearch,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    disposeSearch,
+    TEST_ONLY: {},
   };
 }

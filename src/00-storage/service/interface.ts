@@ -117,6 +117,11 @@ export abstract class IStorageProvider {
   abstract loadChat({ id }: { id: ChatId }): Promise<Chat | null>;
   abstract loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null>;
   abstract loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null>;
+  /**
+   * Loads chat content without hydrating attachment-backed data.
+   * Attachment descriptors may remain on the returned messages.
+   */
+  abstract loadChatContentWithoutAttachments({ id }: { id: ChatId }): Promise<ChatContent | null>;
   abstract deleteChat({ id }: { id: ChatId }): Promise<void>;
 
   abstract saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void>;

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, shallowRef, watch, computed, onUnmounted } from 'vue';
 import type { ContentMatch, SearchResultItem } from '@/features/global-search/composables/useChatSearch';
 import { GitBranchIcon, Loader2Icon, MessageSquareIcon } from 'lucide-vue-next';
 import { storageService } from '@/00-storage/service';
 import { getChatBranchIterator } from '@/logic/chat-tree';
-import type { MessageNode, Chat } from '@/01-models/types';
+import type { MessageNode, ChatContent } from '@/01-models/types';
 import { useSettings } from '@/composables/useSettings';
 import { lazyStrings } from '@/strings';
 import MessageItem from '@/components/MessageItem.vue';
@@ -18,49 +18,69 @@ const props = defineProps<{
 
 const { searchContextSize } = useSettings();
 const isLoading = ref(false);
-const branchMessages = ref<MessageNode[]>([]);
+const branchMessages = shallowRef<MessageNode[]>([]);
 const matchedIndex = ref(-1);
 
 const CONTEXT_SIZE = computed(() => searchContextSize.value);
 
+let activeRequestId = 0;
+
 async function loadContext() {
+  const requestId = ++activeRequestId;
   const chatId = props.match?.chatId || props.chat?.chatId;
+  branchMessages.value = [];
+  matchedIndex.value = -1;
+
   if (!chatId) {
-    branchMessages.value = [];
-    matchedIndex.value = -1;
+    isLoading.value = false;
     return;
   }
 
   isLoading.value = true;
   try {
-    const fullChat = await storageService.loadChat({ id: toChatId({ raw: chatId }) });
-    if (fullChat) {
-      // If we have a match, use its leaf. Otherwise use the chat's current leaf.
-      const targetLeafId = props.match?.targetLeafId === undefined
-        ? fullChat.currentLeafId
-        : toMessageId({ raw: props.match.targetLeafId });
-      const virtualChat: Chat = {
-        ...fullChat,
-        currentLeafId: targetLeafId,
-      };
-      const branch = Array.from(getChatBranchIterator({ chat: virtualChat }));
-      branchMessages.value = branch;
+    const content = await storageService.loadChatContent({ id: toChatId({ raw: chatId }) });
+    if (requestId !== activeRequestId || content === null) return;
 
-      if (props.match) {
-        matchedIndex.value = branch.findIndex(m => idToRaw({ id: m.id }) === props.match?.messageId);
-      } else {
-        // If no match, "focus" on the last message
-        matchedIndex.value = branch.length - 1;
-      }
+    const targetLeafId = props.match?.targetLeafId === undefined
+      ? content.currentLeafId
+      : toMessageId({ raw: props.match.targetLeafId });
+    const virtualContent: ChatContent = {
+      ...content,
+      currentLeafId: targetLeafId,
+    };
+    const branch = Array.from(getChatBranchIterator({ chat: virtualContent }));
+    if (requestId !== activeRequestId) return;
+
+    branchMessages.value = branch;
+    matchedIndex.value = props.match === undefined
+      ? branch.length - 1
+      : branch.findIndex(message => idToRaw({ id: message.id }) === props.match?.messageId);
+  } catch (error) {
+    if (requestId === activeRequestId) {
+      console.error('Failed to load context for search preview:', error);
     }
-  } catch (e) {
-    console.error('Failed to load context for search preview:', e);
   } finally {
-    isLoading.value = false;
+    if (requestId === activeRequestId) {
+      isLoading.value = false;
+    }
   }
 }
 
-watch(() => props.match?.messageId || props.chat?.chatId, loadContext, { immediate: true });
+watch(
+  () => [
+    props.match?.chatId,
+    props.match?.messageId,
+    props.match?.targetLeafId,
+    props.chat?.chatId,
+  ] as const,
+  loadContext,
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  activeRequestId++;
+  branchMessages.value = [];
+});
 
 const visibleMessages = computed(() => {
   if (branchMessages.value.length === 0) return [];

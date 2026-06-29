@@ -56,6 +56,18 @@ export class OPFSStorageProvider extends IStorageProvider {
   private readonly STORAGE_DIR = 'naidan-storage';
   readonly canPersistBinary = true;
 
+  private async loadUnhydratedChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
+    try {
+      const contentDir = await this.getDir({ name: 'chat-contents' });
+      const contentFile = await (await contentDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
+      return chatContentToDomain({
+        dto: ChatContentSchemaDto.parse(JSON.parse(await contentFile.text())),
+      });
+    } catch {
+      return null;
+    }
+  }
+
   async init(): Promise<void> {
     await this.ensureRoot();
     await this.runMigrations();
@@ -457,19 +469,15 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
-    try {
-      const contentDir = await this.getDir({ name: 'chat-contents' });
-      const contentFile = await (await contentDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      const dto = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
-      const content = chatContentToDomain({ dto });
+    const content = await this.loadUnhydratedChatContent({ id });
+    if (content === null) return null;
 
-      // Hydrate attachments
-      await this.hydrateAttachments({ nodes: content.root.items });
+    await this.hydrateAttachments({ nodes: content.root.items });
+    return content;
+  }
 
-      return content;
-    } catch {
-      return null;
-    }
+  async loadChatContentWithoutAttachments({ id }: { id: ChatId }): Promise<ChatContent | null> {
+    return this.loadUnhydratedChatContent({ id });
   }
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {

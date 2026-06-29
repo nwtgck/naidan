@@ -69,6 +69,27 @@ describe('searchChatTree', () => {
     const matches = searchChatTree({ root, query: 'hello', chatId: toChatId({ raw: 'chat-1' }) });
     expect(matches).toHaveLength(1);
   });
+
+  it('searches a deeply nested branch without recursive traversal', () => {
+    const depth = 10_000;
+    let rootNode = createNode(String(depth - 1), 'deep target');
+
+    for (let index = depth - 2; index >= 0; index--) {
+      rootNode = createNode(String(index), index === 0 ? 'root target' : 'intermediate', [rootNode]);
+    }
+
+    const matches = searchChatTree({
+      root: { items: [rootNode] },
+      query: 'target',
+      chatId: toChatId({ raw: 'chat-1' }),
+    });
+
+    expect(matches).toHaveLength(2);
+    expect(matches[0]?.messageId).toBe('0');
+    expect(matches[0]?.targetLeafId).toBe(String(depth - 1));
+    expect(matches[1]?.messageId).toBe(String(depth - 1));
+    expect(matches[1]?.targetLeafId).toBe(String(depth - 1));
+  });
 });
 
 describe('searchLinearBranch', () => {

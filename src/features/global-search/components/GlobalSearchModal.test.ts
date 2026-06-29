@@ -46,6 +46,7 @@ const mockResults = ref([]);
 const mockSearch = vi.fn();
 const mockClearSearch = vi.fn();
 const mockStopSearch = vi.fn();
+const mockDisposeSearch = vi.fn();
 
 vi.mock('../composables/useChatSearch', () => ({
   useChatSearch: () => ({
@@ -56,6 +57,7 @@ vi.mock('../composables/useChatSearch', () => ({
     search: mockSearch,
     clearSearch: mockClearSearch,
     stopSearch: mockStopSearch,
+    disposeSearch: mockDisposeSearch,
   }),
 }));
 
@@ -115,6 +117,7 @@ describe('GlobalSearchModal Component', () => {
     mockChatGroupIds.value = [];
     mockChatId.value = undefined;
     mockResults.value = [];
+    mockActiveFocusArea.value = 'chat';
     vi.clearAllMocks();
     vi.mocked(useChatNavigation).mockReturnValue({
       openChat: vi.fn().mockImplementation(async ({ chatId }) => {
@@ -145,6 +148,34 @@ describe('GlobalSearchModal Component', () => {
   it('should render when open', () => {
     const wrapper = mount(GlobalSearchModal);
     expect(wrapper.find('[data-testid="search-input"]').exists()).toBe(true);
+  });
+
+  it('should list all titles immediately when mounted open with an empty query', async () => {
+    mount(GlobalSearchModal);
+    await nextTick();
+
+    expect(mockSearch).toHaveBeenCalledWith({
+      searchQuery: '',
+      options: {
+        scope: 'title_only',
+        roleFilter: 'all',
+        chatGroupIds: [],
+        chatId: undefined,
+      },
+    });
+  });
+
+  it('should focus the search input and set the search focus area when mounted open', async () => {
+    const wrapper = mount(GlobalSearchModal, {
+      attachTo: document.body,
+    });
+    await nextTick();
+
+    const input = wrapper.get('[data-testid="search-input"]');
+    expect(document.activeElement).toBe(input.element);
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'search' });
+
+    wrapper.unmount();
   });
 
   it('should call search on input with debounce', async () => {
@@ -230,6 +261,42 @@ describe('GlobalSearchModal Component', () => {
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
+
+  it('should preserve the selected item when progressive results are inserted before it', async () => {
+    mockQuery.value = 'test';
+    mockResults.value = [
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat2' }), title: 'Chat 2', updatedAt: 2, contentMatches: [], matchType: 'title' } },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowDown' });
+    expect((wrapper.vm as any).selectedIndex).toBe(1);
+
+    mockResults.value = [
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'both' } },
+      {
+        type: 'message',
+        item: {
+          chatId: toChatId({ raw: 'chat1' }),
+          messageId: toMessageId({ raw: 'message-1' }),
+          excerpt: 'test excerpt',
+          role: 'assistant',
+          targetLeafId: toMessageId({ raw: 'message-1' }),
+          timestamp: 1,
+          isCurrentThread: true,
+        },
+      },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat2' }), title: 'Chat 2', updatedAt: 2, contentMatches: [], matchType: 'title' } },
+    ] as any;
+    await nextTick();
+
+    expect((wrapper.vm as any).selectedIndex).toBe(2);
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Enter' });
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'chat2' });
+  });
+
   it('should ignore Enter during IME composition', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
@@ -299,12 +366,10 @@ describe('GlobalSearchModal Component', () => {
     mockResults.value = [
       {
         type: 'message',
-        parentChat: { type: 'chat', chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, matchType: 'content', contentMatches: [] },
         item: {
           chatId: toChatId({ raw: 'chat1' }),
           messageId: toMessageId({ raw: 'message-1' }),
           excerpt: 'target excerpt',
-          fullContent: 'target excerpt',
           role: 'assistant',
           targetLeafId: 'leaf-1',
           timestamp: 1,
@@ -338,6 +403,17 @@ describe('GlobalSearchModal Component', () => {
     // The container for SearchPreview should be hidden by v-if="... && !isScanningContent"
     expect(wrapper.findComponent({ name: 'SearchPreview' }).exists()).toBe(false);
     expect(wrapper.text()).toContain('SCANNING CONTENT...');
+  });
+
+  it('should restore FocusArea when the open modal is unmounted', async () => {
+    mockActiveFocusArea.value = 'sidebar';
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    wrapper.unmount();
+
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'search' });
+    expect(mockSetActiveFocusArea).toHaveBeenLastCalledWith({ area: 'sidebar' });
   });
 
   it('should manage FocusArea when opening and closing', async () => {

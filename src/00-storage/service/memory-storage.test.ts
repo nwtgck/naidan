@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStorageProvider } from './memory-storage';
-import type { Chat, ChatGroup } from '@/01-models/types';
-import { idToRaw, toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
+import type { Chat, ChatContent, ChatGroup } from '@/01-models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 describe('MemoryStorageProvider', () => {
   let provider: MemoryStorageProvider;
@@ -25,6 +25,40 @@ describe('MemoryStorageProvider', () => {
     await provider.saveChatMeta({ meta: mockChat });
     const loaded = await provider.loadChat({ id: mockChat.id });
     expect(loaded).toEqual(expect.objectContaining(mockChat));
+  });
+
+  it('should load chat content without restoring attachment blobs', async () => {
+    const blob = new Blob(['attachment'], { type: 'text/plain' });
+    const chatId = toChatId({ raw: '123e4567-e89b-12d3-a456-426614174000' });
+    const content: ChatContent = {
+      root: {
+        items: [{
+          id: toMessageId({ raw: '123e4567-e89b-12d3-a456-426614174001' }),
+          role: 'user',
+          content: 'hello',
+          timestamp: 1,
+          attachments: [{
+            id: toAttachmentId({ raw: '123e4567-e89b-12d3-a456-426614174002' }),
+            binaryObjectId: toBinaryObjectId({ raw: '123e4567-e89b-12d3-a456-426614174003' }),
+            originalName: 'attachment.txt',
+            mimeType: blob.type,
+            size: blob.size,
+            uploadedAt: 1,
+            status: 'memory',
+            blob,
+          }],
+          replies: { items: [] },
+        }],
+      },
+    };
+
+    await provider.saveChatContent({ id: chatId, content });
+
+    const unhydrated = await provider.loadChatContentWithoutAttachments({ id: chatId });
+    const hydrated = await provider.loadChatContent({ id: chatId });
+
+    expect(unhydrated?.root.items[0]?.attachments?.[0]).not.toHaveProperty('blob');
+    expect(hydrated?.root.items[0]?.attachments?.[0]).toHaveProperty('blob', blob);
   });
 
   it('should list saved chats based on hierarchy', async () => {

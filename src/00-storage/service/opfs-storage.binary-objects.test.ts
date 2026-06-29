@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { MessageNode } from '@/01-models/types';
-import { toAttachmentId, toBinaryObjectId, toMessageId } from '@/01-models/ids';
+import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 
 // --- Reusable Mocks ---
 class MockFileSystemFileHandle {
@@ -189,6 +189,54 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     expect(atts[0]!.size).toBe(1);
     expect(atts[1]!.mimeType).toBe('application/pdf');
     expect(atts[1]!.size).toBe(2);
+  });
+
+  it('should load chat content without hydrating attachment metadata', async () => {
+    await provider.init();
+    const chatId = toChatId({ raw: '00000000-0000-4000-a000-000000000010' });
+    const binaryObjectId = toBinaryObjectId({ raw: '00000000-0000-4000-a000-000000000011' });
+
+    await provider.saveFile({
+      blob: new Blob(['attachment'], { type: 'text/plain' }),
+      binaryObjectId,
+      name: 'attachment.txt',
+      mimeType: undefined,
+    });
+    await provider.saveChatContent({
+      id: chatId,
+      content: {
+        root: {
+          items: [{
+            id: toMessageId({ raw: '00000000-0000-4000-a000-000000000012' }),
+            role: 'user',
+            content: 'hello',
+            timestamp: 1,
+            attachments: [{
+              id: toAttachmentId({ raw: '00000000-0000-4000-a000-000000000013' }),
+              binaryObjectId,
+              originalName: 'attachment.txt',
+              mimeType: 'text/plain',
+              size: 10,
+              uploadedAt: 1,
+              status: 'persisted',
+            }],
+            replies: { items: [] },
+          }],
+        },
+      },
+    });
+
+    const unhydrated = await provider.loadChatContentWithoutAttachments({ id: chatId });
+    const hydrated = await provider.loadChatContent({ id: chatId });
+
+    expect(unhydrated?.root.items[0]?.attachments?.[0]).toMatchObject({
+      mimeType: 'application/octet-stream',
+      size: 0,
+    });
+    expect(hydrated?.root.items[0]?.attachments?.[0]).toMatchObject({
+      mimeType: 'text/plain',
+      size: 10,
+    });
   });
 
   it('should report correct status in hasAttachments', async () => {

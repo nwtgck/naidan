@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, computed, onBeforeUnmount, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { SearchIcon, XIcon, Loader2Icon, MessageSquareIcon, CornerDownRightIcon, ClockIcon, GitBranchIcon, FolderIcon, FilterIcon, CheckIcon, EyeIcon } from 'lucide-vue-next';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useChatSearch, type SearchResultItem, type SearchRoleFilter, type SearchScope, type ContentMatch } from '@/features/global-search/composables/useChatSearch';
+import { useVirtualizedGlobalSearchResults } from '@/features/global-search/composables/useVirtualizedGlobalSearchResults';
+import { getSearchResultKey } from '@/features/global-search/logic/result-key';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-import { scrollIntoViewSafe } from '@/utils/dom';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { idToRaw } from '@/01-models/ids';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
@@ -23,9 +24,9 @@ const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: ()
 
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
-const { query, isSearching, isScanningContent, results, search, stopSearch } = useChatSearch();
 const { openChat, openChatAtMessage, openChatGroup } = useChatNavigation();
-const { chatGroups, currentChat } = useCurrentChatState();
+const { chatGroups, currentChat, sidebarItems } = useCurrentChatState();
+const { query, isSearching, isScanningContent, results, search, stopSearch, disposeSearch } = useChatSearch({ sidebarItems });
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
   searchPreviewMode,
@@ -42,6 +43,16 @@ const groupPreviewRef = ref<{
     } | null>(null);
 const selectedIndex = ref(0);
 const scrollContainer = ref<HTMLElement | null>(null);
+const {
+  totalHeight: virtualResultsHeight,
+  visibleResults,
+  setResultElement,
+  scrollResultIntoView,
+} = useVirtualizedGlobalSearchResults({
+  containerRef: scrollContainer,
+  results,
+  overscan: 6,
+});
 const searchScope = ref<SearchScope>('title_only');
 const searchRoleFilter = ref<SearchRoleFilter>('all');
 const showGroupSelector = ref(false);
@@ -116,15 +127,26 @@ const updateHighlightState = () => {
   }, 50);
 };
 
-// Reset focus to results when search result changes
-watch(results, () => {
-  activePane.value = 'results';
-  updateHighlightState();
-});
+// Reset focus to results when search results change while preserving the selected item.
+watch(results, (newResults, oldResults) => {
+  const previousEntry = oldResults[selectedIndex.value];
+  const previousKey = previousEntry === undefined
+    ? undefined
+    : getSearchResultKey({ entry: previousEntry });
 
-watch(query, () => {
-  updateHighlightState();
-}, { immediate: true });
+  if (newResults.length === 0) {
+    selectedIndex.value = 0;
+  } else if (previousKey !== undefined) {
+    const nextIndex = newResults.findIndex(entry => getSearchResultKey({ entry }) === previousKey);
+    selectedIndex.value = nextIndex === -1
+      ? Math.min(selectedIndex.value, newResults.length - 1)
+      : nextIndex;
+  } else {
+    selectedIndex.value = Math.min(selectedIndex.value, newResults.length - 1);
+  }
+
+  activePane.value = 'results';
+});
 
 const handleClickOutsideGroupSelector = ({ event }: { event: MouseEvent }) => {
   const target = event.target as HTMLElement;
@@ -215,10 +237,10 @@ function highlight({ text, query, color }: {
   return result;
 }
 
-// Clear highlight cache when results change
-watch(results, () => {
+watch(query, () => {
   highlightCache.clear();
-});
+  updateHighlightState();
+}, { immediate: true });
 
 // Debounce search input
 let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -365,6 +387,18 @@ const currentSelectedItem = computed(() => results.value[selectedIndex.value]);
 const deferredSelectedItem = ref(currentSelectedItem.value);
 let previewDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
+function clearModalTimers(): void {
+  if (previewHoverTimeout !== null) clearTimeout(previewHoverTimeout);
+  if (highlightTimeout !== null) clearTimeout(highlightTimeout);
+  if (debounceTimeout !== null) clearTimeout(debounceTimeout);
+  if (previewDebounceTimeout !== null) clearTimeout(previewDebounceTimeout);
+
+  previewHoverTimeout = null;
+  highlightTimeout = null;
+  debounceTimeout = null;
+  previewDebounceTimeout = null;
+}
+
 watch(currentSelectedItem, (newItem) => {
   if (previewDebounceTimeout) clearTimeout(previewDebounceTimeout);
   previewDebounceTimeout = setTimeout(() => {
@@ -374,18 +408,7 @@ watch(currentSelectedItem, (newItem) => {
 
 function scrollToSelected() {
   nextTick(() => {
-    if (!scrollContainer.value) return;
-    const el = scrollContainer.value.querySelector(`[data-index="${selectedIndex.value}"]`);
-    if (el instanceof HTMLElement) {
-      // Performance Optimization: Use 'instant' behavior to avoid layout thrashing
-      // during rapid navigation.
-      scrollIntoViewSafe({
-        container: scrollContainer.value,
-        element: el,
-        block: 'nearest',
-        behavior: 'instant',
-      });
-    }
+    scrollResultIntoView({ index: selectedIndex.value });
   });
 }
 
@@ -404,13 +427,12 @@ async function selectItem({ index }: { index: number }) {
   }
   case 'message': {
     const matchItem = target.item;
-    const parentChat = target.parentChat;
     await openChatAtMessage({
-      chatId: toChatId({ raw: parentChat.chatId }),
+      chatId: toChatId({ raw: matchItem.chatId }),
       messageId: toMessageId({ raw: matchItem.messageId }),
     });
     router.push({
-      path: `/chat/${parentChat.chatId}`,
+      path: `/chat/${matchItem.chatId}`,
       query: { 'message-id': matchItem.messageId },
     });
     closeSearch();
@@ -431,28 +453,43 @@ async function selectItem({ index }: { index: number }) {
 
 const previousFocusArea = ref<import('@/composables/useLayout').FocusArea | undefined>(undefined);
 
+function restorePreviousFocusArea(): void {
+  const area = previousFocusArea.value;
+  if (area === undefined) return;
+
+  setActiveFocusArea({ area });
+  previousFocusArea.value = undefined;
+}
+
 watch(isSearchOpen, (isOpen) => {
   if (isOpen) {
     previousFocusArea.value = activeFocusArea.value;
     setActiveFocusArea({ area: 'search' });
+    if (query.value || searchScope.value === 'title_only') {
+      performSearch({ val: query.value });
+    }
     nextTick(() => {
       if (searchInput.value) {
         searchInput.value.focus();
         searchInput.value.select();
       }
-      if (query.value || searchScope.value === 'title_only') {
-        performSearch({ val: query.value });
-      }
     });
   } else {
+    clearModalTimers();
     stopSearch();
-    if (previousFocusArea.value) {
-      setActiveFocusArea({ area: previousFocusArea.value });
-      previousFocusArea.value = undefined;
-    } else {
-      setActiveFocusArea({ area: 'chat' });
-    }
+    restorePreviousFocusArea();
   }
+}, { immediate: true });
+
+onBeforeUnmount(() => {
+  clearModalTimers();
+  if (previousFocusArea.value !== undefined) {
+    restorePreviousFocusArea();
+  }
+});
+
+onUnmounted(() => {
+  disposeSearch();
 });
 
 defineExpose({
@@ -643,7 +680,7 @@ defineExpose({
             ref="scrollContainer"
             @mouseenter="isHoveringResults = true"
             @mouseleave="isHoveringResults = false"
-            class="overflow-y-auto scrollbar-thin p-2 space-y-1 bg-white dark:bg-gray-900 transition-all duration-300 relative"
+            class="overflow-y-auto scrollbar-thin bg-white dark:bg-gray-900 transition-all duration-300 relative"
             :class="[
               isPreviewVisible
                 ? (isPreviewExpanded ? 'w-[15%] min-w-[200px]' : (searchPreviewMode === 'peek' ? 'w-full' : 'w-[75%] min-w-[320px]'))
@@ -661,96 +698,109 @@ defineExpose({
 
             <template v-else>
               <div
-                v-for="(entry, index) in results"
-                :key="index"
-                :data-index="index"
-                :data-testid="'search-result-item-' + index"
-                @mouseenter="selectedIndex = index"
-                @click="selectItem({ index })"
-                class="group flex flex-col p-2.5 rounded-xl cursor-pointer transition-[background-color,border-color,opacity] duration-200 border border-transparent"
-                :class="selectedIndex === index
-                  ? (activePane === 'results' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800 shadow-sm' : 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-80')
-                  : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+                class="relative mx-2"
+                :style="{ height: `${virtualResultsHeight}px` }"
+                data-testid="search-results-virtual-space"
               >
-                <!-- Performance Note: CSS transitions are restricted to specific properties
+                <div
+                  v-for="visibleResult in visibleResults"
+                  :key="visibleResult.key"
+                  :ref="element => setResultElement({ key: visibleResult.key, element: element as Element | null })"
+                  class="absolute left-0 right-0"
+                  :style="{ transform: `translateY(${visibleResult.top}px)` }"
+                >
+                  <div
+                    :data-index="visibleResult.index"
+                    :data-testid="'search-result-item-' + visibleResult.index"
+                    @mouseenter="selectedIndex = visibleResult.index"
+                    @click="selectItem({ index: visibleResult.index })"
+                    class="group flex flex-col p-2.5 rounded-xl cursor-pointer transition-[background-color,border-color,opacity] duration-200 border border-transparent"
+                    :class="selectedIndex === visibleResult.index
+                      ? (activePane === 'results' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800 shadow-sm' : 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-80')
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+                  >
+                    <!-- Performance Note: CSS transitions are restricted to specific properties
                      to minimize layout recalculations during rapid list updates. -->
 
-                <!-- Chat Group Item -->
-                <div v-if="entry.type === 'chat_group'" class="flex items-center justify-between gap-3">
-                  <div class="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
-                    <FolderIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div class="flex flex-col flex-1 overflow-hidden">
-                    <div class="flex items-center justify-between gap-2">
-                      <AllowedHtmlView
-                        v-if="isHighlightingEnabled"
-                        as="span"
-                        :html="highlight({ text: entry.item.name, query, color: 'blue' })"
-                        class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
-                      />
-                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.name }}</span>
-                      <div class="flex items-center gap-1.5 shrink-0">
-                        <span class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ lazyStrings.GlobalSearchModal__chat_count({ count: entry.item.chatCount }) }}</span>
+                    <!-- Chat Group Item -->
+                    <div v-if="visibleResult.entry.type === 'chat_group'" class="flex items-center justify-between gap-3">
+                      <div class="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
+                        <FolderIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Chat Header Item -->
-                <div v-else-if="entry.type === 'chat'" class="flex items-center justify-between gap-3">
-                  <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
-                    <MessageSquareIcon class="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  </div>
-                  <div class="flex flex-col flex-1 overflow-hidden">
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="flex flex-col overflow-hidden">
-                        <AllowedHtmlView
-                          v-if="isHighlightingEnabled && entry.item.title"
-                          as="span"
-                          :html="highlight({ text: entry.item.title, query, color: 'indigo' })"
-                          class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
-                        />
-                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || lazyStrings.SHARED__new_chat() }}</span>
-                        <span v-if="entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
-                          <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
+                      <div class="flex flex-col flex-1 overflow-hidden">
+                        <div class="flex items-center justify-between gap-2">
                           <AllowedHtmlView
                             v-if="isHighlightingEnabled"
                             as="span"
-                            :html="highlight({ text: entry.item.groupName, query, color: 'blue' })"
+                            :html="highlight({ text: visibleResult.entry.item.name, query, color: 'blue' })"
+                            class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
                           />
-                          <span v-else>{{ entry.item.groupName }}</span>
-                        </span>
+                          <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ visibleResult.entry.item.name }}</span>
+                          <div class="flex items-center gap-1.5 shrink-0">
+                            <span class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ lazyStrings.GlobalSearchModal__chat_count({ count: visibleResult.entry.item.chatCount }) }}</span>
+                          </div>
+                        </div>
                       </div>
-                      <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: entry.item.updatedAt }) }}</span>
                     </div>
-                    <div class="flex items-center gap-1.5 mt-0.5">
-                      <ClockIcon class="w-3 h-3 text-gray-300" />
-                      <span class="text-[10px] text-gray-400">{{ lazyStrings.GlobalSearchModal__chat() }}</span>
-                    </div>
-                  </div>
-                </div>
 
-                <!-- Message Match Item -->
-                <div v-else-if="entry.type === 'message'" class="flex items-start gap-3 pl-10 opacity-90 relative">
-                  <div class="absolute left-4 top-1 h-full w-0.5 bg-gray-100 dark:bg-gray-800"></div>
-                  <CornerDownRightIcon class="w-3 h-3 text-gray-300 mt-1 shrink-0" />
-                  <div class="flex flex-col overflow-hidden text-sm flex-1">
-                    <div class="flex items-center justify-between gap-2 mb-1">
-                      <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ entry.item.role }}</span>
-                      <span class="text-[9px] text-gray-400">{{ formatTime({ timestamp: entry.item.timestamp }) }}</span>
+                    <!-- Chat Header Item -->
+                    <div v-else-if="visibleResult.entry.type === 'chat'" class="flex items-center justify-between gap-3">
+                      <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
+                        <MessageSquareIcon class="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                      </div>
+                      <div class="flex flex-col flex-1 overflow-hidden">
+                        <div class="flex items-center justify-between gap-2">
+                          <div class="flex flex-col overflow-hidden">
+                            <AllowedHtmlView
+                              v-if="isHighlightingEnabled && visibleResult.entry.item.title"
+                              as="span"
+                              :html="highlight({ text: visibleResult.entry.item.title, query, color: 'indigo' })"
+                              class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
+                            />
+                            <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ visibleResult.entry.item.title || lazyStrings.SHARED__new_chat() }}</span>
+                            <span v-if="visibleResult.entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                              <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
+                              <AllowedHtmlView
+                                v-if="isHighlightingEnabled"
+                                as="span"
+                                :html="highlight({ text: visibleResult.entry.item.groupName, query, color: 'blue' })"
+                              />
+                              <span v-else>{{ visibleResult.entry.item.groupName }}</span>
+                            </span>
+                          </div>
+                          <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: visibleResult.entry.item.updatedAt }) }}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 mt-0.5">
+                          <ClockIcon class="w-3 h-3 text-gray-300" />
+                          <span class="text-[10px] text-gray-400">{{ lazyStrings.GlobalSearchModal__chat() }}</span>
+                        </div>
+                      </div>
                     </div>
-                    <AllowedHtmlView
-                      v-if="isHighlightingEnabled"
-                      as="span"
-                      :html="highlight({ text: entry.item.excerpt, query, color: 'indigo' })"
-                      class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed"
-                    />
-                    <span v-else class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed">{{ entry.item.excerpt }}</span>
 
-                    <div v-if="!entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
-                      <GitBranchIcon class="w-2.5 h-2.5" />
-                      <span>{{ lazyStrings.GlobalSearchModal__alt_branch() }}</span>
+                    <!-- Message Match Item -->
+                    <div v-else-if="visibleResult.entry.type === 'message'" class="flex items-start gap-3 pl-10 opacity-90 relative">
+                      <div class="absolute left-4 top-1 h-full w-0.5 bg-gray-100 dark:bg-gray-800"></div>
+                      <CornerDownRightIcon class="w-3 h-3 text-gray-300 mt-1 shrink-0" />
+                      <div class="flex flex-col overflow-hidden text-sm flex-1">
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                          <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ visibleResult.entry.item.role }}</span>
+                          <span class="text-[9px] text-gray-400">{{ formatTime({ timestamp: visibleResult.entry.item.timestamp }) }}</span>
+                        </div>
+                        <AllowedHtmlView
+                          v-if="isHighlightingEnabled"
+                          as="span"
+                          :html="highlight({ text: visibleResult.entry.item.excerpt, query, color: 'indigo' })"
+                          class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed"
+                        />
+                        <span v-else class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed">{{ visibleResult.entry.item.excerpt }}</span>
+
+                        <div v-if="!visibleResult.entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
+                          <GitBranchIcon class="w-2.5 h-2.5" />
+                          <span>{{ lazyStrings.GlobalSearchModal__alt_branch() }}</span>
+                        </div>
+                      </div>
                     </div>
+
                   </div>
                 </div>
               </div>

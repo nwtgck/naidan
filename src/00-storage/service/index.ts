@@ -145,6 +145,10 @@ export class StorageService {
     return this.getProvider().loadChatContent({ id });
   }
 
+  async loadChatContentWithoutAttachments({ id }: { id: ChatId }): Promise<ChatContent | null> {
+    return this.getProvider().loadChatContentWithoutAttachments({ id });
+  }
+
   async updateChatContent({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent> }): Promise<void> {
     try {
       await this.synchronizer.withLock({ fn: async () => {

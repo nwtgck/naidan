@@ -1,8 +1,45 @@
 import { describe, it, expect } from 'vitest';
-import { createBranchFromMessages, type HistoryItem } from './chat-tree';
-import { toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
+import { createBranchFromMessages, getChatBranchIterator, type HistoryItem } from './chat-tree';
+import { toAttachmentId, toBinaryObjectId, toMessageId } from '@/01-models/ids';
+import type { ChatContent, MessageNode } from '@/01-models/types';
 
 describe('chat-tree utils', () => {
+  describe('getChatBranchIterator', () => {
+    it('should resolve a deeply nested current branch without recursion', () => {
+      const depth = 10_000;
+      const root: MessageNode = {
+        id: toMessageId({ raw: 'message-0' }),
+        role: 'user',
+        content: '0',
+        timestamp: 0,
+        replies: { items: [] },
+      };
+      let current: MessageNode = root;
+
+      for (let index = 1; index < depth; index++) {
+        const next: MessageNode = {
+          id: toMessageId({ raw: `message-${index}` }),
+          role: index % 2 === 0 ? 'user' : 'assistant',
+          content: String(index),
+          timestamp: index,
+          replies: { items: [] },
+        };
+        current.replies.items.push(next);
+        current = next;
+      }
+
+      const content: ChatContent = {
+        root: { items: [root] },
+        currentLeafId: current.id,
+      };
+      const branch = Array.from(getChatBranchIterator({ chat: content }));
+
+      expect(branch).toHaveLength(depth);
+      expect(branch[0]?.id).toBe(root.id);
+      expect(branch.at(-1)?.id).toBe(current.id);
+    });
+  });
+
   describe('createBranchFromMessages', () => {
     it('should create a chain of MessageNodes from a list of HistoryItems', () => {
       const messages: HistoryItem[] = [

@@ -44,6 +44,43 @@ export class MemoryStorageProvider extends IStorageProvider {
   private binaryObjects = new Map<BinaryObjectId, { blob: Blob, meta: BinaryObject }>();
   private blobCache = new Map<AttachmentId, Blob>();
 
+  private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
+    for (const node of nodes) {
+      if (node.attachments) {
+        for (const att of node.attachments) {
+          switch (att.status) {
+          case 'memory': {
+            const cached = this.blobCache.get(att.id);
+            if (cached) (att as unknown as { blob: Blob }).blob = cached;
+            break;
+          }
+          case 'persisted':
+          case 'missing':
+            break;
+          default: {
+            const _ex: never = att;
+            throw new Error(`Unhandled attachment status: ${_ex}`);
+          }
+          }
+        }
+      }
+      this.restoreBlobs({ nodes: node.replies.items });
+    }
+  }
+
+  private loadUnhydratedChatContent({ id }: { id: ChatId }): ChatContent | null {
+    const rawContent = this.chatContents.get(id);
+    if (!rawContent) return null;
+
+    try {
+      return chatContentToDomain({
+        dto: ChatContentSchemaDto.parse(rawContent),
+      });
+    } catch {
+      return null;
+    }
+  }
+
   async init(): Promise<void> {
     // No-op for memory storage
   }
@@ -112,30 +149,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
       if (group) chat.groupId = toChatGroupId({ raw: group.id });
 
-      const restoreBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
-        for (const node of nodes) {
-          if (node.attachments) {
-            for (const att of node.attachments) {
-              switch (att.status) {
-              case 'memory': {
-                const cached = this.blobCache.get(att.id);
-                if (cached) (att as unknown as { blob: Blob }).blob = cached;
-                break;
-              }
-              case 'persisted':
-              case 'missing':
-                break;
-              default: {
-                const _ex: never = att;
-                throw new Error(`Unhandled attachment status: ${_ex}`);
-              }
-              }
-            }
-          }
-          if (node.replies?.items) restoreBlobs({ nodes: node.replies.items });
-        }
-      };
-      restoreBlobs({ nodes: chat.root.items });
+      this.restoreBlobs({ nodes: chat.root.items });
 
       return chat;
     } catch {
@@ -158,41 +172,15 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
-    const rawContent = this.chatContents.get(id);
-    if (!rawContent) return null;
-    try {
-      const dto = ChatContentSchemaDto.parse(rawContent);
-      const content = chatContentToDomain({ dto });
+    const content = this.loadUnhydratedChatContent({ id });
+    if (content === null) return null;
 
-      const restoreBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
-        for (const node of nodes) {
-          if (node.attachments) {
-            for (const att of node.attachments) {
-              switch (att.status) {
-              case 'memory': {
-                const cached = this.blobCache.get(att.id);
-                if (cached) (att as unknown as { blob: Blob }).blob = cached;
-                break;
-              }
-              case 'persisted':
-              case 'missing':
-                break;
-              default: {
-                const _ex: never = att;
-                throw new Error(`Unhandled attachment status: ${_ex}`);
-              }
-              }
-            }
-          }
-          if (node.replies?.items) restoreBlobs({ nodes: node.replies.items });
-        }
-      };
-      restoreBlobs({ nodes: content.root.items });
+    this.restoreBlobs({ nodes: content.root.items });
+    return content;
+  }
 
-      return content;
-    } catch {
-      return null;
-    }
+  async loadChatContentWithoutAttachments({ id }: { id: ChatId }): Promise<ChatContent | null> {
+    return this.loadUnhydratedChatContent({ id });
   }
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {

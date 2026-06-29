@@ -1,25 +1,24 @@
 import { idToRaw, toChatId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
+import type { SidebarItem } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 
 const {
   mockCreateGlobalSearchWorkerClient,
-  listenerState,
+  storageChangeListeners,
 } = vi.hoisted(() => ({
   mockCreateGlobalSearchWorkerClient: vi.fn(),
-  listenerState: {
-    current: undefined as (() => void) | undefined,
-  },
+  storageChangeListeners: new Set<(payload: any) => void>(),
 }));
 
 vi.mock('../../../00-storage/service', () => ({
   storageService: {
-    getSidebarStructure: vi.fn(),
-    loadChatContent: vi.fn(),
-    subscribeToChanges: vi.fn((listener: () => void) => {
-      listenerState.current = listener;
-      return () => {};
+    getCurrentType: vi.fn(),
+    loadChatContentWithoutAttachments: vi.fn(),
+    subscribeToChanges: vi.fn(({ listener }) => {
+      storageChangeListeners.add(listener);
+      return () => storageChangeListeners.delete(listener);
     }),
   },
 }));
@@ -28,32 +27,41 @@ vi.mock('@/features/global-search/worker/client', () => ({
   createGlobalSearchWorkerClient: mockCreateGlobalSearchWorkerClient,
 }));
 
+const sidebarItems = ref<SidebarItem[]>([]);
+
 async function createComposable() {
   const { useChatSearch } = await import('./useChatSearch');
-  return useChatSearch();
+  return useChatSearch({ sidebarItems });
 }
+
 
 describe('useChatSearch Composable', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    storageChangeListeners.clear();
+    sidebarItems.value = [];
 
-    mockCreateGlobalSearchWorkerClient.mockImplementation(async () => {
+    vi.mocked(storageService.getCurrentType).mockReturnValue('memory');
+    mockCreateGlobalSearchWorkerClient.mockImplementation(async ({ storageType }: {
+      storageType: import('@/01-models/types').StorageType,
+    }) => {
       const { createGlobalSearchWorker } = await import('@/features/global-search/worker/impl');
       const worker = createGlobalSearchWorker();
+      await worker.configureStorage(storageType, {
+        loadChatContentWithoutAttachments({ chatId }: { chatId: string }) {
+          return storageService.loadChatContentWithoutAttachments({ id: chatId as never });
+        },
+      });
 
       return {
-        prepareSession({ request }: { request: import('@/features/global-search/worker/types').GlobalSearchWorkerPrepareSessionRequest }) {
-          return worker.prepareSession({ request });
-        },
-        searchTitles({ request }: { request: import('@/features/global-search/worker/types').GlobalSearchWorkerSearchTitlesRequest }) {
-          return worker.searchTitles({ request });
-        },
         searchChatContent({ request }: { request: import('@/features/global-search/worker/types').GlobalSearchWorkerSearchChatContentRequest }) {
-          return worker.searchChatContent({ request });
-        },
-        disposeSession({ request }: { request: import('@/features/global-search/worker/types').GlobalSearchWorkerDisposeSessionRequest }) {
-          return worker.disposeSession({ request });
+          return worker.searchChatContent({
+            request: {
+              ...request,
+              storageType,
+            },
+          });
         },
         dispose: vi.fn().mockResolvedValue(undefined),
       };
@@ -62,22 +70,24 @@ describe('useChatSearch Composable', () => {
 
   it('should skip search if trimmed query is the same', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } },
-    ] as never);
+    ] as never;
 
     await composable.search({ searchQuery: 'test', options: { scope: 'title_only' } });
     await composable.search({ searchQuery: 'test ', options: { scope: 'title_only' } });
 
-    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
+    expect(composable.query.value).toBe('test ');
+    expect(composable.results.value).toHaveLength(1);
+    expect(mockCreateGlobalSearchWorkerClient).not.toHaveBeenCalled();
   });
 
   it('should rerun search when scope changes for the same trimmed query', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World', updatedAt: 100 } },
-    ] as never);
-    vi.mocked(storageService.loadChatContent).mockResolvedValue({
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({
       root: {
         items: [{
           id: 'm1',
@@ -92,19 +102,70 @@ describe('useChatSearch Composable', () => {
 
     await composable.search({ searchQuery: 'hello', options: { scope: 'title_only' } });
     expect(composable.results.value).toHaveLength(1);
-    expect(storageService.loadChatContent).not.toHaveBeenCalled();
+    expect(storageService.loadChatContentWithoutAttachments).not.toHaveBeenCalled();
 
     await composable.search({ searchQuery: 'hello', options: { scope: 'all' } });
-    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat1' });
-    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
+    expect(storageService.loadChatContentWithoutAttachments).toHaveBeenCalledWith({ id: 'chat1' });
+  });
+
+  it('should stop scanning after a worker request fails and allow the same search to retry', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const searchChatContent = vi.fn().mockRejectedValue(new Error('worker request failed'));
+    const dispose = vi.fn().mockResolvedValue(undefined);
+    mockCreateGlobalSearchWorkerClient.mockResolvedValue({
+      searchChatContent,
+      dispose,
+    });
+    const composable = await createComposable();
+    sidebarItems.value = [
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', updatedAt: 100 } },
+      { id: 'chat2', type: 'chat', chat: { id: 'chat2', title: 'Chat 2', updatedAt: 200 } },
+    ] as never;
+
+    await composable.search({ searchQuery: 'content', options: { scope: 'all' } });
+
+    expect(searchChatContent).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(consoleWarn).toHaveBeenCalledWith(
+      'Failed to search content for chat chat1',
+      expect.any(Error),
+    );
+
+    mockCreateGlobalSearchWorkerClient.mockResolvedValue({
+      searchChatContent: vi.fn().mockResolvedValue({ matches: [] }),
+      dispose: vi.fn().mockResolvedValue(undefined),
+    });
+    await composable.search({ searchQuery: 'content', options: { scope: 'all' } });
+
+    expect(mockCreateGlobalSearchWorkerClient).toHaveBeenCalledTimes(2);
+    consoleWarn.mockRestore();
+  });
+
+  it('should settle searching state when worker creation fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockCreateGlobalSearchWorkerClient.mockRejectedValueOnce(new Error('worker failed'));
+    const composable = await createComposable();
+    sidebarItems.value = [
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } },
+    ] as never;
+
+    await expect(composable.search({
+      searchQuery: 'test',
+      options: { scope: 'all' },
+    })).resolves.toBeUndefined();
+
+    expect(composable.isSearching.value).toBe(false);
+    expect(composable.isScanningContent.value).toBe(false);
+    expect(consoleError).toHaveBeenCalledWith('Failed to run Global Search', expect.any(Error));
+    consoleError.mockRestore();
   });
 
   it('should manage isScanningContent flag', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } },
-    ] as never);
-    vi.mocked(storageService.loadChatContent).mockResolvedValue({ root: { items: [] } } as never);
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({ root: { items: [] } } as never);
 
     const promise = composable.search({ searchQuery: 'test', options: { scope: 'all' } });
     await nextTick();
@@ -115,7 +176,7 @@ describe('useChatSearch Composable', () => {
 
   it('should match by group name independently', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       {
         id: 'group1',
         type: 'chat_group',
@@ -126,7 +187,7 @@ describe('useChatSearch Composable', () => {
           items: [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', groupId: 'group1', updatedAt: 100 } }],
         },
       },
-    ] as never);
+    ] as never;
 
     await composable.search({ searchQuery: 'Work', options: { scope: 'title_only' } });
 
@@ -137,9 +198,9 @@ describe('useChatSearch Composable', () => {
 
   it('should match "new chat" for null titles', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: null, updatedAt: 100 } },
-    ] as never);
+    ] as never;
 
     await composable.search({ searchQuery: 'new chat', options: { scope: 'title_only' } });
 
@@ -149,9 +210,9 @@ describe('useChatSearch Composable', () => {
 
   it('should preserve raw query with spaces but search with trimmed version', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } },
-    ] as never);
+    ] as never;
 
     await composable.search({ searchQuery: 'test  ', options: { scope: 'title_only' } });
 
@@ -161,7 +222,7 @@ describe('useChatSearch Composable', () => {
 
   it('should filter content scanning by chatGroupIds', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       {
         id: 'group1',
         type: 'chat_group',
@@ -185,42 +246,42 @@ describe('useChatSearch Composable', () => {
           items: [{ id: 'chat2', type: 'chat', chat: { id: 'chat2', title: 'Chat 2', groupId: 'group2', updatedAt: 200 } }],
         },
       },
-    ] as never);
-    vi.mocked(storageService.loadChatContent).mockResolvedValue({ root: { items: [] } } as never);
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({ root: { items: [] } } as never);
 
     await composable.search({
       searchQuery: 'test',
       options: { scope: 'all', chatGroupIds: ['group1'] },
     });
 
-    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat1' });
-    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat3' });
-    expect(storageService.loadChatContent).not.toHaveBeenCalledWith({ id: 'chat2' });
+    expect(storageService.loadChatContentWithoutAttachments).toHaveBeenCalledWith({ id: 'chat1' });
+    expect(storageService.loadChatContentWithoutAttachments).toHaveBeenCalledWith({ id: 'chat3' });
+    expect(storageService.loadChatContentWithoutAttachments).not.toHaveBeenCalledWith({ id: 'chat2' });
   });
 
   it('should filter by specific chatId', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', updatedAt: 100 } },
       { id: 'chat2', type: 'chat', chat: { id: 'chat2', title: 'Chat 2', updatedAt: 200 } },
-    ] as never);
-    vi.mocked(storageService.loadChatContent).mockResolvedValue({ root: { items: [] } } as never);
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({ root: { items: [] } } as never);
 
     await composable.search({
       searchQuery: 'test',
       options: { scope: 'all', chatId: idToRaw({ id: toChatId({ raw: 'chat2' }) }) },
     });
 
-    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: idToRaw({ id: toChatId({ raw: 'chat2' }) }) });
-    expect(storageService.loadChatContent).not.toHaveBeenCalledWith({ id: 'chat1' });
+    expect(storageService.loadChatContentWithoutAttachments).toHaveBeenCalledWith({ id: idToRaw({ id: toChatId({ raw: 'chat2' }) }) });
+    expect(storageService.loadChatContentWithoutAttachments).not.toHaveBeenCalledWith({ id: 'chat1' });
   });
 
   it('should set matchType to both if keywords match in both title and content', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World', updatedAt: 100 } },
-    ] as never);
-    vi.mocked(storageService.loadChatContent).mockResolvedValue({
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({
       root: {
         items: [{
           id: 'm1',
@@ -246,10 +307,10 @@ describe('useChatSearch Composable', () => {
 
   it('should filter content matches by role in the worker path', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World', updatedAt: 100 } },
-    ] as never);
-    vi.mocked(storageService.loadChatContent).mockResolvedValue({
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({
       root: {
         items: [
           {
@@ -283,10 +344,10 @@ describe('useChatSearch Composable', () => {
 
   it('should rerun search when role filter changes for the same trimmed query', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World', updatedAt: 100 } },
-    ] as never);
-    vi.mocked(storageService.loadChatContent).mockResolvedValue({
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({
       root: {
         items: [
           {
@@ -311,7 +372,7 @@ describe('useChatSearch Composable', () => {
     await composable.search({ searchQuery: 'hello', options: { scope: 'all', roleFilter: 'user' } });
     await composable.search({ searchQuery: 'hello', options: { scope: 'all', roleFilter: 'assistant' } });
 
-    expect(storageService.loadChatContent).toHaveBeenCalledTimes(2);
+    expect(storageService.loadChatContentWithoutAttachments).toHaveBeenCalledTimes(2);
     const messageEntry = composable.results.value[1];
     expect(messageEntry?.type).toBe('message');
     if (messageEntry?.type === 'message') {
@@ -321,10 +382,10 @@ describe('useChatSearch Composable', () => {
 
   it('should handle AND search keywords in titles', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World Test', updatedAt: 100 } },
       { id: 'chat2', type: 'chat', chat: { id: 'chat2', title: 'Hello World', updatedAt: 200 } },
-    ] as never);
+    ] as never;
 
     await composable.search({
       searchQuery: 'hello test',
@@ -341,7 +402,7 @@ describe('useChatSearch Composable', () => {
 
   it('should include groupName in chat results', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       {
         id: 'group1',
         type: 'chat_group',
@@ -352,7 +413,7 @@ describe('useChatSearch Composable', () => {
           items: [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', groupId: 'group1', updatedAt: 100 } }],
         },
       },
-    ] as never);
+    ] as never;
 
     await composable.search({ searchQuery: 'Chat', options: { scope: 'title_only' } });
 
@@ -365,7 +426,7 @@ describe('useChatSearch Composable', () => {
 
   it('should prioritize items by sidebar order', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       {
         id: 'group1',
         type: 'chat_group',
@@ -377,7 +438,7 @@ describe('useChatSearch Composable', () => {
         },
       },
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Newer Individual Chat', updatedAt: 2000 } },
-    ] as never);
+    ] as never;
 
     await composable.search({ searchQuery: 'e', options: { scope: 'title_only' } });
 
@@ -388,7 +449,7 @@ describe('useChatSearch Composable', () => {
 
   it('should list all groups and chats if query is empty and scope is title_only', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       {
         id: 'group1',
         type: 'chat_group',
@@ -400,7 +461,7 @@ describe('useChatSearch Composable', () => {
         },
       },
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', updatedAt: 100 } },
-    ] as never);
+    ] as never;
 
     await composable.search({ searchQuery: '', options: { scope: 'title_only' } });
 
@@ -409,60 +470,80 @@ describe('useChatSearch Composable', () => {
     expect(composable.results.value[1]?.type).toBe('chat');
   });
 
-  it('should clear sidebar cache when clearSearch is called', async () => {
+  it('should clear query and results when clearSearch is called', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } },
-    ] as never);
+    ] as never;
 
     await composable.search({ searchQuery: 'test', options: { scope: 'title_only' } });
-    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
-
-    await composable.search({ searchQuery: 'tes', options: { scope: 'title_only' } });
-    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
 
     composable.clearSearch();
 
-    await composable.search({ searchQuery: 'test', options: { scope: 'title_only' } });
-    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(2);
+    expect(composable.query.value).toBe('');
+    expect(composable.results.value).toEqual([]);
   });
 
   it('should invalidate cache but preserve query/results when stopSearch is called', async () => {
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+    sidebarItems.value = [
       { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } },
-    ] as never);
+    ] as never;
 
-    await composable.search({ searchQuery: 'test', options: { scope: 'title_only' } });
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({ root: { items: [] } } as never);
+
+    await composable.search({ searchQuery: 'test', options: { scope: 'all' } });
     expect(composable.query.value).toBe('test');
     expect(composable.results.value).toHaveLength(1);
-    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
+    expect(storageService.loadChatContentWithoutAttachments).toHaveBeenCalledTimes(1);
 
     composable.stopSearch();
     expect(composable.query.value).toBe('test');
     expect(composable.results.value).toHaveLength(1);
 
-    await composable.search({ searchQuery: 'test', options: { scope: 'title_only' } });
-    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(2);
+    await composable.search({ searchQuery: 'test', options: { scope: 'all' } });
+    expect(storageService.loadChatContentWithoutAttachments).toHaveBeenCalledTimes(2);
   });
 
   it('stopSearch should dispose the current worker client', async () => {
     const dispose = vi.fn().mockResolvedValue(undefined);
     mockCreateGlobalSearchWorkerClient.mockResolvedValue({
-      prepareSession: vi.fn().mockResolvedValue({ sessionId: 'session-1' }),
-      searchTitles: vi.fn().mockResolvedValue({ flatResults: [] }),
       searchChatContent: vi.fn().mockResolvedValue({ matches: [] }),
-      disposeSession: vi.fn().mockResolvedValue(undefined),
       dispose,
     });
     const composable = await createComposable();
-    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([] as never);
+    sidebarItems.value = [
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } },
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({ root: { items: [] } } as never);
 
-    await composable.search({ searchQuery: '', options: { scope: 'title_only' } });
+    await composable.search({ searchQuery: 'test', options: { scope: 'all' } });
     composable.stopSearch();
     await Promise.resolve();
     await Promise.resolve();
 
     expect(dispose).toHaveBeenCalledWith();
   });
+
+  it('should recreate the worker and rerun an active search after storage migration', async () => {
+    const composable = await createComposable();
+    sidebarItems.value = [
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } },
+    ] as never;
+    vi.mocked(storageService.loadChatContentWithoutAttachments).mockResolvedValue({ root: { items: [] } } as never);
+
+    await composable.search({ searchQuery: 'test', options: { scope: 'all' } });
+    expect(mockCreateGlobalSearchWorkerClient).toHaveBeenLastCalledWith({ storageType: 'memory' });
+
+    vi.mocked(storageService.getCurrentType).mockReturnValue('local');
+    for (const listener of storageChangeListeners) {
+      listener({ event: { type: 'migration', timestamp: Date.now() } });
+    }
+
+    await vi.waitFor(() => {
+      expect(mockCreateGlobalSearchWorkerClient).toHaveBeenLastCalledWith({ storageType: 'local' });
+    });
+  });
+
+
 });

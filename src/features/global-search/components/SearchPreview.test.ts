@@ -7,7 +7,7 @@ import { storageService } from '@/00-storage/service';
 
 vi.mock('../../../00-storage/service', () => ({
   storageService: {
-    loadChat: vi.fn(),
+    loadChatContent: vi.fn(),
   },
 }));
 
@@ -60,7 +60,7 @@ describe('SearchPreview Component', () => {
       },
       currentLeafId: 'm2',
     };
-    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat as any);
+    vi.mocked(storageService.loadChatContent).mockResolvedValue(mockChat as any);
 
     const wrapper = mount(SearchPreview, {
       props: {
@@ -69,7 +69,6 @@ describe('SearchPreview Component', () => {
           messageId: idToRaw({ id: toMessageId({ raw: 'm1' }) }),
           targetLeafId: 'm2',
           excerpt: 'Msg 1',
-          fullContent: 'Msg 1',
           role: 'user',
           timestamp: 1,
           isCurrentThread: true,
@@ -81,7 +80,7 @@ describe('SearchPreview Component', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
     await wrapper.vm.$nextTick();
 
-    expect(storageService.loadChat).toHaveBeenCalledWith({ id: 'chat1' });
+    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat1' });
     expect(wrapper.findAll('.message-item')).toHaveLength(2);
     expect(wrapper.text()).toContain('Msg 1');
     expect(wrapper.text()).toContain('Msg 2');
@@ -103,7 +102,7 @@ describe('SearchPreview Component', () => {
       },
       currentLeafId: 'm3',
     };
-    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat as any);
+    vi.mocked(storageService.loadChatContent).mockResolvedValue(mockChat as any);
 
     const wrapper = mount(SearchPreview, {
       props: {
@@ -117,4 +116,37 @@ describe('SearchPreview Component', () => {
     // With Infinity, it should show M1, M2, and M3 regardless of where M2 is
     expect(wrapper.findAll('.message-item')).toHaveLength(3);
   });
+
+  it('should ignore an older preview load that resolves after a newer selection', async () => {
+    let resolveFirst: ((value: any) => void) | undefined;
+    vi.mocked(storageService.loadChatContent)
+      .mockImplementationOnce(() => new Promise(resolve => {
+        resolveFirst = resolve;
+      }))
+      .mockResolvedValueOnce({
+        root: { items: [{ id: 'new-message', content: 'New preview', role: 'user', timestamp: 2, replies: { items: [] } }] },
+        currentLeafId: 'new-message',
+      } as any);
+
+    const wrapper = mount(SearchPreview, {
+      props: {
+        chat: { type: 'chat', chatId: 'old-chat', title: 'Old', updatedAt: 1, matchType: 'title', contentMatches: [] },
+      },
+    });
+    await wrapper.setProps({
+      chat: { type: 'chat', chatId: 'new-chat', title: 'New', updatedAt: 2, matchType: 'title', contentMatches: [] },
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    resolveFirst?.({
+      root: { items: [{ id: 'old-message', content: 'Old preview', role: 'user', timestamp: 1, replies: { items: [] } }] },
+      currentLeafId: 'old-message',
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('New preview');
+    expect(wrapper.text()).not.toContain('Old preview');
+  });
+
 });

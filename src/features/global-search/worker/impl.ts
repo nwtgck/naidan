@@ -1,142 +1,104 @@
-import { UNTITLED_CHAT_TITLE } from '@/constants';
-import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
+import { idToRaw, toChatId } from '@/01-models/ids';
+import type { ChatContent, StorageType } from '@/01-models/types';
+import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
 
 import { searchChatTree, searchLinearBranch } from '@/features/global-search/logic/chat-search';
 import { getChatBranchIterator } from '@/logic/chat-tree';
-import type { Chat, MessageBranch } from '@/01-models/types';
-import type { FlatSearchResultItem, SearchSource } from '@/features/global-search/types';
 import type { ContentMatch as SearchContentMatch } from '@/features/global-search/logic/chat-search';
 import {
-  globalSearchWorkerDisposeSessionRequestSchema,
-  globalSearchWorkerPrepareSessionRequestSchema,
-  globalSearchWorkerPrepareSessionResponseSchema,
   globalSearchWorkerSearchChatContentRequestSchema,
-  globalSearchWorkerSearchChatContentResponseSchema,
-  globalSearchWorkerSearchTitlesRequestSchema,
-  globalSearchWorkerSearchTitlesResponseSchema,
   type IGlobalSearchWorker,
 } from './types';
+import type { GlobalSearchRemoteContentReader } from './content-reader';
 
-const sessions = new Map<string, SearchSource>();
-
-function createSessionId() {
-  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
-    return globalThis.crypto.randomUUID();
-  }
-  return `search-session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function getKeywords({ searchQuery }: {
-  searchQuery: string,
-}): string[] {
-  return searchQuery.toLowerCase().split(/[\s\u3000]+/).filter(keyword => keyword.length > 0);
-}
-
-function getSessionSource({ sessionId }: {
-  sessionId: string,
-}): SearchSource {
-  const source = sessions.get(sessionId);
-  if (!source) {
-    throw new Error(`Search session not found: ${sessionId}`);
-  }
-  return source;
+interface GlobalSearchContentReader {
+  loadChatContentWithoutAttachments({
+    chatId,
+  }: {
+    chatId: string,
+  }): Promise<ChatContent | null>;
 }
 
 export function createGlobalSearchWorker(): IGlobalSearchWorker {
+  let storageType: StorageType | undefined;
+  let contentReader: GlobalSearchContentReader | undefined;
+
   return {
-    async prepareSession({ request }) {
-      const validated = globalSearchWorkerPrepareSessionRequestSchema.parse(request);
-      const sessionId = createSessionId();
-      sessions.set(sessionId, validated.source);
-      return globalSearchWorkerPrepareSessionResponseSchema.parse({ sessionId });
-    },
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the positional Comlink boundary declared by IGlobalSearchWorker.
+    async configureStorage(nextStorageType, remoteContentReader) {
+      const validatedStorageType = globalSearchWorkerSearchChatContentRequestSchema.shape.storageType.parse(
+        nextStorageType,
+      );
 
-    async searchTitles({ request }) {
-      const validated = globalSearchWorkerSearchTitlesRequestSchema.parse(request);
-      const source = getSessionSource({ sessionId: validated.sessionId });
-      const keywords = getKeywords({ searchQuery: validated.searchQuery });
-      const chatGroupIds = validated.options.chatGroupIds;
-      const targetChatId = validated.options.chatId;
-      const hasGroupFilter = !!(chatGroupIds && chatGroupIds.length > 0);
-
-      const filteredChatGroups = targetChatId
-        ? []
-        : (hasGroupFilter ? source.chatGroups.filter(chatGroup => chatGroupIds.includes(chatGroup.id)) : source.chatGroups);
-
-      const filteredChats = targetChatId
-        ? source.chats.filter(({ chat }) => chat.id === targetChatId)
-        : (hasGroupFilter ? source.chats.filter(({ chat }) => !!chat.groupId && chatGroupIds.includes(chat.groupId)) : source.chats);
-
-      const flatResults: FlatSearchResultItem[] = [];
-
-      for (const chatGroup of filteredChatGroups) {
-        const lowerName = chatGroup.name.toLowerCase();
-        if (keywords.every(keyword => lowerName.includes(keyword))) {
-          flatResults.push({
-            type: 'chat_group',
-            item: {
-              type: 'chat_group',
-              groupId: chatGroup.id,
-              name: chatGroup.name,
-              updatedAt: chatGroup.updatedAt,
-              chatCount: chatGroup.chatCount,
-              matchType: 'title',
-            },
-          });
+      switch (validatedStorageType) {
+      case 'opfs': {
+        if (remoteContentReader !== undefined) {
+          throw new Error('Global Search OPFS storage must not receive a remote content reader');
         }
+        const provider = new OPFSStorageProvider();
+        await provider.init();
+        contentReader = {
+          loadChatContentWithoutAttachments({ chatId }) {
+            return provider.loadChatContentWithoutAttachments({ id: toChatId({ raw: chatId }) });
+          },
+        };
+        break;
+      }
+      case 'local':
+      case 'memory':
+        if (remoteContentReader === undefined) {
+          throw new Error(`Global Search ${validatedStorageType} storage requires a remote content reader`);
+        }
+        contentReader = createRemoteContentReader({ remoteContentReader });
+        break;
+      default: {
+        const _ex: never = validatedStorageType;
+        throw new Error(`Unhandled Global Search storage type: ${String(_ex)}`);
+      }
       }
 
-      for (const { chat, groupName } of filteredChats) {
-        const title = chat.title || UNTITLED_CHAT_TITLE;
-        const lowerTitle = title.toLowerCase();
-        if (keywords.every(keyword => lowerTitle.includes(keyword))) {
-          flatResults.push({
-            type: 'chat',
-            item: {
-              type: 'chat',
-              chatId: chat.id,
-              title,
-              groupId: chat.groupId,
-              groupName,
-              updatedAt: chat.updatedAt,
-              matchType: 'title',
-              titleMatch: true,
-              contentMatches: [],
-            },
-          });
-        }
-      }
-
-      return globalSearchWorkerSearchTitlesResponseSchema.parse({ flatResults });
+      storageType = validatedStorageType;
     },
 
     async searchChatContent({ request }) {
       const validated = globalSearchWorkerSearchChatContentRequestSchema.parse(request);
-      getSessionSource({ sessionId: validated.sessionId });
+      if (contentReader === undefined || storageType === undefined) {
+        throw new Error('Global Search worker storage is not configured');
+      }
+      if (validated.storageType !== storageType) {
+        throw new Error(
+          `Global Search worker is configured for ${storageType} storage, received: ${validated.storageType}`,
+        );
+      }
+
+      const content = await contentReader.loadChatContentWithoutAttachments({
+        chatId: validated.chatId,
+      });
+      if (content === null) {
+        return { matches: [] };
+      }
 
       let matches: SearchContentMatch[] = [];
 
       switch (validated.scope) {
       case 'current_thread': {
-        const fullChat = { ...validated.chat, ...validated.content } as unknown as Chat;
-        const branch = Array.from(getChatBranchIterator({ chat: fullChat }));
+        const branch = Array.from(getChatBranchIterator({ chat: content }));
         matches = searchLinearBranch({
           branch,
           query: validated.searchQuery,
-          chatId: toChatId({ raw: validated.chat.id }),
-          targetLeafId: validated.content.currentLeafId === undefined ? undefined : toMessageId({ raw: validated.content.currentLeafId }),
+          chatId: toChatId({ raw: validated.chatId }),
+          targetLeafId: content.currentLeafId,
           roleFilter: validated.roleFilter,
         });
         break;
       }
       case 'all': {
-        const fullChat = { ...validated.chat, ...validated.content } as unknown as Chat;
-        const activeNodes = Array.from(getChatBranchIterator({ chat: fullChat }));
+        const activeNodes = Array.from(getChatBranchIterator({ chat: content }));
         const activeBranchIds = new Set(activeNodes.map(node => node.id));
         matches = searchChatTree({
-          root: validated.content.root as unknown as MessageBranch,
+          root: content.root,
           query: validated.searchQuery,
-          chatId: toChatId({ raw: validated.chat.id }),
+          chatId: toChatId({ raw: validated.chatId }),
           activeBranchIds,
           roleFilter: validated.roleFilter,
         });
@@ -146,8 +108,8 @@ export function createGlobalSearchWorker(): IGlobalSearchWorker {
         matches = [];
         break;
       default: {
-        const _exhaustiveCheck: never = validated.scope;
-        throw new Error(`Unhandled search scope: ${_exhaustiveCheck}`);
+        const _ex: never = validated.scope;
+        throw new Error(`Unhandled search scope: ${_ex}`);
       }
       }
 
@@ -158,12 +120,19 @@ export function createGlobalSearchWorker(): IGlobalSearchWorker {
         targetLeafId: idToRaw({ id: match.targetLeafId }),
       }));
 
-      return globalSearchWorkerSearchChatContentResponseSchema.parse({ matches: rawMatches });
+      return { matches: rawMatches };
     },
+  };
+}
 
-    async disposeSession({ request }) {
-      const validated = globalSearchWorkerDisposeSessionRequestSchema.parse(request);
-      sessions.delete(validated.sessionId);
+function createRemoteContentReader({
+  remoteContentReader,
+}: {
+  remoteContentReader: GlobalSearchRemoteContentReader,
+}): GlobalSearchContentReader {
+  return {
+    async loadChatContentWithoutAttachments({ chatId }) {
+      return remoteContentReader.loadChatContentWithoutAttachments({ chatId });
     },
   };
 }

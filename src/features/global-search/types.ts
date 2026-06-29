@@ -31,7 +31,6 @@ export const contentMatchSchema = z.object({
   chatId: z.string().min(1),
   messageId: z.string().min(1),
   excerpt: z.string(),
-  fullContent: z.string(),
   role: z.string().min(1),
   targetLeafId: z.string().min(1),
   timestamp: z.number(),
@@ -76,38 +75,8 @@ export const flatSearchResultItemSchema = z.union([
   z.object({
     type: z.literal('message'),
     item: contentMatchSchema,
-    parentChat: searchChatResultSchema,
   }),
 ]);
-
-const searchMessageNodeSchema: z.ZodType<{
-  id: string,
-  content: string | undefined,
-  timestamp: number,
-  role: string,
-  replies: { items: Array<{
-    id: string,
-    content: string | undefined,
-    timestamp: number,
-    role: string,
-    replies: unknown,
-  }>, },
-}> = z.lazy(() => z.object({
-  id: z.string().min(1),
-  content: z.union([z.string(), z.undefined()]),
-  timestamp: z.number(),
-  role: z.string().min(1),
-  replies: z.object({
-    items: z.array(searchMessageNodeSchema),
-  }),
-}));
-
-export const searchChatContentSchema = z.object({
-  root: z.object({
-    items: z.array(searchMessageNodeSchema),
-  }),
-  currentLeafId: z.string().min(1).optional(),
-});
 
 export const searchOptionsSchema = z.object({
   scope: searchScopeSchema,
@@ -123,7 +92,6 @@ export type SearchChatSummary = z.infer<typeof searchChatSummarySchema>;
 export type SearchChatGroup = z.infer<typeof searchChatGroupSchema>;
 export type SearchChatSource = z.infer<typeof searchChatSourceSchema>;
 export type SearchSource = z.infer<typeof searchSourceSchema>;
-export type SearchChatContent = z.infer<typeof searchChatContentSchema>;
 export type SearchOptions = z.infer<typeof searchOptionsSchema>;
 export type SearchResultItem = z.infer<typeof searchResultItemSchema>;
 export type FlatSearchResultItem = z.infer<typeof flatSearchResultItemSchema>;

@@ -1,6 +1,6 @@
 import { generateId } from '@/01-models/id';
 import { toRaw } from 'vue';
-import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '@/01-models/types';
+import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat, ChatContent } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { MessageId } from '@/01-models/ids';
 
@@ -31,26 +31,46 @@ export function findParentInBranch({ items, childId }: { items: MessageNode[], c
   return null;
 }
 
-export function* getChatBranchIterator({ chat }: { chat: Chat | Readonly<Chat> }): Generator<MessageNode> {
+export function* getChatBranchIterator({ chat }: { chat: ChatContent | Readonly<ChatContent> }): Generator<MessageNode> {
   const items = chat.root.items as MessageNode[];
   if (items.length === 0) return;
 
   const targetId = chat.currentLeafId;
   const path: MessageNode[] = [];
+  let targetNode: MessageNode | undefined;
 
-  function findPath({ nodes, target }: { nodes: MessageNode[], target: MessageId }): boolean {
-    for (const node of nodes) {
-      path.push(node);
-      if (toRaw(node).id === target) return true;
-      if (findPath({ nodes: node.replies.items, target })) return true;
-      path.pop();
+  if (targetId !== undefined) {
+    const parents = new Map<MessageNode, MessageNode | undefined>();
+    const stack: Array<{ node: MessageNode, parent: MessageNode | undefined }> = [];
+    for (let index = items.length - 1; index >= 0; index--) {
+      const node = items[index];
+      if (node !== undefined) stack.push({ node, parent: undefined });
     }
-    return false;
+
+    while (stack.length > 0) {
+      const entry = stack.pop();
+      if (entry === undefined) continue;
+
+      parents.set(entry.node, entry.parent);
+      if (toRaw(entry.node).id === targetId) {
+        targetNode = entry.node;
+        break;
+      }
+
+      const replies = entry.node.replies.items;
+      for (let index = replies.length - 1; index >= 0; index--) {
+        const reply = replies[index];
+        if (reply !== undefined) stack.push({ node: reply, parent: entry.node });
+      }
+    }
+
+    for (let node = targetNode; node !== undefined; node = parents.get(node)) {
+      path.push(node);
+    }
+    path.reverse();
   }
 
-  const found = targetId ? findPath({ nodes: items, target: targetId }) : false;
-
-  if (!found) {
+  if (targetNode === undefined) {
     // Fallback: follow the last reply of each node starting from the root
     path.length = 0;
     let curr = items[items.length - 1];

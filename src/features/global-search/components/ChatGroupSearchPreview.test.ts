@@ -1,17 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatGroupSearchPreview from './ChatGroupSearchPreview.vue';
-import { nextTick } from 'vue';
-import { storageService } from '@/00-storage/service';
+import { nextTick, ref } from 'vue';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 
 // --- Mocks ---
 
-vi.mock('../../../00-storage/service', () => ({
-  storageService: {
-    listChats: vi.fn(),
-    loadChat: vi.fn(),
-  },
+const mockSidebarItems = ref<any[]>([]);
+vi.mock('../../../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({ sidebarItems: mockSidebarItems }),
 }));
 
 const mockPush = vi.fn();
@@ -62,11 +59,22 @@ describe('ChatGroupSearchPreview Component', () => {
       openChatGroup: vi.fn(),
       TEST_ONLY: {},
     });
-    vi.mocked(storageService.listChats).mockResolvedValue([
-      { id: 'c1', title: 'Chat 1', groupId: 'g1', updatedAt: 100 },
-      { id: 'c2', title: 'Chat 2', groupId: 'g1', updatedAt: 200 },
-      { id: 'other', title: 'Other Chat', groupId: 'other', updatedAt: 300 },
-    ] as any);
+    mockSidebarItems.value = [
+      {
+        id: 'g1',
+        type: 'chat_group',
+        chatGroup: {
+          id: 'g1',
+          name: 'Work',
+          updatedAt: 200,
+          items: [
+            { id: 'c1', type: 'chat', chat: { id: 'c1', title: 'Chat 1', groupId: 'g1', updatedAt: 100 } },
+            { id: 'c2', type: 'chat', chat: { id: 'c2', title: 'Chat 2', groupId: 'g1', updatedAt: 200 } },
+          ],
+        },
+      },
+      { id: 'other', type: 'chat', chat: { id: 'other', title: 'Other Chat', groupId: 'other', updatedAt: 300 } },
+    ];
   });
 
   it('should load and filter chats by groupId', async () => {
