@@ -21,7 +21,7 @@ import type { MessageNode, Chat } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
-import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
+import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 
 const {
   mockEnsureChatTmpDirectory,

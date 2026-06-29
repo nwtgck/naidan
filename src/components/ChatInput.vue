@@ -26,7 +26,7 @@ import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
-import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
+import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';

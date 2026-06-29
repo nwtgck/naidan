@@ -37,8 +37,8 @@ import {
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
-import { hasChatOverrides } from '@/utils/chat-settings-resolver';
-import { formatSettingsSourceLabel } from '@/utils/settings-labels';
+import { hasChatOverrides } from '@/logic/chat-settings-resolver';
+import { formatSettingsSourceLabel } from '@/logic/settings-labels';
 import {
   cloneLmParameters,
   hasLmParameterOverrides,
@@ -47,7 +47,7 @@ import {
 import {
   createChangedLmParameterSettingChanges,
   createSystemPromptSettingChange,
-} from '@/utils/scoped-setting-changes';
+} from '@/logic/scoped-setting-changes';
 
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';

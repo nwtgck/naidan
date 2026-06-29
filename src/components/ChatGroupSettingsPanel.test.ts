@@ -9,7 +9,7 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/01-models/ids';
-import { applyScopedSettingChangesToChatGroup } from '@/utils/scoped-setting-changes';
+import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const mocks = vi.hoisted(() => ({

@@ -4,7 +4,7 @@ import { GitForkIcon, PencilIcon, CopyIcon, CheckIcon, RefreshCwIcon, SendIcon, 
 import type { MessageNode, LmParameters } from '@/01-models/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { isImageGenerationPending } from '@/utils/image-generation';
-import { generateMessageLink } from '@/utils/chat-links';
+import { generateMessageLink } from '@/logic/chat-links';
 import { useToast } from '@/composables/useToast';
 import { ensureStrings, lazyStrings } from '@/strings';
 import SpeechControl from '@/features/speech/components/SpeechControl.vue';

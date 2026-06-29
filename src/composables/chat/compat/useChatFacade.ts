@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue';
 import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Mount, Reasoning, Settings } from '@/01-models/types';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';

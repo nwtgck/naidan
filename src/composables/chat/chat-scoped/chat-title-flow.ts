@@ -6,7 +6,7 @@ import { createLmProvider } from '@/features/lm/providerFactory';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
 import {
   chatRuntimeStore,

@@ -6,7 +6,7 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
-import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
+import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 import type { Chat, Endpoint } from '@/01-models/types';
 
 // --- Mocks ---

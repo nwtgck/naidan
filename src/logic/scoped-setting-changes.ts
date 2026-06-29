@@ -1,6 +1,4 @@
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import type { LmParameterSettingChange, ScopedSettingChange } from '@/01-models/scoped-setting-change';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import type {
   Chat,
   ChatGroup,
@@ -9,9 +7,7 @@ import type {
   LmParameters,
   SystemPrompt,
 } from '@/01-models/types';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import { cloneEndpoint } from '@/01-models/endpoint';
 import {
   cloneLmParameters,

@@ -11,7 +11,7 @@ import {
 import {
   createLmParameterSettingChanges,
   createSystemPromptSettingChange,
-} from '@/utils/scoped-setting-changes';
+} from '@/logic/scoped-setting-changes';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import { cloneEndpoint } from '@/01-models/endpoint';
 

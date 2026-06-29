@@ -3,7 +3,7 @@ import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/01-models/type
 import type { Settings } from '@/01-models/types';
 import type { ChatId } from '@/01-models/ids';
 import { useSettings } from '@/composables/useSettings';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import {

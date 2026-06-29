@@ -12,7 +12,7 @@ import { markExecutingToolResultsAsInterrupted } from '@/features/tools/interrup
 import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/features/tools/tool-config';
 import { getEffectiveToolConfigsForChat } from '@/features/tools/composables/useChatTools';
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import {
   fileToDataUrl,
   findNodeInBranch,

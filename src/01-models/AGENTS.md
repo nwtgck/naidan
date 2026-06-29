@@ -4,7 +4,7 @@ This file applies to `src/01-models/**`.
 
 ## Responsibilities
 
-`src/01-models` contains concepts shared across Naidan. It is not a type-only directory.
+`src/01-models` contains thin concepts shared across Naidan. It is not a type-only directory, but it should stay definition-first.
 
 Appropriate contents include:
 
@@ -15,7 +15,7 @@ Appropriate contents include:
 - constants tied to a shared concept;
 - pure validation;
 - pure state transitions;
-- other Naidan-wide pure operations.
+- small pure helpers that are tightly attached to those shared definitions.
 
 ## Dependency Direction
 

@@ -9,7 +9,7 @@ import {
   applyScopedSettingChangesToChat,
   applyScopedSettingChangesToChatMeta,
   cloneScopedSettingChanges,
-} from '@/utils/scoped-setting-changes';
+} from '@/logic/scoped-setting-changes';
 
 export type ChatDataStore = {
   rootItems: Ref<SidebarItem[]>,

@@ -13,7 +13,7 @@ import {
   cloneScopedSettingChanges,
   createLmParameterSettingChanges,
   createSystemPromptSettingChange,
-} from '@/utils/scoped-setting-changes';
+} from '@/logic/scoped-setting-changes';
 import { cloneToolConfigs } from '@/features/tools/tool-config';
 
 type ChatGroupMetadataUpdate = Partial<Pick<

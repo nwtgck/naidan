@@ -1,4 +1,3 @@
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this UI label helper into application logic.
 import { lazyStrings } from '@/strings';
 export type SettingsSource = 'chat' | 'chat_group' | 'global';
 

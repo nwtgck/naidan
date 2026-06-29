@@ -48,7 +48,7 @@ import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
-import { hasGroupOverrides } from '@/utils/chat-settings-resolver';
+import { hasGroupOverrides } from '@/logic/chat-settings-resolver';
 import {
   cloneLmParameters,
   hasLmParameterOverrides,
@@ -57,7 +57,7 @@ import {
 import {
   createChangedLmParameterSettingChanges,
   createSystemPromptSettingChange,
-} from '@/utils/scoped-setting-changes';
+} from '@/logic/scoped-setting-changes';
 import type { WeshMount } from '@/features/wesh/types';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });

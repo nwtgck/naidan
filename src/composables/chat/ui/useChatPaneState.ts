@@ -2,7 +2,7 @@ import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Chat, ChatGroup, MessageNode, Settings } from '@/01-models/types';
 import { useSettings } from '@/composables/useSettings';
 import { getAllMessages, getChatBranchIterator } from '@/utils/chat-tree';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { getReadonlyChat, rootItems } from '@/composables/chat/global/chat-core-singletons';
 import type { ChatId } from '@/01-models/ids';
 

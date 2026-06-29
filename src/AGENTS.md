@@ -19,7 +19,7 @@ src/00-storage/
   Persistence formats, mapping, and storage implementations
 
 src/01-models/
-  Naidan-wide concepts, types, IDs, schemas, and pure model operations
+  Thin Naidan-wide concepts, types, IDs, schemas, and closely attached helpers
 
 src/features/
   Capabilities that can be removed from Naidan as a cohesive unit
@@ -31,7 +31,7 @@ src/composables/
   Vue composables not owned by one removable feature
 
 src/logic/
-  Naidan-specific non-Vue application logic
+  Naidan-specific non-Vue application logic, including most shared operations
 
 src/utils/
   Naidan-independent reusable helpers and technical primitives
@@ -50,7 +50,7 @@ src/constants.ts
 When placing new code, consider the following questions in order:
 
 1. Is the code part of persistence format or persistence implementation?
-2. Does the code define a Naidan-wide concept?
+2. Does the code define a thin Naidan-wide concept that should live with shared types, IDs, or schemas?
 3. Can the code be removed as part of one cohesive feature?
 4. Is the code a Vue component not owned by one feature?
 5. Is the code a Vue composable not owned by one feature?

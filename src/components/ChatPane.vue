@@ -72,8 +72,8 @@ import { useGlobalSearch } from '@/features/global-search/composables/useGlobalS
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
-import { hasChatOverrides } from '@/utils/chat-settings-resolver';
-import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
+import { hasChatOverrides } from '@/logic/chat-settings-resolver';
+import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { generateChatShareURL } from '@/features/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';

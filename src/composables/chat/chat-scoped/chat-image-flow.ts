@@ -2,7 +2,7 @@ import type { Attachment, Chat } from '@/01-models/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { UNKNOWN_STEPS } from '@/01-models/lm';
 import { useImageGeneration } from '@/composables/useImageGeneration';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import type { ImageRequestParams } from '@/utils/image-generation';
 
 export async function sendImageRequestForChat({
