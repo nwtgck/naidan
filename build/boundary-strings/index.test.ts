@@ -5,11 +5,12 @@ import path from 'node:path';
 import vue from '@vitejs/plugin-vue';
 import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown';
 import { afterEach, describe, expect, it } from 'vitest';
-import { build, type PluginOption } from 'vite';
+import { build, createServer, type PluginOption, type ViteDevServer } from 'vite';
 
 import { createBoundaryStringsPlugin } from './index';
 
 const temporaryDirectories: string[] = [];
+const fixtureServers: ViteDevServer[] = [];
 const messageKey = 'Example__shared_message';
 
 function writeFile({ filePath, source }: {
@@ -121,7 +122,81 @@ async function buildFixture({ plugins, root }: {
   return outputChunks({ output });
 }
 
-afterEach(() => {
+async function createFixtureServer({ root }: {
+  root: string;
+}): Promise<ViteDevServer> {
+  const server = await createServer({
+    configFile: false,
+    logLevel: 'silent',
+    plugins: createBoundaryStringsPlugin(),
+    resolve: {
+      alias: {
+        '@': path.join(root, 'src'),
+      },
+    },
+    root,
+    server: {
+      hmr: false,
+      middlewareMode: true,
+    },
+  });
+  fixtureServers.push(server);
+  return server;
+}
+
+async function waitForWatcherEvent({ action, event, filePath, server }: {
+  action: () => void;
+  event: 'add' | 'change' | 'unlink';
+  filePath: string;
+  server: ViteDevServer;
+}): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${event} on ${filePath}.`));
+    }, 5_000);
+    const handler = (changedPath: string): void => {
+      if (path.resolve(changedPath) !== path.resolve(filePath)) {
+        return;
+      }
+      cleanup();
+      resolve();
+    };
+    const cleanup = (): void => {
+      clearTimeout(timeout);
+      server.watcher.off(event, handler);
+    };
+    server.watcher.on(event, handler);
+    action();
+  });
+}
+
+function writeCatalog({ keys, locale, root }: {
+  keys: readonly string[];
+  locale: 'en' | 'ja';
+  root: string;
+}): void {
+  const imports = keys.map((key) => {
+    return `import { ${key} } from '@/strings/messages/${key}/${locale}';`;
+  }).join('\n');
+  const entries = keys.map((key) => `  ${key},`).join('\n');
+  writeFile({
+    filePath: path.join(root, `src/strings/catalogs/${locale}.ts`),
+    source: `\
+${imports}${imports.length === 0 ? '' : '\n\n'}export const ${locale} = {
+${entries}${entries.length === 0 ? '' : '\n'}};
+`,
+  });
+}
+
+async function closeFixtureServers(): Promise<void> {
+  for (const server of fixtureServers.splice(0)) {
+    await server.close();
+  }
+}
+
+afterEach(async () => {
+  await closeFixtureServers();
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -292,4 +367,167 @@ import { lazyStrings } from '@/strings';
       return moduleId.replaceAll('\\', '/').endsWith(`/src/strings/messages/${messageKey}/en.ts`);
     })).toBe(true);
   });
+
+  it('refreshes a stale catalog in the same HMR-disabled server after adding a key', async () => {
+    const root = createFixtureRoot();
+    const nextMessageKey = 'Example__new_watch_message';
+    const mainPath = path.join(root, 'src/main.ts');
+    writeFile({
+      filePath: mainPath,
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
+
+    for (const locale of ['en', 'ja'] as const) {
+      writeFile({
+        filePath: path.join(root, `src/strings/messages/${nextMessageKey}/${locale}.ts`),
+        source: `export const ${nextMessageKey} = (): string => ${JSON.stringify(`${locale} next`)};\n`,
+      });
+      writeCatalog({ keys: [messageKey, nextMessageKey], locale, root });
+    }
+    await waitForWatcherEvent({
+      action: () => {
+        writeFile({
+          filePath: mainPath,
+          source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${nextMessageKey}();
+`,
+        });
+      },
+      event: 'change',
+      filePath: mainPath,
+      server,
+    });
+
+    const transformed = await server.transformRequest('/src/main.ts');
+    expect(transformed?.code).toContain('virtual:naidan-boundary-strings/boundary/');
+  });
+
+  it('recovers after a source references a key before its catalog and message files exist', async () => {
+    const root = createFixtureRoot();
+    const nextMessageKey = 'Example__source_first_message';
+    writeFile({
+      filePath: path.join(root, 'src/main.ts'),
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${nextMessageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    await expect(server.transformRequest('/src/main.ts')).rejects.toThrow(
+      `Unknown message key "${nextMessageKey}"`,
+    );
+
+    for (const locale of ['en', 'ja'] as const) {
+      writeFile({
+        filePath: path.join(root, `src/strings/messages/${nextMessageKey}/${locale}.ts`),
+        source: `export const ${nextMessageKey} = (): string => ${JSON.stringify(`${locale} next`)};\n`,
+      });
+    }
+    writeCatalog({ keys: [messageKey, nextMessageKey], locale: 'en', root });
+    const japaneseCatalogPath = path.join(root, 'src/strings/catalogs/ja.ts');
+    await waitForWatcherEvent({
+      action: () => {
+        writeCatalog({ keys: [messageKey, nextMessageKey], locale: 'ja', root });
+      },
+      event: 'change',
+      filePath: japaneseCatalogPath,
+      server,
+    });
+
+    const transformed = await server.transformRequest('/src/main.ts');
+    expect(transformed?.code).toContain('virtual:naidan-boundary-strings/boundary/');
+  });
+
+  it('invalidates a source module when a watched catalog removes its key', async () => {
+    const root = createFixtureRoot();
+    const mainPath = path.join(root, 'src/main.ts');
+    writeFile({
+      filePath: mainPath,
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
+
+    fs.rmSync(path.join(root, 'src/strings/messages', messageKey), {
+      force: true,
+      recursive: true,
+    });
+    await waitForWatcherEvent({
+      action: () => {
+        writeCatalog({ keys: [], locale: 'en', root });
+        writeCatalog({ keys: [], locale: 'ja', root });
+      },
+      event: 'change',
+      filePath: path.join(root, 'src/strings/catalogs/ja.ts'),
+      server,
+    });
+
+    await expect(server.transformRequest('/src/main.ts')).rejects.toThrow(
+      `Unknown message key "${messageKey}"`,
+    );
+  });
+
+  it('does not refresh a stale catalog for a source without Boundary Strings', async () => {
+    const root = createFixtureRoot();
+    const mainPath = path.join(root, 'src/main.ts');
+    const englishCatalogPath = path.join(root, 'src/strings/catalogs/en.ts');
+    writeFile({
+      filePath: mainPath,
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const value = 1;
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
+
+    await waitForWatcherEvent({
+      action: () => {
+        writeCatalog({
+          keys: [messageKey, 'Example__temporarily_incomplete'],
+          locale: 'en',
+          root,
+        });
+      },
+      event: 'change',
+      filePath: englishCatalogPath,
+      server,
+    });
+    await waitForWatcherEvent({
+      action: () => {
+        writeFile({
+          filePath: mainPath,
+          source: `\
+import { lazyStrings } from '@/strings';
+
+export const value = 2;
+`,
+        });
+      },
+      event: 'change',
+      filePath: mainPath,
+      server,
+    });
+
+    await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
+  });
+
 });
