@@ -10,7 +10,7 @@ import {
   findParentInBranch,
   getChatBranchIterator,
   type HistoryItem,
-} from '@/utils/chat-tree';
+} from '@/logic/chat-tree';
 import { generateId } from '@/01-models/id';
 import {
   getLiveChat,

@@ -20,7 +20,7 @@ import {
   getAllMessages,
   getChatBranchIterator,
   processThinking,
-} from '@/utils/chat-tree';
+} from '@/logic/chat-tree';
 import { generateId } from '@/01-models/id';
 import {
   SENTINEL_IMAGE_PENDING,

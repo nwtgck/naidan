@@ -1,5 +1,5 @@
 import type { Chat, ChatMeta, MessageNode } from '@/01-models/types';
-import { getChatBranchIterator } from '@/utils/chat-tree';
+import { getChatBranchIterator } from '@/logic/chat-tree';
 import type { NaidanSysfsContext } from '@/features/wesh/naidan-sysfs/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
 

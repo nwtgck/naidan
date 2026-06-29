@@ -3,7 +3,7 @@ import type { AssistantMessageNode, Attachment, ChatMessage, Endpoint, LmParamet
 import { storageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import type { ToolExecutionResult } from '@/01-models/tool';
-import { fileToDataUrl } from '@/utils/chat-tree';
+import { fileToDataUrl } from '@/logic/chat-tree';
 import { idToRaw } from '@/01-models/ids';
 import type { MessageId } from '@/01-models/ids';
 

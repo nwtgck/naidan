@@ -20,7 +20,7 @@ import {
 import { reencodeImage } from '@/utils/image-processing';
 import { naturalSort, sanitizeFilename } from '@/utils/string';
 import type { Chat, ChatContent, Attachment } from '@/01-models/types';
-import { findNodeInBranch } from '@/utils/chat-tree';
+import { findNodeInBranch } from '@/logic/chat-tree';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
 

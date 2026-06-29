@@ -11,7 +11,7 @@ import {
   type ContextCompactPromptMode,
 } from '@/logic/context-compact';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
-import { getChatBranchIterator } from '@/utils/chat-tree';
+import { getChatBranchIterator } from '@/logic/chat-tree';
 import { generateId } from '@/01-models/id';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';

@@ -3,7 +3,7 @@ import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
-import { findDeepestLeaf, findNodeInBranch } from '@/utils/chat-tree';
+import { findDeepestLeaf, findNodeInBranch } from '@/logic/chat-tree';
 import { idToRaw, toChatId } from '@/01-models/ids';
 import {
   applyScopedSettingChangesToChat,

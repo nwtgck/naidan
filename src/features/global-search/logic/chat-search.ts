@@ -1,6 +1,6 @@
 import type { MessageBranch, MessageNode, Role } from '@/01-models/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
-import { findDeepestLeaf } from '@/utils/chat-tree';
+import { findDeepestLeaf } from '@/logic/chat-tree';
 
 export interface ContentMatch {
   chatId: ChatId,

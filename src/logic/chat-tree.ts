@@ -1,10 +1,7 @@
 import { generateId } from '@/01-models/id';
 import { toRaw } from 'vue';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '@/01-models/types';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import type { MessageId } from '@/01-models/ids';
 
 export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
@@ -115,7 +112,6 @@ export interface HistoryItem {
   content: string,
   modelId?: string,
   thinking?: string,
-  // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
   attachments?: import('@/01-models/types').Attachment[],
 }
 

@@ -7,7 +7,7 @@ import { reactive, triggerRef, toRaw } from 'vue';
 import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import { findRestorationIndex } from '@/utils/chat-tree';
+import { findRestorationIndex } from '@/logic/chat-tree';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 const { mocks } = vi.hoisted(() => ({
