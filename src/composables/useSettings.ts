@@ -20,8 +20,10 @@ import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { createLmProvider } from '@/features/lm/providerFactory';
 import { preloadFakeLmLanguagePacks, type FakeLmDebugModeStatus } from '@/features/fake-lm';
 import { transformersJsService } from '@/features/transformers-js';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move the storage type schema into 01-models.
-import { StorageTypeSchemaDto } from '@/00-storage/00-dto/dto';
+import {
+  parseBootstrapStorageTypeOverride,
+  readStoredBootstrapStorageType,
+} from '@/00-storage/service/bootstrap-storage-type';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useConfirm } from './useConfirm';
 import { areEndpointsEqual, cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
@@ -161,19 +163,32 @@ export function useSettings(): UseSettingsApi {
       loading.value = true;
       try {
         // Determine storage type from persisted flag
-        const rawSavedType = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_BOOTSTRAP_KEY) : null;
-
-        const validatedType = StorageTypeSchemaDto.safeParse(rawSavedType);
-        let bootstrapType: 'local' | 'opfs' | 'memory' | null = validatedType.success ? validatedType.data : null;
+        const {
+          rawSavedStorageType,
+          parsedSavedStorageType,
+        } = readStoredBootstrapStorageType();
+        let bootstrapType: 'local' | 'opfs' | 'memory' | null = (() => {
+          switch (parsedSavedStorageType.status) {
+          case 'valid':
+            return parsedSavedStorageType.savedStorageType;
+          case 'invalid':
+          case 'missing':
+            return null;
+          default: {
+            const _ex: never = parsedSavedStorageType;
+            throw new Error(`Unhandled stored bootstrap storage type status: ${((_ex satisfies never) as { readonly status: string }).status}`);
+          }
+          }
+        })();
 
         if (storageTypeOverride) {
-          if (rawSavedType !== null) {
-            if (storageTypeOverride !== rawSavedType) {
+          if (rawSavedStorageType !== null) {
+            if (storageTypeOverride !== rawSavedStorageType) {
               const { addInfoEvent } = useGlobalEvents();
               addInfoEvent({
                 source: 'SettingsService',
                 message: await ensureStrings.useSettings__storage_type_is_already_set_and_requested_type_was_ignored({
-                  savedStorageType: rawSavedType,
+                  savedStorageType: rawSavedStorageType,
                   requestedStorageType: storageTypeOverride,
                 }),
               });
@@ -183,33 +198,42 @@ export function useSettings(): UseSettingsApi {
               showConfirm({
                 title: await ensureStrings.useSettings__storage_already_initialized(),
                 message: await ensureStrings.useSettings__request_to_use_storage_type_was_ignored({
-                  savedStorageType: rawSavedType,
+                  savedStorageType: rawSavedStorageType,
                   requestedStorageType: storageTypeOverride,
                 }),
                 confirmButtonText: await ensureStrings.useSettings__ok(),
               });
             }
           } else {
-            const validatedQuery = StorageTypeSchemaDto.safeParse(storageTypeOverride);
-            if (validatedQuery.success) {
-              bootstrapType = validatedQuery.data;
-            } else {
+            const parsedOverrideStorageType = parseBootstrapStorageTypeOverride({
+              rawStorageType: storageTypeOverride,
+            });
+            switch (parsedOverrideStorageType.status) {
+            case 'valid':
+              bootstrapType = parsedOverrideStorageType.savedStorageType;
+              break;
+            case 'invalid':
               console.warn(`Invalid storage-type override: "${storageTypeOverride}". Ignoring.`);
+              break;
+            default: {
+              const _ex: never = parsedOverrideStorageType;
+              throw new Error(`Unhandled bootstrap storage type override status: ${((_ex satisfies never) as { readonly status: string }).status}`);
+            }
             }
           }
         }
 
-        if (rawSavedType !== null && !validatedType.success) {
-          console.warn(`Invalid storage type found in localStorage: "${rawSavedType}". Falling back to detection.`, validatedType.error);
+        if (rawSavedStorageType !== null && parsedSavedStorageType.status === 'invalid') {
+          console.warn(`Invalid storage type found in localStorage: "${rawSavedStorageType}". Falling back to detection.`, parsedSavedStorageType.savedStorageTypeValidationError);
           const { addErrorEvent } = useGlobalEvents();
           addErrorEvent({
             source: 'SettingsService',
             message: await ensureStrings.useSettings__invalid_storage_type_falling_back_to_default_detection(),
-            details: validatedType.error,
+            details: parsedSavedStorageType.savedStorageTypeValidationError,
           });
         }
 
-        if (rawSavedType === null && bootstrapType && typeof localStorage !== 'undefined') {
+        if (rawSavedStorageType === null && bootstrapType && typeof localStorage !== 'undefined') {
           localStorage.setItem(STORAGE_BOOTSTRAP_KEY, bootstrapType);
         }
 
