@@ -1,4 +1,4 @@
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat } from '@/01-models/types';

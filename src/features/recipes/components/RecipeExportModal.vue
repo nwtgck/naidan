@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { generateOpaqueId } from '@/utils/id';
+import { generateOpaqueId } from '@/01-models/id';
 import { ref, computed, watch } from 'vue';
 import {
   XIcon, ChefHatIcon, CopyIcon, CheckIcon, PlusIcon, Trash2Icon, InfoIcon, GlobeIcon, AlertCircleIcon, MessageSquareQuoteIcon,

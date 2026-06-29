@@ -1,6 +1,6 @@
 import { toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import { cloneToolConfigs } from '@/features/tools/tool-config';
 import type { ChatGroup, HierarchyChatGroupNode, HierarchyNode } from '@/01-models/types';

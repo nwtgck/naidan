@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { generateOpaqueId } from '@/utils/id';
+import { generateOpaqueId } from '@/01-models/id';
 import { OPFS_TMP_CLEANUP_LOCK_KEY, OPFS_TMP_DIR, OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY } from '@/constants';
 import { StorageSynchronizer } from '@/00-storage/service/synchronizer';
 

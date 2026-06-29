@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { generateOpaqueId } from '@/utils/id';
+import { generateOpaqueId } from '@/01-models/id';
 import { ref, watch } from 'vue';
 import {
   ChefHatIcon, SaveIcon, AlertTriangleIcon,

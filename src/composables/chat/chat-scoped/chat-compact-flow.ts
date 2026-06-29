@@ -12,7 +12,7 @@ import {
 } from '@/logic/context-compact';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { getChatBranchIterator } from '@/utils/chat-tree';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';

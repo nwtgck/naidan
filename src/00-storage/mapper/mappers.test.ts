@@ -1,4 +1,4 @@
-import { generateOpaqueId } from '@/utils/id';
+import { generateOpaqueId } from '@/01-models/id';
 import { describe, it, expect } from 'vitest';
 import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto, settingsToDomain, settingsToDto } from './mappers';
 import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode, Settings } from '@/01-models/types';

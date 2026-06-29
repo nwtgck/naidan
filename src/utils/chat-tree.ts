@@ -1,4 +1,4 @@
-import { generateId } from './id';
+import { generateId } from '@/01-models/id';
 import { toRaw } from 'vue';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '@/01-models/types';

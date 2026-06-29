@@ -1,5 +1,5 @@
 import { ensureStrings } from '@/strings';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import type {
   ExportOptions,
   ImportConfig,

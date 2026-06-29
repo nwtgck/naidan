@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { generateId, generateOpaqueId } from '@/utils/id';
+import { generateId, generateOpaqueId } from '@/01-models/id';
 import { ref, watch, onUnmounted, computed } from 'vue';
 import draggable from 'vuedraggable';
 import {

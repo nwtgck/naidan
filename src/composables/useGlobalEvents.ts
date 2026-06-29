@@ -1,4 +1,4 @@
-import { generateOpaqueId } from '@/utils/id';
+import { generateOpaqueId } from '@/01-models/id';
 import { ref, computed } from 'vue';
 
 export type EventType = 'info' | 'warn' | 'error' | 'debug';

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { toChatId } from '@/01-models/ids';
 
-vi.mock('../../utils/id', () => ({
+vi.mock('../../01-models/id', () => ({
   generateId: vi.fn(() => Math.random().toString(36).substring(2)),
 }));
 import { OPFSStorageProvider } from './opfs-storage';

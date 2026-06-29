@@ -1,5 +1,5 @@
 import { reactive, toRaw } from 'vue';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import type { Chat, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';

@@ -1,5 +1,5 @@
 import { toChatId } from '@/01-models/ids';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';

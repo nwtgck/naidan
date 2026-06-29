@@ -1,5 +1,5 @@
 import { ensureStrings } from '@/strings';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { ref } from 'vue';
 import { UNKNOWN_STEPS } from '@/01-models/lm';
 import { OllamaProvider } from '@/features/lm/ollama';

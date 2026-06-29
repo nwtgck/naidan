@@ -1,8 +1,8 @@
-import { generateOpaqueId } from '@/utils/id';
+import { generateOpaqueId } from '@/01-models/id';
 import { describe, it, expect, vi } from 'vitest';
 import { ChatSchemaDto } from './dto';
 
-vi.mock('../../utils/id', () => ({
+vi.mock('../../01-models/id', () => ({
   generateOpaqueId: vi.fn(() => 'test-id'),
 }));
 

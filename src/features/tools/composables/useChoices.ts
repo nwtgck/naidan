@@ -1,5 +1,5 @@
 import { computed, reactive, type ComputedRef } from 'vue';
-import { generateOpaqueId } from '@/utils/id';
+import { generateOpaqueId } from '@/01-models/id';
 import { Semaphore } from '@/utils/concurrency';
 import type { ChatId } from '@/01-models/ids';
 import type {

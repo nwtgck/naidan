@@ -1,4 +1,4 @@
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import type { Chat, MessageNode } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import sampleContent from '@/assets/sample-showcase.md?raw';

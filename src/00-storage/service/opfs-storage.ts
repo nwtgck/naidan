@@ -1,4 +1,4 @@
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
