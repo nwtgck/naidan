@@ -52,27 +52,29 @@ afterEach(() => {
 describe('Boundary Strings virtual modules', () => {
   it('parses only structurally valid virtual module IDs', () => {
     const boundaryId = '0123456789abcdef';
+    const version = 'fedcba9876543210';
     expect(resolveBoundaryStringsVirtualId({
-      id: `virtual:naidan-boundary-strings/boundary/${boundaryId}`,
-    })).toBe(`\0virtual:naidan-boundary-strings/boundary/${boundaryId}`);
+      id: `virtual:naidan-boundary-strings/boundary/${boundaryId}/${version}`,
+    })).toBe(`\0virtual:naidan-boundary-strings/boundary/${boundaryId}/${version}`);
     expect(parseResolvedBoundaryModuleId({
-      id: `\0virtual:naidan-boundary-strings/boundary/${boundaryId}`,
-    })).toBe(boundaryId);
+      id: `\0virtual:naidan-boundary-strings/boundary/${boundaryId}/${version}`,
+    })).toEqual({ boundaryId, version });
     expect(parseResolvedPackModuleId({
-      id: `\0virtual:naidan-boundary-strings/pack/ja/${boundaryId}`,
+      id: `\0virtual:naidan-boundary-strings/pack/ja/${boundaryId}/${version}`,
     })).toEqual({
       boundaryId,
       locale: 'ja',
+      version,
     });
     expect(() => parseResolvedPackModuleId({
-      id: `\0virtual:naidan-boundary-strings/pack/ja/${boundaryId}/extra`,
+      id: `\0virtual:naidan-boundary-strings/pack/ja/${boundaryId}/${version}/extra`,
     })).toThrow('Invalid pack module ID');
     expect(() => parseResolvedPackModuleId({
-      id: `\0virtual:naidan-boundary-strings/pack/fr/${boundaryId}`,
+      id: `\0virtual:naidan-boundary-strings/pack/fr/${boundaryId}/${version}`,
     })).toThrow('Unsupported locale "fr"');
     expect(() => parseResolvedBoundaryModuleId({
-      id: '\0virtual:naidan-boundary-strings/boundary/not-a-boundary',
-    })).toThrow('Invalid boundary module ID');
+      id: `\0virtual:naidan-boundary-strings/boundary/not-a-boundary/${version}`,
+    })).toThrow('Invalid boundary ID in virtual module ID');
   });
 
   it('keeps named re-exports and long runtime keys during development', () => {
@@ -85,6 +87,7 @@ describe('Boundary Strings virtual modules', () => {
       id: 'chat-input',
       keys: [messageKey],
       moduleId: '/src/components/ChatInput.vue',
+      version: 'fedcba9876543210',
     };
     expect(createBoundaryStringsPackModuleSource({
       boundary,
@@ -116,6 +119,7 @@ describe('Boundary Strings virtual modules', () => {
       id: 'chat-input',
       keys: [messageKey],
       moduleId: '/src/components/ChatInput.vue',
+      version: 'fedcba9876543210',
     };
     const pack = createBoundaryStringsPackModuleSource({
       boundary,
@@ -138,6 +142,7 @@ describe('Boundary Strings virtual modules', () => {
       id: 'chat-input',
       keys: ['ChatInput__unknown'],
       moduleId: '/src/components/ChatInput.vue',
+      version: 'fedcba9876543210',
     };
     expect(() => createBoundaryStringsPackModuleSource({
       boundary,

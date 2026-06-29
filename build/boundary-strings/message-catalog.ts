@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import * as ts from 'typescript';
 
+import { createBoundaryStringDiagnosticError } from './diagnostics';
+
 export const BOUNDARY_STRING_LOCALES = ['en', 'ja'] as const;
 export type BoundaryStringLocale = (typeof BOUNDARY_STRING_LOCALES)[number];
 
@@ -45,10 +47,12 @@ function isPathWithinDirectory({ directoryPath, filePath }: {
   filePath: string;
 }): boolean {
   const relativePath = path.relative(directoryPath, filePath);
-  return relativePath !== ''
-    && relativePath !== '..'
-    && !relativePath.startsWith(`..${path.sep}`)
-    && !path.isAbsolute(relativePath);
+  return relativePath === ''
+    || (
+      relativePath !== '..'
+      && !relativePath.startsWith(`..${path.sep}`)
+      && !path.isAbsolute(relativePath)
+    );
 }
 
 function hasExportModifier({ node }: {
@@ -120,7 +124,10 @@ function parseCatalog({ catalogPath, locale }: {
     const details = sourceFile.parseDiagnostics.map((diagnostic) => {
       return ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
     }).join('\n');
-    throw new Error(`[naidan-boundary-strings] Failed to parse ${catalogPath}:\n${details}`);
+    throw createBoundaryStringDiagnosticError({
+      code: 'catalog-parse-failed',
+      message: `[naidan-boundary-strings] Failed to parse ${catalogPath}:\n${details}`,
+    });
   }
 
   const catalogImports = new Map<string, string>();
@@ -141,23 +148,31 @@ function parseCatalog({ catalogPath, locale }: {
         || !ts.isNamedImports(namedBindings)
         || namedBindings.elements.length !== 1
       ) {
-        throw new Error(
-          `[naidan-boundary-strings] Invalid ${displayName} catalog import ${statement.getText(sourceFile)}.`,
-        );
+        throw createBoundaryStringDiagnosticError({
+          code: 'catalog-shape-invalid',
+          message: `[naidan-boundary-strings] Invalid ${displayName} catalog import ${statement.getText(sourceFile)}.`,
+        });
       }
       const importSpecifier = namedBindings.elements[0];
       if (importSpecifier === undefined || importSpecifier.isTypeOnly) {
-        throw new Error(`[naidan-boundary-strings] ${displayName} catalog import has no value binding.`);
+        throw createBoundaryStringDiagnosticError({
+          code: 'catalog-shape-invalid',
+          message: `[naidan-boundary-strings] ${displayName} catalog import has no value binding.`,
+        });
       }
       const importedName = importSpecifier.propertyName?.text ?? importSpecifier.name.text;
       const localName = importSpecifier.name.text;
       if (importedName !== key || localName !== key) {
-        throw new Error(
-          `[naidan-boundary-strings] ${displayName} catalog import for "${key}" must preserve the message identifier.`,
-        );
+        throw createBoundaryStringDiagnosticError({
+          code: 'catalog-shape-invalid',
+          message: `[naidan-boundary-strings] ${displayName} catalog import for "${key}" must preserve the message identifier.`,
+        });
       }
       if (catalogImports.has(localName)) {
-        throw new Error(`[naidan-boundary-strings] Duplicate ${displayName} catalog import "${key}".`);
+        throw createBoundaryStringDiagnosticError({
+          code: 'catalog-shape-invalid',
+          message: `[naidan-boundary-strings] Duplicate ${displayName} catalog import "${key}".`,
+        });
       }
       catalogImports.set(localName, key);
       continue;
@@ -173,52 +188,64 @@ function parseCatalog({ catalogPath, locale }: {
       continue;
     }
     if (catalogKeys !== undefined || declarations.length !== 1 || !hasExportModifier({ node: statement })) {
-      throw new Error(
-        `[naidan-boundary-strings] ${displayName} catalog must export exactly one "${locale}" object.`,
-      );
+      throw createBoundaryStringDiagnosticError({
+        code: 'catalog-shape-invalid',
+        message: `[naidan-boundary-strings] ${displayName} catalog must export exactly one "${locale}" object.`,
+      });
     }
     const declaration = declarations[0];
     if (declaration === undefined || declaration.initializer === undefined) {
-      throw new Error(`[naidan-boundary-strings] ${displayName} catalog "${locale}" has no initializer.`);
+      throw createBoundaryStringDiagnosticError({
+        code: 'catalog-shape-invalid',
+        message: `[naidan-boundary-strings] ${displayName} catalog "${locale}" has no initializer.`,
+      });
     }
     const initializer = unwrapCatalogInitializer({ initializer: declaration.initializer });
     if (!ts.isObjectLiteralExpression(initializer)) {
-      throw new Error(
-        `[naidan-boundary-strings] ${displayName} catalog "${locale}" must be an object literal.`,
-      );
+      throw createBoundaryStringDiagnosticError({
+        code: 'catalog-shape-invalid',
+        message: `[naidan-boundary-strings] ${displayName} catalog "${locale}" must be an object literal.`,
+      });
     }
     const keys = initializer.properties.map((property) => {
       if (!ts.isShorthandPropertyAssignment(property)) {
-        throw new Error(
-          `[naidan-boundary-strings] ${displayName} catalog entries must use shorthand message identifiers.`,
-        );
+        throw createBoundaryStringDiagnosticError({
+          code: 'catalog-shape-invalid',
+          message: `[naidan-boundary-strings] ${displayName} catalog entries must use shorthand message identifiers.`,
+        });
       }
       return property.name.text;
     });
     if (new Set(keys).size !== keys.length) {
-      throw new Error(
-        `[naidan-boundary-strings] ${displayName} catalog contains duplicate message entries.`,
-      );
+      throw createBoundaryStringDiagnosticError({
+        code: 'catalog-shape-invalid',
+        message: `[naidan-boundary-strings] ${displayName} catalog contains duplicate message entries.`,
+      });
     }
     catalogKeys = keys;
   }
 
   if (catalogKeys === undefined) {
-    throw new Error(`[naidan-boundary-strings] ${displayName} catalog "${locale}" was not found.`);
+    throw createBoundaryStringDiagnosticError({
+      code: 'catalog-shape-invalid',
+      message: `[naidan-boundary-strings] ${displayName} catalog "${locale}" was not found.`,
+    });
   }
   const catalogKeySet = new Set(catalogKeys);
   for (const key of catalogKeys) {
     if (catalogImports.get(key) !== key) {
-      throw new Error(
-        `[naidan-boundary-strings] ${displayName} catalog entry "${key}" has no matching named import.`,
-      );
+      throw createBoundaryStringDiagnosticError({
+        code: 'catalog-shape-invalid',
+        message: `[naidan-boundary-strings] ${displayName} catalog entry "${key}" has no matching named import.`,
+      });
     }
   }
   const unusedImports = [...catalogImports.keys()].filter((key) => !catalogKeySet.has(key));
   if (unusedImports.length > 0) {
-    throw new Error(
-      `[naidan-boundary-strings] ${displayName} catalog imports messages that are not in its object: ${unusedImports.join(', ')}.`,
-    );
+    throw createBoundaryStringDiagnosticError({
+      code: 'catalog-shape-invalid',
+      message: `[naidan-boundary-strings] ${displayName} catalog imports messages that are not in its object: ${unusedImports.join(', ')}.`,
+    });
   }
   return catalogKeys;
 }
@@ -239,9 +266,10 @@ function validateCatalogParity({ englishKeys, locale, localeKeys }: {
     missing.length === 0 ? undefined : `missing: ${missing.join(', ')}`,
     extra.length === 0 ? undefined : `extra: ${extra.join(', ')}`,
   ].filter((value): value is string => value !== undefined).join('; ');
-  throw new Error(
-    `[naidan-boundary-strings] ${catalogDisplayName({ locale })} catalog does not match the English catalog (${details}).`,
-  );
+  throw createBoundaryStringDiagnosticError({
+    code: 'catalog-locale-mismatch',
+    message: `[naidan-boundary-strings] ${catalogDisplayName({ locale })} catalog does not match the English catalog (${details}).`,
+  });
 }
 
 function validateMessageDirectories({ catalogKeys, paths }: {
@@ -249,7 +277,10 @@ function validateMessageDirectories({ catalogKeys, paths }: {
   paths: BoundaryStringProjectPaths;
 }): void {
   if (!fs.existsSync(paths.messagesDirectoryPath)) {
-    throw new Error('[naidan-boundary-strings] Messages directory was not found.');
+    throw createBoundaryStringDiagnosticError({
+      code: 'message-directory-not-found',
+      message: '[naidan-boundary-strings] Messages directory was not found.',
+    });
   }
   const catalogKeySet = new Set(catalogKeys);
   const orphanDirectories = fs.readdirSync(paths.messagesDirectoryPath, { withFileTypes: true })
@@ -263,10 +294,11 @@ function validateMessageDirectories({ catalogKeys, paths }: {
     .map((entry) => entry.name)
     .sort();
   if (orphanDirectories.length > 0) {
-    throw new Error(
-      '[naidan-boundary-strings] Message directories are not registered in the English catalog: '
-      + `${orphanDirectories.join(', ')}.`,
-    );
+    throw createBoundaryStringDiagnosticError({
+      code: 'message-directory-orphaned',
+      message: '[naidan-boundary-strings] Message directories are not registered in the English catalog: '
+        + `${orphanDirectories.join(', ')}.`,
+    });
   }
 }
 
@@ -315,7 +347,10 @@ export function readBoundaryStringMessageCatalog({ paths, root }: {
 }): BoundaryStringMessageCatalog {
   const englishCatalogPath = paths.catalogFilePathsByLocale.en;
   if (!fs.existsSync(englishCatalogPath)) {
-    throw new Error('[naidan-boundary-strings] English locale catalog was not found.');
+    throw createBoundaryStringDiagnosticError({
+      code: 'catalog-not-found',
+      message: '[naidan-boundary-strings] English locale catalog was not found.',
+    });
   }
 
   const englishKeys = parseCatalog({
@@ -329,7 +364,10 @@ export function readBoundaryStringMessageCatalog({ paths, root }: {
     case 'ja': {
       const catalogPath = paths.catalogFilePathsByLocale[locale];
       if (!fs.existsSync(catalogPath)) {
-        throw new Error(`[naidan-boundary-strings] Missing ${locale}.ts locale catalog.`);
+        throw createBoundaryStringDiagnosticError({
+          code: 'catalog-not-found',
+          message: `[naidan-boundary-strings] Missing ${locale}.ts locale catalog.`,
+        });
       }
       const localeKeys = parseCatalog({ catalogPath, locale });
       validateCatalogParity({ englishKeys, locale, localeKeys });
@@ -345,18 +383,20 @@ export function readBoundaryStringMessageCatalog({ paths, root }: {
 
   const messages = englishKeys.map((key): BoundaryStringMessageDefinition => {
     if (!messageKeyPattern.test(key)) {
-      throw new Error(
-        `[naidan-boundary-strings] Invalid message key "${key}". `
-        + 'Expected <scope>__<natural_english_like_message>.',
-      );
+      throw createBoundaryStringDiagnosticError({
+        code: 'message-key-invalid',
+        message: `[naidan-boundary-strings] Invalid message key "${key}". `
+          + 'Expected <scope>__<natural_english_like_message>.',
+      });
     }
 
     const modulesByLocale = Object.fromEntries(BOUNDARY_STRING_LOCALES.map((locale) => {
       const filePath = boundaryStringMessageFilePath({ key, locale, paths });
       if (!fs.existsSync(filePath)) {
-        throw new Error(
-          `[naidan-boundary-strings] Missing ${locale}.ts for catalog message "${key}".`,
-        );
+        throw createBoundaryStringDiagnosticError({
+          code: 'message-locale-file-missing',
+          message: `[naidan-boundary-strings] Missing ${locale}.ts for catalog message "${key}".`,
+        });
       }
       const relativePath = normalizeModulePath({ modulePath: path.relative(root, filePath) });
       return [locale, {

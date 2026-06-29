@@ -1,38 +1,52 @@
 import path from 'node:path';
 
 import MagicString from 'magic-string';
-import type { Plugin, ResolvedConfig, ViteDevServer } from 'vite';
+import type { Plugin, ResolvedConfig } from 'vite';
 
 import {
   analyzeBoundaryStringSource,
   type BoundaryStringSourceAnalysis,
 } from './analyze';
 import {
+  createBoundaryStringCatalogState,
+  type BoundaryStringCatalogResolution,
+  type BoundaryStringCatalogState,
+} from './catalog-state';
+import {
   compactBoundaryStringsModule,
   createBoundaryStringsCompactionState,
   type BoundaryStringsCompactionState,
 } from './compaction';
 import {
+  BoundaryStringDiagnosticError,
+  createBoundaryStringDiagnosticModuleSource,
+  unknownBoundaryDiagnostic,
+  unknownMessageKeyDiagnostic,
+  type BoundaryStringDiagnostic,
+} from './diagnostics';
+import {
   BOUNDARY_STRING_LOCALES,
-  boundaryStringMessageFilePath,
-  classifyBoundaryStringFile,
   createBoundaryStringProjectPaths,
   readBoundaryStringMessageCatalog,
   type BoundaryStringMessageCatalog,
   type BoundaryStringProjectPaths,
 } from './message-catalog';
 import {
-  createBoundaryStringMessageCatalogCache,
-  type BoundaryStringMessageCatalogCache,
-} from './message-catalog-cache';
-import {
   isSupportedSourceModuleId,
   normalizeModuleId,
   stripModuleQuery,
 } from './module-id';
 import {
+  createBoundaryStringServeCoordinator,
+  type BoundaryStringServeCoordinator,
+} from './serve-coordinator';
+import { boundaryStringProcessServeState } from './serve-session-state';
+import {
+  createBoundaryStringSourceRegistry,
+  type BoundaryStringSourceRegistry,
+} from './source-registry';
+import {
   boundaryModuleId,
-  createBoundaryId,
   createBoundaryRegistrationModuleSource,
   createBoundaryStringsPackModuleSource,
   parseResolvedBoundaryModuleId,
@@ -49,15 +63,6 @@ import {
 // control of the hosted and standalone chunk graph.
 
 type BoundaryStringPluginMode = 'serve' | 'build';
-
-type BoundaryUpdateResult =
-  | {
-      status: 'unchanged';
-    }
-  | {
-      affectedBoundaryIds: ReadonlySet<string>;
-      status: 'changed';
-    };
 
 function projectRelativeModulePath({ moduleId, root }: {
   moduleId: string;
@@ -90,24 +95,30 @@ function shouldParseProjectSource({ moduleId, root }: {
     && isProjectModule({ moduleId, root });
 }
 
-function shouldCreateBoundary({ moduleId, root }: {
+function boundaryRelativeModulePath({ moduleId, root }: {
   moduleId: string;
   root: string;
-}): boolean {
+}): string | undefined {
   if (!shouldParseProjectSource({ moduleId, root })) {
-    return false;
+    return undefined;
   }
   const relativePath = projectRelativeModulePath({ moduleId, root });
-  return relativePath !== undefined && !relativePath.startsWith('src/strings/');
+  if (relativePath === undefined || relativePath.startsWith('src/strings/')) {
+    return undefined;
+  }
+  return relativePath;
 }
 
-function prependBoundaryImport({ boundaryId, code, moduleId }: {
-  boundaryId: string;
+function prependBoundaryImport({ boundary, code, moduleId }: {
+  boundary: BoundaryStringBoundaryDefinition;
   code: string;
   moduleId: string;
 }): { code: string; map: ReturnType<MagicString['generateMap']> } {
   const magicString = new MagicString(code);
-  magicString.prepend(`import ${JSON.stringify(boundaryModuleId({ boundaryId }))};\n`);
+  magicString.prepend(`import ${JSON.stringify(boundaryModuleId({
+    boundaryId: boundary.id,
+    version: boundary.version,
+  }))};\n`);
   return {
     code: magicString.toString(),
     map: magicString.generateMap({
@@ -116,13 +127,6 @@ function prependBoundaryImport({ boundaryId, code, moduleId }: {
       source: moduleId,
     }),
   };
-}
-
-function sameKeys({ left, right }: {
-  left: readonly string[];
-  right: readonly string[];
-}): boolean {
-  return left.length === right.length && left.every((key, index) => key === right[index]);
 }
 
 function addCatalogWatchFiles({ addWatchFile, paths }: {
@@ -134,29 +138,37 @@ function addCatalogWatchFiles({ addWatchFile, paths }: {
   }
 }
 
-function assertKnownMessageKeys({ analysis, catalog, moduleId }: {
-  analysis: BoundaryStringSourceAnalysis;
+function buildCatalogResolutionForBoundary({ boundary, catalog }: {
+  boundary: BoundaryStringBoundaryDefinition;
   catalog: BoundaryStringMessageCatalog;
-  moduleId: string;
-}): void {
-  for (const key of analysis.keys) {
-    if (!catalog.messagesByKey.has(key)) {
-      throw new Error(`[naidan-boundary-strings] Unknown message key "${key}" in ${moduleId}.`);
-    }
+}): BoundaryStringCatalogResolution {
+  const unknownKey = boundary.keys.find((key) => !catalog.messagesByKey.has(key));
+  if (unknownKey !== undefined) {
+    return {
+      diagnostic: unknownMessageKeyDiagnostic({
+        key: unknownKey,
+        moduleId: boundary.moduleId,
+      }),
+      status: 'invalid',
+    };
   }
+  return {
+    catalog,
+    status: 'valid',
+  };
 }
 
 export function createBoundaryStringsPlugin(): Plugin[] {
   let resolvedConfig: ResolvedConfig | undefined;
   let pluginMode: BoundaryStringPluginMode | undefined;
   let projectPaths: BoundaryStringProjectPaths | undefined;
-  let catalogCache: BoundaryStringMessageCatalogCache | undefined;
+  let catalogState: BoundaryStringCatalogState | undefined;
   let buildCatalog: BoundaryStringMessageCatalog | undefined;
   let compactionState: BoundaryStringsCompactionState | undefined;
-  let configuredServer: ViteDevServer | undefined;
-  const boundaries = new Map<string, BoundaryStringBoundaryDefinition>();
-  const boundaryIdsByModuleId = new Map<string, string>();
-  const sourceAnalyses = new Map<string, BoundaryStringSourceAnalysis>();
+  let serveCoordinator: BoundaryStringServeCoordinator | undefined;
+  const serveCoordinators = new Set<BoundaryStringServeCoordinator>();
+  let missingSourcePaths: Set<string> | undefined;
+  const sourceRegistry: BoundaryStringSourceRegistry = createBoundaryStringSourceRegistry();
 
   function requireResolvedConfig(): ResolvedConfig {
     if (resolvedConfig === undefined) {
@@ -179,11 +191,11 @@ export function createBoundaryStringsPlugin(): Plugin[] {
     return projectPaths;
   }
 
-  function requireCatalogCache(): BoundaryStringMessageCatalogCache {
-    if (catalogCache === undefined) {
-      throw new Error('[naidan-boundary-strings] Development catalog cache was not initialized.');
+  function requireCatalogState(): BoundaryStringCatalogState {
+    if (catalogState === undefined) {
+      throw new Error('[naidan-boundary-strings] Development catalog state was not initialized.');
     }
-    return catalogCache;
+    return catalogState;
   }
 
   function requireBuildCatalog(): BoundaryStringMessageCatalog {
@@ -193,6 +205,28 @@ export function createBoundaryStringsPlugin(): Plugin[] {
     return buildCatalog;
   }
 
+  function requireServeCoordinator(): BoundaryStringServeCoordinator {
+    if (serveCoordinator === undefined) {
+      throw new Error('[naidan-boundary-strings] Development coordinator was not initialized.');
+    }
+    return serveCoordinator;
+  }
+
+  function requireMissingSourcePaths(): Set<string> {
+    if (missingSourcePaths === undefined) {
+      throw new Error('[naidan-boundary-strings] Development serve state was not initialized.');
+    }
+    return missingSourcePaths;
+  }
+
+  function disposeServeCoordinators(): void {
+    for (const coordinator of serveCoordinators) {
+      coordinator.dispose();
+    }
+    serveCoordinators.clear();
+    serveCoordinator = undefined;
+  }
+
   function readCatalogFromDisk(): BoundaryStringMessageCatalog {
     return readBoundaryStringMessageCatalog({
       paths: requireProjectPaths(),
@@ -200,13 +234,21 @@ export function createBoundaryStringsPlugin(): Plugin[] {
     });
   }
 
-  function catalogForLoad(): BoundaryStringMessageCatalog {
+  function resolveCatalogForBoundary({ boundary }: {
+    boundary: BoundaryStringBoundaryDefinition;
+  }): BoundaryStringCatalogResolution {
     const mode = requirePluginMode();
     switch (mode) {
     case 'serve':
-      return requireCatalogCache().read({ refresh: 'if-stale' }).catalog;
+      return requireCatalogState().resolveForBoundary({
+        keys: boundary.keys,
+        moduleId: boundary.moduleId,
+      });
     case 'build':
-      return requireBuildCatalog();
+      return buildCatalogResolutionForBoundary({
+        boundary,
+        catalog: requireBuildCatalog(),
+      });
     default: {
       const _exhaustive: never = mode;
       throw new Error(`Unsupported Boundary Strings plugin mode: ${_exhaustive}`);
@@ -214,214 +256,190 @@ export function createBoundaryStringsPlugin(): Plugin[] {
     }
   }
 
-  function catalogForAnalysis({ analysis, moduleId }: {
-    analysis: BoundaryStringSourceAnalysis;
-    moduleId: string;
-  }): BoundaryStringMessageCatalog {
-    const mode = requirePluginMode();
-    switch (mode) {
-    case 'build': {
-      const catalog = requireBuildCatalog();
-      assertKnownMessageKeys({ analysis, catalog, moduleId });
-      return catalog;
-    }
-    case 'serve': {
-      const cache = requireCatalogCache();
-      const firstRead = cache.read({ refresh: 'if-stale' });
-      const hasUnknownKey = analysis.keys.some((key) => {
-        return !firstRead.catalog.messagesByKey.has(key);
-      });
-      if (!hasUnknownKey) {
-        return firstRead.catalog;
-      }
-      let latestCatalog: BoundaryStringMessageCatalog;
-      switch (firstRead.refreshResult) {
-      case 'performed':
-        latestCatalog = firstRead.catalog;
-        break;
-      case 'not-needed':
-        latestCatalog = cache.read({ refresh: 'force' }).catalog;
-        break;
-      default: {
-        const _exhaustive: never = firstRead.refreshResult;
-        throw new Error(`Unsupported Boundary Strings catalog refresh result: ${_exhaustive}`);
-      }
-      }
-      assertKnownMessageKeys({ analysis, catalog: latestCatalog, moduleId });
-      return latestCatalog;
-    }
-    default: {
-      const _exhaustive: never = mode;
-      throw new Error(`Unsupported Boundary Strings plugin mode: ${_exhaustive}`);
-    }
-    }
-  }
-
-  function addAnalysisWatchFiles({ addWatchFile, analysis }: {
-    addWatchFile: (filePath: string) => void;
-    analysis: BoundaryStringSourceAnalysis;
-  }): void {
-    if (analysis.keys.length === 0) {
-      return;
-    }
-    const paths = requireProjectPaths();
-    addCatalogWatchFiles({ addWatchFile, paths });
-    for (const key of analysis.keys) {
-      for (const locale of BOUNDARY_STRING_LOCALES) {
-        addWatchFile(boundaryStringMessageFilePath({ key, locale, paths }));
-      }
-    }
-  }
-
-  function updateBoundary({ analysis, moduleId }: {
-    analysis: BoundaryStringSourceAnalysis;
-    moduleId: string;
-  }): BoundaryUpdateResult {
-    const previousBoundaryId = boundaryIdsByModuleId.get(moduleId);
-    if (analysis.keys.length === 0) {
-      if (previousBoundaryId === undefined) {
-        return { status: 'unchanged' };
-      }
-      boundaries.delete(previousBoundaryId);
-      boundaryIdsByModuleId.delete(moduleId);
-      return {
-        affectedBoundaryIds: new Set([previousBoundaryId]),
-        status: 'changed',
-      };
-    }
-
-    const relativeModulePath = projectRelativeModulePath({
-      moduleId,
-      root: requireResolvedConfig().root,
-    });
-    if (relativeModulePath === undefined) {
-      throw new Error(`[naidan-boundary-strings] Boundary module is outside the project root: ${moduleId}.`);
-    }
-    const boundaryId = createBoundaryId({ moduleId: relativeModulePath });
-    const previousBoundary = boundaries.get(boundaryId);
-    if (previousBoundary !== undefined && previousBoundary.moduleId !== moduleId) {
-      throw new Error(
-        `[naidan-boundary-strings] Boundary ID collision between ${previousBoundary.moduleId} and ${moduleId}.`,
-      );
-    }
-    if (
-      previousBoundary !== undefined
-      && previousBoundary.moduleId === moduleId
-      && previousBoundaryId === boundaryId
-      && sameKeys({ left: previousBoundary.keys, right: analysis.keys })
-    ) {
-      return { status: 'unchanged' };
-    }
-
-    if (previousBoundaryId !== undefined && previousBoundaryId !== boundaryId) {
-      boundaries.delete(previousBoundaryId);
-    }
-    boundaries.set(boundaryId, {
-      id: boundaryId,
-      keys: analysis.keys,
-      moduleId,
-    });
-    boundaryIdsByModuleId.set(moduleId, boundaryId);
-    return {
-      affectedBoundaryIds: new Set(
-        [previousBoundaryId, boundaryId].filter((value): value is string => value !== undefined),
-      ),
-      status: 'changed',
-    };
-  }
-
-  function invalidateAnalyzedSourceModules({ server }: {
-    server: ViteDevServer;
-  }): void {
-    for (const [moduleId, analysis] of sourceAnalyses) {
-      if (analysis.keys.length === 0) {
-        continue;
-      }
-      const moduleNode = server.moduleGraph.getModuleById(moduleId);
-      if (moduleNode !== undefined) {
-        server.moduleGraph.invalidateModule(moduleNode);
-      }
-    }
-  }
-
-  function invalidateBoundaryVirtualModules({ boundaryIds, server }: {
-    boundaryIds: ReadonlySet<string> | undefined;
-    server: ViteDevServer;
-  }): void {
-    for (const moduleNode of server.moduleGraph.idToModuleMap.values()) {
-      const boundaryId = parseResolvedBoundaryModuleId({ id: moduleNode.id ?? '' })
-        ?? parseResolvedPackModuleId({ id: moduleNode.id ?? '' })?.boundaryId;
-      if (boundaryId !== undefined && (boundaryIds === undefined || boundaryIds.has(boundaryId))) {
-        server.moduleGraph.invalidateModule(moduleNode);
-      }
-    }
-  }
-
-  function invalidateBoundaryUpdate({ server, update }: {
-    server: ViteDevServer | undefined;
-    update: BoundaryUpdateResult;
-  }): void {
-    if (server === undefined) {
-      return;
-    }
-    switch (update.status) {
-    case 'unchanged':
-      return;
-    case 'changed':
-      invalidateBoundaryVirtualModules({
-        boundaryIds: update.affectedBoundaryIds,
-        server,
-      });
-      return;
-    default: {
-      const _exhaustive: never = update;
-      throw new Error(
-        `Unsupported Boundary Strings boundary update: ${String(_exhaustive)}`,
-      );
-    }
-    }
-  }
-
-  function analyzeAndUpdateSource({ addWatchFile, code, moduleId }: {
-    addWatchFile: ((filePath: string) => void) | undefined;
+  function sourceAnalysis({ code, moduleId }: {
     code: string;
     moduleId: string;
-  }): {
-    analysis: BoundaryStringSourceAnalysis;
-    update: BoundaryUpdateResult;
-  } {
-    const analysis = analyzeBoundaryStringSource({
-      moduleId,
-      sourceCode: code,
-    });
-    if (addWatchFile !== undefined) {
-      addAnalysisWatchFiles({ addWatchFile, analysis });
+  }): BoundaryStringSourceAnalysis {
+    try {
+      return analyzeBoundaryStringSource({
+        moduleId,
+        sourceCode: code,
+      });
+    } catch (error) {
+      sourceRegistry.removeSource({ moduleId });
+      throw error;
     }
-
-    const config = requireResolvedConfig();
-    let update: BoundaryUpdateResult;
-    if (shouldCreateBoundary({ moduleId, root: config.root })) {
-      if (analysis.keys.length > 0) {
-        catalogForAnalysis({ analysis, moduleId });
-      }
-      update = updateBoundary({ analysis, moduleId });
-    } else {
-      update = { status: 'unchanged' };
-    }
-
-    sourceAnalyses.set(moduleId, analysis);
-    return { analysis, update };
   }
 
-  function addBoundaryModuleWatchFiles({ addWatchFile, boundary }: {
+  function diagnosticModuleOrThrow({ diagnostic }: {
+    diagnostic: BoundaryStringDiagnostic;
+  }): string {
+    const mode = requirePluginMode();
+    switch (mode) {
+    case 'serve':
+      return createBoundaryStringDiagnosticModuleSource({ diagnostic });
+    case 'build':
+      throw new BoundaryStringDiagnosticError({ diagnostic });
+    default: {
+      const _exhaustive: never = mode;
+      throw new Error(`Unsupported Boundary Strings plugin mode: ${_exhaustive}`);
+    }
+    }
+  }
+
+  function registerSource({ analysis, moduleId }: {
+    analysis: BoundaryStringSourceAnalysis;
+    moduleId: string;
+  }): void {
+    const config = requireResolvedConfig();
+    const record = sourceRegistry.replaceSource({
+      analysis,
+      boundaryRelativeModulePath: boundaryRelativeModulePath({
+        moduleId,
+        root: config.root,
+      }),
+      moduleId,
+    });
+    if (record.boundary === undefined) {
+      return;
+    }
+
+    const mode = requirePluginMode();
+    switch (mode) {
+    case 'serve':
+      requireServeCoordinator().watchSourceDirectory({ moduleId });
+      break;
+    case 'build': {
+      const resolution = resolveCatalogForBoundary({ boundary: record.boundary });
+      switch (resolution.status) {
+      case 'valid':
+        break;
+      case 'invalid':
+        throw new BoundaryStringDiagnosticError({ diagnostic: resolution.diagnostic });
+      default: {
+        const _exhaustive: never = resolution;
+        throw new Error(
+          `Unsupported Boundary Strings catalog resolution: ${String(_exhaustive)}`,
+        );
+      }
+      }
+      break;
+    }
+    default: {
+      const _exhaustive: never = mode;
+      throw new Error(`Unsupported Boundary Strings plugin mode: ${_exhaustive}`);
+    }
+    }
+  }
+
+  function addVirtualModuleWatchFiles({ addWatchFile, boundary }: {
     addWatchFile: (filePath: string) => void;
     boundary: BoundaryStringBoundaryDefinition;
   }): void {
     addWatchFile(boundary.moduleId);
-    addCatalogWatchFiles({
-      addWatchFile,
-      paths: requireProjectPaths(),
-    });
+    const mode = requirePluginMode();
+    switch (mode) {
+    case 'serve':
+      addWatchFile(requireServeCoordinator().revisionFilePath);
+      break;
+    case 'build':
+      break;
+    default: {
+      const _exhaustive: never = mode;
+      throw new Error(`Unsupported Boundary Strings plugin mode: ${_exhaustive}`);
+    }
+    }
+  }
+
+  function loadBoundaryModule({ addWatchFile, boundaryId, version }: {
+    addWatchFile: (filePath: string) => void;
+    boundaryId: string;
+    version: string;
+  }): string {
+    const boundary = sourceRegistry.getBoundary({ boundaryId, version });
+    if (boundary === undefined) {
+      const diagnostic = unknownBoundaryDiagnostic({ boundaryId, version });
+      const mode = requirePluginMode();
+      switch (mode) {
+      case 'serve':
+        addWatchFile(requireServeCoordinator().revisionFilePath);
+        break;
+      case 'build':
+        break;
+      default: {
+        const _exhaustive: never = mode;
+        throw new Error(`Unsupported Boundary Strings plugin mode: ${_exhaustive}`);
+      }
+      }
+      return diagnosticModuleOrThrow({ diagnostic });
+    }
+    addVirtualModuleWatchFiles({ addWatchFile, boundary });
+    const resolution = resolveCatalogForBoundary({ boundary });
+    switch (resolution.status) {
+    case 'invalid':
+      return diagnosticModuleOrThrow({ diagnostic: resolution.diagnostic });
+    case 'valid':
+      return createBoundaryRegistrationModuleSource({
+        boundary,
+        compactionState,
+      });
+    default: {
+      const _exhaustive: never = resolution;
+      throw new Error(
+        `Unsupported Boundary Strings catalog resolution: ${String(_exhaustive)}`,
+      );
+    }
+    }
+  }
+
+  function loadPackModule({ addWatchFile, boundaryId, locale, version }: {
+    addWatchFile: (filePath: string) => void;
+    boundaryId: string;
+    locale: (typeof BOUNDARY_STRING_LOCALES)[number];
+    version: string;
+  }): string {
+    const boundary = sourceRegistry.getBoundary({ boundaryId, version });
+    if (boundary === undefined) {
+      const diagnostic = unknownBoundaryDiagnostic({ boundaryId, version });
+      const mode = requirePluginMode();
+      switch (mode) {
+      case 'serve':
+        addWatchFile(requireServeCoordinator().revisionFilePath);
+        break;
+      case 'build':
+        break;
+      default: {
+        const _exhaustive: never = mode;
+        throw new Error(`Unsupported Boundary Strings plugin mode: ${_exhaustive}`);
+      }
+      }
+      return diagnosticModuleOrThrow({ diagnostic });
+    }
+    addVirtualModuleWatchFiles({ addWatchFile, boundary });
+    const resolution = resolveCatalogForBoundary({ boundary });
+    switch (resolution.status) {
+    case 'invalid':
+      return diagnosticModuleOrThrow({ diagnostic: resolution.diagnostic });
+    case 'valid':
+      for (const key of boundary.keys) {
+        const message = resolution.catalog.messagesByKey.get(key);
+        if (message !== undefined) {
+          addWatchFile(message.modulesByLocale[locale].filePath);
+        }
+      }
+      return createBoundaryStringsPackModuleSource({
+        boundary,
+        compactionState,
+        locale,
+        messagesByKey: resolution.catalog.messagesByKey,
+      });
+    default: {
+      const _exhaustive: never = resolution;
+      throw new Error(
+        `Unsupported Boundary Strings catalog resolution: ${String(_exhaustive)}`,
+      );
+    }
+    }
   }
 
   const analysisPlugin: Plugin = {
@@ -432,18 +450,20 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       pluginMode = config.command;
       projectPaths = createBoundaryStringProjectPaths({ root: config.root });
       switch (pluginMode) {
-      case 'serve': {
-        const initialCatalog = readCatalogFromDisk();
-        catalogCache = createBoundaryStringMessageCatalogCache({
-          initialCatalog,
+      case 'serve':
+        sourceRegistry.reset();
+        missingSourcePaths = boundaryStringProcessServeState({ root: config.root }).missingSourcePaths;
+        catalogState = createBoundaryStringCatalogState({
           readCatalog: readCatalogFromDisk,
         });
         buildCatalog = undefined;
         compactionState = undefined;
         break;
-      }
       case 'build':
-        catalogCache = undefined;
+        disposeServeCoordinators();
+        sourceRegistry.reset();
+        missingSourcePaths = undefined;
+        catalogState = undefined;
         buildCatalog = undefined;
         compactionState = undefined;
         break;
@@ -454,53 +474,25 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       }
     },
     configureServer(server) {
-      configuredServer = server;
-      const paths = requireProjectPaths();
-      server.watcher.add([
-        ...BOUNDARY_STRING_LOCALES.map((locale) => paths.catalogFilePathsByLocale[locale]),
-        paths.messagesDirectoryPath,
-      ]);
-      const handleWatchEvent = ({ event, filePath }: {
-        event: 'add' | 'change' | 'unlink';
-        filePath: string;
-      }): void => {
-        const kind = classifyBoundaryStringFile({
-          filePath,
-          paths,
-        });
-        switch (kind) {
-        case 'catalog':
-          requireCatalogCache().markStale();
-          invalidateAnalyzedSourceModules({ server });
-          break;
-        case 'message-module':
-          if (event === 'add' || event === 'unlink') {
-            requireCatalogCache().markStale();
-            invalidateAnalyzedSourceModules({ server });
-          }
-          break;
-        case 'other':
-          return;
-        default: {
-          const _exhaustive: never = kind;
-          throw new Error(`Unsupported Boundary Strings file kind: ${_exhaustive}`);
-        }
-        }
+      const coordinator = createBoundaryStringServeCoordinator({
+        catalogState: requireCatalogState(),
+        missingSourcePaths: requireMissingSourcePaths(),
+        paths: requireProjectPaths(),
+        registry: sourceRegistry,
+        server,
+      });
+      serveCoordinators.add(coordinator);
+      serveCoordinator = coordinator;
 
-        if ((event === 'add' || event === 'unlink') && server.config.server.hmr !== false) {
-          invalidateBoundaryVirtualModules({ boundaryIds: undefined, server });
-          server.ws.send({ type: 'full-reload' });
+      const closeServer = server.close.bind(server);
+      server.close = async () => {
+        coordinator.dispose();
+        serveCoordinators.delete(coordinator);
+        if (serveCoordinator === coordinator) {
+          serveCoordinator = undefined;
         }
+        await closeServer();
       };
-      server.watcher.on('add', (filePath) => {
-        handleWatchEvent({ event: 'add', filePath });
-      });
-      server.watcher.on('change', (filePath) => {
-        handleWatchEvent({ event: 'change', filePath });
-      });
-      server.watcher.on('unlink', (filePath) => {
-        handleWatchEvent({ event: 'unlink', filePath });
-      });
     },
     buildStart() {
       const mode = requirePluginMode();
@@ -514,6 +506,8 @@ export function createBoundaryStringsPlugin(): Plugin[] {
         throw new Error(`Unsupported Boundary Strings plugin mode: ${_exhaustive}`);
       }
       }
+
+      sourceRegistry.reset();
       const paths = requireProjectPaths();
       addCatalogWatchFiles({
         addWatchFile: (filePath) => this.addWatchFile(filePath),
@@ -537,47 +531,24 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       return resolveBoundaryStringsVirtualId({ id });
     },
     load(id) {
-      const boundaryId = parseResolvedBoundaryModuleId({ id });
-      if (boundaryId !== undefined) {
-        const boundary = boundaries.get(boundaryId);
-        if (boundary === undefined) {
-          throw new Error(`[naidan-boundary-strings] Unknown boundary "${boundaryId}".`);
-        }
-        addBoundaryModuleWatchFiles({
+      const boundaryIdentity = parseResolvedBoundaryModuleId({ id });
+      if (boundaryIdentity !== undefined) {
+        return loadBoundaryModule({
           addWatchFile: (filePath) => this.addWatchFile(filePath),
-          boundary,
+          boundaryId: boundaryIdentity.boundaryId,
+          version: boundaryIdentity.version,
         });
-        return createBoundaryRegistrationModuleSource({ boundary, compactionState });
       }
 
-      const packId = parseResolvedPackModuleId({ id });
-      if (packId === undefined) {
+      const packIdentity = parseResolvedPackModuleId({ id });
+      if (packIdentity === undefined) {
         return undefined;
       }
-      const boundary = boundaries.get(packId.boundaryId);
-      if (boundary === undefined) {
-        throw new Error(`[naidan-boundary-strings] Unknown boundary "${packId.boundaryId}".`);
-      }
-      addBoundaryModuleWatchFiles({
+      return loadPackModule({
         addWatchFile: (filePath) => this.addWatchFile(filePath),
-        boundary,
-      });
-      const catalog = catalogForLoad();
-      for (const key of boundary.keys) {
-        const message = catalog.messagesByKey.get(key);
-        const filePath = message?.modulesByLocale[packId.locale].filePath
-          ?? boundaryStringMessageFilePath({
-            key,
-            locale: packId.locale,
-            paths: requireProjectPaths(),
-          });
-        this.addWatchFile(filePath);
-      }
-      return createBoundaryStringsPackModuleSource({
-        boundary,
-        compactionState,
-        locale: packId.locale,
-        messagesByKey: catalog.messagesByKey,
+        boundaryId: packIdentity.boundaryId,
+        locale: packIdentity.locale,
+        version: packIdentity.version,
       });
     },
     transform(code, id) {
@@ -586,63 +557,15 @@ export function createBoundaryStringsPlugin(): Plugin[] {
         return undefined;
       }
       const normalizedModuleId = normalizeModuleId({ moduleId: id });
-      const { update } = analyzeAndUpdateSource({
-        addWatchFile: (filePath) => this.addWatchFile(filePath),
+      const analysis = sourceAnalysis({
         code,
         moduleId: normalizedModuleId,
       });
-      invalidateBoundaryUpdate({ server: configuredServer, update });
+      registerSource({
+        analysis,
+        moduleId: normalizedModuleId,
+      });
       return undefined;
-    },
-    async handleHotUpdate({ file, read, server }) {
-      const normalizedFile = normalizeModuleId({ moduleId: file });
-      const kind = classifyBoundaryStringFile({
-        filePath: normalizedFile,
-        paths: requireProjectPaths(),
-      });
-      switch (kind) {
-      case 'catalog':
-        requireCatalogCache().markStale();
-        invalidateAnalyzedSourceModules({ server });
-        invalidateBoundaryVirtualModules({ boundaryIds: undefined, server });
-        server.ws.send({ type: 'full-reload' });
-        return [];
-      case 'message-module':
-        invalidateBoundaryVirtualModules({ boundaryIds: undefined, server });
-        server.ws.send({ type: 'full-reload' });
-        return [];
-      case 'other':
-        break;
-      default: {
-        const _exhaustive: never = kind;
-        throw new Error(`Unsupported Boundary Strings file kind: ${_exhaustive}`);
-      }
-      }
-
-      const config = requireResolvedConfig();
-      if (!shouldParseProjectSource({ moduleId: normalizedFile, root: config.root })) {
-        return undefined;
-      }
-
-      const { update } = analyzeAndUpdateSource({
-        addWatchFile: undefined,
-        code: await read(),
-        moduleId: normalizedFile,
-      });
-      invalidateBoundaryUpdate({ server, update });
-      switch (update.status) {
-      case 'unchanged':
-        return undefined;
-      case 'changed':
-        server.ws.send({ type: 'full-reload' });
-        return [];
-      default: {
-        const _exhaustive: never = update;
-        throw new Error(
-          `Unsupported Boundary Strings boundary update: ${String(_exhaustive)}`,
-        );
-      }
-      }
     },
   };
 
@@ -654,12 +577,14 @@ export function createBoundaryStringsPlugin(): Plugin[] {
         return undefined;
       }
       const normalizedModuleId = normalizeModuleId({ moduleId: id });
-      const boundaryId = boundaryIdsByModuleId.get(normalizedModuleId);
-      if (boundaryId === undefined) {
+      const boundary = sourceRegistry.getCurrentBoundary({
+        moduleId: normalizedModuleId,
+      });
+      if (boundary === undefined) {
         return undefined;
       }
       return prependBoundaryImport({
-        boundaryId,
+        boundary,
         code,
         moduleId: normalizedModuleId,
       });
@@ -679,7 +604,7 @@ export function createBoundaryStringsPlugin(): Plugin[] {
         throw new Error('[naidan-boundary-strings] Production compaction state was not initialized.');
       }
       const normalizedModuleId = normalizeModuleId({ moduleId: id });
-      const analysis = sourceAnalyses.get(normalizedModuleId);
+      const analysis = sourceRegistry.getAnalysis({ moduleId: normalizedModuleId });
       return compactBoundaryStringsModule({
         allowedBindingNames: analysis?.importedBindingNames ?? [],
         code,
