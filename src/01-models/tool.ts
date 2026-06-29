@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import type { ToolApprovalContext } from '@/01-models/tool-approval';
 import type { BinaryObjectId, ToolCallId } from '@/01-models/ids';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move the shared Wesh access scope contract into 01-models.
-import type { NaidanSysfsAccessScope } from '@/features/wesh/types';
+import type { NaidanSysfsAccessScope } from '@/01-models/naidan-sysfs';
 
 /**
  * Error codes for tool execution failures.
