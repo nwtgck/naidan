@@ -51,7 +51,7 @@ describe('OPFSTmpManager', () => {
   });
 
   it('creates tmp directories under an owner-scoped directory', async () => {
-    vi.doMock('@/utils/id', () => ({
+    vi.doMock('@/01-models/id', () => ({
       generateOpaqueId: vi.fn()
         .mockReturnValueOnce('owner-scope-a')
         .mockReturnValueOnce('tmp-dir-a'),
@@ -72,7 +72,7 @@ describe('OPFSTmpManager', () => {
   });
 
   it('queues its owner scope for cleanup and a later manager flushes it', async () => {
-    vi.doMock('@/utils/id', () => ({
+    vi.doMock('@/01-models/id', () => ({
       generateOpaqueId: vi.fn()
         .mockReturnValueOnce('owner-scope-a')
         .mockReturnValueOnce('tmp-dir-a')

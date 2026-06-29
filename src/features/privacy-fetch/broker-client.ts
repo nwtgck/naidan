@@ -1,4 +1,4 @@
-import { generateOpaqueId } from '@/utils/id';
+import { generateOpaqueId } from '@/01-models/id';
 import { createPrivacyFetchError } from './errors';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 import { privacyFetchBrokerToParentMessageSchema } from './schemas';

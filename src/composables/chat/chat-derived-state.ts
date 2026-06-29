@@ -1,6 +1,6 @@
 import { computed, toRaw, type ComputedRef, type Ref } from 'vue';
 import type { Chat, ChatGroup, ChatSummary, MessageNode, Settings, SidebarItem } from '@/01-models/types';
-import { getAllMessages, getChatBranchIterator } from '@/utils/chat-tree';
+import { getAllMessages, getChatBranchIterator } from '@/logic/chat-tree';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 
 export type ChatDerivedState = {

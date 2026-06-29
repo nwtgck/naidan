@@ -27,7 +27,7 @@ const UUID_M5 = '018d476a-7b3a-73fd-8000-00000000000d';
 const UUID_M6 = '018d476a-7b3a-73fd-8000-00000000000e';
 const NEW_UUID = '018d476a-7b3a-73fd-8000-ffffffffffff';
 
-vi.mock('../../utils/id', () => ({
+vi.mock('../../01-models/id', () => ({
   generateId: vi.fn(() => NEW_UUID),
 }));
 

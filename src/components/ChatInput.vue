@@ -5,7 +5,7 @@ import {
   isAppInteractionEnabled,
   useAppPresentation,
 } from '@/composables/useAppPresentation';
-import { generateId, generateOpaqueId } from '@/utils/id';
+import { generateId, generateOpaqueId } from '@/01-models/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from '@/features/tools/components/ChatToolsMenu.vue';

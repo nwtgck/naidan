@@ -1,9 +1,9 @@
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import type { AssistantMessageNode, Attachment, ChatMessage, Endpoint, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import type { LmProvider } from '@/01-models/lm';
 import type { ToolExecutionResult } from '@/01-models/tool';
-import { fileToDataUrl } from '@/utils/chat-tree';
+import { fileToDataUrl } from '@/logic/chat-tree';
 import { idToRaw } from '@/01-models/ids';
 import type { MessageId } from '@/01-models/ids';
 

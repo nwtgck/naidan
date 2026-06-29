@@ -19,7 +19,7 @@ vi.mock('@/00-storage/service', () => ({
   },
 }));
 
-vi.mock('@/utils/id', () => ({
+vi.mock('@/01-models/id', () => ({
   generateId: mockGenerateId,
 }));
 

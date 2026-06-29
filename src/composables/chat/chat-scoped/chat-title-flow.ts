@@ -3,7 +3,7 @@ import { isHttpEndpoint } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import type { LmProvider } from '@/01-models/lm';
 import { createLmProvider } from '@/features/lm/providerFactory';
-import { getChatBranchIterator } from '@/utils/chat-tree';
+import { getChatBranchIterator } from '@/logic/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
 import { resolveChatSettings } from '@/logic/chat-settings-resolver';

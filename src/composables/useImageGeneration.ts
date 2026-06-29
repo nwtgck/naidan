@@ -1,5 +1,5 @@
 import { ensureStrings } from '@/strings';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { ref } from 'vue';
 import { UNKNOWN_STEPS } from '@/01-models/lm';
 import { OllamaProvider } from '@/features/lm/ollama';
@@ -20,7 +20,7 @@ import {
 import { reencodeImage } from '@/utils/image-processing';
 import { naturalSort, sanitizeFilename } from '@/utils/string';
 import type { Chat, ChatContent, Attachment } from '@/01-models/types';
-import { findNodeInBranch } from '@/utils/chat-tree';
+import { findNodeInBranch } from '@/logic/chat-tree';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
 

@@ -2,7 +2,7 @@ import type { MessageNode } from '@/01-models/types';
 import { idToRaw } from '@/01-models/ids';
 import type { ChatId } from '@/01-models/ids';
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/features/wesh/types';
-import { getChatBranchIterator } from '@/utils/chat-tree';
+import { getChatBranchIterator } from '@/logic/chat-tree';
 import { GeneratedTextFileHandle } from '@/features/wesh/naidan-sysfs/generated-text-file-handle';
 import { renderMessageJson } from '@/features/wesh/naidan-sysfs/render/message-json';
 import { renderMessageMarkdown } from '@/features/wesh/naidan-sysfs/render/message-markdown';

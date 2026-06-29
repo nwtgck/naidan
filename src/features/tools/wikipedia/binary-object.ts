@@ -1,6 +1,6 @@
 import { NAIDAN_SYSFS_MOUNT_PATH } from '@/features/wesh/types';
 import { storageService } from '@/00-storage/service';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId } from '@/01-models/ids';
 

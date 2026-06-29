@@ -1,4 +1,4 @@
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';

@@ -7,7 +7,7 @@ const { mockGenerateOpaqueId } = vi.hoisted(() => ({
   mockGenerateOpaqueId: vi.fn(),
 }));
 
-vi.mock('@/utils/id', () => ({
+vi.mock('@/01-models/id', () => ({
   generateOpaqueId: mockGenerateOpaqueId,
 }));
 

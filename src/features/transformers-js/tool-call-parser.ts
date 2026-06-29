@@ -1,6 +1,6 @@
 import type { ToolCall } from '@/01-models/types';
 import type { ToolCallId } from '@/01-models/ids';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 
 const TOOL_CALL_OPEN = '<tool_call>';
 const TOOL_CALL_CLOSE = '</tool_call>';

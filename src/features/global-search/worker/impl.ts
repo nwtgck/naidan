@@ -2,7 +2,7 @@ import { UNTITLED_CHAT_TITLE } from '@/constants';
 import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 
 import { searchChatTree, searchLinearBranch } from '@/features/global-search/logic/chat-search';
-import { getChatBranchIterator } from '@/utils/chat-tree';
+import { getChatBranchIterator } from '@/logic/chat-tree';
 import type { Chat, MessageBranch } from '@/01-models/types';
 import type { FlatSearchResultItem, SearchSource } from '@/features/global-search/types';
 import type { ContentMatch as SearchContentMatch } from '@/features/global-search/logic/chat-search';

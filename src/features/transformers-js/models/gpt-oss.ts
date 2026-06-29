@@ -9,7 +9,7 @@ import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/features/tra
 import type { WorkerToolDefinition } from '@/features/transformers-js/types';
 import type { ToolCallId } from '@/01-models/ids';
 import { idToRaw } from '@/01-models/ids';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 
 interface GenerationResult {
   past_key_values: unknown,

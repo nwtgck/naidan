@@ -5,7 +5,7 @@ import { h } from 'vue';
 import MessageItem from './MessageItem.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import ToolCallGroupItem from '@/features/tools/components/ToolCallGroupItem.vue';
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
 import type { MessageNode } from '@/01-models/types';
 

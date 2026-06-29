@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';

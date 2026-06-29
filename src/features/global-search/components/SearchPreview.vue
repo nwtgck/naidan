@@ -3,7 +3,7 @@ import { ref, watch, computed } from 'vue';
 import type { ContentMatch, SearchResultItem } from '@/features/global-search/composables/useChatSearch';
 import { GitBranchIcon, Loader2Icon, MessageSquareIcon } from 'lucide-vue-next';
 import { storageService } from '@/00-storage/service';
-import { getChatBranchIterator } from '@/utils/chat-tree';
+import { getChatBranchIterator } from '@/logic/chat-tree';
 import type { MessageNode, Chat } from '@/01-models/types';
 import { useSettings } from '@/composables/useSettings';
 import { lazyStrings } from '@/strings';
