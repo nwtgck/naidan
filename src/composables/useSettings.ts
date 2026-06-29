@@ -43,9 +43,24 @@ let nextModelFetchRequestId = 0;
 let latestModelFetchRequestId = 0;
 let activeModelFetchCount = 0;
 
-export type SearchPreviewMode = 'always' | 'disabled' | 'peek';
-const _searchPreviewMode = ref<SearchPreviewMode>('always');
-const _searchContextSize = ref(2);
+type GlobalSearchSettings = NonNullable<NonNullable<Settings['experimental']>['globalSearch']>;
+export type SearchPreviewMode = NonNullable<GlobalSearchSettings['previewMode']>;
+export type SearchContextSize = NonNullable<GlobalSearchSettings['previewContextSize']>;
+type GlobalSearchScopeSetting = NonNullable<GlobalSearchSettings['scope']>;
+type GlobalSearchRoleFilterSetting = NonNullable<GlobalSearchSettings['roleFilter']>;
+
+const globalSearchScope = computed<GlobalSearchScopeSetting>(() => (
+  _settings.value.experimental?.globalSearch?.scope ?? 'title_only'
+));
+const globalSearchRoleFilter = computed<GlobalSearchRoleFilterSetting>(() => (
+  _settings.value.experimental?.globalSearch?.roleFilter ?? 'all'
+));
+const searchPreviewMode = computed<SearchPreviewMode>(() => (
+  _settings.value.experimental?.globalSearch?.previewMode ?? 'always'
+));
+const searchContextSize = computed<SearchContextSize>(() => (
+  _settings.value.experimental?.globalSearch?.previewContextSize ?? 2
+));
 
 interface UseSettingsApi {
   settings: Readonly<Ref<Settings>>,
@@ -54,8 +69,10 @@ interface UseSettingsApi {
   onboardingDraft: Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>,
   availableModels: Readonly<Ref<string[]>>,
   isFetchingModels: Readonly<Ref<boolean>>,
-  searchPreviewMode: Readonly<Ref<SearchPreviewMode>>,
-  searchContextSize: Readonly<Ref<number>>,
+  globalSearchScope: ComputedRef<GlobalSearchScopeSetting>,
+  globalSearchRoleFilter: ComputedRef<GlobalSearchRoleFilterSetting>,
+  searchPreviewMode: ComputedRef<SearchPreviewMode>,
+  searchContextSize: ComputedRef<SearchContextSize>,
   init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>,
   save: ({ patch, modelRefresh }: {
     patch: Partial<Settings>,
@@ -75,8 +92,10 @@ interface UseSettingsApi {
   setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => void,
   setFakeLmDebugModeStatus: ({ status }: { status: FakeLmDebugModeStatus }) => Promise<void>,
   setLocale: ({ locale }: { locale: UiLocale }) => Promise<void>,
-  setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => void,
-  setSearchContextSize: ({ size }: { size: number }) => void,
+  setGlobalSearchScope: ({ scope }: { scope: GlobalSearchScopeSetting }) => Promise<void>,
+  setGlobalSearchRoleFilter: ({ roleFilter }: { roleFilter: GlobalSearchRoleFilterSetting }) => Promise<void>,
+  setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => Promise<void>,
+  setSearchContextSize: ({ size }: { size: SearchContextSize }) => Promise<void>,
   TEST_ONLY: {
     __testOnlyReset: () => void,
     __testOnlySetSettings: ({ newSettings }: { newSettings: Settings }) => void,
@@ -516,12 +535,60 @@ export function useSettings(): UseSettingsApi {
     await operation;
   }
 
-  function setSearchPreviewMode({ mode }: { mode: SearchPreviewMode }) {
-    _searchPreviewMode.value = mode;
+  async function setGlobalSearchScope({ scope }: {
+    scope: GlobalSearchScopeSetting,
+  }): Promise<void> {
+    await updateExperimental({
+      updater: ({ experimental }) => ({
+        ...experimental,
+        globalSearch: {
+          ...experimental?.globalSearch,
+          scope,
+        },
+      }),
+    });
   }
 
-  function setSearchContextSize({ size }: { size: number }) {
-    _searchContextSize.value = size;
+  async function setGlobalSearchRoleFilter({ roleFilter }: {
+    roleFilter: GlobalSearchRoleFilterSetting,
+  }): Promise<void> {
+    await updateExperimental({
+      updater: ({ experimental }) => ({
+        ...experimental,
+        globalSearch: {
+          ...experimental?.globalSearch,
+          roleFilter,
+        },
+      }),
+    });
+  }
+
+  async function setSearchPreviewMode({ mode }: {
+    mode: SearchPreviewMode,
+  }): Promise<void> {
+    await updateExperimental({
+      updater: ({ experimental }) => ({
+        ...experimental,
+        globalSearch: {
+          ...experimental?.globalSearch,
+          previewMode: mode,
+        },
+      }),
+    });
+  }
+
+  async function setSearchContextSize({ size }: {
+    size: SearchContextSize,
+  }): Promise<void> {
+    await updateExperimental({
+      updater: ({ experimental }) => ({
+        ...experimental,
+        globalSearch: {
+          ...experimental?.globalSearch,
+          previewContextSize: size,
+        },
+      }),
+    });
   }
 
   function __testOnlySetSettings({ newSettings }: { newSettings: Settings }) {
@@ -542,7 +609,6 @@ export function useSettings(): UseSettingsApi {
     nextModelFetchRequestId = 0;
     latestModelFetchRequestId = 0;
     activeModelFetchCount = 0;
-    _searchPreviewMode.value = 'always';
     initPromise = null;
     localeChangeQueue = Promise.resolve();
   }
@@ -554,8 +620,10 @@ export function useSettings(): UseSettingsApi {
     onboardingDraft: readonly(_onboardingDraft) as Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>,
     availableModels: readonly(availableModels) as Readonly<Ref<string[]>>,
     isFetchingModels: readonly(isFetchingModels),
-    searchPreviewMode: readonly(_searchPreviewMode),
-    searchContextSize: readonly(_searchContextSize),
+    globalSearchScope,
+    globalSearchRoleFilter,
+    searchPreviewMode,
+    searchContextSize,
     init,
     save,
     updateExperimental,
@@ -570,6 +638,8 @@ export function useSettings(): UseSettingsApi {
     setHeavyContentAlertDismissed,
     setFakeLmDebugModeStatus,
     setLocale,
+    setGlobalSearchScope,
+    setGlobalSearchRoleFilter,
     setSearchPreviewMode,
     setSearchContextSize,
     TEST_ONLY: {

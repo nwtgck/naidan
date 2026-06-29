@@ -545,6 +545,8 @@ describe('StorageTab.vue Tests', () => {
         onboardingDraft: { value: null } as any,
         availableModels: { value: [] } as any,
         isFetchingModels: ref(false),
+        globalSearchScope: { value: 'title_only' } as any,
+        globalSearchRoleFilter: { value: 'all' } as any,
         searchPreviewMode: { value: 'always' } as any,
         searchContextSize: { value: 2 } as any,
         init: vi.fn(),
@@ -558,6 +560,8 @@ describe('StorageTab.vue Tests', () => {
         setHeavyContentAlertDismissed: vi.fn(),
         setFakeLmDebugModeStatus: vi.fn(),
         setLocale: vi.fn(),
+        setGlobalSearchScope: vi.fn(),
+        setGlobalSearchRoleFilter: vi.fn(),
         setSearchPreviewMode: vi.fn(),
         setSearchContextSize: vi.fn(),
         TEST_ONLY: {

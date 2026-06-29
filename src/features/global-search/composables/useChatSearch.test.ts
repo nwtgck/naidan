@@ -447,27 +447,155 @@ describe('useChatSearch Composable', () => {
     expect(composable.results.value[1]?.type).toBe('chat');
   });
 
-  it('should list all groups and chats if query is empty and scope is title_only', async () => {
+  it.each(['title_only', 'all', 'current_thread'] as const)(
+    'should list all groups and chats without scanning content for an empty query in %s scope',
+    async (scope) => {
+      const composable = await createComposable();
+      sidebarItems.value = [
+        {
+          id: 'group1',
+          type: 'chat_group',
+          chatGroup: {
+            id: 'group1',
+            name: 'Work',
+            updatedAt: 150,
+            items: [],
+          },
+        },
+        { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', updatedAt: 100 } },
+      ] as never;
+
+      await composable.search({ searchQuery: '', options: { scope } });
+
+      expect(composable.results.value).toHaveLength(2);
+      expect(composable.results.value[0]?.type).toBe('chat_group');
+      expect(composable.results.value[1]?.type).toBe('chat');
+      expect(storageService.getCurrentType).not.toHaveBeenCalled();
+      expect(storageService.loadChatContentWithoutAttachments).not.toHaveBeenCalled();
+      expect(mockCreateGlobalSearchWorkerClient).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['title_only', 'all', 'current_thread'] as const)(
+    'should apply the group filter to an empty query in %s scope',
+    async (scope) => {
+      const composable = await createComposable();
+      sidebarItems.value = [
+        {
+          id: 'group1',
+          type: 'chat_group',
+          chatGroup: {
+            id: 'group1',
+            name: 'Group 1',
+            updatedAt: 100,
+            items: [{
+              id: 'chat1',
+              type: 'chat',
+              chat: {
+                id: 'chat1',
+                title: 'Chat 1',
+                groupId: 'group1',
+                updatedAt: 100,
+              },
+            }],
+          },
+        },
+        {
+          id: 'group2',
+          type: 'chat_group',
+          chatGroup: {
+            id: 'group2',
+            name: 'Group 2',
+            updatedAt: 200,
+            items: [{
+              id: 'chat2',
+              type: 'chat',
+              chat: {
+                id: 'chat2',
+                title: 'Chat 2',
+                groupId: 'group2',
+                updatedAt: 200,
+              },
+            }],
+          },
+        },
+      ] as never;
+
+      await composable.search({
+        searchQuery: '',
+        options: { scope, chatGroupIds: ['group1'] },
+      });
+
+      expect(composable.results.value.map(entry => entry.type)).toEqual([
+        'chat_group',
+        'chat',
+      ]);
+      expect(composable.results.value[0]).toMatchObject({
+        type: 'chat_group',
+        item: { groupId: 'group1' },
+      });
+      expect(composable.results.value[1]).toMatchObject({
+        type: 'chat',
+        item: { chatId: 'chat1' },
+      });
+      expect(mockCreateGlobalSearchWorkerClient).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['title_only', 'all', 'current_thread'] as const)(
+    'should apply the chat filter to an empty query in %s scope',
+    async (scope) => {
+      const composable = await createComposable();
+      sidebarItems.value = [
+        { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', updatedAt: 100 } },
+        { id: 'chat2', type: 'chat', chat: { id: 'chat2', title: 'Chat 2', updatedAt: 200 } },
+      ] as never;
+
+      await composable.search({
+        searchQuery: '',
+        options: { scope, chatId: 'chat2' },
+      });
+
+      expect(composable.results.value).toHaveLength(1);
+      expect(composable.results.value[0]).toMatchObject({
+        type: 'chat',
+        item: { chatId: 'chat2' },
+      });
+      expect(mockCreateGlobalSearchWorkerClient).not.toHaveBeenCalled();
+    },
+  );
+
+  it('should publish title results before a content search completes', async () => {
+    let resolveContentSearch: ((value: { matches: [] }) => void) | undefined;
+    const searchChatContent = vi.fn(() => new Promise<{ matches: [] }>(resolve => {
+      resolveContentSearch = resolve;
+    }));
+    mockCreateGlobalSearchWorkerClient.mockResolvedValue({
+      searchChatContent,
+      dispose: vi.fn().mockResolvedValue(undefined),
+    });
+
     const composable = await createComposable();
     sidebarItems.value = [
-      {
-        id: 'group1',
-        type: 'chat_group',
-        chatGroup: {
-          id: 'group1',
-          name: 'Work',
-          updatedAt: 150,
-          items: [],
-        },
-      },
-      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', updatedAt: 100 } },
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello', updatedAt: 100 } },
     ] as never;
 
-    await composable.search({ searchQuery: '', options: { scope: 'title_only' } });
+    const searchPromise = composable.search({
+      searchQuery: 'hello',
+      options: { scope: 'all' },
+    });
 
-    expect(composable.results.value).toHaveLength(2);
-    expect(composable.results.value[0]?.type).toBe('chat_group');
-    expect(composable.results.value[1]?.type).toBe('chat');
+    expect(composable.results.value).toHaveLength(1);
+    expect(composable.results.value[0]).toMatchObject({
+      type: 'chat',
+      item: { chatId: 'chat1', matchType: 'title' },
+    });
+
+    await vi.waitFor(() => {
+      expect(searchChatContent).toHaveBeenCalledTimes(1);
+    });
+    resolveContentSearch?.({ matches: [] });
+    await searchPromise;
   });
 
   it('should clear query and results when clearSearch is called', async () => {

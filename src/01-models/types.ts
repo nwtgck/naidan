@@ -379,6 +379,12 @@ export interface Settings {
     toolConfigs?: ToolConfig[],
     fakeLm?: 'disabled' | 'enabled',
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
+    globalSearch?: {
+      scope?: 'all' | 'current_thread' | 'title_only',
+      roleFilter?: 'all' | 'user' | 'assistant',
+      previewMode?: 'always' | 'peek' | 'disabled',
+      previewContextSize?: number | 'full',
+    },
     readonly unreadable?: {
       readonly [key: string]: unknown,
     },

@@ -28,6 +28,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       toolConfigPersistence: 'enabled',
       fakeLm: 'enabled',
       sidebarSendMessageReorder: 'move_sent_chat',
+      globalSearch: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       markdownRendering: 'future_renderer',
@@ -47,6 +48,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       toolConfigPersistence: undefined,
       fakeLm: undefined,
       sidebarSendMessageReorder: undefined,
+      globalSearch: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       fakeLm: 'disabled',
@@ -65,6 +67,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       toolConfigPersistence: undefined,
       fakeLm: undefined,
       sidebarSendMessageReorder: 'disabled',
+      globalSearch: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       futureFeature: { enabled: true },
@@ -80,6 +83,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       toolConfigPersistence: undefined,
       fakeLm: undefined,
       sidebarSendMessageReorder: undefined,
+      globalSearch: undefined,
     });
     expect(parsed?.unreadable).toEqual({
       _root: 'future-experimental-shape',
@@ -93,5 +97,56 @@ describe('optionalExperimentalFieldSchemaDto', () => {
     const unsupported = OptionalExperimentalSettingsSchemaDto.parse({ locale: 'fr' });
     expect(unsupported?.locale).toBeUndefined();
     expect(unsupported?.unreadable).toEqual({ locale: 'fr' });
+  });
+
+  it('accepts partial Global Search settings and arbitrary numeric context sizes', () => {
+    const parsed = OptionalExperimentalSettingsSchemaDto.parse({
+      globalSearch: {
+        scope: 'current_thread',
+        previewContextSize: 4,
+      },
+    });
+
+    expect(parsed?.globalSearch).toEqual({
+      scope: 'current_thread',
+      roleFilter: undefined,
+      previewMode: undefined,
+      previewContextSize: 4,
+    });
+  });
+
+  it('accepts full Global Search settings', () => {
+    const parsed = OptionalExperimentalSettingsSchemaDto.parse({
+      globalSearch: {
+        scope: 'all',
+        roleFilter: 'assistant',
+        previewMode: 'peek',
+        previewContextSize: 'full',
+      },
+    });
+
+    expect(parsed?.globalSearch).toEqual({
+      scope: 'all',
+      roleFilter: 'assistant',
+      previewMode: 'peek',
+      previewContextSize: 'full',
+    });
+  });
+
+  it('records an invalid Global Search object as unreadable', () => {
+    const parsed = OptionalExperimentalSettingsSchemaDto.parse({
+      globalSearch: {
+        scope: 'future_scope',
+        previewContextSize: 7,
+      },
+    });
+
+    expect(parsed?.globalSearch).toBeUndefined();
+    expect(parsed?.unreadable).toEqual({
+      globalSearch: {
+        scope: 'future_scope',
+        previewContextSize: 7,
+      },
+    });
   });
 });

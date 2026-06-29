@@ -72,18 +72,40 @@ vi.mock('../../../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
 }));
 
+const mockGlobalSearchScope = ref<'all' | 'current_thread' | 'title_only'>('title_only');
+const mockGlobalSearchRoleFilter = ref<'all' | 'user' | 'assistant'>('all');
+const mockSearchPreviewMode = ref<'always' | 'peek' | 'disabled'>('always');
+const mockSearchContextSize = ref<number | 'full'>(2);
+const mockSetGlobalSearchScope = vi.fn(async ({ scope }: { scope: 'all' | 'current_thread' | 'title_only' }) => {
+  mockGlobalSearchScope.value = scope;
+});
+const mockSetGlobalSearchRoleFilter = vi.fn(async ({ roleFilter }: { roleFilter: 'all' | 'user' | 'assistant' }) => {
+  mockGlobalSearchRoleFilter.value = roleFilter;
+});
+const mockSetSearchPreviewMode = vi.fn(async ({ mode }: { mode: 'always' | 'peek' | 'disabled' }) => {
+  mockSearchPreviewMode.value = mode;
+});
+const mockSetSearchContextSize = vi.fn(async ({ size }: { size: number | 'full' }) => {
+  mockSearchContextSize.value = size;
+});
+
 vi.mock('../../../composables/useSettings', () => ({
   useSettings: () => ({
-    searchPreviewMode: ref('always'),
-    searchContextSize: ref(2),
-    setSearchPreviewMode: vi.fn(),
-    setSearchContextSize: vi.fn(),
+    globalSearchScope: mockGlobalSearchScope,
+    globalSearchRoleFilter: mockGlobalSearchRoleFilter,
+    searchPreviewMode: mockSearchPreviewMode,
+    searchContextSize: mockSearchContextSize,
+    setGlobalSearchScope: mockSetGlobalSearchScope,
+    setGlobalSearchRoleFilter: mockSetGlobalSearchRoleFilter,
+    setSearchPreviewMode: mockSetSearchPreviewMode,
+    setSearchContextSize: mockSetSearchContextSize,
   }),
 }));
 
 vi.mock('../../../00-storage/service', () => ({
   storageService: {
     loadChat: vi.fn().mockResolvedValue(null),
+    loadChatContent: vi.fn().mockResolvedValue(null),
     listChats: vi.fn().mockResolvedValue([]),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
   },
@@ -118,6 +140,10 @@ describe('GlobalSearchModal Component', () => {
     mockChatId.value = undefined;
     mockResults.value = [];
     mockActiveFocusArea.value = 'chat';
+    mockGlobalSearchScope.value = 'title_only';
+    mockGlobalSearchRoleFilter.value = 'all';
+    mockSearchPreviewMode.value = 'always';
+    mockSearchContextSize.value = 2;
     vi.clearAllMocks();
     vi.mocked(useChatNavigation).mockReturnValue({
       openChat: vi.fn().mockImplementation(async ({ chatId }) => {
@@ -452,23 +478,28 @@ describe('GlobalSearchModal Component', () => {
     expect((wrapper.vm as any).activePane).toBe('results');
   });
 
-  it('should list all items if opened with empty query in title_only mode', async () => {
-    mockQuery.value = '';
-    mockIsSearchOpen.value = false;
+  it.each(['title_only', 'all', 'current_thread'] as const)(
+    'should list all items if opened with an empty query in %s mode',
+    async (scope) => {
+      mockGlobalSearchScope.value = scope;
+      mockQuery.value = '';
+      mockIsSearchOpen.value = false;
 
-    mount(GlobalSearchModal);
+      mount(GlobalSearchModal);
 
-    mockIsSearchOpen.value = true;
-    await nextTick();
-    await new Promise(resolve => setTimeout(resolve, 0)); // wait for watch and performSearch
+      mockIsSearchOpen.value = true;
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
-      searchQuery: '',
-      options: expect.objectContaining({ scope: 'title_only' }),
-    }));
-  });
+      expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
+        searchQuery: '',
+        options: expect.objectContaining({ scope }),
+      }));
+    },
+  );
 
-  it('should render results list even if query is empty in title_only mode', async () => {
+  it('should render results list even if query is empty in a content-search mode', async () => {
+    mockGlobalSearchScope.value = 'all';
     mockQuery.value = '';
     mockIsSearching.value = false;
     mockResults.value = [
@@ -480,6 +511,27 @@ describe('GlobalSearchModal Component', () => {
 
     expect(wrapper.text()).not.toContain('Type to search...');
     expect(wrapper.find('[data-testid="search-result-item-0"]').exists()).toBe(true);
+  });
+
+  it('persists scope, role, preview mode, and arbitrary context size changes', async () => {
+    const wrapper = mount(GlobalSearchModal);
+
+    await wrapper.get('[data-testid="scope-button-current_thread"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="role-filter-select"]').setValue('assistant');
+
+    mockSearchContextSize.value = 4;
+    await nextTick();
+    const contextSelect = wrapper.get('[data-testid="search-context-size-select"]');
+    expect((contextSelect.element as HTMLSelectElement).value).toBe('4');
+    await contextSelect.setValue('5');
+
+    await wrapper.get('[data-testid="search-preview-mode-disabled"]').trigger('click');
+
+    expect(mockSetGlobalSearchScope).toHaveBeenCalledWith({ scope: 'current_thread' });
+    expect(mockSetGlobalSearchRoleFilter).toHaveBeenCalledWith({ roleFilter: 'assistant' });
+    expect(mockSetSearchPreviewMode).toHaveBeenCalledWith({ mode: 'disabled' });
+    expect(mockSetSearchContextSize).toHaveBeenCalledWith({ size: 5 });
   });
 
   it('should maintain expanded preview during the 100ms mouseleave buffer', async () => {

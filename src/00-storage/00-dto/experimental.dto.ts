@@ -118,6 +118,15 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
     z.literal('disabled'),
     z.literal('move_sent_chat'),
   ])),
+  globalSearch: missingAsUndefined(resolveMissingAsUndefined(z.object({
+    scope: missingAsUndefined(z.enum(['all', 'current_thread', 'title_only'])),
+    roleFilter: missingAsUndefined(z.enum(['all', 'user', 'assistant'])),
+    previewMode: missingAsUndefined(z.enum(['always', 'peek', 'disabled'])),
+    previewContextSize: missingAsUndefined(z.union([
+      z.number(),
+      z.literal('full'),
+    ])),
+  }))),
 }));
 
 const ExperimentalUnreadableRootKey = '_root';

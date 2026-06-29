@@ -10,6 +10,7 @@ import { lazyStrings } from '@/strings';
 import MessageItem from '@/components/MessageItem.vue';
 import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 import type { ChatId } from '@/01-models/ids';
+import { resolveSearchPreviewMessageWindow } from '@/features/global-search/logic/preview-context';
 
 const props = defineProps<{
   match?: ContentMatch,
@@ -20,8 +21,6 @@ const { searchContextSize } = useSettings();
 const isLoading = ref(false);
 const branchMessages = shallowRef<MessageNode[]>([]);
 const matchedIndex = ref(-1);
-
-const CONTEXT_SIZE = computed(() => searchContextSize.value);
 
 let activeRequestId = 0;
 
@@ -53,7 +52,7 @@ async function loadContext() {
 
     branchMessages.value = branch;
     matchedIndex.value = props.match === undefined
-      ? branch.length - 1
+      ? -1
       : branch.findIndex(message => idToRaw({ id: message.id }) === props.match?.messageId);
   } catch (error) {
     if (requestId === activeRequestId) {
@@ -82,16 +81,22 @@ onUnmounted(() => {
   branchMessages.value = [];
 });
 
-const visibleMessages = computed(() => {
-  if (branchMessages.value.length === 0) return [];
-  // If we don't have a specific match index, show the last N messages
-  if (matchedIndex.value === -1) {
-    return branchMessages.value.slice(-CONTEXT_SIZE.value);
-  }
-  const start = Math.max(0, matchedIndex.value - CONTEXT_SIZE.value);
-  const end = Math.min(branchMessages.value.length, matchedIndex.value + CONTEXT_SIZE.value + 1);
-  return branchMessages.value.slice(start, end);
-});
+const visibleMessageWindow = computed(() => resolveSearchPreviewMessageWindow({
+  messageCount: branchMessages.value.length,
+  matchedIndex: props.match === undefined ? undefined : matchedIndex.value,
+  contextSize: searchContextSize.value,
+}));
+
+const visibleMessages = computed(() => branchMessages.value.slice(
+  visibleMessageWindow.value.start,
+  visibleMessageWindow.value.end,
+));
+
+const hasPreviousMessages = computed(() => visibleMessageWindow.value.start > 0);
+
+const hasFollowingMessages = computed(() => (
+  visibleMessageWindow.value.end < branchMessages.value.length
+));
 
 const previewChatId = computed<ChatId | undefined>(() => {
   const raw = props.match?.chatId || props.chat?.chatId;
@@ -144,7 +149,7 @@ defineExpose({
       </div>
 
       <div class="flex-1 overflow-y-auto bg-white dark:bg-gray-900/50">
-        <div v-if="matchedIndex > CONTEXT_SIZE" class="p-4 text-center">
+        <div v-if="hasPreviousMessages" class="p-4 text-center">
           <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">{{ lazyStrings.SearchPreview__previous_messages() }}</span>
         </div>
 
@@ -162,7 +167,7 @@ defineExpose({
           />
         </div>
 
-        <div v-if="matchedIndex + CONTEXT_SIZE < branchMessages.length - 1" class="p-4 text-center">
+        <div v-if="hasFollowingMessages" class="p-4 text-center">
           <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">{{ lazyStrings.SearchPreview__following_messages() }}</span>
         </div>
       </div>

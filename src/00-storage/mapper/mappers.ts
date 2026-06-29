@@ -1043,6 +1043,16 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigs: toolConfigsToDomain({ toolConfigs: rest.experimental?.toolConfigs }),
       fakeLm: rest.experimental?.fakeLm ?? 'disabled',
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
+      ...(rest.experimental?.globalSearch === undefined
+        ? {}
+        : {
+          globalSearch: {
+            scope: rest.experimental.globalSearch.scope,
+            roleFilter: rest.experimental.globalSearch.roleFilter,
+            previewMode: rest.experimental.globalSearch.previewMode,
+            previewContextSize: rest.experimental.globalSearch.previewContextSize,
+          },
+        }),
       ...(rest.experimental?.unreadable === undefined
         ? {}
         : { unreadable: rest.experimental.unreadable }),
@@ -1093,6 +1103,14 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         status: rest.experimental?.fakeLm,
       }),
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
+      globalSearch: rest.experimental?.globalSearch === undefined
+        ? undefined
+        : {
+          scope: rest.experimental.globalSearch.scope,
+          roleFilter: rest.experimental.globalSearch.roleFilter,
+          previewMode: rest.experimental.globalSearch.previewMode,
+          previewContextSize: rest.experimental.globalSearch.previewContextSize,
+        },
     },
     mounts: (domain.mounts || []).map(m => {
       const type = m.type;

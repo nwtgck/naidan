@@ -18,6 +18,7 @@ import { highlightSearchTextAsHtml } from '@/logic/security/allowedHtml';
 import type { AllowedHtml } from '@/logic/security/allowedHtml';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
+import { resolveSearchPreviewContextSize } from '@/features/global-search/logic/preview-context';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
 const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupSearchPreview.vue') });
@@ -29,8 +30,12 @@ const { chatGroups, currentChat, sidebarItems } = useCurrentChatState();
 const { query, isSearching, isScanningContent, results, search, stopSearch, disposeSearch } = useChatSearch({ sidebarItems });
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
+  globalSearchScope: searchScope,
+  globalSearchRoleFilter: searchRoleFilter,
   searchPreviewMode,
   searchContextSize,
+  setGlobalSearchScope,
+  setGlobalSearchRoleFilter,
   setSearchPreviewMode,
   setSearchContextSize,
 } = useSettings();
@@ -53,8 +58,6 @@ const {
   results,
   overscan: 6,
 });
-const searchScope = ref<SearchScope>('title_only');
-const searchRoleFilter = ref<SearchRoleFilter>('all');
 const showGroupSelector = ref(false);
 const activePane = ref<'results' | 'preview'>('results');
 const isExpandedByClick = ref(false);
@@ -188,6 +191,15 @@ function searchRoleLabel({ role }: { role: SearchRoleFilter }): string | undefin
   }
 }
 
+const resolvedSearchContextSize = computed(() => resolveSearchPreviewContextSize({
+  size: searchContextSize.value,
+}));
+
+const isCustomSearchContextSize = computed(() => {
+  const size = resolvedSearchContextSize.value;
+  return typeof size === 'number' && ![1, 2, 3, 5].includes(size);
+});
+
 function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): string | undefined {
   switch (mode) {
   case 'always': return lazyStrings.GlobalSearchModal__on();
@@ -195,6 +207,21 @@ function previewModeLabel({ mode }: { mode: 'always' | 'peek' | 'disabled' }): s
   case 'disabled': return lazyStrings.GlobalSearchModal__off();
   default: { const _ex: never = mode; return _ex; }
   }
+}
+
+async function handleSearchScopeChange({ scope }: { scope: SearchScope }): Promise<void> {
+  await setGlobalSearchScope({ scope });
+}
+
+async function handleSearchRoleFilterChange({ event }: { event: Event }): Promise<void> {
+  const roleFilter = (event.target as HTMLSelectElement).value as SearchRoleFilter;
+  await setGlobalSearchRoleFilter({ roleFilter });
+}
+
+async function handleSearchContextSizeChange({ event }: { event: Event }): Promise<void> {
+  const raw = (event.target as HTMLSelectElement).value;
+  const size = raw === 'full' ? 'full' : Number(raw);
+  await setSearchContextSize({ size });
 }
 
 function toggleGroupFilter({ groupId }: { groupId: string }) {
@@ -294,7 +321,7 @@ function isEnterForImeComposition({ event }: { event: KeyboardEvent }) {
 }
 
 watch([searchScope, searchRoleFilter, chatGroupIds, chatId], () => {
-  if (isSearchOpen.value && (query.value || searchScope.value === 'title_only')) {
+  if (isSearchOpen.value) {
     performSearch({ val: query.value });
   }
 }, { deep: true });
@@ -465,9 +492,7 @@ watch(isSearchOpen, (isOpen) => {
   if (isOpen) {
     previousFocusArea.value = activeFocusArea.value;
     setActiveFocusArea({ area: 'search' });
-    if (query.value || searchScope.value === 'title_only') {
-      performSearch({ val: query.value });
-    }
+    performSearch({ val: query.value });
     nextTick(() => {
       if (searchInput.value) {
         searchInput.value.focus();
@@ -536,7 +561,7 @@ defineExpose({
                 <button
                   v-for="scope in (['all', 'current_thread', 'title_only'] as SearchScope[])"
                   :key="scope"
-                  @click="searchScope = scope"
+                  @click="handleSearchScopeChange({ scope })"
                   class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
                   :class="searchScope === scope ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                   :data-testid="'scope-button-' + scope"
@@ -551,7 +576,7 @@ defineExpose({
                 <span class="text-[8px] font-black uppercase tracking-[0.16em] text-gray-400">{{ lazyStrings.GlobalSearchModal__role() }}</span>
                 <select
                   :value="searchRoleFilter"
-                  @change="searchRoleFilter = ($event.target as HTMLSelectElement).value as SearchRoleFilter"
+                  @change="handleSearchRoleFilterChange({ event: $event })"
                   class="w-[4.8rem] bg-transparent border-none outline-none text-[9px] font-black uppercase tracking-[0.12em] text-gray-600 dark:text-gray-300 cursor-pointer pr-1"
                   data-testid="role-filter-select"
                 >
@@ -649,6 +674,7 @@ defineExpose({
                     @click="setSearchPreviewMode({ mode })"
                     class="px-2 py-1 rounded-md transition-all uppercase tracking-tighter"
                     :class="searchPreviewMode === mode ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
+                    :data-testid="'search-preview-mode-' + mode"
                   >
                     {{ previewModeLabel({ mode }) }}
                   </button>
@@ -658,15 +684,17 @@ defineExpose({
               <div v-if="isPreviewVisible" class="flex items-center gap-2">
                 <span>{{ lazyStrings.GlobalSearchModal__context() }}</span>
                 <select
-                  :value="searchContextSize === Infinity ? 'max' : searchContextSize"
-                  @change="e => setSearchContextSize({ size: (e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value) })"
+                  :value="resolvedSearchContextSize"
+                  @change="handleSearchContextSizeChange({ event: $event })"
                   class="bg-transparent border-none outline-none text-gray-600 dark:text-gray-300 font-black cursor-pointer"
+                  data-testid="search-context-size-select"
                 >
+                  <option v-if="isCustomSearchContextSize" :value="resolvedSearchContextSize">{{ resolvedSearchContextSize }}</option>
                   <option :value="1">1</option>
                   <option :value="2">2</option>
                   <option :value="3">3</option>
                   <option :value="5">5</option>
-                  <option value="max">{{ lazyStrings.GlobalSearchModal__full() }}</option>
+                  <option value="full">{{ lazyStrings.GlobalSearchModal__full() }}</option>
                 </select>
               </div>
             </div>
@@ -688,11 +716,7 @@ defineExpose({
               activePane === 'results' ? 'ring-2 ring-inset ring-blue-500/10' : ''
             ]"
           >
-            <div v-if="!query && !isSearching && searchScope !== 'title_only'" class="p-8 text-center text-gray-400 text-sm">
-              {{ lazyStrings.GlobalSearchModal__type_to_search() }}
-            </div>
-
-            <div v-else-if="results.length === 0 && !isSearching" class="p-8 text-center text-gray-500 text-sm">
+            <div v-if="results.length === 0 && !isSearching" class="p-8 text-center text-gray-500 text-sm">
               {{ lazyStrings.GlobalSearchModal__no_results_for({ query }) }}
             </div>
 

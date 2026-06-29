@@ -265,6 +265,12 @@ describe('Settings Mapping', () => {
         toolConfigPersistence: 'enabled',
         fakeLm: 'enabled',
         sidebarSendMessageReorder: 'move_sent_chat',
+        globalSearch: {
+          scope: 'current_thread',
+          roleFilter: 'assistant',
+          previewMode: 'peek',
+          previewContextSize: 4,
+        },
       },
     };
 
@@ -275,10 +281,22 @@ describe('Settings Mapping', () => {
     expect(dto.experimental?.locale).toBe('ja');
     expect(dto.experimental?.fakeLm).toBe('enabled');
     expect(dto.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
+    expect(dto.experimental?.globalSearch).toEqual({
+      scope: 'current_thread',
+      roleFilter: 'assistant',
+      previewMode: 'peek',
+      previewContextSize: 4,
+    });
     expect(mapped.experimental?.toolConfigPersistence).toBe('enabled');
     expect(mapped.experimental?.locale).toBe('ja');
     expect(mapped.experimental?.fakeLm).toBe('enabled');
     expect(mapped.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
+    expect(mapped.experimental?.globalSearch).toEqual({
+      scope: 'current_thread',
+      roleFilter: 'assistant',
+      previewMode: 'peek',
+      previewContextSize: 4,
+    });
   });
 });
 

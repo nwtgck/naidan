@@ -123,30 +123,22 @@ export function useChatSearch({ sidebarItems }: {
     const scope = options.scope;
     const roleFilter: SearchRoleFilter = options.roleFilter ?? 'all';
     const source = createSearchSource({ sidebarItems: sidebarItems.value });
-    const storageType = (() => {
-      switch (scope) {
-      case 'title_only':
-        return undefined;
-      case 'all':
-      case 'current_thread':
-        return storageService.getCurrentType();
-      default: {
-        const _ex: never = scope;
-        throw new Error(`Unhandled search scope: ${_ex}`);
-      }
-      }
-    })();
+    const storageType = trimmedQuery === ''
+      ? undefined
+      : (() => {
+        switch (scope) {
+        case 'title_only':
+          return undefined;
+        case 'all':
+        case 'current_thread':
+          return storageService.getCurrentType();
+        default: {
+          const _ex: never = scope;
+          throw new Error(`Unhandled search scope: ${_ex}`);
+        }
+        }
+      })();
     const searchKey = createSearchKey({ trimmedQuery, options, storageType });
-
-    if (!trimmedQuery && scope !== 'title_only') {
-      activeRunId++;
-      results.value = [];
-      isSearching.value = false;
-      isScanningContent.value = false;
-      lastSearchKey = undefined;
-      disposeSearchClient();
-      return;
-    }
 
     if (searchKey === lastSearchKey) return;
     lastSearchKey = searchKey;
@@ -159,12 +151,6 @@ export function useChatSearch({ sidebarItems }: {
     isScanningContent.value = false;
 
     try {
-      const keywords = trimmedQuery.toLowerCase().split(/[\s\u3000]+/).filter(keyword => keyword.length > 0);
-      if (keywords.length === 0 && scope !== 'title_only') {
-        results.value = [];
-        return;
-      }
-
       const titleResults = searchTitles({
         source,
         searchQuery: trimmedQuery,
@@ -198,6 +184,8 @@ export function useChatSearch({ sidebarItems }: {
 
       if (runId !== activeRunId) return;
       publishResults();
+
+      if (trimmedQuery === '') return;
 
       switch (scope) {
       case 'title_only':
