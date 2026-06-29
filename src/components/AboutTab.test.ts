@@ -56,7 +56,7 @@ describe('AboutTab licenses', () => {
     const { descriptor } = parse(source, { filename: 'AboutTab.vue' });
     const scriptSetup = descriptor.scriptSetup?.content;
     if (scriptSetup === undefined) throw new Error('Expected AboutTab.vue to use script setup.');
-    expect(scriptSetup).toMatch(/import type \{ NaidanLicense \} from ['"]@\/models\/naidan-license['"]/u);
+    expect(scriptSetup).toMatch(/import type \{ NaidanLicense \} from ['"]@\/01-models\/naidan-license['"]/u);
     expect(scriptSetup).not.toContain("import type { NaidanLicense } from 'virtual:naidan-licenses'");
     expect(scriptSetup).toContain("await import('virtual:naidan-licenses')");
     expect(scriptSetup).not.toMatch(/^import(?! type).*virtual:naidan-licenses/m);

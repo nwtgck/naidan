@@ -3,7 +3,7 @@ import { lazyStrings } from '@/strings';
 import { FlaskConicalIcon } from 'lucide-vue-next';
 import { RouterLink } from 'vue-router';
 
-import { DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH } from '@/services/debug-file-protocol-standalone/verification/report';
+import { DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH } from '@/features/file-protocol-standalone/debug/verification/report';
 
 
 defineExpose({

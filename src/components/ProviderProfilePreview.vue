@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { capitalize } from '@/utils/string';
-import type { Settings } from '@/models/types';
-import { isHttpEndpoint } from '@/models/endpoint';
+import type { Settings } from '@/01-models/types';
+import { isHttpEndpoint } from '@/01-models/endpoint';
 import { lazyStrings } from '@/strings';
 
 defineProps<{

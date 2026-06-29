@@ -9,7 +9,7 @@ import {
   preloadFakeLmLanguagePacks,
   useFakeLmDebugMode,
   type FakeLmDebugModeStatus,
-} from '@/services/fake-lm';
+} from '@/features/fake-lm';
 import ExperimentalFeatureRow from './ExperimentalFeatureRow.vue';
 import { lazyStrings, ensureStrings } from '@/strings';
 

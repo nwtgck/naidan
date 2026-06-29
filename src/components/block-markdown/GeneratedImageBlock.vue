@@ -2,14 +2,14 @@
 import { ensureStrings, lazyStrings } from '@/strings';
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { GeneratedImageBlockSchema, getDisplayDimensions } from '@/utils/image-generation';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { ImageIcon, AlertTriangleIcon } from 'lucide-vue-next';
 import ImageDownloadButton from '@/components/ImageDownloadButton.vue';
 import ImageInfoDisplay from '@/components/ImageInfoDisplay.vue';
 import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import { toBinaryObjectId } from '@/models/ids';
+import { toBinaryObjectId } from '@/01-models/ids';
 
 const props = defineProps<{
   json: string,

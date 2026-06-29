@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this UI label helper into application logic.
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { formatSettingsSourceLabel } from './settings-labels';
 

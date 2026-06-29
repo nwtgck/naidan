@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { nextTick } from 'vue';
-import { FEATURE_FLAGS_STORAGE_KEY } from '@/models/feature-flags';
+import { FEATURE_FLAGS_STORAGE_KEY } from '@/01-models/feature-flags';
 
 describe('useFeatureFlags', () => {
   beforeEach(() => {

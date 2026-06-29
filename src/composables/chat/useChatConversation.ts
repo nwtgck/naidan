@@ -1,5 +1,5 @@
-import type { Attachment, LmParameters } from '@/models/types';
-import type { ChatId, MessageId } from '@/models/ids';
+import type { Attachment, LmParameters } from '@/01-models/types';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { abortProcessingForChat } from '@/composables/chat/chat-scoped/chat-processing-abort';
 import {
   regenerateMessageForChat,

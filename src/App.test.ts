@@ -5,7 +5,7 @@ import type {
   AppInteraction,
   OnboardingPresentation,
 } from '@/composables/useAppPresentation';
-import type { StartupState } from '@/models/startup';
+import type { StartupState } from '@/logic/startup/types';
 import App from './App.vue';
 
 const onboardingPresentation = ref<OnboardingPresentation>('visible');

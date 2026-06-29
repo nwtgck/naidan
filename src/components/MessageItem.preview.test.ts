@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
-import { storageService } from '@/services/storage';
-import type { MessageNode } from '@/models/types';
-import { toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import type { MessageNode } from '@/01-models/types';
+import { toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/01-models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -25,7 +25,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
 
 // --- Mocks ---
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),

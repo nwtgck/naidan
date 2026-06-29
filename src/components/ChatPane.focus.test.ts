@@ -1,15 +1,15 @@
-import type { ChatId, MessageId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import type { MessageNode, Chat } from '@/models/types';
+import type { MessageNode, Chat } from '@/01-models/types';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
 import type { FocusArea } from '@/composables/useLayout';
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 
 
 // Mock dependencies

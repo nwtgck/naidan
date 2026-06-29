@@ -5,7 +5,7 @@ import 'katex/dist/katex.min.css';
 
 // Import custom extensions from the extensions/ directory to keep this file lean.
 import { detailsExtension } from './extensions/details';
-import { encodeExternalImagePayload } from '@/lib/security/markdownExternalImage';
+import { encodeExternalImagePayload } from '@/logic/security/markdownExternalImage';
 
 export const marked = new Marked();
 

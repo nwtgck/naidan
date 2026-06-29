@@ -3,17 +3,17 @@ import { mount } from '@vue/test-utils';
 import OnboardingModal from './OnboardingModal.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import { useTheme } from '@/composables/useTheme';
+import { useTheme } from '@/features/theme/composables/useTheme';
 
-vi.mock('../services/lm/openai');
-vi.mock('../services/lm/ollama');
+vi.mock('../features/lm/openai');
+vi.mock('../features/lm/ollama');
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 vi.mock('../composables/useToast', () => ({
   useToast: vi.fn(),
 }));
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: vi.fn(),
 }));
 

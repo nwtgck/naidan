@@ -3,13 +3,13 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComp
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { ensureStrings, lazyStrings } from '@/strings';
-import type { LmProvider } from '@/services/lm/types';
-import { createLmProvider } from '@/services/lm/providerFactory';
-import { type Endpoint, type EndpointType, type Settings as SettingsType } from '@/models/types';
-import { ENDPOINT_PRESETS } from '@/models/constants';
+import type { LmProvider } from '@/01-models/lm';
+import { createLmProvider } from '@/features/lm/providerFactory';
+import { type Endpoint, type EndpointType, type Settings as SettingsType } from '@/01-models/types';
+import { ENDPOINT_PRESETS } from '@/constants';
 
 // IMPORTANT: ThemeToggle is part of the core onboarding UI.
-import ThemeToggle from './ThemeToggle.vue';
+import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 // IMPORTANT: LanguageSelector is part of the core onboarding UI.
 import LanguageSelector from './LanguageSelector.vue';
 // IMPORTANT: Logo is part of the core onboarding UI.
@@ -19,8 +19,8 @@ import ModelSelector from './ModelSelector.vue';
 
 // Load onboarding subviews only when their current template branch needs them.
 const ServerSetupGuide = defineAsyncComponent(() => import('./ServerSetupGuide.vue'));
-const TransformersJsManager = defineAsyncComponent(() => import('./TransformersJsManager.vue'));
-import { transformersJsService } from '@/services/transformers-js';
+const TransformersJsManager = defineAsyncComponent(() => import('@/features/transformers-js/components/TransformersJsManager.vue'));
+import { transformersJsService } from '@/features/transformers-js';
 import { PlayIcon, ArrowLeftIcon, CheckCircle2Icon, ActivityIcon, SettingsIcon, XIcon, PlusIcon, Trash2Icon, FlaskConicalIcon } from 'lucide-vue-next';
 import { naturalSort } from '@/utils/string';
 import { detectOllama } from '@/utils/ollama-detection';

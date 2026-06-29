@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatSummary, SidebarItem } from '@/models/types';
-import { idToRaw, toChatId } from '@/models/ids';
+import type { ChatSummary, SidebarItem } from '@/01-models/types';
+import { idToRaw, toChatId } from '@/01-models/ids';
 
 const mockChats = ref<ChatSummary[]>([]);
 const mockActiveGenerations = reactive(new Map());
@@ -110,7 +110,7 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),

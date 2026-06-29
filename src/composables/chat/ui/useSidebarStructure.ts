@@ -1,11 +1,11 @@
 import { triggerRef } from 'vue';
-import type { Hierarchy, SidebarItem } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { Hierarchy, SidebarItem } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import {
   currentChatGroupRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatGroupId } from '@/models/ids';
+import type { ChatGroupId } from '@/01-models/ids';
 
 export type SidebarStructureAdapter = {
   persistSidebarStructure({

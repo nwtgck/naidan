@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import type { Component } from 'vue';
 import type { Token, Tokens } from 'marked';
 import { marked } from './useMarkdown';
-import { sanitizeMarkdownHtml } from '@/lib/security/allowedHtml';
+import { sanitizeMarkdownHtml } from '@/logic/security/allowedHtml';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import CodeBlockWrapper from './CodeBlockWrapper.vue';
 import MarkdownInline from './MarkdownInline.vue';

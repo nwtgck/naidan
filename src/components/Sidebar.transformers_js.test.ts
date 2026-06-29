@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, Endpoint, SidebarItem } from '@/models/types';
+import type { ChatGroup, ChatSummary, Endpoint, SidebarItem } from '@/01-models/types';
 
 // --- Mocks Data ---
 const mockChatGroups = ref<ChatGroup[]>([]);
@@ -58,7 +58,7 @@ vi.mock('../composables/useConfirm', () => ({
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),

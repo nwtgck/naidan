@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { toToolCallId } from '@/models/ids';
+import { toToolCallId } from '@/01-models/ids';
 
 const { mockGetVolatileToolOutput } = vi.hoisted(() => ({
   mockGetVolatileToolOutput: vi.fn(),

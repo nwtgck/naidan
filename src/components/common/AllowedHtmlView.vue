@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import type { AllowedHtml } from '@/logic/security/allowedHtml';
 
 withDefaults(
   defineProps<{

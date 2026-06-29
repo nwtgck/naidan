@@ -2,9 +2,9 @@
 import { ref, computed } from 'vue';
 import { ensureStrings, lazyStrings } from '@/strings';
 import type { ObjectDirective } from 'vue';
-import type { Volume, Mount } from '@/models/types';
-import { idToRaw } from '@/models/ids';
-import type { VolumeId } from '@/models/ids';
+import type { Volume, Mount } from '@/01-models/types';
+import { idToRaw } from '@/01-models/ids';
+import type { VolumeId } from '@/01-models/ids';
 import { useToast } from '@/composables/useToast';
 import {
   FolderSymlinkIcon,

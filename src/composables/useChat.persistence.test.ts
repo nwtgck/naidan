@@ -3,9 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const chats = new Map<string, any>();
 let hierarchy = { items: [] as any[] };
 
-vi.unmock('../services/lm/openai');
-vi.unmock('../services/lm/ollama');
-vi.unmock('../services/storage');
+vi.unmock('../features/lm/openai');
+vi.unmock('../features/lm/ollama');
+vi.unmock('../00-storage/service');
 
 describe('useChat Persistence Timing', () => {
   let persistMock: any;
@@ -17,7 +17,7 @@ describe('useChat Persistence Timing', () => {
     chats.clear();
     hierarchy = { items: [] };
 
-    vi.doMock('../services/lm/openai', () => ({
+    vi.doMock('../features/lm/openai', () => ({
       OpenAIProvider: class {
         chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
           params.onChunk({ chunk: 'Done' });
@@ -27,14 +27,14 @@ describe('useChat Persistence Timing', () => {
       },
     }));
 
-    vi.doMock('../services/lm/ollama', () => ({
+    vi.doMock('../features/lm/ollama', () => ({
       OllamaProvider: class {
         chat = vi.fn();
         listModels = vi.fn().mockResolvedValue(['gpt-4']);
       },
     }));
 
-    vi.doMock('../services/storage', () => ({
+    vi.doMock('../00-storage/service', () => ({
       storageService: {
         getSidebarStructure: vi.fn().mockResolvedValue([]),
         saveChat: vi.fn().mockImplementation((chat) => {

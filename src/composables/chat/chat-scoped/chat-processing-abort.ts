@@ -1,6 +1,6 @@
-import type { ChatId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
-import { storageService } from '@/services/storage';
+import type { ChatId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
+import { storageService } from '@/00-storage/service';
 import {
   chatRuntimeStore,
   contextCompactRuntime,

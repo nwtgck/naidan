@@ -1,10 +1,10 @@
-import type { Mount } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { Mount } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import {
   currentChatGroupRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatGroupId, VolumeId } from '@/models/ids';
+import type { ChatGroupId, VolumeId } from '@/01-models/ids';
 
 export type ChatGroupMountsAdapter = {
   addMount({

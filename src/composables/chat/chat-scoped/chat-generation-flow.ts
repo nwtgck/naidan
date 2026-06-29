@@ -1,17 +1,17 @@
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
-import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, Endpoint, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { isHttpEndpoint } from '@/models/endpoint';
-import type { LmProvider } from '@/services/lm/types';
-import type { Tool } from '@/services/tools/types';
-import { createLmProvider } from '@/services/lm/providerFactory';
-import { storageService } from '@/services/storage';
-import { getEnabledTools } from '@/services/tools/factory';
-import { markExecutingToolResultsAsInterrupted } from '@/services/tools/interruption';
-import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/services/tools/tool-config';
-import { getEffectiveToolConfigsForChat } from '@/composables/useChatTools';
-import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
+import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, Endpoint, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { isHttpEndpoint } from '@/01-models/endpoint';
+import type { LmProvider } from '@/01-models/lm';
+import type { Tool } from '@/01-models/tool';
+import { createLmProvider } from '@/features/lm/providerFactory';
+import { storageService } from '@/00-storage/service';
+import { getEnabledTools } from '@/features/tools/factory';
+import { markExecutingToolResultsAsInterrupted } from '@/features/tools/interruption';
+import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/features/tools/tool-config';
+import { getEffectiveToolConfigsForChat } from '@/features/tools/composables/useChatTools';
+import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import {
   fileToDataUrl,
@@ -37,8 +37,8 @@ import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
 import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useToast } from '@/composables/useToast';
-import { useApproval } from '@/composables/useApproval';
-import { useChoices } from '@/composables/useChoices';
+import { useApproval } from '@/features/tools/composables/useApproval';
+import { useChoices } from '@/features/tools/composables/useChoices';
 import {
   availableModels,
   chatRuntimeStore,
@@ -71,8 +71,8 @@ import {
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
-import type { BinaryObjectId, ChatId, MessageId, ToolCallId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
+import type { BinaryObjectId, ChatId, MessageId, ToolCallId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 import {
   useChatOrganization,
 } from '@/composables/chat/ui/useChatOrganization';

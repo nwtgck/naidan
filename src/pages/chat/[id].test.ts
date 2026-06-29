@@ -1,4 +1,4 @@
-import { toChatId, toMessageId } from '@/models/ids';
+import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';

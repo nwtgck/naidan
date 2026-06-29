@@ -1,6 +1,6 @@
 import { defineComponent, ref, shallowRef } from 'vue';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { StartupState } from '@/models/startup';
+import type { StartupState } from '@/logic/startup/types';
 import { TEST_ONLY } from './useAppPresentation';
 
 const settingsInitialized = ref(false);

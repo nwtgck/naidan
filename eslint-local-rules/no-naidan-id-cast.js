@@ -3,7 +3,7 @@ function normalizePath(filePath) {
 }
 
 function isNaidanIdImplementationFile({ filePath }) {
-  return normalizePath(filePath).endsWith('/src/models/ids.ts');
+  return normalizePath(filePath).endsWith('/src/01-models/ids.ts');
 }
 
 const NAIDAN_ID_TYPES = new Set([

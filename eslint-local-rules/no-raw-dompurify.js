@@ -3,7 +3,7 @@ function normalizePath(filePath) {
 }
 
 function isAllowedHtmlImplementationFile({ filePath }) {
-  return normalizePath(filePath).endsWith('/src/lib/security/allowedHtml.ts');
+  return normalizePath(filePath).endsWith('/src/logic/security/allowedHtml.ts');
 }
 
 export const rule = {
@@ -13,7 +13,7 @@ export const rule = {
       description: 'Disallow direct DOMPurify imports outside the AllowedHtml security module.',
     },
     messages: {
-      noRawDompurify: 'Do not import DOMPurify directly. Centralize HTML sanitization in src/lib/security/allowedHtml.ts.',
+      noRawDompurify: 'Do not import DOMPurify directly. Centralize HTML sanitization in src/logic/security/allowedHtml.ts.',
     },
     schema: [],
   },

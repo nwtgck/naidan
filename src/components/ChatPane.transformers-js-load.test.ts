@@ -1,12 +1,12 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { transformersJsService } from '@/services/transformers-js';
+import { transformersJsService } from '@/features/transformers-js';
 import { setupScrollToMock } from '@/utils/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
@@ -28,7 +28,7 @@ vi.mock('@/composables/useAppPresentation', () => ({
   }),
 }));
 
-vi.mock('../services/transformers-js', () => {
+vi.mock('../features/transformers-js', () => {
   const state = {
     status: 'idle',
     progress: 0,

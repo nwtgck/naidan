@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { ContextCompactProgress } from '@/services/context-compact';
-import type { ChatId } from '@/models/ids';
+import type { ContextCompactProgress } from '@/logic/context-compact';
+import type { ChatId } from '@/01-models/ids';
 import {
   getChatContextCompactProgress,
   isChatGeneratingTitle,

@@ -1,5 +1,5 @@
 import { computed, toRaw, type ComputedRef, type Ref } from 'vue';
-import type { Chat, ChatGroup, ChatSummary, MessageNode, Settings, SidebarItem } from '@/models/types';
+import type { Chat, ChatGroup, ChatSummary, MessageNode, Settings, SidebarItem } from '@/01-models/types';
 import { getAllMessages, getChatBranchIterator } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 

@@ -42,7 +42,7 @@ describe('no-invalid-allowed-html-template rule', () => {
 
   it('allows narrow static HTML templates', async () => {
     const messages = await lintText({
-      code: `import { allowedHtml } from '@/lib/security/allowedHtml'; allowedHtml\`<span class="sr-only" aria-label="x">Loading</span><br>\`;`,
+      code: `import { allowedHtml } from '@/logic/security/allowedHtml'; allowedHtml\`<span class="sr-only" aria-label="x">Loading</span><br>\`;`,
     });
 
     expect(messages).toHaveLength(0);
@@ -50,7 +50,7 @@ describe('no-invalid-allowed-html-template rule', () => {
 
   it('reports direct allowedHtml calls', async () => {
     const messages = await lintText({
-      code: `import { allowedHtml } from '@/lib/security/allowedHtml'; allowedHtml('<div></div>')`,
+      code: `import { allowedHtml } from '@/logic/security/allowedHtml'; allowedHtml('<div></div>')`,
     });
 
     expect(messages).toHaveLength(1);
@@ -59,7 +59,7 @@ describe('no-invalid-allowed-html-template rule', () => {
 
   it('reports interpolations', async () => {
     const messages = await lintText({
-      code: `import { allowedHtml } from '@/lib/security/allowedHtml'; allowedHtml\`<div>\${label}</div>\`;`,
+      code: `import { allowedHtml } from '@/logic/security/allowedHtml'; allowedHtml\`<div>\${label}</div>\`;`,
     });
 
     expect(messages).toHaveLength(1);
@@ -68,7 +68,7 @@ describe('no-invalid-allowed-html-template rule', () => {
 
   it('reports disallowed tags and attributes', async () => {
     const messages = await lintText({
-      code: `import { allowedHtml } from '@/lib/security/allowedHtml'; allowedHtml\`<img src=x onerror=alert(1)>\`;`,
+      code: `import { allowedHtml } from '@/logic/security/allowedHtml'; allowedHtml\`<img src=x onerror=alert(1)>\`;`,
     });
 
     expect(messages.map(message => message.messageId)).toContain('invalidLiteral');
@@ -76,7 +76,7 @@ describe('no-invalid-allowed-html-template rule', () => {
 
   it('reports aliased allowedHtml imports', async () => {
     const messages = await lintText({
-      code: `import { allowedHtml as ah } from '@/lib/security/allowedHtml'; ah\`<script>alert(1)</script>\`;`,
+      code: `import { allowedHtml as ah } from '@/logic/security/allowedHtml'; ah\`<script>alert(1)</script>\`;`,
     });
 
     expect(messages).toHaveLength(1);
@@ -85,7 +85,7 @@ describe('no-invalid-allowed-html-template rule', () => {
 
   it('reports namespace imports from the AllowedHtml module', async () => {
     const messages = await lintText({
-      code: `import * as allowedHtmlModule from '@/lib/security/allowedHtml'; allowedHtmlModule.allowedHtml\`<div></div>\`;`,
+      code: `import * as allowedHtmlModule from '@/logic/security/allowedHtml'; allowedHtmlModule.allowedHtml\`<div></div>\`;`,
     });
 
     expect(messages).toHaveLength(1);

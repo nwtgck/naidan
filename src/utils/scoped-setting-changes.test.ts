@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { toChatGroupId, toChatId } from '@/models/ids';
-import type { Chat, ChatGroup, ChatMeta } from '@/models/types';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import { toChatGroupId, toChatId } from '@/01-models/ids';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import type { Chat, ChatGroup, ChatMeta } from '@/01-models/types';
 import {
   applyScopedSettingChangesToChat,
   applyScopedSettingChangesToChatGroup,

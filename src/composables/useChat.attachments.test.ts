@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { ref, reactive } from 'vue';
-import type { Attachment } from '@/models/types';
-import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId } from '@/models/ids';
+import type { Attachment } from '@/01-models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId } from '@/01-models/ids';
 
 // Mock dependencies
 const chats = new Map<string, any>();
@@ -26,7 +26,7 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -79,7 +79,7 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'Response' });
@@ -89,7 +89,7 @@ vi.mock('../services/lm/openai', () => ({
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'Response' });

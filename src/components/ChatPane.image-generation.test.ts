@@ -1,5 +1,5 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';

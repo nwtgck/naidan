@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { XIcon, SparklesIcon, SquareIcon } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
-import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import { UNTITLED_CHAT_TITLE } from '@/constants';
 import { lazyStrings } from '@/strings';
 
 let rememberedDetailVisibility: 'hidden' | 'visible' = 'hidden';

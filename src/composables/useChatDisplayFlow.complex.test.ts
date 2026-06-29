@@ -2,8 +2,8 @@ import { beforeAll, describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import type { MessageNode, Chat } from '@/models/types';
-import { toChatId, toMessageId, toToolCallId } from '@/models/ids';
+import type { MessageNode, Chat } from '@/01-models/types';
+import { toChatId, toMessageId, toToolCallId } from '@/01-models/ids';
 
 describe('useChatDisplayFlow complex scenario', () => {
   beforeAll(async () => {

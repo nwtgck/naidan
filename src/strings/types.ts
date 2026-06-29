@@ -1,1 +1,1 @@
-export type { UiLocale } from '@/models/types';
+export type { UiLocale } from '@/01-models/types';

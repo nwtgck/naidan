@@ -4,19 +4,19 @@ import App from './App.vue';
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import { useSettings } from './composables/useSettings';
-import { initializeThemeController } from './composables/useTheme';
-import type { StartupState } from './models/startup';
-import { scheduleFileProtocolStandaloneWorkerHubWarmup } from './services/worker-hub-standalone-loader';
-import { scheduleAppBootstrap } from './services/app-bootstrap';
+import { initializeThemeController } from './features/theme/composables/useTheme';
+import type { StartupState } from './logic/startup/types';
+import { scheduleFileProtocolStandaloneWorkerHubWarmup } from './features/file-protocol-standalone/worker/worker-hub-standalone-loader';
+import { scheduleAppBootstrap } from './logic/startup/app-bootstrap';
 import {
   recordAppStartupFailure,
   reportAppStartupFailure,
-} from './services/app-startup-failure';
-import { startApp } from './services/startup/app-startup';
-import { createInitialNavigationGate } from './services/startup/initial-navigation-gate';
+} from './logic/startup/app-startup-failure';
+import { startApp } from './logic/startup/app-startup';
+import { createInitialNavigationGate } from './logic/startup/initial-navigation-gate';
 import {
   debugRecordFileProtocolStandaloneStartupCheckpoint,
-} from './services/debug-file-protocol-standalone/startup';
+} from './features/file-protocol-standalone/debug/startup';
 
 async function bootstrapApp(): Promise<void> {
   debugRecordFileProtocolStandaloneStartupCheckpoint({

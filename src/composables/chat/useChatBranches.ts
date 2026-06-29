@@ -1,5 +1,5 @@
-import type { LmParameters } from '@/models/types';
-import type { ChatId, MessageId } from '@/models/ids';
+import type { LmParameters } from '@/01-models/types';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import {
   editMessageForChat,
   forkChatForChat,

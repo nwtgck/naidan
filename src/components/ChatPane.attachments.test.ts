@@ -1,5 +1,5 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -280,7 +280,7 @@ vi.mock('../composables/useToast', () => ({
   }),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => { }),

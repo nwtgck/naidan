@@ -1,4 +1,4 @@
-import { toMessageId } from '@/models/ids';
+import { toMessageId } from '@/01-models/ids';
 import { computed, nextTick, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatPaneSession } from './useChatPaneSession';

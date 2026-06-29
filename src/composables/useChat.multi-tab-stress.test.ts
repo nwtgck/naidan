@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
-import type { Chat, Hierarchy } from '@/models/types';
-import { toChatId, toMessageId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import type { Chat, Hierarchy } from '@/01-models/types';
+import { toChatId, toMessageId } from '@/01-models/ids';
 
 /**
  * Multi-Tab Stress & Glitch Tests
@@ -19,7 +19,7 @@ const { mocks } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
@@ -84,13 +84,13 @@ vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockR
 vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 const mockLmChat = vi.fn();
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return { chat: (...args: any[]) => mockLmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: function() {
     return { chat: vi.fn(), listModels: vi.fn() };
   },

@@ -3,7 +3,7 @@ import { lazyStrings } from '@/strings';
 import { computed, ref, watch, nextTick, inject } from 'vue';
 import type { Component } from 'vue';
 import { BrainIcon } from 'lucide-vue-next';
-import type { MessageNode } from '@/models/types';
+import type { MessageNode } from '@/01-models/types';
 
 const props = defineProps<{
   message: MessageNode,

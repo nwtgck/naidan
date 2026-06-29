@@ -4,10 +4,10 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { loadData } from '@/composables/chat/global/chat-core-singletons';
 import { chatRuntimeStore, currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
-import type { Settings } from '@/models/types';
-import { transformersJsService } from '@/services/transformers-js';
+import type { Settings } from '@/01-models/types';
+import { transformersJsService } from '@/features/transformers-js';
 import { useSettings } from '@/composables/useSettings';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatBootstrapAdapter = {
   loadChats(): Promise<void>,

@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { Attachment, LmParameters } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Attachment, LmParameters } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 import { availableModels } from '@/composables/chat/global/chat-core-singletons';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ImageRequestParams } from '@/utils/image-generation';

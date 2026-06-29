@@ -4,16 +4,16 @@ import { ref, computed } from 'vue';
 import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon } from 'lucide-vue-next';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { useRouter } from 'vue-router';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import type { BinaryObject, MessageNode } from '@/models/types';
+import type { BinaryObject, MessageNode } from '@/01-models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
-import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
-import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
+import { allowedHtml, jsonToHighlightedHtml } from '@/logic/security/allowedHtml';
+import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/features/fake-lm';
 import { useSettings } from '@/composables/useSettings';
-import { idToRaw, toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId, MessageId } from '@/models/ids';
+import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
+import type { BinaryObjectId, MessageId } from '@/01-models/ids';
 
 const props = defineProps<{
   show: boolean,

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import type { OutputAsset, OutputBundle, OutputChunk } from 'rolldown';
-import { DEBUG_FILE_PROTOCOL_STANDALONE_BUILD_REPORT_FORMAT } from '../../src/file-protocol-standalone-protocol';
+import { DEBUG_FILE_PROTOCOL_STANDALONE_BUILD_REPORT_FORMAT } from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
 
 import { debugSanitizeFileProtocolStandaloneModuleId } from './javascript-validation';
 import type { FileProtocolStandaloneRuntimeDynamicImportOccurrence } from './javascript-validation';

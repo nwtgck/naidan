@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { toChatGroupId, toVolumeId } from '@/models/ids';
-import type { ChatGroupId } from '@/models/ids';
+import { toChatGroupId, toVolumeId } from '@/01-models/ids';
+import type { ChatGroupId } from '@/01-models/ids';
 
 const {
   mockCurrentChatGroupRef,
@@ -24,7 +24,7 @@ const {
   };
 });
 
-vi.mock('@/services/storage', () => ({
+vi.mock('@/00-storage/service', () => ({
   storageService: {
     addMountToChatGroup: mockAddMountToChatGroup,
     removeMountFromChatGroup: mockRemoveMountFromChatGroup,

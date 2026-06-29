@@ -4,8 +4,8 @@ import ChatDebugInspector from './ChatDebugInspector.vue';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
 import { NetworkIcon } from 'lucide-vue-next';
-import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/models/types';
-import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/models/ids';
+import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/01-models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock Lucide icons
@@ -54,7 +54,7 @@ vi.mock('vue-router', () => ({
   }),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getBinaryObject: vi.fn(),
     getFile: vi.fn().mockResolvedValue(new Blob()),
@@ -75,7 +75,7 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/services/fake-lm', () => ({
+vi.mock('@/features/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
   useFakeLmDebugMode: () => ({
     fakeLmDebugModeAvailability: { value: 'available' },
@@ -469,7 +469,7 @@ not-json
     const chat = createMockChat(activeMessages);
     const clickedBinaryObjectId = toBinaryObjectId({ raw: 'clicked-image' });
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({
       id: clickedBinaryObjectId,
       mimeType: 'image/png',
@@ -528,7 +528,7 @@ not-json
     ]);
 
     // Mock storageService.getBinaryObject to return valid objects
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
       if (idToRaw({ id: binaryObjectId }) === 'obj-1') return { id: toBinaryObjectId({ raw: 'obj-1' }), mimeType: 'image/png', name: 'img1.png' } as any;
       if (idToRaw({ id: binaryObjectId }) === 'obj-2') return { id: toBinaryObjectId({ raw: 'obj-2' }), mimeType: 'image/png', name: 'img2.png' } as any;

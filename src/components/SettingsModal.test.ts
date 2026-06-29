@@ -1,4 +1,4 @@
-import { toProviderProfileId } from '@/models/ids';
+import { toProviderProfileId } from '@/01-models/ids';
 // Mock the dynamic import for licenses
 vi.mock('virtual:naidan-licenses', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
 
@@ -14,19 +14,19 @@ import { useSettings } from '@/composables/useSettings';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSampleChat } from '@/composables/useSampleChat';
-import { storageService } from '@/services/storage';
-import type { ProviderProfile, Settings } from '@/models/types';
+import { storageService } from '@/00-storage/service';
+import type { ProviderProfile, Settings } from '@/01-models/types';
 
 // --- Mocks ---
 
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     listModels = mockListModels;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     listModels = mockListModels;
   },
@@ -119,7 +119,7 @@ vi.mock('../composables/useToast', () => ({
   })),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),

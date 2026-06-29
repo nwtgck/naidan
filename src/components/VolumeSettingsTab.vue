@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import { storageService } from '@/services/storage';
-import type { Volume, Mount } from '@/models/types';
+import { storageService } from '@/00-storage/service';
+import type { Volume, Mount } from '@/01-models/types';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { FolderIcon, FolderInputIcon, Loader2Icon } from 'lucide-vue-next';
 import VolumeCreator from './VolumeCreator.vue';
 import VolumeMountList from './VolumeMountList.vue';
-import type { VolumeId } from '@/models/ids';
+import type { VolumeId } from '@/01-models/ids';
 import { lazyStrings, ensureStrings } from '@/strings';
 
 const volumes = ref<Volume[]>([]);

@@ -1,4 +1,4 @@
-import type { WeshWorkerShellState } from '@/services/wesh/worker/types';
+import type { WeshWorkerShellState } from '@/features/wesh/worker/types';
 
 export function formatWeshTerminalPrompt({ shellState }: {
   shellState: WeshWorkerShellState | undefined,

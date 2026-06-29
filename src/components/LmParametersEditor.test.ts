@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import LmParametersEditor from './LmParametersEditor.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import type { LmParameters } from '@/models/types';
+import type { LmParameters } from '@/01-models/types';
 
 function emptyLmParameters(): LmParameters {
   return {

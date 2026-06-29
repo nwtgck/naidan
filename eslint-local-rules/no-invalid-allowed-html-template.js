@@ -1,6 +1,6 @@
 const ALLOWED_TAGS = new Set(['div', 'span', 'br', 'code', 'pre', 'kbd', 'strong', 'em', 'small']);
 const ALLOWED_ATTRS = new Set(['class', 'role', 'data-testid']);
-const ALLOWED_HTML_MODULES = new Set(['@/lib/security/allowedHtml']);
+const ALLOWED_HTML_MODULES = new Set(['@/logic/security/allowedHtml']);
 
 function isAllowedAttribute({ name }) {
   return ALLOWED_ATTRS.has(name) || name.startsWith('aria-');

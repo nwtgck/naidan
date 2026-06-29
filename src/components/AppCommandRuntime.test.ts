@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, nextTick, reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { useRoute, useRouter } from 'vue-router';
-import type { Chat } from '@/models/types';
+import type { Chat } from '@/01-models/types';
 import AppCommandRuntime from './AppCommandRuntime.vue';
 import { useLayout } from '@/composables/useLayout';
 import { useSettings } from '@/composables/useSettings';
@@ -83,7 +83,7 @@ vi.mock('@/composables/useRecentChats', () => ({
   }),
 }));
 
-vi.mock('@/composables/useGlobalSearch', () => ({
+vi.mock('@/features/global-search/composables/useGlobalSearch', () => ({
   useGlobalSearch: () => ({
     toggleSearch: vi.fn(),
   }),

@@ -1,4 +1,4 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
@@ -23,7 +23,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
 };
 
 // Mock storage service
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),
@@ -34,7 +34,7 @@ vi.mock('../services/storage', () => ({
 }));
 
 // Mock speech service
-vi.mock('../services/web-speech', () => ({
+vi.mock('../features/speech/logic/web-speech', () => ({
   webSpeechService: {
     state: { status: 'inactive' },
     isSupported: vi.fn().mockReturnValue(true),

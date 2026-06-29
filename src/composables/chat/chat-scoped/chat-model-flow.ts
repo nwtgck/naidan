@@ -1,5 +1,5 @@
-import type { Endpoint } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Endpoint } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 import {
   fetchModelsForChat,
   fetchModelsForEndpoint,

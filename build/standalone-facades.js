@@ -1,58 +1,58 @@
 export const STANDALONE_FACADES = [
   {
-    facadePath: '@/services/transformers-js/provider',
-    standalonePath: 'src/services/transformers-js/provider-standalone.ts',
+    facadePath: '@/features/transformers-js/provider',
+    standalonePath: 'src/features/transformers-js/provider-standalone.ts',
   },
   {
-    facadePath: '@/services/transformers-js',
-    standalonePath: 'src/services/transformers-js/index-standalone.ts',
+    facadePath: '@/features/transformers-js',
+    standalonePath: 'src/features/transformers-js/index-standalone.ts',
   },
   {
-    facadePath: '@/services/advanced-text-editor-v3/worker/client',
-    standalonePath: 'src/services/advanced-text-editor-v3/worker/client-standalone.ts',
+    facadePath: '@/features/advanced-text-editor-v3/worker/client',
+    standalonePath: 'src/features/advanced-text-editor-v3/worker/client-standalone.ts',
   },
   {
-    facadePath: '@/services/highlight/worker/client',
-    standalonePath: 'src/services/highlight/worker/client-standalone.ts',
+    facadePath: '@/features/highlight/worker/client',
+    standalonePath: 'src/features/highlight/worker/client-standalone.ts',
   },
   {
-    facadePath: '@/services/wesh/worker/client',
-    standalonePath: 'src/services/wesh/worker/client-standalone.ts',
+    facadePath: '@/features/wesh/worker/client',
+    standalonePath: 'src/features/wesh/worker/client-standalone.ts',
   },
   {
-    facadePath: '@/services/global-search/worker/client',
-    standalonePath: 'src/services/global-search/worker/client-standalone.ts',
+    facadePath: '@/features/global-search/worker/client',
+    standalonePath: 'src/features/global-search/worker/client-standalone.ts',
   },
   {
-    facadePath: '@/services/file-explorer/worker/client',
-    standalonePath: 'src/services/file-explorer/worker/client-standalone.ts',
+    facadePath: '@/features/file-explorer/worker/client',
+    standalonePath: 'src/features/file-explorer/worker/client-standalone.ts',
   },
   {
-    facadePath: '@/services/transformers-js/worker/client',
-    standalonePath: 'src/services/transformers-js/worker/client-standalone.ts',
+    facadePath: '@/features/transformers-js/worker/client',
+    standalonePath: 'src/features/transformers-js/worker/client-standalone.ts',
   },
   {
-    facadePath: '@/services/transformers-js/scanner/worker/client',
-    standalonePath: 'src/services/transformers-js/scanner/worker/client-standalone.ts',
+    facadePath: '@/features/transformers-js/scanner/worker/client',
+    standalonePath: 'src/features/transformers-js/scanner/worker/client-standalone.ts',
   },
   {
-    facadePath: '@/services/privacy-fetch',
-    standalonePath: 'src/services/privacy-fetch/index-standalone.ts',
+    facadePath: '@/features/privacy-fetch',
+    standalonePath: 'src/features/privacy-fetch/index-standalone.ts',
   },
   {
-    facadePath: '@/services/fake-lm',
-    standalonePath: 'src/services/fake-lm/index-standalone.ts',
+    facadePath: '@/features/fake-lm',
+    standalonePath: 'src/features/fake-lm/index-standalone.ts',
   },
 ];
 
 export const STANDALONE_WORKER_CLIENT_FACADES = [
-  '@/services/advanced-text-editor-v3/worker/client',
-  '@/services/highlight/worker/client',
-  '@/services/wesh/worker/client',
-  '@/services/global-search/worker/client',
-  '@/services/file-explorer/worker/client',
-  '@/services/transformers-js/worker/client',
-  '@/services/transformers-js/scanner/worker/client',
+  '@/features/advanced-text-editor-v3/worker/client',
+  '@/features/highlight/worker/client',
+  '@/features/wesh/worker/client',
+  '@/features/global-search/worker/client',
+  '@/features/file-explorer/worker/client',
+  '@/features/transformers-js/worker/client',
+  '@/features/transformers-js/scanner/worker/client',
 ];
 
 function escapeRegExp({ value }) {

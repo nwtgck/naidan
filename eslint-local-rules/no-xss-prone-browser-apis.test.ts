@@ -98,7 +98,7 @@ describe('no-xss-prone-browser-apis rule', () => {
 
   it('allows explicit exception files', async () => {
     const messages = await lintText({
-      filePath: 'src/services/worker-hub-standalone-loader.ts',
+      filePath: 'src/features/file-protocol-standalone/worker/worker-hub-standalone-loader.ts',
       code: `new Worker(objectUrl, { name: 'standalone' });`,
     });
 

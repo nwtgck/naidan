@@ -8,8 +8,8 @@ import { computed, onMounted } from 'vue';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { usePrint } from '@/composables/usePrint';
-import { idToRaw } from '@/models/ids';
-import type { MessageId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { MessageId } from '@/01-models/ids';
 import MessageItem from './MessageItem.vue';
 
 const { currentChat, currentChatId, activeMessages } = useCurrentChatState();

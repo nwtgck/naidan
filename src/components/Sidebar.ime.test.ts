@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatGroup, ChatSummary, SidebarItem } from '@/01-models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);

@@ -1,13 +1,13 @@
-import type { Settings } from '@/models/types';
+import type { Settings } from '@/01-models/types';
 import { useSettings } from '@/composables/useSettings';
-import { useChatTools } from '@/composables/useChatTools';
+import { useChatTools } from '@/features/tools/composables/useChatTools';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import {
   chatDataStore,
   currentChatRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
+import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 
 export type ChatNavigationAdapter = {
   openChat({
@@ -16,7 +16,7 @@ export type ChatNavigationAdapter = {
   }: {
     chatId: ChatId,
     leafId?: MessageId,
-  }): Promise<import('@/models/types').Chat | null>,
+  }): Promise<import('@/01-models/types').Chat | null>,
 
   openChatAtMessage({
     chatId,
@@ -24,7 +24,7 @@ export type ChatNavigationAdapter = {
   }: {
     chatId: ChatId,
     messageId: MessageId,
-  }): Promise<import('@/models/types').Chat | null>,
+  }): Promise<import('@/01-models/types').Chat | null>,
 
   openChatGroup({
     groupId,

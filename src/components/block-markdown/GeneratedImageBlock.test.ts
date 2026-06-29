@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import GeneratedImageBlock from './GeneratedImageBlock.vue';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { useImagePreview } from '@/composables/useImagePreview';
 import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock storage service
-vi.mock('../../services/storage', () => ({
+vi.mock('../../00-storage/service', () => ({
   storageService: {
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),

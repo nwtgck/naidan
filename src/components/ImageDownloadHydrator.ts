@@ -4,9 +4,9 @@ import ImageInfoDisplay from './ImageInfoDisplay.vue';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import { detectFormat, embedMetadataInPng, embedMetadataInWebp, UNSUPPORTED } from '@/utils/image-metadata';
 import { sanitizeFilename } from '@/utils/string';
-import type { StorageService } from '@/services/storage';
-import { toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId } from '@/models/ids';
+import type { StorageService } from '@/00-storage/service';
+import { toBinaryObjectId } from '@/01-models/ids';
+import type { BinaryObjectId } from '@/01-models/ids';
 
 /**
  * ImageDownloadHydrator handles the manual attachment of the Vue-based

@@ -16,7 +16,7 @@ import type { FileProtocolStandaloneRuntimeDynamicImportOccurrence } from './jav
 import {
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_GLOBAL_NAME,
-} from '../../src/file-protocol-standalone-protocol';
+} from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
 
 const pluginName = 'file-protocol-standalone';
 export const virtualWorkerPrefix = 'virtual:file-protocol-standalone/worker/';

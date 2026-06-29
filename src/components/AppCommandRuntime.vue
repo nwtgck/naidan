@@ -10,11 +10,11 @@ import {
   isAppInteractionEnabled,
   useAppPresentation,
 } from '@/composables/useAppPresentation';
-import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useLayout } from '@/composables/useLayout';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { useSettings } from '@/composables/useSettings';
-import { idToRaw, toChatId, type ChatGroupId } from '@/models/ids';
+import { idToRaw, toChatId, type ChatGroupId } from '@/01-models/ids';
 
 const currentChatState = useCurrentChatState();
 const chatLifecycle = useChatLifecycle();

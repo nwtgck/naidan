@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
-import { toBinaryObjectId, toChatId } from '@/models/ids';
+import { toBinaryObjectId, toChatId } from '@/01-models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -29,7 +29,7 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 // Mock storage service
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getFile: vi.fn().mockResolvedValue(new Blob(['data'], { type: 'image/png' })),
     getBinaryObject: vi.fn().mockResolvedValue({
@@ -55,7 +55,7 @@ vi.mock('../composables/useGlobalEvents', () => ({
 }));
 
 // Mock speech service
-vi.mock('../services/web-speech', () => ({
+vi.mock('../features/speech/logic/web-speech', () => ({
   webSpeechService: {
     state: { status: 'inactive' },
     isSupported: vi.fn().mockReturnValue(true),
@@ -71,7 +71,7 @@ vi.mock('../services/web-speech', () => ({
 import MessageItem from './MessageItem.vue';
 import ImageDownloadButton from './ImageDownloadButton.vue';
 import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 
 describe('MessageItem Image Generation', () => {
   const createMessage = (content: string) => ({

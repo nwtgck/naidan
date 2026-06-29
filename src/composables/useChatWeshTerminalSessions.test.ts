@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
-import { toVolumeId, toChatId, toChatGroupId } from '@/models/ids';
+import { toVolumeId, toChatId, toChatGroupId } from '@/01-models/ids';
 
 const mocks = vi.hoisted(() => ({
   getVolumeDirectoryHandle: vi.fn(),
@@ -21,13 +21,13 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/services/storage', () => ({
+vi.mock('@/00-storage/service', () => ({
   storageService: {
     getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
   },
 }));
 
-vi.mock('@/services/wesh/worker/client', () => ({
+vi.mock('@/features/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mocks.createClient,
 }));
 

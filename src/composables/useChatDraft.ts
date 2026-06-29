@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
-import type { AttachmentId, ChatId } from '@/models/ids';
-import type { Attachment } from '@/models/types';
+import type { AttachmentId, ChatId } from '@/01-models/ids';
+import type { Attachment } from '@/01-models/types';
 
 interface ChatDraft {
   input: string,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MessageId } from '@/models/ids';
+import type { MessageId } from '@/01-models/ids';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import ChatPane from './ChatPane.vue';
 import UnselectedChatPane from './UnselectedChatPane.vue';

@@ -1,4 +1,4 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextCompactRuntime } from './context-compact-runtime';
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import WelcomeScreen from './WelcomeScreen.vue';
 import { useSettings } from '@/composables/useSettings';
-import type { Settings } from '@/models/types';
+import type { Settings } from '@/01-models/types';
 
 describe('WelcomeScreen.vue', () => {
   const { TEST_ONLY } = useSettings();

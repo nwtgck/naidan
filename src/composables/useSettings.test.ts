@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSettings } from './useSettings';
-import { DEFAULT_SETTINGS } from '@/models/types';
-import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
+import { DEFAULT_SETTINGS } from '@/01-models/types';
+import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { flushPromises } from '@vue/test-utils';
 import {
   currentLocale,
@@ -18,14 +18,14 @@ const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64
   mockPreloadFakeLmLanguagePacks: vi.fn(),
 }));
 
-vi.mock('../services/import-export/url-logic', () => ({
+vi.mock('../features/import-export/url-logic', () => ({
   urlImportExportLogic: {
     importFromBase64: mockImportFromBase64,
   },
 }));
 
-vi.mock('@/services/fake-lm', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/services/fake-lm')>()),
+vi.mock('@/features/fake-lm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/fake-lm')>()),
   preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
 }));
 
@@ -56,22 +56,22 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: mocks,
 }));
 
-vi.mock('../services/storage/opfs-detection', () => ({
+vi.mock('../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
     listModels = mockListModels;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
     listModels = mockListModels;

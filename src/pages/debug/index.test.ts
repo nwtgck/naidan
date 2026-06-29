@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import DebugIndexPage from './index.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH } from '@/services/debug-file-protocol-standalone/verification/report';
+import { DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH } from '@/features/file-protocol-standalone/debug/verification/report';
 
 describe('DebugIndexPage', () => {
   beforeAll(async () => {

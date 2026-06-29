@@ -2,8 +2,8 @@
 import { lazyStrings } from '@/strings';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { SquareIcon, SparklesIcon, ChevronDownIcon, ChevronUpIcon, CheckCircle2Icon, XCircleIcon } from 'lucide-vue-next';
-import type { ContextCompactProgress } from '@/services/context-compact';
-import { toContextCompactDisplayProgress } from '@/services/context-compact';
+import type { ContextCompactProgress } from '@/logic/context-compact';
+import { toContextCompactDisplayProgress } from '@/logic/context-compact';
 
 const props = defineProps<{
   progress: ContextCompactProgress,

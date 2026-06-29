@@ -1,11 +1,11 @@
 import { ensureStrings } from '@/strings';
 import { generateId } from '@/utils/id';
 import { ref } from 'vue';
-import { UNKNOWN_STEPS } from '@/services/lm/types';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { createLmFetch } from '@/services/lm/providerFactory';
+import { UNKNOWN_STEPS } from '@/01-models/lm';
+import { OllamaProvider } from '@/features/lm/ollama';
+import { createLmFetch } from '@/features/lm/providerFactory';
 import { useSettings } from '@/composables/useSettings';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import {
   getImageGenerationModels,
   SENTINEL_IMAGE_PENDING,
@@ -19,10 +19,10 @@ import {
 } from '@/utils/image-generation';
 import { reencodeImage } from '@/utils/image-processing';
 import { naturalSort, sanitizeFilename } from '@/utils/string';
-import type { Chat, ChatContent, Attachment } from '@/models/types';
+import type { Chat, ChatContent, Attachment } from '@/01-models/types';
 import { findNodeInBranch } from '@/utils/chat-tree';
-import { idToRaw } from '@/models/ids';
-import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
 
 // Shared state across all instances to maintain consistency
 const imageModeMap = ref(new Map<ChatId, boolean>());

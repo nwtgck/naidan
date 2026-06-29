@@ -3,7 +3,7 @@ import { useChat } from './useChat';
 import { nextTick } from 'vue';
 
 // Mock storage
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -34,7 +34,7 @@ vi.mock('./useSettings', () => ({
 
 // Mock LM
 let onChunkCallback: (params: { chunk: string }) => void;
-vi.mock('../services/lm/openai', () => {
+vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
     chat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       onChunkCallback = params.onChunk;
@@ -47,7 +47,7 @@ vi.mock('../services/lm/openai', () => {
   };
 });
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 

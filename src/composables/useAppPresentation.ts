@@ -8,7 +8,7 @@ import {
   type ShallowRef,
 } from 'vue';
 import { useSettings } from '@/composables/useSettings';
-import type { StartupState } from '@/models/startup';
+import type { StartupState } from '@/logic/startup/types';
 
 export type OnboardingPresentation =
   | 'hidden'

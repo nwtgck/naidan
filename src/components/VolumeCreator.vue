@@ -2,8 +2,8 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { onClickOutside, useToggle } from '@vueuse/core';
-import { storageService } from '@/services/storage';
-import { checkOPFSSupport, checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
+import { storageService } from '@/00-storage/service';
+import { checkOPFSSupport, checkFileSystemAccessSupport } from '@/utils/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import {
   FolderDownIcon,
@@ -13,7 +13,7 @@ import {
   PencilIcon,
   InfoIcon,
 } from 'lucide-vue-next';
-import type { VolumeId } from '@/models/ids';
+import type { VolumeId } from '@/01-models/ids';
 
 const props = defineProps<{
   /** Existing mount paths used to avoid conflicts when suggesting a default path. */

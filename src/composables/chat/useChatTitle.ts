@@ -2,7 +2,7 @@ import {
   abortTitleGenerationForChat,
   generateChatTitleForChat,
 } from '@/composables/chat/chat-scoped/chat-title-flow';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatTitleCommandsAdapter = {
   generateTitle({
