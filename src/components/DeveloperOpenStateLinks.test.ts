@@ -44,11 +44,13 @@ describe('DeveloperOpenStateLinks', () => {
       expect(wrapper.find('[data-testid="open-current-state-group-develop"]').text()).toContain('develop branch');
     });
     expect(wrapper.text()).toContain('naidan.pages.dev');
-    expect(wrapper.text()).toContain('naidan-only-local.pages.dev');
+    expect(wrapper.text()).toContain('naidan-local-only.pages.dev');
     expect(wrapper.text()).toContain('naidan-curated.pages.dev');
     expect(wrapper.text()).toContain('develop.naidan.pages.dev');
-    expect(wrapper.text()).toContain('develop.naidan-only-local.pages.dev');
+    expect(wrapper.text()).toContain('develop.naidan-local-only.pages.dev');
     expect(wrapper.text()).toContain('develop.naidan-curated.pages.dev');
+    expect(wrapper.text()).not.toContain('naidan-only-local.pages.dev');
+    expect(wrapper.text()).not.toContain('develop.naidan-only-local.pages.dev');
     expect(wrapper.text()).not.toContain('Stable');
     expect(wrapper.text()).not.toContain('Development');
   });

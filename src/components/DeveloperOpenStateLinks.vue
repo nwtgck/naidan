@@ -26,7 +26,7 @@ const DEPLOYMENT_GROUPS = [
     dotClass: 'bg-emerald-600/60 dark:bg-emerald-400/60',
     targets: [
       { kind: 'Standard', host: 'naidan.pages.dev', baseUrl: 'https://naidan.pages.dev' },
-      { kind: 'Local only', host: 'naidan-only-local.pages.dev', baseUrl: 'https://naidan-only-local.pages.dev' },
+      { kind: 'Local only', host: 'naidan-local-only.pages.dev', baseUrl: 'https://naidan-local-only.pages.dev' },
       { kind: 'Curated', host: 'naidan-curated.pages.dev', baseUrl: 'https://naidan-curated.pages.dev' },
     ],
   },
@@ -36,7 +36,7 @@ const DEPLOYMENT_GROUPS = [
     dotClass: 'bg-violet-500/50 dark:bg-violet-300/60',
     targets: [
       { kind: 'Standard', host: 'develop.naidan.pages.dev', baseUrl: 'https://develop.naidan.pages.dev' },
-      { kind: 'Local only', host: 'develop.naidan-only-local.pages.dev', baseUrl: 'https://develop.naidan-only-local.pages.dev' },
+      { kind: 'Local only', host: 'develop.naidan-local-only.pages.dev', baseUrl: 'https://develop.naidan-local-only.pages.dev' },
       { kind: 'Curated', host: 'develop.naidan-curated.pages.dev', baseUrl: 'https://develop.naidan-curated.pages.dev' },
     ],
   },
