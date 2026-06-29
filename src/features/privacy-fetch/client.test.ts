@@ -3,12 +3,12 @@ import { isPrivacyFetchError } from './errors';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 import { createPrivacyFetchBrokerClient } from './broker-client';
 
-const { mockGenerateOpaqueId } = vi.hoisted(() => ({
-  mockGenerateOpaqueId: vi.fn(),
+const { mockGenerateId } = vi.hoisted(() => ({
+  mockGenerateId: vi.fn(),
 }));
 
 vi.mock('@/01-models/id', () => ({
-  generateOpaqueId: mockGenerateOpaqueId,
+  generateId: mockGenerateId,
 }));
 
 type FakeWindowHarness = {
@@ -25,7 +25,7 @@ type FakeWindowHarness = {
 describe('createPrivacyFetchBrokerClient', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
-    mockGenerateOpaqueId.mockReset();
+    mockGenerateId.mockReset();
   });
 
   afterEach(() => {
@@ -134,7 +134,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness();
-    mockGenerateOpaqueId.mockReturnValue('req-success');
+    mockGenerateId.mockReturnValue('req-success');
 
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -223,7 +223,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness();
-    mockGenerateOpaqueId.mockReturnValue('req-http-false');
+    mockGenerateId.mockReturnValue('req-http-false');
 
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -289,7 +289,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness();
-    mockGenerateOpaqueId.mockReturnValue('req-2');
+    mockGenerateId.mockReturnValue('req-2');
 
     const responsePromise = client.fetch({
       request: {
@@ -357,7 +357,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness();
-    mockGenerateOpaqueId.mockReturnValue('req-3');
+    mockGenerateId.mockReturnValue('req-3');
 
     const controller = new AbortController();
     const responsePromise = client.fetch({
@@ -403,7 +403,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness();
-    mockGenerateOpaqueId.mockReturnValue('req-rejected');
+    mockGenerateId.mockReturnValue('req-rejected');
 
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -458,7 +458,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness();
-    mockGenerateOpaqueId.mockReturnValue('req-error');
+    mockGenerateId.mockReturnValue('req-error');
 
     dispatchBrokerMessage({
       source: brokerWindow,

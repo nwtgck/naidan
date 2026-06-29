@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import { idToRaw } from '@/01-models/ids';
 import type { ChoicesActiveRequest } from '@/features/tools/choices/runtime';
 
 const props = defineProps<{
@@ -53,7 +54,7 @@ defineExpose({
       <div class="grid max-h-64 gap-1.5 overflow-y-auto">
         <button
           v-for="(choice, index) in props.request.choices"
-          :key="`${props.request.requestId}:${index}`"
+          :key="`${idToRaw({ id: props.request.requestId })}:${index}`"
           type="button"
           class="flex min-h-9 w-full items-center rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-semibold whitespace-normal break-words text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           :data-testid="`chat-choice-${index}`"

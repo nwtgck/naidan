@@ -2,6 +2,8 @@ import {
   privacyFetchCancelMessageSchema,
   privacyFetchRequestMessageSchema,
 } from './schemas';
+import { idToRaw, toPrivacyFetchRequestId } from '@/01-models/ids';
+import type { PrivacyFetchRequestId } from '@/01-models/ids';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 import { validatePrivacyFetchUrl } from './validate-url';
 import type {
@@ -11,7 +13,7 @@ import type {
   PrivacyFetchRequestMessage,
 } from './types';
 
-const activeRequests = new Map<string, AbortController>();
+const activeRequests = new Map<PrivacyFetchRequestId, AbortController>();
 
 function postMessageToParent({
   message,
@@ -51,7 +53,7 @@ function sendErrorMessage({
   code,
   message,
 }: {
-  requestId: string,
+  requestId: PrivacyFetchRequestId,
   code: PrivacyFetchErrorCode,
   message: string,
 }): void {
@@ -59,7 +61,7 @@ function sendErrorMessage({
     message: {
       protocol: PRIVACY_FETCH_PROTOCOL,
       type: 'error',
-      requestId,
+      requestId: idToRaw({ id: requestId }),
       ok: false,
       code,
       message,
@@ -73,13 +75,14 @@ function handleCancelMessage({
 }: {
   message: PrivacyFetchCancelMessage,
 }): void {
-  const controller = activeRequests.get(message.requestId);
+  const requestId = toPrivacyFetchRequestId({ raw: message.requestId });
+  const controller = activeRequests.get(requestId);
   if (controller === undefined) {
     return;
   }
 
   controller.abort();
-  activeRequests.delete(message.requestId);
+  activeRequests.delete(requestId);
 }
 
 async function handleRequestMessage({
@@ -87,11 +90,13 @@ async function handleRequestMessage({
 }: {
   message: PrivacyFetchRequestMessage,
 }): Promise<void> {
-  if (activeRequests.has(message.requestId)) {
+  const requestId = toPrivacyFetchRequestId({ raw: message.requestId });
+
+  if (activeRequests.has(requestId)) {
     sendErrorMessage({
-      requestId: message.requestId,
+      requestId,
       code: 'duplicate_request_id',
-      message: `Privacy fetch requestId is already active: ${message.requestId}`,
+      message: `Privacy fetch requestId is already active: ${idToRaw({ id: requestId })}`,
     });
     return;
   }
@@ -105,7 +110,7 @@ async function handleRequestMessage({
       message: {
         protocol: PRIVACY_FETCH_PROTOCOL,
         type: 'rejected',
-        requestId: message.requestId,
+        requestId: idToRaw({ id: requestId }),
         ok: false,
         validationResult,
       },
@@ -115,7 +120,7 @@ async function handleRequestMessage({
   }
 
   const controller = new AbortController();
-  activeRequests.set(message.requestId, controller);
+  activeRequests.set(requestId, controller);
 
   try {
     const response = await fetch(validationResult.normalizedUrl, {
@@ -129,7 +134,7 @@ async function handleRequestMessage({
       message: {
         protocol: PRIVACY_FETCH_PROTOCOL,
         type: 'response',
-        requestId: message.requestId,
+        requestId: idToRaw({ id: requestId }),
         ok: true,
         responseOk: response.ok,
         url: response.url,
@@ -147,12 +152,12 @@ async function handleRequestMessage({
   } catch (error) {
     const code: PrivacyFetchErrorCode = controller.signal.aborted ? 'aborted' : 'fetch_failed';
     sendErrorMessage({
-      requestId: message.requestId,
+      requestId,
       code,
       message: String(error),
     });
   } finally {
-    activeRequests.delete(message.requestId);
+    activeRequests.delete(requestId);
   }
 }
 

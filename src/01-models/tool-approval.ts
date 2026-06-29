@@ -1,4 +1,4 @@
-import type { ChatId } from '@/01-models/ids';
+import type { ChatId, ToolApprovalRequestId } from '@/01-models/ids';
 
 export type ApprovalActionId =
   | 'tool.wikipedia.search'
@@ -55,7 +55,7 @@ export type ToolApprovalContext = {
 };
 
 export type ApprovalActiveRequest = {
-  requestId: string,
+  requestId: ToolApprovalRequestId,
   chatId: ChatId,
   action: ApprovalAction,
   preview: ApprovalPreview | undefined,

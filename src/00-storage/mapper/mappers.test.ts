@@ -1,4 +1,3 @@
-import { generateOpaqueId } from '@/01-models/id';
 import { describe, it, expect } from 'vitest';
 import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto, settingsToDomain, settingsToDto } from './mappers';
 import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode, Settings } from '@/01-models/types';
@@ -302,10 +301,10 @@ describe('Settings Mapping', () => {
 
 describe('Legacy Migration (Flat to Tree)', () => {
   it('should migrate linear messages to a recursive tree structure', () => {
-    const legacyId1 = generateOpaqueId();
-    const legacyId2 = generateOpaqueId();
+    const legacyId1 = 'legacy-message-1';
+    const legacyId2 = 'legacy-message-2';
     const legacyChat: any = {
-      id: generateOpaqueId(),
+      id: 'legacy-chat-1',
       title: 'Legacy',
       messages: [
         { id: legacyId1, role: 'user', content: 'Hi', timestamp: 1 },

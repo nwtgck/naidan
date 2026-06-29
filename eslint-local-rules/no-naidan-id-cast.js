@@ -15,6 +15,16 @@ const NAIDAN_ID_TYPES = new Set([
   'VolumeId',
   'ProviderProfileId',
   'ToolCallId',
+  'GlobalEventId',
+  'VolumeCopyOperationId',
+  'EditableHistoryItemId',
+  'RecipeImportCandidateId',
+  'RecipeModelPatternEditorItemId',
+  'PrivacyFetchRequestId',
+  'ToolChoicesRequestId',
+  'ToolApprovalRequestId',
+  'OPFSTmpOwnerScopeId',
+  'OPFSTmpDirectoryId',
   'NaidanId',
 ]);
 
@@ -30,7 +40,7 @@ export const rule = {
       description: 'Disallow casting to Naidan branded ID types outside the ID module.',
     },
     messages: {
-      noNaidanIdCast: 'Do not cast directly to a Naidan ID type. Use toXId({ raw }) helpers to create branded ID values.',
+      noNaidanIdCast: 'Do not cast directly to a Naidan ID type. Use generateId<SpecificId>() for new IDs or the appropriate toXId({ raw }) helper at a validated raw-string boundary.',
     },
     schema: [],
   },

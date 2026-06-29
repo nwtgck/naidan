@@ -5,7 +5,7 @@ import {
   isAppInteractionEnabled,
   useAppPresentation,
 } from '@/composables/useAppPresentation';
-import { generateId, generateOpaqueId } from '@/01-models/id';
+import { generateId } from '@/01-models/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from '@/features/tools/components/ChatToolsMenu.vue';
@@ -42,7 +42,7 @@ import {
 import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, Chat, ChatGroup, LmParameters } from '@/01-models/types';
 import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
-import type { AttachmentId, BinaryObjectId, ChatId, VolumeId } from '@/01-models/ids';
+import type { AttachmentId, BinaryObjectId, ChatId, VolumeCopyOperationId, VolumeId } from '@/01-models/ids';
 
 const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
@@ -194,7 +194,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const hasFileSystemAccess = checkFileSystemAccessSupport();
 
 type ActiveCopy = {
-  id: string,
+  id: VolumeCopyOperationId,
   name: string,
   progress: { processed: number, total: number } | null,
   abort: AbortController,
@@ -387,7 +387,7 @@ async function attachCopyAsVolume({ entries, name }: {
   name: string,
 }) {
   if (!chat.value) return;
-  const copyId = generateOpaqueId();
+  const copyId = generateId<VolumeCopyOperationId>();
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
   activeCopies.value = [...activeCopies.value, copy];
@@ -1156,7 +1156,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <div v-if="activeCopies.length > 0" class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
         <div
           v-for="copy in activeCopies"
-          :key="copy.id"
+          :key="idToRaw({ id: copy.id })"
           class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
           data-testid="copy-progress"
         >

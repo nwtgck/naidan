@@ -1,8 +1,10 @@
 /**
- * Branded ID types for Naidan domain models.
+ * Purpose-specific branded ID types used throughout Naidan.
  *
- * Naidan intentionally keeps ID values as primitive strings at runtime while
- * preventing them from being used as raw strings implicitly in TypeScript.
+ * Naidan uses dedicated branded types for identifiers regardless of whether
+ * they are persisted, temporary, UI-only, or used for request correlation. ID
+ * values remain primitive strings at runtime while TypeScript prevents them
+ * from being used as raw strings implicitly.
  *
  * Do not define this as `string & { readonly [idBrand]: TName }`.
  * If BrandedId extends string, raw string boundaries such as DTOs, storage
@@ -29,6 +31,16 @@ export type BinaryObjectId = BrandedId<'BinaryObjectId'>;
 export type VolumeId = BrandedId<'VolumeId'>;
 export type ProviderProfileId = BrandedId<'ProviderProfileId'>;
 export type ToolCallId = BrandedId<'ToolCallId'>;
+export type GlobalEventId = BrandedId<'GlobalEventId'>;
+export type VolumeCopyOperationId = BrandedId<'VolumeCopyOperationId'>;
+export type EditableHistoryItemId = BrandedId<'EditableHistoryItemId'>;
+export type RecipeImportCandidateId = BrandedId<'RecipeImportCandidateId'>;
+export type RecipeModelPatternEditorItemId = BrandedId<'RecipeModelPatternEditorItemId'>;
+export type PrivacyFetchRequestId = BrandedId<'PrivacyFetchRequestId'>;
+export type ToolChoicesRequestId = BrandedId<'ToolChoicesRequestId'>;
+export type ToolApprovalRequestId = BrandedId<'ToolApprovalRequestId'>;
+export type OPFSTmpOwnerScopeId = BrandedId<'OPFSTmpOwnerScopeId'>;
+export type OPFSTmpDirectoryId = BrandedId<'OPFSTmpDirectoryId'>;
 
 export type NaidanId = BrandedId<string>;
 
@@ -62,6 +74,14 @@ export function toProviderProfileId({ raw }: { raw: string }): ProviderProfileId
 
 export function toToolCallId({ raw }: { raw: string }): ToolCallId {
   return raw as unknown as ToolCallId;
+}
+
+export function toPrivacyFetchRequestId({ raw }: { raw: string }): PrivacyFetchRequestId {
+  return raw as unknown as PrivacyFetchRequestId;
+}
+
+export function toOPFSTmpOwnerScopeId({ raw }: { raw: string }): OPFSTmpOwnerScopeId {
+  return raw as unknown as OPFSTmpOwnerScopeId;
 }
 
 export function idToRaw({ id }: { id: NaidanId }): string {

@@ -1,7 +1,7 @@
 import { computed, reactive, type ComputedRef } from 'vue';
-import { generateOpaqueId } from '@/01-models/id';
+import { generateId } from '@/01-models/id';
 import { Semaphore } from '@/utils/concurrency';
-import type { ChatId } from '@/01-models/ids';
+import type { ChatId, ToolChoicesRequestId } from '@/01-models/ids';
 import type {
   ChoicesActiveRequest,
   ChoicesSelection,
@@ -22,7 +22,7 @@ const choicesRuntimeState = reactive<ChoicesRuntimeState>({
 });
 
 const chatChoiceLocks = new Map<ChatId, Semaphore>();
-const pendingSelections = new Map<string, PendingSelection>();
+const pendingSelections = new Map<ToolChoicesRequestId, PendingSelection>();
 
 function getChatChoiceLock({
   chatId,
@@ -75,7 +75,7 @@ function clearActiveChoiceRequest({
   requestId,
 }: {
   chatId: ChatId,
-  requestId: string,
+  requestId: ToolChoicesRequestId,
 }): void {
   const activeRequest = choicesRuntimeState.activeRequestsByChatId.get(chatId);
   if (activeRequest?.requestId !== requestId) {
@@ -109,7 +109,7 @@ export const requestChoice: RequestChoice = async ({
       }
 
       const request: ChoicesActiveRequest = {
-        requestId: generateOpaqueId(),
+        requestId: generateId<ToolChoicesRequestId>(),
         chatId,
         prompt,
         choices: [...choices],
@@ -142,7 +142,7 @@ export function useChoices(): {
     requestId,
     index,
   }: {
-    requestId: string,
+    requestId: ToolChoicesRequestId,
     index: number,
   }) => void,
   TEST_ONLY: {
@@ -161,7 +161,7 @@ export function useChoices(): {
     requestId,
     index,
   }: {
-    requestId: string,
+    requestId: ToolChoicesRequestId,
     index: number,
   }): void {
     const pending = pendingSelections.get(requestId);

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { generateOpaqueId } from '@/01-models/id';
+import { generateId } from '@/01-models/id';
+import { idToRaw } from '@/01-models/ids';
+import type { RecipeModelPatternEditorItemId } from '@/01-models/ids';
 import { ref, computed, watch } from 'vue';
 import {
   XIcon, ChefHatIcon, CopyIcon, CheckIcon, PlusIcon, Trash2Icon, InfoIcon, GlobeIcon, AlertCircleIcon, MessageSquareQuoteIcon,
@@ -21,22 +23,35 @@ const emit = defineEmits<{
   (e: 'close'): void,
 }>();
 
-const recipeForm = ref({
+type RecipeModelPatternEditorItem = {
+  id: RecipeModelPatternEditorItemId,
+  pattern: string,
+  caseSensitive: boolean,
+};
+
+type RecipeExportForm = {
+  name: string,
+  description: string,
+  systemPrompt: SystemPrompt,
+  models: RecipeModelPatternEditorItem[],
+};
+
+const recipeForm = ref<RecipeExportForm>({
   name: props.groupName,
   description: '',
-  systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '' as string | null, behavior: 'override' as const },
-  models: [] as { id: string, pattern: string, caseSensitive: boolean }[],
+  systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '', behavior: 'override' },
+  models: [],
 });
 
 function initForm() {
   const modelPatterns = props.initialModelId
-    ? generateDefaultModelPatterns({ modelId: props.initialModelId }).map(p => ({ id: generateOpaqueId(), pattern: p, caseSensitive: false }))
+    ? generateDefaultModelPatterns({ modelId: props.initialModelId }).map(p => ({ id: generateId<RecipeModelPatternEditorItemId>(), pattern: p, caseSensitive: false }))
     : [];
 
   recipeForm.value = {
     name: props.groupName,
     description: '',
-    systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '' as string | null, behavior: 'override' as const },
+    systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '', behavior: 'override' },
     models: modelPatterns,
   };
 }
@@ -72,10 +87,10 @@ const exportedRecipeJson = computed(() => {
 });
 
 function addModelPattern() {
-  recipeForm.value.models.push({ id: generateOpaqueId(), pattern: '', caseSensitive: false });
+  recipeForm.value.models.push({ id: generateId<RecipeModelPatternEditorItemId>(), pattern: '', caseSensitive: false });
 }
 
-function removeModelPattern({ id }: { id: string }) {
+function removeModelPattern({ id }: { id: RecipeModelPatternEditorItemId }) {
   const index = recipeForm.value.models.findIndex(m => m.id === id);
   if (index !== -1) {
     recipeForm.value.models.splice(index, 1);
@@ -221,7 +236,7 @@ defineExpose({
               </div>
 
               <TransitionGroup name="list" tag="div" class="space-y-4">
-                <div v-for="m in recipeForm.models" :key="m.id" class="space-y-2">
+                <div v-for="m in recipeForm.models" :key="idToRaw({ id: m.id })" class="space-y-2">
                   <div class="flex gap-2 items-center">
                     <div
                       class="flex-1 bg-gray-50 dark:bg-gray-800 border rounded-xl flex overflow-hidden transition-colors"

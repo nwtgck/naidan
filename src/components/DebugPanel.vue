@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ensureStrings, lazyStrings } from '@/strings';
+import { idToRaw } from '@/01-models/ids';
 import { ref } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
@@ -204,7 +205,7 @@ defineExpose({
 
       <div
         v-for="event in events"
-        :key="event.id"
+        :key="idToRaw({ id: event.id })"
         class="border-l-2 p-2 rounded-r-xl flex gap-3 group transition-colors shadow-sm"
         :class="getEventStyle({ type: event.type })"
         data-testid="event-item"

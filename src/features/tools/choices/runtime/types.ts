@@ -1,11 +1,11 @@
-import type { ChatId } from '@/01-models/ids';
+import type { ChatId, ToolChoicesRequestId } from '@/01-models/ids';
 
 export type ChoicesSelection = {
   index: number,
 };
 
 export type ChoicesActiveRequest = {
-  requestId: string,
+  requestId: ToolChoicesRequestId,
   chatId: ChatId,
   prompt: string,
   choices: readonly string[],

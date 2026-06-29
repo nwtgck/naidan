@@ -1,7 +1,7 @@
 import { computed, reactive, type ComputedRef } from 'vue';
-import { generateOpaqueId } from '@/01-models/id';
+import { generateId } from '@/01-models/id';
 import { Semaphore } from '@/utils/concurrency';
-import type { ChatId } from '@/01-models/ids';
+import type { ChatId, ToolApprovalRequestId } from '@/01-models/ids';
 import type {
   ApprovalActionId,
   ApprovalActiveRequest,
@@ -25,7 +25,7 @@ const approvalRuntimeState = reactive<ApprovalRuntimeState>({
 });
 
 const chatApprovalLocks = new Map<ChatId, Semaphore>();
-const pendingDecisionResolvers = new Map<string, ({ decision }: { decision: ApprovalUiDecision }) => void>();
+const pendingDecisionResolvers = new Map<ToolApprovalRequestId, ({ decision }: { decision: ApprovalUiDecision }) => void>();
 
 function getChatApprovalLock({
   chatId,
@@ -124,7 +124,7 @@ function clearActiveApprovalRequest({
   requestId,
 }: {
   chatId: ChatId,
-  requestId: string,
+  requestId: ToolApprovalRequestId,
 }): void {
   const activeRequest = approvalRuntimeState.activeRequestsByChatId.get(chatId);
   if (activeRequest?.requestId !== requestId) {
@@ -180,7 +180,7 @@ export async function ensureApproval({
       }
 
       const request: ApprovalActiveRequest = {
-        requestId: generateOpaqueId(),
+        requestId: generateId<ToolApprovalRequestId>(),
         chatId,
         action,
         preview,
@@ -231,7 +231,7 @@ export function useApproval(): {
     requestId,
     decision,
   }: {
-    requestId: string,
+    requestId: ToolApprovalRequestId,
     decision: ApprovalUiDecision,
   }) => void,
   TEST_ONLY: {
@@ -257,7 +257,7 @@ export function useApproval(): {
     requestId,
     decision,
   }: {
-    requestId: string,
+    requestId: ToolApprovalRequestId,
     decision: ApprovalUiDecision,
   }): void {
     const resolver = pendingDecisionResolvers.get(requestId);

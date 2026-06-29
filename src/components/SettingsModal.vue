@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { generateOpaqueId } from '@/01-models/id';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
@@ -7,10 +6,7 @@ import { useToast } from '@/composables/useToast';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import type { Settings } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
-import { ChatGroupRecipeSchema } from '@/features/recipes/logic/recipe';
 import type { ChatGroupRecipe } from '@/features/recipes/logic/recipe';
-import { parseConcatenatedJson } from '@/utils/json-stream-parser';
-import { matchRecipeModels } from '@/features/recipes/logic/recipe-matcher';
 import {
   XIcon, GlobeIcon,
   DatabaseIcon, Settings2Icon, BookmarkPlusIcon,
@@ -164,69 +160,6 @@ async function handleCancel() {
     emit('close');
   }
 }
-
-// Recipes State
-interface AnalyzedRecipe {
-  id: string,
-  recipe: ChatGroupRecipe,
-  selected: boolean,
-  matchedModelId?: string,
-  matchError?: string,
-  newName: string,
-}
-
-const recipeJsonInput = ref('');
-const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
-const recipeAnalysisError = ref<string | null>(null);
-
-function handleAnalyzeRecipes() {
-  const trimmed = recipeJsonInput.value.trim();
-  if (!trimmed) {
-    analyzedRecipes.value = [];
-    recipeAnalysisError.value = null;
-    return;
-  }
-
-  recipeAnalysisError.value = null;
-  const parseResults = parseConcatenatedJson({ input: trimmed });
-  const newAnalyzed: AnalyzedRecipe[] = [];
-
-  for (const result of parseResults) {
-    if (!result.success) {
-      recipeAnalysisError.value = `Parse error: ${result.error}`;
-      continue;
-    }
-
-    const validation = ChatGroupRecipeSchema.safeParse(result.data);
-    if (!validation.success) {
-      recipeAnalysisError.value = `Validation error: ${validation.error.message}`;
-      continue;
-    }
-
-    const recipe = validation.data;
-    const match = matchRecipeModels({ recipeModels: recipe.models, availableModelIds: availableModels.value });
-
-    newAnalyzed.push({
-      id: generateOpaqueId(),
-      recipe,
-      selected: true,
-      matchedModelId: match.modelId,
-      matchError: match.error,
-      newName: recipe.name,
-    });
-  }
-
-  if (newAnalyzed.length === 0 && !recipeAnalysisError.value) {
-    recipeAnalysisError.value = 'No valid recipes found in input.';
-  }
-
-  analyzedRecipes.value = newAnalyzed;
-}
-
-// Automatically analyze on input change
-watch(recipeJsonInput, () => {
-  handleAnalyzeRecipes();
-});
 
 // Watch for modal open to reset form
 watch(() => props.isOpen, async (open) => {

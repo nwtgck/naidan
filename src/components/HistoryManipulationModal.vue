@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { generateId, generateOpaqueId } from '@/01-models/id';
+import { generateId } from '@/01-models/id';
 import { ref, watch, onUnmounted, computed } from 'vue';
 import draggable from 'vuedraggable';
 import {
@@ -16,7 +16,7 @@ import { storageService } from '@/00-storage/service';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
 import { idToRaw } from '@/01-models/ids';
-import type { AttachmentId, BinaryObjectId } from '@/01-models/ids';
+import type { AttachmentId, BinaryObjectId, EditableHistoryItemId } from '@/01-models/ids';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -30,7 +30,7 @@ const { currentChat, activeMessages, inheritedSettings } = useCurrentChatState()
 const { setActiveFocusArea } = useLayout();
 
 interface EditableHistoryItem extends HistoryItem {
-  localId: string,
+  localId: EditableHistoryItemId,
 }
 
 const editableMessages = ref<EditableHistoryItem[]>([]);
@@ -59,7 +59,7 @@ watch(() => props.isOpen, async (open) => {
     editableMessages.value = activeMessages.value
       .filter(m => m.role !== 'tool') // Filter out tool nodes from Super Edit
       .map(m => ({
-        localId: generateOpaqueId(),
+        localId: generateId<EditableHistoryItemId>(),
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content || '',
         modelId: m.modelId,
@@ -137,7 +137,7 @@ function predictNextRole({ index }: { index: number }): 'user' | 'assistant' {
 function addMessage({ index }: { index: number }) {
   const role = predictNextRole({ index });
   editableMessages.value.splice(index + 1, 0, {
-    localId: generateOpaqueId(),
+    localId: generateId<EditableHistoryItemId>(),
     role,
     content: '',
   });
@@ -153,7 +153,7 @@ function duplicateMessage({ index }: { index: number }) {
 
   editableMessages.value.splice(index + 1, 0, {
     ...msg,
-    localId: generateOpaqueId(),
+    localId: generateId<EditableHistoryItemId>(),
     attachments: msg.attachments ? [...msg.attachments] : undefined,
   });
 }

@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { generateOpaqueId } from '@/01-models/id';
+import { generateId } from '@/01-models/id';
+import { idToRaw, toOPFSTmpOwnerScopeId } from '@/01-models/ids';
+import type { OPFSTmpDirectoryId, OPFSTmpOwnerScopeId } from '@/01-models/ids';
 import { OPFS_TMP_CLEANUP_LOCK_KEY, OPFS_TMP_DIR, OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY } from '@/constants';
 import { StorageSynchronizer } from '@/00-storage/service/synchronizer';
 
@@ -7,7 +9,9 @@ const PendingOwnerCleanupSchema = z.object({
   ownerScopeIds: z.array(z.string()),
 });
 
-type PendingOwnerCleanup = z.infer<typeof PendingOwnerCleanupSchema>;
+type PendingOwnerCleanup = {
+  ownerScopeIds: OPFSTmpOwnerScopeId[],
+};
 
 function isNotFoundError({ error }: { error: unknown }): boolean {
   return error instanceof Error && error.name === 'NotFoundError';
@@ -22,7 +26,7 @@ function hasLocalStorage(): boolean {
 }
 
 export class OPFSTmpManager {
-  private readonly ownerScopeId = generateOpaqueId();
+  private readonly ownerScopeId = generateId<OPFSTmpOwnerScopeId>();
   private readonly synchronizer = new StorageSynchronizer();
   private pendingCleanupQueued = false;
   private activeFlush: Promise<void> | null = null;
@@ -51,8 +55,9 @@ export class OPFSTmpManager {
   async createTmpDirectory({ prefix }: { prefix: string }): Promise<FileSystemDirectoryHandle> {
     const opfsRoot = await navigator.storage.getDirectory();
     const tmpRoot = await opfsRoot.getDirectoryHandle(OPFS_TMP_DIR, { create: true });
-    const ownerRoot = await tmpRoot.getDirectoryHandle(this.ownerScopeId, { create: true });
-    const tmpDirName = `${prefix}-${generateOpaqueId()}`;
+    const ownerRoot = await tmpRoot.getDirectoryHandle(idToRaw({ id: this.ownerScopeId }), { create: true });
+    const tmpDirectoryId = generateId<OPFSTmpDirectoryId>();
+    const tmpDirName = `${prefix}-${idToRaw({ id: tmpDirectoryId })}`;
     const handle = await ownerRoot.getDirectoryHandle(tmpDirName, { create: true });
     void this.flushPendingScopeCleanups();
     return handle;
@@ -69,7 +74,7 @@ export class OPFSTmpManager {
         return;
       }
 
-      const remainingOwnerScopeIds: string[] = [];
+      const remainingOwnerScopeIds: OPFSTmpOwnerScopeId[] = [];
       for (const ownerScopeId of pending.ownerScopeIds) {
         const deleted = await this.deleteOwnerScopeDirectory({ ownerScopeId });
         if (!deleted) {
@@ -123,7 +128,10 @@ export class OPFSTmpManager {
       if (!raw) {
         return { ownerScopeIds: [] };
       }
-      return PendingOwnerCleanupSchema.parse(JSON.parse(raw));
+      const parsed = PendingOwnerCleanupSchema.parse(JSON.parse(raw));
+      return {
+        ownerScopeIds: parsed.ownerScopeIds.map(ownerScopeId => toOPFSTmpOwnerScopeId({ raw: ownerScopeId })),
+      };
     } catch {
       return { ownerScopeIds: [] };
     }
@@ -136,15 +144,17 @@ export class OPFSTmpManager {
 
     localStorage.setItem(
       OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY,
-      JSON.stringify(PendingOwnerCleanupSchema.parse({ ownerScopeIds: Array.from(new Set(ownerScopeIds)) })),
+      JSON.stringify(PendingOwnerCleanupSchema.parse({
+        ownerScopeIds: Array.from(new Set(ownerScopeIds), ownerScopeId => idToRaw({ id: ownerScopeId })),
+      })),
     );
   }
 
-  private async deleteOwnerScopeDirectory({ ownerScopeId }: { ownerScopeId: string }): Promise<boolean> {
+  private async deleteOwnerScopeDirectory({ ownerScopeId }: { ownerScopeId: OPFSTmpOwnerScopeId }): Promise<boolean> {
     try {
       const opfsRoot = await navigator.storage.getDirectory();
       const tmpRoot = await opfsRoot.getDirectoryHandle(OPFS_TMP_DIR);
-      await tmpRoot.removeEntry(ownerScopeId, { recursive: true });
+      await tmpRoot.removeEntry(idToRaw({ id: ownerScopeId }), { recursive: true });
       return true;
     } catch (error) {
       if (isNotFoundError({ error })) {

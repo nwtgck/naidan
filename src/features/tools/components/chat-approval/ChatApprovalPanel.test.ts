@@ -1,4 +1,6 @@
+import { generateId } from '@/01-models/id';
 import { toChatId } from '@/01-models/ids';
+import type { ToolApprovalRequestId } from '@/01-models/ids';
 import { mount } from '@vue/test-utils';
 import { beforeAll, describe, expect, it } from 'vitest';
 import ChatApprovalPanel from './ChatApprovalPanel.vue';
@@ -20,7 +22,7 @@ function mountPanel({
   return mount(ChatApprovalPanel, {
     props: {
       request: {
-        requestId: 'approval-test-request',
+        requestId: generateId<ToolApprovalRequestId>(),
         chatId: toChatId({ raw: 'chat-test' }),
         action: preview.type === 'wikipedia_search'
           ? APPROVAL_ACTIONS.toolWikipediaSearch

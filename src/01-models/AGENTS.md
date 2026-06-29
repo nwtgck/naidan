@@ -9,7 +9,8 @@ This file applies to `src/01-models/**`.
 Appropriate contents include:
 
 - types and interfaces;
-- branded IDs;
+- all purpose-specific branded ID definitions, including IDs used only by one
+  feature, component, UI workflow, or request lifecycle;
 - schemas;
 - enum-like values;
 - constants tied to a shared concept;
@@ -35,3 +36,7 @@ src/strings/**
 Do not use Vue reactivity, UI code, browser I/O, or persistence DTOs here.
 
 Do not move a feature-specific concept into `src/01-models` merely to make an import appear shared.
+
+Purpose-specific branded ID definitions are an explicit exception and belong in
+`src/01-models/ids.ts` so the identifier system, raw conversion boundaries, and
+cast restrictions remain centralized.

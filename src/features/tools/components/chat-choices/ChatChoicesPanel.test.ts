@@ -1,13 +1,15 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import { generateId } from '@/01-models/id';
 import { toChatId } from '@/01-models/ids';
+import type { ToolChoicesRequestId } from '@/01-models/ids';
 import ChatChoicesPanel from './ChatChoicesPanel.vue';
 
 function mountPanel() {
   return mount(ChatChoicesPanel, {
     props: {
       request: {
-        requestId: 'choice-request',
+        requestId: generateId<ToolChoicesRequestId>(),
         chatId: toChatId({ raw: 'chat-a' }),
         prompt: 'Choose the next topic',
         choices: ['Implementation', 'Testing', 'Alternatives'],

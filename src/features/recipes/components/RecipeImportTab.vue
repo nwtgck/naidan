@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { generateOpaqueId } from '@/01-models/id';
+import { generateId } from '@/01-models/id';
+import { idToRaw } from '@/01-models/ids';
+import type { RecipeImportCandidateId } from '@/01-models/ids';
 import { ref, watch } from 'vue';
 import {
   ChefHatIcon, SaveIcon, AlertTriangleIcon,
@@ -21,7 +23,7 @@ const emit = defineEmits<{
 }>();
 
 interface AnalyzedRecipe {
-  id: string,
+  id: RecipeImportCandidateId,
   recipe: ChatGroupRecipe,
   selected: boolean,
   matchedModelId?: string,
@@ -75,7 +77,7 @@ function handleAnalyzeRecipes() {
     const match = matchRecipeModels({ recipeModels: recipe.models, availableModelIds: props.availableModels });
 
     newAnalyzed.push({
-      id: generateOpaqueId(),
+      id: generateId<RecipeImportCandidateId>(),
       recipe,
       selected: true,
       matchedModelId: match.modelId,
@@ -176,7 +178,7 @@ defineExpose({
         <div class="grid grid-cols-1 gap-4">
           <div
             v-for="item in analyzedRecipes"
-            :key="item.id"
+            :key="idToRaw({ id: item.id })"
             class="p-5 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-3xl flex items-start gap-4 transition-all hover:border-blue-500/30"
           >
             <input

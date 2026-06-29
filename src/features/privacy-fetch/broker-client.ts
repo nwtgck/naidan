@@ -1,4 +1,6 @@
-import { generateOpaqueId } from '@/01-models/id';
+import { generateId } from '@/01-models/id';
+import { idToRaw, toPrivacyFetchRequestId } from '@/01-models/ids';
+import type { PrivacyFetchRequestId } from '@/01-models/ids';
 import { createPrivacyFetchError } from './errors';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 import { privacyFetchBrokerToParentMessageSchema } from './schemas';
@@ -88,7 +90,7 @@ export function createPrivacyFetchBrokerClient({
   windowObject: Window,
   documentObject: Document,
 }): PrivacyFetchBrokerClient {
-  const pendingRequests = new Map<string, PendingRequest>();
+  const pendingRequests = new Map<PrivacyFetchRequestId, PendingRequest>();
   const readyDeferred = createDeferred<void>();
   let disposed = false;
   let readyResolved = false;
@@ -98,7 +100,7 @@ export function createPrivacyFetchBrokerClient({
     requestId,
     callback,
   }: {
-    requestId: string,
+    requestId: PrivacyFetchRequestId,
     callback: ({ pendingRequest }: { pendingRequest: PendingRequest }) => void,
   }): void => {
     const pendingRequest = pendingRequests.get(requestId);
@@ -131,7 +133,7 @@ export function createPrivacyFetchBrokerClient({
       return;
     case 'response':
       resolvePendingRequest({
-        requestId: message.requestId,
+        requestId: toPrivacyFetchRequestId({ raw: message.requestId }),
         callback: ({ pendingRequest }) => {
           pendingRequest.resolve({
             url: message.url,
@@ -150,7 +152,7 @@ export function createPrivacyFetchBrokerClient({
       return;
     case 'rejected':
       resolvePendingRequest({
-        requestId: message.requestId,
+        requestId: toPrivacyFetchRequestId({ raw: message.requestId }),
         callback: ({ pendingRequest }) => {
           pendingRequest.reject(createPrivacyFetchError({
             code: 'rejected',
@@ -161,7 +163,7 @@ export function createPrivacyFetchBrokerClient({
       return;
     case 'error':
       resolvePendingRequest({
-        requestId: message.requestId,
+        requestId: toPrivacyFetchRequestId({ raw: message.requestId }),
         callback: ({ pendingRequest }) => {
           pendingRequest.reject(createPrivacyFetchError({
             code: message.code,
@@ -201,7 +203,7 @@ export function createPrivacyFetchBrokerClient({
       pendingRequest.cleanup();
       pendingRequest.reject(createPrivacyFetchError({
         code: 'broker_disposed',
-        message: `Privacy fetch request was disposed before completion: ${requestId}`,
+        message: `Privacy fetch request was disposed before completion: ${idToRaw({ id: requestId })}`,
       }));
     }
     pendingRequests.clear();
@@ -277,7 +279,7 @@ export function createPrivacyFetchBrokerClient({
         });
       }
 
-      const requestId = generateOpaqueId();
+      const requestId = generateId<PrivacyFetchRequestId>();
 
       return new Promise<PrivacyFetchResponse>((resolve, reject) => {
         let settled = false;
@@ -301,7 +303,7 @@ export function createPrivacyFetchBrokerClient({
             contentWindow.postMessage({
               protocol: PRIVACY_FETCH_PROTOCOL,
               type: 'cancel',
-              requestId,
+              requestId: idToRaw({ id: requestId }),
             }, '*');
           }
 
@@ -340,7 +342,7 @@ export function createPrivacyFetchBrokerClient({
         contentWindow.postMessage({
           protocol: PRIVACY_FETCH_PROTOCOL,
           type: 'request',
-          requestId,
+          requestId: idToRaw({ id: requestId }),
           url: request.url,
         }, '*');
       });
