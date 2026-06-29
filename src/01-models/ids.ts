@@ -11,9 +11,15 @@
  */
 export declare const idBrand: unique symbol;
 
-type BrandedId<TName extends string> = {
-  readonly [idBrand]: TName,
-};
+type BrandedId<TName extends string> =
+  // ID values are primitive strings at runtime, but this intentionally
+  // object-shaped type prevents implicit assignment to raw strings. Keep the
+  // @vue-ignore directive attached here; otherwise Vue infers Object for ID
+  // props and rejects valid primitive string values.
+  /* @vue-ignore */
+  {
+    readonly [idBrand]: TName,
+  };
 
 export type ChatId = BrandedId<'ChatId'>;
 export type MessageId = BrandedId<'MessageId'>;
