@@ -5,7 +5,7 @@ import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import { MemoryStorageProvider } from './memory-storage';
-import { checkOPFSSupport } from '@/lib/opfs-detection';
+import { checkOPFSSupport } from '@/utils/opfs-detection';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the application event dependency with a storage service event API.
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { STORAGE_BOOTSTRAP_KEY, SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';

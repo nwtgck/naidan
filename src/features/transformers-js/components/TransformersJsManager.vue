@@ -10,7 +10,7 @@ import {
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
-import { checkOPFSSupport } from '@/lib/opfs-detection';
+import { checkOPFSSupport } from '@/utils/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 
 const { addToast } = useToast();

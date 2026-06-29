@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined';
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 import { idToRaw } from '@/01-models/ids';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import {

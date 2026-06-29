@@ -99,9 +99,6 @@ function classifyPath({ rootDir, filePath }) {
   if (!relativePath.includes('/') && /\.(?:ts|tsx|vue)$/.test(relativePath)) {
     return 'application';
   }
-  if (firstSegment === 'lib') {
-    return 'lib';
-  }
   if (firstSegment === 'utils') {
     return 'utils';
   }
@@ -158,7 +155,7 @@ function isForbiddenDependency({ sourceCategory, targetCategory }) {
     ].includes(targetCategory);
   }
 
-  if (sourceCategory === 'lib' || sourceCategory === 'utils') {
+  if (sourceCategory === 'utils') {
     return [
       'application',
       '01-models',

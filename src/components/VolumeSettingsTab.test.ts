@@ -7,7 +7,7 @@ import { toVolumeId } from '@/01-models/ids';
 
 // --- Mocks ---
 
-vi.mock('@/lib/opfs-detection', () => ({
+vi.mock('@/utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
   checkFileSystemAccessSupport: vi.fn().mockReturnValue(true),
 }));

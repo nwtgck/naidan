@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { onClickOutside, useToggle } from '@vueuse/core';
 import { storageService } from '@/00-storage/service';
-import { checkOPFSSupport, checkFileSystemAccessSupport } from '@/lib/opfs-detection';
+import { checkOPFSSupport, checkFileSystemAccessSupport } from '@/utils/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import {
   FolderDownIcon,

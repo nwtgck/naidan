@@ -8,7 +8,7 @@ import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } fro
 import type { GeneratedImageBlock } from '@/utils/image-generation';
 import type { MessageNode } from '@/01-models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
-import { jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
+import { jsonToHighlightedHtml } from '@/logic/security/allowedHtml';
 import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
 import type { BinaryObjectId, MessageId } from '@/01-models/ids';
 

@@ -9,7 +9,7 @@ import { useRouter } from 'vue-router';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { BinaryObject, MessageNode } from '@/01-models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
-import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
+import { allowedHtml, jsonToHighlightedHtml } from '@/logic/security/allowedHtml';
 import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/features/fake-lm';
 import { useSettings } from '@/composables/useSettings';
 import { idToRaw, toBinaryObjectId } from '@/01-models/ids';

@@ -3,8 +3,8 @@ import { computed } from 'vue';
 import { marked } from './useMarkdown';
 import ExternalImage from './ExternalImage.vue';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
-import { sanitizeMarkdownHtml, splitMarkdownHtmlByExternalImages } from '@/lib/security/allowedHtml';
-import type { MarkdownInlinePart } from '@/lib/security/allowedHtml';
+import { sanitizeMarkdownHtml, splitMarkdownHtmlByExternalImages } from '@/logic/security/allowedHtml';
+import type { MarkdownInlinePart } from '@/logic/security/allowedHtml';
 
 const props = defineProps<{
   text: string,

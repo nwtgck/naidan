@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined';
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 
 const EmptyExperimentalSchemaDto = resolveMissingAsUndefined(z.object({}));
 

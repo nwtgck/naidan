@@ -21,7 +21,7 @@ import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/00-storage/service';
 import { startVolumeExtensionScan } from '@/features/tools/wesh/volume-extension-cache';
-import { checkFileSystemAccessSupport } from '@/lib/opfs-detection';
+import { checkFileSystemAccessSupport } from '@/utils/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';

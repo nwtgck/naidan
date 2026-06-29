@@ -13,8 +13,8 @@ import { scrollIntoViewSafe } from '@/utils/dom';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { idToRaw } from '@/01-models/ids';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
-import { highlightSearchTextAsHtml } from '@/lib/security/allowedHtml';
-import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import { highlightSearchTextAsHtml } from '@/logic/security/allowedHtml';
+import type { AllowedHtml } from '@/logic/security/allowedHtml';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 import { lazyStrings } from '@/strings';
 

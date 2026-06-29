@@ -60,7 +60,7 @@ vi.mock('../00-storage/service', () => ({
   storageService: mocks,
 }));
 
-vi.mock('../lib/opfs-detection', () => ({
+vi.mock('../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
 }));
 

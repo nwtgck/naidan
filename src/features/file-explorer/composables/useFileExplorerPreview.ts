@@ -3,8 +3,8 @@ import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/t
 import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/features/highlight/worker/client-shared';
 import type { FileExplorerEntry, PreviewState } from '@/features/file-explorer/logic/types';
 import { EXTENSION_LANGUAGE_MAP } from '@/features/file-explorer/logic/constants';
-import { sanitizeHighlightHtml } from '@/lib/security/allowedHtml';
-import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import { sanitizeHighlightHtml } from '@/logic/security/allowedHtml';
+import type { AllowedHtml } from '@/logic/security/allowedHtml';
 
 export function useFileExplorerPreview({
   client,

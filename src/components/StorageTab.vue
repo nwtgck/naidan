@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { storageService } from '@/00-storage/service';
-import { checkOPFSSupport } from '@/lib/opfs-detection';
+import { checkOPFSSupport } from '@/utils/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 import {
   ShieldCheckIcon, CheckCircle2Icon, FileArchiveIcon,

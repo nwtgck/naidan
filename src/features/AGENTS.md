@@ -1,3 +1,117 @@
+# Feature Placement
+
+This file applies to `src/features/**`.
+
+A Feature in this repository is narrower than a general product feature. It is not a dependency layer and is not a tool for subdividing the source tree.
+
+## Primary Criterion
+
+The primary question is:
+
+> If this capability were removed from Naidan, could its related UI, state, logic, workers, and configuration be deleted together as one cohesive unit?
+
+Do not create a Feature unless the answer is clearly yes.
+
+The following characteristics support Feature placement:
+
+- the capability can be added or removed independently;
+- related files change for the same reason;
+- the capability is not a Naidan-wide foundation;
+- removing the capability makes most of the Feature directory unnecessary.
+
+Clear examples include:
+
+```text
+wesh
+file-explorer
+wesh-terminal
+```
+
+Feature extraction should be uncommon. Most Naidan behavior is closely integrated with the rest of the application.
+
+## Avoid Fragmentation
+
+Do not split strongly interdependent code into separate Features. Also avoid Feature boundaries when the involved areas are likely to become more interdependent.
+
+Over-fragmentation can:
+
+- force one change to cross many directories;
+- obscure ownership;
+- complicate import paths;
+- make related behavior difficult to trace;
+- turn the source tree into a maze;
+- create a separation that does not match actual dependencies.
+
+When the removal boundary is unclear, prefer the shared `src/components/**`, `src/composables/**`, or `src/logic/**` areas.
+
+File count and technical category are not sufficient reasons to create a Feature.
+
+## Feature Contents
+
+Create only the subdirectories that the Feature needs. A Feature may contain:
+
+```text
+components/
+composables/
+logic/
+worker/
+types.ts
+constants.ts
+index.ts
+```
+
+Do not force every Feature into the same shape.
+
+- Place `.vue` files under `components/` unless there is a specific reason not to.
+- Place Vue composables under `composables/`.
+- Place Feature-owned non-Vue application logic under `logic/` when that grouping is useful.
+- Place worker implementation under `worker/` when applicable.
+- Do not create layers for a single type or helper without a concrete need.
+- Add barrel exports only when they provide a useful public surface.
+
+## Reconsidering Existing Placement
+
+During unrelated work, an existing Feature may appear to contain code that belongs elsewhere, or shared code may appear to belong in a Feature.
+
+Do not perform that relocation automatically. Feature work and structural refactoring in the same diff make rename detection and review substantially harder.
+
+Explain the following points and ask the user how to proceed:
+
+- why the current placement is problematic;
+- the proposed destination;
+- the effect of combining the relocation with the requested change;
+- the advantage of handling the relocation separately.
+
+Existing directories under `src/features/**` are not proof that their current classification is correct. Do not reclassify them as part of this documentation change, and do not weaken the Feature criterion to justify existing placement.
+
+## Dependencies
+
+Features may depend on other Features and on shared application code. Feature-to-Feature dependencies are not prohibited.
+
+Features may depend on:
+
+```text
+src/components/**
+src/composables/**
+src/logic/**
+src/01-models/**
+src/00-storage/service/**
+src/strings/**
+src/constants.ts
+src/utils/**
+```
+
+Features must not depend directly on:
+
+```text
+src/00-storage/00-dto/**
+src/00-storage/mapper/**
+```
+
+Use a purpose-specific public Storage service API instead of exposing persisted formats.
+
+---
+
 # Worker Patterns
 
 Use one of these two patterns for new workers.

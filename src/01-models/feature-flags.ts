@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined';
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 import { STORAGE_KEY_PREFIX } from '@/constants';
 
 const FeatureFlagStatusSchema = z.enum(['enabled', 'disabled']);

@@ -15,7 +15,7 @@ import {
   type UiLocale,
 } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
-import { checkOPFSSupport } from '@/lib/opfs-detection';
+import { checkOPFSSupport } from '@/utils/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { createLmProvider } from '@/features/lm/providerFactory';
 import { preloadFakeLmLanguagePacks, type FakeLmDebugModeStatus } from '@/features/fake-lm';

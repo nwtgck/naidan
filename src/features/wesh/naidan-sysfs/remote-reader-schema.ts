@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined';
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
 import {
   BinaryObjectSchemaDto,

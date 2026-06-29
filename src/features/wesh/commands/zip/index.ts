@@ -5,7 +5,7 @@ import {
   StreamingZipWriter,
   type ZipCentralDirectoryStore,
   type ZipCompression,
-} from '@/lib/zip-stream';
+} from '@/utils/zip-stream';
 import {
   createWeshZipByteSink,
   createWeshZipCentralDirectoryStore,

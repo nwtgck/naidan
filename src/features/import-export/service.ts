@@ -41,8 +41,8 @@ import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, Storag
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, MessageId, ProviderProfileId } from '@/01-models/ids';
 import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
-import { createWebZipCompressionCodec, StreamingZipWriter } from '@/lib/zip-stream';
-import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/lib/zip-stream/memory';
+import { createWebZipCompressionCodec, StreamingZipWriter } from '@/utils/zip-stream';
+import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/utils/zip-stream/memory';
 import { openIndexedZipArchive, type IndexedZipArchive } from './zip-archive';
 import { cloneEndpoint } from '@/01-models/endpoint';
 

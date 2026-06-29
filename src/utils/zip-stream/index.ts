@@ -5,7 +5,7 @@
  * ==================================================
  *
  * This module must depend only on Web-standard primitives and other modules
- * inside `src/lib/zip-stream`. It must never import Wesh, worker clients,
+ * inside `src/utils/zip-stream`. It must never import Wesh, worker clients,
  * application services, or Node.js filesystem APIs.
  *
  * The only allowed direction is:

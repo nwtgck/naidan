@@ -116,7 +116,7 @@ vi.mock('../00-storage/service', () => ({
     listVolumes: vi.fn(),
   },
 }));
-vi.mock('../lib/opfs-detection', () => ({
+vi.mock('../utils/opfs-detection', () => ({
   checkFileSystemAccessSupport: vi.fn(() => false),
 }));
 

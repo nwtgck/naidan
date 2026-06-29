@@ -48,7 +48,7 @@ describe('no-allowed-html-cast rule', () => {
 
   it('reports as AllowedHtml outside the security module', async () => {
     const messages = await lintText({
-      code: `import type { AllowedHtml } from '@/lib/security/allowedHtml'; const html = raw as AllowedHtml`,
+      code: `import type { AllowedHtml } from '@/logic/security/allowedHtml'; const html = raw as AllowedHtml`,
     });
 
     expect(messages).toHaveLength(1);
@@ -57,7 +57,7 @@ describe('no-allowed-html-cast rule', () => {
 
   it('reports angle-bracket AllowedHtml assertions outside the security module', async () => {
     const messages = await lintText({
-      code: `import type { AllowedHtml } from '@/lib/security/allowedHtml'; const html = <AllowedHtml>raw`,
+      code: `import type { AllowedHtml } from '@/logic/security/allowedHtml'; const html = <AllowedHtml>raw`,
     });
 
     expect(messages).toHaveLength(1);
@@ -66,7 +66,7 @@ describe('no-allowed-html-cast rule', () => {
 
   it('allows branding inside allowedHtml.ts', async () => {
     const messages = await lintText({
-      filePath: 'src/lib/security/allowedHtml.ts',
+      filePath: 'src/logic/security/allowedHtml.ts',
       code: `export type AllowedHtml = string & { readonly __brand: true }; const html = raw as AllowedHtml`,
     });
 

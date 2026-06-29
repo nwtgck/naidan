@@ -1,5 +1,5 @@
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
-import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import type { AllowedHtml } from '@/logic/security/allowedHtml';
 
 export type EntryKind = 'file' | 'directory';
 export type MimeCategory = 'text' | 'image' | 'video' | 'audio' | 'binary';

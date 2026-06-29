@@ -128,7 +128,6 @@ function isAllowedExceptionFile({ filePath }) {
   const normalized = normalizePath(filePath);
   return (
     normalized.endsWith('/src/components/common/AllowedHtmlView.vue') ||
-    normalized.endsWith('/src/lib/security/allowedHtmlDom.ts') ||
     normalized.endsWith('/src/features/file-protocol-standalone/worker/worker-hub-standalone-loader.ts') ||
     normalized.endsWith('/src/components/block-markdown/test-utils.ts')
   );

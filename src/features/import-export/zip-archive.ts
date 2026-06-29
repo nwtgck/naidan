@@ -4,7 +4,7 @@ import {
   iterateZipStreamChunks,
   StreamingZipReader,
   type ZipArchiveEntry,
-} from '@/lib/zip-stream';
+} from '@/utils/zip-stream';
 
 /**
  * Import/export adapter over the environment-independent ZIP core.
@@ -12,7 +12,7 @@ import {
  * DEPENDENCY DIRECTION — KEEP IMPORT/EXPORT INDEPENDENT OF WESH
  * =============================================================
  *
- * This module may import `@/lib/zip-stream`. It must never import the Wesh ZIP
+ * This module may import `@/utils/zip-stream`. It must never import the Wesh ZIP
  * adapter or any Wesh filesystem module. Import/export runs on the main side;
  * importing Wesh here can bundle worker-only implementation into hosted and
  * standalone application chunks.

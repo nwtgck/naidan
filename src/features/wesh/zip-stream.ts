@@ -2,7 +2,7 @@ import type {
   ZipByteSink,
   ZipCentralDirectoryStore,
   ZipRandomAccessSource,
-} from '@/lib/zip-stream';
+} from '@/utils/zip-stream';
 import type {
   WeshCommandContext,
   WeshFileHandle,
@@ -15,7 +15,7 @@ import { openFileReadStream } from '@/features/wesh/utils/fs';
  * DEPENDENCY DIRECTION — THIS MODULE IS THE BOUNDARY
  * ==================================================
  *
- * This adapter may import both `@/lib/zip-stream` and Wesh filesystem types.
+ * This adapter may import both `@/utils/zip-stream` and Wesh filesystem types.
  * The ZIP core must never import this module or any other Wesh module.
  * Main-thread features such as import/export must also use the core directly,
  * never this adapter, or the Wesh implementation can leak into main and

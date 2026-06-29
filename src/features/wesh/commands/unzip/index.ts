@@ -5,7 +5,7 @@ import {
   createWebZipCompressionCodec,
   StreamingZipReader,
   type ZipArchiveEntry,
-} from '@/lib/zip-stream';
+} from '@/utils/zip-stream';
 import { createWeshZipRandomAccessSource } from '@/features/wesh/zip-stream';
 import type {
   WeshCommandContext,

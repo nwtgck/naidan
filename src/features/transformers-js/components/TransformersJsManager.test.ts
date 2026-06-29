@@ -4,11 +4,11 @@ import { ref } from 'vue';
 import TransformersJsManager from './TransformersJsManager.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { transformersJsService } from '@/features/transformers-js';
-import * as opfsDetection from '@/lib/opfs-detection';
+import * as opfsDetection from '@/utils/opfs-detection';
 
 // --- Mocks ---
 
-vi.mock('../../../lib/opfs-detection', () => ({
+vi.mock('../../../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn(),
 }));
 

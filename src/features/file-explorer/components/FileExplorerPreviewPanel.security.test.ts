@@ -4,8 +4,8 @@ import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import { createHighlightWorker } from '@/features/highlight/worker/impl';
 import type { FileExplorerContext, FileExplorerEntry } from '@/features/file-explorer/logic/types';
-import { sanitizeHighlightHtml } from '@/lib/security/allowedHtml';
-import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import { sanitizeHighlightHtml } from '@/logic/security/allowedHtml';
+import type { AllowedHtml } from '@/logic/security/allowedHtml';
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
 
 const rootDescriptor: FileExplorerRootDescriptor = {
