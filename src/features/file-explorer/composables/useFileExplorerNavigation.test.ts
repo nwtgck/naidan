@@ -199,6 +199,14 @@ function makeClient(): FileExplorerWorkerClient {
     copyEntries: vi.fn(),
     moveEntries: vi.fn(),
     uploadFiles: vi.fn(),
+    suggestArchiveExclusions: vi.fn().mockResolvedValue({
+      suggestions: [],
+      resultState: 'complete',
+    }),
+    startDirectoryArchive: vi.fn(() => ({
+      result: Promise.resolve({ status: 'cancelled' as const }),
+      cancel: vi.fn().mockResolvedValue(undefined),
+    })),
     dispose: vi.fn(),
   };
 }

@@ -186,6 +186,27 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     const docsListing = await client.readDirectory({ path: '/docs' });
     expect(docsListing.entries.map(entry => entry.name)).toEqual(['final.txt']);
 
+    const suggestions = await client.suggestArchiveExclusions({
+      directoryPath: '/docs',
+      query: 'fin',
+      excludedRelativePaths: [],
+    });
+    expect(suggestions.suggestions).toEqual([{
+      relativePath: 'final.txt',
+      name: 'final.txt',
+      kind: 'file',
+    }]);
+
+    const archiveJob = client.startDirectoryArchive({
+      directoryPath: '/docs',
+      excludedRelativePaths: [],
+    });
+    const archiveResponse = await archiveJob.result;
+    expect(archiveResponse.status).toBe('completed');
+    if (archiveResponse.status === 'completed') {
+      expect(archiveResponse.blob.size).toBeGreaterThan(0);
+    }
+
     await client.deleteEntries({ paths: ['/final.txt', '/upload.txt'] });
     const afterDeleteListing = await client.readDirectory({ path: '/' });
     expect(afterDeleteListing.entries.map(entry => entry.name).sort()).toEqual(['data.json', 'docs']);

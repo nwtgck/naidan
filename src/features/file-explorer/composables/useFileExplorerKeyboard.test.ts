@@ -36,6 +36,38 @@ function makeKey(key: string, opts: { ctrlKey?: boolean, metaKey?: boolean, shif
 
 function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerContext {
   const entries = [makeEntry('alpha'), makeEntry('bravo'), makeEntry('charlie')];
+  const directoryDownload = overrides.directoryDownload ?? {
+    TEST_ONLY: {},
+    state: {
+      visibility: 'hidden' as const,
+      target: undefined,
+      archiveName: '',
+      exclusions: [],
+      query: '',
+      querySuggestion: undefined,
+      suggestions: [],
+      suggestionStatus: 'idle' as const,
+      suggestionResultState: 'complete' as const,
+      selectedSuggestionIndex: undefined,
+      creationStatus: 'idle' as const,
+    },
+    open: vi.fn(),
+    close: vi.fn().mockResolvedValue(undefined),
+    setArchiveName: vi.fn(),
+    setQuery: vi.fn(),
+    openSuggestions: vi.fn(),
+    closeSuggestions: vi.fn(),
+    selectSuggestion: vi.fn(),
+    moveSuggestionSelection: vi.fn(),
+    applySelectedSuggestion: vi.fn(),
+    applySuggestion: vi.fn(),
+    addQueryExclusion: vi.fn(),
+    addExclusion: vi.fn(),
+    removeExclusion: vi.fn(),
+    confirm: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+  };
+
   return {
     root: { kind: 'opfs-root', rootName: 'OPFS' },
     currentDirectoryPath: '/',
@@ -112,6 +144,7 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
     isLocked: false,
     toggleLock: vi.fn(),
     ...overrides,
+    directoryDownload,
   };
 }
 

@@ -1,5 +1,6 @@
 
 import { WeshVFS } from '@/features/wesh/vfs';
+import { openFileReadStream } from '@/features/wesh/utils/fs';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
 import {
   createOpfsNaidanSysfsStorageReader,
@@ -8,6 +9,19 @@ import {
 import { EXTENSION_LANGUAGE_MAP, MEDIA_PREVIEW_SIZE_LIMIT, TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
 import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logic/utils';
 import {
+  isDirectoryDownloadPathExcluded,
+  isSafeDirectoryDownloadPathSegment,
+  normalizeDirectoryDownloadRelativePath,
+} from '@/features/file-explorer/logic/directory-download';
+import {
+  createFileExplorerDirectoryArchive,
+  type FileExplorerDirectoryArchiveAccess,
+  type FileExplorerDirectoryArchiveSourceEntry,
+} from './directory-archive';
+import {
+  fileExplorerCancelDirectoryArchiveRequestSchema,
+  fileExplorerCreateDirectoryArchiveRequestSchema,
+  fileExplorerCreateDirectoryArchiveResponseSchema,
   fileExplorerCreateFileRequestSchema,
   fileExplorerCreateFolderRequestSchema,
   fileExplorerDeleteEntriesRequestSchema,
@@ -23,6 +37,8 @@ import {
   fileExplorerReadPreviewResponseSchema,
   fileExplorerRenameEntryRequestSchema,
   fileExplorerTransferEntriesRequestSchema,
+  fileExplorerSuggestArchiveExclusionsRequestSchema,
+  fileExplorerSuggestArchiveExclusionsResponseSchema,
   fileExplorerUploadFilesRequestSchema,
   type FileExplorerEntryRecord,
   type FileExplorerPathSegment,
@@ -75,6 +91,23 @@ type ResolvedVirtualFile = {
 };
 
 const sessions = new Map<string, FileExplorerSession>();
+const directoryArchiveJobs = new Map<string, AbortController>();
+
+function createDirectoryArchiveJobKey({ sessionId, jobId }: { sessionId: string, jobId: string }): string {
+  return `${sessionId}\0${jobId}`;
+}
+
+function normalizeArchiveExcludedRelativePaths({ paths }: { paths: readonly string[] }): string[] {
+  const normalizedPaths = new Set<string>();
+  for (const path of paths) {
+    const normalized = normalizeDirectoryDownloadRelativePath({ path });
+    if (normalized === undefined) {
+      throw new Error(`Invalid archive exclusion path: ${path}`);
+    }
+    normalizedPaths.add(normalized);
+  }
+  return [...normalizedPaths];
+}
 
 function createSessionId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -657,6 +690,248 @@ async function listWeshVirtualDirectoryEntries({
   return entries;
 }
 
+
+function createDirectoryArchiveAccess({
+  session,
+}: {
+  session: FileExplorerSession,
+}): FileExplorerDirectoryArchiveAccess {
+  return {
+    async listDirectory({ path }) {
+      const directory = await resolveDirectory({ session, path });
+      switch (directory.kind) {
+      case 'native-directory': {
+        const entries = [];
+        for await (const childHandle of directory.handle.values()) {
+          switch (childHandle.kind) {
+          case 'directory':
+            entries.push({
+              name: childHandle.name,
+              kind: 'directory' as const,
+              modifiedAt: undefined,
+            });
+            break;
+          case 'file': {
+            const file = await (childHandle as FileSystemFileHandle).getFile();
+            entries.push({
+              name: childHandle.name,
+              kind: 'file' as const,
+              modifiedAt: new Date(file.lastModified),
+            });
+            break;
+          }
+          default: {
+            const _ex: never = childHandle;
+            throw new Error(`Unhandled native archive entry: ${String(_ex)}`);
+          }
+          }
+        }
+        return entries;
+      }
+      case 'virtual-directory':
+        switch (session.kind) {
+        case 'wesh-mounts': {
+          const entries = [];
+          for await (const entry of session.vfs.readDir({ path: directory.path })) {
+            switch (entry.type) {
+            case 'directory': {
+              const stat = await session.vfs.stat({ path: entry.fullPath });
+              entries.push({
+                name: entry.name,
+                kind: 'directory' as const,
+                modifiedAt: stat.mtime > 0 ? new Date(stat.mtime) : undefined,
+              });
+              break;
+            }
+            case 'file': {
+              const stat = await session.vfs.stat({ path: entry.fullPath });
+              entries.push({
+                name: entry.name,
+                kind: 'file' as const,
+                modifiedAt: stat.mtime > 0 ? new Date(stat.mtime) : undefined,
+              });
+              break;
+            }
+            case 'symlink':
+            case 'fifo':
+            case 'chardev':
+              entries.push({
+                name: entry.name,
+                kind: 'unsupported' as const,
+                modifiedAt: undefined,
+              });
+              break;
+            default: {
+              const _ex: never = entry.type;
+              throw new Error(`Unhandled virtual archive entry: ${String(_ex)}`);
+            }
+            }
+          }
+          return entries;
+        }
+        case 'native-directory':
+          throw new Error(`Virtual directory not supported for native session: ${directory.path}`);
+        default: {
+          const _ex: never = session;
+          throw new Error(`Unhandled file explorer session: ${String(_ex)}`);
+        }
+        }
+      default: {
+        const _ex: never = directory;
+        throw new Error(`Unhandled archive directory: ${String(_ex)}`);
+      }
+      }
+    },
+    async openFileStream({ path }) {
+      const file = await resolveFile({ session, path });
+      switch (file.kind) {
+      case 'native-file':
+        return (await file.handle.getFile()).stream() as ReadableStream<Uint8Array>;
+      case 'virtual-file':
+        return openFileReadStream({ files: file.vfs, path: file.path });
+      default: {
+        const _ex: never = file;
+        throw new Error(`Unhandled archive file: ${String(_ex)}`);
+      }
+      }
+    },
+  };
+}
+
+async function listDirectoryArchiveSuggestionEntries({
+  session,
+  path,
+}: {
+  session: FileExplorerSession,
+  path: string,
+}): Promise<FileExplorerDirectoryArchiveSourceEntry[]> {
+  const directory = await resolveDirectory({ session, path });
+  switch (directory.kind) {
+  case 'native-directory': {
+    const entries: FileExplorerDirectoryArchiveSourceEntry[] = [];
+    for await (const childHandle of directory.handle.values()) {
+      switch (childHandle.kind) {
+      case 'directory':
+      case 'file':
+        entries.push({
+          name: childHandle.name,
+          kind: childHandle.kind,
+          modifiedAt: undefined,
+        });
+        break;
+      default: {
+        const _ex: never = childHandle;
+        throw new Error(`Unhandled native archive suggestion entry: ${String(_ex)}`);
+      }
+      }
+    }
+    return entries;
+  }
+  case 'virtual-directory':
+    switch (session.kind) {
+    case 'wesh-mounts': {
+      const entries: FileExplorerDirectoryArchiveSourceEntry[] = [];
+      for await (const entry of session.vfs.readDir({ path: directory.path })) {
+        switch (entry.type) {
+        case 'directory':
+        case 'file':
+          entries.push({
+            name: entry.name,
+            kind: entry.type,
+            modifiedAt: undefined,
+          });
+          break;
+        case 'symlink':
+        case 'fifo':
+        case 'chardev':
+          break;
+        default: {
+          const _ex: never = entry.type;
+          throw new Error(`Unhandled virtual archive suggestion entry: ${String(_ex)}`);
+        }
+        }
+      }
+      return entries;
+    }
+    case 'native-directory':
+      throw new Error(`Virtual directory not supported for native session: ${directory.path}`);
+    default: {
+      const _ex: never = session;
+      throw new Error(`Unhandled file explorer session: ${String(_ex)}`);
+    }
+    }
+  default: {
+    const _ex: never = directory;
+    throw new Error(`Unhandled archive suggestion directory: ${String(_ex)}`);
+  }
+  }
+}
+
+function resolveArchiveSuggestionQuery({ query }: { query: string }): {
+  parentRelativePath: string,
+  nameQuery: string,
+} | undefined {
+  if (query.startsWith('/')) {
+    return undefined;
+  }
+  const segments = query.split('/');
+  if (segments.some(segment => segment === '..')) {
+    return undefined;
+  }
+  const nameQuery = segments.pop() ?? '';
+  const parentSegments = segments.filter(segment => segment !== '' && segment !== '.');
+  if (parentSegments.some(segment => !isSafeDirectoryDownloadPathSegment({ name: segment }))) {
+    return undefined;
+  }
+  return {
+    parentRelativePath: parentSegments.join('/'),
+    nameQuery,
+  };
+}
+
+function joinRelativePath({ parentPath, name }: { parentPath: string, name: string }): string {
+  return parentPath === '' ? name : `${parentPath}/${name}`;
+}
+
+function isArchiveSuggestionEntry(
+  entry: FileExplorerDirectoryArchiveSourceEntry,
+): entry is FileExplorerDirectoryArchiveSourceEntry & { kind: 'file' | 'directory' } {
+  switch (entry.kind) {
+  case 'file':
+  case 'directory':
+    return true;
+  case 'unsupported':
+    return false;
+  default: {
+    const _ex: never = entry.kind;
+    throw new Error(`Unhandled archive entry kind: ${String(_ex)}`);
+  }
+  }
+}
+
+function getArchiveSuggestionKindOrder({ kind }: { kind: 'file' | 'directory' }): number {
+  switch (kind) {
+  case 'directory':
+    return 0;
+  case 'file':
+    return 1;
+  default: {
+    const _ex: never = kind;
+    throw new Error(`Unhandled archive suggestion kind: ${String(_ex)}`);
+  }
+  }
+}
+
+function joinDirectoryRelativePath({ directoryPath, relativePath }: { directoryPath: string, relativePath: string }): string {
+  if (relativePath === '') {
+    return normalizeExplorerPath({ path: directoryPath });
+  }
+  return joinExplorerPath({
+    parentPath: normalizeExplorerPath({ path: directoryPath }),
+    name: relativePath,
+  });
+}
+
 function buildPathSegments({
   path,
   rootName,
@@ -917,6 +1192,120 @@ export function createFileExplorerWorker(): IFileExplorerWorker {
       }
     },
 
+    async suggestArchiveExclusions({ request }) {
+      const validated = fileExplorerSuggestArchiveExclusionsRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      const query = resolveArchiveSuggestionQuery({ query: validated.query });
+      if (query === undefined) {
+        return fileExplorerSuggestArchiveExclusionsResponseSchema.parse({
+          suggestions: [],
+          resultState: 'complete',
+        });
+      }
+
+      const excludedRelativePaths = new Set(normalizeArchiveExcludedRelativePaths({
+        paths: validated.excludedRelativePaths,
+      }));
+      if (query.parentRelativePath !== '' && isDirectoryDownloadPathExcluded({
+        relativePath: query.parentRelativePath,
+        excludedRelativePaths,
+      })) {
+        return fileExplorerSuggestArchiveExclusionsResponseSchema.parse({
+          suggestions: [],
+          resultState: 'complete',
+        });
+      }
+      const directoryPath = joinDirectoryRelativePath({
+        directoryPath: validated.directoryPath,
+        relativePath: query.parentRelativePath,
+      });
+      const entries = await listDirectoryArchiveSuggestionEntries({
+        session,
+        path: directoryPath,
+      });
+      const matchingEntries = entries
+        .filter(isArchiveSuggestionEntry)
+        .filter(entry => isSafeDirectoryDownloadPathSegment({ name: entry.name }))
+        .filter(entry => entry.name.toLocaleLowerCase().includes(query.nameQuery.toLocaleLowerCase()))
+        .map(entry => ({
+          relativePath: joinRelativePath({
+            parentPath: query.parentRelativePath,
+            name: entry.name,
+          }),
+          name: entry.name,
+          kind: entry.kind,
+        }))
+        .filter(entry => !isDirectoryDownloadPathExcluded({
+          relativePath: entry.relativePath,
+          excludedRelativePaths,
+        }))
+        .sort((a, b) => {
+          const kindOrder = getArchiveSuggestionKindOrder({ kind: a.kind })
+            - getArchiveSuggestionKindOrder({ kind: b.kind });
+          return kindOrder !== 0 ? kindOrder : a.name.localeCompare(b.name);
+        });
+      const maximumSuggestionCount = 50;
+      return fileExplorerSuggestArchiveExclusionsResponseSchema.parse({
+        suggestions: matchingEntries.slice(0, maximumSuggestionCount),
+        resultState: matchingEntries.length > maximumSuggestionCount ? 'truncated' : 'complete',
+      });
+    },
+
+    async createDirectoryArchive({ request }) {
+      const validated = fileExplorerCreateDirectoryArchiveRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      const jobKey = createDirectoryArchiveJobKey({
+        sessionId: validated.sessionId,
+        jobId: validated.jobId,
+      });
+      if (directoryArchiveJobs.has(jobKey)) {
+        throw new Error(`Directory archive job already exists: ${validated.jobId}`);
+      }
+      const abortController = new AbortController();
+      directoryArchiveJobs.set(jobKey, abortController);
+      try {
+        const normalizedPath = normalizeExplorerPath({ path: validated.directoryPath });
+        const archiveRootName = getBaseNameFromPath({
+          path: normalizedPath,
+          rootName: session.rootName,
+        });
+        const result = await createFileExplorerDirectoryArchive({
+          access: createDirectoryArchiveAccess({ session }),
+          sourceRootPath: normalizedPath,
+          archiveRootName,
+          excludedRelativePaths: normalizeArchiveExcludedRelativePaths({
+            paths: validated.excludedRelativePaths,
+          }),
+          signal: abortController.signal,
+        });
+        return fileExplorerCreateDirectoryArchiveResponseSchema.parse({
+          status: 'completed',
+          blob: result.blob,
+          skippedEntryCount: result.skippedEntryCount,
+        });
+      } catch (error: unknown) {
+        if (abortController.signal.aborted) {
+          return fileExplorerCreateDirectoryArchiveResponseSchema.parse({ status: 'cancelled' });
+        }
+        throw error;
+      } finally {
+        directoryArchiveJobs.delete(jobKey);
+      }
+    },
+
+    async cancelDirectoryArchive({ request }) {
+      const validated = fileExplorerCancelDirectoryArchiveRequestSchema.parse(request);
+      const jobKey = createDirectoryArchiveJobKey({
+        sessionId: validated.sessionId,
+        jobId: validated.jobId,
+      });
+      const job = directoryArchiveJobs.get(jobKey);
+      if (job === undefined) {
+        return;
+      }
+      job.abort(new DOMException('Directory archive cancelled', 'AbortError'));
+    },
+
     async createFile({ request }) {
       const validated = fileExplorerCreateFileRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
@@ -1095,6 +1484,12 @@ export function createFileExplorerWorker(): IFileExplorerWorker {
     async disposeSession({ request }) {
       const validated = fileExplorerDisposeSessionRequestSchema.parse(request);
       sessions.delete(validated.sessionId);
+      for (const [jobKey, abortController] of directoryArchiveJobs) {
+        if (jobKey.startsWith(`${validated.sessionId}\0`)) {
+          abortController.abort(new DOMException('File explorer session disposed', 'AbortError'));
+          directoryArchiveJobs.delete(jobKey);
+        }
+      }
     },
   };
 }

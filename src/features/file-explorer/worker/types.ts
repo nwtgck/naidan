@@ -116,6 +116,48 @@ export const fileExplorerReadFileResponseSchema = z.object({
   blob: z.custom<Blob>(),
 });
 
+
+export const fileExplorerSuggestArchiveExclusionsRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  directoryPath: fileExplorerPathSchema,
+  query: z.string(),
+  excludedRelativePaths: z.array(z.string().min(1)),
+});
+
+export const fileExplorerArchiveExclusionSuggestionSchema = z.object({
+  relativePath: z.string().min(1),
+  name: z.string().min(1),
+  kind: z.union([z.literal('file'), z.literal('directory')]),
+});
+
+export const fileExplorerSuggestArchiveExclusionsResponseSchema = z.object({
+  suggestions: z.array(fileExplorerArchiveExclusionSuggestionSchema),
+  resultState: z.union([z.literal('complete'), z.literal('truncated')]),
+});
+
+export const fileExplorerCreateDirectoryArchiveRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  jobId: z.string().min(1),
+  directoryPath: fileExplorerPathSchema,
+  excludedRelativePaths: z.array(z.string().min(1)),
+});
+
+export const fileExplorerCreateDirectoryArchiveResponseSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('completed'),
+    blob: z.custom<Blob>(),
+    skippedEntryCount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    status: z.literal('cancelled'),
+  }),
+]);
+
+export const fileExplorerCancelDirectoryArchiveRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  jobId: z.string().min(1),
+});
+
 export const fileExplorerCreateFileRequestSchema = z.object({
   sessionId: z.string().min(1),
   parentPath: fileExplorerPathSchema,
@@ -171,6 +213,12 @@ export type FileExplorerReadPreviewRequest = z.infer<typeof fileExplorerReadPrev
 export type FileExplorerReadPreviewResponse = z.infer<typeof fileExplorerReadPreviewResponseSchema>;
 export type FileExplorerReadFileRequest = z.infer<typeof fileExplorerReadFileRequestSchema>;
 export type FileExplorerReadFileResponse = z.infer<typeof fileExplorerReadFileResponseSchema>;
+
+export type FileExplorerSuggestArchiveExclusionsRequest = z.infer<typeof fileExplorerSuggestArchiveExclusionsRequestSchema>;
+export type FileExplorerSuggestArchiveExclusionsResponse = z.infer<typeof fileExplorerSuggestArchiveExclusionsResponseSchema>;
+export type FileExplorerCreateDirectoryArchiveRequest = z.infer<typeof fileExplorerCreateDirectoryArchiveRequestSchema>;
+export type FileExplorerCreateDirectoryArchiveResponse = z.infer<typeof fileExplorerCreateDirectoryArchiveResponseSchema>;
+export type FileExplorerCancelDirectoryArchiveRequest = z.infer<typeof fileExplorerCancelDirectoryArchiveRequestSchema>;
 export type FileExplorerCreateFileRequest = z.infer<typeof fileExplorerCreateFileRequestSchema>;
 export type FileExplorerCreateFolderRequest = z.infer<typeof fileExplorerCreateFolderRequestSchema>;
 export type FileExplorerDeleteEntriesRequest = z.infer<typeof fileExplorerDeleteEntriesRequestSchema>;
@@ -184,6 +232,9 @@ export interface IFileExplorerWorker {
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ request }: { request: FileExplorerReadFileRequest }): Promise<FileExplorerReadFileResponse>,
+  suggestArchiveExclusions({ request }: { request: FileExplorerSuggestArchiveExclusionsRequest }): Promise<FileExplorerSuggestArchiveExclusionsResponse>,
+  createDirectoryArchive({ request }: { request: FileExplorerCreateDirectoryArchiveRequest }): Promise<FileExplorerCreateDirectoryArchiveResponse>,
+  cancelDirectoryArchive({ request }: { request: FileExplorerCancelDirectoryArchiveRequest }): Promise<void>,
   createFile({ request }: { request: FileExplorerCreateFileRequest }): Promise<void>,
   createFolder({ request }: { request: FileExplorerCreateFolderRequest }): Promise<void>,
   deleteEntries({ request }: { request: FileExplorerDeleteEntriesRequest }): Promise<void>,
@@ -194,10 +245,18 @@ export interface IFileExplorerWorker {
   disposeSession({ request }: { request: FileExplorerDisposeSessionRequest }): Promise<void>,
 }
 
+
+export interface FileExplorerDirectoryArchiveJob {
+  result: Promise<FileExplorerCreateDirectoryArchiveResponse>,
+  cancel(): Promise<void>,
+}
+
 export interface FileExplorerWorkerClient {
   readDirectory({ path }: { path: string }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ path, mode }: { path: string, mode: 'bounded' | 'force' }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ path }: { path: string }): Promise<FileExplorerReadFileResponse>,
+  suggestArchiveExclusions({ directoryPath, query, excludedRelativePaths }: { directoryPath: string, query: string, excludedRelativePaths: string[] }): Promise<FileExplorerSuggestArchiveExclusionsResponse>,
+  startDirectoryArchive({ directoryPath, excludedRelativePaths }: { directoryPath: string, excludedRelativePaths: string[] }): FileExplorerDirectoryArchiveJob,
   createFile({ parentPath, name }: { parentPath: string, name: string }): Promise<void>,
   createFolder({ parentPath, name }: { parentPath: string, name: string }): Promise<void>,
   deleteEntries({ paths }: { paths: string[] }): Promise<void>,

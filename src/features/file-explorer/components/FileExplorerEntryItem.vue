@@ -5,6 +5,7 @@ import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
 import FileExplorerRenameInput from './FileExplorerRenameInput.vue';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import { formatSize, formatDate } from '@/features/file-explorer/logic/utils';
+import { useFileExplorerLongPress } from '@/features/file-explorer/composables/useFileExplorerLongPress';
 
 const props = defineProps<{
   entry: FileExplorerEntry,
@@ -28,6 +29,20 @@ const emit = defineEmits<{
   (e: 'drop', payload: { event: DragEvent }): void,
 }>();
 
+const longPress = useFileExplorerLongPress({
+  onLongPress: ({ event }) => emit('contextmenu', { event }),
+  isEnabled: () => !props.isRenaming,
+});
+
+function onClick({ event }: { event: MouseEvent }): void {
+  if (longPress.consumeClick({ event })) return;
+  emit('click', { event });
+}
+
+function onContextMenu({ event }: { event: MouseEvent }): void {
+  longPress.cancel();
+  emit('contextmenu', { event });
+}
 
 defineExpose({
   TEST_ONLY: {
@@ -52,9 +67,10 @@ defineExpose({
       isCut ? 'opacity-50' : '',
     ]"
     :draggable="!isRenaming"
-    @click="emit('click', { event: $event })"
+    @pointerdown="longPress.onPointerDown({ event: $event })"
+    @click="onClick({ event: $event })"
     @dblclick="emit('dblclick')"
-    @contextmenu="emit('contextmenu', { event: $event })"
+    @contextmenu="onContextMenu({ event: $event })"
     @dragstart="emit('dragstart', { event: $event })"
     @dragover.prevent="emit('dragover', { event: $event })"
     @dragleave="emit('dragleave')"
@@ -109,9 +125,10 @@ defineExpose({
       isCut ? 'opacity-50' : '',
     ]"
     :draggable="!isRenaming"
-    @click="emit('click', { event: $event })"
+    @pointerdown="longPress.onPointerDown({ event: $event })"
+    @click="onClick({ event: $event })"
     @dblclick="emit('dblclick')"
-    @contextmenu="emit('contextmenu', { event: $event })"
+    @contextmenu="onContextMenu({ event: $event })"
     @dragstart="emit('dragstart', { event: $event })"
     @dragover.prevent="emit('dragover', { event: $event })"
     @dragleave="emit('dragleave')"
@@ -155,9 +172,10 @@ defineExpose({
           : 'hover:bg-gray-100 dark:hover:bg-gray-800',
       isCut ? 'opacity-50' : '',
     ]"
-    @click="emit('click', { event: $event })"
+    @pointerdown="longPress.onPointerDown({ event: $event })"
+    @click="onClick({ event: $event })"
     @dblclick="emit('dblclick')"
-    @contextmenu="emit('contextmenu', { event: $event })"
+    @contextmenu="onContextMenu({ event: $event })"
   >
     <FileExplorerEntryIcon
       :kind="entry.kind"

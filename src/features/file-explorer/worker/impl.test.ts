@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import JSZip from 'jszip';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } from '@/00-storage/mapper/mappers';
 import { createFileExplorerWorker } from './impl';
@@ -43,6 +44,172 @@ describe('file-explorer.worker.impl', () => {
 
     expect(response.entries.map(entry => entry.name).sort()).toEqual(['docs', 'readme.txt']);
     expect(response.entries.find(entry => entry.name === 'readme.txt')?.size).toBe(5);
+  });
+
+  it('suggests descendants and archives a directory with its own root', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const projectHandle = await rootHandle.getDirectoryHandle('my-project', { create: true });
+    const srcHandle = await projectHandle.getDirectoryHandle('src', { create: true });
+    const sourceFileHandle = await srcHandle.getFileHandle('main.ts', { create: true });
+    const sourceWritable = await sourceFileHandle.createWritable();
+    await sourceWritable.write('export const value = 1;');
+    await sourceWritable.close();
+    const distHandle = await projectHandle.getDirectoryHandle('dist', { create: true });
+    const generatedFileHandle = await distHandle.getFileHandle('generated.js', { create: true });
+    const generatedWritable = await generatedFileHandle.createWritable();
+    await generatedWritable.write('generated');
+    await generatedWritable.close();
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    const suggestions = await worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/my-project',
+        query: 'sr',
+        excludedRelativePaths: [],
+      },
+    });
+    expect(suggestions).toEqual({
+      suggestions: [{
+        relativePath: 'src',
+        name: 'src',
+        kind: 'directory',
+      }],
+      resultState: 'complete',
+    });
+
+    const nestedSuggestions = await worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/my-project',
+        query: 'src/ma',
+        excludedRelativePaths: [],
+      },
+    });
+    expect(nestedSuggestions).toEqual({
+      suggestions: [{
+        relativePath: 'src/main.ts',
+        name: 'main.ts',
+        kind: 'file',
+      }],
+      resultState: 'complete',
+    });
+
+    const archive = await worker.createDirectoryArchive({
+      request: {
+        sessionId,
+        jobId: 'archive-job-1',
+        directoryPath: '/my-project',
+        excludedRelativePaths: ['dist'],
+      },
+    });
+    expect(archive.status).toBe('completed');
+    if (archive.status !== 'completed') throw new Error('Expected a completed archive');
+
+    const zipBytes = Uint8Array.from(new Uint8Array(await archive.blob.arrayBuffer()));
+    const zip = await JSZip.loadAsync(zipBytes);
+    expect(Object.keys(zip.files)).toContain('my-project/');
+    expect(Object.keys(zip.files)).toContain('my-project/src/');
+    expect(await zip.file('my-project/src/main.ts')?.async('text')).toBe('export const value = 1;');
+    expect(Object.keys(zip.files).some(path => path.startsWith('my-project/dist/'))).toBe(false);
+  });
+
+
+  it('lists exclusion suggestions without reading file metadata', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const projectHandle = await rootHandle.getDirectoryHandle('project', { create: true });
+    const fileHandle = await projectHandle.getFileHandle('readme.txt', { create: true });
+    const getFile = vi.spyOn(fileHandle, 'getFile');
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    const suggestions = await worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/project',
+        query: '',
+        excludedRelativePaths: [],
+      },
+    });
+
+    expect(suggestions.suggestions).toContainEqual({
+      relativePath: 'readme.txt',
+      name: 'readme.txt',
+      kind: 'file',
+    });
+    expect(getFile).not.toHaveBeenCalled();
+  });
+
+  it('does not resolve an unsafe parent path while suggesting exclusions', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    await expect(worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/',
+        query: 'unsafe\\segment/',
+        excludedRelativePaths: [],
+      },
+    })).resolves.toEqual({
+      suggestions: [],
+      resultState: 'complete',
+    });
+  });
+
+
+  it('does not traverse a directory that is already excluded', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    await expect(worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/',
+        query: 'missing/',
+        excludedRelativePaths: ['missing'],
+      },
+    })).resolves.toEqual({
+      suggestions: [],
+      resultState: 'complete',
+    });
   });
 
   it('reads text previews and formats JSON', async () => {

@@ -4,6 +4,7 @@ import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
 import FileExplorerEmptyState from './FileExplorerEmptyState.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
+import { useFileExplorerLongPress } from '@/features/file-explorer/composables/useFileExplorerLongPress';
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
 
@@ -73,6 +74,21 @@ function onBackgroundContextMenu({ event }: { event: MouseEvent }): void {
   ctx.showContextMenu({ event, target: { kind: 'background' } });
 }
 
+const backgroundLongPress = useFileExplorerLongPress({
+  onLongPress: ({ event }) => onBackgroundContextMenu({ event }),
+  isEnabled: undefined,
+});
+
+function onBackgroundNativeContextMenu({ event }: { event: MouseEvent }): void {
+  backgroundLongPress.cancel();
+  onBackgroundContextMenu({ event });
+}
+
+function onBackgroundClick({ event }: { event: MouseEvent }): void {
+  if (backgroundLongPress.consumeClick({ event })) return;
+  ctx.applySelection({ action: { type: 'clear' } });
+}
+
 const isExternalDragOver = ref(false);
 
 function onExternalDragOver({ event }: { event: DragEvent }): void {
@@ -102,8 +118,9 @@ defineExpose({
     class="flex-1 overflow-y-auto overscroll-contain p-3 transition-colors"
     :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
     data-testid="icon-view"
-    @contextmenu.self="onBackgroundContextMenu({ event: $event })"
-    @click.self="ctx.applySelection({ action: { type: 'clear' } })"
+    @pointerdown.self="backgroundLongPress.onPointerDown({ event: $event })"
+    @contextmenu.self="onBackgroundNativeContextMenu({ event: $event })"
+    @click.self="onBackgroundClick({ event: $event })"
     @dragover.prevent="onExternalDragOver({ event: $event })"
     @dragleave="isExternalDragOver = false"
     @drop.prevent="onExternalDrop({ event: $event })"

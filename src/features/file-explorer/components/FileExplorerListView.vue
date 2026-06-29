@@ -8,6 +8,7 @@ import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composable
 import type { FileExplorerEntry, SortField } from '@/features/file-explorer/logic/types';
 import { LIST_ROW_HEIGHT, VIRTUAL_SCROLL_OVERSCAN } from '@/features/file-explorer/logic/constants';
 import { useVirtualizedFileExplorerList } from '@/features/file-explorer/composables/useVirtualizedFileExplorerList';
+import { useFileExplorerLongPress } from '@/features/file-explorer/composables/useFileExplorerLongPress';
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
 const scrollContainerRef = ref<HTMLElement | undefined>(undefined);
@@ -126,7 +127,18 @@ function onBackgroundContextMenu({ event }: { event: MouseEvent }): void {
   ctx.showContextMenu({ event, target: { kind: 'background' } });
 }
 
+const backgroundLongPress = useFileExplorerLongPress({
+  onLongPress: ({ event }) => onBackgroundContextMenu({ event }),
+  isEnabled: undefined,
+});
+
+function onBackgroundNativeContextMenu({ event }: { event: MouseEvent }): void {
+  backgroundLongPress.cancel();
+  onBackgroundContextMenu({ event });
+}
+
 function onBackgroundClick({ event }: { event: MouseEvent }): void {
+  if (backgroundLongPress.consumeClick({ event })) return;
   if ((event.target as HTMLElement).dataset.listBackground) {
     ctx.applySelection({ action: { type: 'clear' } });
   }
@@ -160,7 +172,8 @@ defineExpose({
   <div
     class="flex flex-col flex-1 overflow-hidden"
     data-testid="list-view"
-    @contextmenu.self="onBackgroundContextMenu({ event: $event })"
+    @pointerdown.self="backgroundLongPress.onPointerDown({ event: $event })"
+    @contextmenu.self="onBackgroundNativeContextMenu({ event: $event })"
     @click="onBackgroundClick({ event: $event })"
   >
     <!-- Column Headers -->
@@ -190,7 +203,8 @@ defineExpose({
       :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
       data-list-background="true"
       data-testid="list-scroll-container"
-      @contextmenu.self="onBackgroundContextMenu({ event: $event })"
+      @pointerdown.self="backgroundLongPress.onPointerDown({ event: $event })"
+      @contextmenu.self="onBackgroundNativeContextMenu({ event: $event })"
       @dragover.prevent="onExternalDragOver({ event: $event })"
       @dragleave="isExternalDragOver = false"
       @drop.prevent="onExternalDrop({ event: $event })"

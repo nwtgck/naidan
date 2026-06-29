@@ -231,6 +231,19 @@ async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
       }
       return { blob: new Blob([new Uint8Array(await (await fileHandle.getFile()).arrayBuffer())]) };
     },
+    async suggestArchiveExclusions() {
+      return { suggestions: [], resultState: 'complete' as const };
+    },
+    startDirectoryArchive() {
+      return {
+        result: Promise.resolve({
+          status: 'completed' as const,
+          blob: new Blob(),
+          skippedEntryCount: 0,
+        }),
+        async cancel() {},
+      };
+    },
     async createFile({ parentPath, name }) {
       const directory = await resolveDirectory(parentPath);
       await directory.fileCreate({ name });
@@ -353,6 +366,31 @@ function setListViewportHeight({
   });
   container.dispatchEvent(new Event('scroll'));
   return container;
+}
+
+function dispatchTouchPointerEvent({
+  target,
+  type,
+  pointerId = 1,
+  clientX = 40,
+  clientY = 50,
+}: {
+  target: EventTarget,
+  type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel',
+  pointerId?: number,
+  clientX?: number,
+  clientY?: number,
+}): void {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    pointerType: { value: 'touch' },
+    pointerId: { value: pointerId },
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+    isPrimary: { value: true },
+    button: { value: 0 },
+  });
+  target.dispatchEvent(event);
 }
 
 describe('FileExplorer.vue', () => {
@@ -635,6 +673,46 @@ describe('FileExplorer.vue', () => {
     expect(document.body.querySelector('[data-testid="context-menu"]')).not.toBeNull();
   });
 
+  it('long-pressing an entry on a touch device shows the same context menu', async () => {
+    root.addFile('touch-file.txt');
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+    vi.useFakeTimers();
+
+    try {
+      const entry = wrapper.get('[data-testid="entry-item-touch-file.txt"]').element;
+      dispatchTouchPointerEvent({ target: entry, type: 'pointerdown', clientX: 80, clientY: 90 });
+      vi.advanceTimersByTime(600);
+      await flushPromises();
+
+      expect(document.body.querySelector('[data-testid="context-menu"]')).not.toBeNull();
+      expect(document.body.querySelector('[data-testid="context-menu"]')?.textContent).toContain('Download');
+      dispatchTouchPointerEvent({ target: window, type: 'pointerup', clientX: 80, clientY: 90 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('long-pressing the list background shows the background context menu', async () => {
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+    vi.useFakeTimers();
+
+    try {
+      const background = wrapper.get('[data-testid="list-scroll-container"]').element;
+      dispatchTouchPointerEvent({ target: background, type: 'pointerdown' });
+      vi.advanceTimersByTime(600);
+      await flushPromises();
+
+      const menu = document.body.querySelector('[data-testid="context-menu"]');
+      expect(menu).not.toBeNull();
+      expect(menu?.textContent).toContain('New File');
+      dispatchTouchPointerEvent({ target: window, type: 'pointerup' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('Escape hides context menu', async () => {
     root.addFile('ctx-file.txt');
     const wrapper = tracked(mountExplorer(root));
@@ -647,6 +725,27 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
 
     expect(document.body.querySelector('[data-testid="context-menu"]')).toBeNull();
+  });
+
+  it('opens the directory download dialog with the selected directory name', async () => {
+    root.addDir('my-project');
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    await wrapper.find('[data-testid="entry-item-my-project"]').trigger('contextmenu', { clientX: 50, clientY: 50 });
+    await flushPromises();
+
+    const downloadButton = Array.from(document.body.querySelectorAll('[data-testid="context-menu"] button'))
+      .find(button => button.textContent?.includes('Download'));
+    expect(downloadButton).toBeDefined();
+    downloadButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
+
+    const dialog = document.body.querySelector('[data-testid="directory-download-dialog"]');
+    expect(dialog).not.toBeNull();
+    const archiveName = document.body.querySelector<HTMLInputElement>('[data-testid="directory-download-archive-name"]');
+    expect(archiveName?.value).toBe('my-project');
+    expect(dialog?.textContent).not.toContain('/my-project');
   });
 
   // ---- Preview panel ----

@@ -3,6 +3,8 @@ import * as Comlink from 'comlink';
 import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import {
+  fileExplorerCreateDirectoryArchiveResponseSchema,
+  fileExplorerSuggestArchiveExclusionsResponseSchema,
   fileExplorerPrepareSessionResponseSchema,
   fileExplorerReadDirectoryResponseSchema,
   fileExplorerReadFileResponseSchema,
@@ -12,6 +14,13 @@ import {
   type IFileExplorerWorker,
 } from './types';
 import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
+
+function createDirectoryArchiveJobId(): string {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `file-explorer-directory-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 export async function createFileExplorerWorkerClient({
   root,
@@ -74,6 +83,24 @@ export async function createFileExplorerWorkerClient({
       return fileExplorerReadFileResponseSchema.parse(
         await fileExplorer.readFile({ request: { sessionId, path } }),
       );
+    },
+    async suggestArchiveExclusions({ directoryPath, query, excludedRelativePaths }) {
+      return fileExplorerSuggestArchiveExclusionsResponseSchema.parse(
+        await fileExplorer.suggestArchiveExclusions({
+          request: { sessionId, directoryPath, query, excludedRelativePaths },
+        }),
+      );
+    },
+    startDirectoryArchive({ directoryPath, excludedRelativePaths }) {
+      const jobId = createDirectoryArchiveJobId();
+      return {
+        result: fileExplorer.createDirectoryArchive({
+          request: { sessionId, jobId, directoryPath, excludedRelativePaths },
+        }).then(response => fileExplorerCreateDirectoryArchiveResponseSchema.parse(response)),
+        async cancel() {
+          await fileExplorer.cancelDirectoryArchive({ request: { sessionId, jobId } });
+        },
+      };
     },
     async createFile({ parentPath, name }) {
       await fileExplorer.createFile({ request: { sessionId, parentPath, name } });

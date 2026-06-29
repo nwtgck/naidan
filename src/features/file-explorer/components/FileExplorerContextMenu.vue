@@ -59,9 +59,9 @@ const menuItems = computed<MenuItem[]>(() => {
   switch (target.value.kind) {
   case 'entry': {
     const firstEntry = target.value.selectedEntries[0];
-    const isSingleFile =
+    const isSingleEntry =
       target.value.selectedEntries.length === 1 &&
-      firstEntry?.kind === 'file';
+      firstEntry !== undefined;
 
     const items: MenuItemDraft[] = [
       { type: 'action', action: 'open', label: lazyStrings.fileExplorer__open(), icon: FolderOpenIcon },
@@ -78,7 +78,7 @@ const menuItems = computed<MenuItem[]>(() => {
 
     items.push({ type: 'divider' });
 
-    if (isSingleFile) {
+    if (isSingleEntry) {
       items.push({ type: 'action', action: 'download', label: lazyStrings.fileExplorer__download(), icon: DownloadIcon });
     }
 

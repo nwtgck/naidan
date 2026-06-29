@@ -11,6 +11,52 @@ export type ClipboardOperation = 'cut' | 'copy';
 export type PathBarMode = 'breadcrumb' | 'editable';
 export type RenameState = 'idle' | 'renaming';
 
+export type DirectoryDownloadSuggestion = {
+  relativePath: string,
+  name: string,
+  kind: EntryKind,
+};
+
+export type DirectoryDownloadExclusion = DirectoryDownloadSuggestion;
+export type DirectoryDownloadVisibility = 'visible' | 'hidden';
+export type DirectoryArchiveCreationStatus = 'idle' | 'creating';
+export type DirectoryArchiveSuggestionStatus = 'idle' | 'loading' | 'ready' | 'error';
+export type DirectoryArchiveSuggestionResultState = 'complete' | 'truncated';
+
+export interface DirectoryDownloadState {
+  visibility: DirectoryDownloadVisibility,
+  target: { path: string, name: string } | undefined,
+  archiveName: string,
+  exclusions: DirectoryDownloadExclusion[],
+  query: string,
+  querySuggestion: DirectoryDownloadSuggestion | undefined,
+  suggestions: DirectoryDownloadSuggestion[],
+  suggestionStatus: DirectoryArchiveSuggestionStatus,
+  suggestionResultState: DirectoryArchiveSuggestionResultState,
+  selectedSuggestionIndex: number | undefined,
+  creationStatus: DirectoryArchiveCreationStatus,
+}
+
+export interface FileExplorerDirectoryDownloadController {
+  readonly state: DirectoryDownloadState,
+  open({ target }: { target: { path: string, name: string } }): void,
+  close(): Promise<void>,
+  setArchiveName({ value }: { value: string }): void,
+  setQuery({ value }: { value: string }): void,
+  openSuggestions(): void,
+  closeSuggestions(): void,
+  selectSuggestion({ index }: { index: number }): void,
+  moveSuggestionSelection({ direction }: { direction: 'previous' | 'next' }): void,
+  applySelectedSuggestion(): void,
+  applySuggestion({ suggestion }: { suggestion: DirectoryDownloadSuggestion }): void,
+  addQueryExclusion(): void,
+  addExclusion({ suggestion }: { suggestion: DirectoryDownloadSuggestion }): void,
+  removeExclusion({ relativePath }: { relativePath: string }): void,
+  confirm(): Promise<void>,
+  dispose(): void,
+  readonly TEST_ONLY: Record<never, never>,
+}
+
 export interface FileExplorerEntry {
   path: string,
   name: string,
@@ -186,6 +232,8 @@ export interface FileExplorerContext {
 
   columnPanes: ColumnPaneState[],
   selectColumnEntry: ({ paneIndex, entryName }: { paneIndex: number, entryName: string }) => Promise<void>,
+
+  directoryDownload: FileExplorerDirectoryDownloadController,
 
   statusBarInfo: StatusBarInfo,
 }

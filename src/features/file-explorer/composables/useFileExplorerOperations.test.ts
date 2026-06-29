@@ -51,6 +51,14 @@ describe('useFileExplorerOperations', () => {
       copyEntries: vi.fn().mockResolvedValue(undefined),
       moveEntries: vi.fn().mockResolvedValue(undefined),
       uploadFiles: vi.fn().mockResolvedValue(undefined),
+      suggestArchiveExclusions: vi.fn().mockResolvedValue({
+        suggestions: [],
+        resultState: 'complete',
+      }),
+      startDirectoryArchive: vi.fn(() => ({
+        result: Promise.resolve({ status: 'cancelled' as const }),
+        cancel: vi.fn().mockResolvedValue(undefined),
+      })),
       dispose: vi.fn().mockResolvedValue(undefined),
     };
   });

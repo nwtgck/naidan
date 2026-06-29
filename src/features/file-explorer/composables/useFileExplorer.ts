@@ -19,6 +19,7 @@ import { useFileExplorerPreview } from './useFileExplorerPreview';
 import { useFileExplorerClipboard } from './useFileExplorerClipboard';
 import { useFileExplorerContextMenu } from './useFileExplorerContextMenu';
 import { useFileExplorerDragDrop } from './useFileExplorerDragDrop';
+import { useFileExplorerDirectoryDownload } from './useFileExplorerDirectoryDownload';
 import { useToast } from '@/composables/useToast';
 import { usePrompt } from '@/composables/usePrompt';
 
@@ -81,6 +82,7 @@ export async function useFileExplorer({
   });
 
   const preview = useFileExplorerPreview({ client });
+  const directoryDownload = useFileExplorerDirectoryDownload({ client });
   const clipboard = useFileExplorerClipboard();
   const ctxMenu = useFileExplorerContextMenu();
   const dnd = useFileExplorerDragDrop({
@@ -224,11 +226,32 @@ export async function useFileExplorer({
       break;
     case 'download':
       switch (targetCtx.kind) {
-      case 'entry':
-        for (const entry of targetCtx.selectedEntries) {
+      case 'entry': {
+        const entry = targetCtx.selectedEntries.length === 1
+          ? targetCtx.selectedEntries[0]
+          : undefined;
+        if (entry === undefined) {
+          break;
+        }
+        switch (entry.kind) {
+        case 'file':
           await ops.downloadEntry({ entry });
+          break;
+        case 'directory':
+          directoryDownload.open({
+            target: {
+              path: entry.path,
+              name: entry.name,
+            },
+          });
+          break;
+        default: {
+          const _exhaustiveCheck: never = entry.kind;
+          throw new Error(`Unhandled download entry kind: ${String(_exhaustiveCheck)}`);
+        }
         }
         break;
+      }
       case 'background':
         break;
       default: {
@@ -455,6 +478,8 @@ export async function useFileExplorer({
       return nav.columnPanes.value;
     },
     selectColumnEntry: nav.selectColumnEntry,
+
+    directoryDownload,
 
     get statusBarInfo() {
       return statusBarInfo.value;

@@ -1237,6 +1237,8 @@ import { contextCompact__response_was_empty } from '@/strings/messages/contextCo
 import { contextCompact__to_compact } from '@/strings/messages/contextCompact__to_compact/en';
 import { contextCompact__to_keep } from '@/strings/messages/contextCompact__to_keep/en';
 import { contextCompact__waiting_for_the_model } from '@/strings/messages/contextCompact__waiting_for_the_model/en';
+import { fileExplorer__add } from '@/strings/messages/fileExplorer__add/en';
+import { fileExplorer__archive_name } from '@/strings/messages/fileExplorer__archive_name/en';
 import { fileExplorer__binary_file } from '@/strings/messages/fileExplorer__binary_file/en';
 import { fileExplorer__byte_count } from '@/strings/messages/fileExplorer__byte_count/en';
 import { fileExplorer__close } from '@/strings/messages/fileExplorer__close/en';
@@ -1244,6 +1246,7 @@ import { fileExplorer__close_preview } from '@/strings/messages/fileExplorer__cl
 import { fileExplorer__column_view } from '@/strings/messages/fileExplorer__column_view/en';
 import { fileExplorer__copy } from '@/strings/messages/fileExplorer__copy/en';
 import { fileExplorer__create } from '@/strings/messages/fileExplorer__create/en';
+import { fileExplorer__creating_archive } from '@/strings/messages/fileExplorer__creating_archive/en';
 import { fileExplorer__cut } from '@/strings/messages/fileExplorer__cut/en';
 import { fileExplorer__delete } from '@/strings/messages/fileExplorer__delete/en';
 import { fileExplorer__delete_confirmation } from '@/strings/messages/fileExplorer__delete_confirmation/en';
@@ -1251,14 +1254,18 @@ import { fileExplorer__delete_file } from '@/strings/messages/fileExplorer__dele
 import { fileExplorer__delete_folder } from '@/strings/messages/fileExplorer__delete_folder/en';
 import { fileExplorer__delete_items } from '@/strings/messages/fileExplorer__delete_items/en';
 import { fileExplorer__download } from '@/strings/messages/fileExplorer__download/en';
+import { fileExplorer__download_directory } from '@/strings/messages/fileExplorer__download_directory/en';
 import { fileExplorer__empty } from '@/strings/messages/fileExplorer__empty/en';
 import { fileExplorer__empty_folder } from '@/strings/messages/fileExplorer__empty_folder/en';
 import { fileExplorer__enter_a_name_for_the_new_file } from '@/strings/messages/fileExplorer__enter_a_name_for_the_new_file/en';
 import { fileExplorer__enter_a_name_for_the_new_folder } from '@/strings/messages/fileExplorer__enter_a_name_for_the_new_folder/en';
 import { fileExplorer__entry_info } from '@/strings/messages/fileExplorer__entry_info/en';
+import { fileExplorer__exclude_items } from '@/strings/messages/fileExplorer__exclude_items/en';
+import { fileExplorer__exclude_items_help } from '@/strings/messages/fileExplorer__exclude_items_help/en';
 import { fileExplorer__failed_to_copy_items } from '@/strings/messages/fileExplorer__failed_to_copy_items/en';
 import { fileExplorer__failed_to_create_file } from '@/strings/messages/fileExplorer__failed_to_create_file/en';
 import { fileExplorer__failed_to_create_folder } from '@/strings/messages/fileExplorer__failed_to_create_folder/en';
+import { fileExplorer__failed_to_load_exclusion_suggestions } from '@/strings/messages/fileExplorer__failed_to_load_exclusion_suggestions/en';
 import { fileExplorer__failed_to_delete } from '@/strings/messages/fileExplorer__failed_to_delete/en';
 import { fileExplorer__failed_to_download } from '@/strings/messages/fileExplorer__failed_to_download/en';
 import { fileExplorer__failed_to_load_directory } from '@/strings/messages/fileExplorer__failed_to_load_directory/en';
@@ -1288,10 +1295,13 @@ import { fileExplorer__new_file } from '@/strings/messages/fileExplorer__new_fil
 import { fileExplorer__new_file_unlock_to_enable } from '@/strings/messages/fileExplorer__new_file_unlock_to_enable/en';
 import { fileExplorer__new_folder } from '@/strings/messages/fileExplorer__new_folder/en';
 import { fileExplorer__new_folder_unlock_to_enable } from '@/strings/messages/fileExplorer__new_folder_unlock_to_enable/en';
+import { fileExplorer__no_matching_items } from '@/strings/messages/fileExplorer__no_matching_items/en';
 import { fileExplorer__open } from '@/strings/messages/fileExplorer__open/en';
+import { fileExplorer__optional } from '@/strings/messages/fileExplorer__optional/en';
 import { fileExplorer__paste } from '@/strings/messages/fileExplorer__paste/en';
 import { fileExplorer__preview } from '@/strings/messages/fileExplorer__preview/en';
 import { fileExplorer__refresh } from '@/strings/messages/fileExplorer__refresh/en';
+import { fileExplorer__relative_path } from '@/strings/messages/fileExplorer__relative_path/en';
 import { fileExplorer__rename } from '@/strings/messages/fileExplorer__rename/en';
 import { fileExplorer__search } from '@/strings/messages/fileExplorer__search/en';
 import { fileExplorer__select_a_file } from '@/strings/messages/fileExplorer__select_a_file/en';
@@ -1301,8 +1311,10 @@ import { fileExplorer__show_preview } from '@/strings/messages/fileExplorer__sho
 import { fileExplorer__size } from '@/strings/messages/fileExplorer__size/en';
 import { fileExplorer__size_label } from '@/strings/messages/fileExplorer__size_label/en';
 import { fileExplorer__type } from '@/strings/messages/fileExplorer__type/en';
+import { fileExplorer__type_to_narrow_results } from '@/strings/messages/fileExplorer__type_to_narrow_results/en';
 import { fileExplorer__unlock_to_enable } from '@/strings/messages/fileExplorer__unlock_to_enable/en';
 import { fileExplorer__unlocked_click_to_lock } from '@/strings/messages/fileExplorer__unlocked_click_to_lock/en';
+import { fileExplorer__unsupported_items_were_skipped } from '@/strings/messages/fileExplorer__unsupported_items_were_skipped/en';
 import { fileExplorer__upload_files } from '@/strings/messages/fileExplorer__upload_files/en';
 import { fileExplorer__upload_files_unlock_to_enable } from '@/strings/messages/fileExplorer__upload_files_unlock_to_enable/en';
 import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/en';
@@ -2669,6 +2681,8 @@ export const en = {
   contextCompact__to_compact,
   contextCompact__to_keep,
   contextCompact__waiting_for_the_model,
+  fileExplorer__add,
+  fileExplorer__archive_name,
   fileExplorer__binary_file,
   fileExplorer__byte_count,
   fileExplorer__close,
@@ -2676,6 +2690,7 @@ export const en = {
   fileExplorer__column_view,
   fileExplorer__copy,
   fileExplorer__create,
+  fileExplorer__creating_archive,
   fileExplorer__cut,
   fileExplorer__delete,
   fileExplorer__delete_confirmation,
@@ -2683,14 +2698,18 @@ export const en = {
   fileExplorer__delete_folder,
   fileExplorer__delete_items,
   fileExplorer__download,
+  fileExplorer__download_directory,
   fileExplorer__empty,
   fileExplorer__empty_folder,
   fileExplorer__enter_a_name_for_the_new_file,
   fileExplorer__enter_a_name_for_the_new_folder,
   fileExplorer__entry_info,
+  fileExplorer__exclude_items,
+  fileExplorer__exclude_items_help,
   fileExplorer__failed_to_copy_items,
   fileExplorer__failed_to_create_file,
   fileExplorer__failed_to_create_folder,
+  fileExplorer__failed_to_load_exclusion_suggestions,
   fileExplorer__failed_to_delete,
   fileExplorer__failed_to_download,
   fileExplorer__failed_to_load_directory,
@@ -2720,10 +2739,13 @@ export const en = {
   fileExplorer__new_file_unlock_to_enable,
   fileExplorer__new_folder,
   fileExplorer__new_folder_unlock_to_enable,
+  fileExplorer__no_matching_items,
   fileExplorer__open,
+  fileExplorer__optional,
   fileExplorer__paste,
   fileExplorer__preview,
   fileExplorer__refresh,
+  fileExplorer__relative_path,
   fileExplorer__rename,
   fileExplorer__search,
   fileExplorer__select_a_file,
@@ -2733,8 +2755,10 @@ export const en = {
   fileExplorer__size,
   fileExplorer__size_label,
   fileExplorer__type,
+  fileExplorer__type_to_narrow_results,
   fileExplorer__unlock_to_enable,
   fileExplorer__unlocked_click_to_lock,
+  fileExplorer__unsupported_items_were_skipped,
   fileExplorer__upload_files,
   fileExplorer__upload_files_unlock_to_enable,
   formatSettingsSourceLabel__default,
