@@ -4,12 +4,13 @@ import path from 'node:path';
 
 import vue from '@vitejs/plugin-vue';
 import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown';
-import { afterEach, describe, expect, it } from 'vitest';
-import { build, type PluginOption } from 'vite';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { build, createServer, type PluginOption, type ViteDevServer } from 'vite';
 
 import { createBoundaryStringsPlugin } from './index';
 
 const temporaryDirectories: string[] = [];
+const fixtureServers: ViteDevServer[] = [];
 const messageKey = 'Example__shared_message';
 
 function writeFile({ filePath, source }: {
@@ -121,7 +122,144 @@ async function buildFixture({ plugins, root }: {
   return outputChunks({ output });
 }
 
-afterEach(() => {
+async function createFixtureServer({ root }: {
+  root: string;
+}): Promise<ViteDevServer> {
+  const server = await createServer({
+    configFile: false,
+    logLevel: 'silent',
+    plugins: createBoundaryStringsPlugin(),
+    resolve: {
+      alias: {
+        '@': path.join(root, 'src'),
+      },
+    },
+    root,
+    server: {
+      hmr: false,
+      middlewareMode: true,
+    },
+  });
+  fixtureServers.push(server);
+  return server;
+}
+
+async function waitForWatcherEvent({ action, event, filePath, server }: {
+  action: () => void;
+  event: 'add' | 'change' | 'unlink';
+  filePath: string;
+  server: ViteDevServer;
+}): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${event} on ${filePath}.`));
+    }, 5_000);
+    const handler = (changedPath: string): void => {
+      if (path.resolve(changedPath) !== path.resolve(filePath)) {
+        return;
+      }
+      cleanup();
+      resolve();
+    };
+    const cleanup = (): void => {
+      clearTimeout(timeout);
+      server.watcher.off(event, handler);
+    };
+    server.watcher.on(event, handler);
+    action();
+  });
+}
+
+async function waitForStructureRevision({ action, server }: {
+  action: () => void;
+  server: ViteDevServer;
+}): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error('Timed out waiting for Boundary Strings structure revision.'));
+    }, 5_000);
+    const handler = (changedPath: string): void => {
+      if (path.basename(changedPath) !== 'structure-revision.txt') {
+        return;
+      }
+      cleanup();
+      resolve();
+    };
+    const cleanup = (): void => {
+      clearTimeout(timeout);
+      server.watcher.off('change', handler);
+    };
+    server.watcher.on('change', handler);
+    action();
+  });
+}
+
+function writeCatalog({ keys, locale, root }: {
+  keys: readonly string[];
+  locale: 'en' | 'ja';
+  root: string;
+}): void {
+  const imports = keys.map((key) => {
+    return `import { ${key} } from '@/strings/messages/${key}/${locale}';`;
+  }).join('\n');
+  const entries = keys.map((key) => `  ${key},`).join('\n');
+  writeFile({
+    filePath: path.join(root, `src/strings/catalogs/${locale}.ts`),
+    source: `\
+${imports}${imports.length === 0 ? '' : '\n\n'}export const ${locale} = {
+${entries}${entries.length === 0 ? '' : '\n'}};
+`,
+  });
+}
+
+function boundaryVirtualModuleId({ code }: {
+  code: string;
+}): string {
+  const match = code.match(
+    /virtual:naidan-boundary-strings\/boundary\/[a-f0-9]{16}\/[a-f0-9]{16}/,
+  );
+  if (match === null) {
+    throw new Error('Boundary Strings virtual module ID was not found.');
+  }
+  return match[0];
+}
+
+async function waitForCondition({ condition, message }: {
+  condition: () => boolean;
+  message: string;
+}): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!condition()) {
+    if (Date.now() >= deadline) {
+      throw new Error(message);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+async function waitForAsyncCondition({ condition, message }: {
+  condition: () => Promise<boolean>;
+  message: string;
+}): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!await condition()) {
+    if (Date.now() >= deadline) {
+      throw new Error(message);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+async function closeFixtureServers(): Promise<void> {
+  for (const server of fixtureServers.splice(0)) {
+    await server.close();
+  }
+}
+
+afterEach(async () => {
+  await closeFixtureServers();
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -292,4 +430,331 @@ import { lazyStrings } from '@/strings';
       return moduleId.replaceAll('\\', '/').endsWith(`/src/strings/messages/${messageKey}/en.ts`);
     })).toBe(true);
   });
+
+  it('refreshes a stale catalog in the same HMR-disabled server after adding a key', async () => {
+    const root = createFixtureRoot();
+    const nextMessageKey = 'Example__new_watch_message';
+    const mainPath = path.join(root, 'src/main.ts');
+    writeFile({
+      filePath: mainPath,
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    const initialTransform = await server.transformRequest('/src/main.ts');
+    expect(initialTransform).toBeDefined();
+    const initialBoundaryModuleId = boundaryVirtualModuleId({
+      code: initialTransform?.code ?? '',
+    });
+
+    for (const locale of ['en', 'ja'] as const) {
+      writeFile({
+        filePath: path.join(root, `src/strings/messages/${nextMessageKey}/${locale}.ts`),
+        source: `export const ${nextMessageKey} = (): string => ${JSON.stringify(`${locale} next`)};\n`,
+      });
+      writeCatalog({ keys: [messageKey, nextMessageKey], locale, root });
+    }
+    await waitForWatcherEvent({
+      action: () => {
+        writeFile({
+          filePath: mainPath,
+          source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${nextMessageKey}();
+`,
+        });
+      },
+      event: 'change',
+      filePath: mainPath,
+      server,
+    });
+
+    const transformed = await server.transformRequest('/src/main.ts');
+    expect(transformed?.code).toContain('virtual:naidan-boundary-strings/boundary/');
+    expect(boundaryVirtualModuleId({
+      code: transformed?.code ?? '',
+    })).not.toBe(initialBoundaryModuleId);
+  });
+
+  it('recovers after a source references a key before its catalog and message files exist', async () => {
+    const root = createFixtureRoot();
+    const nextMessageKey = 'Example__source_first_message';
+    writeFile({
+      filePath: path.join(root, 'src/main.ts'),
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${nextMessageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    await expect(server.ssrLoadModule('/src/main.ts')).rejects.toThrow(
+      `Unknown message key "${nextMessageKey}"`,
+    );
+
+    await waitForStructureRevision({
+      action: () => {
+        for (const locale of ['en', 'ja'] as const) {
+          writeFile({
+            filePath: path.join(root, `src/strings/messages/${nextMessageKey}/${locale}.ts`),
+            source: `export const ${nextMessageKey} = (): string => ${JSON.stringify(`${locale} next`)};\n`,
+          });
+          writeCatalog({ keys: [messageKey, nextMessageKey], locale, root });
+        }
+      },
+      server,
+    });
+
+    await expect(server.ssrLoadModule('/src/main.ts')).resolves.toBeDefined();
+  });
+
+  it('invalidates a source module when a watched catalog removes its key', async () => {
+    const root = createFixtureRoot();
+    const mainPath = path.join(root, 'src/main.ts');
+    writeFile({
+      filePath: mainPath,
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
+
+    await waitForStructureRevision({
+      action: () => {
+        fs.rmSync(path.join(root, 'src/strings/messages', messageKey), {
+          force: true,
+          recursive: true,
+        });
+        writeCatalog({ keys: [], locale: 'en', root });
+        writeCatalog({ keys: [], locale: 'ja', root });
+      },
+      server,
+    });
+
+    await expect(server.ssrLoadModule('/src/main.ts')).rejects.toThrow(
+      `Unknown message key "${messageKey}"`,
+    );
+  });
+
+  it('keeps unrelated modules runnable while the catalog is invalid', async () => {
+    const root = createFixtureRoot();
+    writeCatalog({ keys: [], locale: 'ja', root });
+    writeFile({
+      filePath: path.join(root, 'src/main.ts'),
+      source: `\
+export const value = 1;
+`,
+    });
+    writeFile({
+      filePath: path.join(root, 'src/with-boundary.ts'),
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+
+    const server = await createFixtureServer({ root });
+
+    await expect(server.ssrLoadModule('/src/main.ts')).resolves.toMatchObject({
+      value: 1,
+    });
+    await expect(server.ssrLoadModule('/src/with-boundary.ts')).rejects.toThrow(
+      'Japanese catalog does not match the English catalog',
+    );
+  });
+
+  it('restarts for an exposed source deletion and its restoration at the same path', async () => {
+    const root = createFixtureRoot();
+    const mainPath = path.join(root, 'src/main.ts');
+    const mainSource = `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`;
+    writeFile({
+      filePath: mainPath,
+      source: mainSource,
+    });
+    const server = await createFixtureServer({ root });
+    await expect(server.ssrLoadModule('/src/main.ts')).resolves.toBeDefined();
+
+    const originalRestart = server.restart.bind(server);
+    const restartPromises: Promise<void>[] = [];
+    const restartSpy = vi.spyOn(server, 'restart').mockImplementation(() => {
+      const restartPromise = originalRestart();
+      restartPromises.push(restartPromise);
+      return restartPromise;
+    });
+
+    await waitForWatcherEvent({
+      action: () => {
+        fs.rmSync(mainPath);
+      },
+      event: 'unlink',
+      filePath: mainPath,
+      server,
+    });
+    await waitForCondition({
+      condition: () => restartPromises.length >= 1,
+      message: 'Timed out waiting for the source-deletion restart.',
+    });
+    await restartPromises[0];
+    await expect(server.ssrLoadModule('/src/main.ts')).rejects.toThrow();
+
+    await waitForWatcherEvent({
+      action: () => {
+        writeFile({
+          filePath: mainPath,
+          source: mainSource,
+        });
+      },
+      event: 'add',
+      filePath: mainPath,
+      server,
+    });
+    await waitForAsyncCondition({
+      condition: async () => {
+        try {
+          await server.ssrLoadModule('/src/main.ts');
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      message: 'Timed out waiting for the restored source to become loadable.',
+    });
+
+    expect(restartSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads message content through the normal module graph without changing the boundary ID', async () => {
+    const root = createFixtureRoot();
+    const mainPath = path.join(root, 'src/main.ts');
+    const messagePath = path.join(
+      root,
+      `src/strings/messages/${messageKey}/en.ts`,
+    );
+    writeFile({
+      filePath: mainPath,
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+    const transformed = await server.transformRequest('/src/main.ts');
+    if (transformed === null) {
+      throw new Error('Expected the source module to be transformed.');
+    }
+    const boundaryId = boundaryVirtualModuleId({ code: transformed.code });
+    const identity = boundaryId.slice(
+      'virtual:naidan-boundary-strings/boundary/'.length,
+    );
+    const packId = `virtual:naidan-boundary-strings/pack/en/${identity}`;
+
+    const initialPack = await server.ssrLoadModule(packId) as Record<string, () => string>;
+    expect(initialPack[messageKey]?.()).toBe('en message');
+
+    await waitForWatcherEvent({
+      action: () => {
+        writeFile({
+          filePath: messagePath,
+          source: `export const ${messageKey} = (): string => 'updated message';\n`,
+        });
+      },
+      event: 'change',
+      filePath: messagePath,
+      server,
+    });
+    await waitForAsyncCondition({
+      condition: async () => {
+        const updatedPack = await server.ssrLoadModule(packId) as Record<string, () => string>;
+        return updatedPack[messageKey]?.() === 'updated message';
+      },
+      message: 'Timed out waiting for the message module update.',
+    });
+
+    const transformedAfterUpdate = await server.transformRequest('/src/main.ts');
+    if (transformedAfterUpdate === null) {
+      throw new Error('Expected the source module to remain transformable.');
+    }
+    expect(boundaryVirtualModuleId({ code: transformedAfterUpdate.code })).toBe(boundaryId);
+  });
+
+  it('keeps the active coordinator after an externally requested server restart', async () => {
+    const root = createFixtureRoot();
+    writeFile({
+      filePath: path.join(root, 'src/main.ts'),
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    await expect(server.ssrLoadModule('/src/main.ts')).resolves.toBeDefined();
+    await server.restart();
+    await expect(server.ssrLoadModule('/src/main.ts')).resolves.toBeDefined();
+  });
+
+  it('does not refresh a stale catalog for a source without Boundary Strings', async () => {
+    const root = createFixtureRoot();
+    const mainPath = path.join(root, 'src/main.ts');
+    const englishCatalogPath = path.join(root, 'src/strings/catalogs/en.ts');
+    writeFile({
+      filePath: mainPath,
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const value = 1;
+`,
+    });
+    const server = await createFixtureServer({ root });
+
+    await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
+
+    await waitForWatcherEvent({
+      action: () => {
+        writeCatalog({
+          keys: [messageKey, 'Example__temporarily_incomplete'],
+          locale: 'en',
+          root,
+        });
+      },
+      event: 'change',
+      filePath: englishCatalogPath,
+      server,
+    });
+    await waitForWatcherEvent({
+      action: () => {
+        writeFile({
+          filePath: mainPath,
+          source: `\
+import { lazyStrings } from '@/strings';
+
+export const value = 2;
+`,
+        });
+      },
+      event: 'change',
+      filePath: mainPath,
+      server,
+    });
+
+    await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
+  });
+
 });
