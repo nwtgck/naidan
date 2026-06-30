@@ -5,14 +5,10 @@ import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/work
 import type { IWeshWorker } from '@/features/wesh/worker/types';
 import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub';
 import {
-  debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
-  debugRunFileProtocolStandaloneHighlightProbe,
-  debugRunFileProtocolStandaloneWeshFileProbeWithRemote,
-  debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies,
-  debugRunFileProtocolStandaloneWeshFileProbe,
   type DebugFileProtocolStandaloneWorkerHubSession,
   type DebugFileProtocolStandaloneHighlightProbeResult,
   type DebugFileProtocolStandaloneWeshFileProbeResult,
+  TEST_ONLY as VERIFICATION_WORKER_PROBE_TEST_ONLY,
 } from './worker-probe';
 
 type MutableDiagnostics = {
@@ -256,12 +252,12 @@ describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () =>
     const events: string[] = [];
     const sessions: DebugFileProtocolStandaloneWorkerHubSession[] = [];
 
-    const result = await debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    const result = await VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession: createRealComlinkSessionFactory({ mutable, events, sessions }),
       readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip: debugRunFileProtocolStandaloneHighlightProbe,
-      runFileProbe: debugRunFileProtocolStandaloneWeshFileProbe,
-      releaseSession: debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
+      runRoundTrip: VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneHighlightProbe,
+      runFileProbe: VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbe,
+      releaseSession: VERIFICATION_WORKER_PROBE_TEST_ONLY.debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
       sessionCreationTimeoutMs: 1_000,
       operationTimeoutMs: 1_000,
       cleanupTimeoutMs: 1_000,
@@ -320,7 +316,7 @@ describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () =>
       };
     });
 
-    const result = await debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    const result = await VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip,
@@ -378,7 +374,7 @@ describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () =>
     });
 
     let settled = false;
-    const verification = debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    const verification = VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip,
@@ -418,7 +414,7 @@ describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () =>
       .mockRejectedValueOnce(new Error('synthetic worker creation failure'));
     const releaseSession = createReleaseSession({ events });
 
-    await expect(debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: vi.fn(),
@@ -449,7 +445,7 @@ describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () =>
       .mockImplementationOnce(async () => lateSession.promise);
     const releaseSession = createReleaseSession({ events });
 
-    const verification = debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    const verification = VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: vi.fn(),
@@ -494,7 +490,7 @@ describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () =>
     const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }));
     const releaseSession = createReleaseSession({ events });
 
-    await expect(debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: async ({ session, source }) => {
@@ -531,7 +527,7 @@ describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () =>
     const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }));
     const releaseSession = createReleaseSession({ events });
 
-    const verification = debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    const verification = VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: async ({ source }) => ({ resolvedLanguage: 'json', htmlLength: source.length }),
@@ -570,7 +566,7 @@ describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () =>
       await new Promise<void>(() => {});
     });
 
-    const verification = debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    const verification = VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: async ({ source }) => ({ resolvedLanguage: 'json', htmlLength: source.length }),
@@ -620,7 +616,7 @@ describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
       }),
     } as unknown as IWeshWorker;
 
-    const result = await debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
+    const result = await VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
       wesh: asRemoteWesh({ worker }),
     });
 
@@ -649,7 +645,7 @@ describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
       dispose: vi.fn(async () => {}),
     } as unknown as IWeshWorker;
 
-    await expect(debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
+    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
       wesh: asRemoteWesh({ worker }),
     })).resolves.toEqual({ exitCode: 7, stdout: 'out', stderr: 'err' });
   });
@@ -667,7 +663,7 @@ describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
       dispose,
     } as unknown as IWeshWorker;
 
-    await expect(debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
+    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
       wesh: asRemoteWesh({ worker }),
     })).rejects.toThrow('synthetic await failure');
     expect(disposeExecution).toHaveBeenCalledWith({ request: { executionId: 'execution-3' } });
@@ -687,7 +683,7 @@ describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
       dispose,
     } as unknown as IWeshWorker;
 
-    await expect(debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
+    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
       wesh: asRemoteWesh({ worker }),
     })).rejects.toThrow('synthetic start failure');
     expect(disposeExecution).not.toHaveBeenCalled();

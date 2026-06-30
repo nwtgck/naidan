@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
-import { orderSortRunPaths } from './index';
+import { TEST_ONLY as SORT_INDEX_TEST_ONLY } from './index';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -9,7 +9,7 @@ import {
 
 describe('external sort run ordering', () => {
   it('preserves source order when active runs occupy different merge levels', () => {
-    expect(orderSortRunPaths({
+    expect(SORT_INDEX_TEST_ONLY.orderSortRunPaths({
       paths: ['late-level-zero', 'early-level-one', 'latest-level-zero'],
       inputOrderByPath: new Map([
         ['early-level-one', 0],
@@ -24,7 +24,7 @@ describe('external sort run ordering', () => {
   });
 
   it('rejects active runs without source-order metadata', () => {
-    expect(() => orderSortRunPaths({
+    expect(() => SORT_INDEX_TEST_ONLY.orderSortRunPaths({
       paths: ['missing'],
       inputOrderByPath: new Map(),
     })).toThrow('Missing sort run input order');

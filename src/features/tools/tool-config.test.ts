@@ -4,14 +4,12 @@ import {
   cloneToolConfigs,
   findLastToolConfigByKey,
   isLmToolEnabledInToolConfigs,
-  lmToolNamesForBuiltinToolKey,
   lmToolNamesFromToolConfigs,
   resolveToolConfigForChat,
   resolveToolConfigsForChat,
-  setLmToolStatusInToolConfigs,
   setToolStatusWithDependenciesInToolConfigs,
   setWeshAccessScopeWithDependenciesInToolConfigs,
-  setWeshNaidanSysfsAccessScopeInToolConfigs,
+  TEST_ONLY as TOOLS_TOOL_CONFIG_TEST_ONLY,
 } from './tool-config';
 import type { ToolConfig } from '@/01-models/tool';
 
@@ -41,10 +39,10 @@ describe('tool config', () => {
   });
 
   it('keeps Naidan keys separate from LM-visible tool names', () => {
-    expect(lmToolNamesForBuiltinToolKey({ key: 'builtin.calculator' })).toEqual(['calculator']);
-    expect(lmToolNamesForBuiltinToolKey({ key: 'builtin.choices' })).toEqual(['choices']);
-    expect(lmToolNamesForBuiltinToolKey({ key: 'builtin.wikipedia' })).toEqual(['wikipedia_search', 'wikipedia_get_page']);
-    expect(lmToolNamesForBuiltinToolKey({ key: 'builtin.wesh' })).toEqual(['shell_execute']);
+    expect(TOOLS_TOOL_CONFIG_TEST_ONLY.lmToolNamesForBuiltinToolKey({ key: 'builtin.calculator' })).toEqual(['calculator']);
+    expect(TOOLS_TOOL_CONFIG_TEST_ONLY.lmToolNamesForBuiltinToolKey({ key: 'builtin.choices' })).toEqual(['choices']);
+    expect(TOOLS_TOOL_CONFIG_TEST_ONLY.lmToolNamesForBuiltinToolKey({ key: 'builtin.wikipedia' })).toEqual(['wikipedia_search', 'wikipedia_get_page']);
+    expect(TOOLS_TOOL_CONFIG_TEST_ONLY.lmToolNamesForBuiltinToolKey({ key: 'builtin.wesh' })).toEqual(['shell_execute']);
 
     expect(builtinToolKeyForLmToolName({ name: 'choices' })).toBe('builtin.choices');
     expect(builtinToolKeyForLmToolName({ name: 'shell_execute' })).toBe('builtin.wesh');
@@ -135,7 +133,7 @@ describe('tool config', () => {
   });
 
   it('stores explicit enabled and disabled overrides instead of removing disabled entries', () => {
-    const enabled = setLmToolStatusInToolConfigs({
+    const enabled = TOOLS_TOOL_CONFIG_TEST_ONLY.setLmToolStatusInToolConfigs({
       toolConfigs: undefined,
       name: 'calculator',
       status: 'enabled',
@@ -143,7 +141,7 @@ describe('tool config', () => {
     });
     expect(enabled).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
 
-    const disabled = setLmToolStatusInToolConfigs({
+    const disabled = TOOLS_TOOL_CONFIG_TEST_ONLY.setLmToolStatusInToolConfigs({
       toolConfigs: enabled,
       name: 'calculator',
       status: 'disabled',
@@ -153,7 +151,7 @@ describe('tool config', () => {
   });
 
   it('copies inherited Wesh settings when creating an override', () => {
-    const toolConfigs = setWeshNaidanSysfsAccessScopeInToolConfigs({
+    const toolConfigs = TOOLS_TOOL_CONFIG_TEST_ONLY.setWeshNaidanSysfsAccessScopeInToolConfigs({
       toolConfigs: undefined,
       accessScope: 'main_chats',
       inheritedConfig: {

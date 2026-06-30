@@ -24,10 +24,10 @@ import type {
   WikipediaSearchResult,
 } from './types';
 
-export const WIKIPEDIA_SEARCH_LIMIT = 30;
-export const WIKIPEDIA_API_MAX_RETRY_AFTER_RETRY_COUNT = 2;
+const WIKIPEDIA_SEARCH_LIMIT = 30;
+const WIKIPEDIA_API_MAX_RETRY_AFTER_RETRY_COUNT = 2;
 export const WIKIPEDIA_API_MAX_AUTO_RETRY_AFTER_MS = 30_000;
-export const WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000] as const;
+const WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000] as const;
 
 type RequestWikipediaResponseImpl = ({
   url,
@@ -117,7 +117,7 @@ function getWikipediaHttpErrorPrefix({
   return 'Wikipedia API request failed';
 }
 
-export function getRetryAfterHeaderValue({
+function getRetryAfterHeaderValue({
   response,
 }: {
   response: PrivacyFetchResponse,
@@ -125,7 +125,7 @@ export function getRetryAfterHeaderValue({
   return response.headers.get('retry-after') ?? undefined;
 }
 
-export function parseRetryAfterMs({
+function parseRetryAfterMs({
   value,
   nowMs,
 }: {
@@ -157,7 +157,7 @@ export function parseRetryAfterMs({
   return Math.max(0, parsedDateMs - nowMs);
 }
 
-export function createRetryAfterRetryDecision({
+function createRetryAfterRetryDecision({
   response,
   fallbackRetryCount,
   nowMs,
@@ -288,7 +288,7 @@ function classifyWikipediaFetchFailure({
   return 'non_retryable_fetch_error';
 }
 
-export function createWikipediaFetchFailureRetryDecision({
+function createWikipediaFetchFailureRetryDecision({
   error,
   retryCount,
 }: {
@@ -395,7 +395,7 @@ function createWikipediaFetchFailureError({
   }
 }
 
-export async function waitForRetryAfterDelay({
+async function waitForRetryAfterDelay({
   delayMs,
   signal,
 }: {
@@ -713,4 +713,13 @@ export async function getWikipediaPage({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  WIKIPEDIA_SEARCH_LIMIT,
+  WIKIPEDIA_API_MAX_RETRY_AFTER_RETRY_COUNT,
+  WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS,
+  getRetryAfterHeaderValue,
+  parseRetryAfterMs,
+  createRetryAfterRetryDecision,
+  createWikipediaFetchFailureRetryDecision,
+  waitForRetryAfterDelay,
+};

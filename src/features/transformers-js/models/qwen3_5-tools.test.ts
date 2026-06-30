@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildQwen3_5ToolSystemPrompt } from './qwen3_5-tools';
+import { TEST_ONLY as TRANSFORMERS_JS_QWEN3_5_TOOLS_TEST_ONLY } from './qwen3_5-tools';
 
 describe('buildQwen3_5ToolSystemPrompt', () => {
   it('renders tool definitions without passing raw JSON schema into the template', () => {
-    const prompt = buildQwen3_5ToolSystemPrompt({
+    const prompt = TRANSFORMERS_JS_QWEN3_5_TOOLS_TEST_ONLY.buildQwen3_5ToolSystemPrompt({
       tools: [
         {
           type: 'function',

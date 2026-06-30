@@ -100,7 +100,7 @@ vi.mock('../composables/chat/ui/useChatPaneState', async () => {
         chat: state.currentChat,
         chatGroup: state.currentChatGroup,
         activeMessages: state.activeMessages,
-        allMessages: state.allMessages,
+        allMessages: state.TEST_ONLY.allMessages,
         resolvedSettings: state.resolvedSettings,
         inheritedSettings: state.inheritedSettings,
         chatGroups: state.chatGroups,

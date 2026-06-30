@@ -38,7 +38,7 @@ function formatQwen3_5ToolParameters({ parameters }: { parameters: Record<string
     .join('\n');
 }
 
-export function buildQwen3_5ToolSystemPrompt({ tools }: { tools: WorkerToolDefinition[] }): string {
+function buildQwen3_5ToolSystemPrompt({ tools }: { tools: WorkerToolDefinition[] }): string {
   const toolBlocks = tools.map((tool) => {
     const description = tool.function.description || 'No description provided.';
     const parameters = formatQwen3_5ToolParameters({ parameters: tool.function.parameters });
@@ -67,4 +67,6 @@ ${toolBlocks}`;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  buildQwen3_5ToolSystemPrompt,
+};

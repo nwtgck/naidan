@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
-import { createImageRequestMarker, SENTINEL_IMAGE_REQUEST_PREFIX } from '@/utils/image-generation';
+import { createImageRequestMarker, TEST_ONLY as IMAGE_GENERATION_TEST_ONLY } from '@/utils/image-generation';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -144,7 +144,7 @@ describe('MessageItem Edit Image Generation', () => {
     const [msgId, newContent] = emitted![0] as [string, string];
 
     expect(msgId).toBe(message.id);
-    expect(newContent).toContain(SENTINEL_IMAGE_REQUEST_PREFIX);
+    expect(newContent).toContain(IMAGE_GENERATION_TEST_ONLY.SENTINEL_IMAGE_REQUEST_PREFIX);
     expect(newContent).toContain('"width":256');
     expect(newContent).toContain('"count":4');
     expect(newContent).toContain('"persistAs":"png"');
@@ -185,7 +185,7 @@ describe('MessageItem Edit Image Generation', () => {
 
     const emitted = wrapper.emitted('edit');
     const [_, newContent] = emitted![0] as [string, string];
-    expect(newContent).toContain(SENTINEL_IMAGE_REQUEST_PREFIX);
+    expect(newContent).toContain(IMAGE_GENERATION_TEST_ONLY.SENTINEL_IMAGE_REQUEST_PREFIX);
     expect(newContent).toContain('Convert me to an image');
   });
 
@@ -218,7 +218,7 @@ describe('MessageItem Edit Image Generation', () => {
 
     const emitted = wrapper.emitted('edit');
     const [_, newContent] = emitted![0] as [string, string];
-    expect(newContent).not.toContain(SENTINEL_IMAGE_REQUEST_PREFIX);
+    expect(newContent).not.toContain(IMAGE_GENERATION_TEST_ONLY.SENTINEL_IMAGE_REQUEST_PREFIX);
     expect(newContent).toBe('I want to be text only');
   });
 

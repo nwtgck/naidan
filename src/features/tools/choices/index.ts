@@ -15,7 +15,7 @@ const ChoiceSchema = z
   .max(200)
   .regex(/^[^\r\n]+$/, 'Choices must be single-line text.');
 
-export const ChoicesArgsSchema = z.object({
+const ChoicesArgsSchema = z.object({
   prompt: z
     .string()
     .trim()
@@ -35,7 +35,7 @@ export const ChoicesArgsSchema = z.object({
 
 export type ChoicesArgs = z.infer<typeof ChoicesArgsSchema>;
 
-export function renderChoicesResult({
+function renderChoicesResult({
   index,
   choice,
 }: {
@@ -114,4 +114,7 @@ Provide between 2 and 10 concise, distinct, single-line choices.`,
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  ChoicesArgsSchema,
+  renderChoicesResult,
+};

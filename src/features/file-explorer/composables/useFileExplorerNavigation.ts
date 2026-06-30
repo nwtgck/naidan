@@ -219,10 +219,10 @@ export function useFileExplorerNavigation({
     jumpToBreadcrumb,
     refresh,
     selectColumnEntry,
-    loadDirectory,
     loadColumnPane,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
+        loadDirectory,
         normalizeExplorerPath,
         getParentPath,
         resolveDirectoryLoadError,

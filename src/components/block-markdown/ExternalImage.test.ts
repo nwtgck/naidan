@@ -4,7 +4,7 @@ import ExternalImage from './ExternalImage.vue';
 import { useExternalResourceSettings } from '@/composables/useExternalResourceSettings';
 
 describe('ExternalImage.vue', () => {
-  const { __testOnlyReset } = useExternalResourceSettings();
+  const { TEST_ONLY: { __testOnlyReset } } = useExternalResourceSettings();
 
   beforeEach(() => {
     __testOnlyReset();

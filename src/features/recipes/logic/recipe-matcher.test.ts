@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchRecipeModels, getAllMatchingModels, generateDefaultModelPatterns } from './recipe-matcher';
+import { matchRecipeModels, generateDefaultModelPatterns, TEST_ONLY as RECIPES_RECIPE_MATCHER_TEST_ONLY } from './recipe-matcher';
 import type { RecipeModel } from '@/features/recipes/logic/recipe';
 
 describe('recipe-matcher', () => {
@@ -46,7 +46,7 @@ describe('recipe-matcher', () => {
         { type: 'regex', pattern: 'llama3', flags: ['i'] },
         { type: 'regex', pattern: 'gpt', flags: ['i'] },
       ];
-      const result = getAllMatchingModels({ recipeModels: models, availableModelIds: availableModels });
+      const result = RECIPES_RECIPE_MATCHER_TEST_ONLY.getAllMatchingModels({ recipeModels: models, availableModelIds: availableModels });
       expect(result.matches).toContain('llama3:8b');
       expect(result.matches).toContain('llama3:70b');
       expect(result.matches).toContain('gpt-4o');
@@ -59,7 +59,7 @@ describe('recipe-matcher', () => {
         { type: 'regex', pattern: 'llama3', flags: ['i'] },
         { type: 'regex', pattern: 'llama3:8b', flags: ['i'] },
       ];
-      const result = getAllMatchingModels({ recipeModels: models, availableModelIds: availableModels });
+      const result = RECIPES_RECIPE_MATCHER_TEST_ONLY.getAllMatchingModels({ recipeModels: models, availableModelIds: availableModels });
       expect(result.matches).toContain('llama3:8b');
       expect(result.matches).toContain('llama3:70b');
       expect(result.matches).toHaveLength(2);

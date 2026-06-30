@@ -32,7 +32,7 @@ export function countLines({
   return lineCount;
 }
 
-export function buildWikipediaBinaryObjectName({
+function buildWikipediaBinaryObjectName({
   title,
   lang,
   pageId,
@@ -53,7 +53,7 @@ export function buildWikipediaBinaryObjectName({
   return `${titlePart}_${lang}_${pageId}.txt`;
 }
 
-export function buildSysfsNaidanBinaryObjectDataFilePath({
+function buildSysfsNaidanBinaryObjectDataFilePath({
   binaryObjectId,
 }: {
   binaryObjectId: BinaryObjectId,
@@ -98,4 +98,7 @@ export async function saveWikipediaPageTextAsBinaryObject({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  buildWikipediaBinaryObjectName,
+  buildSysfsNaidanBinaryObjectDataFilePath,
+};

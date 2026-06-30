@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   privacyFetchBrokerToParentMessageSchema,
-  privacyFetchHeaderEntriesSchema,
-  privacyFetchParentToBrokerMessageSchema,
+  TEST_ONLY as PRIVACY_FETCH_SCHEMAS_TEST_ONLY,
 } from './schemas';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 
 describe('privacy fetch schemas', () => {
   it('accepts request messages', () => {
-    expect(privacyFetchParentToBrokerMessageSchema.parse({
+    expect(PRIVACY_FETCH_SCHEMAS_TEST_ONLY.privacyFetchParentToBrokerMessageSchema.parse({
       protocol: PRIVACY_FETCH_PROTOCOL,
       type: 'request',
       requestId: 'req-1',
@@ -20,7 +19,7 @@ describe('privacy fetch schemas', () => {
   });
 
   it('accepts header entries arrays', () => {
-    expect(privacyFetchHeaderEntriesSchema.parse([
+    expect(PRIVACY_FETCH_SCHEMAS_TEST_ONLY.privacyFetchHeaderEntriesSchema.parse([
       ['content-type', 'application/json'],
       ['cache-control', 'no-store'],
     ])).toHaveLength(2);

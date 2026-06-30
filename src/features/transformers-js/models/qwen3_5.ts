@@ -320,7 +320,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function normalizeQwen3_5ToolCallsForTemplate({
+function normalizeQwen3_5ToolCallsForTemplate({
   toolCalls,
 }: {
   toolCalls: ToolCall[],
@@ -334,7 +334,7 @@ export function normalizeQwen3_5ToolCallsForTemplate({
   }));
 }
 
-export function applyQwen3_5ContinuationState({
+function applyQwen3_5ContinuationState({
   inputs,
   continuationState,
 }: {
@@ -358,7 +358,7 @@ export function applyQwen3_5ContinuationState({
   });
 }
 
-export function shouldRetryQwen3_5WithoutContinuation({
+function shouldRetryQwen3_5WithoutContinuation({
   error,
   isQwen3_5ToolContinuation,
 }: {
@@ -370,7 +370,7 @@ export function shouldRetryQwen3_5WithoutContinuation({
     && error.message.includes("Cannot read properties of undefined (reading 'inputNames')");
 }
 
-export function buildQwen3_5ToolContinuationPrompt({
+function buildQwen3_5ToolContinuationPrompt({
   promptHistory,
   messages,
 }: {
@@ -389,4 +389,9 @@ export function buildQwen3_5ToolContinuationPrompt({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  normalizeQwen3_5ToolCallsForTemplate,
+  applyQwen3_5ContinuationState,
+  shouldRetryQwen3_5WithoutContinuation,
+  buildQwen3_5ToolContinuationPrompt,
+};

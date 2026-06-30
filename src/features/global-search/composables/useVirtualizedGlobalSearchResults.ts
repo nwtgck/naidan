@@ -261,11 +261,11 @@ export function useVirtualizedGlobalSearchResults({
   return {
     totalHeight: computed(() => layout.value.totalHeight),
     visibleResults,
-    virtualizationEnabled,
     setResultElement,
     scrollResultIntoView,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
+        virtualizationEnabled,
         updateViewportMetrics,
       },
     }) || {}),

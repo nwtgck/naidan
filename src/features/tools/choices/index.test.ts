@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { toChatId } from '@/01-models/ids';
-import { ChoicesArgsSchema, createChoicesTool, renderChoicesResult } from './index';
+import { createChoicesTool, TEST_ONLY as CHOICES_INDEX_TEST_ONLY } from './index';
 import { zodToJsonSchema } from '@/utils/lm-tools';
 
 const validArgs = {
@@ -10,16 +10,16 @@ const validArgs = {
 
 describe('choices tool', () => {
   it('accepts a prompt and two or more distinct single-line choices', () => {
-    expect(ChoicesArgsSchema.parse(validArgs)).toEqual(validArgs);
-    expect(() => ChoicesArgsSchema.parse({
+    expect(CHOICES_INDEX_TEST_ONLY.ChoicesArgsSchema.parse(validArgs)).toEqual(validArgs);
+    expect(() => CHOICES_INDEX_TEST_ONLY.ChoicesArgsSchema.parse({
       prompt: 'Choose',
       choices: ['Only one'],
     })).toThrow();
-    expect(() => ChoicesArgsSchema.parse({
+    expect(() => CHOICES_INDEX_TEST_ONLY.ChoicesArgsSchema.parse({
       prompt: 'Choose',
       choices: ['Same', 'Same'],
     })).toThrow('Choices must be unique.');
-    expect(() => ChoicesArgsSchema.parse({
+    expect(() => CHOICES_INDEX_TEST_ONLY.ChoicesArgsSchema.parse({
       prompt: 'Choose',
       choices: [`\
 First line
@@ -28,7 +28,7 @@ Second line`, 'Other'],
   });
 
   it('publishes a strict JSON schema for LM tool calls', () => {
-    expect(zodToJsonSchema({ schema: ChoicesArgsSchema })).toMatchObject({
+    expect(zodToJsonSchema({ schema: CHOICES_INDEX_TEST_ONLY.ChoicesArgsSchema })).toMatchObject({
       type: 'object',
       properties: {
         prompt: {
@@ -105,7 +105,7 @@ Tests`,
   });
 
   it('renders the selected full text without replacing Markdown characters', () => {
-    expect(renderChoicesResult({
+    expect(CHOICES_INDEX_TEST_ONLY.renderChoicesResult({
       index: 0,
       choice: '**Use the API**',
     })).toBe(`\

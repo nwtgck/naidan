@@ -32,7 +32,7 @@ describe('useChatImageProgress', () => {
       chatId: computed(() => toChatId({ raw: 'chat-1' })),
     });
 
-    expect(chatImageProgress.progress.value).toEqual({ currentStep: 2, totalSteps: 8 });
+    expect(chatImageProgress.TEST_ONLY.progress.value).toEqual({ currentStep: 2, totalSteps: 8 });
     expect(chatImageProgress.currentStep.value).toBe(2);
     expect(chatImageProgress.totalSteps.value).toBe(8);
   });
@@ -42,7 +42,7 @@ describe('useChatImageProgress', () => {
       chatId: computed(() => toChatId({ raw: 'chat-1' })),
     });
 
-    expect(chatImageProgress.progress.value).toBeUndefined();
+    expect(chatImageProgress.TEST_ONLY.progress.value).toBeUndefined();
     expect(chatImageProgress.currentStep.value).toBeUndefined();
     expect(chatImageProgress.totalSteps.value).toBeUndefined();
   });

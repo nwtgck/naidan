@@ -392,7 +392,7 @@ describe('useFileExplorerNavigation', () => {
       filterQuery: defaultFilter,
       initialPath: '/missing',
     });
-    await nav.loadDirectory({ path: '/missing' });
+    await nav.TEST_ONLY.loadDirectory({ path: '/missing' });
     expect(nav.loadError.value).toBe(
       'Failed to load directory: This folder is no longer available. It may have been moved, deleted, or its access was revoked in the browser.',
     );

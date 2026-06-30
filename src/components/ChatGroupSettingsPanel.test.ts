@@ -157,12 +157,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
       currentChat: computed(() => null),
       currentChatGroup: computed(() => mockCurrentGroup.value),
       activeMessages: computed(() => []),
-      allMessages: computed(() => []),
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => null),
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
-      TEST_ONLY: {},
+      TEST_ONLY: {
+        allMessages: computed(() => []),
+      },
     } as ReturnType<typeof useCurrentChatState>);
     vi.mocked(useSettings).mockReturnValue({
       settings: toRef(mockSettings),

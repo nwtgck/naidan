@@ -64,7 +64,7 @@ describe('useVirtualizedFileExplorerList', () => {
     await nextTick();
 
     expect(state).toBeDefined();
-    expect(state!.virtualizationEnabled.value).toBe(true);
+    expect(state!.TEST_ONLY.virtualizationEnabled.value).toBe(true);
     expect(state!.visibleEntries.value).toHaveLength(5 + VIRTUAL_SCROLL_OVERSCAN * 2);
     expect(state!.visibleEntries.value[0]?.name).toBe('file-0000.txt');
     expect(state!.topSpacerHeight.value).toBe(0);

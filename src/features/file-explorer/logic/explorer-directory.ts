@@ -28,7 +28,7 @@ export type ExplorerChild =
  * Standard implementation that wraps a real FileSystemDirectoryHandle.
  * Used for both OPFS and host volumes.
  */
-export class FsExplorerDirectory implements ExplorerDirectory {
+class FsExplorerDirectory implements ExplorerDirectory {
   readonly name: string;
   readonly readOnly: boolean;
   private readonly _handle: FileSystemDirectoryHandle;
@@ -131,7 +131,7 @@ function joinVfsPath({ base, name }: { base: string, name: string }): string {
  * Always read-only: the VFS hierarchy above mounts cannot be mutated from the explorer.
  * Once the path resolves to a real mount handle, a FsExplorerDirectory is returned instead.
  */
-export class VfsExplorerDirectory implements ExplorerDirectory {
+class VfsExplorerDirectory implements ExplorerDirectory {
   readonly name: string;
   readonly readOnly = true;
   private readonly _vfs: WeshVFS;
@@ -222,4 +222,7 @@ export class VfsExplorerDirectory implements ExplorerDirectory {
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  FsExplorerDirectory,
+  VfsExplorerDirectory,
+};

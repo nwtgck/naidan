@@ -43,17 +43,18 @@ describe('useToolDependencyActions', () => {
       currentChatGroup: computed(() => null),
       currentChatId: computed(() => mockCurrentChat.value?.id),
       activeMessages: computed(() => []),
-      allMessages: computed(() => []),
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => null),
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
-      TEST_ONLY: {},
+      TEST_ONLY: {
+        allMessages: computed(() => []),
+      },
     } as unknown as ReturnType<typeof useCurrentChatState>);
   });
 
   it('enables wikipedia through the hierarchical tool status action', async () => {
-    const { enableWikipediaToolsForCurrentChat } = useToolDependencyActions();
+    const { TEST_ONLY: { enableWikipediaToolsForCurrentChat } } = useToolDependencyActions();
 
     await enableWikipediaToolsForCurrentChat();
 
@@ -67,7 +68,7 @@ describe('useToolDependencyActions', () => {
     mocks.isToolEnabled.mockImplementation(({ name }: { name: string }) =>
       name === WIKIPEDIA_SEARCH_TOOL_NAME);
 
-    const { isWikipediaEffectivelyEnabledForCurrentChat } = useToolDependencyActions();
+    const { TEST_ONLY: { isWikipediaEffectivelyEnabledForCurrentChat } } = useToolDependencyActions();
 
     expect(isWikipediaEffectivelyEnabledForCurrentChat()).toBe(true);
     expect(mocks.isToolEnabled).toHaveBeenCalledWith({
@@ -78,13 +79,13 @@ describe('useToolDependencyActions', () => {
   it('reports wikipedia as effectively disabled when the canonical resolver does', () => {
     mocks.isToolEnabled.mockReturnValue(false);
 
-    const { isWikipediaEffectivelyEnabledForCurrentChat } = useToolDependencyActions();
+    const { TEST_ONLY: { isWikipediaEffectivelyEnabledForCurrentChat } } = useToolDependencyActions();
 
     expect(isWikipediaEffectivelyEnabledForCurrentChat()).toBe(false);
   });
 
   it('disables wikipedia through the hierarchical tool status action', async () => {
-    const { disableWikipediaToolsForCurrentChat } = useToolDependencyActions();
+    const { TEST_ONLY: { disableWikipediaToolsForCurrentChat } } = useToolDependencyActions();
 
     await disableWikipediaToolsForCurrentChat();
 

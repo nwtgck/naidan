@@ -4,11 +4,11 @@ import { toMessageId } from '@/01-models/ids';
 import {
   buildCompactRequestMessages,
   createCompactBranchFromResponse,
-  createCompactConversationMessageContent,
   createCompactInstruction,
   getHeaderCompactBoundary,
   splitCompactPath,
   toContextCompactDisplayProgress,
+  TEST_ONLY as CONTEXT_COMPACT_TEST_ONLY,
 } from './context-compact';
 
 function createMessage({
@@ -122,7 +122,7 @@ describe('context-compact', () => {
       content: 'Answer',
     });
 
-    expect(createCompactConversationMessageContent({
+    expect(CONTEXT_COMPACT_TEST_ONLY.createCompactConversationMessageContent({
       node,
       promptMode: 'with_message_ids',
     })).toBe(`messageId=msg-4\n\nAnswer`);

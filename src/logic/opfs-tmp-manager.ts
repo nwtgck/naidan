@@ -25,7 +25,7 @@ function hasLocalStorage(): boolean {
   return typeof localStorage !== 'undefined';
 }
 
-export class OPFSTmpManager {
+class OPFSTmpManager {
   private readonly ownerScopeId = generateId<OPFSTmpOwnerScopeId>();
   private readonly synchronizer = new StorageSynchronizer();
   private pendingCleanupQueued = false;
@@ -176,4 +176,6 @@ export function getOPFSTmpManager(): OPFSTmpManager {
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  OPFSTmpManager,
+};

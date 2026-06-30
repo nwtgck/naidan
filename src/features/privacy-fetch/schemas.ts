@@ -3,7 +3,7 @@ import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 
 const privacyFetchHeaderEntrySchema = z.tuple([z.string(), z.string()]);
 
-export const privacyFetchHeaderEntriesSchema = z.array(privacyFetchHeaderEntrySchema);
+const privacyFetchHeaderEntriesSchema = z.array(privacyFetchHeaderEntrySchema);
 
 export const privacyFetchValidationAcceptedResultSchema = z.object({
   ok: z.literal(true),
@@ -98,7 +98,7 @@ export const privacyFetchErrorMessageSchema = z.object({
   message: z.string().min(1),
 }).strict();
 
-export const privacyFetchParentToBrokerMessageSchema = z.union([
+const privacyFetchParentToBrokerMessageSchema = z.union([
   privacyFetchRequestMessageSchema,
   privacyFetchCancelMessageSchema,
 ]);
@@ -112,4 +112,7 @@ export const privacyFetchBrokerToParentMessageSchema = z.union([
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  privacyFetchHeaderEntriesSchema,
+  privacyFetchParentToBrokerMessageSchema,
+};

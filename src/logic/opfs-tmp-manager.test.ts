@@ -57,7 +57,7 @@ describe('OPFSTmpManager', () => {
         .mockReturnValueOnce('tmp-dir-a'),
     }));
 
-    const { OPFSTmpManager } = await import('./opfs-tmp-manager');
+    const { TEST_ONLY: { OPFSTmpManager } } = await import('./opfs-tmp-manager');
     const manager = new OPFSTmpManager();
 
     const tmpHandle = await manager.createTmpDirectory({ prefix: 'chat-1' });
@@ -79,7 +79,7 @@ describe('OPFSTmpManager', () => {
         .mockReturnValueOnce('owner-scope-b'),
     }));
 
-    const { OPFSTmpManager } = await import('./opfs-tmp-manager');
+    const { TEST_ONLY: { OPFSTmpManager } } = await import('./opfs-tmp-manager');
     const managerA = new OPFSTmpManager();
     await managerA.createTmpDirectory({ prefix: 'chat-1' });
 

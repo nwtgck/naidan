@@ -42,7 +42,7 @@ export interface MultiMatchResult {
 /**
  * Checks all recipe patterns and returns all matching model IDs and errors.
  */
-export function getAllMatchingModels(
+function getAllMatchingModels(
   { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] },
 ): MultiMatchResult {
   const matches = new Set<string>();
@@ -140,4 +140,6 @@ export function generateDefaultModelPatterns({ modelId }: { modelId: string }): 
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  getAllMatchingModels,
+};

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { analyzeFakeLmInputFromMessages, analyzeFakeLmInputText } from '@/features/fake-lm/core/inputAnalysis';
-import { generateFakeLmMarkdown } from '@/features/fake-lm/core/generate';
+import { analyzeFakeLmInputFromMessages, TEST_ONLY as FAKE_LM_INPUT_ANALYSIS_TEST_ONLY } from '@/features/fake-lm/core/inputAnalysis';
+import { TEST_ONLY as FAKE_LM_GENERATE_TEST_ONLY } from '@/features/fake-lm/core/generate';
 
 describe('analyzeFakeLmInputText', () => {
   it('extracts short deterministic keywords without keeping the full user sentence', () => {
-    const analysis = analyzeFakeLmInputText({
+    const analysis = FAKE_LM_INPUT_ANALYSIS_TEST_ONLY.analyzeFakeLmInputText({
       text: 'bundleサイズの増加を見積もって、highを短くして',
     });
 
@@ -16,7 +16,7 @@ describe('analyzeFakeLmInputText', () => {
   });
 
   it('treats greetings as a soft tone hint instead of an echoed keyword requirement', () => {
-    const analysis = analyzeFakeLmInputText({ text: 'こんにちは' });
+    const analysis = FAKE_LM_INPUT_ANALYSIS_TEST_ONLY.analyzeFakeLmInputText({ text: 'こんにちは' });
 
     expect(analysis.toneScores.greeting).toBe(1);
     expect(analysis.greeting).toBe('generic');
@@ -41,7 +41,7 @@ describe('analyzeFakeLmInputText', () => {
 
 describe('fake LM generation input influence', () => {
   it('keeps the same request deterministic while mixing in a short input keyword', async () => {
-    const inputAnalysis = analyzeFakeLmInputText({ text: 'bundleサイズの増加を見積もって' });
+    const inputAnalysis = FAKE_LM_INPUT_ANALYSIS_TEST_ONLY.analyzeFakeLmInputText({ text: 'bundleサイズの増加を見積もって' });
     const base = {
       language: 'ja' as const,
       mode: 'chat' as const,
@@ -51,8 +51,8 @@ describe('fake LM generation input influence', () => {
       signal: undefined,
     };
 
-    const first = await generateFakeLmMarkdown(base);
-    const second = await generateFakeLmMarkdown(base);
+    const first = await FAKE_LM_GENERATE_TEST_ONLY.generateFakeLmMarkdown(base);
+    const second = await FAKE_LM_GENERATE_TEST_ONLY.generateFakeLmMarkdown(base);
 
     expect(second).toBe(first);
     expect(first).toMatch(/bundleサイズ|増加/u);
@@ -60,12 +60,12 @@ describe('fake LM generation input influence', () => {
   });
 
   it('starts greeting-like when the last user message is a short greeting', async () => {
-    const markdown = await generateFakeLmMarkdown({
+    const markdown = await FAKE_LM_GENERATE_TEST_ONLY.generateFakeLmMarkdown({
       language: 'ja',
       mode: 'chat',
       seed: 2,
       thinkingEffort: 'off',
-      inputAnalysis: analyzeFakeLmInputText({ text: 'こんにちは' }),
+      inputAnalysis: FAKE_LM_INPUT_ANALYSIS_TEST_ONLY.analyzeFakeLmInputText({ text: 'こんにちは' }),
       signal: undefined,
     });
 
@@ -73,12 +73,12 @@ describe('fake LM generation input influence', () => {
   });
 
   it('normalizes a morning greeting without echoing the full input text', async () => {
-    const markdown = await generateFakeLmMarkdown({
+    const markdown = await FAKE_LM_GENERATE_TEST_ONLY.generateFakeLmMarkdown({
       language: 'ja',
       mode: 'chat',
       seed: 2,
       thinkingEffort: 'off',
-      inputAnalysis: analyzeFakeLmInputText({ text: 'おはよう〜' }),
+      inputAnalysis: FAKE_LM_INPUT_ANALYSIS_TEST_ONLY.analyzeFakeLmInputText({ text: 'おはよう〜' }),
       signal: undefined,
     });
 

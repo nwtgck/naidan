@@ -3,7 +3,6 @@ import {
   runWikipediaApiRequest,
   TEST_ONLY,
   waitForWikipediaApiAttemptWindow,
-  WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS,
 } from './request-scheduler';
 
 type Deferred<T> = {
@@ -147,7 +146,7 @@ describe('runWikipediaApiRequest', () => {
     await flushMicrotasks();
     expect(settled).toBe(false);
 
-    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(TEST_ONLY.WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS);
     await expect(secondAttemptPromise).resolves.toBeUndefined();
   });
 

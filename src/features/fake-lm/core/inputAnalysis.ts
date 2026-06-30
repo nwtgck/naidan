@@ -29,7 +29,7 @@ export function analyzeFakeLmInputFromMessages({ messages }: {
   return analyzeFakeLmInputText({ text: extractLastUserText({ messages }) });
 }
 
-export function analyzeFakeLmInputText({ text }: {
+function analyzeFakeLmInputText({ text }: {
   text: string,
 }): FakeLmInputAnalysis {
   const normalized = normalizeInputText({ text });
@@ -335,4 +335,6 @@ const enStopwords = new Set([
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  analyzeFakeLmInputText,
+};

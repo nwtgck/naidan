@@ -1,7 +1,7 @@
 import type { ToolCallId } from '@/01-models/ids';
 import type { ToolExecutionResult } from '@/01-models/tool';
 
-export const TOOL_EXECUTION_INTERRUPTED_MESSAGE = 'Tool execution was interrupted before completion.';
+const TOOL_EXECUTION_INTERRUPTED_MESSAGE = 'Tool execution was interrupted before completion.';
 
 export function markExecutingToolResultsAsInterrupted({
   results,
@@ -36,4 +36,6 @@ export function markExecutingToolResultsAsInterrupted({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  TOOL_EXECUTION_INTERRUPTED_MESSAGE,
+};

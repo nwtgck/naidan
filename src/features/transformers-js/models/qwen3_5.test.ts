@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyQwen3_5ContinuationState,
-  buildQwen3_5ToolContinuationPrompt,
   isQwen3_5Model,
-  normalizeQwen3_5ToolCallsForTemplate,
-  shouldRetryQwen3_5WithoutContinuation,
+  TEST_ONLY as TRANSFORMERS_JS_QWEN3_5_TEST_ONLY,
 } from './qwen3_5';
 import { toToolCallId } from '@/01-models/ids';
 
@@ -27,7 +24,7 @@ describe('transformers-js-qwen3_5', () => {
   });
 
   it('normalizes JSON-string tool arguments to objects for the chat template', () => {
-    const normalized = normalizeQwen3_5ToolCallsForTemplate({
+    const normalized = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.normalizeQwen3_5ToolCallsForTemplate({
       toolCalls: [
         {
           id: toToolCallId({ raw: 'call_1' }),
@@ -47,7 +44,7 @@ describe('transformers-js-qwen3_5', () => {
   });
 
   it('removes null multimodal keys from continuation inputs', () => {
-    const mergedInputs = applyQwen3_5ContinuationState({
+    const mergedInputs = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.applyQwen3_5ContinuationState({
       inputs: {
         input_ids: [1, 2, 3],
         attention_mask: [1, 1, 1],
@@ -67,19 +64,19 @@ describe('transformers-js-qwen3_5', () => {
   });
 
   it('retries only for the known transformers.js continuation crash', () => {
-    expect(shouldRetryQwen3_5WithoutContinuation({
+    expect(TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.shouldRetryQwen3_5WithoutContinuation({
       error: new TypeError("Cannot read properties of undefined (reading 'inputNames')"),
       isQwen3_5ToolContinuation: true,
     })).toBe(true);
 
-    expect(shouldRetryQwen3_5WithoutContinuation({
+    expect(TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.shouldRetryQwen3_5WithoutContinuation({
       error: new Error('some other failure'),
       isQwen3_5ToolContinuation: true,
     })).toBe(false);
   });
 
   it('builds tool continuation prompts from the previously decoded history', () => {
-    const prompt = buildQwen3_5ToolContinuationPrompt({
+    const prompt = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.buildQwen3_5ToolContinuationPrompt({
       promptHistory: `\
 <|im_start|>user
 hello<|im_end|>

@@ -21,14 +21,14 @@ const fakeDir = '/workspace';
 
 describe('useFileExplorerClipboard', () => {
   it('starts empty', () => {
-    const { clipboardState, hasClipboardContent } = useFileExplorerClipboard();
+    const { clipboardState, TEST_ONLY: { hasClipboardContent } } = useFileExplorerClipboard();
     expect(clipboardState.value.operation).toBeUndefined();
     expect(clipboardState.value.entries).toHaveLength(0);
     expect(hasClipboardContent.value).toBe(false);
   });
 
   it('clipboardCopy sets copy operation with entries', () => {
-    const { clipboardState, hasClipboardContent, clipboardCopy } = useFileExplorerClipboard();
+    const { clipboardState, clipboardCopy, TEST_ONLY: { hasClipboardContent } } = useFileExplorerClipboard();
     const entries = [makeEntry('a.txt'), makeEntry('b.txt')];
     clipboardCopy({ entries, sourceDirectoryPath: fakeDir });
     expect(clipboardState.value.operation).toBe('copy');
@@ -38,7 +38,7 @@ describe('useFileExplorerClipboard', () => {
   });
 
   it('clipboardCut sets cut operation with entries', () => {
-    const { clipboardState, hasClipboardContent, clipboardCut } = useFileExplorerClipboard();
+    const { clipboardState, clipboardCut, TEST_ONLY: { hasClipboardContent } } = useFileExplorerClipboard();
     const entries = [makeEntry('c.txt')];
     clipboardCut({ entries, sourceDirectoryPath: fakeDir });
     expect(clipboardState.value.operation).toBe('cut');
@@ -63,7 +63,7 @@ describe('useFileExplorerClipboard', () => {
   });
 
   it('clearClipboard resets state', () => {
-    const { clipboardState, hasClipboardContent, clipboardCopy, clearClipboard } = useFileExplorerClipboard();
+    const { clipboardState, clipboardCopy, clearClipboard, TEST_ONLY: { hasClipboardContent } } = useFileExplorerClipboard();
     clipboardCopy({ entries: [makeEntry('a.txt')], sourceDirectoryPath: fakeDir });
     clearClipboard();
     expect(clipboardState.value.operation).toBeUndefined();
@@ -73,27 +73,27 @@ describe('useFileExplorerClipboard', () => {
   });
 
   it('isCut returns true for cut entries', () => {
-    const { isCut, clipboardCut } = useFileExplorerClipboard();
+    const { clipboardCut, TEST_ONLY: { isCut } } = useFileExplorerClipboard();
     const entry = makeEntry('file.txt');
     clipboardCut({ entries: [entry], sourceDirectoryPath: fakeDir });
     expect(isCut({ entry })).toBe(true);
   });
 
   it('isCut returns false for copy entries', () => {
-    const { isCut, clipboardCopy } = useFileExplorerClipboard();
+    const { clipboardCopy, TEST_ONLY: { isCut } } = useFileExplorerClipboard();
     const entry = makeEntry('file.txt');
     clipboardCopy({ entries: [entry], sourceDirectoryPath: fakeDir });
     expect(isCut({ entry })).toBe(false);
   });
 
   it('isCut returns false for entry not in clipboard', () => {
-    const { isCut, clipboardCut } = useFileExplorerClipboard();
+    const { clipboardCut, TEST_ONLY: { isCut } } = useFileExplorerClipboard();
     clipboardCut({ entries: [makeEntry('a.txt')], sourceDirectoryPath: fakeDir });
     expect(isCut({ entry: makeEntry('b.txt') })).toBe(false);
   });
 
   it('isCut returns false when clipboard is empty', () => {
-    const { isCut } = useFileExplorerClipboard();
+    const { TEST_ONLY: { isCut } } = useFileExplorerClipboard();
     expect(isCut({ entry: makeEntry('file.txt') })).toBe(false);
   });
 
@@ -106,7 +106,7 @@ describe('useFileExplorerClipboard', () => {
   });
 
   it('hasClipboardContent is false when entries array is empty', () => {
-    const { hasClipboardContent, clipboardCopy } = useFileExplorerClipboard();
+    const { clipboardCopy, TEST_ONLY: { hasClipboardContent } } = useFileExplorerClipboard();
     clipboardCopy({ entries: [], sourceDirectoryPath: fakeDir });
     expect(hasClipboardContent.value).toBe(false);
   });

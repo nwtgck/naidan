@@ -48,12 +48,13 @@ describe('ChatPrintContent component', () => {
       currentChatId: computed(() => mockCurrentChat.value?.id),
       activeMessages: computed(() => mockActiveMessages.value),
       currentChatGroup: computed(() => null),
-      allMessages: computed(() => mockActiveMessages.value),
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => null),
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
-      TEST_ONLY: {},
+      TEST_ONLY: {
+        allMessages: computed(() => mockActiveMessages.value),
+      },
     } as ReturnType<typeof useCurrentChatState>);
     vi.mocked(useChatBranches).mockReturnValue({
       editMessage: vi.fn(),

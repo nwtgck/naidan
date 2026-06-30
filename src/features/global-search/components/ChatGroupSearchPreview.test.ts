@@ -100,7 +100,7 @@ describe('ChatGroupSearchPreview Component', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
 
     // Chat 2 is newer (updatedAt: 200) than Chat 1 (100)
-    expect((wrapper.vm as any).selectedChatId).toBe('c2');
+    expect((wrapper.vm as any).TEST_ONLY.selectedChatId.value).toBe('c2');
   });
 
   it('should navigate when "Open Chat" button is clicked', async () => {

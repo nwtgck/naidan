@@ -22,7 +22,7 @@ vi.mock('@/composables/chat/chat-activity-queries', () => ({
   isChatTaskRunning: mockIsChatTaskRunning,
 }));
 
-import { useChatActivity } from './useChatActivity';
+import { TEST_ONLY as CHAT_USE_CHAT_ACTIVITY_TEST_ONLY } from './useChatActivity';
 
 describe('useChatActivity', () => {
   beforeEach(() => {
@@ -51,7 +51,7 @@ describe('useChatActivity', () => {
       return { phase: 'idle' } satisfies ContextCompactProgress;
     });
 
-    const chatActivity = useChatActivity({
+    const chatActivity = CHAT_USE_CHAT_ACTIVITY_TEST_ONLY.useChatActivity({
       chatId: computed(() => chatId.value),
     });
 

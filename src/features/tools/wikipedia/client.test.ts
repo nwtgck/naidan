@@ -2,16 +2,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { PrivacyFetchResponse } from '@/features/privacy-fetch';
 import { createPrivacyFetchError } from '@/features/privacy-fetch/errors';
 import {
-  createRetryAfterRetryDecision,
-  createWikipediaFetchFailureRetryDecision,
-  getRetryAfterHeaderValue,
   getWikipediaPage,
-  parseRetryAfterMs,
   searchWikipedia,
-  waitForRetryAfterDelay,
-  WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS,
-  WIKIPEDIA_API_MAX_RETRY_AFTER_RETRY_COUNT,
-  WIKIPEDIA_SEARCH_LIMIT,
+  TEST_ONLY as WIKIPEDIA_CLIENT_TEST_ONLY,
 } from './client';
 import { WIKIPEDIA_INLINE_CONTENT_MAX_LINES } from './binary-object';
 import {
@@ -106,7 +99,7 @@ describe('Retry-After helpers', () => {
   });
 
   it('looks up Retry-After headers case-insensitively through Headers', () => {
-    expect(getRetryAfterHeaderValue({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.getRetryAfterHeaderValue({
       response: createPrivacyFetchResponse({
         status: 429,
         statusText: 'Too Many Requests',
@@ -115,7 +108,7 @@ describe('Retry-After helpers', () => {
       }),
     })).toBe('5');
 
-    expect(getRetryAfterHeaderValue({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.getRetryAfterHeaderValue({
       response: createPrivacyFetchResponse({
         status: 429,
         statusText: 'Too Many Requests',
@@ -124,7 +117,7 @@ describe('Retry-After helpers', () => {
       }),
     })).toBe('6');
 
-    expect(getRetryAfterHeaderValue({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.getRetryAfterHeaderValue({
       response: createPrivacyFetchResponse({
         status: 429,
         statusText: 'Too Many Requests',
@@ -135,31 +128,31 @@ describe('Retry-After helpers', () => {
   });
 
   it('parses delay-seconds Retry-After values', () => {
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: '0',
       nowMs: 0,
     })).toBe(0);
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: '5',
       nowMs: 0,
     })).toBe(5000);
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: '60',
       nowMs: 0,
     })).toBe(60000);
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: '1.5',
       nowMs: 0,
     })).toBeUndefined();
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: '-1',
       nowMs: 0,
     })).toBeUndefined();
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: 'abc',
       nowMs: 0,
     })).toBeUndefined();
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: '',
       nowMs: 0,
     })).toBeUndefined();
@@ -167,22 +160,22 @@ describe('Retry-After helpers', () => {
 
   it('parses HTTP-date Retry-After values', () => {
     const nowMs = Date.UTC(2024, 0, 1, 0, 0, 0);
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: 'Mon, 01 Jan 2024 00:00:05 GMT',
       nowMs,
     })).toBe(5000);
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: 'Sun, 31 Dec 2023 23:59:59 GMT',
       nowMs,
     })).toBe(0);
-    expect(parseRetryAfterMs({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.parseRetryAfterMs({
       value: 'not-a-date',
       nowMs,
     })).toBeUndefined();
   });
 
   it('uses visible 429 fallback or gives up when Retry-After is not retryable', () => {
-    expect(createRetryAfterRetryDecision({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createRetryAfterRetryDecision({
       fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 429,
@@ -193,13 +186,13 @@ describe('Retry-After helpers', () => {
       nowMs: 0,
     })).toEqual({
       action: 'retry',
-      delayMs: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
+      delayMs: WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
       delaySource: 'fallback_429',
       retryAfterMs: 0,
       retryAfterValue: undefined,
     });
 
-    expect(createRetryAfterRetryDecision({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createRetryAfterRetryDecision({
       fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 503,
@@ -216,7 +209,7 @@ describe('Retry-After helpers', () => {
       retryAfterValue: 'abc',
     });
 
-    expect(createRetryAfterRetryDecision({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createRetryAfterRetryDecision({
       fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 429,
@@ -228,13 +221,13 @@ describe('Retry-After helpers', () => {
       nowMs: 0,
     })).toEqual({
       action: 'retry',
-      delayMs: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
+      delayMs: WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
       delaySource: 'fallback_429',
       retryAfterMs: 0,
       retryAfterValue: 'abc',
     });
 
-    expect(createRetryAfterRetryDecision({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createRetryAfterRetryDecision({
       fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 503,
@@ -251,7 +244,7 @@ describe('Retry-After helpers', () => {
       retryAfterValue: '60',
     });
 
-    expect(createRetryAfterRetryDecision({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createRetryAfterRetryDecision({
       fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 429,
@@ -259,7 +252,7 @@ describe('Retry-After helpers', () => {
         headers: [['Retry-After', '0']],
         json: {},
       }),
-      retryCount: WIKIPEDIA_API_MAX_RETRY_AFTER_RETRY_COUNT,
+      retryCount: WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_MAX_RETRY_AFTER_RETRY_COUNT,
       nowMs: 0,
     })).toEqual({
       action: 'give_up',
@@ -268,8 +261,8 @@ describe('Retry-After helpers', () => {
       retryAfterValue: '0',
     });
 
-    expect(createRetryAfterRetryDecision({
-      fallbackRetryCount: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length,
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createRetryAfterRetryDecision({
+      fallbackRetryCount: WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length,
       response: createPrivacyFetchResponse({
         status: 429,
         statusText: 'Too Many Requests',
@@ -286,7 +279,7 @@ describe('Retry-After helpers', () => {
   });
 
   it('creates fetch failure retry decisions for fetch_failed and non-retryable errors', () => {
-    expect(createWikipediaFetchFailureRetryDecision({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createWikipediaFetchFailureRetryDecision({
       error: createPrivacyFetchError({
         code: 'fetch_failed',
         message: 'NetworkError',
@@ -294,22 +287,22 @@ describe('Retry-After helpers', () => {
       retryCount: 0,
     })).toEqual({
       action: 'retry',
-      delayMs: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
+      delayMs: WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
       delaySource: 'cors_hidden_rate_limit_fallback',
     });
 
-    expect(createWikipediaFetchFailureRetryDecision({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createWikipediaFetchFailureRetryDecision({
       error: createPrivacyFetchError({
         code: 'fetch_failed',
         message: 'NetworkError',
       }),
-      retryCount: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length,
+      retryCount: WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length,
     })).toEqual({
       action: 'give_up',
       reason: 'cors_hidden_rate_limit_retry_count_exhausted',
     });
 
-    expect(createWikipediaFetchFailureRetryDecision({
+    expect(WIKIPEDIA_CLIENT_TEST_ONLY.createWikipediaFetchFailureRetryDecision({
       error: createPrivacyFetchError({
         code: 'rejected',
         message: 'Rejected',
@@ -325,7 +318,7 @@ describe('Retry-After helpers', () => {
     vi.useFakeTimers();
 
     const controller = new AbortController();
-    const waitPromise = waitForRetryAfterDelay({
+    const waitPromise = WIKIPEDIA_CLIENT_TEST_ONLY.waitForRetryAfterDelay({
       delayMs: 5000,
       signal: controller.signal,
     });
@@ -412,7 +405,7 @@ describe('searchWikipedia', () => {
     const url = requestResponseImpl.mock.calls[0]?.[0]?.url as URL;
     expect(url.searchParams.get('srprop')).toBe('');
     expect(url.searchParams.get('srinfo')).toBe('');
-    expect(url.searchParams.get('srlimit')).toBe(String(WIKIPEDIA_SEARCH_LIMIT));
+    expect(url.searchParams.get('srlimit')).toBe(String(WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_SEARCH_LIMIT));
   });
 
   it('normalizes only title and pageid from the response', async () => {
@@ -574,7 +567,7 @@ describe('searchWikipedia', () => {
     await Promise.resolve();
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0]);
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0]);
 
     await expect(resultPromise).resolves.toEqual({
       groups: [{
@@ -618,7 +611,7 @@ describe('searchWikipedia', () => {
     await Promise.resolve();
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0]);
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0]);
 
     await expect(resultPromise).resolves.toEqual({
       groups: [{
@@ -777,7 +770,7 @@ describe('searchWikipedia', () => {
     await Promise.resolve();
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0]);
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0]);
 
     await expect(resultPromise).resolves.toEqual({
       groups: [{
@@ -838,7 +831,7 @@ describe('searchWikipedia', () => {
 
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0]);
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0]);
     await Promise.resolve();
     await Promise.resolve();
 
@@ -888,7 +881,7 @@ describe('searchWikipedia', () => {
     });
     void resultPromise.catch(() => undefined);
 
-    for (const delayMs of WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS) {
+    for (const delayMs of WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS) {
       await Promise.resolve();
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(delayMs);
@@ -896,7 +889,7 @@ describe('searchWikipedia', () => {
 
     await expect(resultPromise).rejects.toThrow(/CORS-hidden.*Access-Control-Allow-Origin.*Retried 4 times.*2s, 4s, 8s, and 16s/i);
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(
-      WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length + 1,
+      WIKIPEDIA_CLIENT_TEST_ONLY.WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length + 1,
     );
   });
 

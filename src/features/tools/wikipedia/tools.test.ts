@@ -2,7 +2,11 @@ import { toChatId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WikipediaGetPageTool, WikipediaSearchTool } from './tools';
 import type { ToolApprovalContext } from '@/features/tools/approval';
-import { clearRememberedWikipediaPageTitles, getRememberedWikipediaPageTitle, rememberWikipediaPageTitle } from './page-title-cache';
+import {
+  getRememberedWikipediaPageTitle,
+  rememberWikipediaPageTitle,
+  TEST_ONLY as WIKIPEDIA_PAGE_TITLE_CACHE_TEST_ONLY,
+} from './page-title-cache';
 
 const {
   mockSearchWikipedia,
@@ -43,7 +47,7 @@ function createApprovalContext({
 describe('WikipediaSearchTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearRememberedWikipediaPageTitles();
+    WIKIPEDIA_PAGE_TITLE_CACHE_TEST_ONLY.clearRememberedWikipediaPageTitles();
   });
 
   it('accepts lang and query in parametersSchema', () => {
@@ -110,7 +114,7 @@ describe('WikipediaSearchTool', () => {
 describe('WikipediaGetPageTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearRememberedWikipediaPageTitles();
+    WIKIPEDIA_PAGE_TITLE_CACHE_TEST_ONLY.clearRememberedWikipediaPageTitles();
   });
 
   it('accepts lang and pageId in parametersSchema', () => {

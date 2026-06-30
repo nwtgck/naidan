@@ -1111,9 +1111,10 @@ function focusInput({
   }
 }
 
-defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, processDropItems, formatLabel,
+defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFiles, processDropItems, formatLabel,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
+      adjustTextareaHeight,
       attachments: testOnlyAttachments,
       editingAttachmentId: testOnlyEditingAttachmentId,
       editingAttachment: testOnlyEditingAttachment,

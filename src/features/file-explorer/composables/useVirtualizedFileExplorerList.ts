@@ -139,10 +139,10 @@ export function useVirtualizedFileExplorerList({
     totalHeight,
     topSpacerHeight,
     bottomSpacerHeight,
-    virtualizationEnabled,
     scrollEntryIntoView,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
+        virtualizationEnabled,
         updateViewportMetrics,
       },
     }) || {}),

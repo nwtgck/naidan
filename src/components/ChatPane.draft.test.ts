@@ -276,7 +276,7 @@ describe('ChatPane Draft Maintenance', () => {
   let wrapper: VueWrapper<any>;
   beforeEach(() => {
     setupScrollToMock();
-    const { clearAllDrafts } = useChatDraft();
+    const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
     clearAllDrafts();
     mockCurrentChat.value = {
       id: toChatId({ raw: '1' }),

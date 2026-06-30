@@ -185,7 +185,7 @@ describe('ChatPane Design Specifications', () => {
     // Simulate maximization
     (wrapper.findComponent(ChatInput).vm as any).isMaximized = true;
     const chatInput = wrapper.findComponent(ChatInput);
-    await (chatInput.vm as any).adjustTextareaHeight({});
+    await (chatInput.vm as any).TEST_ONLY.adjustTextareaHeight({});
 
     const textarea = wrapper.find('[data-testid="chat-input"]');
     const height = parseFloat((textarea.element as HTMLElement).style.height);

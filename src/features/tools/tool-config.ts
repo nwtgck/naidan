@@ -25,12 +25,12 @@ export type ResolvedToolConfig = {
   source: ToolConfigSource,
 };
 
-export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.calculator' }): readonly ['calculator'];
-export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.choices' }): readonly ['choices'];
-export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wikipedia' }): readonly ['wikipedia_search', 'wikipedia_get_page'];
-export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wesh' }): readonly ['shell_execute'];
-export function lmToolNamesForBuiltinToolKey({ key }: { key: BuiltinToolKey }): readonly LmToolName[];
-export function lmToolNamesForBuiltinToolKey({
+function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.calculator' }): readonly ['calculator'];
+function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.choices' }): readonly ['choices'];
+function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wikipedia' }): readonly ['wikipedia_search', 'wikipedia_get_page'];
+function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wesh' }): readonly ['shell_execute'];
+function lmToolNamesForBuiltinToolKey({ key }: { key: BuiltinToolKey }): readonly LmToolName[];
+function lmToolNamesForBuiltinToolKey({
   key,
 }: {
   key: BuiltinToolKey,
@@ -275,7 +275,7 @@ export function setBuiltinToolStatusInToolConfigs({
   });
 }
 
-export function setLmToolStatusInToolConfigs({
+function setLmToolStatusInToolConfigs({
   toolConfigs,
   name,
   status,
@@ -294,7 +294,7 @@ export function setLmToolStatusInToolConfigs({
   });
 }
 
-export function setWeshNaidanSysfsAccessScopeInToolConfigs({
+function setWeshNaidanSysfsAccessScopeInToolConfigs({
   toolConfigs,
   accessScope,
   inheritedConfig,
@@ -599,4 +599,8 @@ export function lmToolNamesFromToolConfigs({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  lmToolNamesForBuiltinToolKey,
+  setLmToolStatusInToolConfigs,
+  setWeshNaidanSysfsAccessScopeInToolConfigs,
+};

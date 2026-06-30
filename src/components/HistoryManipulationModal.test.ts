@@ -51,12 +51,13 @@ describe('HistoryManipulationModal', () => {
       currentChat: computed(() => mockCurrentChat.value as any),
       currentChatGroup: computed(() => null),
       activeMessages: computed(() => mockActiveMessages.value),
-      allMessages: computed(() => mockActiveMessages.value),
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => mockInheritedSettings.value as any),
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
-      TEST_ONLY: {},
+      TEST_ONLY: {
+        allMessages: computed(() => mockActiveMessages.value),
+      },
     });
     vi.mocked(commitFullHistoryManipulationForChat).mockImplementation(mockCommit);
     mockActiveMessages.value = [

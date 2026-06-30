@@ -1,7 +1,7 @@
 import { createEmptyFakeLmInputAnalysis } from '@/features/fake-lm/core/inputAnalysis';
 import { streamFakeLmMarkdown, type StreamFakeLmMarkdownInput } from '@/features/fake-lm/core/stream';
 
-export async function generateFakeLmMarkdown({ language, mode, seed, thinkingEffort, inputAnalysis, signal }: Omit<StreamFakeLmMarkdownInput, 'chunking' | 'inputAnalysis'> & { inputAnalysis?: StreamFakeLmMarkdownInput['inputAnalysis'] }): Promise<string> {
+async function generateFakeLmMarkdown({ language, mode, seed, thinkingEffort, inputAnalysis, signal }: Omit<StreamFakeLmMarkdownInput, 'chunking' | 'inputAnalysis'> & { inputAnalysis?: StreamFakeLmMarkdownInput['inputAnalysis'] }): Promise<string> {
   let markdown = '';
 
   for await (const item of streamFakeLmMarkdown({
@@ -35,4 +35,6 @@ export async function generateFakeLmMarkdown({ language, mode, seed, thinkingEff
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  generateFakeLmMarkdown,
+};

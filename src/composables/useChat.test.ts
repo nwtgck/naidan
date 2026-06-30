@@ -7,7 +7,7 @@ import { reactive, triggerRef, toRaw } from 'vue';
 import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import { findRestorationIndex } from '@/logic/chat-tree';
+import { TEST_ONLY as CHAT_TREE_TEST_ONLY } from '@/logic/chat-tree';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 const { mocks } = vi.hoisted(() => ({
@@ -1338,27 +1338,27 @@ describe('useChat Composable Logic', () => {
     ];
 
     it('should return index after prevId if prevId is present', () => {
-      expect(findRestorationIndex({ items, prevId: 'i1', nextId: 'i3' })).toBe(1);
-      expect(findRestorationIndex({ items, prevId: 'i2', nextId: 'i3' })).toBe(2);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'i1', nextId: 'i3' })).toBe(1);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'i2', nextId: 'i3' })).toBe(2);
     });
 
     it('should return index before nextId if prevId is missing but nextId is present', () => {
-      expect(findRestorationIndex({ items, prevId: 'deleted-prev', nextId: 'i2' })).toBe(1);
-      expect(findRestorationIndex({ items, prevId: null, nextId: 'i1' })).toBe(0);
-      expect(findRestorationIndex({ items, prevId: null, nextId: 'i3' })).toBe(2);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'deleted-prev', nextId: 'i2' })).toBe(1);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: null, nextId: 'i1' })).toBe(0);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: null, nextId: 'i3' })).toBe(2);
     });
 
     it('should return 0 (top) if both prevId and nextId are missing or not in list', () => {
-      expect(findRestorationIndex({ items, prevId: 'ghost-1', nextId: 'ghost-2' })).toBe(0);
-      expect(findRestorationIndex({ items, prevId: null, nextId: null })).toBe(0);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'ghost-1', nextId: 'ghost-2' })).toBe(0);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: null, nextId: null })).toBe(0);
     });
 
     it('should return 0 for empty list', () => {
-      expect(findRestorationIndex({ items: [], prevId: 'any', nextId: 'any' })).toBe(0);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items: [], prevId: 'any', nextId: 'any' })).toBe(0);
     });
 
     it('should handle last position correctly', () => {
-      expect(findRestorationIndex({ items, prevId: 'i3', nextId: null })).toBe(3);
+      expect(CHAT_TREE_TEST_ONLY.findRestorationIndex({ items, prevId: 'i3', nextId: null })).toBe(3);
     });
 
     it('should restore the last item of a group correctly in an integrated flow', async () => {

@@ -65,12 +65,13 @@ describe('ChatSettingsPanel Error Handling', () => {
       currentChat: computed(() => mockCurrentChat.value),
       currentChatGroup: computed(() => null),
       activeMessages: computed(() => []),
-      allMessages: computed(() => []),
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => null),
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
-      TEST_ONLY: {},
+      TEST_ONLY: {
+        allMessages: computed(() => []),
+      },
     } as ReturnType<typeof useCurrentChatState>);
     mockAvailableModelsRef.value = [];
     mockFetchingModelsRef.value = false;

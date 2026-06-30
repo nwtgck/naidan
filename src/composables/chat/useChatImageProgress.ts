@@ -3,11 +3,12 @@ import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ChatId } from '@/01-models/ids';
 
 export type ChatImageProgressAdapter = {
-  progress: ComputedRef<{ currentStep: number, totalSteps: number } | undefined>,
   currentStep: ComputedRef<number | undefined>,
   totalSteps: ComputedRef<number | undefined>,
 
-  TEST_ONLY: Record<never, never>,
+  TEST_ONLY: {
+    progress: ComputedRef<{ currentStep: number, totalSteps: number } | undefined>,
+  },
 };
 
 export function useChatImageProgress({
@@ -25,11 +26,12 @@ export function useChatImageProgress({
   const totalSteps = computed(() => progress.value?.totalSteps);
 
   return {
-    progress,
     currentStep,
     totalSteps,
     ...((__BUILD_MODE_IS_TEST__ && {
-      TEST_ONLY: {},
+      TEST_ONLY: {
+        progress,
+      },
     }) || {}),
   };
 }

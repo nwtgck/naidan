@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { VfsExplorerDirectory, FsExplorerDirectory } from './explorer-directory';
+import { TEST_ONLY as FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY } from './explorer-directory';
 import type { ExplorerChild } from './explorer-directory';
 import type { WeshVFS } from '@/features/wesh/vfs';
 import type { WeshDirEntry, WeshFileType } from '@/features/wesh/types';
@@ -59,7 +59,7 @@ describe('VfsExplorerDirectory.children()', () => {
       nativeHandles: { '/home/user/v1': handle },
       readOnlyPaths: { '/home/user/v1': false },
     });
-    const dir = new VfsExplorerDirectory({ name: 'user', path: '/home/user', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'user', path: '/home/user', vfs });
 
     const children: ExplorerChild[] = [];
     for await (const child of dir.children()) {
@@ -71,7 +71,7 @@ describe('VfsExplorerDirectory.children()', () => {
     expect(child.kind).toBe('directory');
     expect(child.name).toBe('v1');
     expect(child.readOnly).toBe(false);
-    expect(child.directory).toBeInstanceOf(FsExplorerDirectory);
+    expect(child.directory).toBeInstanceOf(FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.FsExplorerDirectory);
     // Name override: FsExplorerDirectory should use the VFS segment name, not handle.name
     expect(child.directory.name).toBe('v1');
   });
@@ -84,7 +84,7 @@ describe('VfsExplorerDirectory.children()', () => {
       nativeHandles: { '/home/user/v3': handle },
       readOnlyPaths: { '/home/user/v3': false },
     });
-    const dir = new VfsExplorerDirectory({ name: 'user', path: '/home/user', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'user', path: '/home/user', vfs });
 
     const children: ExplorerChild[] = [];
     for await (const child of dir.children()) {
@@ -101,7 +101,7 @@ describe('VfsExplorerDirectory.children()', () => {
       readDirEntries: [{ name: 'user', type: 'directory' }],
       nativeHandles: { '/home/user': null },
     });
-    const dir = new VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
 
     const children: ExplorerChild[] = [];
     for await (const child of dir.children()) {
@@ -113,7 +113,7 @@ describe('VfsExplorerDirectory.children()', () => {
     expect(child.kind).toBe('directory');
     expect(child.name).toBe('user');
     expect(child.readOnly).toBe(true);
-    expect(child.directory).toBeInstanceOf(VfsExplorerDirectory);
+    expect(child.directory).toBeInstanceOf(FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory);
   });
 
   it('skips non-directory entries (files, fifos, chardevs, symlinks)', async () => {
@@ -127,7 +127,7 @@ describe('VfsExplorerDirectory.children()', () => {
       ],
       nativeHandles: { '/root/subdir': null },
     });
-    const dir = new VfsExplorerDirectory({ name: 'root', path: '/root', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'root', path: '/root', vfs });
 
     const children: ExplorerChild[] = [];
     for await (const child of dir.children()) {
@@ -145,7 +145,7 @@ describe('VfsExplorerDirectory.children()', () => {
       nativeHandles: { '/mnt/ro-mount': handle },
       readOnlyPaths: { '/mnt/ro-mount': true },
     });
-    const dir = new VfsExplorerDirectory({ name: 'mnt', path: '/mnt', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'mnt', path: '/mnt', vfs });
 
     const children: ExplorerChild[] = [];
     for await (const child of dir.children()) {
@@ -170,7 +170,7 @@ describe('VfsExplorerDirectory.children()', () => {
         '/virtual/user/v1': true,
       },
     });
-    const dir = new VfsExplorerDirectory({ name: 'user', path: '/virtual/user', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'user', path: '/virtual/user', vfs });
 
     const children: ExplorerChild[] = [];
     for await (const child of dir.children()) {
@@ -179,7 +179,7 @@ describe('VfsExplorerDirectory.children()', () => {
 
     const child = asDir(children[0]!);
     expect(child.readOnly).toBe(false);
-    expect(child.directory).toBeInstanceOf(FsExplorerDirectory);
+    expect(child.directory).toBeInstanceOf(FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.FsExplorerDirectory);
   });
 });
 
@@ -193,11 +193,11 @@ describe('VfsExplorerDirectory.subdir()', () => {
       nativeHandles: { '/home/user/v1': handle },
       readOnlyPaths: { '/home/user/v1': false },
     });
-    const dir = new VfsExplorerDirectory({ name: 'user', path: '/home/user', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'user', path: '/home/user', vfs });
 
     const child = await dir.subdir({ name: 'v1' });
 
-    expect(child).toBeInstanceOf(FsExplorerDirectory);
+    expect(child).toBeInstanceOf(FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.FsExplorerDirectory);
     expect(child!.name).toBe('v1');
     expect(child!.readOnly).toBe(false);
   });
@@ -207,11 +207,11 @@ describe('VfsExplorerDirectory.subdir()', () => {
       statResults: { '/home/user': { type: 'directory' } },
       nativeHandles: { '/home/user': null },
     });
-    const dir = new VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
 
     const child = await dir.subdir({ name: 'user' });
 
-    expect(child).toBeInstanceOf(VfsExplorerDirectory);
+    expect(child).toBeInstanceOf(FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory);
     expect(child!.name).toBe('user');
   });
 
@@ -219,7 +219,7 @@ describe('VfsExplorerDirectory.subdir()', () => {
     const vfs = makeMockVfs({
       statResults: {},  // stat will throw
     });
-    const dir = new VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
 
     const child = await dir.subdir({ name: 'nonexistent' });
 
@@ -230,7 +230,7 @@ describe('VfsExplorerDirectory.subdir()', () => {
     const vfs = makeMockVfs({
       statResults: { '/home/file.txt': { type: 'file' } },
     });
-    const dir = new VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'home', path: '/home', vfs });
 
     const child = await dir.subdir({ name: 'file.txt' });
 
@@ -241,7 +241,7 @@ describe('VfsExplorerDirectory.subdir()', () => {
 // ---- VfsExplorerDirectory — write operations rejected ----
 
 describe('VfsExplorerDirectory write operations', () => {
-  const dir = new VfsExplorerDirectory({
+  const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({
     name: 'test',
     path: '/test',
     vfs: makeMockVfs(),
@@ -270,27 +270,27 @@ describe('VfsExplorerDirectory.isSameAs()', () => {
   const vfs = makeMockVfs();
 
   it('returns true for same vfs instance and same path', async () => {
-    const a = new VfsExplorerDirectory({ name: 'x', path: '/a', vfs });
-    const b = new VfsExplorerDirectory({ name: 'x', path: '/a', vfs });
+    const a = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'x', path: '/a', vfs });
+    const b = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'x', path: '/a', vfs });
     expect(await a.isSameAs({ other: b })).toBe(true);
   });
 
   it('returns false for different paths', async () => {
-    const a = new VfsExplorerDirectory({ name: 'a', path: '/a', vfs });
-    const b = new VfsExplorerDirectory({ name: 'b', path: '/b', vfs });
+    const a = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'a', path: '/a', vfs });
+    const b = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'b', path: '/b', vfs });
     expect(await a.isSameAs({ other: b })).toBe(false);
   });
 
   it('returns false for different vfs instances', async () => {
     const vfs2 = makeMockVfs();
-    const a = new VfsExplorerDirectory({ name: 'x', path: '/a', vfs });
-    const b = new VfsExplorerDirectory({ name: 'x', path: '/a', vfs: vfs2 });
+    const a = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'x', path: '/a', vfs });
+    const b = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'x', path: '/a', vfs: vfs2 });
     expect(await a.isSameAs({ other: b })).toBe(false);
   });
 
   it('returns false when compared to a non-VfsExplorerDirectory', async () => {
-    const a = new VfsExplorerDirectory({ name: 'x', path: '/a', vfs });
-    const other = { name: 'x', readOnly: false } as unknown as FsExplorerDirectory;
+    const a = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'x', path: '/a', vfs });
+    const other = { name: 'x', readOnly: false } as unknown as InstanceType<typeof FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.FsExplorerDirectory>;
     expect(await a.isSameAs({ other })).toBe(false);
   });
 });
@@ -301,7 +301,7 @@ describe('VfsExplorerDirectory path joining', () => {
   it('joins correctly from root path "/"', async () => {
     const statSpy = vi.fn().mockRejectedValue(new DOMException('Not found', 'NotFoundError'));
     const vfs = { ...makeMockVfs(), stat: statSpy } as unknown as WeshVFS;
-    const dir = new VfsExplorerDirectory({ name: '/', path: '/', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: '/', path: '/', vfs });
     await dir.subdir({ name: 'home' });
     expect(statSpy).toHaveBeenCalledWith({ path: '/home' });
   });
@@ -309,7 +309,7 @@ describe('VfsExplorerDirectory path joining', () => {
   it('joins correctly from non-root path', async () => {
     const statSpy = vi.fn().mockRejectedValue(new DOMException('Not found', 'NotFoundError'));
     const vfs = { ...makeMockVfs(), stat: statSpy } as unknown as WeshVFS;
-    const dir = new VfsExplorerDirectory({ name: 'user', path: '/home/user', vfs });
+    const dir = new FILE_EXPLORER_EXPLORER_DIRECTORY_TEST_ONLY.VfsExplorerDirectory({ name: 'user', path: '/home/user', vfs });
     await dir.subdir({ name: 'v1' });
     expect(statSpy).toHaveBeenCalledWith({ path: '/home/user/v1' });
   });

@@ -1,4 +1,4 @@
-export const WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS = 1000;
+const WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS = 1000;
 
 type QueuedWikipediaApiSlot = {
   onAbort: (() => void) | undefined,
@@ -160,4 +160,5 @@ export const TEST_ONLY = {
 
     nextWikipediaApiAttemptStartAt = 0;
   },
+  WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS,
 };

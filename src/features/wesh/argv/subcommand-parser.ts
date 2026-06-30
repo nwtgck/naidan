@@ -1,7 +1,7 @@
 import { parseStandardArgv } from './standard-parser';
 import type { ParsedSubcommandArgv, SubcommandArgvParserSpec } from './types';
 
-export function parseSubcommandArgv({
+function parseSubcommandArgv({
   args,
   spec,
 }: {
@@ -52,4 +52,6 @@ export function parseSubcommandArgv({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  parseSubcommandArgv,
+};

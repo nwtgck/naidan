@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  buildSysfsNaidanBinaryObjectDataFilePath,
-  buildWikipediaBinaryObjectName,
   countLines,
   saveWikipediaPageTextAsBinaryObject,
   WIKIPEDIA_INLINE_CONTENT_MAX_LINES,
+  TEST_ONLY as WIKIPEDIA_BINARY_OBJECT_TEST_ONLY,
 } from './binary-object';
 import { toBinaryObjectId } from '@/01-models/ids';
 
@@ -42,7 +41,7 @@ c` })).toBe(3);
 
 describe('buildWikipediaBinaryObjectName', () => {
   it('includes title, lang, and pageId', () => {
-    expect(buildWikipediaBinaryObjectName({
+    expect(WIKIPEDIA_BINARY_OBJECT_TEST_ONLY.buildWikipediaBinaryObjectName({
       title: 'Quantum computing',
       lang: 'en',
       pageId: 25220,
@@ -50,7 +49,7 @@ describe('buildWikipediaBinaryObjectName', () => {
   });
 
   it('keeps Japanese titles', () => {
-    expect(buildWikipediaBinaryObjectName({
+    expect(WIKIPEDIA_BINARY_OBJECT_TEST_ONLY.buildWikipediaBinaryObjectName({
       title: '量子コンピュータ',
       lang: 'ja',
       pageId: 894134,
@@ -58,7 +57,7 @@ describe('buildWikipediaBinaryObjectName', () => {
   });
 
   it('sanitizes unsafe filename characters', () => {
-    expect(buildWikipediaBinaryObjectName({
+    expect(WIKIPEDIA_BINARY_OBJECT_TEST_ONLY.buildWikipediaBinaryObjectName({
       title: 'A/B:C*D?E"F<G>H| I',
       lang: 'en',
       pageId: 1,
@@ -68,7 +67,7 @@ describe('buildWikipediaBinaryObjectName', () => {
 
 describe('buildSysfsNaidanBinaryObjectDataFilePath', () => {
   it('builds the sysfs data path from the mount path', () => {
-    expect(buildSysfsNaidanBinaryObjectDataFilePath({
+    expect(WIKIPEDIA_BINARY_OBJECT_TEST_ONLY.buildSysfsNaidanBinaryObjectDataFilePath({
       binaryObjectId: toBinaryObjectId({ raw: 'bin-1' }),
     })).toBe('/sys/fs/naidan/binary-objects/by-id/bin-1/data');
   });

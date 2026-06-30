@@ -293,7 +293,7 @@ vi.mock('../00-storage/service', () => ({
 describe('ChatPane - Attachment UI', () => {
   beforeEach(() => {
     setupScrollToMock();
-    const { clearAllDrafts } = useChatDraft();
+    const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
     clearAllDrafts();
   });
   it('should show preview when files are selected', async () => {

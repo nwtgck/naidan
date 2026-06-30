@@ -55,7 +55,7 @@ describe('useVirtualizedGlobalSearchResults', () => {
     await nextTick();
 
     expect(state).toBeDefined();
-    expect(state!.virtualizationEnabled.value).toBe(true);
+    expect(state!.TEST_ONLY.virtualizationEnabled.value).toBe(true);
     expect(state!.visibleResults.value.length).toBeLessThan(20);
     expect(state!.visibleResults.value[0]?.index).toBe(0);
 

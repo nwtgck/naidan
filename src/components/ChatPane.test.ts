@@ -698,7 +698,7 @@ Object.defineProperty(navigator, 'clipboard', {
 let wrapper: VueWrapper<any> | null = null;
 
 function resetMocks() {
-  const { clearAllDrafts } = useChatDraft();
+  const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
   clearAllDrafts();
   vi.useRealTimers();
   vi.clearAllMocks();
@@ -2921,7 +2921,7 @@ describe('ChatPane Textarea Sizing', () => {
     mockTextareaDimensions(textarea, 24); // scrollHeight for 1 line of text
     // Manually trigger adjustTextareaHeight after mocking dimensions for initial state
     const chatInput = wrapper.findComponent(ChatInput);
-    (chatInput.vm as any).adjustTextareaHeight({});
+    (chatInput.vm as any).TEST_ONLY.adjustTextareaHeight({});
     await nextTick();
 
     const expectedHeight = 50; // 1 line (24) + padding (24) + border (2) = 50
@@ -3229,7 +3229,7 @@ Line 5
 Line 6`;
     mockTextareaDimensions(textarea, 24 * 6 + 26); // Mock full 6 lines
     const chatInput = wrapper.findComponent(ChatInput);
-    (chatInput.vm as any).adjustTextareaHeight({});
+    (chatInput.vm as any).TEST_ONLY.adjustTextareaHeight({});
     await nextTick();
     const expandedHeight = parseFloat(textarea.style.height);
     expect(expandedHeight).toBeCloseTo(170);

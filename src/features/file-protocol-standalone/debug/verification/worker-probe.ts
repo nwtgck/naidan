@@ -90,7 +90,7 @@ async function debugCreateFileProtocolStandaloneWorkerHubSession(): Promise<Debu
 }
 
 /** @internal Exported for Comlink lifecycle regression tests. */
-export async function debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession({ session }: {
+async function debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession({ session }: {
   session: DebugFileProtocolStandaloneWorkerHubSession,
 }): Promise<void> {
   let releaseError: unknown | undefined;
@@ -115,7 +115,7 @@ export async function debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSes
 }
 
 /** @internal Exported for Comlink lifecycle regression tests. */
-export async function debugRunFileProtocolStandaloneHighlightProbe({ session, source }: {
+async function debugRunFileProtocolStandaloneHighlightProbe({ session, source }: {
   session: DebugFileProtocolStandaloneWorkerHubSession,
   source: string,
 }): Promise<DebugFileProtocolStandaloneHighlightProbeResult> {
@@ -135,7 +135,7 @@ export async function debugRunFileProtocolStandaloneHighlightProbe({ session, so
 }
 
 /** @internal Exported for Wesh lifecycle regression tests. */
-export async function debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh }: {
+async function debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh }: {
   wesh: Comlink.Remote<IWeshWorker>,
 }): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
   const stdout: string[] = [];
@@ -221,7 +221,7 @@ export async function debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ we
 }
 
 /** @internal Exported for Comlink lifecycle regression tests. */
-export async function debugRunFileProtocolStandaloneWeshFileProbe({ session }: {
+async function debugRunFileProtocolStandaloneWeshFileProbe({ session }: {
   session: DebugFileProtocolStandaloneWorkerHubSession,
 }): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
   const wesh = await session.remote.wesh as unknown as Comlink.Remote<IWeshWorker>;
@@ -431,7 +431,7 @@ async function debugRunHighlightProbeAndCleanup({
   return result;
 }
 
-export async function debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+async function debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
   createSession,
   readDiagnostics,
   runRoundTrip,
@@ -595,4 +595,10 @@ export async function debugVerifyFileProtocolStandaloneWorkerFactory(): Promise<
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
+  debugRunFileProtocolStandaloneHighlightProbe,
+  debugRunFileProtocolStandaloneWeshFileProbeWithRemote,
+  debugRunFileProtocolStandaloneWeshFileProbe,
+  debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies,
+};

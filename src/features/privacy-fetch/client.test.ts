@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isPrivacyFetchError } from './errors';
 import { PRIVACY_FETCH_PROTOCOL } from './protocol';
-import { createPrivacyFetchBrokerClient } from './broker-client';
+import { TEST_ONLY as PRIVACY_FETCH_BROKER_CLIENT_TEST_ONLY } from './broker-client';
 
 const { mockGenerateId } = vi.hoisted(() => ({
   mockGenerateId: vi.fn(),
@@ -81,7 +81,7 @@ describe('createPrivacyFetchBrokerClient', () => {
     });
 
     const fakeWindowHarness = createFakeWindowHarness();
-    const client = createPrivacyFetchBrokerClient({
+    const client = PRIVACY_FETCH_BROKER_CLIENT_TEST_ONLY.createPrivacyFetchBrokerClient({
       createBrokerIframeImpl: () => iframe,
       windowObject: fakeWindowHarness.windowObject,
       documentObject: document,

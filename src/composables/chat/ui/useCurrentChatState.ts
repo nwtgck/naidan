@@ -19,13 +19,14 @@ export type CurrentChatStateAdapter = {
   currentChatGroup: ComputedRef<Readonly<ChatGroup> | null>,
   currentChatId: ComputedRef<ChatId | undefined>,
   activeMessages: ComputedRef<MessageNode[]>,
-  allMessages: ComputedRef<MessageNode[]>,
   resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
   inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
   chatGroups: ComputedRef<ChatGroup[]>,
   sidebarItems: ComputedRef<SidebarItem[]>,
 
-  TEST_ONLY: Record<never, never>,
+  TEST_ONLY: {
+    allMessages: ComputedRef<MessageNode[]>,
+  },
 };
 
 export function useCurrentChatState(): CurrentChatStateAdapter {
@@ -57,13 +58,14 @@ export function useCurrentChatState(): CurrentChatStateAdapter {
     currentChatGroup,
     currentChatId,
     activeMessages,
-    allMessages,
     resolvedSettings,
     inheritedSettings,
     chatGroups,
     sidebarItems,
     ...((__BUILD_MODE_IS_TEST__ && {
-      TEST_ONLY: {},
+      TEST_ONLY: {
+        allMessages,
+      },
     }) || {}),
   };
 }

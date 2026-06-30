@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseFindLikeArgv, parseStandardArgv, parseSubcommandArgv } from './argv';
+import { parseFindLikeArgv, parseStandardArgv } from './argv';
+import { TEST_ONLY as ARGV_SUBCOMMAND_PARSER_TEST_ONLY } from './argv/subcommand-parser';
 
 describe('wesh argv', () => {
   it('parses bundled short flags and value options', () => {
@@ -86,7 +87,7 @@ describe('wesh argv', () => {
   });
 
   it('supports nested subcommands with per-command parsing', () => {
-    const parsed = parseSubcommandArgv({
+    const parsed = ARGV_SUBCOMMAND_PARSER_TEST_ONLY.parseSubcommandArgv({
       args: ['remote', 'add', '--verbose', 'origin'],
       spec: {
         name: 'git',

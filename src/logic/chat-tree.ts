@@ -118,7 +118,7 @@ export function processThinking({ node }: { node: MessageNode }) {
   }
 }
 
-export function findRestorationIndex({ items, prevId, nextId }: { items: SidebarItem[], prevId: string | null, nextId: string | null }): number {
+function findRestorationIndex({ items, prevId, nextId }: { items: SidebarItem[], prevId: string | null, nextId: string | null }): number {
   if (items.length === 0) return 0;
   const prevIdx = prevId ? items.findIndex(item => item.id === prevId) : -1;
   if (prevIdx !== -1) return prevIdx + 1;
@@ -196,4 +196,6 @@ export function createBranchFromMessages({ messages }: { messages: HistoryItem[]
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  findRestorationIndex,
+};
