@@ -1,4 +1,5 @@
-import type { ChatGroup, SidebarItem } from '@/models/types';
+import { ensureStrings } from '@/strings';
+import type { ChatGroup, SidebarItem } from '@/01-models/types';
 import {
   buildCompactRequestMessages,
   createCompactBranchFromResponse,
@@ -8,14 +9,14 @@ import {
   getHeaderCompactBoundary,
   splitCompactPath,
   type ContextCompactPromptMode,
-} from '@/services/context-compact';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
-import { getChatBranchIterator } from '@/utils/chat-tree';
-import { generateId } from '@/utils/id';
+} from '@/logic/context-compact';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
+import { getChatBranchIterator } from '@/logic/chat-tree';
+import { generateId } from '@/01-models/id';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
-import type { ChatId, MessageId } from '@/models/ids';
+import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import {
   chatRuntimeStore,
   contextCompactRuntime,
@@ -115,16 +116,19 @@ export async function runCompactCurrentBranchForChat({
     });
     const resolvedModel = mutableChat.modelId || resolved.modelId;
 
-    if (!resolvedModel || (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js')) {
+    const hasReachableEndpoint = resolved.endpoint.type === 'transformers_js'
+      || resolved.endpoint.url !== '';
+    if (!resolvedModel || !hasReachableEndpoint) {
+      const message = await ensureStrings.contextCompact__requires_a_configured_model_and_endpoint();
       addErrorEvent({
         source: 'useChat:compactCurrentBranch',
-        message: 'Compact Context requires a configured model and endpoint.',
+        message,
       });
       contextCompactRuntime.setProgress({
         chatId: mutableChat.id,
         progress: {
           phase: 'failed',
-          message: 'Compact Context requires a configured model and endpoint.',
+          message,
         },
       });
       return { status: 'skipped', reason: 'missing_model_or_endpoint' };
@@ -156,9 +160,7 @@ export async function runCompactCurrentBranchForChat({
       messages: requestMessages,
     });
     const provider = await createProviderForCompact({
-      endpointType: resolved.endpointType,
-      endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders,
+      endpoint: resolved.endpoint,
     });
 
     let compactContent = '';
@@ -199,7 +201,7 @@ export async function runCompactCurrentBranchForChat({
         chatId: mutableChat.id,
         progress: {
           phase: 'failed',
-          message: 'Compact Context response was empty.',
+          message: await ensureStrings.contextCompact__response_was_empty(),
         },
       });
       return { status: 'skipped', reason: 'empty_response' };
@@ -348,3 +350,7 @@ function collectChatGroups({
 
   return groups;
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

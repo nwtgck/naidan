@@ -1,7 +1,8 @@
+import { ensureStrings } from '@/strings';
 import { reactive, toRaw } from 'vue';
-import type { AssistantMessageNode, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt, ToolMessageNode, UserMessageNode } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { AssistantMessageNode, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt, ToolMessageNode, UserMessageNode } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import {
   createBranchFromMessages,
   findDeepestLeaf,
@@ -9,8 +10,8 @@ import {
   findParentInBranch,
   getChatBranchIterator,
   type HistoryItem,
-} from '@/utils/chat-tree';
-import { generateId } from '@/utils/id';
+} from '@/logic/chat-tree';
+import { generateId } from '@/01-models/id';
 import {
   getLiveChat,
   getLiveChatById,
@@ -27,8 +28,8 @@ import {
 import {
   abortProcessingForChat,
 } from '@/composables/chat/chat-scoped/chat-processing-abort';
-import type { ChatId, ChatGroupId, MessageId } from '@/models/ids';
-import { cloneToolConfigs } from '@/services/tools/tool-config';
+import type { ChatId, ChatGroupId, MessageId } from '@/01-models/ids';
+import { cloneToolConfigs } from '@/features/tools/tool-config';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
@@ -247,11 +248,15 @@ async function forkChatFromTarget({
     clonedNodes[index]!.replies.items.push(clonedNodes[index + 1]!);
   }
 
+  const untitledChatTitle = await ensureStrings.SHARED__new_chat();
+  const forkTitle = await ensureStrings.chatHistoryFlow__fork_of_chat({
+    chatTitle: mutableChat.title || untitledChatTitle,
+  });
   const newChatId = generateId<ChatId>();
   const newChat: Chat = reactive({
     ...toRaw(mutableChat),
     id: newChatId,
-    title: `Fork of ${mutableChat.title || 'New Chat'}`,
+    title: forkTitle,
     root: { items: [clonedNodes[0]!] },
     currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
     originChatId: mutableChat.id,
@@ -437,3 +442,7 @@ async function sendEditedMessage({
     lmParameters,
   });
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

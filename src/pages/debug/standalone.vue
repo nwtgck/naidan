@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { computed, nextTick, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ClipboardCheckIcon, FlaskConicalIcon } from 'lucide-vue-next';
@@ -8,8 +9,8 @@ import {
   debugRunFileProtocolStandaloneVerification,
   debugSerializeFileProtocolStandaloneVerificationReportForCopy,
   type DebugFileProtocolStandaloneVerificationReport,
-} from '@/services/debug-file-protocol-standalone/verification/report';
-import { debugVerifyFileProtocolStandaloneWorkerFactory } from '@/services/debug-file-protocol-standalone/verification/worker-probe';
+} from '@/features/file-protocol-standalone/debug/verification/report';
+import { debugVerifyFileProtocolStandaloneWorkerFactory } from '@/features/file-protocol-standalone/debug/verification/worker-probe';
 
 const route = useRoute();
 const router = useRouter();
@@ -42,7 +43,7 @@ function debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialMarker({ element
 
 async function debugLoadFileProtocolStandaloneLazyStyleProbeModule({ signal }: { signal: AbortSignal }): Promise<Readonly<{ marker: string }>> {
   signal.throwIfAborted();
-  const loaded = await import('@/services/debug-file-protocol-standalone/verification/lazy-style-probe');
+  const loaded = await import('@/features/file-protocol-standalone/debug/verification/lazy-style-probe');
   signal.throwIfAborted();
   return { marker: loaded.STANDALONE_VERIFICATION_LAZY_STYLE_MARKER };
 }
@@ -139,7 +140,7 @@ async function debugRunVerification(): Promise<void> {
     });
   } catch (error) {
     addToast({
-      message: `Standalone verification failed to run: ${error instanceof Error ? error.message : String(error)}`,
+      message: await ensureStrings.StandaloneVerificationPage__verification_failed_to_run({ errorMessage: error instanceof Error ? error.message : String(error) }),
       duration: 8000,
     });
   } finally {
@@ -186,22 +187,24 @@ async function copyVerificationReportJson(): Promise<void> {
       throw new Error('The browser rejected both clipboard methods.');
     }
     addToast({
-      message: 'Standalone verification JSON copied',
+      message: await ensureStrings.StandaloneVerificationPage__standalone_verification_json_copied(),
       duration: 4000,
     });
   } catch (error) {
     addToast({
-      message: `Failed to copy standalone verification JSON: ${error instanceof Error ? error.message : String(error)}`,
+      message: await ensureStrings.StandaloneVerificationPage__failed_to_copy_verification_json({ errorMessage: error instanceof Error ? error.message : String(error) }),
       duration: 8000,
     });
   }
 }
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    // ESLint-required for defineExpose.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      // ESLint-required for defineExpose.
+    },
+  }) || {}),
 });
 </script>
 
@@ -210,9 +213,9 @@ defineExpose({
     <section class="mx-auto max-w-5xl space-y-5 rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm dark:border-cyan-900/50 dark:bg-gray-900">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 class="text-lg font-bold text-cyan-900 dark:text-cyan-200">Standalone Verification</h1>
+          <h1 class="text-lg font-bold text-cyan-900 dark:text-cyan-200">{{ lazyStrings.StandaloneVerificationPage__standalone_verification() }}</h1>
           <p class="mt-1 max-w-2xl text-sm font-medium leading-relaxed text-cyan-800/70 dark:text-cyan-300/70">
-            Checks file protocol startup, routing, styles, lazy chunks, SystemJS, and repeated Worker creation without changing chats or settings.
+            {{ lazyStrings.StandaloneVerificationPage__checks_file_protocol_startup_routing_styles_lazy_chunks_systemjs_and_repeated_worker_creation_without_changing_chats_or_settings() }}
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -223,7 +226,7 @@ defineExpose({
             @click="debugRunVerification"
           >
             <FlaskConicalIcon class="h-4 w-4" />
-            {{ isRunning ? 'Running…' : 'Run standalone verification' }}
+            {{ isRunning ? lazyStrings.StandaloneVerificationPage__running() : lazyStrings.StandaloneVerificationPage__run_standalone_verification() }}
           </button>
           <button
             v-if="verificationReport"
@@ -232,7 +235,7 @@ defineExpose({
             @click="copyVerificationReportJson"
           >
             <ClipboardCheckIcon class="h-4 w-4" />
-            Copy JSON
+            {{ lazyStrings.StandaloneVerificationPage__copy_json() }}
           </button>
         </div>
       </div>
@@ -242,11 +245,11 @@ defineExpose({
         class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
         data-testid="standalone-verification-unavailable"
       >
-        These checks require a standalone build opened through file://.
+        {{ lazyStrings.StandaloneVerificationPage__these_checks_require_a_standalone_build_opened_through_file() }}
       </p>
 
       <p class="text-xs text-gray-500 dark:text-gray-400">
-        Copied diagnostics may contain local file paths in browser-provided error stacks or resource timing entries.
+        {{ lazyStrings.StandaloneVerificationPage__copied_diagnostics_may_contain_local_file_paths_in_browser_provided_error_stacks_or_resource_timing_entries() }}
       </p>
 
       <div class="sr-only" aria-hidden="true">
@@ -263,7 +266,7 @@ defineExpose({
             : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'"
           data-testid="standalone-verification-status"
         >
-          {{ verificationReport.status }} — {{ verificationReport.summary.passed }} passed / {{ verificationReport.summary.failed }} failed
+          {{ lazyStrings.StandaloneVerificationPage__verification_summary({ status: verificationReport.status, passed: verificationReport.summary.passed, failed: verificationReport.summary.failed }) }}
         </p>
         <pre
           class="max-h-[36rem] overflow-auto rounded-xl bg-gray-950 p-4 text-left text-[11px] leading-5 text-gray-100"

@@ -1,13 +1,14 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import { useImageGeneration } from '@/composables/useImageGeneration';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatImageProgressAdapter = {
-  progress: ComputedRef<{ currentStep: number, totalSteps: number } | undefined>,
   currentStep: ComputedRef<number | undefined>,
   totalSteps: ComputedRef<number | undefined>,
 
-  TEST_ONLY: Record<never, never>,
+  TEST_ONLY: {
+    progress: ComputedRef<{ currentStep: number, totalSteps: number } | undefined>,
+  },
 };
 
 export function useChatImageProgress({
@@ -25,9 +26,16 @@ export function useChatImageProgress({
   const totalSteps = computed(() => progress.value?.totalSteps);
 
   return {
-    progress,
     currentStep,
     totalSteps,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        progress,
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

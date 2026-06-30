@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__tool_persistence_enabled_details = (): string => 'Global, Chat Group, and Chat overrides are persisted. Disable it to make new Chat changes runtime-only while keeping saved settings active.';

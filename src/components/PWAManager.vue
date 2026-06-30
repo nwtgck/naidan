@@ -3,6 +3,7 @@ import { watch } from 'vue';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { ensureStrings } from '@/strings';
 
 const {
   offlineReady,
@@ -13,13 +14,14 @@ const {
 const { setNeedRefresh } = usePWAUpdate();
 const { addInfoEvent } = useGlobalEvents();
 
-watch(offlineReady, (ready) => {
-  if (ready) {
-    addInfoEvent({
-      source: 'PWA',
-      message: 'App ready to work offline',
-    });
-  }
+watch(offlineReady, async (ready) => {
+  if (!ready) return;
+  const message = await ensureStrings.PWAManager__app_ready_to_work_offline();
+  if (!offlineReady.value) return;
+  addInfoEvent({
+    source: 'PWA',
+    message,
+  });
 });
 
 watch(needRefresh, (refresh) => {
@@ -33,9 +35,11 @@ watch(needRefresh, (refresh) => {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 

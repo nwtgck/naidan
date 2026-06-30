@@ -1,4 +1,4 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -10,6 +10,17 @@ import { useChat } from '@/composables/useChat';
 import { setupScrollToMock } from '@/utils/test-utils';
 
 
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 // --- Mocks ---
 
 const router = createRouter({
@@ -19,14 +30,14 @@ const router = createRouter({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'gpt-4' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
 }));
 
 let triggerChunk: (params: { chunk: string }) => void;
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
     async chat({ onChunk }: { onChunk: (params: { chunk: string }) => void }) {
@@ -39,7 +50,7 @@ vi.mock('../services/lm/openai', () => ({
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
     async listModels() {
@@ -49,7 +60,7 @@ vi.mock('../services/lm/ollama', () => ({
 }));
 
 const chats = new Map<string, any>();
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -89,7 +100,7 @@ vi.mock('../composables/chat/ui/useChatPaneState', async () => {
         chat: state.currentChat,
         chatGroup: state.currentChatGroup,
         activeMessages: state.activeMessages,
-        allMessages: state.allMessages,
+        allMessages: state.TEST_ONLY.allMessages,
         resolvedSettings: state.resolvedSettings,
         inheritedSettings: state.inheritedSettings,
         chatGroups: state.chatGroups,

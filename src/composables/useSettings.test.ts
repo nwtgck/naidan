@@ -1,8 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSettings } from './useSettings';
-import { DEFAULT_SETTINGS } from '@/models/types';
-import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
+import { DEFAULT_SETTINGS } from '@/01-models/types';
+import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { flushPromises } from '@vue/test-utils';
+import {
+  currentLocale,
+  registerStringBoundary,
+  setLocale as setStringLocale,
+  type StringBoundaryModule,
+} from '@/strings/runtime';
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmLanguagePacks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
@@ -12,14 +18,14 @@ const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64
   mockPreloadFakeLmLanguagePacks: vi.fn(),
 }));
 
-vi.mock('../services/import-export/url-logic', () => ({
+vi.mock('../features/import-export/url-logic', () => ({
   urlImportExportLogic: {
     importFromBase64: mockImportFromBase64,
   },
 }));
 
-vi.mock('@/services/fake-lm', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/services/fake-lm')>()),
+vi.mock('@/features/fake-lm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/fake-lm')>()),
   preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
 }));
 
@@ -50,22 +56,22 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: mocks,
 }));
 
-vi.mock('../services/storage/opfs-detection', () => ({
+vi.mock('../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
     listModels = mockListModels;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
     listModels = mockListModels;
@@ -75,11 +81,116 @@ vi.mock('../services/lm/ollama', () => ({
 describe('useSettings Initialization and Bootstrap', () => {
   const { TEST_ONLY: { __testOnlyReset } } = useSettings();
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    mockListModels.mockReset();
+    mockListModels.mockResolvedValue(['model-1', 'model-2']);
     localStorage.clear();
     __testOnlyReset();
     mocks.loadSettings.mockResolvedValue(null);
+    await setStringLocale({ locale: 'en' });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses the browser locale without persisting it during initialization', async () => {
+    vi.stubGlobal('navigator', { language: 'ja-JP' });
+    localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+
+    const { init, settings } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+
+    expect(currentLocale.value).toBe('ja');
+    expect(settings.value.experimental?.locale).toBeUndefined();
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('persists an explicitly selected locale in experimental settings', async () => {
+    const current = {
+      ...DEFAULT_SETTINGS,
+      endpoint: { type: 'openai' as const, url: '' },
+      storageType: 'local' as const,
+      experimental: {
+        fakeLm: 'disabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(current);
+    const { setLocale, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: current });
+
+    await setLocale({ locale: 'ja' });
+
+    expect(settings.value.experimental).toEqual({
+      fakeLm: 'disabled',
+      locale: 'ja',
+    });
+    expect(currentLocale.value).toBe('ja');
+  });
+
+  it('applies overlapping explicit locale changes in request order', async () => {
+    const current = {
+      ...DEFAULT_SETTINGS,
+      endpoint: { type: 'openai' as const, url: '' },
+      storageType: 'local' as const,
+      experimental: {
+        fakeLm: 'disabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(current);
+    const { setLocale, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: current });
+
+    let resolveJapaneseModule: ((module: StringBoundaryModule) => void) | undefined;
+    const japaneseModule = new Promise<StringBoundaryModule>((resolve) => {
+      resolveJapaneseModule = resolve;
+    });
+    const japaneseLoader = vi.fn(async () => japaneseModule);
+    registerStringBoundary({
+      boundaryId: 'language-selector',
+      keys: ['Test__locale_change_queue'],
+      loaders: {
+        en: async () => ({
+          Test__locale_change_queue: () => 'Language',
+        }),
+        ja: japaneseLoader,
+      },
+    });
+
+    const firstChange = setLocale({ locale: 'ja' });
+    await vi.waitFor(() => {
+      expect(japaneseLoader).toHaveBeenCalledOnce();
+    });
+    const secondChange = setLocale({ locale: 'en' });
+
+    resolveJapaneseModule?.({
+      Test__locale_change_queue: () => '言語',
+    });
+    await Promise.all([firstChange, secondChange]);
+
+    expect(currentLocale.value).toBe('en');
+    expect(settings.value.experimental?.locale).toBe('en');
+  });
+
+  it('keeps the current locale unchanged when persistence fails', async () => {
+    const current = {
+      ...DEFAULT_SETTINGS,
+      endpoint: { type: 'openai' as const, url: '' },
+      storageType: 'local' as const,
+      experimental: {
+        fakeLm: 'disabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(current);
+    mocks.updateSettings.mockRejectedValueOnce(new Error('Failed to persist settings'));
+    const { setLocale, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: current });
+
+    await expect(setLocale({ locale: 'ja' })).rejects.toThrow('Failed to persist settings');
+
+    expect(currentLocale.value).toBe('en');
+    expect(settings.value.experimental?.locale).toBeUndefined();
   });
 
   it('should initialize StorageService with correct type from bootstrap key', async () => {
@@ -122,11 +233,13 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
     // (spread of settings.value should include the detected 'opfs')
-    await save({ patch: {
-      ...JSON.parse(JSON.stringify(settings.value)),
-      endpointUrl: 'http://new-endpoint',
-      endpointType: 'ollama',
-    } });
+    await save({
+      patch: {
+        ...JSON.parse(JSON.stringify(settings.value)),
+        endpoint: { type: 'ollama', url: 'http://new-endpoint' },
+      },
+      modelRefresh: 'await',
+    });
 
     expect(settings.value.storageType).toBe('opfs');
     expect(mocks.updateSettings).toHaveBeenCalled();
@@ -135,14 +248,55 @@ describe('useSettings Initialization and Bootstrap', () => {
     const updated = await updater({ current: settings.value });
     expect(updated).toEqual(expect.objectContaining({
       storageType: 'opfs',
-      endpointUrl: 'http://new-endpoint',
+      endpoint: { type: 'ollama', url: 'http://new-endpoint' },
     }));
+  });
+
+  it('rejects an explicit undefined global endpoint without mutating or persisting settings', async () => {
+    const { save, settings } = useSettings();
+    const previousEndpoint = settings.value.endpoint;
+
+    await expect(save({
+      patch: { endpoint: undefined },
+      modelRefresh: 'await',
+    })).rejects.toThrow('Global settings endpoint cannot be undefined');
+
+    expect(settings.value.endpoint).toBe(previousEndpoint);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('refreshes models when only HTTP headers change', async () => {
+    const current = {
+      ...DEFAULT_SETTINGS,
+      endpoint: {
+        type: 'openai' as const,
+        url: 'http://example.test/v1',
+        httpHeaders: [['Authorization', 'Bearer old']] as [string, string][],
+      },
+      storageType: 'local' as const,
+    };
+    const { save, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: current });
+    mockListModels.mockClear();
+
+    await save({
+      patch: {
+        endpoint: {
+          type: 'openai',
+          url: 'http://example.test/v1',
+          httpHeaders: [['Authorization', 'Bearer new']],
+        },
+      },
+      modelRefresh: 'await',
+    });
+
+    expect(mockListModels).toHaveBeenCalledTimes(1);
   });
 
   it('updates one experimental field against the latest persisted settings', async () => {
     const local = {
       ...DEFAULT_SETTINGS,
-      endpointType: 'openai' as const,
+      endpoint: { type: 'openai' as const, url: '' },
       storageType: 'local' as const,
       experimental: {
         toolConfigPersistence: 'enabled' as const,
@@ -176,7 +330,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   it('persists fake LM mode without overwriting other experimental settings', async () => {
     const current = {
       ...DEFAULT_SETTINGS,
-      endpointType: 'openai' as const,
+      endpoint: { type: 'openai' as const, url: '' },
       storageType: 'local' as const,
       experimental: {
         toolConfigPersistence: 'enabled' as const,
@@ -211,7 +365,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: '' },
       storageType: 'local',
       experimental: {
         fakeLm: 'enabled',
@@ -314,8 +468,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,
       storageType: 'local',
-      endpointUrl: 'http://localhost:11434',
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: 'http://localhost:11434' },
       defaultModelId: 'gpt-3.5',
     });
 
@@ -325,15 +478,17 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Assert
     expect(isOnboardingDismissed.value).toBe(true);
-    expect(settings.value.endpointUrl).toBe('http://localhost:11434');
+    expect(settings.value.endpoint).toEqual({
+      type: 'openai',
+      url: 'http://localhost:11434',
+    });
   });
 
   it('should NOT set isOnboardingDismissed to true if endpointUrl is present but defaultModelId is missing', async () => {
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,
       storageType: 'local',
-      endpointUrl: 'http://localhost:11434',
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: 'http://localhost:11434' },
       defaultModelId: undefined,
     });
 
@@ -347,7 +502,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     // Setup mock to return settings WITHOUT endpointUrl
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,
-      endpointUrl: undefined,
+      endpoint: { type: 'openai', url: '' },
     });
 
     // Act
@@ -405,8 +560,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       mocks.loadSettings.mockResolvedValue({
         ...DEFAULT_SETTINGS,
         storageType: 'local',
-        endpointUrl: 'http://saved-url',
-        endpointType: 'openai',
+        endpoint: { type: 'openai', url: 'http://saved-url' },
       });
 
       const { init, fetchModels } = useSettings();
@@ -422,8 +576,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       mocks.loadSettings.mockResolvedValue({
         ...DEFAULT_SETTINGS,
         storageType: 'local',
-        endpointUrl: 'http://saved-url',
-        endpointType: 'openai',
+        endpoint: { type: 'openai', url: 'http://saved-url' },
       });
 
       const { init, fetchModels } = useSettings();
@@ -433,11 +586,55 @@ describe('useSettings Initialization and Bootstrap', () => {
       await fetchModels({ overrides: {
         url: 'http://override-url',
         type: 'ollama',
-        headers: [['X-Test', 'true']],
+        httpHeaders: [['X-Test', 'true']],
       } });
 
       expect(mockListModels).toHaveBeenCalledWith({});
       expect(mockListModels).toHaveBeenCalledTimes(1);
+    });
+    it('keeps the latest model list when overlapping requests finish out of order', async () => {
+      let resolveFirst!: (models: string[]) => void;
+      let resolveSecond!: (models: string[]) => void;
+      const firstModels = new Promise<string[]>((resolve) => {
+        resolveFirst = resolve;
+      });
+      const secondModels = new Promise<string[]>((resolve) => {
+        resolveSecond = resolve;
+      });
+      mockListModels
+        .mockReturnValueOnce(firstModels)
+        .mockReturnValueOnce(secondModels);
+
+      const {
+        fetchModels,
+        availableModels,
+        isFetchingModels,
+      } = useSettings();
+      const firstRequest = fetchModels({
+        overrides: {
+          url: 'http://old-endpoint',
+          type: 'openai',
+          httpHeaders: undefined,
+        },
+      });
+      const secondRequest = fetchModels({
+        overrides: {
+          url: 'http://new-endpoint',
+          type: 'openai',
+          httpHeaders: undefined,
+        },
+      });
+
+      expect(isFetchingModels.value).toBe(true);
+      resolveSecond(['new-model']);
+      await secondRequest;
+      expect(availableModels.value).toEqual(['new-model']);
+      expect(isFetchingModels.value).toBe(true);
+
+      resolveFirst(['old-model']);
+      await firstRequest;
+      expect(availableModels.value).toEqual(['new-model']);
+      expect(isFetchingModels.value).toBe(false);
     });
   });
 
@@ -456,8 +653,10 @@ describe('useSettings Initialization and Bootstrap', () => {
       expect(isOnboardingDismissed.value).toBe(false);
 
       await updateGlobalEndpoint({
-        type: 'ollama',
-        url: 'http://localhost:11434',
+        endpoint: {
+          type: 'ollama',
+          url: 'http://localhost:11434',
+        },
       });
 
       // Still false because model is missing

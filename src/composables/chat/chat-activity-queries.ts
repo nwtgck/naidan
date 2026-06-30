@@ -1,5 +1,5 @@
-import type { ContextCompactProgress } from '@/services/context-compact';
-import type { ChatId } from '@/models/ids';
+import type { ContextCompactProgress } from '@/logic/context-compact';
+import type { ChatId } from '@/01-models/ids';
 import { chatRuntimeStore, contextCompactRuntime } from '@/composables/chat/global/chat-core-singletons';
 
 export function isChatProcessing({
@@ -33,3 +33,7 @@ export function isChatGeneratingTitle({
 }): boolean {
   return chatRuntimeStore.activeTitleGenerations.has(chatId);
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

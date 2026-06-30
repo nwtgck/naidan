@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   addToast: vi.fn(),
@@ -12,23 +12,24 @@ vi.mock('@/composables/useToast', () => ({
   useToast: () => ({ addToast: mocks.addToast }),
 }));
 
-vi.mock('@/services/debug-file-protocol-standalone/verification/report', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@/services/debug-file-protocol-standalone/verification/report')>();
+vi.mock('@/features/file-protocol-standalone/debug/verification/report', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/features/file-protocol-standalone/debug/verification/report')>();
   return {
     ...original,
     debugRunFileProtocolStandaloneVerification: mocks.debugRunFileProtocolStandaloneVerification,
   };
 });
 
-vi.mock('@/services/debug-file-protocol-standalone/verification/worker-probe', () => ({
+vi.mock('@/features/file-protocol-standalone/debug/verification/worker-probe', () => ({
   debugVerifyFileProtocolStandaloneWorkerFactory: mocks.debugVerifyFileProtocolStandaloneWorkerFactory,
 }));
 
 import {
   DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
   type DebugFileProtocolStandaloneVerificationReport,
-} from '@/services/debug-file-protocol-standalone/verification/report';
+} from '@/features/file-protocol-standalone/debug/verification/report';
 import StandaloneVerificationPage from './standalone.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 function createDebugVerificationReport({
   passed = 12,
@@ -97,6 +98,10 @@ async function mountPage() {
 }
 
 describe('standalone verification page', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   beforeEach(() => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
     vi.clearAllMocks();

@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
-import { idToRaw, toChatGroupId } from '@/models/ids';
-import { storageService } from '@/services/storage';
+import { idToRaw, toChatGroupId } from '@/01-models/ids';
+import { storageService } from '@/00-storage/service';
 
 // Mock storage
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -29,7 +29,7 @@ vi.mock('../services/storage', () => ({
 
 const mockOpenAIChat = vi.fn();
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOpenAIChat,
@@ -48,8 +48,7 @@ describe('useChat System Prompt Clear Policy', () => {
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
     __testOnlySetSettings({ newSettings: {
-      endpointType: 'openai',
-      endpointUrl: 'http://global',
+      endpoint: { type: 'openai', url: 'http://global' },
       defaultModelId: 'gpt',
       systemPrompt: 'Global System Prompt',
       autoTitleEnabled: false,

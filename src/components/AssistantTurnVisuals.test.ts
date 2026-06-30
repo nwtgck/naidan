@@ -1,13 +1,13 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import { h } from 'vue';
 import MessageItem from './MessageItem.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
-import ToolCallGroupItem from './ToolCallGroupItem.vue';
-import { generateId } from '@/utils/id';
-import type { MessageId } from '@/models/ids';
-import type { MessageNode } from '@/models/types';
+import ToolCallGroupItem from '@/features/tools/components/ToolCallGroupItem.vue';
+import { generateId } from '@/01-models/id';
+import type { MessageId } from '@/01-models/ids';
+import type { MessageNode } from '@/01-models/types';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {

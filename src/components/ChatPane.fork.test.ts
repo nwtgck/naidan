@@ -1,5 +1,5 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toMessageId, toChatId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toMessageId, toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -37,8 +37,27 @@ const mockCurrentChat = ref<{
 });
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
-const mockResolvedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
-const mockInheritedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
+const mockResolvedSettings = ref<any>({
+  endpoint: { type: 'openai', url: 'http://localhost' },
+  modelId: 'm1',
+  sources: { endpoint: 'global', modelId: 'global' },
+});
+const mockInheritedSettings = ref<any>({
+  endpoint: { type: 'openai', url: 'http://localhost' },
+  modelId: 'm1',
+  sources: { endpoint: 'global', modelId: 'global' },
+});
+
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -258,7 +277,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'global-default-model' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'global-default-model' }),
   }),
 }));
 

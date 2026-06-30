@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'vue';
+import { ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
 import { useLayout } from '@/composables/useLayout';
-import { generateId, generateOpaqueId } from '@/utils/id';
+import {
+  isAppInteractionEnabled,
+  useAppPresentation,
+} from '@/composables/useAppPresentation';
+import { generateId } from '@/01-models/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
-import ChatToolsMenu from './ChatToolsMenu.vue';
+import ChatToolsMenu from '@/features/tools/components/ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
-import { useChatTools } from '@/composables/useChatTools';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import { useChatTools } from '@/features/tools/composables/useChatTools';
+import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
 import { useChatConversation } from '@/composables/chat/useChatConversation';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { useChatImageGeneration } from '@/composables/chat/useChatImageGeneration';
@@ -15,18 +19,19 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
-import { storageService } from '@/services/storage';
-import { startVolumeExtensionScan } from '@/services/tools/wesh/volume-extension-cache';
-import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
+import { storageService } from '@/00-storage/service';
+import { startVolumeExtensionScan } from '@/features/tools/wesh/volume-extension-cache';
+import { checkFileSystemAccessSupport } from '@/utils/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
-import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
+import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
-const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AdvancedTextEditorV3.vue') });
+const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/advanced-text-editor-v3/components/AdvancedTextEditorV3.vue') });
 
 import {
   SquareIcon, Minimize2Icon, Maximize2Icon, SendIcon,
@@ -35,9 +40,9 @@ import {
   Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
-import type { Attachment, Chat, ChatGroup, LmParameters } from '@/models/types';
-import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/models/ids';
-import type { AttachmentId, BinaryObjectId, ChatId, VolumeId } from '@/models/ids';
+import type { Attachment, Chat, ChatGroup, LmParameters } from '@/01-models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
+import type { AttachmentId, BinaryObjectId, ChatId, VolumeCopyOperationId, VolumeId } from '@/01-models/ids';
 
 const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
@@ -46,6 +51,7 @@ const { openFileExplorer } = useFileExplorerModal();
 const { showConfirm } = useConfirm();
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
+const { appInteraction } = useAppPresentation();
 
 const props = defineProps<{
   chatId: ChatId,
@@ -168,6 +174,7 @@ function handleUpdateImageModel({ modelId }: { modelId: string }) {
 }
 
 async function fetchModels() {
+  if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
   await chatModels.fetchForChat({
     chatId: props.chatId,
   });
@@ -187,7 +194,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const hasFileSystemAccess = checkFileSystemAccessSupport();
 
 type ActiveCopy = {
-  id: string,
+  id: VolumeCopyOperationId,
   name: string,
   progress: { processed: number, total: number } | null,
   abort: AbortController,
@@ -380,7 +387,7 @@ async function attachCopyAsVolume({ entries, name }: {
   name: string,
 }) {
   if (!chat.value) return;
-  const copyId = generateOpaqueId();
+  const copyId = generateId<VolumeCopyOperationId>();
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
   activeCopies.value = [...activeCopies.value, copy];
@@ -398,7 +405,10 @@ async function attachCopyAsVolume({ entries, name }: {
     await finishMount({ volumeId: vol.id, name });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
-      addToast({ message: `Failed to copy "${name}": ${(e as Error).message}` });
+      addToast({ message: await ensureStrings.ChatInput__failed_to_copy({
+        name,
+        errorMessage: (e as Error).message,
+      }) });
     }
   } finally {
     activeCopies.value = activeCopies.value.filter(c => c.id !== copyId);
@@ -414,7 +424,9 @@ async function attachLinkAsVolume() {
     await finishMount({ volumeId: vol.id, name: vol.name });
   } catch (e) {
     if ((e as Error).name !== 'AbortError') {
-      addToast({ message: `Failed to link folder: ${(e as Error).message}` });
+      addToast({ message: await ensureStrings.ChatInput__failed_to_link_folder({
+        errorMessage: (e as Error).message,
+      }) });
     }
   }
 }
@@ -569,8 +581,8 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
 
   openFileExplorer({ options: {
     kind: 'wesh-mounts',
-    title: 'Files',
-    rootName: 'Files',
+    title: await ensureStrings.fileExplorer__files(),
+    rootName: await ensureStrings.fileExplorer__files(),
     mounts: workerMounts,
     initialPath,
   } });
@@ -590,15 +602,15 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
   let confirmButtonText: string;
   switch (volumeType) {
   case 'host':
-    title = 'Unlink Folder';
-    message = 'Stop using this folder in this chat? Your original files on disk stay safe and intact.';
-    confirmButtonText = 'Unlink';
+    title = await ensureStrings.ChatInput__unlink_folder();
+    message = await ensureStrings.ChatInput__stop_using_folder();
+    confirmButtonText = await ensureStrings.ChatInput__unlink();
     break;
   case 'opfs':
   case undefined:
-    title = 'Remove Folder';
-    message = 'Remove the copied folder from this chat? The copy stored in the browser will be deleted.';
-    confirmButtonText = 'Remove';
+    title = await ensureStrings.ChatInput__remove_folder();
+    message = await ensureStrings.ChatInput__remove_browser_copy();
+    confirmButtonText = await ensureStrings.ChatInput__remove();
     break;
   default: {
     const _ex: never = volumeType;
@@ -940,21 +952,7 @@ watch(
 
     if (chat.value) {
       isMaximized.value = false;
-      fetchModels();
       nextTick(() => {
-        const currentVis = props.visibility;
-        switch (currentVis) {
-        case 'active':
-          focusInput();
-          break;
-        case 'submerged':
-        case 'peeking':
-          break;
-        default: {
-          const _ex: never = currentVis;
-          throw new Error(`Unhandled visibility: ${_ex}`);
-        }
-        }
         adjustTextareaHeight({});
       });
     }
@@ -962,38 +960,54 @@ watch(
   { immediate: true },
 );
 
-onMounted(async () => {
-  if (chat.value) {
-    fetchModels();
-  }
+const autoSendState = ref<
+  | 'pending'
+  | 'sent'
+>('pending');
 
-  if (props.autoSendPrompt) {
-    const doAutoSend = async () => {
-      await nextTick();
-      input.value = props.autoSendPrompt!;
-      await handleSend();
-      emit('auto-sent');
-    };
+function isInteractiveChatCurrent({ chatValue }: {
+  chatValue: NonNullable<typeof chat.value>,
+}): boolean {
+  return isAppInteractionEnabled({
+    interaction: appInteraction.value,
+  }) && chat.value === chatValue;
+}
 
-    if (chat.value) {
-      doAutoSend();
-    } else {
-      const unwatch = watch(() => chat.value, (chatValue) => {
-        if (chatValue) {
-          unwatch();
-          doAutoSend();
-        }
-      });
-    }
-  }
+watch(
+  [
+    () => chat.value,
+    appInteraction,
+  ],
+  async ([chatValue, interaction]) => {
+    if (interaction !== 'enabled' || !chatValue) return;
 
-  nextTick(() => {
-    adjustTextareaHeight({ force: false }); // Call adjustTextareaHeight on mount without forcing scroll
-    if (chat.value) {
-      focusInput();
-    }
-  });
-});
+    /**
+     * Model discovery must not delay textarea focus or URL-driven auto-send.
+     * It already reports provider failures through the chat model flow, while
+     * the interaction guard below prevents delayed UI work after onboarding
+     * reopens or the active chat changes.
+     */
+    void fetchModels();
+
+    await nextTick();
+    if (!isInteractiveChatCurrent({ chatValue })) return;
+
+    adjustTextareaHeight({ force: false });
+    focusInput({
+      timing: 'current-render',
+      visibilityPolicy: 'preserve',
+    });
+
+    if (!props.autoSendPrompt || autoSendState.value === 'sent') return;
+    if (!isInteractiveChatCurrent({ chatValue })) return;
+
+    autoSendState.value = 'sent';
+    input.value = props.autoSendPrompt;
+    await handleSend();
+    emit('auto-sent');
+  },
+  { immediate: true },
+);
 
 useEventTargetListener(window, 'resize', handleWindowResize);
 
@@ -1020,55 +1034,95 @@ function handleBlur() {
   // We no longer automatically submerge on blur to keep it 'active'
 }
 
-function focusInput() {
-  switch (activeFocusArea.value) {
-  case 'sidebar':
-  case 'search':
-    return;
-  case 'chat':
-  case 'chat-group-settings':
-  case 'chat-settings':
-  case 'settings':
-  case 'onboarding':
-  case 'dialog':
-  case 'none':
-    break;
-  default: {
-    const _ex: never = activeFocusArea.value;
-    throw new Error(`Unhandled focus area: ${_ex}`);
-  }
-  }
+type FocusInputTiming =
+  | 'current-render'
+  | 'next-render';
 
-  const currentVis = props.visibility;
-  switch (currentVis) {
-  case 'submerged':
-  case 'peeking':
-    emit('update:visibility', 'active');
-    break;
-  case 'active':
-    break;
-  default: {
-    const _ex: never = currentVis;
-    throw new Error(`Unhandled visibility: ${_ex}`);
-  }
-  }
+type FocusInputVisibilityPolicy =
+  | 'activate'
+  | 'preserve';
 
-  if (document.activeElement !== textareaRef.value) {
-    nextTick(() => {
+function focusInput({
+  timing = 'next-render',
+  visibilityPolicy = 'activate',
+}: {
+  timing?: FocusInputTiming,
+  visibilityPolicy?: FocusInputVisibilityPolicy,
+} = {}) {
+  const applyFocus = () => {
+    if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
+    switch (activeFocusArea.value) {
+    case 'sidebar':
+    case 'search':
+      return;
+    case 'chat':
+    case 'chat-group-settings':
+    case 'chat-settings':
+    case 'settings':
+    case 'onboarding':
+    case 'dialog':
+    case 'none':
+      break;
+    default: {
+      const _ex: never = activeFocusArea.value;
+      throw new Error(`Unhandled focus area: ${_ex}`);
+    }
+    }
+
+    const currentVis = props.visibility;
+    switch (currentVis) {
+    case 'submerged':
+    case 'peeking':
+      switch (visibilityPolicy) {
+      case 'activate':
+        emit('update:visibility', 'active');
+        return;
+      case 'preserve':
+        return;
+      default: {
+        const _ex: never = visibilityPolicy;
+        throw new Error(`Unhandled focus visibility policy: ${_ex}`);
+      }
+      }
+    case 'active':
+      break;
+    default: {
+      const _ex: never = currentVis;
+      throw new Error(`Unhandled visibility: ${_ex}`);
+    }
+    }
+
+    if (document.activeElement !== textareaRef.value) {
       textareaRef.value?.focus();
-    });
+    }
+  };
+
+  switch (timing) {
+  case 'current-render':
+    applyFocus();
+    return;
+  case 'next-render':
+    void nextTick(applyFocus);
+    return;
+  default: {
+    const _ex: never = timing;
+    throw new Error(`Unhandled focus timing: ${_ex}`);
+  }
   }
 }
 
-defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, processDropItems, formatLabel,
-  TEST_ONLY: {
-    attachments: testOnlyAttachments,
-    editingAttachmentId: testOnlyEditingAttachmentId,
-    editingAttachment: testOnlyEditingAttachment,
-    openAdvancedEditor,
-    handleAdvancedEditorModeUpdate,
-    selectedReasoningEffort,
-  } });
+defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFiles, processDropItems, formatLabel,
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      adjustTextareaHeight,
+      attachments: testOnlyAttachments,
+      editingAttachmentId: testOnlyEditingAttachmentId,
+      editingAttachment: testOnlyEditingAttachment,
+      openAdvancedEditor,
+      handleAdvancedEditorModeUpdate,
+      selectedReasoningEffort,
+    },
+  }) || {}) });
 </script>
 
 <template>
@@ -1105,7 +1159,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <div v-if="activeCopies.length > 0" class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
         <div
           v-for="copy in activeCopies"
-          :key="copy.id"
+          :key="idToRaw({ id: copy.id })"
           class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
           data-testid="copy-progress"
         >
@@ -1113,7 +1167,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             <div class="flex items-center justify-between mb-2">
               <span class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
                 <Loader2Icon class="w-3.5 h-3.5 animate-spin shrink-0" />
-                Copying "{{ copy.name }}"
+                {{ lazyStrings.ChatInput__copying_name({ name: copy.name }) }}
               </span>
               <div class="flex items-center gap-3">
                 <span v-if="copy.progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
@@ -1124,7 +1178,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
                   class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   data-testid="copy-cancel-btn"
                 >
-                  Cancel
+                  {{ lazyStrings.ChatInput__cancel() }}
                 </button>
               </div>
             </div>
@@ -1163,14 +1217,14 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             <button
               @click="openImageEditor({ id: att.id })"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors touch-visible"
-              title="Edit Image"
+              :title="lazyStrings.ChatInput__edit_image()"
             >
               <Edit2Icon class="w-3 h-3" />
             </button>
             <button
               @click="removeAttachment({ id: att.id })"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors touch-visible"
-              title="Remove"
+              :title="lazyStrings.ChatInput__remove()"
             >
               <XIcon class="w-3 h-3" />
             </button>
@@ -1189,7 +1243,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
         @keydown.esc.prevent="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
-        placeholder="Type a message..."
+        :placeholder="lazyStrings.ChatInput__type_a_message()"
         class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
         data-testid="chat-input"
@@ -1201,7 +1255,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           v-if="isOverLimit || isMaximized"
           @click.stop="toggleMaximized"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
+          :title="isMaximized ? lazyStrings.ChatInput__minimize_input() : lazyStrings.ChatInput__maximize_input()"
           data-testid="maximize-button"
         >
           <Minimize2Icon v-if="isMaximized" class="w-4 h-4" />
@@ -1211,7 +1265,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <button
           @click.stop="toggleSubmerged"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="visibility === 'submerged' ? 'Show Input' : 'Hide Input'"
+          :title="visibility === 'submerged' ? lazyStrings.ChatInput__show_input() : lazyStrings.ChatInput__hide_input()"
           data-testid="submerge-button"
         >
           <ChevronUpIcon v-if="visibility === 'submerged'" class="w-4 h-4" />
@@ -1221,7 +1275,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <button
           @click.stop="openAdvancedEditor"
           class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          title="Open Advanced Editor"
+          :title="lazyStrings.ChatInput__open_advanced_editor()"
           data-testid="open-advanced-editor-button"
         >
           <FileEditIcon class="w-4 h-4" />
@@ -1279,7 +1333,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
           :disabled="!isChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
-          :title="isChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
+          :title="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
           :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"
         >
           <template v-if="isChatStreaming">

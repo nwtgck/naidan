@@ -1,7 +1,7 @@
 import type { Ref } from 'vue';
-import type { Chat, ChatGroup } from '@/models/types';
-import type { ContextCompactProgress } from '@/services/context-compact';
-import type { ChatId } from '@/models/ids';
+import type { Chat, ChatGroup } from '@/01-models/types';
+import type { ContextCompactProgress } from '@/logic/context-compact';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatTestSupport = {
   __testOnlySetCurrentChat({
@@ -89,3 +89,7 @@ export function createChatTestSupport({
     clearLiveChatRegistry,
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

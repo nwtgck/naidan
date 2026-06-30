@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
-import { toVolumeId, toChatId } from '@/models/ids';
+import { toVolumeId, toChatId } from '@/01-models/ids';
 
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: {
@@ -54,7 +54,7 @@ vi.mock('lucide-vue-next', () => ({
 
 // Mock child components
 vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div></div>' } }));
-vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
+vi.mock('../features/tools/components/ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
 
 const mockOpenFileExplorer = vi.fn();
 const mockEnsureChatTmpDirectory = vi.fn();
@@ -62,19 +62,31 @@ const mockGetChatTmpDirectory = vi.fn();
 const mockGetNaidanSysfsAccessScope = vi.fn();
 
 const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
+const mockAppInteraction = ref<
+  | 'blocked-by-startup'
+  | 'blocked-by-onboarding'
+  | 'enabled'
+>('enabled');
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: mockSettings,
   }),
 }));
 
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: mockAppInteraction,
+  }),
+}));
+
 // Mock new composables and services
-vi.mock('../composables/useChatTools', () => ({
+vi.mock('../features/tools/composables/useChatTools', () => ({
   useChatTools: () => ({
     setToolEnabled: vi.fn(),
   }),
 }));
-vi.mock('../composables/useChatWeshPreferences', () => ({
+vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
     getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),
@@ -89,12 +101,12 @@ vi.mock('../composables/useConfirm', () => ({
     showConfirm: vi.fn().mockResolvedValue(true),
   }),
 }));
-vi.mock('../composables/useFileExplorerModal', () => ({
+vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: () => ({
     openFileExplorer: mockOpenFileExplorer,
   }),
 }));
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getVolume: vi.fn(),
     createVolumeFromFiles: vi.fn(),
@@ -104,7 +116,7 @@ vi.mock('../services/storage', () => ({
     listVolumes: vi.fn(),
   },
 }));
-vi.mock('../services/storage/opfs-detection', () => ({
+vi.mock('../utils/opfs-detection', () => ({
   checkFileSystemAccessSupport: vi.fn(() => false),
 }));
 
@@ -121,7 +133,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatGroupId: string | undefined,
     naidanSysfsAccessScope: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'main_chats',
   }) => {
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     const mounts: Array<{ type: string, path: string, readOnly?: boolean, visibility?: string }> = [];
 
     if (chatId !== undefined && mockSettings.value.storageType === 'opfs') {
@@ -448,13 +460,18 @@ describe('ChatInput Integration', () => {
     mockCurrentChat.value = { id: 'chat-1', modelId: 'model-1' };
     mockCurrentChatGroup.value = null;
     mockSettings.value = { storageType: 'opfs', mounts: [] };
+    mockAppInteraction.value = 'enabled';
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
     mockGetNaidanSysfsAccessScope.mockReturnValue('none');
     mockSendMessageForChat.mockResolvedValue(true);
+    mockChatStore.fetchAvailableModels.mockReset();
+    mockChatStore.fetchAvailableModels.mockResolvedValue([]);
   });
 
-  const getWrapper = () => mount(ChatInput, {
+  const getWrapper = ({ autoSendPrompt }: {
+    autoSendPrompt?: string,
+  } = {}) => mount(ChatInput, {
     props: {
       chatId: toChatId({ raw: 'chat-1' }),
       chat: mockCurrentChat.value!,
@@ -469,6 +486,7 @@ describe('ChatInput Integration', () => {
       hasImageModel: true,
       availableImageModels: [],
       isAnimatingHeight: false,
+      autoSendPrompt,
     },
     global: {
       stubs: {
@@ -480,6 +498,48 @@ describe('ChatInput Integration', () => {
         },
       },
     },
+  });
+
+  it('waits to auto-send until onboarding no longer blocks interaction', async () => {
+    mockAppInteraction.value = 'blocked-by-onboarding';
+    getWrapper({ autoSendPrompt: 'Hello after onboarding' });
+    await flushPromises();
+
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+
+    mockAppInteraction.value = 'enabled';
+    await nextTick();
+    await flushPromises();
+
+    expect(mockSendMessageForChat).toHaveBeenCalledOnce();
+    expect(mockSendMessageForChat).toHaveBeenCalledWith(expect.objectContaining({
+      content: 'Hello after onboarding',
+    }));
+  });
+
+  it('does not focus or auto-send when onboarding reopens before scheduled interaction', async () => {
+    let resolveModels!: (models: string[]) => void;
+    const models = new Promise<string[]>((resolve) => {
+      resolveModels = resolve;
+    });
+    mockChatStore.fetchAvailableModels.mockReturnValueOnce(models);
+
+    const wrapper = getWrapper({ autoSendPrompt: 'Do not send while blocked' });
+    const textarea = wrapper.find('[data-testid="chat-input"]').element;
+
+    mockAppInteraction.value = 'blocked-by-onboarding';
+    await nextTick();
+    await flushPromises();
+
+    expect(mockChatStore.fetchAvailableModels).toHaveBeenCalledOnce();
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(textarea);
+
+    resolveModels(['model-1']);
+    await flushPromises();
+
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(textarea);
   });
 
   it('does not synchronize currentLeafId changes into the URL query', async () => {
@@ -540,7 +600,7 @@ describe('ChatInput Integration', () => {
       mounts: [],
     };
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -569,7 +629,7 @@ describe('ChatInput Integration', () => {
       mounts: [],
     };
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -597,7 +657,7 @@ describe('ChatInput Integration', () => {
       mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
     };
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -633,7 +693,7 @@ describe('ChatInput Integration', () => {
     };
     mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -728,6 +788,8 @@ describe('ChatInput Integration', () => {
 
   it('should clear attachments after successful message send', async () => {
     mockSendMessageForChat.mockResolvedValue(true);
+    mockChatStore.fetchAvailableModels.mockReset();
+    mockChatStore.fetchAvailableModels.mockResolvedValue([]);
     const wrapper = getWrapper();
     wrapper.vm.input = 'test message';
     wrapper.vm.TEST_ONLY.attachments.value = [

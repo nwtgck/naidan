@@ -1,0 +1,804 @@
+import JSZip from 'jszip';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
+import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } from '@/00-storage/mapper/mappers';
+import { createFileExplorerWorker } from './impl';
+import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
+import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
+import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
+import { renderChatMetadataMarkdown } from '@/features/wesh/naidan-sysfs/render/metadata-markdown';
+import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+
+describe('file-explorer.worker.impl', () => {
+  let worker: ReturnType<typeof createFileExplorerWorker>;
+
+  beforeEach(() => {
+    worker = createFileExplorerWorker();
+  });
+
+  it('lists native directory entries with metadata', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const fileHandle = await rootHandle.getFileHandle('readme.txt', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write('hello');
+    await writable.close();
+    await rootHandle.getDirectoryHandle('docs', { create: true });
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    const response = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/',
+      },
+    });
+
+    expect(response.entries.map(entry => entry.name).sort()).toEqual(['docs', 'readme.txt']);
+    expect(response.entries.find(entry => entry.name === 'readme.txt')?.size).toBe(5);
+  });
+
+  it('rejects ZIP execution when a same-kind target appeared after preview', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+    const zip = new JSZip();
+    zip.file('note.txt', 'from zip');
+    const blob = new Blob([
+      Uint8Array.from(await zip.generateAsync({ type: 'uint8array' })).buffer,
+    ]);
+
+    await worker.analyzeZipUpload({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-1',
+        targetDirectoryPath: '/',
+        fileName: 'upload.zip',
+        blob,
+      },
+    });
+    await worker.readZipUploadPreviewDirectory({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-1',
+        placement: { kind: 'extract', rootHandling: 'not_applicable' },
+        relativePath: '',
+      },
+    });
+
+    const targetFile = await rootHandle.getFileHandle('note.txt', { create: true });
+    const writable = await targetFile.createWritable();
+    await writable.write('external change');
+    await writable.close();
+
+    await expect(worker.executeZipUpload({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-1',
+        jobId: 'zip-job-1',
+        placement: { kind: 'extract', rootHandling: 'not_applicable' },
+      },
+    })).resolves.toEqual({ status: 'preview_outdated' });
+    expect(await (await targetFile.getFile()).text()).toBe('external change');
+  });
+
+  it('keeps global ZIP conflicts visible while previewing another directory', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const left = await rootHandle.getDirectoryHandle('left', { create: true });
+    const conflicting = await left.getFileHandle('nested', { create: true });
+    const conflictingWritable = await conflicting.createWritable();
+    await conflictingWritable.write('file instead of directory');
+    await conflictingWritable.close();
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+    const zip = new JSZip();
+    zip.file('left/nested/file.txt', 'blocked');
+    zip.file('right/file.txt', 'safe');
+    const blob = new Blob([
+      Uint8Array.from(await zip.generateAsync({ type: 'uint8array' })).buffer,
+    ]);
+
+    await worker.analyzeZipUpload({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-global-conflict',
+        targetDirectoryPath: '/',
+        fileName: 'upload.zip',
+        blob,
+      },
+    });
+    const response = await worker.readZipUploadPreviewDirectory({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-global-conflict',
+        placement: { kind: 'extract', rootHandling: 'not_applicable' },
+        relativePath: 'right',
+      },
+    });
+
+    expect(response.entries.map(entry => entry.name)).toEqual(['file.txt']);
+    expect(response.summary.blockedCount).toBe(1);
+  });
+
+  it('suggests descendants and archives a directory with its own root', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const projectHandle = await rootHandle.getDirectoryHandle('my-project', { create: true });
+    const srcHandle = await projectHandle.getDirectoryHandle('src', { create: true });
+    const sourceFileHandle = await srcHandle.getFileHandle('main.ts', { create: true });
+    const sourceWritable = await sourceFileHandle.createWritable();
+    await sourceWritable.write('export const value = 1;');
+    await sourceWritable.close();
+    const distHandle = await projectHandle.getDirectoryHandle('dist', { create: true });
+    const generatedFileHandle = await distHandle.getFileHandle('generated.js', { create: true });
+    const generatedWritable = await generatedFileHandle.createWritable();
+    await generatedWritable.write('generated');
+    await generatedWritable.close();
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    const suggestions = await worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/my-project',
+        query: 'sr',
+        excludedRelativePaths: [],
+      },
+    });
+    expect(suggestions).toEqual({
+      suggestions: [{
+        relativePath: 'src',
+        name: 'src',
+        kind: 'directory',
+      }],
+      resultState: 'complete',
+    });
+
+    const nestedSuggestions = await worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/my-project',
+        query: 'src/ma',
+        excludedRelativePaths: [],
+      },
+    });
+    expect(nestedSuggestions).toEqual({
+      suggestions: [{
+        relativePath: 'src/main.ts',
+        name: 'main.ts',
+        kind: 'file',
+      }],
+      resultState: 'complete',
+    });
+
+    const archive = await worker.createDirectoryArchive({
+      request: {
+        sessionId,
+        jobId: 'archive-job-1',
+        directoryPath: '/my-project',
+        excludedRelativePaths: ['dist'],
+      },
+    });
+    expect(archive.status).toBe('completed');
+    if (archive.status !== 'completed') throw new Error('Expected a completed archive');
+
+    const zipBytes = Uint8Array.from(new Uint8Array(await archive.blob.arrayBuffer()));
+    const zip = await JSZip.loadAsync(zipBytes);
+    expect(Object.keys(zip.files)).toContain('my-project/');
+    expect(Object.keys(zip.files)).toContain('my-project/src/');
+    expect(await zip.file('my-project/src/main.ts')?.async('text')).toBe('export const value = 1;');
+    expect(Object.keys(zip.files).some(path => path.startsWith('my-project/dist/'))).toBe(false);
+  });
+
+
+  it('lists exclusion suggestions without reading file metadata', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const projectHandle = await rootHandle.getDirectoryHandle('project', { create: true });
+    const fileHandle = await projectHandle.getFileHandle('readme.txt', { create: true });
+    const getFile = vi.spyOn(fileHandle, 'getFile');
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    const suggestions = await worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/project',
+        query: '',
+        excludedRelativePaths: [],
+      },
+    });
+
+    expect(suggestions.suggestions).toContainEqual({
+      relativePath: 'readme.txt',
+      name: 'readme.txt',
+      kind: 'file',
+    });
+    expect(getFile).not.toHaveBeenCalled();
+  });
+
+  it('does not resolve an unsafe parent path while suggesting exclusions', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    await expect(worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/',
+        query: 'unsafe\\segment/',
+        excludedRelativePaths: [],
+      },
+    })).resolves.toEqual({
+      suggestions: [],
+      resultState: 'complete',
+    });
+  });
+
+
+  it('does not traverse a directory that is already excluded', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    await expect(worker.suggestArchiveExclusions({
+      request: {
+        sessionId,
+        directoryPath: '/',
+        query: 'missing/',
+        excludedRelativePaths: ['missing'],
+      },
+    })).resolves.toEqual({
+      suggestions: [],
+      resultState: 'complete',
+    });
+  });
+
+  it('reads text previews and formats JSON', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const fileHandle = await rootHandle.getFileHandle('data.json', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write('{"a":1}');
+    await writable.close();
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    const response = await worker.readPreview({
+      request: {
+        sessionId,
+        path: '/data.json',
+        mode: 'bounded',
+      },
+    });
+
+    expect(response.kind).toBe('text');
+    if (response.kind === 'text') {
+      expect(response.rawText).toBe('{"a":1}');
+      expect(response.displayText).toContain('\n');
+    }
+  });
+
+  it('creates, copies, moves, and deletes entries inside a session', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    await rootHandle.getDirectoryHandle('target', { create: true });
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+
+    await worker.createFile({
+      request: {
+        sessionId,
+        parentPath: '/',
+        name: 'source.txt',
+      },
+    });
+
+    await worker.copyEntries({
+      request: {
+        sessionId,
+        sourcePaths: ['/source.txt'],
+        targetDirectoryPath: '/target',
+      },
+    });
+
+    let targetListing = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/target',
+      },
+    });
+    expect(targetListing.entries.map(entry => entry.name)).toContain('source.txt');
+
+    await worker.moveEntries({
+      request: {
+        sessionId,
+        sourcePaths: ['/source.txt'],
+        targetDirectoryPath: '/target',
+      },
+    });
+
+    const rootListing = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/',
+      },
+    });
+    expect(rootListing.entries.map(entry => entry.name)).not.toContain('source.txt');
+
+    await worker.deleteEntries({
+      request: {
+        sessionId,
+        paths: ['/target/source.txt'],
+      },
+    });
+
+    targetListing = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/target',
+      },
+    });
+    expect(targetListing.entries.map(entry => entry.name)).not.toContain('source.txt');
+  });
+
+  it('exposes virtual directories for wesh mounts roots', async () => {
+    const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' });
+    const fileHandle = await mountHandle.getFileHandle('index.ts', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write('export {}');
+    await writable.close();
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{
+            type: 'directory',
+            path: '/home/user/project',
+            handle: mountHandle as unknown as FileSystemDirectoryHandle,
+            readOnly: false,
+          }],
+        },
+      },
+    });
+
+    const rootListing = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/',
+      },
+    });
+    expect(rootListing.entries.map(entry => entry.name)).toEqual(['home']);
+
+    const mountListing = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/home/user/project',
+      },
+    });
+    expect(mountListing.entries.map(entry => entry.name)).toEqual(['index.ts']);
+  });
+
+  it('lists and navigates naidan sysfs entries from wesh mounts', async () => {
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    await storageRoot.getDirectoryHandle('uploaded-files', { create: true });
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        storage: {
+          getDirectory: async () => opfsRoot as unknown as FileSystemDirectoryHandle,
+        },
+      },
+      configurable: true,
+    });
+
+    const provider = new OPFSStorageProvider();
+    await provider.init();
+    const chatMeta: ChatMeta = {
+      id: toChatId({ raw: 'chat-1' }),
+      title: 'Main Chat',
+      groupId: toChatGroupId({ raw: 'chat-group-1' }),
+      currentLeafId: toMessageId({ raw: 'assistant-1' }),
+      createdAt: 100,
+      updatedAt: 200,
+      debugEnabled: false,
+      endpoint: {
+        type: 'openai',
+        url: 'https://example.invalid/v1',
+        httpHeaders: [['Authorization', 'secret-token']],
+      },
+      modelId: 'gpt-5',
+      autoTitleEnabled: true,
+      titleModelId: 'gpt-5-mini',
+      originChatId: undefined,
+      originMessageId: undefined,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      mounts: [],
+    };
+    const chatContent: ChatContent = {
+      currentLeafId: toMessageId({ raw: 'assistant-1' }),
+      root: {
+        items: [{
+          id: toMessageId({ raw: 'user-1' }),
+          role: 'user',
+          content: 'Hello',
+          timestamp: 1000,
+          replies: {
+            items: [{
+              id: toMessageId({ raw: 'assistant-1' }),
+              role: 'assistant',
+              content: 'Hi',
+              timestamp: 1001,
+              modelId: 'gpt-5',
+              replies: { items: [] },
+            }],
+          },
+        }],
+      },
+    };
+    const chatGroup: ChatGroup = {
+      id: toChatGroupId({ raw: 'chat-group-1' }),
+      name: 'Research',
+      isCollapsed: false,
+      updatedAt: 200,
+      mounts: [],
+      endpoint: {
+        type: 'openai',
+        url: 'https://example.invalid/v1',
+        httpHeaders: [['Authorization', 'group-secret-token']],
+      },
+      modelId: 'gpt-5',
+      autoTitleEnabled: true,
+      titleModelId: 'gpt-5-mini',
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      items: [
+        {
+          id: 'chat:chat-1',
+          type: 'chat',
+          chat: {
+            id: toChatId({ raw: 'chat-1' }),
+            title: 'Main Chat',
+            updatedAt: 200,
+            groupId: toChatGroupId({ raw: 'chat-group-1' }),
+          },
+        },
+      ],
+    };
+    await provider.saveChatMeta({ meta: chatMeta });
+    await provider.saveChatContent({ id: chatMeta.id, content: chatContent });
+    await provider.saveChatGroup({ chatGroup });
+    await provider.saveHierarchy({ hierarchy: {
+      items: [{
+        type: 'chat_group',
+        id: 'chat-group-1',
+        chat_ids: ['chat-1'],
+      }],
+    } });
+    const storedChatMeta = await provider.loadChatMeta({ id: toChatId({ raw: 'chat-1' }) });
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{
+            type: 'naidan_sysfs',
+            path: '/sys/fs/naidan',
+            readOnly: true,
+            storageType: 'opfs',
+            visibility: 'current_chat_with_chat_group',
+            binaryObjectAccess: 'data',
+            currentChatId: 'chat-1',
+            currentChatGroupId: 'chat-group-1',
+          }],
+        },
+      },
+    });
+
+    const rootListing = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/',
+      },
+    });
+    expect(rootListing.entries.map(entry => entry.name)).toEqual(['sys']);
+
+    const sysfsListing = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/sys/fs/naidan',
+      },
+    });
+    expect(sysfsListing.entries.map(entry => entry.name)).toEqual([
+      'version',
+      'current-chat',
+      'chats',
+      'hierarchy',
+      'binary-objects',
+      'current-chat-group',
+      'chat-groups',
+    ]);
+    expect(sysfsListing.entries.find(entry => entry.name === 'current-chat')).toEqual({
+      path: '/sys/fs/naidan/current-chat',
+      name: 'current-chat',
+      kind: 'directory',
+      size: undefined,
+      lastModified: undefined,
+      extension: '',
+      mimeCategory: 'binary',
+      readOnly: true,
+      canNavigate: true,
+      canMutate: false,
+    });
+
+    const currentChatListing = await worker.readDirectory({
+      request: {
+        sessionId,
+        path: '/sys/fs/naidan/current-chat',
+      },
+    });
+    expect(currentChatListing.entries.map(entry => entry.name)).toEqual([
+      'metadata.md',
+      'metadata.json',
+      'content-md',
+      'content-json',
+      'branches',
+    ]);
+
+    const metadataPreview = await worker.readPreview({
+      request: {
+        sessionId,
+        path: '/sys/fs/naidan/current-chat/metadata.md',
+        mode: 'bounded',
+      },
+    });
+    expect(metadataPreview.kind).toBe('text');
+    if (metadataPreview.kind === 'text') {
+      expect(metadataPreview.rawText).toBe(renderChatMetadataMarkdown({ metadata: storedChatMeta! }));
+      expect(metadataPreview.displayText).toBe(renderChatMetadataMarkdown({ metadata: storedChatMeta! }));
+    }
+  });
+
+  it('reads naidan sysfs metadata through a local remote reader', async () => {
+    const chatMeta: ChatMeta = {
+      id: toChatId({ raw: 'chat-1' }),
+      title: 'Local Chat',
+      groupId: toChatGroupId({ raw: 'chat-group-1' }),
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
+      createdAt: 100,
+      updatedAt: 200,
+      debugEnabled: false,
+      endpoint: {
+        type: 'openai',
+        url: 'https://example.invalid/v1',
+        httpHeaders: [['Authorization', 'secret-token']],
+      },
+      modelId: 'gpt-5',
+      autoTitleEnabled: true,
+      titleModelId: 'gpt-5-mini',
+      originChatId: undefined,
+      originMessageId: undefined,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      mounts: [],
+    };
+    const chatContent: ChatContent = {
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
+      root: { items: [] },
+    };
+    const chatGroup: ChatGroup = {
+      id: toChatGroupId({ raw: 'chat-group-1' }),
+      name: 'Local Group',
+      isCollapsed: false,
+      updatedAt: 200,
+      mounts: [],
+      endpoint: undefined,
+      modelId: undefined,
+      autoTitleEnabled: undefined,
+      titleModelId: undefined,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      items: [{
+        id: 'chat:chat-1',
+        type: 'chat',
+        chat: {
+          id: toChatId({ raw: 'chat-1' }),
+          title: 'Local Chat',
+          updatedAt: 200,
+          groupId: toChatGroupId({ raw: 'chat-group-1' }),
+        },
+      }],
+    };
+    const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) });
+    expectedMetadata.groupId = toChatGroupId({ raw: 'chat-group-1' });
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{
+            type: 'naidan_sysfs',
+            path: '/sys/fs/naidan',
+            readOnly: true,
+            storageType: 'local',
+            visibility: 'current_chat_only',
+            binaryObjectAccess: 'data',
+            currentChatId: 'chat-1',
+            currentChatGroupId: 'chat-group-1',
+          }],
+          naidanSysfsRemoteReader: {
+            storageType: 'local',
+            async getSidebarStructure() {
+              return [{
+                id: 'chat-group:chat-group-1',
+                type: 'chat_group',
+                chatGroup: {
+                  dto: chatGroupToDto({ domain: chatGroup }),
+                  items: chatGroup.items.map(item => ({
+                    id: item.id,
+                    type: 'chat',
+                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+                  })),
+                },
+              }];
+            },
+            async listChats() {
+              return [{
+                id: 'chat-1',
+                title: 'Local Chat',
+                updatedAt: 200,
+                groupId: 'chat-group-1',
+              }];
+            },
+            async listChatGroups() {
+              return [{
+                dto: chatGroupToDto({ domain: chatGroup }),
+                items: chatGroup.items.map(item => ({
+                  id: item.id,
+                  type: 'chat',
+                  chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+                })),
+              }];
+            },
+            async loadChatMeta({ chatId }: { chatId: string }) {
+              return chatId === 'chat-1'
+                ? {
+                  dto: chatMetaToDto({ domain: chatMeta }),
+                  groupId: 'chat-group-1',
+                }
+                : undefined;
+            },
+            async loadChatContent({ chatId }: { chatId: string }) {
+              return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined;
+            },
+            async loadChat({ chatId }: { chatId: string }) {
+              return chatId === 'chat-1'
+                ? {
+                  metadata: {
+                    dto: chatMetaToDto({ domain: chatMeta }),
+                    groupId: 'chat-group-1',
+                  },
+                  content: chatContentToDto({ domain: chatContent }),
+                }
+                : undefined;
+            },
+            async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
+              return chatGroupId === 'chat-group-1'
+                ? {
+                  dto: chatGroupToDto({ domain: chatGroup }),
+                  items: chatGroup.items.map(item => ({
+                    id: item.id,
+                    type: 'chat',
+                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+                  })),
+                }
+                : undefined;
+            },
+            async listBinaryObjects() {
+              return [];
+            },
+            async getBinaryObject() {
+              return undefined;
+            },
+            async getBinaryObjectBlob() {
+              return undefined;
+            },
+          },
+        },
+      },
+    });
+
+    const metadataPreview = await worker.readPreview({
+      request: {
+        sessionId,
+        path: '/sys/fs/naidan/chats/chat-1/metadata.md',
+        mode: 'bounded',
+      },
+    });
+
+    expect(metadataPreview).toEqual({
+      kind: 'text',
+      rawText: renderChatMetadataMarkdown({ metadata: expectedMetadata }),
+      displayText: renderChatMetadataMarkdown({ metadata: expectedMetadata }),
+      languageHint: 'markdown',
+      oversized: false,
+    });
+  });
+});

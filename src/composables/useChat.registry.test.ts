@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { ref, nextTick, toRaw } from 'vue';
-import { idToRaw } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
 
 // --- Mocks ---
 
@@ -12,7 +12,7 @@ const mockSaveChat = vi.fn().mockImplementation((chat) => {
 });
 const mockLoadChat = vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id) ? JSON.parse(JSON.stringify(chats.get(id))) : null));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -47,7 +47,7 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ autoTitleEnabled: true, endpointUrl: 'http://localhost', endpointType: 'openai', defaultModelId: 'm1' }),
+    settings: ref({ autoTitleEnabled: true, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'm1' }),
     isOnboardingDismissed: ref(true),
     onboardingDraft: ref(null),
   }),
@@ -56,14 +56,14 @@ vi.mock('./useSettings', () => ({
 const mockLmChat = vi.fn();
 const mockListModels = vi.fn();
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     chat = mockLmChat;
     listModels = mockListModels;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     async listModels() {
       return [];

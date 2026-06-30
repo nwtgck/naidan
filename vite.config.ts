@@ -1,6 +1,6 @@
 /// <reference types="vitest" />
 import VueRouter from 'vue-router/vite';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import type { Alias } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import legacy from '@vitejs/plugin-legacy';
@@ -15,9 +15,11 @@ import JSZip from 'jszip';
 import pkg from './package.json';
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
 import { fileProtocolStandalone } from './build/file-protocol-standalone/index.js';
-import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/models/constants';
+import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/constants';
 import { createLicenseModulePlugins } from './build/license-module';
 import { omitBuildOutputFilesPlugin } from './build/omit-build-output-files';
+import { createBoundaryStringsPlugin } from './build/boundary-strings';
+import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -52,7 +54,7 @@ const standaloneBuildBudgets = {
 } as const;
 
 const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch';
-const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/services/privacy-fetch/';
+const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/features/privacy-fetch/';
 const ZOD_MODULE_PATH_SEGMENT = '/node_modules/zod/';
 const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker';
 
@@ -140,7 +142,7 @@ const privacyFetchBrokerDevHeadersPlugin = () => ({
       }
 
       if (
-        url.startsWith('/src/services/privacy-fetch/')
+        url.startsWith('/src/features/privacy-fetch/')
         || url.startsWith('/node_modules/')
         || url.startsWith('/@vite/')
         || url.startsWith('/@id/')
@@ -246,6 +248,7 @@ export default defineConfig(({ mode }) => {
     define: {
       __BUILD_MODE_IS_STANDALONE__: JSON.stringify(isStandalone),
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(isHosted || mode === 'development'),
+      __BUILD_MODE_IS_TEST__: JSON.stringify(mode === 'test'),
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
@@ -257,7 +260,7 @@ export default defineConfig(({ mode }) => {
             __dirname,
             mode === 'test'
               ? 'src/test-mocks/file-protocol-standalone-worker.ts'
-              : 'src/services/file-protocol-standalone-worker-unavailable.ts',
+              : 'src/features/file-protocol-standalone/worker/file-protocol-standalone-worker-unavailable.ts',
           ),
         }] : []),
         {
@@ -267,6 +270,8 @@ export default defineConfig(({ mode }) => {
       ],
     },
     plugins: [
+      createInitialThemeHtmlPlugin(),
+      createBoundaryStringsPlugin(),
       VueRouter({
         /* options */
       }),
@@ -303,7 +308,7 @@ export default defineConfig(({ mode }) => {
         debugBuildReportFile: 'dist/debug-file-protocol-standalone-build-report.json',
         workers: [{
           id: FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID,
-          entry: 'src/services/worker-hub-standalone.worker.ts',
+          entry: 'src/features/file-protocol-standalone/worker/worker-hub-standalone.worker.ts',
         }],
         budgets: standaloneBuildBudgets,
         onAdditionalLicenseDependencies({ dependencies }) {
@@ -386,6 +391,11 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      exclude: [
+        ...configDefaults.exclude,
+        'src/test-tmp/**',
+        'src/lint-rule-tmp/**',
+      ],
       setupFiles: ['./src/test-setup.ts'],
     },
   };

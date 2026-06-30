@@ -1,0 +1,84 @@
+import { ref, shallowRef } from 'vue';
+import type { WeshMount } from '@/features/wesh/types';
+import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
+import { mapWeshMountsToWorkerMounts } from '@/features/wesh/worker/types';
+
+export type FileExplorerModalOptions =
+  | { kind: 'opfs-root' }
+  | {
+    kind: 'native-directory',
+    title: string,
+    rootName: string,
+    handle: FileSystemDirectoryHandle,
+    readOnly: boolean,
+    initialPath: string[] | undefined,
+  }
+  | {
+    kind: 'wesh-mounts',
+    title: string,
+    rootName: string,
+    mounts: WeshMount[],
+    initialPath: string[] | undefined,
+  };
+
+export function mapFileExplorerModalOptionsToRootDescriptor({
+  options,
+}: {
+  options: FileExplorerModalOptions,
+}): FileExplorerRootDescriptor {
+  switch (options.kind) {
+  case 'opfs-root':
+    return {
+      kind: 'opfs-root',
+      // TODO(strings-localize): Localize this worker descriptor after the synchronous root mapping accepts a resolved display label separately.
+      rootName: 'OPFS root',
+    };
+  case 'native-directory':
+    return {
+      kind: 'native-directory',
+      rootName: options.rootName,
+      handle: options.handle,
+      readOnly: options.readOnly,
+    };
+  case 'wesh-mounts':
+    return {
+      kind: 'wesh-mounts',
+      rootName: options.rootName,
+      mounts: mapWeshMountsToWorkerMounts({ mounts: options.mounts }),
+    };
+  default: {
+    const _exhaustiveCheck: never = options;
+    throw new Error(`Unhandled file explorer modal options: ${JSON.stringify(_exhaustiveCheck)}`);
+  }
+  }
+}
+
+const isOpen = ref(false);
+const options = shallowRef<FileExplorerModalOptions>({ kind: 'opfs-root' });
+
+export function useFileExplorerModal() {
+  function openFileExplorer({ options: opts }: { options?: FileExplorerModalOptions }): void {
+    options.value = opts ?? { kind: 'opfs-root' };
+    isOpen.value = true;
+  }
+
+  function closeFileExplorer(): void {
+    isOpen.value = false;
+  }
+
+  return {
+    isFileExplorerOpen: isOpen,
+    fileExplorerOptions: options,
+    openFileExplorer,
+    closeFileExplorer,
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
+  };
+}
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

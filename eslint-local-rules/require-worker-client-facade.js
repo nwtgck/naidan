@@ -11,16 +11,16 @@ function getFacadePathFromSource({
   filePath,
   source,
 }) {
-  const aliasMatch = source.match(/^@\/services\/(.+)\/worker\/client-(hosted|standalone)$/);
+  const aliasMatch = source.match(/^@\/features\/(.+)\/worker\/client-(hosted|standalone)$/);
   if (aliasMatch) {
-    return `@/services/${aliasMatch[1]}/worker/client`;
+    return `@/features/${aliasMatch[1]}/worker/client`;
   }
 
   if (source.startsWith('.')) {
     const resolved = normalizePath(path.resolve(path.dirname(filePath), source));
-    const resolvedMatch = resolved.match(/\/src\/services\/(.+)\/worker\/client(?:-(?:hosted|standalone))?$/);
+    const resolvedMatch = resolved.match(/\/src\/features\/(.+)\/worker\/client(?:-(?:hosted|standalone))?$/);
     if (resolvedMatch) {
-      return `@/services/${resolvedMatch[1]}/worker/client`;
+      return `@/features/${resolvedMatch[1]}/worker/client`;
     }
   }
 
@@ -32,7 +32,7 @@ function isStandaloneWorkerFacade({ facadePath }) {
 }
 
 function isWorkerFacadeFile({ filePath }) {
-  return /\/src\/services\/.+\/worker\/client\.ts$/.test(filePath);
+  return /\/src\/features\/.+\/worker\/client\.ts$/.test(filePath);
 }
 
 function isTestFile({ filePath }) {
@@ -45,12 +45,12 @@ function getFacadeRecommendation({ filePath, source }) {
     return facadePath;
   }
 
-  const fileMatch = filePath.match(/\/src\/services\/(.+)\/worker\/[^/]+$/);
+  const fileMatch = filePath.match(/\/src\/features\/(.+)\/worker\/[^/]+$/);
   if (fileMatch) {
-    return `@/services/${fileMatch[1]}/worker/client`;
+    return `@/features/${fileMatch[1]}/worker/client`;
   }
 
-  return '@/services/<feature>/worker/client';
+  return '@/features/<feature>/worker/client';
 }
 
 function resolvesToWorkerClientImplementation({ filePath, source }) {
@@ -91,8 +91,8 @@ export const rule = {
   create(context) {
     const filePath = normalizePath(context.filename);
 
-    function checkNode(node) {
-      const rawSource = node.source?.value;
+    function checkSourceNode({ sourceNode, reportNode }) {
+      const rawSource = sourceNode?.value;
       if (typeof rawSource !== 'string') {
         return;
       }
@@ -102,7 +102,7 @@ export const rule = {
       }
 
       context.report({
-        node: node.source ?? node,
+        node: reportNode ?? sourceNode,
         messageId: 'requireFacade',
         data: {
           source: rawSource,
@@ -112,9 +112,20 @@ export const rule = {
     }
 
     return {
-      ImportDeclaration: checkNode,
-      ExportNamedDeclaration: checkNode,
-      ExportAllDeclaration: checkNode,
+      ImportDeclaration(node) {
+        checkSourceNode({ sourceNode: node.source, reportNode: node });
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source) {
+          checkSourceNode({ sourceNode: node.source, reportNode: node });
+        }
+      },
+      ExportAllDeclaration(node) {
+        checkSourceNode({ sourceNode: node.source, reportNode: node });
+      },
+      ImportExpression(node) {
+        checkSourceNode({ sourceNode: node.source, reportNode: node });
+      },
     };
   },
 };

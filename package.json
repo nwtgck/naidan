@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.33.0",
+  "version": "0.34.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -50,12 +50,11 @@
     "@vitejs/plugin-legacy": "^8.0.2",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vitest/coverage-v8": "^4.1.8",
+    "@vue/compiler-sfc": "^3.5.38",
     "@vue/language-core": "^3.3.5",
     "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.9.1",
     "@vue/typescript": "^1.8.20",
-    "acorn": "^8.17.0",
-    "acorn-walk": "^8.3.5",
     "autoprefixer": "^10.5.0",
     "eslint": "^10.5.0",
     "eslint-plugin-vue": "^10.9.2",

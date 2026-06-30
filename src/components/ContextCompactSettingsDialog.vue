@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { XIcon, BrainIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
+import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -38,6 +39,12 @@ const compactCount = computed(() => Math.max(0, props.totalMessages - keepCount.
 
 const percentageToKeep = computed(() => props.totalMessages > 0 ? (keepCount.value / props.totalMessages) * 100 : 0);
 
+const compactPresets = computed(() => [
+  { label: lazyStrings.contextCompact__compact(), value: 0 },
+  { label: lazyStrings.contextCompact__balanced(), value: 6 },
+  { label: lazyStrings.contextCompact__deep(), value: 12 },
+]);
+
 function handleConfirm() {
   if (compactCount.value === 0) {
     return;
@@ -50,9 +57,11 @@ function handleConfirm() {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -78,8 +87,8 @@ defineExpose({
               <BrainIcon class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h3 class="text-sm font-black uppercase tracking-widest text-gray-900 dark:text-indigo-100">Compact Context</h3>
-              <p class="text-[10px] font-bold text-indigo-600/60 dark:text-indigo-400/50 uppercase tracking-tighter">Memory Reconfiguration</p>
+              <h3 class="text-sm font-black uppercase tracking-widest text-gray-900 dark:text-indigo-100">{{ lazyStrings.contextCompact__compact_context() }}</h3>
+              <p class="text-[10px] font-bold text-indigo-600/60 dark:text-indigo-400/50 uppercase tracking-tighter">{{ lazyStrings.contextCompact__memory_reconfiguration() }}</p>
             </div>
           </div>
           <button
@@ -107,7 +116,7 @@ defineExpose({
             <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div class="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-indigo-100 dark:border-indigo-900/50 px-3 py-1 rounded-full shadow-sm">
                 <span class="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">
-                  {{ compactCount }} To Compact <ChevronRightIcon class="inline w-3 h-3 mx-0.5" /> {{ keepCount }} To Keep
+                  {{ lazyStrings.contextCompact__to_compact({ count: compactCount }) }} <ChevronRightIcon class="inline w-3 h-3 mx-0.5" /> {{ lazyStrings.contextCompact__to_keep({ count: keepCount }) }}
                 </span>
               </div>
             </div>
@@ -116,7 +125,7 @@ defineExpose({
           <!-- Slider Control -->
           <div class="space-y-4">
             <div class="flex items-center justify-between">
-              <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-indigo-500/60">Messages to keep</label>
+              <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-indigo-500/60">{{ lazyStrings.contextCompact__messages_to_keep() }}</label>
               <span class="text-xl font-black tabular-nums text-indigo-600 dark:text-indigo-400">{{ keepCount }}</span>
             </div>
             <input
@@ -128,19 +137,15 @@ defineExpose({
               class="w-full h-1.5 bg-indigo-100 dark:bg-indigo-950 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-400 focus:outline-none"
             />
             <div class="flex justify-between text-[9px] font-bold text-gray-400 dark:text-indigo-500/40 uppercase tracking-widest">
-              <span>More History</span>
-              <span>More Context</span>
+              <span>{{ lazyStrings.contextCompact__more_history() }}</span>
+              <span>{{ lazyStrings.contextCompact__more_context() }}</span>
             </div>
           </div>
 
           <!-- Quick Presets -->
           <div class="grid grid-cols-3 gap-2">
             <button
-              v-for="preset in [
-                { label: 'Compact', value: 0 },
-                { label: 'Balanced', value: 6 },
-                { label: 'Deep', value: 12 }
-              ]"
+              v-for="preset in compactPresets"
               :key="preset.label"
               class="px-2 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border"
               :class="[
@@ -158,7 +163,7 @@ defineExpose({
           <!-- Info Box -->
           <div class="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100/50 dark:border-indigo-900/40 text-[11px] leading-relaxed text-indigo-900/70 dark:text-indigo-200/60">
             <p>
-              Compacting will condense the first <strong class="text-indigo-600 dark:text-indigo-300">{{ compactCount }} messages</strong> into a single summary. This reduces token usage while preserving the core context.
+              {{ lazyStrings.contextCompact__compacting_will_condense_messages_into_a_single_summary({ count: compactCount }) }}
             </p>
           </div>
 
@@ -169,7 +174,7 @@ defineExpose({
               @click="showInstructionEditor = !showInstructionEditor"
             >
               <div class="min-w-0">
-                <div class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-indigo-500/60">Compact Prompt</div>
+                <div class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-indigo-500/60">{{ lazyStrings.contextCompact__compact_prompt() }}</div>
                 <p class="mt-1 text-[11px] leading-relaxed text-indigo-900/70 dark:text-indigo-100/70 line-clamp-3">
                   {{ instructionPreview }}
                 </p>
@@ -179,7 +184,7 @@ defineExpose({
 
             <div v-if="showInstructionEditor" class="border-t border-indigo-100/50 dark:border-indigo-900/40 px-4 py-3 space-y-2">
               <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-indigo-500/60" for="context-compact-instruction">
-                Editable Prompt
+                {{ lazyStrings.contextCompact__editable_prompt() }}
               </label>
               <textarea
                 id="context-compact-instruction"
@@ -198,7 +203,7 @@ defineExpose({
             class="px-5 py-2.5 text-xs font-bold text-gray-500 hover:text-gray-700 dark:text-indigo-400 dark:hover:text-indigo-200 transition-colors"
             @click="emit('close')"
           >
-            Cancel
+            {{ lazyStrings.contextCompact__cancel() }}
           </button>
           <button
             class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-500/20 transition-all active:scale-95 flex items-center gap-2"
@@ -206,7 +211,7 @@ defineExpose({
             :class="{ 'opacity-50 cursor-not-allowed active:scale-100': compactCount === 0 }"
             @click="handleConfirm"
           >
-            Compact Now
+            {{ lazyStrings.contextCompact__compact_now() }}
           </button>
         </div>
       </div>

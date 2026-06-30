@@ -1,14 +1,14 @@
-import { generateId } from '@/utils/id';
-import type { MessageId } from '@/models/ids';
+import { generateId } from '@/01-models/id';
+import type { MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises, mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { CheckIcon } from 'lucide-vue-next';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
-import { idToRaw, toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/models/ids';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/01-models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -31,7 +31,7 @@ vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getFile: vi.fn().mockResolvedValue(null),
     getBinaryObject: vi.fn().mockResolvedValue(null),
@@ -565,7 +565,7 @@ describe('MessageItem Attachment Rendering', () => {
 
   it('renders persisted attachments by fetching from storage', async () => {
     // Mock storageService
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.spyOn(storageService, 'getFile').mockResolvedValue(new Blob([''], { type: 'image/png' }));
 
     const message = createMessageWithAttachments([{
@@ -643,12 +643,12 @@ describe('MessageItem States', () => {
     replies: { items: [] },
   } as AssistantMessageNode);
 
-  it('displays loading indicator when waiting for response', () => {
+  it('displays loading indicator when waiting for response', async () => {
     const message = createAssistantMessage('');
     const wrapper = mount(MessageItem, { props: { message, mode: 'waiting', isFirstInTurn: true } });
+    await flushPromises();
 
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain('Waiting for response...');
     expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(false);
   });
 

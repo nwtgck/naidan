@@ -1,0 +1,65 @@
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+
+const pwdArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
+
+export const pwdCommandDefinition: WeshCommandDefinition = {
+  meta: {
+    name: 'pwd',
+    description: 'Print name of current/working directory',
+    usage: 'pwd',
+  },
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const parsed = parseStandardArgv({
+      args: context.args,
+      spec: pwdArgvSpec,
+    });
+
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'pwd',
+        message: `pwd: ${diagnostic.message}`,
+        argvSpec: pwdArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'pwd',
+        argvSpec: pwdArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
+    if (parsed.positionals.length > 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'pwd',
+        message: 'pwd: too many arguments',
+        argvSpec: pwdArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    const text = context.text();
+    await text.print({ text: context.cwd + '\n' });
+    return { exitCode: 0 };
+  },
+};
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

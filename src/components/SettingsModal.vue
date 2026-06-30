@@ -1,16 +1,12 @@
 <script setup lang="ts">
-import { generateOpaqueId } from '@/utils/id';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
-import type { Settings } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { ChatGroupRecipeSchema } from '@/models/recipe';
-import type { ChatGroupRecipe } from '@/models/recipe';
-import { parseConcatenatedJson } from '@/utils/json-stream-parser';
-import { matchRecipeModels } from '@/utils/recipe-matcher';
+import type { Settings } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import type { ChatGroupRecipe } from '@/features/recipes/logic/recipe';
 import {
   XIcon, GlobeIcon,
   DatabaseIcon, Settings2Icon, BookmarkPlusIcon,
@@ -23,24 +19,26 @@ import {
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load tabs that are not visible by default, but prefetch them when idle.
-const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeImportTab.vue') });
+const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/recipes/components/RecipeImportTab.vue') });
 const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilesTab.vue') });
-const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsManager.vue') });
+const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsManager.vue') });
 const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
 const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./VolumeSettingsTab.vue') });
 const DeveloperTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./DeveloperTab.vue') });
 const AboutTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AboutTab.vue') });
-const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./GlobalToolsSettings.vue') });
+const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/tools/components/GlobalToolsSettings.vue') });
 
 // IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';
-import ThemeToggle from './ThemeToggle.vue';
+import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
+import LanguageSelector from './LanguageSelector.vue';
 
 import { useConfirm } from '@/composables/useConfirm'; // Import useConfirm
 import { useLayout } from '@/composables/useLayout';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { naturalSort } from '@/utils/string';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -70,9 +68,7 @@ const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
 
 function pickConnectionFields({ settings }: { settings: Settings }) {
   return {
-    endpointType: settings.endpointType,
-    endpointUrl: settings.endpointUrl,
-    endpointHttpHeaders: JSON.stringify(settings.endpointHttpHeaders),
+    endpoint: JSON.stringify(settings.endpoint),
     defaultModelId: settings.defaultModelId,
     titleModelId: settings.titleModelId,
     autoTitleEnabled: settings.autoTitleEnabled,
@@ -102,13 +98,13 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string, ma
     }
 
     addToast({
-      message: `Successfully imported ${recipes.length} recipes as chat groups`,
+      message: await ensureStrings.SettingsModal__successfully_imported_recipes_as_chat_groups({ recipeCount: recipes.length }),
       duration: 3000,
     });
   } catch (err) {
     console.error('Failed to import recipes:', err);
     addToast({
-      message: `Failed to import recipes: ${err instanceof Error ? err.message : String(err)}`,
+      message: await ensureStrings.SettingsModal__failed_to_import_recipes({ errorMessage: err instanceof Error ? err.message : String(err) }),
       duration: 5000,
     });
   }
@@ -152,10 +148,10 @@ const activeTab = computed({
 async function handleCancel() {
   if (hasUnsavedConnectionChanges.value) {
     const confirmed = await showConfirm({
-      title: 'Discard Unsaved Changes?',
-      message: 'You have unsaved changes in your connection settings. Are you sure you want to discard them?',
-      confirmButtonText: 'Discard',
-      cancelButtonText: 'Keep Editing',
+      title: await ensureStrings.SettingsModal__discard_unsaved_changes(),
+      message: await ensureStrings.SettingsModal__discard_unsaved_connection_changes(),
+      confirmButtonText: await ensureStrings.SettingsModal__discard(),
+      cancelButtonText: await ensureStrings.SettingsModal__keep_editing(),
     });
     if (confirmed) {
       emit('close');
@@ -164,69 +160,6 @@ async function handleCancel() {
     emit('close');
   }
 }
-
-// Recipes State
-interface AnalyzedRecipe {
-  id: string,
-  recipe: ChatGroupRecipe,
-  selected: boolean,
-  matchedModelId?: string,
-  matchError?: string,
-  newName: string,
-}
-
-const recipeJsonInput = ref('');
-const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
-const recipeAnalysisError = ref<string | null>(null);
-
-function handleAnalyzeRecipes() {
-  const trimmed = recipeJsonInput.value.trim();
-  if (!trimmed) {
-    analyzedRecipes.value = [];
-    recipeAnalysisError.value = null;
-    return;
-  }
-
-  recipeAnalysisError.value = null;
-  const parseResults = parseConcatenatedJson({ input: trimmed });
-  const newAnalyzed: AnalyzedRecipe[] = [];
-
-  for (const result of parseResults) {
-    if (!result.success) {
-      recipeAnalysisError.value = `Parse error: ${result.error}`;
-      continue;
-    }
-
-    const validation = ChatGroupRecipeSchema.safeParse(result.data);
-    if (!validation.success) {
-      recipeAnalysisError.value = `Validation error: ${validation.error.message}`;
-      continue;
-    }
-
-    const recipe = validation.data;
-    const match = matchRecipeModels({ recipeModels: recipe.models, availableModelIds: availableModels.value });
-
-    newAnalyzed.push({
-      id: generateOpaqueId(),
-      recipe,
-      selected: true,
-      matchedModelId: match.modelId,
-      matchError: match.error,
-      newName: recipe.name,
-    });
-  }
-
-  if (newAnalyzed.length === 0 && !recipeAnalysisError.value) {
-    recipeAnalysisError.value = 'No valid recipes found in input.';
-  }
-
-  analyzedRecipes.value = newAnalyzed;
-}
-
-// Automatically analyze on input change
-watch(recipeJsonInput, () => {
-  handleAnalyzeRecipes();
-});
 
 // Watch for modal open to reset form
 watch(() => props.isOpen, async (open) => {
@@ -247,9 +180,11 @@ watch(() => props.isOpen, async (open) => {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -269,11 +204,14 @@ defineExpose({
         <!-- Sidebar (Tabs) -->
         <aside class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
           <!-- Header -->
-          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center gap-3 shrink-0">
-            <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-              <Settings2Icon class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center justify-between gap-3 shrink-0">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <Settings2Icon class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+              </div>
+              <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.SettingsModal__settings() }}</h2>
             </div>
-            <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">Settings</h2>
+            <LanguageSelector />
           </div>
 
           <!-- Navigation -->
@@ -285,7 +223,7 @@ defineExpose({
               data-testid="tab-connection"
             >
               <GlobeIcon class="w-4 h-4" />
-              Connection
+              {{ lazyStrings.SettingsModal__connection() }}
             </button>
             <button
               @click="activeTab = 'tools'"
@@ -294,7 +232,7 @@ defineExpose({
               data-testid="tab-tools"
             >
               <WrenchIcon class="w-4 h-4" />
-              Tools
+              {{ lazyStrings.SettingsModal__tools() }}
             </button>
             <button
               @click="activeTab = 'profiles'"
@@ -303,7 +241,7 @@ defineExpose({
               data-testid="tab-profiles"
             >
               <BookmarkPlusIcon class="w-4 h-4" />
-              Provider Profiles
+              {{ lazyStrings.SettingsModal__provider_profiles() }}
             </button>
             <button
               @click="activeTab = 'transformers_js'"
@@ -312,7 +250,7 @@ defineExpose({
               data-testid="tab-transformers-js"
             >
               <BrainCircuitIcon class="w-4 h-4" />
-              Transformers.js
+              {{ lazyStrings.SettingsModal__transformers_js() }}
             </button>
             <button
               @click="activeTab = 'recipes'"
@@ -321,7 +259,7 @@ defineExpose({
               data-testid="tab-recipes"
             >
               <ChefHatIcon class="w-4 h-4" />
-              Recipes
+              {{ lazyStrings.SettingsModal__recipes() }}
             </button>
             <button
               @click="activeTab = 'storage'"
@@ -330,7 +268,7 @@ defineExpose({
               data-testid="tab-storage"
             >
               <DatabaseIcon class="w-4 h-4" />
-              Storage
+              {{ lazyStrings.SettingsModal__storage() }}
             </button>
             <button
               @click="activeTab = 'binary_objects'"
@@ -339,7 +277,7 @@ defineExpose({
               data-testid="tab-files"
             >
               <FileIcon class="w-4 h-4" />
-              Files
+              {{ lazyStrings.SettingsModal__files() }}
             </button>
             <button
               v-if="isVolumesFeatureEnabled"
@@ -349,7 +287,7 @@ defineExpose({
               data-testid="tab-volumes"
             >
               <FolderIcon class="w-4 h-4" />
-              Folders
+              {{ lazyStrings.SettingsModal__folders() }}
             </button>
             <button
               @click="activeTab = 'developer'"
@@ -358,7 +296,7 @@ defineExpose({
               data-testid="tab-developer"
             >
               <CpuIcon class="w-4 h-4" />
-              Developer
+              {{ lazyStrings.SettingsModal__developer() }}
             </button>
             <button
               @click="activeTab = 'about'"
@@ -367,7 +305,7 @@ defineExpose({
               data-testid="tab-about"
             >
               <InfoIcon class="w-4 h-4" />
-              About
+              {{ lazyStrings.SettingsModal__about() }}
             </button>
           </nav>
 
@@ -386,7 +324,7 @@ defineExpose({
             >
               <DownloadIcon class="w-4 h-4 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
               <div class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300 truncate">
-                Standalone
+                {{ lazyStrings.SettingsModal__standalone() }}
               </div>
             </a>
           </div>

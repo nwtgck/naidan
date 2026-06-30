@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageThinking from './MessageThinking.vue';
-import type { MessageNode } from '@/models/types';
-import { toMessageId } from '@/models/ids';
+import type { MessageNode } from '@/01-models/types';
+import { toMessageId } from '@/01-models/ids';
 
 const withInSequence = { global: { provide: { inSequence: true } } };
 

@@ -1,4 +1,4 @@
-import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
+import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -7,8 +7,9 @@ import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { setupScrollToMock } from '@/utils/test-utils';
-import type { WeshMount } from '@/services/wesh/types';
-import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
+import type { WeshMount } from '@/features/wesh/types';
+import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
 // Mock router
 const router = createRouter({
@@ -16,11 +17,11 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode, Chat } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { MessageNode, Chat } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
-import type { ScopedSettingChange } from '@/models/scoped-setting-change';
-import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
+import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
+import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 
 const {
   mockEnsureChatTmpDirectory,
@@ -134,20 +135,33 @@ const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
 const mockSettings = ref<any>({
-  endpointType: 'openai',
-  endpointUrl: 'http://localhost',
+  endpoint: { type: 'openai', url: 'http://localhost' },
   defaultModelId: 'global-default-model',
   storageType: 'opfs',
   mounts: [],
 });
 const mockTmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle;
 
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
     chatGroups: mockChatGroups,
-    resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
+    resolvedSettings: mockResolvedSettings.value || ref({
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      lmParameters: { reasoning: { effort: undefined } },
+    }),
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
     renameChat: mockRenameChat,
@@ -641,25 +655,25 @@ vi.mock('../composables/useToast', () => ({
   }),
 }));
 
-vi.mock('../services/import-export/chat-url-share', () => ({
+vi.mock('../features/import-export/chat-url-share', () => ({
   generateChatShareURL: mockGenerateChatShareURL,
 }));
 
 
-vi.mock('@/services/fake-lm', () => ({
+vi.mock('@/features/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
   useFakeLmDebugMode: () => ({
     fakeLmDebugModeAvailability: mockFakeLmDebugModeAvailability,
   }),
 }));
 
-vi.mock('../composables/useFileExplorerModal', () => ({
+vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: () => ({
     openFileExplorer: mockOpenFileExplorer,
   }),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
     getFile: vi.fn().mockResolvedValue(new Blob([])),
@@ -667,7 +681,7 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-vi.mock('../composables/useChatWeshPreferences', () => ({
+vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
     getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),
@@ -684,7 +698,7 @@ Object.defineProperty(navigator, 'clipboard', {
 let wrapper: VueWrapper<any> | null = null;
 
 function resetMocks() {
-  const { clearAllDrafts } = useChatDraft();
+  const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
   clearAllDrafts();
   vi.useRealTimers();
   vi.clearAllMocks();
@@ -733,11 +747,13 @@ function resetMocks() {
   mockFetchingModels.value = false;
   mockContextCompactProgress.value = { phase: 'idle' };
   mockResolvedSettings.value = {
+    endpoint: { type: 'openai', url: 'http://localhost' },
     modelId: 'global-default-model',
     titleModelId: undefined,
     sources: { modelId: 'global', titleModelId: 'global' },
   };
   mockInheritedSettings.value = {
+    endpoint: { type: 'openai', url: 'http://localhost' },
     modelId: 'global-default-model',
     sources: { modelId: 'global' },
   };
@@ -753,8 +769,7 @@ function resetMocks() {
     updatedAt: Date.now(),
   };
   mockSettings.value = {
-    endpointType: 'openai',
-    endpointUrl: 'http://localhost',
+    endpoint: { type: 'openai', url: 'http://localhost' },
     defaultModelId: 'global-default-model',
     storageType: 'opfs',
     mounts: [],
@@ -1145,8 +1160,7 @@ Question`,
   it('should configure the current chat for fake LM from the inspector shortcut', async () => {
     if (mockCurrentChat.value) {
       mockCurrentChat.value.debugEnabled = true;
-      mockCurrentChat.value.endpointType = 'openai';
-      mockCurrentChat.value.endpointUrl = 'https://example.com';
+      mockCurrentChat.value.endpoint = { type: 'openai', url: 'https://example.com' };
     }
 
     wrapper = mountChatPane({
@@ -1171,8 +1185,10 @@ Question`,
         },
       }],
     });
-    expect(mockCurrentChat.value?.endpointType).toBe('ollama');
-    expect(mockCurrentChat.value?.endpointUrl).toBe('https://fake-lm.invalid');
+    expect(mockCurrentChat.value?.endpoint).toEqual({
+      type: 'ollama',
+      url: 'https://fake-lm.invalid',
+    });
     expect(mockAddToast).toHaveBeenCalledWith({
       message: 'Fake LM enabled for this chat via https://fake-lm.invalid',
       duration: 3000,
@@ -1183,8 +1199,7 @@ Question`,
     mockFakeLmDebugModeAvailability.value = 'unavailable_in_standalone';
     if (mockCurrentChat.value) {
       mockCurrentChat.value.debugEnabled = true;
-      mockCurrentChat.value.endpointType = 'openai';
-      mockCurrentChat.value.endpointUrl = 'https://example.com';
+      mockCurrentChat.value.endpoint = { type: 'openai', url: 'https://example.com' };
     }
 
     wrapper = mountChatPane({
@@ -1199,8 +1214,10 @@ Question`,
 
     expect(mockSetFakeLmDebugModeStatus).not.toHaveBeenCalled();
     expect(mockUpdateChatScopedSettings).not.toHaveBeenCalled();
-    expect(mockCurrentChat.value?.endpointType).toBe('openai');
-    expect(mockCurrentChat.value?.endpointUrl).toBe('https://example.com');
+    expect(mockCurrentChat.value?.endpoint).toEqual({
+      type: 'openai',
+      url: 'https://example.com',
+    });
   });
 
   it('should open the title dialog and save a manual title', async () => {
@@ -1241,7 +1258,10 @@ Question`,
     await wrapper.findComponent({ name: 'ModelSelector' }).vm.$emit('update:modelValue', 'model-2');
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockSaveSettings).toHaveBeenCalledWith({ patch: { titleModelId: 'model-2' } });
+    expect(mockSaveSettings).toHaveBeenCalledWith({
+      patch: { titleModelId: 'model-2' },
+      modelRefresh: 'await',
+    });
     expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: 'model-2' });
   });
 
@@ -1348,6 +1368,7 @@ Question`,
   it('should update the chat title model override when the active title model source is chat', async () => {
     mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
       titleModelId: 'model-2',
       sources: { modelId: 'global', titleModelId: 'chat' },
@@ -1379,6 +1400,7 @@ Question`,
   it('should update the group title model override when the active title model source is group', async () => {
     mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
       titleModelId: 'model-2',
       sources: { modelId: 'global', titleModelId: 'chat_group' },
@@ -1645,10 +1667,10 @@ Question`,
   });
 
   describe('Custom Overrides Indicator', () => {
-    it('shows indicator when endpointType is overridden', async () => {
+    it('shows indicator when endpoint is overridden', async () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
-        endpointType: 'ollama',
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
         modelId: undefined, createdAt: 0, updatedAt: 0,
       }) as any;
@@ -2456,7 +2478,6 @@ describe('ChatPane Scrolling Logic', () => {
         id: 'seq-1',
         items: [],
         flow: { position: 'standalone', nesting: 'none' },
-        summary: 'Process Details',
         stats: {
           thinkingSteps: 0,
           toolCallCount: 1,
@@ -2589,6 +2610,10 @@ describe('ChatPane Focus', () => {
 });
 
 describe('ChatPane Export Functionality', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   // Mock browser APIs for file download
   const mockCreateObjectURL = vi.fn((blob: Blob | MediaSource) => {
     // Mock Blob content access for testing
@@ -2681,6 +2706,7 @@ describe('ChatPane Export Functionality', () => {
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     expect(exportButton.exists()).toBe(true);
     await exportButton.trigger('click');
+    await flushPromises();
 
     expect(URL.createObjectURL).toHaveBeenCalled();
     expect(mockAnchorClick).toHaveBeenCalled();
@@ -2749,6 +2775,7 @@ Hello User`);
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
+    await flushPromises();
 
     // Just verify the calls happened
     expect(URL.createObjectURL).toHaveBeenCalled();
@@ -2788,6 +2815,7 @@ Another message`);
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
+    await flushPromises();
 
     expect(URL.createObjectURL).toHaveBeenCalled();
     expect(mockAnchorClick).toHaveBeenCalled();
@@ -2817,6 +2845,7 @@ Another message`);
     const exportUrlBtn = wrapper.find('[data-testid="export-url-button"]');
     expect(exportUrlBtn.exists()).toBe(true);
     await exportUrlBtn.trigger('click');
+    await flushPromises();
 
     expect(mockGenerateChatShareURL).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }) });
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockUrl);
@@ -2892,7 +2921,7 @@ describe('ChatPane Textarea Sizing', () => {
     mockTextareaDimensions(textarea, 24); // scrollHeight for 1 line of text
     // Manually trigger adjustTextareaHeight after mocking dimensions for initial state
     const chatInput = wrapper.findComponent(ChatInput);
-    (chatInput.vm as any).adjustTextareaHeight({});
+    (chatInput.vm as any).TEST_ONLY.adjustTextareaHeight({});
     await nextTick();
 
     const expectedHeight = 50; // 1 line (24) + padding (24) + border (2) = 50
@@ -3200,7 +3229,7 @@ Line 5
 Line 6`;
     mockTextareaDimensions(textarea, 24 * 6 + 26); // Mock full 6 lines
     const chatInput = wrapper.findComponent(ChatInput);
-    (chatInput.vm as any).adjustTextareaHeight({});
+    (chatInput.vm as any).TEST_ONLY.adjustTextareaHeight({});
     await nextTick();
     const expandedHeight = parseFloat(textarea.style.height);
     expect(expandedHeight).toBeCloseTo(170);

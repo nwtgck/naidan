@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem, ChatSidebarItem } from '@/models/types';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatGroup, ChatSummary, SidebarItem, ChatSidebarItem } from '@/01-models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
   mockScrollIntoViewSafe: vi.fn(),
@@ -14,7 +14,7 @@ const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChat = ref<any>(null);
 const mockSettings = reactive({
-  endpointUrl: 'http://localhost:11434',
+  endpoint: { type: 'openai' as const, url: 'http://localhost:11434' },
   defaultModelId: 'llama3',
 });
 const mockAvailableModels = ref(['llama3']);
@@ -138,7 +138,7 @@ vi.mock('../composables/useConfirm', () => ({
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),
@@ -241,7 +241,9 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     const showMoreBtn = wrapper.find('[data-testid="show-more-button"]');
     expect(showMoreBtn.exists()).toBe(true);
-    expect(showMoreBtn.text()).toContain('Show 2 more');
+    await vi.waitFor(() => {
+      expect(showMoreBtn.text()).toContain('Show 2 more');
+    });
   });
 
   it('shows all items when "Show more" is clicked', async () => {

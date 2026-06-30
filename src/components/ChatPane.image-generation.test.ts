@@ -1,6 +1,6 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
@@ -9,6 +9,7 @@ import { ImageIcon, SendIcon } from 'lucide-vue-next';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 
 // Mock useChat singleton
@@ -23,8 +24,8 @@ const mockChatStore = {
   activeMessages: mockActiveMessages,
   fetchingModels: ref(false),
   availableModels: ref(['m1', 'x/z-image-turbo:v1']),
-  resolvedSettings: ref({ endpointType: 'ollama', modelId: 'm1', sources: {} }),
-  inheritedSettings: ref({ sources: {} }),
+  resolvedSettings: ref({ endpoint: { type: 'ollama', url: 'http://localhost' }, modelId: 'm1', sources: {} }),
+  inheritedSettings: ref({ endpoint: { type: 'ollama', url: 'http://localhost' }, sources: {} }),
   isProcessing: vi.fn(() => false),
   isImageMode: vi.fn(() => mockIsImageMode.value),
   toggleImageMode: vi.fn(() => {
@@ -72,6 +73,17 @@ const mockChatStore = {
   isThinkingActive: vi.fn(() => false),
   isWaitingResponse: vi.fn(() => false),
 };
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(() => mockChatStore),
 }));
@@ -241,6 +253,10 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('ChatPane Image Generation Integration', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -257,7 +273,7 @@ describe('ChatPane Image Generation Integration', () => {
 
     // Check if Image icon exists instead of Send icon
     expect(wrapper.findComponent(ImageIcon).exists()).toBe(true);
-  });
+  }, 15_000);
 
   it('calls sendImageRequest when sending a message in image mode', async () => {
     mockIsImageMode.value = true;

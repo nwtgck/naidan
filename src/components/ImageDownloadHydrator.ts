@@ -4,9 +4,9 @@ import ImageInfoDisplay from './ImageInfoDisplay.vue';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import { detectFormat, embedMetadataInPng, embedMetadataInWebp, UNSUPPORTED } from '@/utils/image-metadata';
 import { sanitizeFilename } from '@/utils/string';
-import type { StorageService } from '@/services/storage';
-import { toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId } from '@/models/ids';
+import type { StorageService } from '@/00-storage/service';
+import { toBinaryObjectId } from '@/01-models/ids';
+import type { BinaryObjectId } from '@/01-models/ids';
 
 /**
  * ImageDownloadHydrator handles the manual attachment of the Vue-based
@@ -69,6 +69,7 @@ export const ImageDownloadHydrator = {
     imgEl.src = url;
     imgEl.width = parseInt(width || '512');
     imgEl.height = parseInt(height || '512');
+    // TODO(strings-localize): Localize this DOM attribute after createImageElement can receive a resolved alt value without becoming asynchronous.
     imgEl.alt = 'generated image';
     imgEl.className = 'naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity';
     imgEl.onclick = (e) => {
@@ -213,3 +214,7 @@ export const ImageDownloadHydrator = {
     };
   },
 };
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

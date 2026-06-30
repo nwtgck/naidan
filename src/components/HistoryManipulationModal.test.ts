@@ -1,11 +1,12 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import HistoryManipulationModal from './HistoryManipulationModal.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { computed, nextTick, ref } from 'vue';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock vuedraggable
 vi.mock('vuedraggable', () => ({
@@ -42,19 +43,21 @@ describe('HistoryManipulationModal', () => {
     systemPromptMessages: ['Inherited Prompt'],
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     vi.mocked(useCurrentChatState).mockReturnValue({
       currentChatId: computed(() => toChatId({ raw: 'chat-1' })),
       currentChat: computed(() => mockCurrentChat.value as any),
       currentChatGroup: computed(() => null),
       activeMessages: computed(() => mockActiveMessages.value),
-      allMessages: computed(() => mockActiveMessages.value),
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => mockInheritedSettings.value as any),
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
-      TEST_ONLY: {},
+      TEST_ONLY: {
+        allMessages: computed(() => mockActiveMessages.value),
+      },
     });
     vi.mocked(commitFullHistoryManipulationForChat).mockImplementation(mockCommit);
     mockActiveMessages.value = [

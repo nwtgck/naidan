@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import { CopyIcon, CheckIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
 
@@ -55,44 +56,61 @@ interface GuideStep {
   runCommand: string,
 }
 
-const guides: {
+type Guides = {
   ollama: Record<'windows' | 'mac' | 'linux', GuideStep>,
   'llama-server': { all: GuideStep },
-} = {
-  ollama: {
-    windows: {
-      install: 'Download the installer from the official website.',
-      downloadUrl: 'https://ollama.com/download/windows',
-      serveCommand: 'ollama serve',
-      runCommand: 'ollama run gemma3n:e2b',
-    },
-    mac: {
-      install: 'Install using Homebrew:',
-      installCommand: 'brew install ollama',
-      serveCommand: 'ollama serve',
-      runCommand: 'ollama run gemma3n:e2b',
-    },
-    linux: {
-      install: 'Run the installation script:',
-      installCommand: 'curl -fsSL https://ollama.com/install.sh | sh',
-      serveCommand: 'ollama serve',
-      runCommand: 'ollama run gemma3n:e2b',
-    },
-  },
-  'llama-server': {
-    all: {
-      install: 'Download the latest binary from the llama.cpp releases page or build from source.',
-      downloadUrl: 'https://github.com/ggerganov/llama.cpp/releases',
-      runCommand: './llama-server -hf ggml-org/gemma-3n-E2B-it-GGUF',
-    },
-  },
 };
+
+const guides = computed<Guides | undefined>(() => {
+  const windowsInstall = lazyStrings.ServerSetupGuide__download_the_installer_from_the_official_website();
+  const macInstall = lazyStrings.ServerSetupGuide__install_using_homebrew();
+  const linuxInstall = lazyStrings.ServerSetupGuide__run_the_installation_script();
+  const llamaServerInstall = lazyStrings.ServerSetupGuide__download_the_latest_binary_or_build_from_source();
+  if (
+    windowsInstall === undefined ||
+    macInstall === undefined ||
+    linuxInstall === undefined ||
+    llamaServerInstall === undefined
+  ) return undefined;
+
+  return {
+    ollama: {
+      windows: {
+        install: windowsInstall,
+        downloadUrl: 'https://ollama.com/download/windows',
+        serveCommand: 'ollama serve',
+        runCommand: 'ollama run gemma3n:e2b',
+      },
+      mac: {
+        install: macInstall,
+        installCommand: 'brew install ollama',
+        serveCommand: 'ollama serve',
+        runCommand: 'ollama run gemma3n:e2b',
+      },
+      linux: {
+        install: linuxInstall,
+        installCommand: 'curl -fsSL https://ollama.com/install.sh | sh',
+        serveCommand: 'ollama serve',
+        runCommand: 'ollama run gemma3n:e2b',
+      },
+    },
+    'llama-server': {
+      all: {
+        install: llamaServerInstall,
+        downloadUrl: 'https://github.com/ggerganov/llama.cpp/releases',
+        runCommand: './llama-server -hf ggml-org/gemma-3n-E2B-it-GGUF',
+      },
+    },
+  };
+});
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -128,7 +146,7 @@ defineExpose({
         </button>
       </div>
 
-      <div class="space-y-3">
+      <div v-if="guides" class="space-y-3">
         <div v-if="activeServer === 'ollama'">
           <div class="space-y-3">
             <div class="flex items-start gap-2">
@@ -147,7 +165,7 @@ defineExpose({
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors max-w-full overflow-hidden"
                 >
                   <DownloadIcon class="w-3.5 h-3.5 shrink-0" />
-                  <span class="truncate">Ollama <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">External</span></span>
+                  <span class="truncate">Ollama <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">{{ lazyStrings.ServerSetupGuide__external() }}</span></span>
                   <ExternalLinkIcon class="w-3 h-3 opacity-50 shrink-0" />
                 </a>
                 <div v-else-if="guides.ollama[activeOs].installCommand" class="relative group">
@@ -170,7 +188,7 @@ defineExpose({
               <div class="flex-1 min-w-0 space-y-2">
                 <div>
                   <p class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1 leading-tight">
-                    Start Server:
+                    {{ lazyStrings.ServerSetupGuide__start_server() }}
                   </p>
                   <div class="relative group">
                     <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ ollamaServeCommand }}</code></pre>
@@ -185,7 +203,7 @@ defineExpose({
                 </div>
                 <div>
                   <p class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1 leading-tight">
-                    Run Gemma 3n:
+                    {{ lazyStrings.ServerSetupGuide__run_gemma_3n() }}
                   </p>
                   <div class="relative group">
                     <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].runCommand }}</code></pre>
@@ -219,7 +237,7 @@ defineExpose({
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors max-w-full overflow-hidden"
               >
                 <DownloadIcon class="w-3.5 h-3.5 shrink-0" />
-                <span class="truncate">Releases <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">External</span></span>
+                <span class="truncate">{{ lazyStrings.ServerSetupGuide__releases() }} <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">{{ lazyStrings.ServerSetupGuide__external() }}</span></span>
                 <ExternalLinkIcon class="w-3 h-3 opacity-50 shrink-0" />
               </a>
             </div>
@@ -231,7 +249,7 @@ defineExpose({
             </div>
             <div class="flex-1 min-w-0">
               <p class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1.5 leading-tight">
-                Run Gemma 3n:
+                {{ lazyStrings.ServerSetupGuide__run_gemma_3n() }}
               </p>
               <div class="relative group">
                 <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides['llama-server'].all.runCommand }}</code></pre>

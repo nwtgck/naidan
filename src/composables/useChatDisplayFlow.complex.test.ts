@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
-import type { MessageNode, Chat } from '@/models/types';
-import { toChatId, toMessageId, toToolCallId } from '@/models/ids';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
+import type { MessageNode, Chat } from '@/01-models/types';
+import { toChatId, toMessageId, toToolCallId } from '@/01-models/ids';
 
 describe('useChatDisplayFlow complex scenario', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   const createChat = (messages: MessageNode[]) => {
     // Build tree
     for (let i = 0; i < messages.length - 1; i++) {
@@ -52,7 +57,6 @@ describe('useChatDisplayFlow complex scenario', () => {
       {
         type: 'process_sequence',
         id: 'seq-a1-thinking',
-        summary: '2 thinking steps • 1 tool execution • Used c',
         isFirstInTurn: true,
         stats: {
           thinkingSteps: 2,
@@ -83,7 +87,6 @@ describe('useChatDisplayFlow complex scenario', () => {
       {
         type: 'process_sequence',
         id: 'seq-am-tool_calls',
-        summary: '1 thinking step • 1 tool execution • Used c',
         isFirstInTurn: false,
         stats: {
           thinkingSteps: 1,

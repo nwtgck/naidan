@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { LmParameters } from '@/models/types';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import type { LmParameters } from '@/01-models/types';
 import {
   cloneLmParameters,
   hasLmParameterOverrides,

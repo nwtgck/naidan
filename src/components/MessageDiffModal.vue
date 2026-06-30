@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted, watch } from 'vue';
 import { XIcon, HistoryIcon, ClockIcon, CpuIcon, ArrowDownIcon, CopyIcon, CheckIcon, ArrowRightIcon, RotateCcwIcon, EyeIcon, EyeOffIcon } from 'lucide-vue-next';
-import { idToRaw } from '@/models/ids';
-import type { MessageId } from '@/models/ids';
-import type { MessageNode } from '@/models/types';
+import { idToRaw } from '@/01-models/ids';
+import type { MessageId } from '@/01-models/ids';
+import type { MessageNode } from '@/01-models/types';
 import { computeWordDiff, type DiffPart } from '@/utils/diff';
+import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -187,7 +188,9 @@ function clearSelection() {
 }
 
 defineExpose({
-  TEST_ONLY: {},
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {},
+  }) || {}),
 });
 </script>
 
@@ -203,8 +206,8 @@ defineExpose({
               <HistoryIcon class="w-5 h-5 text-blue-500" />
             </div>
             <div>
-              <h2 class="text-base font-bold text-gray-800 dark:text-white tracking-tight">Message History & Compare</h2>
-              <p class="text-[11px] text-gray-500 dark:text-gray-400 font-medium">Select versions to compare differences</p>
+              <h2 class="text-base font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.MessageDiffModal__message_history_and_compare() }}</h2>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400 font-medium">{{ lazyStrings.MessageDiffModal__select_versions_to_compare_differences() }}</p>
             </div>
           </div>
           <div class="flex items-center gap-6">
@@ -215,14 +218,14 @@ defineExpose({
                 class="px-3 py-1 text-[9px] font-bold uppercase tracking-widest rounded-lg transition-all"
                 :class="diffVisibility === 'visible' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
               >
-                Diff On
+                {{ lazyStrings.MessageDiffModal__diff_on() }}
               </button>
               <button
                 @click="diffVisibility = 'hidden'"
                 class="px-3 py-1 text-[9px] font-bold uppercase tracking-widest rounded-lg transition-all"
                 :class="diffVisibility === 'hidden' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
               >
-                Off
+                {{ lazyStrings.MessageDiffModal__off() }}
               </button>
             </div>
 
@@ -243,9 +246,9 @@ defineExpose({
             <div class="bg-white dark:bg-gray-900 rounded-2xl border border-blue-200 dark:border-blue-800 shadow-xl overflow-hidden flex flex-col max-h-[40vh]">
               <div class="px-5 py-2.5 border-b border-gray-50 dark:border-gray-800 bg-blue-50/30 dark:bg-blue-900/20 flex items-center justify-between">
                 <div class="flex items-center gap-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  <span class="text-blue-600 dark:text-blue-400">Comparing Base v{{ customDiff.base.versionNumber }}</span>
+                  <span class="text-blue-600 dark:text-blue-400">{{ lazyStrings.MessageDiffModal__comparing_base_version({ version: customDiff.base.versionNumber }) }}</span>
                   <ArrowRightIcon class="w-3 h-3" />
-                  <span class="text-green-600 dark:text-green-400">Target v{{ customDiff.target.versionNumber }}</span>
+                  <span class="text-green-600 dark:text-green-400">{{ lazyStrings.MessageDiffModal__target_version({ version: customDiff.target.versionNumber }) }}</span>
                 </div>
 
                 <div class="flex items-center gap-4">
@@ -253,11 +256,11 @@ defineExpose({
                   <button
                     @click="clearSelection"
                     class="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors"
-                    title="Reset selection"
+                    :title="lazyStrings.MessageDiffModal__reset_selection()"
                     data-testid="reset-selection-button"
                   >
                     <RotateCcwIcon class="w-3.5 h-3.5" />
-                    <span>Reset Selection</span>
+                    <span>{{ lazyStrings.MessageDiffModal__reset_selection() }}</span>
                   </button>
 
                   <button
@@ -266,7 +269,7 @@ defineExpose({
                   >
                     <CheckIcon v-if="copiedId === customDiff.target.id" class="w-3.5 h-3.5 text-green-500" />
                     <CopyIcon v-else class="w-3.5 h-3.5" />
-                    <span>Copy Result</span>
+                    <span>{{ lazyStrings.MessageDiffModal__copy_result() }}</span>
                   </button>
                 </div>
               </div>
@@ -333,14 +336,14 @@ defineExpose({
                         class="px-2 py-1 text-[9px] font-black uppercase tracking-tighter rounded transition-all"
                         :class="baseVersionId === diff.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-blue-600'"
                       >
-                        Base
+                        {{ lazyStrings.MessageDiffModal__base() }}
                       </button>
                       <button
                         @click="targetVersionId = targetVersionId === diff.id ? undefined : diff.id"
                         class="px-2 py-1 text-[9px] font-black uppercase tracking-tighter rounded transition-all"
                         :class="targetVersionId === diff.id ? 'bg-green-600 text-white' : 'text-gray-400 hover:text-green-600'"
                       >
-                        Target
+                        {{ lazyStrings.MessageDiffModal__target() }}
                       </button>
                     </div>
 
@@ -351,18 +354,18 @@ defineExpose({
                       :class="diff.isSkipped ?
                         'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-500/20 ring-1 ring-blue-500/50' :
                         'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-800 border border-transparent'"
-                      :title="diff.isSkipped ? 'Include in diff' : 'Exclude from diff'"
+                      :title="diff.isSkipped ? lazyStrings.MessageDiffModal__include_in_diff() : lazyStrings.MessageDiffModal__exclude_from_diff()"
                     >
                       <EyeOffIcon v-if="!diff.isSkipped" class="w-3.5 h-3.5" />
                       <EyeIcon v-else class="w-3.5 h-3.5" />
-                      <span class="text-[9px] font-black uppercase tracking-widest">{{ diff.isSkipped ? 'Include' : 'Skip' }}</span>
+                      <span class="text-[9px] font-black uppercase tracking-widest">{{ diff.isSkipped ? lazyStrings.MessageDiffModal__include() : lazyStrings.MessageDiffModal__skip() }}</span>
                     </button>
 
                     <button
                       v-if="!diff.isSkipped"
                       @click="handleCopy({ id: diff.id, content: diff.content })"
                       class="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
-                      :title="copiedId === diff.id ? 'Copied!' : 'Copy this version'"
+                      :title="copiedId === diff.id ? lazyStrings.MessageDiffModal__copied() : lazyStrings.MessageDiffModal__copy_this_version()"
                     >
                       <CheckIcon v-if="copiedId === diff.id" class="w-3.5 h-3.5 text-green-500" />
                       <CopyIcon v-else class="w-3.5 h-3.5" />
@@ -401,7 +404,7 @@ defineExpose({
             <!-- Load More Trigger -->
             <div ref="loadMoreTrigger" class="h-10 flex items-center justify-center">
               <div v-if="visibleCount < sequentialDiffs.length" class="text-[10px] font-bold text-gray-400 uppercase tracking-widest animate-pulse">
-                Loading more versions...
+                {{ lazyStrings.MessageDiffModal__loading_more_versions() }}
               </div>
             </div>
           </div>

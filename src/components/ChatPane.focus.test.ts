@@ -1,15 +1,15 @@
-import type { ChatId, MessageId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import type { MessageNode, Chat } from '@/models/types';
+import type { MessageNode, Chat } from '@/01-models/types';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
 import type { FocusArea } from '@/composables/useLayout';
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 
 
 // Mock dependencies
@@ -26,13 +26,28 @@ const mockCurrentChat = ref<Chat | null>({
 const mockActiveMessages = ref<MessageNode[]>([]);
 const mockCurrentChatGroup = ref(null);
 const mockChatGroups = ref<any[]>([]);
-const mockResolvedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
+const mockResolvedSettings = ref({
+  endpoint: { type: 'openai' as const, url: '' },
+  modelId: 'm1',
+  sources: { modelId: 'global', titleModelId: 'global' },
+});
 const mockInheritedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
 
 const mockActiveFocusArea = ref('chat');
 const mockSetActiveFocusArea = vi.fn(({ area }: { area: FocusArea }) => {
   mockActiveFocusArea.value = area;
 });
+
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
@@ -120,7 +135,7 @@ vi.mock('../composables/chat/ui/useChatPaneState', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({}),
+    settings: ref({ endpoint: { type: 'openai', url: '' } }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
   }),

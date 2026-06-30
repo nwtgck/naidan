@@ -1,5 +1,5 @@
-import type { EndpointType } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Endpoint } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 import {
   fetchModelsForChat,
   fetchModelsForEndpoint,
@@ -37,20 +37,18 @@ export async function fetchAvailableModelsForGlobalEndpoint({
 }
 
 export async function fetchAvailableModelsForEndpoint({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
   errorSource,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
   errorSource: string,
 }): Promise<string[]> {
   return await fetchModelsForEndpoint({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
+    endpoint,
     errorSource,
   });
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

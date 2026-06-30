@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
-import { urlImportExportLogic } from '@/services/import-export/url-logic';
+import { urlImportExportLogic } from '@/features/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
 
-vi.mock('@/services/import-export/url-logic', () => ({
+vi.mock('@/features/import-export/url-logic', () => ({
   urlImportExportLogic: {
     getExportURL: vi.fn(),
   },
@@ -36,17 +36,21 @@ describe('DeveloperOpenStateLinks', () => {
     });
   });
 
-  it('groups all deployment domains into Production and develop branch', () => {
+  it('groups all deployment domains into Production and develop branch', async () => {
     const wrapper = mount(DeveloperOpenStateLinks);
 
-    expect(wrapper.find('[data-testid="open-current-state-group-production"]').text()).toContain('Production');
-    expect(wrapper.find('[data-testid="open-current-state-group-develop"]').text()).toContain('develop branch');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="open-current-state-group-production"]').text()).toContain('Production');
+      expect(wrapper.find('[data-testid="open-current-state-group-develop"]').text()).toContain('develop branch');
+    });
     expect(wrapper.text()).toContain('naidan.pages.dev');
-    expect(wrapper.text()).toContain('naidan-only-local.pages.dev');
+    expect(wrapper.text()).toContain('naidan-local-only.pages.dev');
     expect(wrapper.text()).toContain('naidan-curated.pages.dev');
     expect(wrapper.text()).toContain('develop.naidan.pages.dev');
-    expect(wrapper.text()).toContain('develop.naidan-only-local.pages.dev');
+    expect(wrapper.text()).toContain('develop.naidan-local-only.pages.dev');
     expect(wrapper.text()).toContain('develop.naidan-curated.pages.dev');
+    expect(wrapper.text()).not.toContain('naidan-only-local.pages.dev');
+    expect(wrapper.text()).not.toContain('develop.naidan-only-local.pages.dev');
     expect(wrapper.text()).not.toContain('Stable');
     expect(wrapper.text()).not.toContain('Development');
   });
@@ -124,9 +128,11 @@ describe('DeveloperOpenStateLinks', () => {
     await wrapper.find('[data-testid="copy-current-state-naidan-curated.pages.dev"]').trigger('click');
 
     expect(writeText).toHaveBeenCalledWith('https://naidan-curated.pages.dev/#/?storage-type=local&data-zip=abc');
-    expect(addToast).toHaveBeenCalledWith({
-      message: 'Copied URL for naidan-curated.pages.dev',
-      duration: 3000,
+    await vi.waitFor(() => {
+      expect(addToast).toHaveBeenCalledWith({
+        message: 'Copied URL for naidan-curated.pages.dev',
+        duration: 3000,
+      });
     });
   });
 
@@ -136,9 +142,11 @@ describe('DeveloperOpenStateLinks', () => {
 
     await wrapper.find('[data-testid="open-current-state-naidan.pages.dev"]').trigger('click');
 
-    expect(addToast).toHaveBeenCalledWith({
-      message: 'Failed to open current state URL: too large',
-      duration: 5000,
+    await vi.waitFor(() => {
+      expect(addToast).toHaveBeenCalledWith({
+        message: 'Failed to open current state URL: too large',
+        duration: 5000,
+      });
     });
     expect(openSpy).not.toHaveBeenCalled();
   });

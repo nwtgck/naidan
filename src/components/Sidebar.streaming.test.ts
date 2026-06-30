@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatSummary, SidebarItem } from '@/models/types';
-import { idToRaw, toChatId } from '@/models/ids';
+import type { ChatSummary, SidebarItem } from '@/01-models/types';
+import { idToRaw, toChatId } from '@/01-models/ids';
 
 const mockChats = ref<ChatSummary[]>([]);
 const mockActiveGenerations = reactive(new Map());
@@ -103,14 +103,14 @@ vi.mock('../composables/chat/chat-activity-queries', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointUrl: 'http://localhost' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' } }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
     save: vi.fn(),
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),

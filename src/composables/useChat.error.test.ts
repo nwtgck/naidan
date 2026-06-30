@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
-import { idToRaw } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
 
 // Mock dependencies
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -31,14 +31,14 @@ vi.mock('../services/storage', () => ({
 const mockChat = vi.fn();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     listModels = mockListModels;
     chat = mockChat;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     listModels = mockListModels;
     chat = mockChat;
@@ -54,8 +54,7 @@ describe('useChat Error Handling', () => {
     mockListModels.mockResolvedValue(['gpt-4']);
 
     __testOnlySetSettings({ newSettings: {
-      endpointType: 'openai',
-      endpointUrl: 'https://api.openai.com',
+      endpoint: { type: 'openai', url: 'https://api.openai.com' },
       defaultModelId: 'gpt-4',
       autoTitleEnabled: false,
       storageType: 'local',

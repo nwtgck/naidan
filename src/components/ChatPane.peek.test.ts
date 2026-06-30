@@ -1,24 +1,39 @@
-import type { ChatId, MessageId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import type { MessageNode, Chat } from '@/models/types';
+import type { MessageNode, Chat } from '@/01-models/types';
 
 import { setupScrollToMock } from '@/utils/test-utils';
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>(null);
 const mockCurrentChatGroup = ref(null);
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
-const mockResolvedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
+const mockResolvedSettings = ref({
+  endpoint: { type: 'openai' as const, url: '' },
+  modelId: 'm1',
+  sources: { modelId: 'global', titleModelId: 'global' },
+});
 const mockInheritedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
 
 const mockActiveFocusArea = ref('chat');
+
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
@@ -104,7 +119,7 @@ vi.mock('../composables/chat/ui/useChatPaneState', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({}),
+    settings: ref({ endpoint: { type: 'openai', url: '' } }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
   }),
@@ -182,15 +197,15 @@ describe('ChatPane Peek Mode Specifications', () => {
     const button = wrapper.get('[data-testid="submerge-button"]');
 
     // Initially active
-    expect(wrapper.vm.inputVisibility).toBe('active');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('active');
 
     // Click to submerge
     await button.trigger('click');
-    expect(wrapper.vm.inputVisibility).toBe('submerged');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('submerged');
 
     // Click again to unsubmerge (becomes active)
     await button.trigger('click');
-    expect(wrapper.vm.inputVisibility).toBe('active');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('active');
   });
 
   it('automatically unsubmerges when mouse enters the input area', async () => {
@@ -200,14 +215,14 @@ describe('ChatPane Peek Mode Specifications', () => {
     await nextTick();
 
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
-    expect(wrapper.vm.inputVisibility).toBe('submerged');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('submerged');
 
     // Find the input container (the one with the border and rounded-2xl)
     const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
     await inputContainer.trigger('mouseenter');
 
     // Should become peeking
-    expect(wrapper.vm.inputVisibility).toBe('peeking');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('peeking');
   });
 
   it('maintains submerged state when switching chats', async () => {
@@ -218,7 +233,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
     // Submerge in chat 1
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
-    expect(wrapper.vm.inputVisibility).toBe('submerged');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('submerged');
 
     // Switch to chat 2
     mockCurrentChat.value = {
@@ -233,7 +248,7 @@ describe('ChatPane Peek Mode Specifications', () => {
     await nextTick();
 
     // Should still be submerged
-    expect(wrapper.vm.inputVisibility).toBe('submerged');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('submerged');
   });
 
   it('adjusts scroll container padding-bottom based on visibility state', async () => {
@@ -266,7 +281,7 @@ describe('ChatPane Peek Mode Specifications', () => {
 
     // Submerge
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
-    expect(wrapper.vm.inputVisibility).toBe('submerged');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('submerged');
     expect((chatInput.vm as any).isMaximized).toBe(false);
   });
 
@@ -281,19 +296,19 @@ describe('ChatPane Peek Mode Specifications', () => {
 
     // Submerge first
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
-    expect(wrapper.vm.inputVisibility).toBe('submerged');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('submerged');
 
     // Hover -> peeking
     await inputContainer.trigger('mouseenter');
-    expect(wrapper.vm.inputVisibility).toBe('peeking');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('peeking');
 
     // Focus -> active
     await textarea.trigger('focus');
-    expect(wrapper.vm.inputVisibility).toBe('active');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('active');
 
     // Mouse leave -> should STAY active
     await inputContainer.trigger('mouseleave');
-    expect(wrapper.vm.inputVisibility).toBe('active');
+    expect(wrapper.vm.TEST_ONLY.inputVisibility.value).toBe('active');
   });
 
   it('contains a hit area extension for stable hover detection', async () => {

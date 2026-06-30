@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import WelcomeScreen from './WelcomeScreen.vue';
 import { useSettings } from '@/composables/useSettings';
-import type { Settings } from '@/models/types';
+import type { Settings } from '@/01-models/types';
 
 describe('WelcomeScreen.vue', () => {
   const { TEST_ONLY } = useSettings();
@@ -11,36 +11,45 @@ describe('WelcomeScreen.vue', () => {
     TEST_ONLY.__testOnlyReset();
   });
 
-  it('renders the main security message', () => {
+  it('renders the main security message', async () => {
     const wrapper = mount(WelcomeScreen);
-    expect(wrapper.text()).toContain('All conversations are stored locally.');
-    expect(wrapper.text()).toContain('Your data stays on your device.');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('All conversations are stored locally.');
+      expect(wrapper.text()).toContain('Your data stays on your device.');
+    });
   });
 
   it('renders ephemeral storage message when memory storage is active', async () => {
     TEST_ONLY.__testOnlySetSettings({ newSettings: {
       storageType: 'memory',
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: '' },
       autoTitleEnabled: true,
       providerProfiles: [],
       mounts: [],
     } as Settings });
 
     const wrapper = mount(WelcomeScreen);
-    expect(wrapper.text()).toContain('Conversations are stored in-memory.');
-    expect(wrapper.text()).toContain('Data is cleared on reload.');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Conversations are stored in-memory.');
+      expect(wrapper.text()).toContain('Data is cleared on reload.');
+    });
   });
 
-  it('renders suggestions', () => {
+  it('renders suggestions', async () => {
     const wrapper = mount(WelcomeScreen);
     const buttons = wrapper.findAll('button');
     expect(buttons.length).toBeGreaterThan(0);
-    expect(buttons[0]!.text()).toBe('Write a story');
+    await vi.waitFor(() => {
+      expect(buttons[0]!.text()).toBe('Write a story');
+    });
   });
 
   it('emits select-suggestion when a suggestion is clicked', async () => {
     const wrapper = mount(WelcomeScreen);
     const buttons = wrapper.findAll('button');
+    await vi.waitFor(() => {
+      expect(buttons[0]!.text()).toBe('Write a story');
+    });
     await buttons[0]!.trigger('click');
 
     expect(wrapper.emitted('select-suggestion')).toBeTruthy();

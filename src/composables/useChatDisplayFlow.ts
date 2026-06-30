@@ -1,9 +1,9 @@
 import { computed, type ComputedRef, toRaw } from 'vue';
-import { idToRaw } from '@/models/ids';
-import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/models/types';
-import type { ChatId, ToolCallId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/01-models/types';
+import type { ChatId, ToolCallId } from '@/01-models/ids';
 import { stripNaidanSentinels } from '@/utils/image-generation';
-import { getChatBranchIterator } from '@/utils/chat-tree';
+import { getChatBranchIterator } from '@/logic/chat-tree';
 
 /**
  * Position within a continuous sequence of AI-related items.
@@ -44,7 +44,7 @@ export type ChatFlowItem =
       isCompletedThinking?: boolean,
     }
   | { type: 'tool_group', id: string, toolCalls: CombinedToolCall[], flow: FlowMetadata, node: MessageNode, isFirstInTurn: boolean }
-  | { type: 'process_sequence', id: string, items: ChatFlowItem[], flow: FlowMetadata, summary: string, stats: SequenceStats, isFirstInTurn: boolean };
+  | { type: 'process_sequence', id: string, items: ChatFlowItem[], flow: FlowMetadata, stats: SequenceStats, isFirstInTurn: boolean };
 
 /**
  * A "ChatFlowAtom" is an atomic unit of a message branch before grouping.
@@ -178,6 +178,7 @@ export function useChatDisplayFlow({
           }));
           yield { type: 'tool_group', id: idToRaw({ id: nodeId }), toolCalls, node, isFirstInTurn };
         } else {
+          // TODO(strings-localize): Localizing this fallback requires a semantic flow item so this synchronous structure does not store display copy.
           yield { type: 'content', node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn };
         }
         break;
@@ -227,7 +228,7 @@ export function useChatDisplayFlow({
           flow: { ...item.flow, nesting: 'inside-group' as const },
         }));
 
-        yield { type: 'process_sequence', id, items: nestedItems, flow: { position: 'standalone', nesting: 'none' }, summary: calculateSummary({ stats }), stats, isFirstInTurn: first.isFirstInTurn };
+        yield { type: 'process_sequence', id, items: nestedItems, flow: { position: 'standalone', nesting: 'none' }, stats, isFirstInTurn: first.isFirstInTurn };
       } else if (buffer.length === 1) {
         yield buffer[0]!;
       }
@@ -341,19 +342,6 @@ export function useChatDisplayFlow({
     return { thinkingSteps, toolCallCount: seenToolIds.size, toolNames: [...new Set(toolNames)], isCurrentlyThinking: false, isCurrentlyToolRunning: false, isWaiting: false };
   };
 
-  const calculateSummary = ({ stats }: { stats: SequenceStats }): string => {
-    const parts: string[] = [];
-    if (stats.thinkingSteps > 0) parts.push(`${stats.thinkingSteps} thinking step${stats.thinkingSteps > 1 ? 's' : ''}`);
-    if (stats.toolCallCount > 0) parts.push(`${stats.toolCallCount} tool execution${stats.toolCallCount > 1 ? 's' : ''}`);
-    if (stats.toolNames.length > 0) {
-      const limit = 2;
-      const displayed = stats.toolNames.slice(0, limit);
-      let toolStr = `Used ${displayed.join(', ')}`;
-      if (stats.toolNames.length > limit) toolStr += ` and ${stats.toolNames.length - limit} more`;
-      parts.push(toolStr);
-    }
-    return parts.join(' • ') || 'Process Details';
-  };
 
   const chatFlow = computed<ChatFlowItem[]>(() => {
     const chatVal = chat.value;
@@ -381,6 +369,12 @@ export function useChatDisplayFlow({
     chatFlow,
     isThinkingActive: ({ item }: { item: ChatFlowItem }) => item.type === 'message' && item.mode === 'thinking' && item.isCompletedThinking === false,
     isWaitingResponse: ({ item }: { item: ChatFlowItem }) => item.type === 'message' && item.mode === 'waiting',
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

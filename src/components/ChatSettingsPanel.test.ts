@@ -6,8 +6,8 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
-import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
-import type { Chat } from '@/models/types';
+import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
+import type { Chat, Endpoint } from '@/01-models/types';
 
 // --- Mocks ---
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
@@ -48,17 +48,26 @@ describe('ChatSettingsPanel.vue', () => {
   });
   const mockCurrentChat = ref<any>(null);
 
-  const mockSettings = reactive({
+  const mockSettings = reactive<{
     value: {
-      endpointType: 'openai',
-      endpointUrl: 'http://global:1234',
+      endpoint: Endpoint,
+      defaultModelId: string,
+      providerProfiles: {
+        id: string,
+        name: string,
+        endpoint: Endpoint,
+        defaultModelId?: string,
+      }[],
+    },
+  }>({
+    value: {
+      endpoint: { type: 'openai', url: 'http://global:1234' },
       defaultModelId: 'global-model',
       providerProfiles: [
         {
           id: 'profile-1',
           name: 'My Ollama',
-          endpointType: 'ollama',
-          endpointUrl: 'http://ollama:11434',
+          endpoint: { type: 'ollama', url: 'http://ollama:11434' },
           defaultModelId: 'llama3',
         },
       ],
@@ -95,15 +104,13 @@ describe('ChatSettingsPanel.vue', () => {
 
     // Reset global settings to a predictable state
     mockSettings.value = {
-      endpointType: 'openai',
-      endpointUrl: 'http://global:1234',
+      endpoint: { type: 'openai', url: 'http://global:1234' },
       defaultModelId: 'global-model',
       providerProfiles: [
         {
           id: 'profile-1',
           name: 'My Ollama',
-          endpointType: 'ollama',
-          endpointUrl: 'http://ollama:11434',
+          endpoint: { type: 'ollama', url: 'http://ollama:11434' },
           defaultModelId: 'llama3',
         },
       ],
@@ -112,10 +119,8 @@ describe('ChatSettingsPanel.vue', () => {
     // Create a NEW reactive object for each test to avoid cross-test pollution
     mockCurrentChat.value = reactive({
       id: 'chat-1',
-      endpointType: undefined,
-      endpointUrl: undefined,
+      endpoint: undefined,
       modelId: undefined,
-      endpointHttpHeaders: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     });
@@ -123,18 +128,31 @@ describe('ChatSettingsPanel.vue', () => {
     const mockResolvedSettings = computed(() => {
       const chat = mockCurrentChat.value as any;
       const s = mockSettings.value;
-      const endpointType = chat?.endpointType || s.endpointType;
       return {
-        endpointType,
-        endpointUrl: chat?.endpointUrl || s.endpointUrl,
+        endpoint: chat?.endpoint ?? s.endpoint,
         modelId: chat?.modelId || s.defaultModelId,
+        autoTitleEnabled: true,
+        titleModelId: undefined,
+        systemPromptMessages: [],
+        lmParameters: undefined,
         sources: {
-          endpointType: chat?.endpointType ? 'chat' : 'global',
-          endpointUrl: chat?.endpointUrl ? 'chat' : 'global',
+          endpoint: chat?.endpoint ? 'chat' : 'global',
           modelId: chat?.modelId ? 'chat' : 'global',
+          autoTitleEnabled: 'global',
+          titleModelId: 'global',
+          systemPrompt: 'global',
+          lmParameters: {},
         },
       };
     });
+    const mockInheritedSettings = computed(() => ({
+      ...mockResolvedSettings.value,
+      endpoint: mockSettings.value.endpoint,
+      sources: {
+        ...mockResolvedSettings.value.sources,
+        endpoint: 'global' as const,
+      },
+    }));
 
     (useCurrentChatState as unknown as Mock).mockReturnValue({
       currentChatId: computed(() => mockCurrentChat.value?.id),
@@ -143,7 +161,7 @@ describe('ChatSettingsPanel.vue', () => {
       activeMessages: computed(() => []),
       allMessages: computed(() => []),
       resolvedSettings: mockResolvedSettings,
-      inheritedSettings: mockResolvedSettings,
+      inheritedSettings: mockInheritedSettings,
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
       TEST_ONLY: {},
@@ -173,9 +191,7 @@ describe('ChatSettingsPanel.vue', () => {
         for (const change of changes) {
           switch (change.field) {
           case 'endpoint':
-            updates.endpointType = updated.endpointType;
-            updates.endpointUrl = updated.endpointUrl;
-            updates.endpointHttpHeaders = updated.endpointHttpHeaders;
+            updates.endpoint = updated.endpoint;
             break;
           case 'model_id':
             updates.modelId = updated.modelId;
@@ -231,9 +247,11 @@ describe('ChatSettingsPanel.vue', () => {
 
   it('removes_HTTP_fields_when_switching_to_transformers_js', async () => {
     Object.assign(mockCurrentChat.value, {
-      endpointType: 'openai',
-      endpointUrl: 'http://example.test/v1',
-      endpointHttpHeaders: [['Authorization', 'Bearer token']],
+      endpoint: {
+        type: 'openai',
+        url: 'http://example.test/v1',
+        httpHeaders: [['Authorization', 'Bearer token']],
+      },
     });
 
     const wrapper = mount(ChatSettingsPanel, {
@@ -248,16 +266,43 @@ describe('ChatSettingsPanel.vue', () => {
     expect(mockUpdateChatSettings).toHaveBeenLastCalledWith({
       id: 'chat-1',
       updates: expect.objectContaining({
-        endpointType: 'transformers_js',
-        endpointUrl: undefined,
-        endpointHttpHeaders: undefined,
+        endpoint: { type: 'transformers_js' },
+      }),
+    });
+  });
+
+  it('uses the inherited HTTP endpoint when switching from transformers_js to HTTP', async () => {
+    mockSettings.value.endpoint = {
+      type: 'openai',
+      url: 'http://global:1234/v1',
+      httpHeaders: [['X-Global', 'value']],
+    };
+    mockCurrentChat.value.endpoint = { type: 'transformers_js' };
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    await wrapper.get('[data-testid="chat-setting-endpoint-type-select"]').setValue('ollama');
+    await flushPromises();
+
+    expect(mockUpdateChatSettings).toHaveBeenLastCalledWith({
+      id: 'chat-1',
+      updates: expect.objectContaining({
+        endpoint: {
+          type: 'ollama',
+          url: 'http://global:1234/v1',
+          httpHeaders: [['X-Global', 'value']],
+        },
       }),
     });
   });
 
   it('hides endpoint URL when effective type is transformers_js', async () => {
     // 1. Local override is transformers_js
-    mockCurrentChat.value.endpointType = 'transformers_js';
+    mockCurrentChat.value.endpoint = { type: 'transformers_js' };
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
       global: { stubs: globalStubs },
@@ -266,8 +311,8 @@ describe('ChatSettingsPanel.vue', () => {
     expect(wrapper.find('[data-testid="chat-setting-url-input"]').exists()).toBe(false);
 
     // 2. Local is undefined (inherit), and global is transformers_js
-    mockCurrentChat.value = reactive({ id: 'chat-2', endpointType: undefined });
-    mockSettings.value.endpointType = 'transformers_js';
+    mockCurrentChat.value = reactive({ id: 'chat-2', endpoint: undefined });
+    mockSettings.value.endpoint = { type: 'transformers_js' };
     const wrapper2 = mount(ChatSettingsPanel, {
       props: { show: true },
       global: { stubs: globalStubs },
@@ -277,7 +322,7 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   it('shows upsell component when effective type is transformers_js', async () => {
-    mockSettings.value.endpointType = 'openai';
+    mockSettings.value.endpoint = { type: 'openai', url: 'http://global:1234' };
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
       global: { stubs: globalStubs },
@@ -285,7 +330,7 @@ describe('ChatSettingsPanel.vue', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
 
-    mockSettings.value.endpointType = 'transformers_js';
+    mockSettings.value.endpoint = { type: 'transformers_js' };
     await nextTick();
     await flushPromises();
     await vi.dynamicImportSettled();
@@ -326,7 +371,7 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   it('triggers model fetch on mount if URL is localhost', async () => {
-    mockCurrentChat.value.endpointUrl = 'http://localhost:11434';
+    mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
     mount(ChatSettingsPanel, {
       props: { show: true },
       global: { stubs: globalStubs },
@@ -336,7 +381,7 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   it('does not trigger model fetch on mount if URL is not localhost', async () => {
-    mockCurrentChat.value.endpointUrl = 'http://remote-api.com';
+    mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://remote-api.com' };
     mount(ChatSettingsPanel, {
       props: { show: true },
       global: { stubs: globalStubs },
@@ -387,7 +432,7 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.trigger('blur');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://persisted-url:1234',
+        endpoint: expect.objectContaining({ url: 'http://persisted-url:1234' }),
       }) });
     });
 
@@ -418,8 +463,7 @@ describe('ChatSettingsPanel.vue', () => {
       await ollamaBtn?.trigger('click');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: 'ollama',
-        endpointUrl: 'http://localhost:11434',
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       }) });
     });
 
@@ -435,8 +479,7 @@ describe('ChatSettingsPanel.vue', () => {
       await select.trigger('change');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: 'ollama',
-        endpointUrl: 'http://ollama:11434',
+        endpoint: { type: 'ollama', url: 'http://ollama:11434' },
       }) });
     });
   });
@@ -454,8 +497,10 @@ describe('ChatSettingsPanel.vue', () => {
       await select.trigger('change');
       await nextTick();
 
-      expect(mockCurrentChat.value!.endpointType).toBe('ollama');
-      expect(mockCurrentChat.value!.endpointUrl).toBe('http://ollama:11434');
+      expect(mockCurrentChat.value!.endpoint).toEqual({
+        type: 'ollama',
+        url: 'http://ollama:11434',
+      });
 
       // Should reset selection after apply
       const vm = wrapper.vm as any;
@@ -466,14 +511,15 @@ describe('ChatSettingsPanel.vue', () => {
       mockSettings.value.providerProfiles.push({
         id: 'p-transformers',
         name: 'Transformers.js Profile',
-        endpointType: 'transformers_js',
-        endpointUrl: 'http://stale.test/v1',
+        endpoint: { type: 'transformers_js' },
         defaultModelId: 'transformers-model',
       });
       Object.assign(mockCurrentChat.value, {
-        endpointType: 'openai',
-        endpointUrl: 'http://old.test/v1',
-        endpointHttpHeaders: [['X-Old', 'value']],
+        endpoint: {
+          type: 'openai',
+          url: 'http://old.test/v1',
+          httpHeaders: [['X-Old', 'value']],
+        },
       });
 
       const wrapper = mount(ChatSettingsPanel, {
@@ -490,9 +536,7 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-          endpointType: 'transformers_js',
-          endpointUrl: undefined,
-          endpointHttpHeaders: undefined,
+          endpoint: { type: 'transformers_js' },
         }),
       });
     });
@@ -501,10 +545,12 @@ describe('ChatSettingsPanel.vue', () => {
       const mockProfileWithHeaders = {
         id: 'p-h',
         name: 'Header Profile',
-        endpointType: 'openai',
-        endpointUrl: 'http://h:1234',
+        endpoint: {
+          type: 'openai' as const,
+          url: 'http://h:1234',
+          httpHeaders: [['X-Header', 'Value']] as [string, string][],
+        },
         defaultModelId: 'm1',
-        endpointHttpHeaders: [['X-Header', 'Value']] as [string, string][],
       };
       mockSettings.value.providerProfiles.push(mockProfileWithHeaders);
 
@@ -519,7 +565,7 @@ describe('ChatSettingsPanel.vue', () => {
       await select.trigger('change');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointHttpHeaders: [['X-Header', 'Value']],
+        endpoint: expect.objectContaining({ httpHeaders: [['X-Header', 'Value']] }),
       }) });
     });
   });
@@ -544,7 +590,7 @@ describe('ChatSettingsPanel.vue', () => {
       await inputs[2]?.trigger('blur');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointHttpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']]),
+        endpoint: expect.objectContaining({ httpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']]) }),
       }) });
 
       // Remove
@@ -553,7 +599,7 @@ describe('ChatSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointHttpHeaders: [],
+        endpoint: expect.objectContaining({ httpHeaders: [] }),
       }) });
     });
   });
@@ -570,8 +616,7 @@ describe('ChatSettingsPanel.vue', () => {
       await ollamaBtn?.trigger('click');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: 'ollama',
-        endpointUrl: 'http://localhost:11434',
+        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       }) });
     });
 
@@ -586,8 +631,7 @@ describe('ChatSettingsPanel.vue', () => {
       await lmStudioBtn?.trigger('click');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: 'openai',
-        endpointUrl: 'http://localhost:1234/v1',
+        endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
       }) });
     });
   });
@@ -604,7 +648,7 @@ describe('ChatSettingsPanel.vue', () => {
       await typeSelect!.setValue('ollama');
       await typeSelect!.trigger('change');
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: 'ollama',
+        endpoint: expect.objectContaining({ type: 'ollama' }),
       }) });
     });
 
@@ -619,7 +663,7 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.setValue('http://custom-api:8000');
       await urlInput.trigger('blur');
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://custom-api:8000',
+        endpoint: expect.objectContaining({ url: 'http://custom-api:8000' }),
       }) });
     });
 
@@ -636,12 +680,12 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.trigger('blur');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://changed:8888',
+        endpoint: expect.objectContaining({ url: 'http://changed:8888' }),
       }) });
     });
 
     it('does not affect global settings when overriding chat settings', async () => {
-      mockSettings.value.endpointUrl = 'http://global:1234';
+      mockSettings.value.endpoint = { type: 'openai', url: 'http://global:1234' };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
@@ -654,7 +698,7 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.trigger('blur');
 
       // Assert: global settings remain original
-      expect(mockSettings.value.endpointUrl).toBe('http://global:1234');
+      expect(mockSettings.value.endpoint).toEqual({ type: 'openai', url: 'http://global:1234' });
     });
   });
 
@@ -672,19 +716,18 @@ describe('ChatSettingsPanel.vue', () => {
       // Switch chat
       mockCurrentChat.value = {
         id: 'chat-B',
-        endpointType: 'openai',
-        endpointUrl: 'http://B',
+        endpoint: { type: 'openai', url: 'http://B' },
       };
       await nextTick();
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://new-url-for-A',
+        endpoint: expect.objectContaining({ url: 'http://new-url-for-A' }),
       }) });
     });
 
     it('uses the previous chat inherited endpoint type when saving during a chat switch', async () => {
-      mockSettings.value.endpointType = 'ollama';
+      mockSettings.value.endpoint = { type: 'ollama', url: 'http://global:1234' };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
@@ -697,9 +740,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       mockCurrentChat.value = reactive({
         id: 'chat-B',
-        endpointType: 'openai',
-        endpointUrl: 'http://openai-for-B',
-        endpointHttpHeaders: undefined,
+        endpoint: { type: 'openai', url: 'http://openai-for-B' },
         modelId: undefined,
         autoTitleEnabled: undefined,
         titleModelId: undefined,
@@ -712,8 +753,10 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({
         id: 'chat-1',
         updates: expect.objectContaining({
-          endpointType: 'ollama',
-          endpointUrl: 'http://ollama-for-A',
+          endpoint: expect.objectContaining({
+            type: 'ollama',
+            url: 'http://ollama-for-A',
+          }),
         }),
       });
     });
@@ -731,9 +774,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       mockCurrentChat.value = reactive({
         id: 'chat-B',
-        endpointType: undefined,
-        endpointUrl: undefined,
-        endpointHttpHeaders: undefined,
+        endpoint: undefined,
         modelId: undefined,
         autoTitleEnabled: undefined,
         titleModelId: undefined,
@@ -761,7 +802,7 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://closing-save',
+        endpoint: expect.objectContaining({ url: 'http://closing-save' }),
       }) });
     });
 
@@ -801,7 +842,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('synchronizes settings from the current chat when the modal is reopened', async () => {
       mockCurrentChat.value = {
         id: 'chat-1',
-        endpointUrl: 'http://original',
+        endpoint: { type: 'openai', url: 'http://original' },
       };
 
       const wrapper = mount(ChatSettingsPanel, {
@@ -815,7 +856,7 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
 
       // Update chat settings "in the background" (e.g. from storage sync)
-      mockCurrentChat.value.endpointUrl = 'http://updated-externally';
+      mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://updated-externally' };
 
       // Reopen modal
       await wrapper.setProps({ show: true });
@@ -829,8 +870,7 @@ describe('ChatSettingsPanel.vue', () => {
   describe('Restore to Global', () => {
     it('clears all overrides when "Restore defaults" is clicked', async () => {
       Object.assign(mockCurrentChat.value, {
-        endpointType: 'ollama',
-        endpointUrl: 'http://overridden:11434',
+        endpoint: { type: 'ollama', url: 'http://overridden:11434' },
         modelId: 'overridden-model',
         systemPrompt: { content: 'test', behavior: 'override' },
         lmParameters: { temperature: 0.5 },
@@ -846,39 +886,12 @@ describe('ChatSettingsPanel.vue', () => {
       await restoreBtn.trigger('click');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: undefined,
-        endpointUrl: undefined,
+        endpoint: undefined,
       }) });
     });
 
-    it('clears_a_legacy_URL_only_endpoint_when_restoring_defaults', async () => {
-      Object.assign(mockCurrentChat.value, {
-        endpointType: undefined,
-        endpointUrl: 'http://legacy-only.example/v1',
-        endpointHttpHeaders: [['X-Legacy', '1']],
-      });
-
-      const wrapper = mount(ChatSettingsPanel, {
-        props: { show: true },
-        global: { stubs: globalStubs },
-      });
-      await nextTick();
-
-      await wrapper.get('[data-testid="chat-setting-restore-defaults"]').trigger('click');
-      await flushPromises();
-
-      expect(mockUpdateChatSettings).toHaveBeenLastCalledWith({
-        id: 'chat-1',
-        updates: expect.objectContaining({
-          endpointType: undefined,
-          endpointUrl: undefined,
-          endpointHttpHeaders: undefined,
-        }),
-      });
-    });
-
     it('triggers updateChatSettings when restoring to global settings', async () => {
-      mockCurrentChat.value!.endpointType = 'ollama';
+      mockCurrentChat.value!.endpoint = { type: 'ollama', url: 'http://global:1234' };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
@@ -889,7 +902,7 @@ describe('ChatSettingsPanel.vue', () => {
       await restoreBtn.trigger('click');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: undefined,
+        endpoint: undefined,
       }) });
     });
   });
@@ -1014,7 +1027,7 @@ describe('ChatSettingsPanel.vue', () => {
     });
 
     it('updates "Global" option labels when global settings change', async () => {
-      mockSettings.value.endpointType = 'openai';
+      mockSettings.value.endpoint = { type: 'openai', url: 'http://global:1234' };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
@@ -1023,13 +1036,13 @@ describe('ChatSettingsPanel.vue', () => {
 
       const typeSelect = wrapper.findAll('select')[1];
       const globalOption = typeSelect!.findAll('option').find(opt => opt.text().includes('(Global)'));
-      expect(globalOption!.text()).toContain('openai (Global)');
+      expect(globalOption!.text()).toContain('OpenAI (Global)');
 
       // Update global setting
-      mockSettings.value.endpointType = 'ollama';
+      mockSettings.value.endpoint = { type: 'ollama', url: 'http://global:1234' };
       await nextTick();
 
-      expect(globalOption!.text()).toContain('ollama (Global)');
+      expect(globalOption!.text()).toContain('Ollama (Global)');
     });
   });
 
@@ -1062,7 +1075,7 @@ describe('ChatSettingsPanel.vue', () => {
     });
 
     it('triggers manual refresh when ModelSelector emits refresh', async () => {
-      mockCurrentChat.value.endpointUrl = 'http://localhost:11434';
+      mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },

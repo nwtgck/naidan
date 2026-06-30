@@ -1,11 +1,11 @@
 import { triggerRef } from 'vue';
-import type { Hierarchy, SidebarItem } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { Hierarchy, SidebarItem } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import {
   currentChatGroupRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatGroupId } from '@/models/ids';
+import type { ChatGroupId } from '@/01-models/ids';
 
 export type SidebarStructureAdapter = {
   persistSidebarStructure({
@@ -82,6 +82,12 @@ export function useSidebarStructure(): SidebarStructureAdapter {
   return {
     persistSidebarStructure,
     setChatGroupCollapsed,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

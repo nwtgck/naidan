@@ -1,7 +1,7 @@
-import { idToRaw, toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { SENTINEL_IMAGE_PENDING } from '@/utils/image-generation';
 import { toRaw } from 'vue';
 
@@ -12,21 +12,21 @@ const mockOllamaGenerateImage = vi.fn().mockResolvedValue({
   totalSteps: 10,
 });
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     chat = mockOllamaChat;
     generateImage = mockOllamaGenerateImage;
   },
 }));
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     chat = vi.fn();
   },
 }));
 
 // Mock storage
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
@@ -49,7 +49,7 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'ollama', endpointUrl: 'http://localhost', storageType: 'local', defaultModelId: 'llama3' } },
+    settings: { value: { endpoint: { type: 'ollama', url: 'http://localhost' }, storageType: 'local', defaultModelId: 'llama3' } },
     setIsOnboardingDismissed: vi.fn(),
     setOnboardingDraft: vi.fn(),
   }),

@@ -1,5 +1,7 @@
-import type { LmParameters, Reasoning } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import type { LmParameters, Reasoning } from '@/01-models/types';
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 
 type LmParameterOverrides = Readonly<{
   [K in keyof LmParameters]?: K extends 'stop'
@@ -135,3 +137,7 @@ export function normalizeLmParameters({
     ? lmParameters
     : undefined;
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

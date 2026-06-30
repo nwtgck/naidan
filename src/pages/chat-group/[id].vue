@@ -3,7 +3,7 @@ import { watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import ChatGroupSettingsPanel from '@/components/ChatGroupSettingsPanel.vue';
-import { toChatGroupId } from '@/models/ids';
+import { toChatGroupId } from '@/01-models/ids';
 
 const route = useRoute();
 const chatNavigation = useChatNavigation();
@@ -25,9 +25,11 @@ watch(() => (route.params as unknown as RouteParams).id, syncGroup);
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 

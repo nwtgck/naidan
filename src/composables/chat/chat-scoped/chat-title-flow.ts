@@ -1,11 +1,12 @@
-import type { Chat, ChatMessage } from '@/models/types';
-import type { ChatId } from '@/models/ids';
-import type { LmProvider } from '@/services/lm/types';
-import { createLmProvider } from '@/services/lm/providerFactory';
-import { getChatBranchIterator } from '@/utils/chat-tree';
+import type { Chat, ChatMessage, Endpoint } from '@/01-models/types';
+import { isHttpEndpoint } from '@/01-models/endpoint';
+import type { ChatId } from '@/01-models/ids';
+import type { LmProvider } from '@/01-models/lm';
+import { createLmProvider } from '@/features/lm/providerFactory';
+import { getChatBranchIterator } from '@/logic/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
 import {
   chatRuntimeStore,
@@ -90,9 +91,7 @@ export async function generateChatTitleForChat({
     }
 
     const provider = createTitleProvider({
-      endpointType: resolved.endpointType,
-      endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders,
+      endpoint: resolved.endpoint,
     });
 
     const { language } = getTitleLanguage({ content });
@@ -167,12 +166,11 @@ function resolveTitleSettings({
   });
 
   return {
-    endpointType: resolved.endpointType,
-    endpointUrl: resolved.endpointUrl,
-    endpointHttpHeaders: resolved.endpointHttpHeaders,
+    endpoint: resolved.endpoint,
     modelId: resolved.modelId,
     titleModelId: resolved.titleModelId,
-    hasReachableEndpoint: Boolean(resolved.endpointUrl) || resolved.endpointType === 'transformers_js',
+    hasReachableEndpoint: !isHttpEndpoint(resolved.endpoint)
+      || resolved.endpoint.url !== '',
   };
 }
 
@@ -220,23 +218,21 @@ function getTitleLanguage({
 }
 
 function createTitleProvider({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
 }: {
-  endpointType: NonNullable<Chat['endpointType']>,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
 }): LmProvider {
-  if (endpointUrl === undefined && endpointType !== 'transformers_js') {
-    throw new Error(`${endpointType} title generation requires an endpoint URL`);
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
+    throw new Error(`${endpoint.type} title generation requires an endpoint URL`);
   }
 
   const { settings } = useSettings();
   return createLmProvider({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
+    endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

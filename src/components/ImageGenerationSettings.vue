@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue';
+import { lazyStrings } from '@/strings';
+import { computed, ref, nextTick } from 'vue';
 import { ImageIcon, Loader2Icon, CheckIcon, ArrowLeftRightIcon, Dice5Icon } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
 
@@ -42,12 +43,12 @@ const resolutions = [
 
 const counts = [1, 5, 10, 50];
 
-const saveFormats = [
-  { label: 'Original', value: 'original' },
-  { label: 'WebP', value: 'webp' },
-  { label: 'JPEG', value: 'jpeg' },
-  { label: 'PNG', value: 'png' },
-] as const;
+const saveFormats = computed(() => [
+  { label: lazyStrings.ImageGenerationSettings__original(), value: 'original' },
+  { label: lazyStrings.ImageGenerationSettings__webp(), value: 'webp' },
+  { label: lazyStrings.ImageGenerationSettings__jpeg(), value: 'jpeg' },
+  { label: lazyStrings.ImageGenerationSettings__png(), value: 'png' },
+] as const);
 
 const seedInputRef = ref<HTMLInputElement | null>(null);
 
@@ -112,9 +113,11 @@ function swapResolution() {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -127,7 +130,7 @@ defineExpose({
     data-testid="toggle-image-mode-button"
   >
     <ImageIcon class="w-4 h-4" :class="isImageMode ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'" />
-    <span class="flex-1">Create image (Experimental)</span>
+    <span class="flex-1">{{ lazyStrings.ImageGenerationSettings__create_image_experimental() }}</span>
     <CheckIcon v-if="isImageMode" class="w-4 h-4 text-blue-500" />
     <Loader2Icon v-if="isProcessing && isImageMode" class="w-3 h-3 animate-spin text-blue-500" />
   </button>
@@ -135,19 +138,19 @@ defineExpose({
   <div v-if="isImageMode" class="border-t dark:border-gray-700 mt-1">
     <!-- Model Selector -->
     <div v-if="availableImageModels.length > 0" class="px-3 py-2 border-b dark:border-gray-700">
-      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Image Model</div>
+      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">{{ lazyStrings.ImageGenerationSettings__image_model() }}</div>
       <ModelSelector
         :model-value="selectedImageModel"
         @update:model-value="val => val && handleModelUpdate({ modelId: val })"
         :models="availableImageModels"
-        placeholder="Select image model"
+        :placeholder="lazyStrings.ImageGenerationSettings__select_image_model()"
         class="w-full"
       />
     </div>
 
     <!-- Resolution Selector -->
     <div class="px-3 py-2">
-      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Resolution</div>
+      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">{{ lazyStrings.ImageGenerationSettings__resolution() }}</div>
       <div class="flex flex-col gap-2">
         <div class="flex flex-wrap gap-1.5">
           <button
@@ -170,12 +173,12 @@ defineExpose({
             :value="selectedWidth"
             @input="handleWidthInput({ event: $event })"
             class="flex-1 min-w-0 px-1 py-1 text-[10px] font-mono text-center border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            placeholder="Width"
+            :placeholder="lazyStrings.ImageGenerationSettings__width()"
           />
           <button
             @click="swapResolution"
             class="p-1 text-gray-400 hover:text-blue-500 transition-colors"
-            title="Swap Width and Height"
+            :title="lazyStrings.ImageGenerationSettings__swap_width_and_height()"
           >
             <ArrowLeftRightIcon class="w-3 h-3" />
           </button>
@@ -185,7 +188,7 @@ defineExpose({
             :value="selectedHeight"
             @input="handleHeightInput({ event: $event })"
             class="flex-1 min-w-0 px-1 py-1 text-[10px] font-mono text-center border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            placeholder="Height"
+            :placeholder="lazyStrings.ImageGenerationSettings__height()"
           />
         </div>
       </div>
@@ -193,7 +196,7 @@ defineExpose({
 
     <!-- Count Selector -->
     <div class="px-3 py-2 border-t dark:border-gray-700">
-      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Number of Images</div>
+      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">{{ lazyStrings.ImageGenerationSettings__number_of_images() }}</div>
       <div class="flex gap-1.5 items-center">
         <div class="flex flex-1 gap-1">
           <button
@@ -214,7 +217,7 @@ defineExpose({
           :value="selectedCount"
           @input="handleCountInput({ event: $event })"
           class="w-12 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          placeholder="Qty"
+          :placeholder="lazyStrings.ImageGenerationSettings__qty()"
         />
       </div>
     </div>
@@ -222,18 +225,18 @@ defineExpose({
     <!-- Steps & Seed -->
     <div class="px-3 py-2 border-t dark:border-gray-700 flex items-end gap-4">
       <div class="flex-1 flex flex-col">
-        <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2 leading-none">Steps</div>
+        <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2 leading-none">{{ lazyStrings.ImageGenerationSettings__steps() }}</div>
         <input
           type="number"
           min="1"
           :value="selectedSteps"
           @input="handleStepsInput({ event: $event })"
           class="w-full h-7 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all block m-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          placeholder="Auto"
+          :placeholder="lazyStrings.ImageGenerationSettings__auto()"
         />
       </div>
       <div class="flex-[1.5] flex flex-col">
-        <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2 leading-none">Seed</div>
+        <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2 leading-none">{{ lazyStrings.ImageGenerationSettings__seed() }}</div>
         <div class="flex items-stretch gap-1 h-7">
           <button
             @click="emit('update:seed', selectedSeed === 'browser_random' ? undefined : 'browser_random')"
@@ -241,7 +244,7 @@ defineExpose({
             :class="selectedSeed === 'browser_random'
               ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
               : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
-            title="Explicitly generate random seed in browser for each image"
+            :title="lazyStrings.ImageGenerationSettings__explicitly_generate_random_seed_in_browser_for_each_image()"
           >
             <Dice5Icon class="w-3 h-3" />
           </button>
@@ -253,14 +256,14 @@ defineExpose({
               @input="handleSeedInput({ event: $event })"
               :disabled="selectedSeed === 'browser_random'"
               class="w-full h-full min-w-0 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all disabled:opacity-50 block m-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              placeholder="Auto"
+              :placeholder="lazyStrings.ImageGenerationSettings__auto()"
               data-testid="seed-input"
             />
             <div
               v-if="selectedSeed === 'browser_random'"
               @click="handleSeedReEnable"
               class="absolute inset-0 cursor-text z-10"
-              title="Click to enter specific seed"
+              :title="lazyStrings.ImageGenerationSettings__click_to_enter_specific_seed()"
             ></div>
           </div>
         </div>
@@ -269,7 +272,7 @@ defineExpose({
 
     <!-- Save Format Selector -->
     <div class="px-3 py-2 border-t dark:border-gray-700">
-      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Save Format</div>
+      <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">{{ lazyStrings.ImageGenerationSettings__save_format() }}</div>
       <div class="flex flex-wrap gap-1.5">
         <button
           v-for="format in saveFormats"
@@ -286,6 +289,6 @@ defineExpose({
     </div>
   </div>
   <div v-else-if="!canGenerateImage" class="px-3 py-2 text-xs text-gray-400 italic">
-    No tools available for this provider
+    {{ lazyStrings.ImageGenerationSettings__no_tools_available_for_this_provider() }}
   </div>
 </template>

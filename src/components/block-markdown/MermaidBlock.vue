@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, onMounted, watch, nextTick } from 'vue';
 import mermaid from 'mermaid';
 import { CheckIcon, CopyIcon, CodeIcon, LayoutIcon, ColumnsIcon } from 'lucide-vue-next';
@@ -94,9 +95,11 @@ async function copyCode() {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -109,7 +112,7 @@ defineExpose({
           @click="mode = 'preview'"
           class="p-1.5 rounded-md transition-all"
           :class="mode === 'preview' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
-          title="Preview"
+          :title="lazyStrings.blockMarkdown__preview()"
         >
           <LayoutIcon class="w-4 h-4" />
         </button>
@@ -117,7 +120,7 @@ defineExpose({
           @click="mode = 'code'"
           class="p-1.5 rounded-md transition-all"
           :class="mode === 'code' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
-          title="Code"
+          :title="lazyStrings.blockMarkdown__code()"
         >
           <CodeIcon class="w-4 h-4" />
         </button>
@@ -125,7 +128,7 @@ defineExpose({
           @click="mode = 'both'"
           class="p-1.5 rounded-md transition-all"
           :class="mode === 'both' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
-          title="Split View"
+          :title="lazyStrings.blockMarkdown__split_view()"
         >
           <ColumnsIcon class="w-4 h-4" />
         </button>
@@ -134,7 +137,7 @@ defineExpose({
       <button
         @click="copyCode"
         class="p-1.5 rounded-md transition-all text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-        :title="copied ? 'Copied' : 'Copy Source'"
+        :title="copied ? lazyStrings.blockMarkdown__copied() : lazyStrings.blockMarkdown__copy_source()"
       >
         <CheckIcon v-if="copied" class="w-4 h-4 text-green-500" />
         <CopyIcon v-else class="w-4 h-4" />
@@ -148,7 +151,7 @@ defineExpose({
         class="p-4 overflow-auto flex justify-center bg-white dark:bg-[#0d1117]"
         :class="{ 'border-b border-gray-100 dark:border-gray-800': mode === 'both' }"
       >
-        <div v-if="renderError" class="text-red-500 text-xs p-2">Failed to render mermaid diagram</div>
+        <div v-if="renderError" class="text-red-500 text-xs p-2">{{ lazyStrings.blockMarkdown__failed_to_render_mermaid_diagram() }}</div>
         <div ref="renderRef" class="mermaid" :class="{ hidden: renderError }"></div>
       </div>
 

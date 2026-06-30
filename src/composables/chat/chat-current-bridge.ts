@@ -1,6 +1,6 @@
 import { computed, readonly, toRaw, triggerRef, type ComputedRef, type Ref } from 'vue';
-import type { Chat, ChatGroup } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Chat, ChatGroup } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatCurrentBridge = {
   currentChat: ComputedRef<Chat | null>,
@@ -101,3 +101,7 @@ export function createChatCurrentBridge({
     triggerCurrentChat,
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

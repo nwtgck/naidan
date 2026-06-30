@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { ChatId, MessageId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
+import { lazyStrings } from '@/strings';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 import { computed, nextTick, ref, watch } from 'vue';
 import { EyeIcon, ListIcon, XIcon } from 'lucide-vue-next';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
-import type { MessageNode } from '@/models/types';
+import type { MessageNode } from '@/01-models/types';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import MessageItem from './MessageItem.vue';
 
@@ -39,7 +40,7 @@ const outlineItems = computed(() => {
         role: item.node.role,
         node: item.node,
         partContent: item.partContent,
-        preview: rawContent || '(empty message)',
+        preview: rawContent || lazyStrings.ConversationOutlineOverlay__empty_message(),
         peek: item.partContent || item.node.content || '',
         index: index + 1,
       };
@@ -111,13 +112,13 @@ function togglePeek({ messageId }: { messageId: MessageId }) {
 function formatRole({ role }: { role: OutlineRole }) {
   switch (role) {
   case 'user':
-    return 'You';
+    return lazyStrings.ConversationOutlineOverlay__you();
   case 'assistant':
-    return 'AI';
+    return lazyStrings.ConversationOutlineOverlay__ai();
   case 'system':
-    return 'System';
+    return lazyStrings.ConversationOutlineOverlay__system();
   case 'tool':
-    return 'Tool';
+    return lazyStrings.ConversationOutlineOverlay__tool();
   default: {
     const _ex: never = role;
     return _ex;
@@ -143,9 +144,11 @@ function roleClass({ role }: { role: OutlineRole }) {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -171,12 +174,12 @@ defineExpose({
         <div class="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
           <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
             <ListIcon class="h-4 w-4" />
-            <span>Conversation Outline</span>
+            <span>{{ lazyStrings.ConversationOutlineOverlay__conversation_outline() }}</span>
           </div>
           <button
             @click="emit('close')"
             class="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-            title="Close Conversation Outline"
+            :title="lazyStrings.ConversationOutlineOverlay__close_conversation_outline()"
             data-testid="close-conversation-outline-button"
           >
             <XIcon class="h-4 w-4" />
@@ -216,7 +219,7 @@ defineExpose({
                   @click="togglePeek({ messageId: item.id })"
                   class="rounded-lg p-1 text-gray-400 transition-colors hover:bg-white hover:text-blue-600 dark:hover:bg-gray-800 dark:hover:text-blue-400"
                   :class="peekMessageId === item.id ? 'text-blue-600 dark:text-blue-400' : ''"
-                  title="Peek"
+                  :title="lazyStrings.ConversationOutlineOverlay__peek()"
                   data-testid="conversation-outline-peek-button"
                 >
                   <EyeIcon class="h-4 w-4" />

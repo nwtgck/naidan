@@ -1,9 +1,9 @@
-import { idToRaw, toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { reactive } from 'vue';
-import type { SidebarItem, Hierarchy } from '@/models/types';
+import type { SidebarItem, Hierarchy } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
 // Mock storage service state
@@ -17,23 +17,23 @@ const mockLm = {
   listModels: vi.fn().mockResolvedValue(['gpt-4', 'x/z-image-turbo:v1']),
 };
 
-vi.mock('../services/lm/types', () => ({
+vi.mock('../01-models/lm', () => ({
   UNKNOWN_STEPS: Symbol('unknown'),
 }));
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(function() {
     return mockLm;
   }),
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn().mockImplementation(function() {
     return mockLm;
   }),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
@@ -62,7 +62,7 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'ollama', endpointUrl: 'http://localhost', storageType: 'opfs', autoTitleEnabled: false, defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'ollama', url: 'http://localhost' }, storageType: 'opfs', autoTitleEnabled: false, defaultModelId: 'gpt-4' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
     setHeavyContentAlertDismissed: vi.fn(),

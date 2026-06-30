@@ -1,58 +1,31 @@
-import type { Chat, ChatGroup, EndpointType, Settings } from '@/models/types';
+import type { Chat, ChatGroup, Endpoint, Settings } from '@/01-models/types';
+import { cloneEndpoint } from '@/01-models/endpoint';
 
 export function resolveChatEndpointForChat({
   chat,
   chatGroups,
   settings,
 }: {
-  chat: Pick<Chat, 'groupId' | 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders'>,
+  chat: Pick<Chat, 'groupId' | 'endpoint'>,
   chatGroups: readonly ChatGroup[],
-  settings: {
-    endpointType: Settings['endpointType'],
-    endpointUrl?: Settings['endpointUrl'],
-    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined,
-  },
-}): {
-  type: EndpointType,
-  url: string | undefined,
-  headers: [string, string][] | undefined,
-} {
-  const group = chat.groupId ? chatGroups.find(({ id }) => id === chat.groupId) : undefined;
-  return {
-    type: chat.endpointType || group?.endpoint?.type || settings.endpointType,
-    url: chat.endpointUrl || group?.endpoint?.url || settings.endpointUrl,
-    headers: cloneHeaders({
-      headers: chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || settings.endpointHttpHeaders,
-    }),
-  };
+  settings: Pick<Settings, 'endpoint'>,
+}): Endpoint {
+  const group = chat.groupId
+    ? chatGroups.find(({ id }) => id === chat.groupId)
+    : undefined;
+  return cloneEndpoint({
+    endpoint: chat.endpoint ?? group?.endpoint ?? settings.endpoint,
+  });
 }
 
 export function resolveGlobalEndpoint({
   settings,
 }: {
-  settings: {
-    endpointType: Settings['endpointType'],
-    endpointUrl?: Settings['endpointUrl'],
-    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined,
-  },
-}): {
-  type: EndpointType,
-  url: string | undefined,
-  headers: [string, string][] | undefined,
-} {
-  return {
-    type: settings.endpointType,
-    url: settings.endpointUrl,
-    headers: cloneHeaders({
-      headers: settings.endpointHttpHeaders,
-    }),
-  };
+  settings: Pick<Settings, 'endpoint'>,
+}): Endpoint {
+  return cloneEndpoint({ endpoint: settings.endpoint });
 }
 
-function cloneHeaders({
-  headers,
-}: {
-  headers: readonly (readonly [string, string])[] | undefined,
-}): [string, string][] | undefined {
-  return headers ? headers.map(([name, value]) => [name, value]) : undefined;
-}
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

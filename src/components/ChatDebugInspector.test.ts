@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import ChatDebugInspector from './ChatDebugInspector.vue';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
 import { NetworkIcon } from 'lucide-vue-next';
-import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/models/types';
-import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/models/ids';
+import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/01-models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
@@ -37,6 +38,14 @@ vi.mock('lucide-vue-next', () => ({
   Trash2Icon: { template: '<span>Trash2</span>' },
 }));
 
+const mockAddErrorEvent = vi.hoisted(() => vi.fn());
+
+vi.mock('@/composables/useGlobalEvents', () => ({
+  useGlobalEvents: () => ({
+    addErrorEvent: mockAddErrorEvent,
+  }),
+}));
+
 const mockPush = vi.fn();
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -45,7 +54,7 @@ vi.mock('vue-router', () => ({
   }),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getBinaryObject: vi.fn(),
     getFile: vi.fn().mockResolvedValue(new Blob()),
@@ -66,7 +75,7 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/services/fake-lm', () => ({
+vi.mock('@/features/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
   useFakeLmDebugMode: () => ({
     fakeLmDebugModeAvailability: { value: 'available' },
@@ -444,6 +453,48 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     expect(pre.html()).toContain('&lt;!-- technical_comment --&gt;');
   });
 
+  it('reports malformed preview image metadata once per scanned node', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+
+    const node = createNode(
+      'A',
+      'assistant',
+      `\
+\`\`\`naidan_experimental_image
+not-json
+\`\`\`
+`,
+    );
+    const activeMessages = [node];
+    const chat = createMockChat(activeMessages);
+    const clickedBinaryObjectId = toBinaryObjectId({ raw: 'clicked-image' });
+
+    const { storageService } = await import('@/00-storage/service');
+    vi.mocked(storageService.getBinaryObject).mockResolvedValue({
+      id: clickedBinaryObjectId,
+      mimeType: 'image/png',
+      name: 'clicked.png',
+      size: 1,
+      createdAt: 1,
+    });
+
+    const wrapper = mountInspector(chat, activeMessages);
+    const treeNode = wrapper.findComponent(ChatDebugTreeNode);
+
+    mockAddErrorEvent.mockClear();
+    treeNode.vm.$emit('preview-attachment', clickedBinaryObjectId);
+    await flushPromises();
+
+    const inspectorCalls = mockAddErrorEvent.mock.calls.filter(([event]) => (
+      event.source === 'ChatDebugInspector:handlePreviewAttachment'
+    ));
+
+    expect(inspectorCalls).toHaveLength(1);
+    expect(inspectorCalls[0]?.[0]).toEqual(expect.objectContaining({
+      message: 'Failed to parse image metadata during preview collection.',
+    }));
+  });
+
   it('Scenario 15: Image Preview navigation is restricted to the selected path in Tree mode', async () => {
     // Branch A -> B (with image 1)
     // Branch A -> C (with image 2)
@@ -477,7 +528,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
 
     // Mock storageService.getBinaryObject to return valid objects
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
       if (idToRaw({ id: binaryObjectId }) === 'obj-1') return { id: toBinaryObjectId({ raw: 'obj-1' }), mimeType: 'image/png', name: 'img1.png' } as any;
       if (idToRaw({ id: binaryObjectId }) === 'obj-2') return { id: toBinaryObjectId({ raw: 'obj-2' }), mimeType: 'image/png', name: 'img2.png' } as any;

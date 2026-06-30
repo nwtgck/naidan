@@ -55,7 +55,7 @@ describe('no-raw-dompurify rule', () => {
 
   it('allows DOMPurify imports inside allowedHtml.ts', async () => {
     const messages = await lintText({
-      filePath: 'src/lib/security/allowedHtml.ts',
+      filePath: 'src/logic/security/allowedHtml.ts',
       code: `import DOMPurify from 'dompurify'`,
     });
 

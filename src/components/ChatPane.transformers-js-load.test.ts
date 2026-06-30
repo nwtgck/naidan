@@ -1,13 +1,14 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { transformersJsService } from '@/services/transformers-js';
+import { transformersJsService } from '@/features/transformers-js';
 import { setupScrollToMock } from '@/utils/test-utils';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock router
 const router = createRouter({
@@ -16,7 +17,18 @@ const router = createRouter({
 });
 
 // Mock transformersJsService
-vi.mock('../services/transformers-js', () => {
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
+vi.mock('../features/transformers-js', () => {
   const state = {
     status: 'idle',
     progress: 0,
@@ -71,15 +83,19 @@ const mockCurrentChat = ref<any>({
   root: { items: [] },
   currentLeafId: 'msg-2',
   debugEnabled: false,
-  endpointType: 'transformers_js',
+  endpoint: { type: 'transformers_js' },
 });
 const mockActiveMessages = ref<any[]>([]);
 const mockResolvedSettings = ref<any>({
-  endpointType: 'transformers_js',
+  endpoint: { type: 'transformers_js' },
   modelId: 'm',
-  sources: { modelId: 'global' },
+  sources: { endpoint: 'global', modelId: 'global' },
 });
-const mockInheritedSettings = ref<any>({ modelId: 'm', sources: { modelId: 'global' } });
+const mockInheritedSettings = ref<any>({
+  endpoint: { type: 'transformers_js' },
+  modelId: 'm',
+  sources: { endpoint: 'global', modelId: 'global' },
+});
 const mockChatGroups = ref<any[]>([]);
 const mockFetchingModels = ref(false);
 const mockAvailableModels = ref<string[]>([]);
@@ -291,7 +307,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointType: 'transformers_js' }),
+    settings: ref({ endpoint: { type: 'transformers_js' } }),
     availableModels: mockAvailableModels,
   }),
 }));
@@ -304,6 +320,7 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
   let wrapper: VueWrapper<any>;
 
   beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     setupScrollToMock();
     vi.clearAllMocks();
     mockActiveMessages.value = [
@@ -371,7 +388,12 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
     const messageItems = wrapper.findAllComponents({ name: 'MessageItem' });
     const assistantItem = messageItems.find(m => m.props('message').role === 'assistant');
     expect(assistantItem?.find('div').exists()).toBe(true);
-    expect(assistantItem?.text()).toContain('Waiting for response...');
+    await vi.waitFor(() => {
+      const updatedAssistantItem = wrapper
+        .findAllComponents({ name: 'MessageItem' })
+        .find(m => m.props('message').role === 'assistant');
+      expect(updatedAssistantItem?.text()).toContain('Waiting for response...');
+    }, { timeout: 5000 });
   });
 
   it('shows assistant message immediately if engine is already ready', async () => {
@@ -399,9 +421,9 @@ describe('Transformers.js Loading Flow in ChatPane', () => {
 
     // 2. Set endpoint to OpenAI
     mockResolvedSettings.value = {
-      endpointType: 'openai',
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'gpt-4o',
-      sources: { modelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'global' },
     };
 
     wrapper = mountChatPane( {

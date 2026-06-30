@@ -39,7 +39,10 @@ vi.mock('../composables/useConfirm', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ defaultModelId: 'test-model' }),
+    settings: ref({
+      endpoint: { type: 'openai', url: '' },
+      defaultModelId: 'test-model',
+    }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
     save: vi.fn(),

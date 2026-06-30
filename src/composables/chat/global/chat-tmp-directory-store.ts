@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
-import { idToRaw } from '@/models/ids';
-import type { ChatId } from '@/models/ids';
-import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
+import { idToRaw } from '@/01-models/ids';
+import type { ChatId } from '@/01-models/ids';
+import { getOPFSTmpManager } from '@/logic/opfs-tmp-manager';
 
 export type ChatTmpDirectoryEntry = {
   handle: FileSystemDirectoryHandle,
@@ -52,3 +52,7 @@ export function deleteChatTmpDirectory({
 }): void {
   chatTmpDirectories.delete(chatId);
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

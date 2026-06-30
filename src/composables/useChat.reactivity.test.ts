@@ -3,7 +3,7 @@ import { useChat } from './useChat';
 import { nextTick } from 'vue';
 
 // Mock storage
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -26,7 +26,7 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', defaultModelId: 'gpt-4' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
@@ -34,7 +34,7 @@ vi.mock('./useSettings', () => ({
 
 // Mock LM
 let onChunkCallback: (params: { chunk: string }) => void;
-vi.mock('../services/lm/openai', () => {
+vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
     chat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       onChunkCallback = params.onChunk;
@@ -47,7 +47,7 @@ vi.mock('../services/lm/openai', () => {
   };
 });
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 

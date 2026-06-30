@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
-import type { Chat, Hierarchy } from '@/models/types';
-import { idToRaw, toChatId, toMessageId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import type { Chat, Hierarchy } from '@/01-models/types';
+import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 
 /**
  * Multi-Tab Scenario Tests
@@ -18,7 +18,7 @@ const { mocks } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -70,7 +70,7 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: false, defaultModelId: 'gpt-4', lmParameters: {}, providerProfiles: [] } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', autoTitleEnabled: false, defaultModelId: 'gpt-4', lmParameters: {}, providerProfiles: [] } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
@@ -79,13 +79,13 @@ vi.mock('./useSettings', () => ({
 vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
 vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return { chat: vi.fn().mockImplementation(({ onChunk }) => onChunk({ chunk: 'OK' })), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: function() {
     return { chat: vi.fn(), listModels: vi.fn() };
   },

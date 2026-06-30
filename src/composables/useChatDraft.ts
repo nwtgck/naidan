@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
-import type { AttachmentId, ChatId } from '@/models/ids';
-import type { Attachment } from '@/models/types';
+import type { AttachmentId, ChatId } from '@/01-models/ids';
+import type { Attachment } from '@/01-models/types';
 
 interface ChatDraft {
   input: string,
@@ -68,10 +68,16 @@ export function useChatDraft() {
     getDraft,
     saveDraft,
     clearDraft,
-    clearAllDrafts,
     revokeAll,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+        clearAllDrafts,
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

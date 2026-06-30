@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { reactive } from 'vue';
-import type { Chat, MessageNode } from '@/models/types';
-import { storageService } from '@/services/storage';
-import { idToRaw, toChatId, toMessageId } from '@/models/ids';
+import type { Chat, MessageNode } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
+import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     updateChatContent: vi.fn(),
     updateChatMeta: vi.fn(),

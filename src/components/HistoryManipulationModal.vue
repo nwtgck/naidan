@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { generateId, generateOpaqueId } from '@/utils/id';
+import { lazyStrings } from '@/strings';
+import { generateId } from '@/01-models/id';
 import { ref, watch, onUnmounted, computed } from 'vue';
 import draggable from 'vuedraggable';
 import {
@@ -8,14 +9,14 @@ import {
   PaperclipIcon, ImageIcon, HistoryIcon,
   CopyIcon, GripVerticalIcon, MessageSquareQuoteIcon, InfoIcon,
 } from 'lucide-vue-next';
-import type { HistoryItem } from '@/utils/chat-tree';
+import type { HistoryItem } from '@/logic/chat-tree';
 import { useLayout } from '@/composables/useLayout';
-import type { Attachment, SystemPrompt } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { Attachment, SystemPrompt } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
-import { idToRaw } from '@/models/ids';
-import type { AttachmentId, BinaryObjectId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { AttachmentId, BinaryObjectId, EditableHistoryItemId } from '@/01-models/ids';
 
 const props = defineProps<{
   isOpen: boolean,
@@ -29,7 +30,7 @@ const { currentChat, activeMessages, inheritedSettings } = useCurrentChatState()
 const { setActiveFocusArea } = useLayout();
 
 interface EditableHistoryItem extends HistoryItem {
-  localId: string,
+  localId: EditableHistoryItemId,
 }
 
 const editableMessages = ref<EditableHistoryItem[]>([]);
@@ -58,7 +59,7 @@ watch(() => props.isOpen, async (open) => {
     editableMessages.value = activeMessages.value
       .filter(m => m.role !== 'tool') // Filter out tool nodes from Super Edit
       .map(m => ({
-        localId: generateOpaqueId(),
+        localId: generateId<EditableHistoryItemId>(),
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content || '',
         modelId: m.modelId,
@@ -136,7 +137,7 @@ function predictNextRole({ index }: { index: number }): 'user' | 'assistant' {
 function addMessage({ index }: { index: number }) {
   const role = predictNextRole({ index });
   editableMessages.value.splice(index + 1, 0, {
-    localId: generateOpaqueId(),
+    localId: generateId<EditableHistoryItemId>(),
     role,
     content: '',
   });
@@ -152,7 +153,7 @@ function duplicateMessage({ index }: { index: number }) {
 
   editableMessages.value.splice(index + 1, 0, {
     ...msg,
-    localId: generateOpaqueId(),
+    localId: generateId<EditableHistoryItemId>(),
     attachments: msg.attachments ? [...msg.attachments] : undefined,
   });
 }
@@ -288,9 +289,11 @@ function capitalize({ s }: { s: string }) {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -306,8 +309,8 @@ defineExpose({
               <HammerIcon class="w-5 h-5 text-orange-500" />
             </div>
             <div>
-              <h2 class="text-base font-bold text-gray-800 dark:text-white tracking-tight">Super Edit</h2>
-              <p class="text-[11px] text-gray-500 dark:text-gray-400 font-medium">Manipulate full chat history. A new branch will be created.</p>
+              <h2 class="text-base font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.HistoryManipulationModal__super_edit() }}</h2>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400 font-medium">{{ lazyStrings.HistoryManipulationModal__manipulate_full_chat_history_a_new_branch_will_be_created() }}</p>
             </div>
           </div>
           <button @click="handleCancel" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors">
@@ -322,7 +325,7 @@ defineExpose({
             <div class="flex items-center gap-3 px-4 py-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-900/20 rounded-2xl">
               <InfoIcon class="w-4 h-4 text-blue-500 shrink-0" />
               <p class="text-[11px] text-blue-700/70 dark:text-blue-300/70 font-medium leading-relaxed">
-                Applying changes creates a <span class="font-bold text-blue-600 dark:text-blue-400">new branch</span> from the root. The original conversation remains preserved.
+                {{ lazyStrings.HistoryManipulationModal__applying_changes_creates_a() }} <span class="font-bold text-blue-600 dark:text-blue-400">{{ lazyStrings.HistoryManipulationModal__new_branch() }}</span> {{ lazyStrings.HistoryManipulationModal__from_the_root_the_original_conversation_remains_preserved() }}
               </p>
             </div>
           </div>
@@ -333,7 +336,7 @@ defineExpose({
               <div class="flex items-center justify-between px-1">
                 <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
                   <MessageSquareQuoteIcon class="w-3.5 h-3.5" />
-                  Chat System Prompt
+                  {{ lazyStrings.HistoryManipulationModal__chat_system_prompt() }}
                 </label>
 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
@@ -353,23 +356,23 @@ defineExpose({
                 <textarea
                   v-model="localSystemPrompt!.content"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none min-h-[120px]"
-                  placeholder="Enter system prompt content..."
+                  :placeholder="lazyStrings.HistoryManipulationModal__enter_system_prompt_content()"
                 ></textarea>
               </div>
 
               <div v-else-if="systemPromptBehavior === 'clear'" class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center animate-in fade-in slide-in-from-top-1 duration-200">
-                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
-                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat will not use any system instructions.</p>
+                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.HistoryManipulationModal__parent_prompt_cleared() }}</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{{ lazyStrings.HistoryManipulationModal__this_chat_will_not_use_any_system_instructions() }}</p>
               </div>
 
               <div v-else class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
                 <div class="flex items-center justify-between text-[10px] font-bold">
-                  <span class="text-gray-400 uppercase tracking-widest">System Prompt Resolution</span>
-                  <span class="text-gray-300">Inherited</span>
+                  <span class="text-gray-400 uppercase tracking-widest">{{ lazyStrings.HistoryManipulationModal__system_prompt_resolution() }}</span>
+                  <span class="text-gray-300">{{ lazyStrings.HistoryManipulationModal__inherited() }}</span>
                 </div>
                 <div class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
                   <div class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed italic font-medium">
-                    {{ inheritedSettings?.systemPromptMessages.join('\n---\n') || 'No system prompt inherited.' }}
+                    {{ inheritedSettings?.systemPromptMessages.join('\n---\n') || lazyStrings.HistoryManipulationModal__no_system_prompt_inherited() }}
                   </div>
                 </div>
               </div>
@@ -380,17 +383,17 @@ defineExpose({
           <div class="p-6 pt-0 space-y-6">
             <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
               <HistoryIcon class="w-3.5 h-3.5" />
-              Message List
+              {{ lazyStrings.HistoryManipulationModal__message_list() }}
             </label>
 
             <div v-if="editableMessages.length === 0" class="p-16 bg-white dark:bg-gray-900 border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl flex flex-col items-center justify-center text-gray-400 gap-5 shadow-sm">
               <div class="p-5 bg-orange-50 dark:bg-orange-900/20 rounded-full border border-orange-100 dark:border-orange-800">
                 <HammerIcon class="w-8 h-8 text-orange-500 opacity-40" />
               </div>
-              <p class="text-xs font-bold uppercase tracking-widest opacity-60">Forge empty history</p>
+              <p class="text-xs font-bold uppercase tracking-widest opacity-60">{{ lazyStrings.HistoryManipulationModal__forge_empty_history() }}</p>
               <button @click="addMessage({ index: -1 })" class="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-bold text-[11px] uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95">
                 <PlusIcon class="w-4 h-4" />
-                Add First Message
+                {{ lazyStrings.HistoryManipulationModal__add_first_message() }}
               </button>
             </div>
 
@@ -426,7 +429,7 @@ defineExpose({
                           'bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-100 dark:border-blue-800/50': msg.role === 'user',
                           'bg-purple-50 dark:bg-purple-900/20 text-purple-600 border-purple-100 dark:border-purple-800/50': msg.role === 'assistant'
                         }"
-                        :title="'Switch Role'"
+                        :title="lazyStrings.HistoryManipulationModal__switch_role()"
                       >
                         <UserIcon v-if="msg.role === 'user'" class="w-5 h-5" />
                         <BotIcon v-else class="w-5 h-5" />
@@ -460,14 +463,14 @@ defineExpose({
                         v-model="msg.content"
                         @paste="handlePaste({ event: $event, index })"
                         class="w-full bg-transparent p-4 text-[14px] text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px] font-medium leading-relaxed"
-                        placeholder="Type message content..."
+                        :placeholder="lazyStrings.HistoryManipulationModal__type_message_content()"
                       ></textarea>
 
                       <!-- Card Toolbar -->
                       <div class="px-4 py-1.5 bg-gray-50/50 dark:bg-gray-800/30 flex items-center justify-between border-t border-gray-50 dark:border-gray-800">
                         <div class="flex gap-4 text-[9px] font-bold font-mono text-gray-400/80 tracking-tight">
                           <span v-if="msg.modelId" class="flex items-center gap-1"><CpuIcon class="w-3 h-3" /> {{ msg.modelId }}</span>
-                          <span v-if="msg.thinking" class="flex items-center gap-1"><HistoryIcon class="w-3 h-3" /> Thoughts</span>
+                          <span v-if="msg.thinking" class="flex items-center gap-1"><HistoryIcon class="w-3 h-3" /> {{ lazyStrings.HistoryManipulationModal__thoughts() }}</span>
                         </div>
 
                         <div class="flex items-center gap-2">
@@ -479,7 +482,7 @@ defineExpose({
                           <button
                             @click="triggerFileInput({ index })"
                             class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-gray-800 transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-700 shadow-sm"
-                            title="Attach media"
+                            :title="lazyStrings.HistoryManipulationModal__attach_media()"
                           >
                             <PaperclipIcon class="w-3.5 h-3.5" />
                           </button>
@@ -489,13 +492,13 @@ defineExpose({
 
                     <!-- Side Action Column -->
                     <div class="flex flex-col gap-2 pt-3">
-                      <button @click="removeMessage({ index })" class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Remove Message">
+                      <button @click="removeMessage({ index })" class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" :title="lazyStrings.HistoryManipulationModal__remove_message()">
                         <Trash2Icon class="w-4.5 h-4.5" />
                       </button>
-                      <button @click="duplicateMessage({ index })" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Copy Message">
+                      <button @click="duplicateMessage({ index })" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" :title="lazyStrings.HistoryManipulationModal__copy_message()">
                         <CopyIcon class="w-4.5 h-4.5" />
                       </button>
-                      <button @click="addMessage({ index })" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Add Message After">
+                      <button @click="addMessage({ index })" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" :title="lazyStrings.HistoryManipulationModal__add_message_after()">
                         <PlusIcon class="w-4.5 h-4.5" />
                       </button>
                     </div>
@@ -513,7 +516,7 @@ defineExpose({
                 class="flex items-center gap-2 px-6 py-2.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all shadow-sm font-bold text-xs uppercase tracking-widest active:scale-95"
               >
                 <PlusIcon class="w-4 h-4" />
-                Append Message
+                {{ lazyStrings.HistoryManipulationModal__append_message() }}
               </button>
             </div>
           </div>
@@ -522,7 +525,7 @@ defineExpose({
         <!-- Footer -->
         <div class="px-8 py-6 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-5 bg-white dark:bg-gray-900 shrink-0">
           <button @click="handleCancel" class="px-6 py-2.5 text-[11px] font-bold text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors uppercase tracking-[0.15em]">
-            Discard
+            {{ lazyStrings.HistoryManipulationModal__discard() }}
           </button>
           <button
             @click="handleSave"
@@ -530,7 +533,7 @@ defineExpose({
             class="flex items-center gap-2.5 px-10 py-3.5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/25 font-bold text-[11px] uppercase tracking-[0.15em] active:scale-95"
           >
             <SaveIcon class="w-4 h-4" />
-            Apply Changes
+            {{ lazyStrings.HistoryManipulationModal__apply_changes() }}
           </button>
         </div>
       </div>

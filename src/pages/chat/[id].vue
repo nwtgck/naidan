@@ -3,7 +3,7 @@ import { watch, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import CurrentChatPane from '@/components/CurrentChatPane.vue';
-import { toChatId, toMessageId } from '@/models/ids';
+import { toChatId, toMessageId } from '@/01-models/ids';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
@@ -52,9 +52,11 @@ watch([chatId, leafId, messageId], syncChat);
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 

@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const chats = new Map<string, any>();
 let hierarchy = { items: [] as any[] };
 
+vi.unmock('../features/lm/openai');
+vi.unmock('../features/lm/ollama');
+vi.unmock('../00-storage/service');
+
 describe('useChat Persistence Timing', () => {
   let persistMock: any;
   let persistedMock: any;
@@ -10,13 +14,10 @@ describe('useChat Persistence Timing', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
-    vi.unmock('../services/lm/openai');
-    vi.unmock('../services/lm/ollama');
-    vi.unmock('../services/storage');
     chats.clear();
     hierarchy = { items: [] };
 
-    vi.doMock('../services/lm/openai', () => ({
+    vi.doMock('../features/lm/openai', () => ({
       OpenAIProvider: class {
         chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
           params.onChunk({ chunk: 'Done' });
@@ -26,14 +27,14 @@ describe('useChat Persistence Timing', () => {
       },
     }));
 
-    vi.doMock('../services/lm/ollama', () => ({
+    vi.doMock('../features/lm/ollama', () => ({
       OllamaProvider: class {
         chat = vi.fn();
         listModels = vi.fn().mockResolvedValue(['gpt-4']);
       },
     }));
 
-    vi.doMock('../services/storage', () => ({
+    vi.doMock('../00-storage/service', () => ({
       storageService: {
         getSidebarStructure: vi.fn().mockResolvedValue([]),
         saveChat: vi.fn().mockImplementation((chat) => {
@@ -88,14 +89,19 @@ describe('useChat Persistence Timing', () => {
 
     const { useSettings } = await import('./useSettings');
     const settings = useSettings();
-    await settings.save({ patch: {
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost:11434',
-      defaultModelId: 'gpt-4',
-      autoTitleEnabled: false,
-      storageType: 'local',
-      providerProfiles: [],
-    } as any });
+    await settings.save({
+      patch: {
+        endpoint: {
+          type: 'openai',
+          url: 'http://localhost:11434',
+        },
+        defaultModelId: 'gpt-4',
+        autoTitleEnabled: false,
+        storageType: 'local',
+        providerProfiles: [],
+      } as any,
+      modelRefresh: 'await',
+    });
   });
 
   it('should call navigator.storage.persist after the first assistant response', async () => {

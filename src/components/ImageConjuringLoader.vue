@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
   remainingCount?: number,
@@ -19,10 +20,12 @@ const stepProgress = computed(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    currentNumber,
-    stepProgress,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      currentNumber,
+      stepProgress,
+    },
+  }) || {}),
 });
 </script>
 
@@ -57,7 +60,7 @@ defineExpose({
         <!-- Status Header -->
         <div class="flex flex-col items-center gap-1">
           <span class="text-[11px] font-bold text-blue-500/80 dark:text-blue-400/80 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)] animate-subtle-pulse whitespace-nowrap">
-            {{ totalCount && totalCount > 1 ? 'Generating images...' : 'Generating image...' }}
+            {{ totalCount && totalCount > 1 ? lazyStrings.ImageConjuringLoader__generating_images() : lazyStrings.ImageConjuringLoader__generating_image() }}
           </span>
 
           <!-- Step Display -->
@@ -68,7 +71,7 @@ defineExpose({
               </span>
               <span class="text-xl font-bold text-blue-500/60 dark:text-blue-400/60">/ {{ totalSteps }}</span>
             </div>
-            <span class="text-[10px] font-mono font-bold text-blue-500/40 dark:text-blue-400/40 uppercase tracking-widest">steps</span>
+            <span class="text-[10px] font-mono font-bold text-blue-500/40 dark:text-blue-400/40 uppercase tracking-widest">{{ lazyStrings.ImageConjuringLoader__steps() }}</span>
           </div>
           <div v-else class="h-14 flex items-center justify-center">
             <div class="w-1.5 h-1.5 bg-blue-500/60 rounded-full animate-ping"></div>
@@ -101,8 +104,8 @@ defineExpose({
               ]"
             ></div>
           </div>
-          <span class="text-[10px] font-mono font-bold text-blue-400/60" data-testid="image-count-label">
-            Image {{ currentNumber }} / {{ totalCount }}
+          <span v-if="currentNumber !== undefined" class="text-[10px] font-mono font-bold text-blue-400/60" data-testid="image-count-label">
+            {{ lazyStrings.ImageConjuringLoader__image_count({ current: currentNumber, total: totalCount }) }}
           </span>
         </div>
       </div>

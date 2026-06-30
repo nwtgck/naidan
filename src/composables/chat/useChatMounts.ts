@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { Mount } from '@/models/types';
-import { storageService } from '@/services/storage';
+import type { Mount } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import {
   currentChatRef,
   ensureChatTmpDirectory,
@@ -8,7 +8,7 @@ import {
   getReadonlyChat,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatId, VolumeId } from '@/models/ids';
+import type { ChatId, VolumeId } from '@/01-models/ids';
 
 export type ChatMountsAdapter = {
   getMounts({
@@ -129,8 +129,14 @@ export function useChatMounts(): ChatMountsAdapter {
     addMount,
     removeMount,
     updateMount,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

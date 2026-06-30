@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { nextTick } from 'vue';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 // --- Shared State across "tabs" (modules) ---
 const STORAGE_KEY = '__CROSS_TAB_TEST_STORAGE__';
@@ -10,7 +10,7 @@ function resetSharedStorage() {
   shared[STORAGE_KEY] = {
     chats: new Map(),
     groups: new Map(),
-    settings: { endpointType: 'openai', endpointUrl: 'http://localhost', autoTitleEnabled: false, defaultModelId: 'gpt-4' },
+    settings: { endpoint: { type: 'openai', url: 'http://localhost' }, autoTitleEnabled: false, defaultModelId: 'gpt-4' },
     hierarchy: { items: [] },
     listeners: new Set(),
   };
@@ -71,14 +71,14 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
   async function createTab() {
     vi.resetModules();
-    vi.unmock('../services/storage');
+    vi.unmock('../00-storage/service');
     vi.unmock('./useSettings');
     vi.unmock('./useToast');
     vi.unmock('./useConfirm');
-    vi.unmock('../services/lm/openai');
-    vi.unmock('../services/lm/ollama');
+    vi.unmock('../features/lm/openai');
+    vi.unmock('../features/lm/ollama');
 
-    vi.doMock('../services/storage', () => ({
+    vi.doMock('../00-storage/service', () => ({
       storageService: {
         init: vi.fn(),
         subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
@@ -180,7 +180,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     vi.doMock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
     vi.doMock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
 
-    vi.doMock('../services/lm/openai', () => ({
+    vi.doMock('../features/lm/openai', () => ({
       OpenAIProvider: function() {
         return {
           chat: vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void, signal?: AbortSignal }) => {
@@ -202,7 +202,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
       },
     }));
 
-    vi.doMock('../services/lm/ollama', () => ({
+    vi.doMock('../features/lm/ollama', () => ({
       OllamaProvider: function() {
         return { chat: vi.fn(), listModels: vi.fn() };
       },
@@ -269,7 +269,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
   it('should reload sidebar when settings change (settings event)', async () => {
     await createTab();
     await createTab();
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     await storageService.updateSettings({ updater: ({ current: curr }: { current: any }) => ({ ...curr, someNewSetting: true }) });
     vi.advanceTimersByTime(600);
     await nextTick();
@@ -284,7 +284,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await tabB.openChat({ id: idToRaw({ id: chat!.id }) });
     expect(tabB.currentChat.value).not.toBeNull();
 
-    const { storageService } = await import('@/services/storage');
+    const { storageService } = await import('@/00-storage/service');
     await storageService.clearAll();
     vi.advanceTimersByTime(600);
     await nextTick();

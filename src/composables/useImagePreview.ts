@@ -1,6 +1,6 @@
 import { ref, inject, provide, type InjectionKey, type Ref } from 'vue';
-import type { BinaryObject } from '@/models/types';
-import type { BinaryObjectId } from '@/models/ids';
+import type { BinaryObject } from '@/01-models/types';
+import type { BinaryObjectId } from '@/01-models/ids';
 
 interface PreviewState {
   objects: BinaryObject[],
@@ -40,14 +40,18 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
       closePreview: () => {
         state.value = null;
       },
-      TEST_ONLY: {},
+      ...((__BUILD_MODE_IS_TEST__ && {
+        TEST_ONLY: {},
+      }) || {}),
     };
     provide(PREVIEW_KEY, api);
     return api;
   }
 
   const injected = inject(PREVIEW_KEY, null);
-  if (injected) return { ...injected, TEST_ONLY: {} };
+  if (injected) return { ...injected, ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {},
+  }) || {}) };
 
   // Fallback to local ref if not provided (allows simple local use in a component)
   const state = ref<PreviewState | null>(null);
@@ -59,6 +63,12 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
     closePreview: () => {
       state.value = null;
     },
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

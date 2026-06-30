@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useBinaryActions } from './useBinaryActions';
-import { storageService } from '@/services/storage';
-import { toBinaryObjectId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import { toBinaryObjectId } from '@/01-models/ids';
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getBinaryObject: vi.fn(),
     getFile: vi.fn(),
@@ -26,15 +26,11 @@ vi.mock('./useImagePreview', () => ({
   })),
 }));
 
-// Mock URL and document
-vi.stubGlobal('URL', {
-  createObjectURL: vi.fn(() => 'blob:url'),
-  revokeObjectURL: vi.fn(),
-});
-
 describe('useBinaryActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:url') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
   });
 
   it('deletes object after confirmation', async () => {

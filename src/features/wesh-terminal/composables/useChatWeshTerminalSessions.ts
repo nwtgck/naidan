@@ -1,8 +1,8 @@
 import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
-import type { ChatGroupId, ChatId } from '@/models/ids';
-import type { Mount } from '@/models/types';
-import { buildWorkerMountsForChat } from '@/services/wesh/chat-worker-mounts';
-import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
+import type { Mount } from '@/01-models/types';
+import { buildWorkerMountsForChat } from '@/features/wesh/chat-worker-mounts';
+import type { NaidanSysfsAccessScope } from '@/features/wesh/types';
 
 const store = createWeshTerminalSessions({
   opfsRootName: 'naidan-chat-wesh',
@@ -46,8 +46,14 @@ export function useChatWeshTerminalSessions() {
       store.ensureSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }) }),
     reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }: SessionArgs) =>
       store.ensureSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }) }),
-    TEST_ONLY: {
-      buildWorkerMountsForChat,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        buildWorkerMountsForChat,
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

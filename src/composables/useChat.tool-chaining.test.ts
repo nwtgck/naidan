@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { reactive, nextTick, computed } from 'vue';
-import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
+import type { Chat, SidebarItem, Hierarchy } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
 let mockHierarchy: Hierarchy = { items: [] };
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
@@ -37,7 +37,7 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
     setHeavyContentAlertDismissed: vi.fn(),
@@ -56,7 +56,7 @@ vi.mock('./useConfirm', () => ({
 // Mock LM Provider
 const mockLmChat = vi.fn();
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
       chat: mockLmChat,
@@ -65,7 +65,7 @@ vi.mock('../services/lm/openai', () => ({
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
       chat: vi.fn(),
@@ -75,7 +75,7 @@ vi.mock('../services/lm/ollama', () => ({
 }));
 
 // Mock Tools Registry
-vi.mock('../services/tools/registry', () => ({
+vi.mock('../features/tools/registry', () => ({
   ALL_TOOLS: [
     {
       name: 'calculator',
@@ -86,14 +86,14 @@ vi.mock('../services/tools/registry', () => ({
   ],
 }));
 
-vi.mock('./useChatTools', () => ({
+vi.mock('../features/tools/composables/useChatTools', () => ({
   getEffectiveToolConfigsForChat: ({ chat }: { chat: { toolConfigs?: unknown } }) => chat.toolConfigs ?? [{ key: 'builtin.calculator', status: 'enabled' }],
   useChatTools: () => ({
     enabledToolNames: { value: ['calculator'] },
   }),
 }));
 
-vi.mock('./useChatWeshPreferences', () => ({
+vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
     getNaidanSysfsAccessScope: vi.fn(() => 'none'),
   }),
@@ -133,8 +133,10 @@ describe('useChat Tool Chaining', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: true,
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost',
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost',
+      },
       modelId: 'gpt-4',
     });
     __testOnlySetCurrentChat({ chat });
@@ -218,8 +220,10 @@ describe('useChat Tool Chaining', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: true,
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost',
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost',
+      },
       modelId: 'gpt-4',
     });
     __testOnlySetCurrentChat({ chat });

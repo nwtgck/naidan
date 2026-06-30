@@ -1,6 +1,6 @@
-import type { ChatId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
-import { storageService } from '@/services/storage';
+import type { ChatId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
+import { storageService } from '@/00-storage/service';
 import {
   chatRuntimeStore,
   contextCompactRuntime,
@@ -39,3 +39,7 @@ export function abortProcessingForChat({
   contextCompactRuntime.getActiveContextCompaction({ chatId })?.abort();
   abortTitleGenerationForChat({ chatId });
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import GeneratedImageBlock from './GeneratedImageBlock.vue';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { useImagePreview } from '@/composables/useImagePreview';
 import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock storage service
-vi.mock('../../services/storage', () => ({
+vi.mock('../../00-storage/service', () => ({
   storageService: {
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),
@@ -40,13 +41,12 @@ describe('GeneratedImageBlock', () => {
     seed: 42,
   };
   const json = JSON.stringify(blockData);
+  let revokeObjectUrlSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn().mockReturnValue('blob:mock-url'),
-      revokeObjectURL: vi.fn(),
-    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+    revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   });
 
   it('renders loading skeleton initially', async () => {
@@ -79,6 +79,7 @@ describe('GeneratedImageBlock', () => {
   });
 
   it('renders error state when image fails to load', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.mocked(storageService.getFile).mockResolvedValue(null);
 
     const wrapper = mount(GeneratedImageBlock, {
@@ -114,7 +115,7 @@ describe('GeneratedImageBlock', () => {
 
   it('calls ImageDownloadHydrator.download when download is triggered', async () => {
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
-    const downloadSpy = vi.spyOn(ImageDownloadHydrator, 'download').mockResolvedValue(undefined as any);
+    const downloadSpy = vi.spyOn(ImageDownloadHydrator, 'download').mockResolvedValue(undefined);
 
     const wrapper = mount(GeneratedImageBlock, {
       props: { json },
@@ -124,15 +125,17 @@ describe('GeneratedImageBlock', () => {
     await nextTick();
 
     const downloadBtn = wrapper.findComponent({ name: 'ImageDownloadButton' });
-    await downloadBtn.vm.$emit('download', { withMetadata: true });
+    downloadBtn.vm.$emit('download', { withMetadata: true });
 
-    expect(downloadSpy).toHaveBeenCalledWith(expect.objectContaining({
-      id: binaryObjectId,
-      prompt: 'a beautiful sunset',
-      steps: 25,
-      seed: 42,
-      withMetadata: true,
-    }));
+    await vi.waitFor(() => {
+      expect(downloadSpy).toHaveBeenCalledWith(expect.objectContaining({
+        id: binaryObjectId,
+        prompt: 'a beautiful sunset',
+        steps: 25,
+        seed: 42,
+        withMetadata: true,
+      }));
+    });
   });
 
   it('opens preview when image is clicked', async () => {
@@ -209,7 +212,7 @@ describe('GeneratedImageBlock', () => {
     await flushPromises();
     wrapper.unmount();
 
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock-url');
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith('blob:mock-url');
   });
 
   it('handles invalid JSON gracefully', () => {

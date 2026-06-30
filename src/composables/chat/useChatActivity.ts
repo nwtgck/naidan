@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { ContextCompactProgress } from '@/services/context-compact';
-import type { ChatId } from '@/models/ids';
+import type { ContextCompactProgress } from '@/logic/context-compact';
+import type { ChatId } from '@/01-models/ids';
 import {
   getChatContextCompactProgress,
   isChatGeneratingTitle,
@@ -17,7 +17,7 @@ export type ChatActivityAdapter = {
   TEST_ONLY: Record<never, never>,
 };
 
-export function useChatActivity({
+function useChatActivity({
   chatId,
 }: {
   chatId: Readonly<Ref<ChatId>>,
@@ -51,8 +51,16 @@ export function useChatActivity({
     isTaskRunning: isTaskRunningState,
     isGeneratingTitle: isGeneratingTitleState,
     contextCompactProgress: contextCompactProgressState,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {
+  useChatActivity,
+};

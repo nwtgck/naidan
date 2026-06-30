@@ -1,7 +1,7 @@
 import { computed, toRaw, type ComputedRef, type Ref } from 'vue';
-import type { Chat, ChatGroup, ChatSummary, MessageNode, Settings, SidebarItem } from '@/models/types';
-import { getAllMessages, getChatBranchIterator } from '@/utils/chat-tree';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import type { Chat, ChatGroup, ChatSummary, MessageNode, Settings, SidebarItem } from '@/01-models/types';
+import { getAllMessages, getChatBranchIterator } from '@/logic/chat-tree';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 
 export type ChatDerivedState = {
   sidebarItems: ComputedRef<SidebarItem[]>,
@@ -88,9 +88,7 @@ export function createChatDerivedState({
     const virtualChat: Chat = {
       ...chat,
       modelId: undefined,
-      endpointType: undefined,
-      endpointUrl: undefined,
-      endpointHttpHeaders: undefined,
+      endpoint: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     };
@@ -137,3 +135,7 @@ export function createChatDerivedState({
     hasMountsForChat,
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

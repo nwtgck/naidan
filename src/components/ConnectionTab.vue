@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { generateId } from '@/utils/id';
+import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import type { ProviderProfile, Settings } from '@/models/types';
+import type { EndpointType, ProviderProfile, Settings } from '@/01-models/types';
+import { cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
 import { capitalize, naturalSort } from '@/utils/string';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
@@ -20,14 +21,15 @@ const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => 
 // Lazily load previews that are only shown during specific actions
 const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilePreview.vue') });
 // Lazily load upsell UI
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsUpsell.vue') });
 const OllamaManagementView = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./OllamaManagementView.vue') });
 
 import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';
-import { ENDPOINT_PRESETS } from '@/models/constants';
-import { idToRaw } from '@/models/ids';
-import type { ProviderProfileId } from '@/models/ids';
+import { ENDPOINT_PRESETS } from '@/constants';
+import { idToRaw } from '@/01-models/ids';
+import type { ProviderProfileId } from '@/01-models/ids';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 const props = defineProps<{
   modelValue: Settings,
@@ -57,6 +59,59 @@ const form = computed({
   set: (val) => emit('update:modelValue', val),
 });
 
+const endpointType = computed<EndpointType>({
+  get: () => form.value.endpoint.type,
+  set: (type) => {
+    switch (type) {
+    case 'openai':
+    case 'ollama': {
+      const current = form.value.endpoint;
+      form.value.endpoint = {
+        type,
+        url: isHttpEndpoint(current) ? current.url : '',
+        httpHeaders: isHttpEndpoint(current)
+          ? current.httpHeaders?.map(([name, value]) => [name, value])
+          : undefined,
+      };
+      return;
+    }
+    case 'transformers_js':
+      form.value.endpoint = { type };
+      return;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
+  },
+});
+
+const endpointUrl = computed({
+  get: () => isHttpEndpoint(form.value.endpoint) ? form.value.endpoint.url : '',
+  set: (url: string) => {
+    const endpoint = form.value.endpoint;
+    if (!isHttpEndpoint(endpoint)) return;
+    form.value.endpoint = {
+      ...endpoint,
+      url,
+    };
+  },
+});
+
+const endpointHttpHeaders = computed<[string, string][] | undefined>({
+  get: () => isHttpEndpoint(form.value.endpoint)
+    ? form.value.endpoint.httpHeaders
+    : undefined,
+  set: (httpHeaders) => {
+    const endpoint = form.value.endpoint;
+    if (!isHttpEndpoint(endpoint)) return;
+    form.value.endpoint = {
+      ...endpoint,
+      httpHeaders,
+    };
+  },
+});
+
 const connectionSuccess = ref(false);
 
 const error = ref<string | null>(null);
@@ -67,7 +122,7 @@ const selectedProviderProfileId = ref('');
 
 const copied = ref(false);
 
-function copySetupUrl() {
+async function copySetupUrl(): Promise<void> {
   const baseUrl = window.location.origin + window.location.pathname;
   const params = new URLSearchParams();
 
@@ -75,13 +130,14 @@ function copySetupUrl() {
     params.set('storage-type', form.value.storageType);
   }
 
-  const type = form.value.endpointType;
+  const endpoint = form.value.endpoint;
+  const type = endpoint.type;
   switch (type) {
   case 'openai':
   case 'ollama':
     params.set('global-endpoint-type', type);
-    if (form.value.endpointUrl) {
-      params.set('global-endpoint-url', form.value.endpointUrl);
+    if (endpoint.url) {
+      params.set('global-endpoint-url', endpoint.url);
     }
     break;
   case 'transformers_js':
@@ -100,40 +156,35 @@ function copySetupUrl() {
   const queryString = params.toString();
   const fullUrl = queryString ? `${baseUrl}#/?${queryString}` : baseUrl;
 
-  navigator.clipboard.writeText(fullUrl).then(() => {
-    copied.value = true;
-    addToast({ message: 'Setup URL copied to clipboard', duration: 2000 });
-    setTimeout(() => {
-      copied.value = false;
-    }, 2000);
-  });
+  await navigator.clipboard.writeText(fullUrl);
+  copied.value = true;
+  addToast({ message: await ensureStrings.ConnectionTab__setup_url_copied(), duration: 2000 });
+  setTimeout(() => {
+    copied.value = false;
+  }, 2000);
 }
 
 function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   form.value = {
     ...form.value,
-    endpointType: preset.type,
-    endpointUrl: preset.url,
+    endpoint: { type: preset.type, url: preset.url },
   };
 }
 
 async function fetchModels() {
-  if (!form.value.endpointUrl && form.value.endpointType !== 'transformers_js') {
+  if (isHttpEndpoint(form.value.endpoint) && form.value.endpoint.url === '') {
     return;
   }
 
   error.value = null;
   try {
-    const url = form.value.endpointUrl || '';
     // Trigger global fetch with current form values (may be unsaved)
-    const models = await fetchModelsGlobal({ overrides: {
-      url,
-      type: form.value.endpointType,
-      headers: form.value.endpointHttpHeaders,
-    } });
+    const models = await fetchModelsGlobal({
+      overrides: cloneEndpoint({ endpoint: form.value.endpoint }),
+    });
 
-    if (models.length === 0 && form.value.endpointType !== 'transformers_js') {
-      throw new Error('No models found at this endpoint.');
+    if (models.length === 0 && form.value.endpoint.type !== 'transformers_js') {
+      throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
     }
 
     // Validate current selection against new models
@@ -158,23 +209,24 @@ async function fetchModels() {
     }, 3000);
   } catch (err) {
     console.error(err);
-    error.value = err instanceof Error ? err.message : 'Connection failed. Check URL or provider.';
+    error.value = err instanceof Error ? err.message : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
     connectionSuccess.value = false;
   }
 }
 
 async function handleSave() {
   try {
-    await save({ patch: {
-      endpointType: form.value.endpointType,
-      endpointUrl: form.value.endpointUrl,
-      endpointHttpHeaders: form.value.endpointHttpHeaders,
-      defaultModelId: form.value.defaultModelId,
-      titleModelId: form.value.titleModelId,
-      autoTitleEnabled: form.value.autoTitleEnabled,
-      systemPrompt: form.value.systemPrompt,
-      lmParameters: form.value.lmParameters,
-    } });
+    await save({
+      patch: {
+        endpoint: cloneEndpoint({ endpoint: form.value.endpoint }),
+        defaultModelId: form.value.defaultModelId,
+        titleModelId: form.value.titleModelId,
+        autoTitleEnabled: form.value.autoTitleEnabled,
+        systemPrompt: form.value.systemPrompt,
+        lmParameters: form.value.lmParameters,
+      },
+      modelRefresh: 'await',
+    });
 
     emit('save');
     saveSuccess.value = true;
@@ -184,19 +236,19 @@ async function handleSave() {
   } catch (err) {
     console.error('Failed to save settings:', err);
     await showConfirm({
-      title: 'Save Failed',
-      message: `Failed to save settings. ${err instanceof Error ? err.message : String(err)}`,
-      confirmButtonText: 'Understand',
+      title: await ensureStrings.ConnectionTab__save_failed(),
+      message: await ensureStrings.ConnectionTab__failed_to_save_settings({ errorMessage: err instanceof Error ? err.message : String(err) }),
+      confirmButtonText: await ensureStrings.ConnectionTab__understand(),
     });
   }
 }
 
 async function handleCreateProviderProfile() {
   const name = await showPrompt({
-    title: 'Create New Profile',
-    message: 'Give this configuration a name:',
-    defaultValue: `${capitalize({ value: form.value.endpointType })} - ${form.value.defaultModelId || 'Default'}`,
-    confirmButtonText: 'Create',
+    title: await ensureStrings.ConnectionTab__create_new_profile(),
+    message: await ensureStrings.ConnectionTab__give_configuration_a_name(),
+    defaultValue: `${capitalize({ value: form.value.endpoint.type })} - ${form.value.defaultModelId || await ensureStrings.ConnectionTab__default()}`,
+    confirmButtonText: await ensureStrings.ConnectionTab__create(),
     bodyComponent: h(ProviderProfilePreview, { form: form.value }),
   });
 
@@ -205,9 +257,7 @@ async function handleCreateProviderProfile() {
   const newProviderProfile: ProviderProfile = {
     id: generateId<ProviderProfileId>(),
     name,
-    endpointType: form.value.endpointType,
-    endpointUrl: form.value.endpointUrl,
-    endpointHttpHeaders: form.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(form.value.endpointHttpHeaders)) : undefined,
+    endpoint: cloneEndpoint({ endpoint: form.value.endpoint }),
     defaultModelId: form.value.defaultModelId,
     titleModelId: form.value.titleModelId,
     systemPrompt: form.value.systemPrompt,
@@ -219,8 +269,8 @@ async function handleCreateProviderProfile() {
   await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(form.value.providerProfiles)) });
 
   addToast({
-    message: `Profile "${name}" created`,
-    actionLabel: 'View Profiles',
+    message: await ensureStrings.ConnectionTab__profile_created({ profileName: name }),
+    actionLabel: await ensureStrings.ConnectionTab__view_profiles(),
     onAction: () => emit('goToProfiles'),
     duration: 5000,
   });
@@ -229,9 +279,7 @@ async function handleCreateProviderProfile() {
 function handleQuickProviderProfileChange() {
   const providerProfile = form.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
-    form.value.endpointType = providerProfile.endpointType;
-    form.value.endpointUrl = providerProfile.endpointUrl;
-    form.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders ? JSON.parse(JSON.stringify(providerProfile.endpointHttpHeaders)) : undefined;
+    form.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     form.value.defaultModelId = providerProfile.defaultModelId;
     form.value.titleModelId = providerProfile.titleModelId;
     form.value.systemPrompt = providerProfile.systemPrompt;
@@ -241,18 +289,22 @@ function handleQuickProviderProfileChange() {
 }
 
 function addHeader() {
-  if (!form.value.endpointHttpHeaders) form.value.endpointHttpHeaders = [];
-  form.value.endpointHttpHeaders.push(['', '']);
+  const endpoint = form.value.endpoint;
+  if (!isHttpEndpoint(endpoint)) return;
+  endpointHttpHeaders.value = [
+    ...(endpoint.httpHeaders ?? []),
+    ['', ''],
+  ];
 }
 
 function removeHeader({ index }: { index: number }) {
-  if (form.value.endpointHttpHeaders) {
-    form.value.endpointHttpHeaders.splice(index, 1);
-  }
+  const headers = endpointHttpHeaders.value;
+  if (headers === undefined) return;
+  endpointHttpHeaders.value = headers.filter((_, headerIndex) => headerIndex !== index);
 }
 
 // Auto-fetch for localhost or transformers_js
-watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url, type]) => {
+watch([endpointUrl, endpointType], ([url, type]) => {
   if (type === 'transformers_js' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
     fetchModels();
   }
@@ -260,9 +312,11 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url, type
 
 defineExpose({
   fetchModels,
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -274,7 +328,7 @@ defineExpose({
 
           <!-- Quick Switcher (If profiles exist) -->
           <div v-if="form.providerProfiles && form.providerProfiles.length > 0" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 p-5 rounded-2xl space-y-3 shadow-sm">
-            <label class="block text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest ml-1">Quick Profile Switcher</label>
+            <label class="block text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__quick_profile_switcher() }}</label>
             <div class="flex gap-2">
               <select
                 v-model="selectedProviderProfileId"
@@ -283,8 +337,8 @@ defineExpose({
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                 data-testid="setting-quick-provider-profile-select"
               >
-                <option value="" disabled>Load from saved profiles...</option>
-                <option v-for="p in form.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ capitalize({ value: p.endpointType }) }})</option>
+                <option value="" disabled>{{ lazyStrings.ConnectionTab__load_saved_profile() }}</option>
+                <option v-for="p in form.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ capitalize({ value: p.endpoint.type }) }})</option>
               </select>
             </div>
           </div>
@@ -293,41 +347,41 @@ defineExpose({
             <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <div class="flex items-center gap-2">
                 <GlobeIcon class="w-5 h-5 text-blue-500" />
-                <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Endpoint Configuration</h2>
+                <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__endpoint_configuration() }}</h2>
               </div>
               <button
                 @click="copySetupUrl"
                 class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-all border border-blue-100/50 dark:border-blue-900/30"
-                title="Copy URL with current settings"
+                :title="lazyStrings.ConnectionTab__copy_url_with_current_settings()"
                 data-testid="setting-copy-setup-url"
               >
                 <CheckIcon v-if="copied" class="w-3 h-3" />
                 <LinkIcon v-else class="w-3 h-3" />
-                <span>{{ copied ? 'URL Copied!' : 'Copy Setup URL' }}</span>
+                <span>{{ copied ? lazyStrings.ConnectionTab__url_copied() : lazyStrings.ConnectionTab__copy_setup_url() }}</span>
               </button>
             </div>
 
             <div class="grid grid-cols-1 gap-8">
               <div class="space-y-2">
-                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">API Provider</label>
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__api_provider() }}</label>
                 <select
-                  v-model="form.endpointType"
+                  v-model="endpointType"
                   class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                   style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                   data-testid="setting-provider-select"
                 >
-                  <option value="openai">OpenAI Compatible</option>
-                  <option value="ollama">Ollama</option>
+                  <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
+                  <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
                   <option :disabled="isStandalone" value="transformers_js">
-                    Transformers.js (Experimental) {{ isStandalone ? '(Unavailable in Standalone due to Worker/WASM restrictions)' : '' }}
+                    {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ isStandalone ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
                   </option>
                 </select>
               </div>
 
               <!-- Endpoint URL -->
-              <div class="space-y-4" v-if="form.endpointType !== 'transformers_js'">
+              <div class="space-y-4" v-if="endpointType !== 'transformers_js'">
                 <div class="flex items-center justify-between ml-1">
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Endpoint URL</label>
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
                   <div class="flex flex-wrap gap-1.5">
                     <button
                       v-for="preset in ENDPOINT_PRESETS"
@@ -335,7 +389,7 @@ defineExpose({
                       @click="applyPreset({ preset })"
                       type="button"
                       class="px-3 py-1 text-[10px] font-bold rounded-lg border transition-all"
-                      :class="form.endpointUrl === preset.url && form.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
+                      :class="endpointUrl === preset.url && endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
                       :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`"
                     >
                       {{ preset.name }}
@@ -344,7 +398,7 @@ defineExpose({
                 </div>
                 <div class="flex gap-2">
                   <input
-                    v-model="form.endpointUrl"
+                    v-model="endpointUrl"
                     type="text"
                     class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                     placeholder="http://localhost:11434"
@@ -358,7 +412,7 @@ defineExpose({
                         ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800'
                         : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
                     ]"
-                    title="Check Connection"
+                    :title="lazyStrings.ConnectionTab__check_connection()"
                     :disabled="isFetchingModels"
                     data-testid="setting-check-connection"
                   >
@@ -367,13 +421,13 @@ defineExpose({
                       <CheckIcon v-else-if="connectionSuccess" class="w-4 h-4 text-green-600 dark:text-green-400 animate-in zoom-in duration-300" />
                       <ActivityIcon v-else class="w-4 h-4" />
                     </span>
-                    <span class="text-xs font-bold">{{ connectionSuccess ? 'Connected' : 'Check Connection' }}</span>
+                    <span class="text-xs font-bold">{{ connectionSuccess ? lazyStrings.ConnectionTab__connected() : lazyStrings.ConnectionTab__check_connection() }}</span>
                   </button>
                 </div>
                 <!-- Info message about auto-connection check -->
                 <div class="flex items-start gap-3 p-4 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700/80 dark:text-blue-300/80 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/20 ml-1">
                   <GlobeIcon class="w-4 h-4 shrink-0 mt-0.5" />
-                  <p>Connection check is automatically performed only for localhost URLs.</p>
+                  <p>{{ lazyStrings.ConnectionTab__connection_check_for_localhost_only() }}</p>
                 </div>
                 <!-- Error message container -->
                 <div v-if="error" class="mt-2">
@@ -382,22 +436,22 @@ defineExpose({
               </div>
 
               <!-- Custom HTTP Headers -->
-              <div class="space-y-4">
+              <div v-if="isHttpEndpoint(form.endpoint)" class="space-y-4">
                 <div class="flex items-center justify-between ml-1">
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Custom HTTP Headers</label>
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__custom_http_headers() }}</label>
                   <button
                     @click="addHeader"
                     type="button"
                     class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
                   >
                     <PlusIcon class="w-3 h-3" />
-                    Add Header
+                    {{ lazyStrings.ConnectionTab__add_header() }}
                   </button>
                 </div>
 
-                <div v-if="form.endpointHttpHeaders && form.endpointHttpHeaders.length > 0" class="space-y-2">
+                <div v-if="endpointHttpHeaders && endpointHttpHeaders.length > 0" class="space-y-2">
                   <div
-                    v-for="(header, index) in form.endpointHttpHeaders"
+                    v-for="(header, index) in endpointHttpHeaders"
                     :key="index"
                     class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
                   >
@@ -405,13 +459,13 @@ defineExpose({
                       v-model="header[0]"
                       type="text"
                       class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                      placeholder="Header Name (e.g. X-API-Key)"
+                      :placeholder="lazyStrings.ConnectionTab__header_name_example()"
                     />
                     <input
                       v-model="header[1]"
                       type="text"
                       class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                      placeholder="Value"
+                      :placeholder="lazyStrings.ConnectionTab__value()"
                     />
                     <button
                       @click="removeHeader({ index })"
@@ -421,7 +475,7 @@ defineExpose({
                     </button>
                   </div>
                 </div>
-                <div v-else class="text-[11px] text-gray-400 italic ml-1">No custom headers configured.</div>
+                <div v-else class="text-[11px] text-gray-400 italic ml-1">{{ lazyStrings.ConnectionTab__no_custom_headers() }}</div>
               </div>
             </div>
 
@@ -433,11 +487,11 @@ defineExpose({
               leave-from-class="grid-rows-[1fr] opacity-100"
               leave-to-class="grid-rows-[0fr] opacity-0"
             >
-              <div v-if="form.endpointType === 'ollama'" class="grid" data-testid="ollama-management-transition">
+              <div v-if="endpointType === 'ollama'" class="grid" data-testid="ollama-management-transition">
                 <div class="overflow-hidden">
                   <OllamaManagementView
-                    :endpoint-url="form.endpointUrl"
-                    :endpoint-http-headers="form.endpointHttpHeaders"
+                    :endpoint-url="endpointUrl"
+                    :endpoint-http-headers="endpointHttpHeaders"
                     :fake-lm-debug-mode-status="form.experimental?.fakeLm ?? 'disabled'"
                   />
                 </div>
@@ -445,27 +499,27 @@ defineExpose({
             </Transition>
           </section>
 
-          <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+          <section data-testid="connection-model-selection" class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
             <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
               <BotIcon class="w-5 h-5 text-blue-500" />
-              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Model Selection</h2>
+              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__model_selection() }}</h2>
             </div>
 
             <div class="space-y-8">
               <div class="space-y-2">
-                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Default Model</label>
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__default_model() }}</label>
                 <ModelSelector
                   v-model="form.defaultModelId"
                   :models="sortedModels"
                   :loading="isFetchingModels"
-                  placeholder="None"
+                  :placeholder="lazyStrings.ConnectionTab__none()"
                   allow-clear
-                  clear-label="None"
+                  :clear-label="lazyStrings.ConnectionTab__none()"
                   @refresh="fetchModels"
                   data-testid="setting-model-select"
                 />
-                <TransformersJsUpsell :show="form.endpointType === 'transformers_js'" />
-                <p class="text-[11px] font-medium text-gray-400 ml-1">Used for all new conversations unless overridden.</p>
+                <TransformersJsUpsell :show="endpointType === 'transformers_js'" />
+                <p class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.ConnectionTab__used_for_new_conversations() }}</p>
               </div>
 
               <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 space-y-5 shadow-sm">
@@ -474,7 +528,7 @@ defineExpose({
                     <div class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
                       <TypeIcon class="w-4 h-4 text-blue-500" />
                     </div>
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-300">Auto-Title Generation</span>
+                    <span class="text-sm font-bold text-gray-700 dark:text-gray-300">{{ lazyStrings.ConnectionTab__auto_title_generation() }}</span>
                   </div>
                   <label class="relative inline-flex items-center cursor-pointer">
                     <input
@@ -488,15 +542,15 @@ defineExpose({
                 </div>
 
                 <div class="space-y-2 opacity-50 transition-all duration-300" :class="{ 'opacity-100': form.autoTitleEnabled }">
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Title Generation Model</label>
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_generation_model() }}</label>
                   <ModelSelector
                     v-model="form.titleModelId"
                     :models="sortedModels"
                     :loading="isFetchingModels"
                     :disabled="!form.autoTitleEnabled"
-                    placeholder="Use Current Chat Model (Default)"
+                    :placeholder="lazyStrings.ConnectionTab__use_current_chat_model()"
                     allow-clear
-                    clear-label="Use Current Chat Model (Default)"
+                    :clear-label="lazyStrings.ConnectionTab__use_current_chat_model()"
                     @refresh="fetchModels"
                     data-testid="setting-title-model-select"
                   />
@@ -508,21 +562,21 @@ defineExpose({
           <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
             <div class="flex items-center gap-2 pb-3">
               <MessageSquareQuoteIcon class="w-5 h-5 text-blue-500" />
-              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Global Context & Parameters</h2>
+              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__global_context_and_parameters() }}</h2>
             </div>
 
             <div class="space-y-8">
               <!-- System Prompt -->
               <div class="space-y-2">
-                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Global System Prompt</label>
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__global_system_prompt() }}</label>
                 <textarea
                   v-model="form.systemPrompt"
                   rows="4"
                   class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
-                  placeholder="You are a helpful AI assistant..."
+                  :placeholder="lazyStrings.ConnectionTab__helpful_ai_assistant_placeholder()"
                   data-testid="setting-system-prompt-textarea"
                 ></textarea>
-                <p class="text-[10px] font-medium text-gray-400 ml-1 leading-relaxed">This instruction is applied to all new chats as a baseline identity.</p>
+                <p class="text-[10px] font-medium text-gray-400 ml-1 leading-relaxed">{{ lazyStrings.ConnectionTab__applied_to_all_new_chats() }}</p>
               </div>
 
               <!-- LM Parameters -->
@@ -543,7 +597,7 @@ defineExpose({
         data-testid="setting-save-provider-profile-button"
       >
         <BookmarkPlusIcon class="w-4 h-4" />
-        <span>Save as New Profile</span>
+        <span>{{ lazyStrings.ConnectionTab__save_as_new_profile() }}</span>
       </button>
 
       <button
@@ -554,7 +608,7 @@ defineExpose({
       >
         <CheckCircle2Icon v-if="saveSuccess" class="w-4 h-4" />
         <SaveIcon v-else class="w-4 h-4" />
-        <span>{{ saveSuccess ? 'Settings Saved' : 'Save Changes' }}</span>
+        <span>{{ saveSuccess ? lazyStrings.ConnectionTab__settings_saved() : lazyStrings.ConnectionTab__save_changes() }}</span>
       </button>
     </div>
   </div>

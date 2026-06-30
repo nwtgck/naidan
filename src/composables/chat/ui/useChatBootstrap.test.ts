@@ -1,4 +1,4 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -43,7 +43,7 @@ vi.mock('@/composables/chat/useChatModels', () => ({
   }),
 }));
 
-vi.mock('@/services/transformers-js', () => ({
+vi.mock('@/features/transformers-js', () => ({
   transformersJsService: {
     subscribeModelList: vi.fn(),
   },
@@ -51,7 +51,7 @@ vi.mock('@/services/transformers-js', () => ({
 
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai' } },
+    settings: { value: { endpoint: { type: 'openai', url: '' } } },
   }),
 }));
 
@@ -61,11 +61,18 @@ vi.mock('@/composables/chat/ui/useChatNavigation', () => ({
   }),
 }));
 
-import { useChatBootstrap } from './useChatBootstrap';
+import { loadChatsForAppStartup, useChatBootstrap } from './useChatBootstrap';
 
 describe('useChatBootstrap', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('hydrates chat data without activating runtime listeners', async () => {
+    await loadChatsForAppStartup();
+
+    expect(mockLoadData).toHaveBeenCalledWith();
+    expect(mockInstallChatBootstrap).not.toHaveBeenCalled();
   });
 
   it('delegates load and open actions', async () => {

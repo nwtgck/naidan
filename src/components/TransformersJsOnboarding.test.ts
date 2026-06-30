@@ -3,25 +3,26 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
 import { useSettings } from '@/composables/useSettings';
-import { useTheme } from '@/composables/useTheme';
-import { transformersJsService } from '@/services/transformers-js';
-import TransformersJsManager from './TransformersJsManager.vue';
+import { useTheme } from '@/features/theme/composables/useTheme';
+import { transformersJsService } from '@/features/transformers-js';
+import TransformersJsManager from '@/features/transformers-js/components/TransformersJsManager.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 const mockAddToast = vi.fn();
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: vi.fn(),
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({ useSettings: vi.fn() }));
 vi.mock('../composables/useToast', () => ({ useToast: () => ({ addToast: mockAddToast }) }));
-vi.mock('../composables/useTheme', () => ({ useTheme: vi.fn() }));
+vi.mock('../features/theme/composables/useTheme', () => ({ useTheme: vi.fn() }));
 vi.mock('../composables/useConfirm', () => ({
   useConfirm: () => ({
     showConfirm: mockShowConfirm,
@@ -35,7 +36,7 @@ vi.mock('../composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('../services/transformers-js', () => ({
+vi.mock('../features/transformers-js', () => ({
   transformersJsService: {
     getState: vi.fn(),
     subscribe: vi.fn(),
@@ -66,6 +67,7 @@ vi.mock('lucide-vue-next', () => ({
   DownloadIcon: { template: '<span>Download</span>' },
   FolderOpenIcon: { template: '<span>FolderOpen</span>' },
   RefreshCcwIcon: { template: '<span>RefreshCcw</span>' },
+  GlobeIcon: { template: '<span>Globe</span>' },
   ChevronDownIcon: { template: '<span>ChevronDown</span>' },
   HardDriveDownloadIcon: { template: '<span>HardDriveDownload</span>' },
   BrainCircuitIcon: { template: '<span>BrainCircuit</span>' },
@@ -83,11 +85,12 @@ vi.mock('lucide-vue-next', () => ({
 
 describe('Transformers.js Onboarding Integration', () => {
   const mockSave = vi.fn();
-  const mockSettings = { value: { endpointType: 'openai', autoTitleEnabled: true } };
+  const mockSettings = { value: { endpoint: { type: 'openai', url: '' }, autoTitleEnabled: true } };
   const mockIsOnboardingDismissed = ref(false);
   const mockOnboardingDraft = ref<any>(null);
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mockIsOnboardingDismissed.value = false;
     mockOnboardingDraft.value = null;
@@ -154,8 +157,13 @@ describe('Transformers.js Onboarding Integration', () => {
     const wrapper = mountModal();
 
     // Switch to Transformers.js
-    const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    let tfBtn: ReturnType<typeof wrapper.findAll>[number] | undefined;
+    await vi.waitFor(() => {
+      tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
+      expect(tfBtn).toBeDefined();
+    });
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     // Right column (guide) should be hidden
@@ -168,9 +176,12 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('renders Experimental badge and Transformers.js Manager in the integrated view', async () => {
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     expect(wrapper.text()).toContain('In-Browser AI');
@@ -180,9 +191,12 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('disables "Get Started" button when no model is active in Transformers.js mode', async () => {
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     const getStartedBtn = wrapper.findAll('button').find(b => b.text().includes('Get Started'));
@@ -198,9 +212,11 @@ describe('Transformers.js Onboarding Integration', () => {
     });
 
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
     await flushPromises();
 
     // Mock engine becoming ready with a model
@@ -224,9 +240,11 @@ describe('Transformers.js Onboarding Integration', () => {
     ]);
 
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
     await flushPromises();
     await nextTick();
 
@@ -235,9 +253,12 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('updates selectedModel when TransformersJsManager emits model-loaded', async () => {
     const wrapper = mountModal();
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     const manager = wrapper.getComponent({ name: 'TransformersJsManager' });
@@ -252,8 +273,12 @@ describe('Transformers.js Onboarding Integration', () => {
     const wrapper = mountModal();
 
     // Switch to TF.js
+    await flushPromises();
+
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
+    await flushPromises();
     await nextTick();
 
     // Mock a model loaded via emit
@@ -266,18 +291,23 @@ describe('Transformers.js Onboarding Integration', () => {
     await getStartedBtn?.trigger('click');
     await flushPromises();
 
-    expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
-      endpointType: 'transformers_js',
-      defaultModelId: 'downloaded-model',
-    }) });
+    expect(mockSave).toHaveBeenCalledWith({
+      patch: expect.objectContaining({
+        endpoint: { type: 'transformers_js' },
+        defaultModelId: 'downloaded-model',
+      }),
+      modelRefresh: 'await',
+    });
   });
 
   it('automatically loads model after successful download in TransformersJsManager (Integrated flow)', async () => {
     // This test uses the real component but mocks the service
     const wrapper = mount(OnboardingModal);
+    await flushPromises();
 
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
-    await tfBtn?.trigger('click');
+    expect(tfBtn).toBeDefined();
+    await tfBtn!.trigger('click');
     await flushPromises();
 
     const manager = wrapper.getComponent(TransformersJsManager);

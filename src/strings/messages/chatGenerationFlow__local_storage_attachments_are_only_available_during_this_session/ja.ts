@@ -1,0 +1,1 @@
+export const chatGenerationFlow__local_storage_attachments_are_only_available_during_this_session = (): string => '現在使用しているローカルストレージには5MBの上限があります。添付ファイルはこのセッション中のみ利用でき、履歴には保存されません。永続的に保存するには、設定でストレージをOPFSへ切り替えてください。';

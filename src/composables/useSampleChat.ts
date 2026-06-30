@@ -1,10 +1,10 @@
-import { generateId } from '@/utils/id';
-import type { Chat, MessageNode } from '@/models/types';
-import { storageService } from '@/services/storage';
+import { generateId } from '@/01-models/id';
+import type { Chat, MessageNode } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import sampleContent from '@/assets/sample-showcase.md?raw';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
-import { processThinking } from '@/utils/chat-tree';
-import type { ChatId, MessageId } from '@/models/ids';
+import { processThinking } from '@/logic/chat-tree';
+import type { ChatId, MessageId } from '@/01-models/ids';
 
 const longSampleTopics = [
   'release planning',
@@ -191,8 +191,14 @@ export function useSampleChat() {
   return {
     createSampleChat,
     createLongSampleChat,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

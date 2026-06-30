@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { toChatId } from '@/models/ids';
-import type { ChatMeta } from '@/models/types';
+import { toChatId } from '@/01-models/ids';
+import type { ChatMeta } from '@/01-models/types';
 import { useChatMetadata } from './useChatMetadata';
 
 const mocks = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   updateChatScopedSettings: mocks.updateChatScopedSettings,
 }));
 
-vi.mock('@/services/storage', () => ({
+vi.mock('@/00-storage/service', () => ({
   storageService: {
     loadChatMeta: mocks.loadChatMeta,
   },
@@ -49,18 +49,22 @@ describe('useChatMetadata scoped setting compatibility', () => {
     mocks.updateChatScopedSettings.mockResolvedValue(undefined);
   });
 
-  it('preserves stored endpoint fields for a partial update to a non-live chat', async () => {
+  it('updates a non-live chat with an atomic endpoint override', async () => {
     const chatMetadata = useChatMetadata();
     const chatId = toChatId({ raw: 'chat-1' });
 
     await chatMetadata.updateSettings({
       chatId,
       updates: {
-        endpointHttpHeaders: [['X-New', '2']],
+        endpoint: {
+          type: 'openai',
+          url: 'https://stored.example/v1',
+          httpHeaders: [['X-New', '2']],
+        },
       },
     });
 
-    expect(mocks.loadChatMeta).toHaveBeenCalledWith({ id: chatId });
+    expect(mocks.loadChatMeta).not.toHaveBeenCalled();
     expect(mocks.updateChatScopedSettings).toHaveBeenCalledWith({
       chatId,
       changes: [{
@@ -75,15 +79,17 @@ describe('useChatMetadata scoped setting compatibility', () => {
     });
   });
 
-  it('does not load metadata when the endpoint type is explicitly supplied', async () => {
+  it('updates the endpoint type and URL as one object', async () => {
     const chatMetadata = useChatMetadata();
     const chatId = toChatId({ raw: 'chat-1' });
 
     await chatMetadata.updateSettings({
       chatId,
       updates: {
-        endpointType: 'ollama',
-        endpointUrl: 'http://localhost:11434',
+        endpoint: {
+          type: 'ollama',
+          url: 'http://localhost:11434',
+        },
       },
     });
 
@@ -96,7 +102,6 @@ describe('useChatMetadata scoped setting compatibility', () => {
         value: {
           type: 'ollama',
           url: 'http://localhost:11434',
-          httpHeaders: undefined,
         },
       }],
     });

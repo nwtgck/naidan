@@ -5,7 +5,7 @@ import { useRouter, useRoute } from 'vue-router';
 import Sidebar from './Sidebar.vue';
 import { useChat } from '@/composables/useChat';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { useTheme } from '@/composables/useTheme';
+import { useTheme } from '@/features/theme/composables/useTheme';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
@@ -22,7 +22,7 @@ vi.mock('../composables/useSettings', () => ({
 vi.mock('../composables/useLayout', () => ({
   useLayout: vi.fn(),
 }));
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: vi.fn(),
 }));
 vi.mock('../composables/useConfirm', () => ({
@@ -56,7 +56,7 @@ describe('Sidebar Design Specifications', () => {
     (useRouter as Mock).mockReturnValue({ push: vi.fn() });
     (useRoute as Mock).mockReturnValue({ path: '/', query: {}, params: {} });
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: ref({ endpointUrl: 'http://localhost' }),
+      settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' } }),
       availableModels: ref([]),
       isFetchingModels: ref(false),
       updateGlobalModel: vi.fn(),

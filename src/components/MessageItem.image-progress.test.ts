@@ -1,9 +1,9 @@
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import MessageItem from './MessageItem.vue';
-import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_RESPONSE_PREFIX } from '@/utils/image-generation';
+import { SENTINEL_IMAGE_PENDING, TEST_ONLY as IMAGE_GENERATION_TEST_ONLY } from '@/utils/image-generation';
 import { useSettings } from '@/composables/useSettings';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
@@ -44,7 +44,7 @@ describe('MessageItem Image Generation Progress', () => {
   });
 
   it('shows progress when response marker is present in assistant message', async () => {
-    const responseMarker = `${SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":3} -->`;
+    const responseMarker = `${IMAGE_GENERATION_TEST_ONLY.SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":3} -->`;
     const content = responseMarker + SENTINEL_IMAGE_PENDING;
     const message = createMessage(content);
 
@@ -64,7 +64,7 @@ describe('MessageItem Image Generation Progress', () => {
   });
 
   it('shows incremented progress after some images are generated (local mode)', async () => {
-    const responseMarker = `${SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":3} -->`;
+    const responseMarker = `${IMAGE_GENERATION_TEST_ONLY.SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":3} -->`;
     // Simulate one image already generated (local mode uses <img> tags)
     const content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n<img src="blob:1">';
     const message = createMessage(content);
@@ -83,7 +83,7 @@ describe('MessageItem Image Generation Progress', () => {
   });
 
   it('shows incremented progress after some images are generated (OPFS mode)', async () => {
-    const responseMarker = `${SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":4} -->`;
+    const responseMarker = `${IMAGE_GENERATION_TEST_ONLY.SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":4} -->`;
     // Simulate two images already generated (OPFS mode uses markdown code blocks)
     const block = `\
 \`\`\`naidan_experimental_image

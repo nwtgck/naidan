@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { GitForkIcon, PencilIcon, CopyIcon, CheckIcon, RefreshCwIcon, SendIcon, MoreVerticalIcon, HistoryIcon, MoreHorizontalIcon, LinkIcon } from 'lucide-vue-next';
-import type { MessageNode, LmParameters } from '@/models/types';
-import type { ChatId, MessageId } from '@/models/ids';
+import type { MessageNode, LmParameters } from '@/01-models/types';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { isImageGenerationPending } from '@/utils/image-generation';
-import { generateMessageLink } from '@/utils/chat-links';
+import { generateMessageLink } from '@/logic/chat-links';
 import { useToast } from '@/composables/useToast';
-import SpeechControl from './SpeechControl.vue';
+import { ensureStrings, lazyStrings } from '@/strings';
+import SpeechControl from '@/features/speech/components/SpeechControl.vue';
 import MessageActionsMenu from './MessageActionsMenu.vue';
-import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
+import SpeechLanguageSelector from '@/features/speech/components/SpeechLanguageSelector.vue';
 
 const props = defineProps<{
   chatId?: ChatId,
@@ -64,22 +65,24 @@ async function handleCopyLink() {
     const url = generateMessageLink({ chatId: props.chatId, messageId: props.message.id });
     await navigator.clipboard.writeText(url);
     addToast({
-      message: 'Message link copied to clipboard.',
+      message: await ensureStrings.MessageActions__message_link_copied(),
       duration: 3000,
     });
   } catch (err) {
     console.error('Failed to copy message link: ', err);
     addToast({
-      message: 'Failed to copy message link.',
+      message: await ensureStrings.MessageActions__failed_to_copy_message_link(),
       duration: 5000,
     });
   }
 }
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -90,7 +93,7 @@ defineExpose({
       @click="emit('update:showExtensions', !showExtensions)"
       class="p-1.5 rounded-md transition-colors"
       :class="showExtensions ? 'text-blue-600 bg-blue-100/50 dark:bg-blue-800/50' : 'text-blue-600/40 dark:text-blue-400/40 hover:text-blue-600'"
-      title="More Message Tools"
+      :title="lazyStrings.MessageActions__more_message_tools()"
     >
       <MoreHorizontalIcon class="w-3.5 h-3.5" />
     </button>
@@ -108,7 +111,7 @@ defineExpose({
       v-if="!isUser"
       @click="emit('regenerate', message.id)"
       class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-      title="Regenerate response"
+      :title="lazyStrings.MessageActions__regenerate_response()"
       data-testid="regenerate-button"
     >
       <RefreshCwIcon class="w-3.5 h-3.5" />
@@ -117,7 +120,7 @@ defineExpose({
       v-if="isUser"
       @click="emit('edit', message.id, message.content || '', message.lmParameters)"
       class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-      title="Resend message"
+      :title="lazyStrings.MessageActions__resend_message()"
       data-testid="resend-button"
     >
       <SendIcon class="w-3.5 h-3.5" />
@@ -125,7 +128,7 @@ defineExpose({
     <button
       @click="handleCopy"
       class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-      :title="copied ? 'Copied!' : 'Copy message'"
+      :title="copied ? lazyStrings.MessageActions__copied() : lazyStrings.MessageActions__copy_message()"
       data-testid="copy-message-button"
     >
       <CheckIcon v-if="copied" class="w-3.5 h-3.5" />
@@ -134,7 +137,7 @@ defineExpose({
     <button
       @click="emit('enter-edit-mode')"
       class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-      title="Edit message"
+      :title="lazyStrings.MessageActions__edit_message()"
       data-testid="edit-message-button"
     >
       <PencilIcon class="w-3.5 h-3.5" />
@@ -146,7 +149,7 @@ defineExpose({
         ref="moreActionsTriggerRef"
         @click="showMoreMenu = !showMoreMenu"
         class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-        title="More actions"
+        :title="lazyStrings.MessageActions__more_actions()"
         data-testid="message-more-actions-button"
       >
         <MoreVerticalIcon class="w-3.5 h-3.5" />
@@ -163,7 +166,7 @@ defineExpose({
           data-testid="fork-message-button"
         >
           <GitForkIcon class="w-3.5 h-3.5" />
-          <span>Fork Chat</span>
+          <span>{{ lazyStrings.MessageActions__fork_chat() }}</span>
         </button>
 
         <button
@@ -172,7 +175,7 @@ defineExpose({
           data-testid="copy-raw-button"
         >
           <CopyIcon class="w-3.5 h-3.5" />
-          <span>Copy Raw</span>
+          <span>{{ lazyStrings.MessageActions__copy_raw() }}</span>
         </button>
 
         <button
@@ -182,7 +185,7 @@ defineExpose({
           data-testid="copy-message-link-button"
         >
           <LinkIcon class="w-3.5 h-3.5" />
-          <span>Copy Link</span>
+          <span>{{ lazyStrings.MessageActions__copy_link() }}</span>
         </button>
 
         <button
@@ -191,7 +194,7 @@ defineExpose({
           data-testid="compare-versions-button"
         >
           <HistoryIcon class="w-3.5 h-3.5" />
-          <span>Compare Versions</span>
+          <span>{{ lazyStrings.MessageActions__compare_versions() }}</span>
         </button>
       </MessageActionsMenu>
     </div>

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-license';
 
-import type { NaidanLicense } from '../src/models/naidan-license';
+import type { NaidanLicense } from '../src/01-models/naidan-license';
 
 export type BuildLicenseDependency = NaidanLicense;
 

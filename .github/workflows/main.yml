@@ -21,7 +21,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        uses: ./.github/actions/retry-npm-ci
 
       - name: Run lint
         run: npm run lint
@@ -44,7 +44,7 @@ jobs:
 
       - name: Install dependencies
         id: npm_install
-        run: npm ci
+        uses: ./.github/actions/retry-npm-ci
 
       - name: Run tests
         if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
@@ -75,7 +75,7 @@ jobs:
 
       - name: Install dependencies
         id: npm_install
-        run: npm ci
+        uses: ./.github/actions/retry-npm-ci
 
       - name: Ensure licenses.json exists
         run: |
@@ -193,8 +193,18 @@ jobs:
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
           EOF
 
-      - name: Publish to Cloudflare Pages (Local API Only)
+      - name: Publish to Cloudflare Pages (local-only)
         id: cloudflare_pages_deploy_local
+        uses: cloudflare/wrangler-action@v4
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.LOCAL_ONLY_CLOUDFLARE_API_TOKEN }}
+          command: pages deploy dist/hosted --project-name=naidan-local-only
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          packageManager: npm
+
+      - name: Publish legacy compatibility deployment (only-local)
+        id: cloudflare_pages_deploy_local_legacy
         uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -211,8 +221,8 @@ jobs:
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              context: 'Cloudflare Pages (Local API Only)',
-              description: 'Local-only version deployment',
+              context: 'Cloudflare Pages (Local-Only)',
+              description: 'Primary local-only version deployment',
               state: 'success',
               sha,
               target_url: "${{ steps.cloudflare_pages_deploy_local.outputs.deployment-url }}",

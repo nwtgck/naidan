@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatPaneAutoScroll, type ChatPaneInitialOpenTarget, type ChatPaneScrollTarget } from '@/composables/useChatPaneAutoScroll';
@@ -26,7 +27,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously
 // to ensure the chat history displays immediately and smoothly without individual components popping in.
 import MessageItem from './MessageItem.vue';
-import ToolCallGroupItem from './ToolCallGroupItem.vue';
+import ToolCallGroupItem from '@/features/tools/components/ToolCallGroupItem.vue';
 import MessageThinking from './MessageThinking.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
@@ -34,22 +35,22 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
-import ChatApprovalPanel from './chat-approval/ChatApprovalPanel.vue';
-import ChatChoicesPanel from './chat-choices/ChatChoicesPanel.vue';
+import ChatApprovalPanel from '@/features/tools/components/chat-approval/ChatApprovalPanel.vue';
+import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoicesPanel.vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
-import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
+import TransformersJsLoadingIndicator from '@/features/transformers-js/components/TransformersJsLoadingIndicator.vue';
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 // Lazily load the outline overlay, prefetch on mounted.
 const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ConversationOutlineOverlay.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
-import type { LmParameters } from '@/models/types';
-import type { ChatId } from '@/models/ids';
-import { idToRaw, toMessageId } from '@/models/ids';
-import type { ChatGroupId, MessageId } from '@/models/ids';
+import type { LmParameters } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
+import { idToRaw, toMessageId } from '@/01-models/ids';
+import type { ChatGroupId, MessageId } from '@/01-models/ids';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -62,26 +63,26 @@ const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted({ loader: () => 
 // Lazily load the media shelf, prefetch on mounted.
 const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatMediaShelf.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatWeshTerminalModal.vue') });
+const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/wesh-terminal/components/ChatWeshTerminalModal.vue') });
 import {
   FolderInputIcon,
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
-import { useGlobalSearch } from '@/composables/useGlobalSearch';
-import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
-import { hasChatOverrides } from '@/utils/chat-settings-resolver';
-import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
+import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
+import { hasChatOverrides } from '@/logic/chat-settings-resolver';
+import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
-import { generateChatShareURL } from '@/services/import-export/chat-url-share';
+import { generateChatShareURL } from '@/features/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
-import { storageService } from '@/services/storage';
-import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/services/context-compact';
-import { useApproval } from '@/composables/useApproval';
-import { useChoices } from '@/composables/useChoices';
-import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
-import type { ApprovalUiDecision } from '@/services/approval';
+import { storageService } from '@/00-storage/service';
+import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/logic/context-compact';
+import { useApproval } from '@/features/tools/composables/useApproval';
+import { useChoices } from '@/features/tools/composables/useChoices';
+import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/features/fake-lm';
+import type { ApprovalUiDecision } from '@/features/tools/approval';
 
 const { addToast } = useToast();
 const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
@@ -356,7 +357,20 @@ function handleAbortTitleGeneration() {
 async function exportChat() {
   if (!chat.value || !chatFlow.value) return;
 
-  let markdownContent = `# ${chat.value.title || 'New Chat'}\n\n`;
+  const newChatTitle = await ensureStrings.SHARED__new_chat();
+  const userLabel = await ensureStrings.ChatPane__user();
+  const aiLabel = await ensureStrings.ChatPane__ai();
+  const systemLabel = await ensureStrings.ChatPane__system();
+  const toolLabel = await ensureStrings.ChatPane__tool();
+  const thoughtLabel = await ensureStrings.ChatPane__thought();
+  const toolExecutionsLabel = await ensureStrings.ChatPane__tool_executions();
+  const binaryObjectMissing = await ensureStrings.ChatPane__binary_object_missing();
+  const binaryErrorDetailMissing = await ensureStrings.ChatPane__binary_error_detail_missing();
+  const toolStillExecuting = await ensureStrings.ChatPane__tool_still_executing();
+  const argumentsLabel = await ensureStrings.ChatPane__arguments();
+  const resultLabel = await ensureStrings.ChatPane__result();
+  const processSequenceLabel = await ensureStrings.ChatPane__process_sequence();
+  let markdownContent = `# ${chat.value.title || newChatTitle}\n\n`;
 
   const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
     for (const item of items) {
@@ -367,10 +381,10 @@ async function exportChat() {
         const role = (() => {
           const r = msg.role;
           switch (r) {
-          case 'user': return 'User';
-          case 'assistant': return 'AI';
-          case 'system': return 'System';
-          case 'tool': return 'Tool';
+          case 'user': return userLabel;
+          case 'assistant': return aiLabel;
+          case 'system': return systemLabel;
+          case 'tool': return toolLabel;
           default: {
             const _ex: never = r;
             return (_ex as string);
@@ -380,7 +394,7 @@ async function exportChat() {
         const prefix = (() => {
           const mode = item.mode;
           switch (mode) {
-          case 'thinking': return '[Thought]: ';
+          case 'thinking': return `[${thoughtLabel}]: `;
           case 'content':
           case 'tool_calls':
           case 'waiting':
@@ -395,7 +409,7 @@ async function exportChat() {
         break;
       }
       case 'tool_group': {
-        markdownContent += `## Tool Executions:\n`;
+        markdownContent += `## ${toolExecutionsLabel}:\n`;
         for (const tc of item.toolCalls) {
           let resultStr = '';
           const status = tc.result.status;
@@ -408,7 +422,7 @@ async function exportChat() {
               break;
             case 'binary_object': {
               const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
-              resultStr = blob ? await blob.text() : '[Error: Binary object missing]';
+              resultStr = blob ? await blob.text() : binaryObjectMissing;
               break;
             }
             default: {
@@ -426,7 +440,7 @@ async function exportChat() {
               break;
             case 'binary_object': {
               const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
-              const detail = blob ? await blob.text() : 'Binary error detail missing';
+              const detail = blob ? await blob.text() : binaryErrorDetailMissing;
               resultStr = `Error [${tc.result.error.code}]: ${detail}`;
               break;
             }
@@ -438,21 +452,40 @@ async function exportChat() {
             break;
           }
           case 'executing':
-            resultStr = '[Tool Still Executing]';
+            resultStr = toolStillExecuting;
             break;
           default: {
             const _ex: never = status;
             resultStr = `[Unknown status: ${_ex}]`;
           }
           }
-          markdownContent += `### ${tc.call.function.name}\nArgs: ${tc.call.function.arguments}\nResult: ${resultStr}\n\n`;
+          markdownContent += `### ${tc.call.function.name}\n${argumentsLabel}: ${tc.call.function.arguments}\n${resultLabel}: ${resultStr}\n\n`;
         }
         break;
       }
-      case 'process_sequence':
-        markdownContent += `## Process Sequence: ${item.summary}\n`;
+      case 'process_sequence': {
+        const summaryParts: string[] = [];
+        if (item.stats.thinkingSteps > 0) {
+          summaryParts.push(await ensureStrings.AssistantProcessSequence__thinking_steps({ count: item.stats.thinkingSteps }));
+        }
+        if (item.stats.toolCallCount > 0) {
+          summaryParts.push(await ensureStrings.AssistantProcessSequence__tool_executions({ count: item.stats.toolCallCount }));
+        }
+        if (item.stats.toolNames.length > 0) {
+          const displayedToolNames = item.stats.toolNames.slice(0, 2);
+          let toolSummary = await ensureStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
+          if (item.stats.toolNames.length > displayedToolNames.length) {
+            toolSummary += ` ${await ensureStrings.AssistantProcessSequence__and_more({ count: item.stats.toolNames.length - displayedToolNames.length })}`;
+          }
+          summaryParts.push(toolSummary);
+        }
+        const summary = summaryParts.length > 0
+          ? summaryParts.join(' • ')
+          : await ensureStrings.AssistantProcessSequence__process_details();
+        markdownContent += `## ${processSequenceLabel}: ${summary}\n`;
         await processFlowItems({ items: item.items });
         break;
+      }
       default: {
         const _ex: never = itemType;
         console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
@@ -482,12 +515,12 @@ async function shareAsURL() {
     const url = await generateChatShareURL({ chatId: chat.value.id });
     await navigator.clipboard.writeText(url);
     addToast({
-      message: 'Share URL copied to clipboard!',
+      message: await ensureStrings.ChatPane__share_url_copied_to_clipboard(),
       duration: 3000,
     });
   } catch (err) {
     addToast({
-      message: `Failed to generate share URL: ${err instanceof Error ? err.message : String(err)}`,
+      message: await ensureStrings.ChatPane__failed_to_generate_share_url({ errorMessage: err instanceof Error ? err.message : String(err) }),
       duration: 5000,
     });
   }
@@ -506,17 +539,17 @@ async function openChatFileExplorer() {
 
   openFileExplorer({ options: {
     kind: 'wesh-mounts',
-    title: 'Files',
-    rootName: 'Files',
+    title: await ensureStrings.fileExplorer__files(),
+    rootName: await ensureStrings.fileExplorer__files(),
     mounts,
     initialPath: undefined,
   } });
 }
 
-function handlePrint() {
+async function handlePrint(): Promise<void> {
   if (chat.value) {
     usePrint().print({
-      title: chat.value.title || 'Chat',
+      title: chat.value.title || await ensureStrings.ChatPane__chat(),
       mode: 'chat',
     });
   }
@@ -658,14 +691,17 @@ watch(
 );
 
 // Expose for testing and current chat pane forwarding.
-defineExpose({ scrollToBottom, container, inputVisibility,
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+defineExpose({ scrollToBottom, container,
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      inputVisibility,
+    },
+  }) || {}),
 });
 
 const canGenerateImage = computed(() => {
-  const type = resolvedSettings.value?.endpointType;
+  const type = resolvedSettings.value?.endpoint.type;
   if (!type) return false;
 
   const isOllama = (() => {
@@ -738,7 +774,10 @@ async function updateActiveTitleModel({
     return;
   case 'chat_group':
     if (chatGroupId === undefined) {
-      await saveSettings({ patch: { titleModelId: modelId } });
+      await saveSettings({
+        patch: { titleModelId: modelId },
+        modelRefresh: 'await',
+      });
       return;
     }
     await chatGroups.updateScopedSettings({
@@ -749,7 +788,10 @@ async function updateActiveTitleModel({
     });
     return;
   case 'global':
-    await saveSettings({ patch: { titleModelId: modelId } });
+    await saveSettings({
+      patch: { titleModelId: modelId },
+      modelRefresh: 'await',
+    });
     return;
   default: {
     const _ex: never = source;
@@ -1026,7 +1068,7 @@ async function handleEnableFakeLmForChat() {
   });
 
   addToast({
-    message: `Fake LM enabled for this chat via ${FAKE_LM_ENDPOINT_URL}`,
+    message: await ensureStrings.ChatPane__fake_lm_enabled_for_this_chat_via({ endpointUrl: FAKE_LM_ENDPOINT_URL }),
     duration: 3000,
   });
 }
@@ -1115,7 +1157,7 @@ watch(
     >
       <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in zoom-in duration-200">
         <FolderInputIcon class="w-6 h-6 text-blue-500" />
-        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">Drop files or folders to attach</span>
+        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.ChatPane__drop_files_or_folders_to_attach() }}</span>
       </div>
     </div>
 
@@ -1248,7 +1290,6 @@ watch(
                 :items="flowItem.items"
                 :is-processing="isChatStreaming"
                 :flow="flowItem.flow"
-                :summary="flowItem.summary"
                 :stats="flowItem.stats"
                 :is-first-in-turn="flowItem.isFirstInTurn"
               >
@@ -1285,7 +1326,7 @@ watch(
                       :is-processing="isChatStreaming"
                       :is-generating="isChatStreaming && subItem.node.id === chat?.currentLeafId"
                       :available-image-models="availableImageModels"
-                      :endpoint-type="resolvedSettings?.endpointType"
+                      :endpoint-type="resolvedSettings?.endpoint.type"
                       :flow="subItem.flow"
                       :mode="subItem.mode"
                       :part-content="subItem.partContent"
@@ -1319,7 +1360,7 @@ watch(
                 :is-processing="isChatStreaming"
                 :is-generating="isChatStreaming && flowItem.node.id === chat?.currentLeafId"
                 :available-image-models="availableImageModels"
-                :endpoint-type="resolvedSettings?.endpointType"
+                :endpoint-type="resolvedSettings?.endpoint.type"
                 :flow="flowItem.flow"
                 :mode="flowItem.mode"
                 :part-content="flowItem.partContent"
@@ -1346,7 +1387,7 @@ watch(
 
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->
             <TransformersJsLoadingIndicator
-              v-if="resolvedSettings?.endpointType === 'transformers_js'"
+              v-if="resolvedSettings?.endpoint.type === 'transformers_js'"
               mode="full"
             />
             <div

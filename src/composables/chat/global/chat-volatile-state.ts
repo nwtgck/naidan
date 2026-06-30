@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
-import { findNodeInBranch } from '@/utils/chat-tree';
-import type { ChatId, MessageId, ToolCallId } from '@/models/ids';
-import type { Chat } from '@/models/types';
+import { findNodeInBranch } from '@/logic/chat-tree';
+import type { ChatId, MessageId, ToolCallId } from '@/01-models/ids';
+import type { Chat } from '@/01-models/types';
 
 export type ChatVolatileState = {
   setVolatileAssistantError({
@@ -158,8 +158,14 @@ export function createChatVolatileState(): ChatVolatileState {
     appendVolatileToolOutput,
     deleteVolatileToolOutput,
     getVolatileToolOutput,
-    TEST_ONLY: {
-      volatileToolOutputs,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        volatileToolOutputs,
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

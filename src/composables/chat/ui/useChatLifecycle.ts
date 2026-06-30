@@ -1,10 +1,11 @@
 import { reactive, toRaw } from 'vue';
-import { generateId } from '@/utils/id';
-import type { ChatGroupId, ChatId } from '@/models/ids';
-import type { Chat, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/models/types';
-import { storageService } from '@/services/storage';
-import { useChatTools } from '@/composables/useChatTools';
+import { generateId } from '@/01-models/id';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
+import type { Chat, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
+import { useChatTools } from '@/features/tools/composables/useChatTools';
 import { useToast } from '@/composables/useToast';
+import { ensureStrings } from '@/strings';
 import {
   chatRuntimeStore,
   clearChatTmpDirectories,
@@ -166,8 +167,12 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     };
 
     const toastId = (injectAddToast ?? addToast)({
-      message: `Chat "${chat.title || 'Untitled'}" deleted`,
-      actionLabel: 'Undo',
+      message: await ensureStrings.useChatLifecycle__chat_was_deleted({
+        chatTitle: chat.title === null
+          ? { type: 'untitled' }
+          : { type: 'titled', value: chat.title },
+      }),
+      actionLabel: await ensureStrings.useChatLifecycle__undo(),
       onAction: async () => {
         const originalGroupId = chat.groupId;
         await storageService.updateHierarchy({ updater: ({ current }) => {
@@ -250,6 +255,12 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     createNewChat,
     deleteChat,
     deleteAllChats,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

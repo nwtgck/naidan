@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { computed } from 'vue';
 import type { Component } from 'vue';
 import type { Token, Tokens } from 'marked';
 import { marked } from './useMarkdown';
-import { sanitizeMarkdownHtml } from '@/lib/security/allowedHtml';
+import { sanitizeMarkdownHtml } from '@/logic/security/allowedHtml';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import CodeBlockWrapper from './CodeBlockWrapper.vue';
 import MarkdownInline from './MarkdownInline.vue';
@@ -63,9 +64,11 @@ function lastNonEmptyCellIdx({ row }: { row: Tokens.TableCell[] }): number {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -278,6 +281,6 @@ defineExpose({
 
   <!-- Fallback -->
   <div v-else class="text-red-500 text-xs p-2 border border-red-500 rounded my-2">
-    Unknown token type: {{ token.type }}
+    {{ lazyStrings.blockMarkdown__unknown_token_type({ tokenType: token.type }) }}
   </div>
 </template>

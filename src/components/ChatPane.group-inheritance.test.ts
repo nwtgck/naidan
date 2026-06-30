@@ -1,5 +1,5 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, reactive, nextTick, computed } from 'vue';
@@ -7,11 +7,23 @@ import ChatPane from './ChatPane.vue';
 import ModelSelector from './ModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
-import type { Attachment, LmParameters } from '@/models/types';
+import type { Attachment, LmParameters } from '@/01-models/types';
 
+
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
 
 // --- Mocks ---
 
@@ -253,7 +265,10 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ defaultModelId: 'global-model' }),
+    settings: ref({
+      endpoint: { type: 'openai', url: '' },
+      defaultModelId: 'global-model',
+    }),
   }),
 }));
 
@@ -264,7 +279,8 @@ const router = createRouter({
 });
 
 describe('ChatPane Group Inheritance UI', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     setupScrollToMock();
     vi.clearAllMocks();
     mockCurrentChat.value = {
@@ -277,6 +293,7 @@ describe('ChatPane Group Inheritance UI', () => {
 
     // Default resolution (Global)
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: '' },
       modelId: 'global-model',
       sources: { modelId: 'global' },
     };
@@ -302,6 +319,7 @@ describe('ChatPane Group Inheritance UI', () => {
   it('displays "Model (Group)" when inheriting from a chat group', async () => {
     mockCurrentChat.value.groupId = 'group-1';
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: '' },
       modelId: 'group-model',
       sources: { modelId: 'chat_group' },
     };
@@ -322,6 +340,7 @@ describe('ChatPane Group Inheritance UI', () => {
   it('displays only the model name when a chat-specific override is set', async () => {
     mockCurrentChat.value.modelId = 'specific-model';
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: '' },
       modelId: 'specific-model',
       sources: { modelId: 'chat' },
     };
@@ -358,6 +377,7 @@ describe('ChatPane Group Inheritance UI', () => {
 
     // 2. Simulate moving to a group with a different model
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: '' },
       modelId: 'new-group-model',
       sources: { modelId: 'chat_group' },
     };
@@ -407,6 +427,7 @@ describe('ChatPane Group Inheritance UI', () => {
 
     // 1. Setup Group-level reasoning effort
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: '' },
       modelId: 'm',
       lmParameters: { reasoning: { effort: 'medium' } },
       sources: { modelId: 'global' },

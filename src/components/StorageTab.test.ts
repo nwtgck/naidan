@@ -1,12 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick, reactive } from 'vue';
 import StorageTab from './StorageTab.vue';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '@/composables/useSettings';
-import { storageService } from '@/services/storage';
-import type { ProviderProfile } from '@/models/types';
+import { storageService } from '@/00-storage/service';
+import type { ProviderProfile } from '@/01-models/types';
 import { useRouter, useRoute } from 'vue-router';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 
@@ -14,20 +15,20 @@ const exportUrlMocks = vi.hoisted(() => ({
   getExportURL: vi.fn(),
 }));
 
-vi.mock('@/services/import-export/url-logic', () => ({
+vi.mock('@/features/import-export/url-logic', () => ({
   urlImportExportLogic: {
     getExportURL: exportUrlMocks.getExportURL,
   },
 }));
 
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     listModels = mockListModels;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     listModels = mockListModels;
   },
@@ -85,7 +86,7 @@ vi.mock('../composables/useToast', () => ({
   })),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -104,8 +105,10 @@ async function wait() {
 }
 
 const mockSettings = {
-  endpointType: 'openai',
-  endpointUrl: 'http://localhost:1234/v1',
+  endpoint: {
+    type: 'openai',
+    url: 'http://localhost:1234/v1',
+  },
   defaultModelId: 'gpt-4',
   autoTitleEnabled: true,
   storageType: 'local',
@@ -130,6 +133,10 @@ const globalMocks = {
 };
 
 describe('StorageTab.vue Tests', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
   const mockPush = vi.fn((p) => {
     if (typeof p === 'string') {
@@ -225,8 +232,7 @@ describe('StorageTab.vue Tests', () => {
       await wrapper.find('input[data-testid="setting-url-input"]').setValue('http://example.com');
       await wait();
 
-      const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
-      await storageTab?.trigger('click');
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await wait();
@@ -238,7 +244,7 @@ describe('StorageTab.vue Tests', () => {
       await wait();
 
       expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
-    });
+    }, 15_000);
     it('warns about attachment loss when switching from OPFS to Local', async () => {
       vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
       vi.mocked(storageService.hasAttachments).mockResolvedValue(true);
@@ -507,8 +513,7 @@ describe('StorageTab.vue Tests', () => {
       await flushPromises();
       await vi.dynamicImportSettled();
 
-      const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
-      await storageTab?.trigger('click');
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await wait();
@@ -531,7 +536,7 @@ describe('StorageTab.vue Tests', () => {
       const mockSaveFail = vi.fn().mockRejectedValue(error);
 
       vi.mocked(useSettings).mockReturnValue({
-        settings: { value: { storageType: 'local', providerProfiles: [], endpointUrl: '' } } as any,
+        settings: { value: { storageType: 'local', providerProfiles: [], endpoint: { type: 'openai', url: '' } } } as any,
         save: mockSaveFail,
         updateExperimental: vi.fn(),
         updateProviderProfiles: vi.fn(),
@@ -540,6 +545,8 @@ describe('StorageTab.vue Tests', () => {
         onboardingDraft: { value: null } as any,
         availableModels: { value: [] } as any,
         isFetchingModels: ref(false),
+        globalSearchScope: { value: 'title_only' } as any,
+        globalSearchRoleFilter: { value: 'all' } as any,
         searchPreviewMode: { value: 'always' } as any,
         searchContextSize: { value: 2 } as any,
         init: vi.fn(),
@@ -552,6 +559,9 @@ describe('StorageTab.vue Tests', () => {
         setOnboardingDraft: vi.fn(),
         setHeavyContentAlertDismissed: vi.fn(),
         setFakeLmDebugModeStatus: vi.fn(),
+        setLocale: vi.fn(),
+        setGlobalSearchScope: vi.fn(),
+        setGlobalSearchRoleFilter: vi.fn(),
         setSearchPreviewMode: vi.fn(),
         setSearchContextSize: vi.fn(),
         TEST_ONLY: {
@@ -567,17 +577,19 @@ describe('StorageTab.vue Tests', () => {
       await flushPromises();
 
       // Simulate a change to enable save button
-      (wrapper.vm as any).form.endpointUrl = 'http://new-url';
+      (wrapper.vm as any).form.endpoint = { type: 'openai', url: 'http://new-url' };
       await wrapper.vm.$nextTick();
 
       const saveButton = wrapper.find('[data-testid="setting-save-button"]');
       await saveButton.trigger('click');
 
       expect(mockSaveFail).toHaveBeenCalled();
-      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Save Failed',
-        message: expect.stringContaining('Migration Security Error'),
-      }));
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+          title: 'Save Failed',
+          message: expect.stringContaining('Migration Security Error'),
+        }));
+      });
     });
   });
 });

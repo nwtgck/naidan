@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import { storageService } from '@/services/storage';
-import type { Volume, Mount } from '@/models/types';
+import { storageService } from '@/00-storage/service';
+import type { Volume, Mount } from '@/01-models/types';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { FolderIcon, FolderInputIcon, Loader2Icon } from 'lucide-vue-next';
 import VolumeCreator from './VolumeCreator.vue';
 import VolumeMountList from './VolumeMountList.vue';
-import type { VolumeId } from '@/models/ids';
+import type { VolumeId } from '@/01-models/ids';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 const volumes = ref<Volume[]>([]);
 const mounts = ref<Mount[]>([]);
@@ -30,7 +31,7 @@ async function loadData() {
     mounts.value = settings?.mounts || [];
   } catch (e) {
     console.error('Failed to load volumes:', e);
-    addToast({ message: 'Failed to load folders' });
+    addToast({ message: await ensureStrings.volumes__failed_to_load_folders() });
   } finally {
     isLoading.value = false;
   }
@@ -43,7 +44,7 @@ async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId
     await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     await loadData();
   } catch (e) {
-    addToast({ message: 'Failed to add folder' });
+    addToast({ message: await ensureStrings.volumes__failed_to_add_folder() });
   }
 }
 
@@ -53,10 +54,10 @@ async function handleMountAdd({ volumeId, mountPath, readOnly }: { volumeId: Vol
   try {
     await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     const vol = volumes.value.find(v => v.id === volumeId);
-    if (vol) addToast({ message: `"${vol.name}" is now in use` });
+    if (vol) addToast({ message: await ensureStrings.volumes__folder_is_now_in_use({ name: vol.name }) });
     await loadData();
   } catch (e) {
-    addToast({ message: 'Failed to add folder' });
+    addToast({ message: await ensureStrings.volumes__failed_to_add_folder() });
   }
 }
 
@@ -64,10 +65,10 @@ async function handleMountRemove({ volumeId }: { volumeId: VolumeId }) {
   try {
     const vol = volumes.value.find(v => v.id === volumeId);
     await storageService.unmountVolume({ volumeId: volumeId });
-    if (vol) addToast({ message: `"${vol.name}" is no longer in use` });
+    if (vol) addToast({ message: await ensureStrings.volumes__folder_is_no_longer_in_use({ name: vol.name }) });
     await loadData();
   } catch (e) {
-    addToast({ message: 'Failed to remove folder' });
+    addToast({ message: await ensureStrings.volumes__failed_to_remove_folder() });
   }
 }
 
@@ -77,13 +78,13 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
       m.mountPath === mountPath && !(m.type === 'volume' && m.volumeId === volumeId),
     );
     if (isCollision) {
-      addToast({ message: 'Mount path already in use' });
+      addToast({ message: await ensureStrings.volumes__mount_path_already_in_use() });
       return;
     }
     await storageService.unmountVolume({ volumeId: volumeId });
     await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     await loadData();
-    addToast({ message: 'Path settings updated' });
+    addToast({ message: await ensureStrings.volumes__path_settings_updated() });
 
     const volume = volumes.value.find(v => v.id === volumeId);
     if (volume) {
@@ -98,7 +99,7 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
             // @ts-expect-error: File System Access API
             const result = await handle.requestPermission({ mode });
             if (result !== 'granted') {
-              addToast({ message: 'Permission denied. The folder may not be accessible.' });
+              addToast({ message: await ensureStrings.volumes__permission_denied_folder_may_not_be_accessible() });
             }
           }
         }
@@ -114,7 +115,7 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
     }
   } catch (e) {
     console.error('Failed to update mount settings:', e);
-    addToast({ message: 'Failed to update path settings' });
+    addToast({ message: await ensureStrings.volumes__failed_to_update_path_settings() });
   }
 }
 
@@ -124,7 +125,7 @@ async function handleVolumeRename({ volumeId, name }: { volumeId: VolumeId, name
     await loadData();
   } catch (e) {
     console.error('Failed to rename volume:', e);
-    addToast({ message: 'Failed to rename folder' });
+    addToast({ message: await ensureStrings.volumes__failed_to_rename_folder() });
   }
 }
 
@@ -140,18 +141,18 @@ async function handleVolumeDelete({ volumeId }: { volumeId: VolumeId }) {
 
   switch (volume.type) {
   case 'opfs':
-    title = 'Delete Folder';
-    message = `Are you sure you want to delete "${volume.name}"? This will permanently delete all copied data from the browser.`;
-    confirmButtonText = 'Delete';
-    successMessage = 'Folder deleted';
-    errorMessage = 'Failed to delete folder';
+    title = await ensureStrings.volumes__delete_folder();
+    message = await ensureStrings.volumes__delete_folder_warning({ name: volume.name });
+    confirmButtonText = await ensureStrings.volumes__delete();
+    successMessage = await ensureStrings.volumes__folder_deleted();
+    errorMessage = await ensureStrings.volumes__failed_to_delete_folder();
     break;
   case 'host':
-    title = 'Remove Folder';
-    message = `Are you sure you want to remove "${volume.name}"? This will stop using it. Your original files will not be affected.`;
-    confirmButtonText = 'Remove';
-    successMessage = 'Folder removed';
-    errorMessage = 'Failed to remove folder';
+    title = await ensureStrings.volumes__remove_folder();
+    message = await ensureStrings.volumes__remove_folder_warning({ name: volume.name });
+    confirmButtonText = await ensureStrings.volumes__remove();
+    successMessage = await ensureStrings.volumes__folder_removed();
+    errorMessage = await ensureStrings.volumes__failed_to_remove_folder();
     break;
   default: {
     const _ex: never = volume.type;
@@ -182,9 +183,11 @@ onMounted(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -195,8 +198,8 @@ defineExpose({
       <div class="flex items-center gap-2">
         <FolderIcon class="w-5 h-5 text-blue-500" />
         <div>
-          <h2 class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">Folders</h2>
-          <p class="text-[10px] text-gray-400 dark:text-gray-500 font-medium leading-tight">Give the AI access to files in your folders</p>
+          <h2 class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">{{ lazyStrings.volumes__folders() }}</h2>
+          <p class="text-[10px] text-gray-400 dark:text-gray-500 font-medium leading-tight">{{ lazyStrings.volumes__give_ai_access_to_files_in_your_folders() }}</p>
         </div>
       </div>
       <!-- Add Folder / Copy Folder buttons + progress bar + drag-drop -->
@@ -214,9 +217,9 @@ defineExpose({
 
     <div v-else-if="volumes.length === 0" class="text-center p-16 bg-gray-50/50 dark:bg-gray-800/30 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
       <FolderInputIcon class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-      <p class="text-sm font-bold text-gray-500 dark:text-gray-400">No folders configured</p>
+      <p class="text-sm font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.volumes__no_folders_configured() }}</p>
       <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 max-w-[240px] mx-auto">
-        Add a folder or copy one into browser storage.
+        {{ lazyStrings.volumes__add_or_copy_folder_into_browser_storage() }}
       </p>
     </div>
 
@@ -224,8 +227,8 @@ defineExpose({
       v-else
       :volumes="volumes"
       :mounts="mounts"
-      in-use-section-label="In Use Globally"
-      not-in-use-section-label="Not in Use Globally"
+      :in-use-section-label="lazyStrings.volumes__in_use_globally()"
+      :not-in-use-section-label="lazyStrings.volumes__not_in_use_globally()"
       mount-path-prefix="/"
       :show-volume-management="true"
       @add="handleMountAdd"

@@ -136,3 +136,7 @@ export function cleanGeneratedTitle({ title }: { title: string }): string {
     .replace(/^(Title|Subject|Topic|Theme|Heres a title|Here is a title|タイトル|件名|主題)[:：]\s*/i, '') // Remove prefixes
     .trim();
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

@@ -1,5 +1,5 @@
-import type { MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 import { ref, nextTick, computed } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -12,6 +12,17 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { setupScrollToMock } from '@/utils/test-utils';
 
+
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
@@ -37,12 +48,13 @@ describe('ChatPane Design Specifications', () => {
     const mockResolvedSettings = ref({
       modelId: 'gemma3n:e2b',
       lmParameters: { reasoning: { effort: undefined } },
-      sources: { modelId: 'chat', titleModelId: 'global' },
-      endpointType: 'openai',
+      sources: { endpoint: 'global', modelId: 'chat', titleModelId: 'global' },
+      endpoint: { type: 'openai', url: 'http://localhost' },
     });
     const mockInheritedSettings = ref({
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'gemma3n:e2b',
-      sources: { modelId: 'chat', titleModelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'chat', titleModelId: 'global' },
     });
     (useCurrentChatState as unknown as Mock).mockReturnValue({
       currentChat: computed(() => mockCurrentChat.value),
@@ -78,7 +90,7 @@ describe('ChatPane Design Specifications', () => {
       isWaitingResponse: vi.fn(() => false),
     });
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: ref({ defaultModelId: 'gpt-4' }),
+      settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'gpt-4' }),
     });
   });
 
@@ -173,7 +185,7 @@ describe('ChatPane Design Specifications', () => {
     // Simulate maximization
     (wrapper.findComponent(ChatInput).vm as any).isMaximized = true;
     const chatInput = wrapper.findComponent(ChatInput);
-    await (chatInput.vm as any).adjustTextareaHeight({});
+    await (chatInput.vm as any).TEST_ONLY.adjustTextareaHeight({});
 
     const textarea = wrapper.find('[data-testid="chat-input"]');
     const height = parseFloat((textarea.element as HTMLElement).style.height);

@@ -1,10 +1,11 @@
-import { generateId } from '@/utils/id';
+import { ensureStrings } from '@/strings';
+import { generateId } from '@/01-models/id';
 import { ref } from 'vue';
-import { UNKNOWN_STEPS } from '@/services/lm/types';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { createLmFetch } from '@/services/lm/providerFactory';
+import { UNKNOWN_STEPS } from '@/01-models/lm';
+import { OllamaProvider } from '@/features/lm/ollama';
+import { createLmFetch } from '@/features/lm/providerFactory';
 import { useSettings } from '@/composables/useSettings';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import {
   getImageGenerationModels,
   SENTINEL_IMAGE_PENDING,
@@ -18,10 +19,10 @@ import {
 } from '@/utils/image-generation';
 import { reencodeImage } from '@/utils/image-processing';
 import { naturalSort, sanitizeFilename } from '@/utils/string';
-import type { Chat, ChatContent, Attachment } from '@/models/types';
-import { findNodeInBranch } from '@/utils/chat-tree';
-import { idToRaw } from '@/models/ids';
-import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
+import type { Chat, ChatContent, Attachment } from '@/01-models/types';
+import { findNodeInBranch } from '@/logic/chat-tree';
+import { idToRaw } from '@/01-models/ids';
+import type { BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
 
 // Shared state across all instances to maintain consistency
 const imageModeMap = ref(new Map<ChatId, boolean>());
@@ -236,8 +237,8 @@ export function useImageGeneration() {
       : getSelectedImageModel({ chatId, availableModels });
 
     if (!imageModel) {
-      assistantNode.error = 'No suitable image generation model found (starting with x/z-image-turbo:)';
-      assistantNode.content = 'Failed to generate image.';
+      assistantNode.error = await ensureStrings.useImageGeneration__no_suitable_image_generation_model_found();
+      assistantNode.content = await ensureStrings.useImageGeneration__failed_to_generate_image();
       return;
     }
 
@@ -288,7 +289,7 @@ export function useImageGeneration() {
           },
           signal,
         });
-        if (!blob) throw new Error('Failed to generate image');
+        if (!blob) throw new Error(await ensureStrings.useImageGeneration__failed_to_generate_image());
 
         let finalBlob = blob;
         let extension = '.png';
@@ -302,7 +303,7 @@ export function useImageGeneration() {
             const { addErrorEvent } = useGlobalEvents();
             addErrorEvent({
               source: 'useImageGeneration:handleImageGeneration',
-              message: `Failed to re-encode image to ${persistAs}, falling back to original`,
+              message: await ensureStrings.useImageGeneration__failed_to_reencode_image({ format: persistAs }),
               details: e instanceof Error ? e : String(e),
             });
           }
@@ -339,7 +340,7 @@ export function useImageGeneration() {
         case 'local': {
           const url = URL.createObjectURL(finalBlob);
           const { width: dw, height: dh } = getDisplayDimensions({ width, height });
-          const blockHtml = `<img src="${url}" width="${dw}" height="${dh}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
+          const blockHtml = `<img src="${url}" width="${dw}" height="${dh}" alt="${await ensureStrings.SHARED__generated_image()}" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
 
           if (i === 0) {
             assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blockHtml;
@@ -368,7 +369,7 @@ export function useImageGeneration() {
       // Cleanup sentinel on error
       assistantNode.content = assistantNode.content.replace(SENTINEL_IMAGE_PENDING, '');
       if (assistantNode.content.trim() === '') {
-        assistantNode.content = 'Failed to generate image.';
+        assistantNode.content = await ensureStrings.useImageGeneration__failed_to_generate_image();
       }
     } finally {
       imageProgressMap.value.delete(chatId);
@@ -468,8 +469,14 @@ export function useImageGeneration() {
     performBase64Generation,
     handleImageGeneration,
     sendImageRequest,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

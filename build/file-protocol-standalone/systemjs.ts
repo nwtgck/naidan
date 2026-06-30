@@ -7,7 +7,7 @@ import {
   DEBUG_FILE_PROTOCOL_STANDALONE_DIAGNOSTICS_FORMAT,
   DEBUG_FILE_PROTOCOL_STANDALONE_STARTUP_FORMAT,
   FILE_PROTOCOL_STANDALONE_GLOBAL_NAME,
-} from '../../src/file-protocol-standalone-protocol';
+} from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
 
 const pluginName = 'file-protocol-standalone';
 export const debugSlowStartupNoticeDelayMs = 15_000;
@@ -159,7 +159,7 @@ export function createFileProtocolStandaloneEntryBootstrapSource({ entryFileName
     try {
       setTimeout(function () {
         if (!debugState) return;
-        var terminalCheckpoint = debugState.checkpoint === 'mounted'
+        var terminalCheckpoint = debugState.checkpoint === 'app-ready'
           || debugState.checkpoint === 'entry-imported'
           || debugState.checkpoint === 'entry-import-failed'
           || debugState.checkpoint === 'bootstrap-failed';

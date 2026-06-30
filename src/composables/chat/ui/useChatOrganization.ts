@@ -1,9 +1,10 @@
 import { toRaw } from 'vue';
-import { generateId } from '@/utils/id';
-import type { ChatGroupId, ChatId } from '@/models/ids';
-import { cloneToolConfigs } from '@/services/tools/tool-config';
-import type { ChatGroup, HierarchyChatGroupNode, HierarchyNode } from '@/models/types';
-import { storageService } from '@/services/storage';
+import { ensureStrings } from '@/strings';
+import { generateId } from '@/01-models/id';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
+import { cloneToolConfigs } from '@/features/tools/tool-config';
+import type { ChatGroup, HierarchyChatGroupNode, HierarchyNode } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import { useSettings } from '@/composables/useSettings';
 import {
   currentChatGroupRef,
@@ -152,7 +153,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     const newGroup: ChatGroup = {
       ...toRaw(originalGroup),
       id: newId,
-      name: `Copy of ${originalGroup.name}`,
+      name: await ensureStrings.useChatOrganization__copy_of_chat_group({ groupName: originalGroup.name }),
       items: [],
       toolConfigs: cloneToolConfigs({ toolConfigs: originalGroup.toolConfigs }),
       updatedAt: Date.now(),
@@ -349,7 +350,9 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     updateChatGroupMetadata,
     moveChatToGroup,
     reorderSidebarChatAfterSend,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
 
@@ -357,10 +360,14 @@ function insertTopLevelChat({
   current,
   node,
 }: {
-  current: import('@/models/types').Hierarchy,
+  current: import('@/01-models/types').Hierarchy,
   node: HierarchyNode,
 }) {
   const firstChatIndex = current.items.findIndex((item) => item.type === 'chat');
   const insertIndex = firstChatIndex !== -1 ? firstChatIndex : current.items.length;
   current.items.splice(insertIndex, 0, node);
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

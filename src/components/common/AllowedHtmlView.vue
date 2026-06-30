@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import type { AllowedHtml } from '@/logic/security/allowedHtml';
 
 withDefaults(
   defineProps<{
@@ -12,9 +12,11 @@ withDefaults(
 );
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 

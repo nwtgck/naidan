@@ -1,7 +1,7 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
-import { idToRaw } from '@/models/ids';
-import type { MessageNode } from '@/models/types';
-import type { ChatId, MessageId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { MessageNode } from '@/01-models/types';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import type { ChatFlowItem } from './useChatDisplayFlow';
 
 type MaybeReadonlyRef<T> = Ref<T> | ComputedRef<T>;
@@ -324,8 +324,14 @@ export function useChatPaneAutoScroll({
     snapshot,
     consumeScrollAction,
     markAssistantAutoScrolled,
-    TEST_ONLY: {
-      state,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        state,
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

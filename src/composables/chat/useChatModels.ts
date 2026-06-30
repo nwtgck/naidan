@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { EndpointType } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Endpoint } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 import {
   availableModels,
   fetchingModels,
@@ -10,12 +10,6 @@ import {
   fetchModelsForEndpoint,
   fetchModelsForGlobalEndpoint,
 } from '@/composables/chat/chat-model-fetch';
-
-type FetchAvailableModelsCustomEndpoint = {
-  type: EndpointType,
-  url: string,
-  headers: [string, string][] | undefined,
-};
 
 export type ChatModelsAdapter = {
   availableModels: Ref<string[]>,
@@ -30,9 +24,9 @@ export type ChatModelsAdapter = {
   fetchForGlobalEndpoint(): Promise<string[]>,
 
   fetchForEndpoint({
-    customEndpoint,
+    endpoint,
   }: {
-    customEndpoint: FetchAvailableModelsCustomEndpoint,
+    endpoint: Endpoint,
   }): Promise<string[]>,
 
   TEST_ONLY: Record<never, never>,
@@ -59,14 +53,12 @@ export function useChatModels(): ChatModelsAdapter {
   }
 
   async function fetchForEndpoint({
-    customEndpoint,
+    endpoint,
   }: {
-    customEndpoint: FetchAvailableModelsCustomEndpoint,
+    endpoint: Endpoint,
   }): Promise<string[]> {
     return await fetchModelsForEndpoint({
-      endpointType: customEndpoint.type,
-      endpointUrl: customEndpoint.url,
-      endpointHttpHeaders: customEndpoint.headers,
+      endpoint,
       errorSource: 'useChatModels:fetchForEndpoint',
     });
   }
@@ -77,8 +69,14 @@ export function useChatModels(): ChatModelsAdapter {
     fetchForChat,
     fetchForGlobalEndpoint,
     fetchForEndpoint,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

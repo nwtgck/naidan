@@ -5,8 +5,8 @@ import { createRouter, createWebHistory } from 'vue-router';
 import Sidebar from './Sidebar.vue';
 import CurrentChatPane from './CurrentChatPane.vue';
 import { useLayout } from '@/composables/useLayout';
-import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/models/types';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/01-models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
   mockScrollIntoViewSafe: vi.fn(),
@@ -40,7 +40,11 @@ vi.mock('../composables/useChat', () => ({
     generatingTitle: ref(false),
     allMessages: ref([]),
     availableModels: ref([]),
-    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    resolvedSettings: ref({
+      endpoint: { type: 'openai', url: '' },
+      modelId: 'm1',
+      sources: { modelId: 'global' },
+    }),
     inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
     isProcessing: vi.fn().mockReturnValue(false),
     getReasoningEffort: vi.fn(),
@@ -86,7 +90,11 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     currentChatId: computed(() => mockCurrentChat.value?.id),
     activeMessages: mockActiveMessages,
     allMessages: ref([]),
-    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    resolvedSettings: ref({
+      endpoint: { type: 'openai', url: '' },
+      modelId: 'm1',
+      sources: { modelId: 'global' },
+    }),
     inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
     chatGroups: computed(() => mockChatGroups.value),
     sidebarItems: computed<SidebarItem[]>(() => {
@@ -101,7 +109,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({}),
+    settings: ref({ endpoint: { type: 'openai', url: '' } }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
     updateGlobalModel: vi.fn(),

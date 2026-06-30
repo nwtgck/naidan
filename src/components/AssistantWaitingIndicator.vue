@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 withDefaults(defineProps<{
   isNested?: boolean,
   noPadding?: boolean,
@@ -8,9 +9,11 @@ withDefaults(defineProps<{
 });
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -29,7 +32,7 @@ defineExpose({
       <span class="wi-orb wi-o2" />
       <span class="wi-orb wi-o3" />
     </div>
-    <span class="text-[10px] font-bold tracking-tight text-gray-400 dark:text-gray-500 select-none">Waiting for response...</span>
+    <span class="text-[10px] font-bold tracking-tight text-gray-400 dark:text-gray-500 select-none">{{ lazyStrings.AssistantWaitingIndicator__waiting_for_response() }}</span>
   </div>
 </template>
 

@@ -3,7 +3,7 @@ function normalizePath(filePath) {
 }
 
 function isAllowedHtmlImplementationFile({ filePath }) {
-  return normalizePath(filePath).endsWith('/src/lib/security/allowedHtml.ts');
+  return normalizePath(filePath).endsWith('/src/logic/security/allowedHtml.ts');
 }
 
 function isAllowedHtmlType({ node, sourceCode }) {

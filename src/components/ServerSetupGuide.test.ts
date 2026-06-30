@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ServerSetupGuide from './ServerSetupGuide.vue';
 
+vi.mock('@/strings', () => ({
+  lazyStrings: {
+    ServerSetupGuide__download_the_installer_from_the_official_website: () => 'Download the installer from the official website.',
+    ServerSetupGuide__download_the_latest_binary_or_build_from_source: () => 'Download the latest binary from the llama.cpp releases page or build from source.',
+    ServerSetupGuide__external: () => 'External',
+    ServerSetupGuide__install_using_homebrew: () => 'Install using Homebrew:',
+    ServerSetupGuide__releases: () => 'Releases',
+    ServerSetupGuide__run_gemma_3n: () => 'Run Gemma 3n',
+    ServerSetupGuide__run_the_installation_script: () => 'Run the installation script:',
+    ServerSetupGuide__start_server: () => 'Start server',
+  },
+}));
+
 describe('ServerSetupGuide.vue', () => {
   beforeEach(() => {
     vi.stubGlobal('navigator', {

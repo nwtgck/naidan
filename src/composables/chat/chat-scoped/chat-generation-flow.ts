@@ -1,16 +1,18 @@
 import { reactive, toRaw } from 'vue';
-import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import type { LmProvider } from '@/services/lm/types';
-import type { Tool } from '@/services/tools/types';
-import { createLmProvider } from '@/services/lm/providerFactory';
-import { storageService } from '@/services/storage';
-import { getEnabledTools } from '@/services/tools/factory';
-import { markExecutingToolResultsAsInterrupted } from '@/services/tools/interruption';
-import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/services/tools/tool-config';
-import { getEffectiveToolConfigsForChat } from '@/composables/useChatTools';
-import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { ensureStrings } from '@/strings';
+import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, Endpoint, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { isHttpEndpoint } from '@/01-models/endpoint';
+import type { LmProvider } from '@/01-models/lm';
+import type { Tool } from '@/01-models/tool';
+import { createLmProvider } from '@/features/lm/providerFactory';
+import { storageService } from '@/00-storage/service';
+import { getEnabledTools } from '@/features/tools/factory';
+import { markExecutingToolResultsAsInterrupted } from '@/features/tools/interruption';
+import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/features/tools/tool-config';
+import { getEffectiveToolConfigsForChat } from '@/features/tools/composables/useChatTools';
+import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import {
   fileToDataUrl,
   findNodeInBranch,
@@ -18,8 +20,8 @@ import {
   getAllMessages,
   getChatBranchIterator,
   processThinking,
-} from '@/utils/chat-tree';
-import { generateId } from '@/utils/id';
+} from '@/logic/chat-tree';
+import { generateId } from '@/01-models/id';
 import {
   SENTINEL_IMAGE_PENDING,
   createImageRequestMarker,
@@ -35,8 +37,8 @@ import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
 import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useToast } from '@/composables/useToast';
-import { useApproval } from '@/composables/useApproval';
-import { useChoices } from '@/composables/useChoices';
+import { useApproval } from '@/features/tools/composables/useApproval';
+import { useChoices } from '@/features/tools/composables/useChoices';
 import {
   availableModels,
   chatRuntimeStore,
@@ -69,8 +71,8 @@ import {
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
-import type { BinaryObjectId, ChatId, MessageId, ToolCallId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
+import type { BinaryObjectId, ChatId, MessageId, ToolCallId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 import {
   useChatOrganization,
 } from '@/composables/chat/ui/useChatOrganization';
@@ -80,9 +82,7 @@ type PersistedToolContent =
   | { type: 'binary_object', id: BinaryObjectId };
 
 type ResolvedGenerationSettings = {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
   modelId: string,
   lmParameters: LmParameters | undefined,
   systemPromptMessages: string[],
@@ -162,11 +162,31 @@ export async function sendMessageToTargetChat({
     const resolved = resolveGenerationSettings({
       chat: mutableChat,
     });
-    const type = resolved.endpointType;
-    const url = resolved.endpointUrl;
+    const endpoint = resolved.endpoint;
+    const { hasReachableEndpoint, url, type } = (() => {
+      switch (endpoint.type) {
+      case 'openai':
+      case 'ollama':
+        return {
+          hasReachableEndpoint: endpoint.url !== '',
+          url: endpoint.url,
+          type: endpoint.type,
+        };
+      case 'transformers_js':
+        return {
+          hasReachableEndpoint: true,
+          url: undefined,
+          type: endpoint.type,
+        };
+      default: {
+        const _ex: never = endpoint;
+        throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+      }
+      }
+    })();
     let resolvedModel = mutableChat.modelId || resolved.modelId;
 
-    if (url || type === 'transformers_js') {
+    if (hasReachableEndpoint) {
       const models = await fetchAvailableModelsForChat({
         chatId: mutableChat.id,
         errorSource: 'chat-generation-flow:resolve-models',
@@ -181,7 +201,7 @@ export async function sendMessageToTargetChat({
       }
     }
 
-    if ((!url && type !== 'transformers_js') || !resolvedModel) {
+    if (!hasReachableEndpoint || !resolvedModel) {
       showOnboardingDraft({
         url,
         type,
@@ -222,7 +242,7 @@ export async function sendMessageToTargetChat({
       if (!imageModel) {
         useGlobalEvents().addErrorEvent({
           source: 'useChat:sendMessage',
-          message: 'No image generation model found (starting with x/z-image-turbo:).',
+          message: await ensureStrings.chatGenerationFlow__no_image_generation_model_was_found(),
         });
         return false;
       }
@@ -427,9 +447,7 @@ export async function generateResponseForAssistant({
     }
 
     const provider = createGenerationProvider({
-      endpointType: resolved.endpointType,
-      endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders,
+      endpoint: resolved.endpoint,
     });
     const finalMessages = await buildGenerationMessages({
       chat: mutableChat,
@@ -876,9 +894,7 @@ function resolveGenerationSettings({
     globalSettings: settings.value,
   });
   return {
-    endpointType: resolved.endpointType,
-    endpointUrl: resolved.endpointUrl,
-    endpointHttpHeaders: resolved.endpointHttpHeaders,
+    endpoint: resolved.endpoint,
     modelId: resolved.modelId,
     lmParameters: resolved.lmParameters,
     systemPromptMessages: resolved.systemPromptMessages,
@@ -912,10 +928,10 @@ async function confirmTemporaryAttachments(): Promise<boolean> {
   }
 
   return await useConfirm().showConfirm({
-    title: 'Attachments cannot be saved',
-    message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
-    confirmButtonText: 'Continue anyway',
-    cancelButtonText: 'Cancel',
+    title: await ensureStrings.chatGenerationFlow__attachments_cannot_be_saved(),
+    message: await ensureStrings.chatGenerationFlow__local_storage_attachments_are_only_available_during_this_session(),
+    confirmButtonText: await ensureStrings.chatGenerationFlow__continue_anyway(),
+    cancelButtonText: await ensureStrings.chatGenerationFlow__cancel(),
   });
 }
 
@@ -962,23 +978,17 @@ function showOnboardingDraft({
 }
 
 function createGenerationProvider({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
 }): LmProvider {
-  if (endpointUrl === undefined && endpointType !== 'transformers_js') {
-    throw new Error(`${endpointType} generation requires an endpoint URL`);
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
+    throw new Error(`${endpoint.type} generation requires an endpoint URL`);
   }
 
   const { settings } = useSettings();
   return createLmProvider({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
+    endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }
@@ -1182,8 +1192,8 @@ async function handleImageGenerationWithDefaults({
   }
 
   const resolved = resolveGenerationSettings({ chat: targetChat });
-  if (resolved.endpointUrl === undefined) {
-    throw new Error('Image generation requires an endpoint URL');
+  if (resolved.endpoint.type !== 'ollama' || resolved.endpoint.url === '') {
+    throw new Error('Image generation requires an Ollama endpoint URL');
   }
 
   await handleImageGenerationForChat({
@@ -1199,8 +1209,10 @@ async function handleImageGenerationWithDefaults({
     images,
     model,
     availableModels: availableModels.value,
-    endpointUrl: resolved.endpointUrl,
-    endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+    endpointUrl: resolved.endpoint.url,
+    endpointHttpHeaders: resolved.endpoint.httpHeaders
+      ? [...resolved.endpoint.httpHeaders]
+      : undefined,
     storageType: useSettings().settings.value.storageType,
     signal,
     getLiveChat,
@@ -1258,11 +1270,16 @@ async function showGenerationFailedToast({
     return;
   }
 
+  const chatTitle = chat.title || await ensureStrings.SHARED__new_chat();
   useToast().addToast({
-    message: `Generation failed in "${chat.title || 'New Chat'}"`,
-    actionLabel: 'View',
+    message: await ensureStrings.chatGenerationFlow__generation_failed_in_chat({ chatTitle }),
+    actionLabel: await ensureStrings.chatGenerationFlow__view(),
     onAction: async () => {
       await useChatNavigation().openChat({ chatId: chat.id, leafId: undefined });
     },
   });
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

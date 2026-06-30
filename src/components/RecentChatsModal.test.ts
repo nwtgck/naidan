@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import RecentChatsModal from './RecentChatsModal.vue';
 import { computed, ref, nextTick } from 'vue';
-import type { ChatSummary } from '@/models/types';
+import type { ChatSummary } from '@/01-models/types';
 import { setupScrollToMock } from '@/utils/test-utils';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 
 // --- Mocks ---
 
@@ -74,7 +74,7 @@ vi.mock('./RecentChatListItem.vue', () => ({
   },
 }));
 
-vi.mock('./SearchPreview.vue', () => ({
+vi.mock('../features/global-search/components/SearchPreview.vue', () => ({
   __esModule: true,
   default: {
     name: 'SearchPreview',

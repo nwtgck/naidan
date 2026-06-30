@@ -1,20 +1,20 @@
-import type { ScopedSettingChange } from '@/models/scoped-setting-change';
-import type { ChatGroup } from '@/models/types';
-import type { ToolConfig } from '@/services/tools/types';
-import { storageService } from '@/services/storage';
+import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
+import type { ChatGroup } from '@/01-models/types';
+import type { ToolConfig } from '@/01-models/tool';
+import { storageService } from '@/00-storage/service';
 import {
   currentChatGroupRef,
   currentChatRef,
   loadData,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatGroupId, ChatId } from '@/models/ids';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import {
   applyScopedSettingChangesToChatGroup,
   cloneScopedSettingChanges,
   createLmParameterSettingChanges,
   createSystemPromptSettingChange,
-} from '@/utils/scoped-setting-changes';
-import { cloneToolConfigs } from '@/services/tools/tool-config';
+} from '@/logic/scoped-setting-changes';
+import { cloneToolConfigs } from '@/features/tools/tool-config';
 
 type ChatGroupMetadataUpdate = Partial<Pick<
   ChatGroup,
@@ -383,6 +383,12 @@ export function useChatGroups(): ChatGroupsAdapter {
     updateToolConfigs,
     updateScopedSettingsAndToolConfigs,
     moveChatToGroup,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

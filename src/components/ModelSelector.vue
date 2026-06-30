@@ -4,6 +4,7 @@ import { SearchIcon, RefreshCwIcon, CheckIcon, ChevronDownIcon, Loader2Icon, XIc
 import { useSettings } from '@/composables/useSettings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
+import { lazyStrings } from '@/strings';
 
 const props = defineProps<{
   modelValue: string | undefined,
@@ -27,10 +28,13 @@ const { availableModels: settingsModels, isFetchingModels: isInternalFetching, f
 const availableModels = computed(() => props.models ?? settingsModels.value);
 const isFetchingModels = computed(() => props.loading || (isInternalFetching?.value ?? false));
 
-const displayModelName = computed(() => props.modelValue || props.placeholder || 'Select a model');
+const displayModelName = computed(() => props.modelValue || props.placeholder || lazyStrings.ModelSelector__select_a_model());
 
 const modelNameParts = computed(() => {
   const name = displayModelName.value;
+  if (name === undefined) {
+    return { prefix: '', suffix: undefined };
+  }
   const lastSlashIndex = name.lastIndexOf('/');
   if (lastSlashIndex === -1) {
     return { prefix: '', suffix: name };
@@ -250,9 +254,11 @@ watch(windowWidth, () => {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -304,10 +310,11 @@ defineExpose({
             <SearchIcon class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               ref="searchInputRef"
+              data-testid="model-selector-filter"
               v-model="searchQuery"
               type="text"
               class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg pl-8 pr-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500/20 placeholder:text-gray-400"
-              placeholder="Filter models..."
+              :placeholder="lazyStrings.ModelSelector__filter_models()"
               @click.stop
             />
             <button
@@ -322,7 +329,7 @@ defineExpose({
             @click="handleRefresh({ event: $event })"
             class="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors shadow-sm disabled:opacity-50"
             :disabled="isFetchingModels"
-            title="Refresh model list"
+            :title="lazyStrings.ModelSelector__refresh_model_list()"
           >
             <RefreshCwIcon class="w-3.5 h-3.5" :class="{ 'animate-spin': isFetchingModels }" />
           </button>
@@ -349,13 +356,13 @@ defineExpose({
           >
             <div class="flex items-center gap-2">
               <XIcon v-if="modelValue" class="w-3.5 h-3.5" />
-              <span class="truncate">{{ clearLabel || placeholder || 'Inherit' }}</span>
+              <span class="truncate">{{ clearLabel || placeholder || lazyStrings.ModelSelector__inherit() }}</span>
             </div>
             <CheckIcon v-if="!modelValue" class="w-3.5 h-3.5 shrink-0" />
           </button>
 
           <div v-if="filteredModels.length === 0" class="px-4 py-8 text-center">
-            <p class="text-xs text-gray-500 dark:text-gray-400">No models found</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSelector__no_models_found() }}</p>
           </div>
           <button
             v-for="(model, index) in filteredModels"

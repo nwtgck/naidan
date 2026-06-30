@@ -1,0 +1,1 @@
+export const StorageTab__storage_migration_description = (): string => 'Switching storage will migrate all your chats, chat groups, and settings to the new location. This process will start automatically after you confirm the switch.';

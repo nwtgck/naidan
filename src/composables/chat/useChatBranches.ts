@@ -1,5 +1,5 @@
-import type { LmParameters } from '@/models/types';
-import type { ChatId, MessageId } from '@/models/ids';
+import type { LmParameters } from '@/01-models/types';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import {
   editMessageForChat,
   forkChatForChat,
@@ -88,8 +88,14 @@ export function useChatBranches(): ChatBranchesAdapter {
     editMessage,
     switchVersion,
     forkChat,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

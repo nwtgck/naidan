@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { Attachment, LmParameters } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Attachment, LmParameters } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 import { availableModels } from '@/composables/chat/global/chat-core-singletons';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ImageRequestParams } from '@/utils/image-generation';
@@ -213,6 +213,12 @@ export function useChatImageGeneration({
     updateSeed,
     setImageModel,
     sendImageRequest,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

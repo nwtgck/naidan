@@ -1,8 +1,8 @@
-import { toChatId, toMessageId } from '@/models/ids';
+import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import { webSpeechService } from '@/services/web-speech';
+import { webSpeechService } from '@/features/speech/logic/web-speech';
 import { nextTick } from 'vue';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {

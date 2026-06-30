@@ -48,12 +48,14 @@ describe('PWAUpdateNotification', () => {
     expect(wrapper.find('[data-testid="pwa-update-button"]').exists()).toBe(false);
   });
 
-  it('renders the update button when refresh is needed and sidebar is open', () => {
+  it('renders the update button when refresh is needed and sidebar is open', async () => {
     needRefresh.value = true;
     isSidebarOpen.value = true;
     const wrapper = mount(PWAUpdateNotification);
     expect(wrapper.find('[data-testid="pwa-update-button"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain('Reload to Update');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Reload to Update');
+    });
   });
 
   it('calls update function when button is clicked', async () => {

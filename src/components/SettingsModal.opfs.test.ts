@@ -6,6 +6,7 @@ import SettingsModal from './SettingsModal.vue';
 import StorageTab from './StorageTab.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock vue-router
 vi.mock('vue-router', () => ({
@@ -16,7 +17,7 @@ vi.mock('vue-router', () => ({
 // Mock dependencies
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
-    settings: ref({ storageType: 'local', providerProfiles: [] }),
+    settings: ref({ endpoint: { type: 'openai', url: '' }, storageType: 'local', providerProfiles: [] }),
     save: vi.fn(),
     updateProviderProfiles: vi.fn(),
     availableModels: ref([]),
@@ -36,7 +37,7 @@ vi.mock('../composables/useConfirm', () => ({
 vi.mock('../composables/usePrompt', () => ({
   usePrompt: () => ({ showPrompt: vi.fn() }),
 }));
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -68,7 +69,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
   const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     vi.unstubAllGlobals();
 
@@ -111,12 +113,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
     });
     await flushPromises();
 
-    const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-    if (storageTab) await storageTab.trigger('click');
+    await wrapper.get('[data-testid="tab-storage"]').trigger('click');
     await wait();
 
-    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
+    const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
     expect(opfsOption.text()).toContain('Unsupported');
   });
@@ -139,12 +139,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
     });
     await flushPromises();
 
-    const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-    if (storageTab) await storageTab.trigger('click');
+    await wrapper.get('[data-testid="tab-storage"]').trigger('click');
     await wait();
 
-    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
+    const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
     expect(opfsOption.text()).toContain('Unsupported');
   });
@@ -171,12 +169,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
     });
     await flushPromises();
 
-    const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
-    if (storageTab) await storageTab.trigger('click');
+    await wrapper.get('[data-testid="tab-storage"]').trigger('click');
     await wait();
 
-    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
+    const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).not.toContain('cursor-not-allowed');
     expect(opfsOption.text()).not.toContain('Unsupported');
   });
@@ -196,7 +192,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     const mockShowConfirm = vi.fn().mockResolvedValue(true);
 
     vi.mocked(useSettings).mockReturnValue({
-      settings: ref({ storageType: 'local', providerProfiles: [], endpointUrl: '' }),
+      settings: ref({ storageType: 'local', providerProfiles: [], endpoint: { type: 'openai', url: '' } }),
       save: mockSave,
       updateProviderProfiles: vi.fn(),
       initialized: ref(true),
@@ -244,16 +240,18 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await flushPromises();
 
     // Simulate a change to enable save button
-    (wrapper.vm as any).form.endpointUrl = 'http://new-url';
+    (wrapper.vm as any).form.endpoint = { type: 'openai', url: 'http://new-url' };
     await wrapper.vm.$nextTick();
 
     const saveButton = wrapper.find('[data-testid="setting-save-button"]');
     await saveButton.trigger('click');
 
     expect(mockSave).toHaveBeenCalled();
-    expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Save Failed',
-      message: expect.stringContaining('Migration Security Error'),
-    }));
+    await vi.waitFor(() => {
+      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Save Failed',
+        message: expect.stringContaining('Migration Security Error'),
+      }));
+    });
   });
 });

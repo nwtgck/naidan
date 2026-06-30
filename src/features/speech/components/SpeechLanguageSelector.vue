@@ -1,0 +1,170 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { lazyStrings } from '@/strings';
+import { LanguagesIcon, ChevronDownIcon, CheckIcon, RefreshCwIcon } from 'lucide-vue-next';
+import type { MessageId } from '@/01-models/ids';
+import { webSpeechService, type SpeechLanguage } from '@/features/speech/logic/web-speech';
+
+const props = defineProps<{
+  messageId: MessageId,
+  content: string,
+  isMini?: boolean,
+  align?: 'up' | 'down',
+}>();
+
+const showMenu = ref(false);
+const isRedetecting = ref(false);
+const selectedLang = computed(() => webSpeechService.state.preferredLang);
+const detectedLang = computed(() => webSpeechService.state.detectedLang);
+
+type SpeechLanguageOption = {
+  label: string,
+  value: SpeechLanguage,
+};
+
+const languages = computed<SpeechLanguageOption[]>(() => {
+  // Keep language names self-identifying so users can recover after selecting
+  // a language they cannot otherwise read.
+  const options = [
+    { label: lazyStrings.SpeechLanguageSelector__auto_detect(), value: 'auto' as const },
+    { label: lazyStrings.SpeechLanguageSelector__english(), value: 'en-US' as const },
+    { label: '日本語', value: 'ja-JP' as const },
+    { label: '한국어', value: 'ko-KR' as const },
+    { label: '中文', value: 'zh-CN' as const },
+    { label: 'Français', value: 'fr-FR' as const },
+    { label: 'Deutsch', value: 'de-DE' as const },
+    { label: 'Español', value: 'es-ES' as const },
+    { label: 'Русский', value: 'ru-RU' as const },
+  ];
+  return options.filter((option): option is SpeechLanguageOption => option.label !== undefined);
+});
+
+function setLanguage({ lang }: { lang: SpeechLanguage }) {
+  webSpeechService.setPreferredLang({ lang });
+  showMenu.value = false;
+}
+
+function handleRedetect() {
+  isRedetecting.value = true;
+  webSpeechService.redetectLanguage({
+    text: props.content,
+    messageId: props.messageId,
+  });
+  // Small delay for visual feedback
+  setTimeout(() => {
+    isRedetecting.value = false;
+  }, 500);
+}
+
+function getDisplayLabel() {
+  const lang = selectedLang.value;
+  switch (lang) {
+  case 'auto':
+    return detectedLang.value ? detectedLang.value.split('-')[0]?.toUpperCase() : lazyStrings.SpeechLanguageSelector__auto();
+  case 'en-US':
+  case 'ja-JP':
+  case 'ko-KR':
+  case 'zh-CN':
+  case 'ru-RU':
+  case 'es-ES':
+  case 'fr-FR':
+  case 'de-DE':
+    return lang.split('-')[0]?.toUpperCase();
+  default: {
+    const _ex: never = lang;
+    return _ex;
+  }
+  }
+}
+
+function getFullLabel({ langObj }: { langObj: { label: string, value: SpeechLanguage } }) {
+  const val = langObj.value;
+  switch (val) {
+  case 'auto':
+    if (detectedLang.value) {
+      const detected = languages.value.find(l => l.value === detectedLang.value);
+      return lazyStrings.SpeechLanguageSelector__auto_detect_with_language({ language: detected?.label || detectedLang.value });
+    }
+    return langObj.label;
+  case 'en-US':
+  case 'ja-JP':
+  case 'ko-KR':
+  case 'zh-CN':
+  case 'ru-RU':
+  case 'es-ES':
+  case 'fr-FR':
+  case 'de-DE':
+    return langObj.label;
+  default: {
+    const _ex: never = val;
+    return _ex;
+  }
+  }
+}
+
+
+defineExpose({
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
+});
+</script>
+
+<template>
+  <div class="relative inline-flex items-center">
+    <button
+      @click.stop="showMenu = !showMenu"
+      class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-[9px] font-bold transition-colors"
+      :class="[
+        isMini
+          ? 'text-gray-500 hover:text-blue-600'
+          : 'bg-white/50 dark:bg-gray-800/50 text-blue-600/70 hover:text-blue-600'
+      ]"
+    >
+      <LanguagesIcon class="w-3 h-3" />
+      <span>{{ getDisplayLabel() }}</span>
+      <ChevronDownIcon class="w-2.5 h-2.5 opacity-50" />
+    </button>
+
+    <div v-if="showMenu" class="fixed inset-0 z-40" @click.stop="showMenu = false"></div>
+
+    <Transition name="zoom">
+      <div
+        v-if="showMenu"
+        class="absolute w-40 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden animate-in zoom-in-95 duration-200"
+        :class="[
+          align === 'down' ? 'top-full left-0 mt-1 origin-top-left' : 'bottom-full left-0 mb-1 origin-bottom-left'
+        ]"
+      >
+        <div class="px-3 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">{{ lazyStrings.SpeechLanguageSelector__language() }}</div>
+        <div class="max-h-48 overflow-y-auto custom-scrollbar">
+          <div
+            v-for="l in languages"
+            :key="l.value"
+            class="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
+            :class="selectedLang === l.value ? 'text-blue-600 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+          >
+            <button @click.stop="setLanguage({ lang: l.value })" class="flex-1 text-left">
+              {{ getFullLabel({ langObj: l }) }}
+            </button>
+
+            <div class="flex items-center gap-2">
+              <button
+                v-if="l.value === 'auto'"
+                @click.stop="handleRedetect"
+                class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-gray-400 hover:text-blue-600 transition-all"
+                :class="{ 'animate-spin text-blue-600': isRedetecting }"
+                :title="lazyStrings.SpeechLanguageSelector__redetect_language()"
+              >
+                <RefreshCwIcon class="w-2.5 h-2.5" />
+              </button>
+              <CheckIcon v-if="selectedLang === l.value" class="w-3 h-3" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </div>
+</template>

@@ -4,10 +4,10 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { loadData } from '@/composables/chat/global/chat-core-singletons';
 import { chatRuntimeStore, currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
-import type { Settings } from '@/models/types';
-import { transformersJsService } from '@/services/transformers-js';
+import type { Settings } from '@/01-models/types';
+import { transformersJsService } from '@/features/transformers-js';
 import { useSettings } from '@/composables/useSettings';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatBootstrapAdapter = {
   loadChats(): Promise<void>,
@@ -20,6 +20,15 @@ export type ChatBootstrapAdapter = {
 
   TEST_ONLY: Record<never, never>,
 };
+
+export async function loadChatsForAppStartup(): Promise<void> {
+  /**
+   * WHY: Startup may hydrate the Sidebar while onboarding is still visible,
+   * but runtime listeners must remain inactive until the real app has
+   * mounted. Keep data hydration separate from runtime activation.
+   */
+  await loadData();
+}
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
   const { settings } = useSettings();
@@ -50,7 +59,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
     },
     subscribeModelList: () => {
       return transformersJsService.subscribeModelList({ listener: async () => {
-        const type = chatDerivedState.resolvedSettings.value?.endpointType;
+        const type = chatDerivedState.resolvedSettings.value?.endpoint.type;
         if (type === undefined) {
           return;
         }
@@ -77,7 +86,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   });
 
   async function loadChats() {
-    await loadData();
+    await loadChatsForAppStartup();
   }
 
   async function openChat({
@@ -94,6 +103,12 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   return {
     loadChats,
     openChat,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

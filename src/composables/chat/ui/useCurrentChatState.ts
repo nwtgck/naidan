@@ -1,9 +1,9 @@
 import { computed, type ComputedRef } from 'vue';
-import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/models/types';
-import type { Settings } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/01-models/types';
+import type { Settings } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 import { useSettings } from '@/composables/useSettings';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import {
@@ -19,13 +19,14 @@ export type CurrentChatStateAdapter = {
   currentChatGroup: ComputedRef<Readonly<ChatGroup> | null>,
   currentChatId: ComputedRef<ChatId | undefined>,
   activeMessages: ComputedRef<MessageNode[]>,
-  allMessages: ComputedRef<MessageNode[]>,
   resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
   inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
   chatGroups: ComputedRef<ChatGroup[]>,
   sidebarItems: ComputedRef<SidebarItem[]>,
 
-  TEST_ONLY: Record<never, never>,
+  TEST_ONLY: {
+    allMessages: ComputedRef<MessageNode[]>,
+  },
 };
 
 export function useCurrentChatState(): CurrentChatStateAdapter {
@@ -57,11 +58,18 @@ export function useCurrentChatState(): CurrentChatStateAdapter {
     currentChatGroup,
     currentChatId,
     activeMessages,
-    allMessages,
     resolvedSettings,
     inheritedSettings,
     chatGroups,
     sidebarItems,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        allMessages,
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

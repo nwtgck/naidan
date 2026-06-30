@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MessageId } from '@/models/ids';
+import type { MessageId } from '@/01-models/ids';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import ChatPane from './ChatPane.vue';
 import UnselectedChatPane from './UnselectedChatPane.vue';
@@ -16,9 +16,11 @@ const emit = defineEmits<{
 const { currentChatId } = useCurrentChatState();
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 

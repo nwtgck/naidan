@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { lazyStrings } from '@/strings';
 import { ServerCogIcon } from 'lucide-vue-next';
-import type { FakeLmDebugModeStatus } from '@/services/fake-lm';
-import { createOllamaProvider } from '@/services/lm/providerFactory';
+import type { FakeLmDebugModeStatus } from '@/features/fake-lm';
+import { createOllamaProvider } from '@/features/lm/providerFactory';
 import OllamaPsView from './OllamaPsView.vue';
 
 const props = defineProps<{
@@ -18,9 +19,11 @@ const provider = computed(() => createOllamaProvider({
 }));
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -33,12 +36,12 @@ defineExpose({
     <div class="flex items-center gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
       <ServerCogIcon class="h-5 w-5 text-blue-500" />
       <h2 id="ollama-runtime-heading" class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">
-        Ollama Runtime
+        {{ lazyStrings.OllamaManagementView__ollama_runtime() }}
       </h2>
     </div>
 
     <p class="ml-1 text-[11px] font-medium leading-relaxed text-gray-400">
-      View and unload models currently held in memory by this Ollama server.
+      {{ lazyStrings.OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server() }}
     </p>
 
     <OllamaPsView

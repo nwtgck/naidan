@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { computed, nextTick, ref, watch } from 'vue';
 import { PlusIcon, XIcon } from 'lucide-vue-next';
 import { createWeshTerminalHistory } from '@/features/wesh-terminal/composables/useWeshTerminalHistory';
@@ -234,9 +235,11 @@ function stateDotClass({ state }: { state: WeshTerminalSessionState }): string {
 
 defineExpose({
   focusInput,
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -268,7 +271,7 @@ defineExpose({
       </button>
       <button
         class="pr-1.5 pl-0.5 py-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity"
-        aria-label="Close session"
+        :aria-label="lazyStrings.weshTerminal__close_session_aria()"
         @click.stop="emit('close-session', { sessionId: session.id })"
       >
         <XIcon class="w-2.5 h-2.5" />
@@ -281,7 +284,7 @@ defineExpose({
       @click="emit('create-session')"
     >
       <PlusIcon class="w-3 h-3" />
-      New
+      {{ lazyStrings.weshTerminal__new() }}
     </button>
   </div>
 
@@ -301,7 +304,7 @@ defineExpose({
         <span v-if="line.kind === 'command'" class="select-none text-blue-400 mr-2">$</span>{{ line.text }}
       </div>
       <div v-if="activeSession.state === 'initializing'" class="text-gray-700 italic animate-pulse mt-1">
-        Initializing worker…
+        {{ lazyStrings.weshTerminal__initializing_worker() }}
       </div>
 
       <!-- Inline input prompt (ready: visible; running: textarea kept in DOM for Ctrl+C but invisible) -->
@@ -332,7 +335,7 @@ defineExpose({
       </div>
     </template>
     <div v-else class="text-gray-700 text-xs italic mt-2">
-      No sessions. Press "New" to start a worker-backed shell.
+      {{ lazyStrings.weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell() }}
     </div>
   </div>
 </template>

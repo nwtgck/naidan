@@ -15,9 +15,11 @@ vi.mock('@/composables/useFeatureFlags', () => ({
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({
-      endpointType: 'openai',
-      endpointUrl: 'http://localhost:1234/v1',
-      endpointHttpHeaders: [],
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost:1234/v1',
+        httpHeaders: [],
+      },
       defaultModelId: 'model-1',
       titleModelId: 'model-1',
       autoTitleEnabled: true,
@@ -63,6 +65,8 @@ vi.mock('vue-router', () => ({
 vi.mock('lucide-vue-next', () => ({
   XIcon: { template: '<span>X</span>' },
   GlobeIcon: { template: '<span>Globe</span>' },
+  ChevronDownIcon: { template: '<span>ChevronDown</span>' },
+  CheckIcon: { template: '<span>Check</span>' },
   DatabaseIcon: { template: '<span>Database</span>' },
   Settings2Icon: { template: '<span>Settings2</span>' },
   BookmarkPlusIcon: { template: '<span>BookmarkPlus</span>' },

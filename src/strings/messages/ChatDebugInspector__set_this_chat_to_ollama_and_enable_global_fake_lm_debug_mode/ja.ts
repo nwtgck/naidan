@@ -1,0 +1,1 @@
+export const ChatDebugInspector__set_this_chat_to_ollama_and_enable_global_fake_lm_debug_mode = ({ endpointUrl }: { endpointUrl: string }): string => `このチャットの Ollama エンドポイントを ${endpointUrl} に設定し、グローバル Fake LM デバッグモードを有効にする`;

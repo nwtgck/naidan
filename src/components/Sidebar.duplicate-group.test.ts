@@ -4,8 +4,8 @@ import Sidebar from './Sidebar.vue';
 import ChatGroupActions from './ChatGroupActions.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
-import { idToRaw, toChatGroupId } from '@/models/ids';
+import type { ChatGroup, ChatSummary, SidebarItem } from '@/01-models/types';
+import { idToRaw, toChatGroupId } from '@/01-models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -83,7 +83,7 @@ vi.mock('../composables/chat/ui/useChatOrganization', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointUrl: 'http://localhost', defaultModelId: 'm1' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'm1' }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
     updateGlobalModel: vi.fn(),
@@ -96,7 +96,7 @@ vi.mock('../composables/useConfirm', () => ({
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),

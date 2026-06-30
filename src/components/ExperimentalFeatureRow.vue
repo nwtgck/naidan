@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { AlertTriangleIcon, ChevronDownIcon } from 'lucide-vue-next';
+import { lazyStrings } from '@/strings';
 
 type FeatureStatus = 'disabled' | 'enabled';
 type DetailsState = 'collapsed' | 'expanded';
@@ -23,6 +24,9 @@ const emit = defineEmits<{
 
 const detailsState = ref<DetailsState>('collapsed');
 const isDetailsExpanded = computed(() => detailsState.value === 'expanded');
+const detailsAriaLabel = computed(() =>
+  lazyStrings.ExperimentalFeatureRow__details_for({ title: props.title }),
+);
 
 function toggleDetails() {
   switch (detailsState.value) {
@@ -40,10 +44,12 @@ function toggleDetails() {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    // ESLint-required for defineExpose.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      // ESLint-required for defineExpose.
+    },
+  }) || {}),
 });
 </script>
 
@@ -74,7 +80,7 @@ defineExpose({
           :class="props.status === 'enabled' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-gray-400'"
         >
           <AlertTriangleIcon v-if="props.status === 'enabled'" class="h-3.5 w-3.5" />
-          {{ props.status === 'enabled' ? 'Enabled' : 'Disabled' }}
+          {{ props.status === 'enabled' ? lazyStrings.ExperimentalFeatureRow__enabled() : lazyStrings.ExperimentalFeatureRow__disabled() }}
         </div>
 
         <div class="flex shrink-0 items-center gap-2">
@@ -86,7 +92,7 @@ defineExpose({
             :data-testid="`${props.id}-details-toggle`"
             @click="toggleDetails"
           >
-            Details
+            {{ lazyStrings.ExperimentalFeatureRow__details() }}
             <ChevronDownIcon
               class="h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none"
               :class="isDetailsExpanded ? 'rotate-180' : ''"
@@ -119,7 +125,7 @@ defineExpose({
       :class="isDetailsExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
       role="region"
       :aria-hidden="!isDetailsExpanded"
-      :aria-label="`${props.title} details`"
+      :aria-label="detailsAriaLabel"
       :data-testid="`${props.id}-details`"
     >
       <div class="overflow-hidden">

@@ -12,7 +12,7 @@ import Logo from './Logo.vue';
 import ModelSelector from './ModelSelector.vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SidebarDebugControls.vue') });
-import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/models/types';
+import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/01-models/types';
 import {
   Trash2Icon, SettingsIcon,
   PencilIcon, FolderIcon, FolderPlusIcon,
@@ -20,13 +20,13 @@ import {
   BotIcon, PanelLeftIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
   SearchIcon, GhostIcon, MessageSquarePlusIcon,
 } from 'lucide-vue-next';
-import { idToRaw } from '@/models/ids';
-import type { ChatGroupId, ChatId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupActions.vue') });
 import { useLayout } from '@/composables/useLayout';
 import { useConfirm } from '@/composables/useConfirm';
-import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
 import { scrollIntoViewSafe } from '@/utils/dom';
@@ -37,6 +37,7 @@ import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
+import { ensureStrings, lazyStrings } from '@/strings';
 
 const currentChatState = useCurrentChatState();
 const chatLifecycle = useChatLifecycle();
@@ -659,10 +660,10 @@ async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
 
   if (hasItems || hasCustomSettings) {
     const confirmed = await showConfirm({
-      title: 'Delete Group?',
-      message: `Are you sure you want to delete "${group.name}"? This will permanently delete all ${group.items.length} chats inside it.`,
-      confirmButtonText: 'Delete Group',
-      cancelButtonText: 'Cancel',
+      title: await ensureStrings.Sidebar__delete_group_question(),
+      message: await ensureStrings.Sidebar__delete_group_warning({ groupName: group.name, chatCount: group.items.length }),
+      confirmButtonText: await ensureStrings.Sidebar__delete_group(),
+      cancelButtonText: await ensureStrings.Sidebar__cancel(),
       confirmButtonVariant: 'danger',
     });
     if (!confirmed) return;
@@ -947,13 +948,21 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
   }
 });
 
+function newChatInGroupTitle(): string | undefined {
+  const groupName = currentChatGroup.value?.name || lazyStrings.Sidebar__current_group();
+  if (groupName === undefined) return undefined;
+  return lazyStrings.Sidebar__new_chat_in_group({ groupName });
+}
+
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    scheduleSidebarItemScroll,
-    syncLocalItems,
-    toggleGroupCompactExpansion,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      scheduleSidebarItemScroll,
+      syncLocalItems,
+      toggleGroupCompactExpansion,
+    },
+  }) || {}),
 });
 </script>
 
@@ -974,7 +983,7 @@ defineExpose({
             <GhostIcon
               v-if="settings.storageType === 'memory'"
               class="w-3.5 h-3.5 text-indigo-500/80 dark:text-indigo-400/80 animate-pulse"
-              title="Ephemeral Session"
+              :title="lazyStrings.Sidebar__ephemeral_session()"
               data-testid="sidebar-ghost-icon"
             />
           </div>
@@ -983,7 +992,7 @@ defineExpose({
       <button
         @click="toggleSidebar"
         class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shrink-0"
-        :title="isSidebarOpen ? 'Close Sidebar' : 'Open Sidebar'"
+        :title="isSidebarOpen ? lazyStrings.Sidebar__close_sidebar() : lazyStrings.Sidebar__open_sidebar()"
         data-testid="sidebar-toggle"
       >
         <PanelLeftIcon class="w-5 h-5" />
@@ -1000,11 +1009,11 @@ defineExpose({
           class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
           :class="isSidebarOpen ? 'flex-1 px-3 py-2 text-xs' : 'w-8 h-8'"
           data-testid="new-chat-button"
-          :title="!isSidebarOpen ? 'New Chat' : ''"
+          :title="!isSidebarOpen ? lazyStrings.SHARED__new_chat() : ''"
         >
           <SquarePenIcon class="w-4 h-4 shrink-0" />
           <template v-if="isSidebarOpen">
-            <span class="whitespace-nowrap overflow-hidden">New Chat</span>
+            <span class="whitespace-nowrap overflow-hidden">{{ lazyStrings.SHARED__new_chat() }}</span>
             <span class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
           </template>
         </button>
@@ -1013,7 +1022,7 @@ defineExpose({
           @click="handleNewChat({ groupId: (currentChatGroup?.id || currentChat?.groupId) ?? undefined })"
           class="flex items-center justify-center bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-all shadow-sm w-8 h-8"
           data-testid="new-chat-in-group-button"
-          :title="`New Chat in ${currentChatGroup?.name || 'current group'}`"
+          :title="newChatInGroupTitle()"
         >
           <MessageSquarePlusIcon class="w-4 h-4 shrink-0" />
         </button>
@@ -1021,7 +1030,7 @@ defineExpose({
           @click="useGlobalSearch().openSearch({})"
           class="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           :class="isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0'"
-          title="Search (Cmd+K)"
+          :title="lazyStrings.Sidebar__search_cmd_k()"
           data-testid="search-button"
         >
           <SearchIcon class="w-4 h-4" />
@@ -1030,7 +1039,7 @@ defineExpose({
           v-if="isSidebarOpen"
           @click="isCreatingChatGroup = true"
           class="p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
-          title="Create Chat Group"
+          :title="lazyStrings.Sidebar__create_chat_group()"
           data-testid="create-chat-group-button"
         >
           <FolderPlusIcon class="w-4 h-4" />
@@ -1059,7 +1068,7 @@ defineExpose({
                 @keyup.esc="cancelCreateChatGroup"
                 @blur="handleCreateChatGroupBlur"
                 class="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-full px-1 font-bold tracking-tight placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                placeholder="Group name..."
+                :placeholder="lazyStrings.Sidebar__group_name()"
                 data-testid="chat-group-name-input"
               />
             </div>
@@ -1136,7 +1145,7 @@ defineExpose({
                   </div>
 
                   <div class="flex items-center group-action-container touch-visible" :class="activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity'">
-                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup })" class="p-1 hover:text-blue-600 dark:hover:text-white" title="Rename Group"><PencilIcon class="w-3 h-3" /></button>
+                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup })" class="p-1 hover:text-blue-600 dark:hover:text-white" :title="lazyStrings.Sidebar__rename_group()"><PencilIcon class="w-3 h-3" /></button>
 
                     <ChatGroupActions
                       :chat-group="element.chatGroup"
@@ -1156,7 +1165,7 @@ defineExpose({
                       @click.stop="handleNewChat({ groupId: element.chatGroup.id })"
                       class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                     >
-                      <MessageSquarePlusIcon class="w-3 h-3" /> Add Chat
+                      <MessageSquarePlusIcon class="w-3 h-3" /> {{ lazyStrings.Sidebar__add_chat() }}
                     </button>
 
                     <!-- Smooth height for Show more/less -->
@@ -1206,7 +1215,7 @@ defineExpose({
                                 class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                                 data-testid="chat-rename-input"
                               />
-                              <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'New Chat' }}</span>
+                              <span v-else class="truncate text-sm">{{ nestedItem.chat.title || lazyStrings.SHARED__new_chat() }}</span>
                             </div>
                             <div class="flex items-center gap-1">
                               <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
@@ -1235,7 +1244,7 @@ defineExpose({
                     >
                       <span class="ml-1 flex items-center gap-1.5">
                         <MoreHorizontalIcon v-if="!isGroupCompactExpanded({ groupId: element.chatGroup.id })" class="w-3 h-3 opacity-60" />
-                        {{ isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? 'Show less' : `Show ${element.chatGroup.items.length - COMPACT_THRESHOLD} more` }}
+                        {{ isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? lazyStrings.Sidebar__show_less() : lazyStrings.Sidebar__show_more({ count: element.chatGroup.items.length - COMPACT_THRESHOLD }) }}
                       </span>
                       <component :is="isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? ChevronUpIcon : ChevronDownIcon" class="w-3 h-3" />
                     </button>
@@ -1264,7 +1273,7 @@ defineExpose({
                     class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                     data-testid="chat-rename-input"
                   />
-                  <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
+                  <span v-else class="truncate text-sm">{{ element.chat.title || lazyStrings.SHARED__new_chat() }}</span>
                 </div>
                 <div class="flex items-center gap-1">
                   <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
@@ -1282,11 +1291,11 @@ defineExpose({
     <!-- Footer -->
     <div class="border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]'">
       <!-- Global Model Selector -->
-      <div v-if="isSidebarOpen && (settings.endpointUrl || settings.endpointType === 'transformers_js')" class="px-1 space-y-2 animate-in fade-in duration-300">
+      <div v-if="isSidebarOpen && (settings.endpoint.type === 'transformers_js' || settings.endpoint.url !== '')" class="px-1 space-y-2 animate-in fade-in duration-300">
         <div class="flex items-center justify-between px-1">
           <label class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
             <BotIcon class="w-3 h-3" />
-            Default model
+            {{ lazyStrings.Sidebar__default_model() }}
           </label>
         </div>
         <ModelSelector
@@ -1294,7 +1303,7 @@ defineExpose({
           :models="sortedModels"
           :loading="isFetchingModels"
           @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
-          placeholder="Select default model"
+          :placeholder="lazyStrings.Sidebar__select_default_model()"
         />
       </div>
 
@@ -1303,11 +1312,11 @@ defineExpose({
           @click="router.push({ query: { ...route.query, settings: 'connection' } })"
           class="flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm"
           :class="isSidebarOpen ? 'flex-1 py-2 px-2' : 'w-8 h-8'"
-          title="Settings"
+          :title="lazyStrings.Sidebar__settings()"
           data-testid="sidebar-settings-button"
         >
           <SettingsIcon class="w-4 h-4 shrink-0" />
-          <span v-if="isSidebarOpen">Settings</span>
+          <span v-if="isSidebarOpen">{{ lazyStrings.Sidebar__settings() }}</span>
         </button>
 
         <SidebarDebugControls :is-sidebar-open="isSidebarOpen" />

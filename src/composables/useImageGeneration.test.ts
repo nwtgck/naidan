@@ -1,11 +1,11 @@
-import { toChatId, toMessageId } from '@/models/ids';
+import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useImageGeneration } from './useImageGeneration';
 
 import { SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 // Mock storage service
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     getFile: vi.fn(),
     saveFile: vi.fn().mockResolvedValue(undefined),
@@ -47,8 +47,8 @@ if (!global.crypto) {
 }
 
 // Mock LM provider
-vi.mock('../services/lm/ollama', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/lm/ollama')>();
+vi.mock('../features/lm/ollama', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/lm/ollama')>();
   return {
     ...actual,
     OllamaProvider: class {
@@ -305,7 +305,7 @@ describe('useImageGeneration', () => {
 
     it('converts image to requested format when persistAs is specified', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { storageService } = await import('@/services/storage');
+      const { storageService } = await import('@/00-storage/service');
 
       await handleImageGeneration({
         ...commonParams,
@@ -329,7 +329,7 @@ describe('useImageGeneration', () => {
 
     it('falls back to original format if re-encoding fails', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { storageService } = await import('@/services/storage');
+      const { storageService } = await import('@/00-storage/service');
 
       // Force failure
       mockReencodeImage.mockRejectedValueOnce(new Error('Canvas failure'));
@@ -395,8 +395,8 @@ describe('useImageGeneration', () => {
 
     it('uses undefined for steps in the final output blocks if provider returns UNKNOWN_STEPS', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { OllamaProvider } = await import('@/services/lm/ollama');
-      const { UNKNOWN_STEPS } = await import('@/services/lm/types');
+      const { OllamaProvider } = await import('@/features/lm/ollama');
+      const { UNKNOWN_STEPS } = await import('@/01-models/lm');
 
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockResolvedValueOnce({
@@ -437,7 +437,7 @@ describe('useImageGeneration', () => {
 
     it('clears imageProgressMap at the start of each image in a batch', async () => {
       const { handleImageGeneration, imageProgressMap } = useImageGeneration();
-      const { OllamaProvider } = await import('@/services/lm/ollama');
+      const { OllamaProvider } = await import('@/features/lm/ollama');
 
       // Set stale progress
       imageProgressMap.value.set(toChatId({ raw: 'progress-test-chat' }), { currentStep: 50, totalSteps: 50 });

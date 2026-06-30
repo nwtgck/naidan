@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
-import { storageService } from '@/services/storage';
-import type { ChatMeta } from '@/models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
+import { storageService } from '@/00-storage/service';
+import type { ChatMeta } from '@/01-models/types';
 
 // Mock storage
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -34,7 +34,7 @@ const mockOpenAIModels = vi.fn();
 const mockOllamaModels = vi.fn();
 
 // Proper class mocking for Vitest
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOpenAIChat,
@@ -43,7 +43,7 @@ vi.mock('../services/lm/openai', () => ({
   }),
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOllamaChat,
@@ -63,8 +63,7 @@ describe('useChat Settings Resolution Policy', () => {
 
     // Default Global Settings
     __testOnlySetSettings({ newSettings: {
-      endpointType: 'openai',
-      endpointUrl: 'http://global-openai',
+      endpoint: { type: 'openai', url: 'http://global-openai' },
       defaultModelId: 'global-gpt',
       autoTitleEnabled: false,
       storageType: 'local',
@@ -85,7 +84,7 @@ describe('useChat Settings Resolution Policy', () => {
     // 1. Setup with Setting A
     __testOnlySetSettings({ newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
-      endpointUrl: 'http://endpoint-a',
+      endpoint: { type: 'openai', url: 'http://endpoint-a' },
       defaultModelId: 'global-gpt',
     } });
 
@@ -101,7 +100,7 @@ describe('useChat Settings Resolution Policy', () => {
     // 2. Change to Setting B
     __testOnlySetSettings({ newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
-      endpointUrl: 'http://endpoint-b',
+      endpoint: { type: 'openai', url: 'http://endpoint-b' },
       defaultModelId: 'model-b',
     } });
 
@@ -136,8 +135,7 @@ describe('useChat Settings Resolution Policy', () => {
     const id = chat!.id;
     await openChat({ id: idToRaw({ id }) });
     await updateChatSettings({ id: idToRaw({ id }), updates: {
-      endpointType: 'ollama' as const,
-      endpointUrl: 'http://pinned-ollama',
+      endpoint: { type: 'ollama', url: 'http://pinned-ollama' },
     } });
 
     // Global is OpenAI, but chat endpoint is Ollama. Model should be llama-global because Ollama list results in llama-global
@@ -164,9 +162,16 @@ describe('useChat Settings Resolution Policy', () => {
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'first-available', onChunk: expect.any(Function) }));
   });
 
-  it('Policy: Resolve headers hierarchically (Chat > Global)', async () => {
+  it('Policy: Resolve an endpoint atomically at Chat or Global scope', async () => {
     // 1. Global only
-    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), endpointHttpHeaders: [['X-Global', '1']] } });
+    __testOnlySetSettings({ newSettings: {
+      ...JSON.parse(JSON.stringify(settings.value)),
+      endpoint: {
+        type: 'openai',
+        url: 'http://global-openai',
+        httpHeaders: [['X-Global', '1']],
+      },
+    } });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat({ id: idToRaw({ id }) });
@@ -176,13 +181,22 @@ describe('useChat Settings Resolution Policy', () => {
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), onChunk: expect.any(Function) }));
 
     // 2. Chat Override
-    await updateChatSettings({ id: idToRaw({ id }), updates: { endpointHttpHeaders: [['X-Chat', '3']] } });
+    await updateChatSettings({
+      id: idToRaw({ id }),
+      updates: {
+        endpoint: {
+          type: 'openai',
+          url: 'http://chat-openai',
+          httpHeaders: [['X-Chat', '3']],
+        },
+      },
+    });
     await sendMessage({ content: 'C' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), onChunk: expect.any(Function) }));
   });
 
-  it('preserves_group_endpoint_inheritance_for_a_partial_update_to_a_non_live_chat', async () => {
+  it('applies_an_atomic_endpoint_override_to_a_non_live_group_chat', async () => {
     const chatId = toChatId({ raw: 'non-live-group-chat' });
     const groupId = toChatGroupId({ raw: 'group-endpoint' });
     const storedMeta: ChatMeta = {
@@ -226,7 +240,13 @@ describe('useChat Settings Resolution Policy', () => {
 
     await updateChatSettings({
       id: idToRaw({ id: chatId }),
-      updates: { endpointUrl: 'http://chat-ollama:11434' },
+      updates: {
+        endpoint: {
+          type: 'ollama',
+          url: 'http://chat-ollama:11434',
+          httpHeaders: [['X-Group', '1']],
+        },
+      },
     });
 
     expect(persisted.endpoint).toEqual({

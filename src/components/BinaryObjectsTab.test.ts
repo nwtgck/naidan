@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BinaryObjectsTab from './BinaryObjectsTab.vue';
-import { storageService } from '@/services/storage';
-import type { BinaryObject } from '@/models/types';
-import { idToRaw, toBinaryObjectId } from '@/models/ids';
+import { storageService } from '@/00-storage/service';
+import type { BinaryObject } from '@/01-models/types';
+import { idToRaw, toBinaryObjectId } from '@/01-models/ids';
 
 // --- Mocks ---
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     listBinaryObjects: vi.fn(),
     getFile: vi.fn(),
@@ -218,8 +218,8 @@ describe('BinaryObjectsTab.vue', () => {
     const vm = wrapper.vm as any;
 
     // Force high count
-    vm.thumbnailCount = 301;
-    vm.thumbnails.set(toBinaryObjectId({ raw: '1' }), 'blob:mock-url-1');
+    vm.TEST_ONLY.thumbnailCount.value = 301;
+    vm.TEST_ONLY.thumbnails.value.set(toBinaryObjectId({ raw: '1' }), 'blob:mock-url-1');
 
     // Trigger off-screen for id "1"
     const target = document.createElement('div');
@@ -231,8 +231,8 @@ describe('BinaryObjectsTab.vue', () => {
     vi.advanceTimersByTime(3500);
 
     // Should be deleted
-    expect(vm.thumbnails.get(toBinaryObjectId({ raw: '1' }))).toBeUndefined();
-    expect(vm.thumbnailCount).toBe(300);
+    expect(vm.TEST_ONLY.thumbnails.value.get(toBinaryObjectId({ raw: '1' }))).toBeUndefined();
+    expect(vm.TEST_ONLY.thumbnailCount.value).toBe(300);
   });
 
   it('filters objects and resets display limit', async () => {
@@ -244,7 +244,7 @@ describe('BinaryObjectsTab.vue', () => {
 
     // Matches file10, file100-109 -> 11 items
     expect(wrapper.get('[data-testid="binary-objects-count"]').text()).toContain('11 / 150');
-    expect((wrapper.vm as any).displayLimit).toBe(60);
+    expect((wrapper.vm as any).TEST_ONLY.displayLimit.value).toBe(60);
   });
 
   it('sorts objects by name', async () => {
@@ -257,15 +257,15 @@ describe('BinaryObjectsTab.vue', () => {
     const wrapper = mount(BinaryObjectsTab, { global: { stubs: globalStubs } });
     await flushPromises();
 
-    const nameHeader = wrapper.findAll('th').find(th => th.text().includes('Name'));
-    await nameHeader?.trigger('click');
+    const nameHeader = wrapper.get('[data-testid="binary-sort-name"]');
+    await nameHeader.trigger('click');
 
     let rows = wrapper.findAll('[data-testid^="binary-object-row-"]');
     expect(rows[0]!.text()).toContain('a.png');
     expect(rows[1]!.text()).toContain('b.png');
     expect(rows[2]!.text()).toContain('c.png');
 
-    await nameHeader?.trigger('click'); // Toggle to desc
+    await nameHeader.trigger('click'); // Toggle to desc
     rows = wrapper.findAll('[data-testid^="binary-object-row-"]');
     expect(rows[0]!.text()).toContain('c.png');
     expect(rows[1]!.text()).toContain('b.png');

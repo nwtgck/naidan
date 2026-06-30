@@ -8,11 +8,11 @@ import {
 } from 'lucide-vue-next';
 import type { MediaShelfVisibility } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
-import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
-import type { ChatPaneHeaderMoreAction } from '@/services/context-compact';
-import { idToRaw } from '@/models/ids';
-import type { ChatGroupId, ChatId } from '@/models/ids';
+import type { ChatPaneHeaderMoreAction } from '@/logic/context-compact';
+import { idToRaw } from '@/01-models/ids';
+import type { ChatGroupId, ChatId } from '@/01-models/ids';
+import { lazyStrings } from '@/strings';
 
 type HeaderChat = {
   readonly id: ChatId,
@@ -32,7 +32,7 @@ defineProps<{
   chatGroups: readonly HeaderChatGroup[],
   chatGroupBadge: HeaderChatGroup | undefined,
   activeMessageCount: number,
-  modelLabel: string,
+  modelLabel: string | undefined,
   hasOverrides: boolean,
   showChatSettings: boolean,
   outlineVisibility: 'hidden' | 'visible',
@@ -127,9 +127,11 @@ function emitMoreAction({ action }: {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -143,7 +145,7 @@ defineExpose({
               v-if="chat.originChatId"
               @click="emit('jump-origin')"
               class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
-              title="Jump to original chat"
+              :title="lazyStrings.ChatPaneHeader__jump_to_original_chat()"
               data-testid="jump-to-origin-button"
             >
               <ArrowUpIcon class="w-4 h-4" />
@@ -151,24 +153,24 @@ defineExpose({
             <h2
               class="relative text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate"
               :class="{ 'title-header-generating': generatingTitle }"
-              :data-title="chat.title || UNTITLED_CHAT_TITLE"
+              :data-title="chat.title || lazyStrings.SHARED__new_chat()"
               data-testid="chat-header-title"
             >
               <span class="title-header-base">
-                {{ chat.title || UNTITLED_CHAT_TITLE }}
+                {{ chat.title || lazyStrings.SHARED__new_chat() }}
               </span>
               <span
                 v-if="generatingTitle"
                 class="title-header-scan"
                 aria-hidden="true"
               >
-                {{ chat.title || UNTITLED_CHAT_TITLE }}
+                {{ chat.title || lazyStrings.SHARED__new_chat() }}
               </span>
             </h2>
             <button
               @click="emit('edit-title')"
               class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
-              title="Edit Chat Title"
+              :title="lazyStrings.ChatPaneHeader__edit_chat_title()"
               data-testid="edit-title-button"
             >
               <PencilIcon class="w-3.5 h-3.5" />
@@ -179,7 +181,7 @@ defineExpose({
             <div
               v-if="chatGroupBadge"
               class="min-w-0 max-w-[120px] sm:max-w-[180px] px-1.5 py-0.5 rounded-md text-[9px] font-bold transition-colors flex items-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/70 border border-gray-100 dark:border-gray-800"
-              :title="`Group: ${chatGroupBadge.name}`"
+              :title="lazyStrings.ChatPaneHeader__group_name({ groupName: chatGroupBadge.name })"
               data-testid="chat-group-badge"
             >
               <span class="truncate">{{ chatGroupBadge.name }}</span>
@@ -188,7 +190,7 @@ defineExpose({
             <button
               @click="emit('update:show-chat-settings', !showChatSettings)"
               class="flex items-center gap-1.5 min-w-0 w-fit group"
-              title="Chat Settings & Model Override"
+              :title="lazyStrings.ChatPaneHeader__chat_settings_and_model_override()"
               data-testid="model-trigger"
             >
               <div
@@ -205,7 +207,7 @@ defineExpose({
               <div
                 v-if="hasOverrides"
                 class="w-1 h-1 rounded-full bg-blue-500 animate-pulse shrink-0"
-                title="Custom overrides active"
+                :title="lazyStrings.ChatPaneHeader__custom_overrides_active()"
                 data-testid="custom-overrides-indicator"
               ></div>
             </button>
@@ -220,7 +222,7 @@ defineExpose({
           v-if="activeMessageCount > 0"
           @click="emit('fork-last-message')"
           class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-          title="Fork Chat from last message"
+          :title="lazyStrings.ChatPaneHeader__fork_chat_from_last_message()"
           data-testid="fork-chat-button"
         >
           <GitForkIcon class="w-4.5 h-4.5" />
@@ -231,7 +233,7 @@ defineExpose({
             @click="showMoveMenu = !showMoveMenu"
             class="p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
             :class="showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
-            title="Move to Group"
+            :title="lazyStrings.ChatPaneHeader__move_to_group()"
             data-testid="move-to-group-button"
           >
             <FolderInputIcon class="w-4.5 h-4.5" />
@@ -243,7 +245,7 @@ defineExpose({
               class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-top-right"
             >
               <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
-                Move to Group
+                {{ lazyStrings.ChatPaneHeader__move_to_group() }}
               </div>
               <div class="max-h-64 overflow-y-auto">
                 <button
@@ -253,7 +255,7 @@ defineExpose({
                 >
                   <div class="flex items-center gap-2">
                     <XIcon class="w-4 h-4 opacity-50" />
-                    <span>Top Level</span>
+                    <span>{{ lazyStrings.ChatPaneHeader__top_level() }}</span>
                   </div>
                   <ChevronRightIcon v-if="!chat.groupId" class="w-4 h-4" />
                 </button>
@@ -281,7 +283,7 @@ defineExpose({
           @click="emit('toggle-outline')"
           class="p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
           :class="outlineVisibility === 'visible' ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
-          title="Conversation Outline"
+          :title="lazyStrings.ChatPaneHeader__conversation_outline()"
           data-testid="conversation-outline-button"
         >
           <ListIcon class="w-4.5 h-4.5" />
@@ -290,7 +292,7 @@ defineExpose({
         <button
           @click="showMoreMenu = !showMoreMenu"
           class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          title="More Actions"
+          :title="lazyStrings.ChatPaneHeader__more_actions()"
           data-testid="more-actions-button"
         >
           <MoreVerticalIcon class="w-4.5 h-4.5" />
@@ -305,11 +307,11 @@ defineExpose({
           <button
             @click="emitMoreAction({ action: 'print' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-green-600 dark:hover:text-green-400"
-            title="Open print dialog (can be used to Save as PDF)"
+            :title="lazyStrings.ChatPaneHeader__open_print_dialog()"
             data-testid="print-chat-button"
           >
             <PrinterIcon class="w-4 h-4" />
-            <span>Print</span>
+            <span>{{ lazyStrings.ChatPaneHeader__print() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'search_chat' })"
@@ -317,16 +319,16 @@ defineExpose({
             data-testid="search-in-chat-button"
           >
             <SearchIcon class="w-4 h-4" />
-            <span>Search in Chat</span>
+            <span>{{ lazyStrings.ChatPaneHeader__search_in_chat() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'open_history' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-orange-500 dark:hover:text-orange-400"
-            title="Super Edit (Full History Manipulation)"
+            :title="lazyStrings.ChatPaneHeader__super_edit_full_history()"
             data-testid="super-edit-button"
           >
             <HammerIcon class="w-4 h-4" />
-            <span>Super Edit</span>
+            <span>{{ lazyStrings.ChatPaneHeader__super_edit() }}</span>
           </button>
           <ContextCompactMenuItem
             @compact="emitMoreAction({ action: 'compact_context' })"
@@ -334,11 +336,11 @@ defineExpose({
           <button
             @click="emitMoreAction({ action: 'export_chat' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
-            title="Export as Markdown"
+            :title="lazyStrings.ChatPaneHeader__export_as_markdown()"
             data-testid="export-markdown-button"
           >
             <DownloadIcon class="w-4 h-4" />
-            <span>Export Markdown</span>
+            <span>{{ lazyStrings.ChatPaneHeader__export_markdown() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'toggle_media_shelf' })"
@@ -350,16 +352,16 @@ defineExpose({
             data-testid="toggle-media-gallery-button"
           >
             <ImageIcon class="w-4 h-4" />
-            <span>Media Gallery</span>
+            <span>{{ lazyStrings.ChatPaneHeader__media_gallery() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'share_url' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
-            title="Copy a shareable URL containing this chat"
+            :title="lazyStrings.ChatPaneHeader__copy_shareable_chat_url()"
             data-testid="export-url-button"
           >
             <LinkIcon class="w-4 h-4" />
-            <span>Export as URL</span>
+            <span>{{ lazyStrings.ChatPaneHeader__export_as_url() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'open_file_explorer' })"
@@ -367,7 +369,7 @@ defineExpose({
             data-testid="open-chat-file-explorer-button"
           >
             <FolderIcon class="w-4 h-4" />
-            <span>File Explorer</span>
+            <span>{{ lazyStrings.ChatPaneHeader__file_explorer() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'toggle_wesh_terminal' })"
@@ -379,7 +381,7 @@ defineExpose({
             data-testid="open-chat-wesh-terminal-button"
           >
             <TerminalIcon class="w-4 h-4" />
-            <span>Wesh Terminal</span>
+            <span>{{ lazyStrings.ChatPaneHeader__wesh_terminal() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'toggle_debug' })"
@@ -391,7 +393,7 @@ defineExpose({
             data-testid="toggle-debug-button"
           >
             <BugIcon class="w-4 h-4" />
-            <span>Debug Mode</span>
+            <span>{{ lazyStrings.ChatPaneHeader__debug_mode() }}</span>
           </button>
         </div>
       </Transition>

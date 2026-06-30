@@ -87,7 +87,10 @@ describe('Sidebar DND Improvements', () => {
       sidebarItems: mockChatStore.sidebarItems,
       TEST_ONLY: {},
     });
-    (useSettings as any).mockReturnValue({ settings: ref({}), isFetchingModels: ref(false) });
+    (useSettings as any).mockReturnValue({
+      settings: ref({ endpoint: { type: 'openai', url: '' } }),
+      isFetchingModels: ref(false),
+    });
     (useLayout as any).mockReturnValue({
       isSidebarOpen: ref(true),
       activeFocusArea: ref('chat'),

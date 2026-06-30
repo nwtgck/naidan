@@ -6,6 +6,15 @@
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.
+* **Boundary Strings in Tests**: When string loading is not part of the behavior under test, preload strings locally in the relevant test file or suite:
+
+```ts
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+```
+
+Do not use this in global test setup or in tests for `lazyStrings`, `ensureStrings`, boundary loading, unresolved strings, or locale switching. In those tests, exercise and await the actual loading behavior.
 
 # Function Signatures & Named Arguments
 
@@ -136,7 +145,7 @@ EOF`;
 *   **Non-interactive Tests**: Always use `npm run test:only-failed` when executing tests as an agent or in CI to ensure the process exits after completion, does not hang in watch mode, and minimizes output noise.
 *   **Testing**: Actively use `data-testid` attributes for selecting elements in tests. This decouples tests from implementation details (CSS classes, tag names) and makes them more resilient to styling changes.
 *   **Preserve Tests**: Never delete tests during refactoring. Adapt them to the new UI structure (e.g., test events/props instead of direct DOM interaction) to maintain functional coverage.
-* **Language**: English only for source code, UI, and commit messages.
+* **Language**: Identifiers, comments, tests, and commit messages use English. User-facing locale message implementations may use their target natural language and must follow `src/strings/messages/AGENTS.md`.
 * **Conventional Commits**: Use Conventional Commits for all commit messages (for example, `feat:`, `fix:`, `refactor:`, `chore:`).
 * **Wrapping Blocks**: If wrapping an existing block (tags, if-statements, etc.), then insert the start and end markers in separate steps to preserve the existing indentation of the children.
 * **Commit Attribution**: When an AI agent performs a git commit, always append its own identity in the format `Co-authored-by: ${name} <${email}>` to the end of the commit message.

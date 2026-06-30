@@ -3,17 +3,18 @@
  * ChatPrintContent provides a printer-friendly rendering of the current chat.
  * It uses the existing theme styles and colors.
  */
+import { lazyStrings } from '@/strings';
 import { computed, onMounted } from 'vue';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { usePrint } from '@/composables/usePrint';
-import { idToRaw } from '@/models/ids';
-import type { MessageId } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+import type { MessageId } from '@/01-models/ids';
 import MessageItem from './MessageItem.vue';
 
 const { currentChat, currentChatId, activeMessages } = useCurrentChatState();
 const { markPrintReady } = usePrint();
-const chatTitle = computed(() => currentChat.value?.title || 'Chat History');
+const chatTitle = computed(() => currentChat.value?.title || lazyStrings.ChatPrintContent__chat_history());
 
 function getCurrentChatSiblings({ messageId }: { messageId: MessageId }) {
   const chat = currentChat.value;
@@ -34,9 +35,11 @@ onMounted(() => {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -45,7 +48,7 @@ defineExpose({
   <div v-if="currentChat" class="chat-print-content bg-inherit text-inherit">
     <header class="chat-print-header">
       <h1 class="text-3xl font-extrabold tracking-tight">{{ chatTitle }}</h1>
-      <p v-if="currentChat.id" class="text-xs opacity-40 mt-2 tracking-widest uppercase">CHAT ID: {{ currentChat.id }}</p>
+      <p v-if="currentChat.id" class="text-xs opacity-40 mt-2 tracking-widest uppercase">{{ lazyStrings.ChatPrintContent__chat_id() }} {{ currentChat.id }}</p>
     </header>
 
     <div class="chat-print-messages">

@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { ref, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, watch } from 'vue';
-import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight/worker/client-shared';
+import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/features/highlight/worker/client-shared';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
-import { escapeTextAsHtml, sanitizeHighlightHtml } from '@/lib/security/allowedHtml';
+import { escapeTextAsHtml, sanitizeHighlightHtml } from '@/logic/security/allowedHtml';
 import { CheckIcon, CopyIcon, TerminalIcon, WrapTextIcon } from 'lucide-vue-next';
 import { useCodeBlockSettings } from '@/composables/useCodeBlockSettings';
 
@@ -114,9 +115,11 @@ async function copyCode() {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -132,7 +135,7 @@ defineExpose({
           @click="toggleLineWrap"
           class="flex items-center hover:text-white transition-colors cursor-pointer"
           :class="isLineWrapEnabled ? 'text-indigo-400' : 'text-gray-400'"
-          title="Toggle line wrap"
+          :title="lazyStrings.blockMarkdown__toggle_line_wrap()"
         >
           <WrapTextIcon class="w-3.5 h-3.5" />
         </button>
@@ -140,7 +143,7 @@ defineExpose({
           @click="copyCode"
           class="flex items-center hover:text-white transition-colors cursor-pointer"
           :class="copied ? 'text-green-400' : 'text-gray-400'"
-          :title="copied ? 'Copied' : 'Copy code'"
+          :title="copied ? lazyStrings.blockMarkdown__copied() : lazyStrings.blockMarkdown__copy_code()"
         >
           <CheckIcon v-if="copied" class="w-3.5 h-3.5" />
           <CopyIcon v-else class="w-3.5 h-3.5" />

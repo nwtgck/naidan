@@ -6,6 +6,7 @@ import ModelSelector from './ModelSelector.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
   mockAvailableModelsRef: { value: [] as string[] },
   mockFetchingModelsRef: { value: false },
@@ -38,8 +39,10 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
 describe('ChatSettingsPanel Inheritance UI', () => {
   const mockCurrentChat = ref<any>(null);
   const mockSettings = ref<any>({
-    endpointType: 'openai',
-    endpointUrl: 'http://global-url',
+    endpoint: {
+      type: 'openai',
+      url: 'http://global-url',
+    },
     defaultModelId: 'global-model',
   });
 
@@ -57,11 +60,12 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     'router-link': true,
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mockCurrentChat.value = {
       id: 'chat-1',
-      endpointUrl: undefined,
+      endpoint: undefined,
       modelId: undefined,
     };
 
@@ -70,12 +74,13 @@ describe('ChatSettingsPanel Inheritance UI', () => {
       const chat = mockCurrentChat.value;
       const isGroup = chat.groupId === 'group-1';
       return {
-        endpointType: isGroup ? 'ollama' : 'openai',
-        endpointUrl: isGroup ? 'http://group-url' : 'http://global-url',
+        endpoint: {
+          type: isGroup ? 'ollama' : 'openai',
+          url: isGroup ? 'http://group-url' : 'http://global-url',
+        },
         modelId: isGroup ? 'group-model' : 'global-model',
         sources: {
-          endpointType: isGroup ? 'chat_group' : 'global',
-          endpointUrl: isGroup ? 'chat_group' : 'global',
+          endpoint: isGroup ? 'chat_group' : 'global',
           modelId: isGroup ? 'chat_group' : 'global',
         },
       };
@@ -125,7 +130,7 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     expect(modelSelector.props('placeholder')).toBe('global-model (Global)');
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('openai (Global)');
+    expect(typeSelect.find('option').text()).toBe('OpenAI (Global)');
   });
 
   it('shows Group placeholders when chat belongs to a group with overrides', () => {
@@ -142,6 +147,6 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     expect(modelSelector.props('placeholder')).toBe('group-model (Group)');
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('ollama (Group)');
+    expect(typeSelect.find('option').text()).toBe('Ollama (Group)');
   });
 });

@@ -1,15 +1,15 @@
 import { isProxy, reactive, ref, toRaw, triggerRef, watch, type Ref } from 'vue';
-import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
-import type { ScopedSettingChange } from '@/models/scoped-setting-change';
-import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/models/types';
-import { storageService } from '@/services/storage';
-import { findDeepestLeaf, findNodeInBranch } from '@/utils/chat-tree';
-import { idToRaw, toChatId } from '@/models/ids';
+import type { ChatGroupId, ChatId, MessageId } from '@/01-models/ids';
+import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
+import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
+import { findDeepestLeaf, findNodeInBranch } from '@/logic/chat-tree';
+import { idToRaw, toChatId } from '@/01-models/ids';
 import {
   applyScopedSettingChangesToChat,
   applyScopedSettingChangesToChatMeta,
   cloneScopedSettingChanges,
-} from '@/utils/scoped-setting-changes';
+} from '@/logic/scoped-setting-changes';
 
 export type ChatDataStore = {
   rootItems: Ref<SidebarItem[]>,
@@ -197,11 +197,88 @@ export function createChatDataStore({
   const THROTTLE_MS = 200;
   let lastSidebarReload = 0;
 
-  function loadData() {
-    return storageService.getSidebarStructure().then((sidebarStructure) => {
-      rootItems.value = sidebarStructure;
-      syncLiveInstancesWithSidebar();
-    });
+  type SidebarLoadState =
+    | {
+      kind: 'idle',
+    }
+    | {
+      kind: 'loading',
+      latestRequestedVersion: number,
+      promise: Promise<void>,
+    };
+
+  let sidebarLoadState: SidebarLoadState = {
+    kind: 'idle',
+  };
+  let nextSidebarLoadVersion = 0;
+
+  function requireLoadingSidebarState({ state }: {
+    state: SidebarLoadState,
+  }): Extract<SidebarLoadState, { kind: 'loading' }> {
+    switch (state.kind) {
+    case 'idle':
+      throw new Error('Sidebar load state became idle while loading.');
+    case 'loading':
+      return state;
+    default: {
+      const _ex: never = state;
+      return _ex;
+    }
+    }
+  }
+
+  async function runSidebarLoad(): Promise<void> {
+    try {
+      while (true) {
+        const state = requireLoadingSidebarState({
+          state: sidebarLoadState,
+        });
+        const requestedVersion = state.latestRequestedVersion;
+        const sidebarStructure = await storageService.getSidebarStructure();
+        const currentState = requireLoadingSidebarState({
+          state: sidebarLoadState,
+        });
+
+        if (currentState.latestRequestedVersion !== requestedVersion) {
+          continue;
+        }
+
+        rootItems.value = sidebarStructure;
+        syncLiveInstancesWithSidebar();
+        sidebarLoadState = {
+          kind: 'idle',
+        };
+        return;
+      }
+    } catch (error) {
+      sidebarLoadState = {
+        kind: 'idle',
+      };
+      throw error;
+    }
+  }
+
+  function loadData(): Promise<void> {
+    const requestedVersion = ++nextSidebarLoadVersion;
+    const state = sidebarLoadState;
+    switch (state.kind) {
+    case 'idle': {
+      const promise = Promise.resolve().then(runSidebarLoad);
+      sidebarLoadState = {
+        kind: 'loading',
+        latestRequestedVersion: requestedVersion,
+        promise,
+      };
+      return promise;
+    }
+    case 'loading':
+      state.latestRequestedVersion = requestedVersion;
+      return state.promise;
+    default: {
+      const _ex: never = state;
+      return _ex;
+    }
+    }
   }
 
   function replaceSidebarItems({
@@ -324,16 +401,9 @@ export function createChatDataStore({
       const fullChat = curr ? await storageService.loadChat({ id }) : null;
       const updatedFull = await updater({ current: fullChat });
       if (!updatedFull) return curr!;
-      const { root: _r, endpointType, endpointUrl, endpointHttpHeaders, ...meta } = updatedFull;
+      const { root: _r, ...meta } = updatedFull;
       return {
         ...meta,
-        ...(endpointType !== undefined && {
-          endpoint: {
-            type: endpointType,
-            url: endpointUrl,
-            httpHeaders: endpointHttpHeaders,
-          },
-        }),
       } as ChatMeta;
     } });
   }
@@ -598,3 +668,7 @@ export function createChatDataStore({
     updateChatScopedSettings,
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
-import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
+import { storageService } from '@/00-storage/service';
+import type { Chat, SidebarItem, Hierarchy } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import type { ChatId } from '@/models/ids';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 // --- Mocks ---
 
@@ -12,7 +12,7 @@ const mockRootItems: SidebarItem[] = [];
 const mockChatStorage = new Map<string, Chat>();
 let mockHierarchy: Hierarchy = { items: [] };
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -87,8 +87,10 @@ vi.mock('../services/storage', () => ({
 // Stable mock for settings
 const mockSettings = {
   value: {
-    endpointType: 'openai',
-    endpointUrl: 'http://localhost',
+    endpoint: {
+      type: 'openai',
+      url: 'http://localhost',
+    },
     storageType: 'local',
     mounts: [],
     autoTitleEnabled: false,
@@ -116,7 +118,7 @@ vi.mock('./useToast', () => ({
 const mockLmChat = vi.fn();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
       chat: (...args: any[]) => mockLmChat(...args),
@@ -125,7 +127,7 @@ vi.mock('../services/lm/openai', () => ({
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
       chat: (...args: any[]) => mockLmChat(...args),

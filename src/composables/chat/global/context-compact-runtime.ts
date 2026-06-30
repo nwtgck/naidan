@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
-import type { ContextCompactProgress } from '@/services/context-compact';
-import type { ChatId } from '@/models/ids';
+import type { ContextCompactProgress } from '@/logic/context-compact';
+import type { ChatId } from '@/01-models/ids';
 
 export type ContextCompactRuntime = {
   activeContextCompactions: Map<ChatId, AbortController>,
@@ -153,9 +153,15 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
     clearActiveContextCompaction,
     setProgress,
     getProgress,
-    TEST_ONLY: {
-      compactProgressByChat,
-      compactProgressResetTimers,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        compactProgressByChat,
+        compactProgressResetTimers,
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

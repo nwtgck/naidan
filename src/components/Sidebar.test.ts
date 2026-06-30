@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/models/types';
-import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/01-models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 
 // --- Shared Mock State ---
 // Using mock prefix to satisfy Vitest hoisting requirements
@@ -18,7 +18,7 @@ const mockUpdateGlobalModel = vi.fn();
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockSettings = ref({
-  endpointUrl: 'http://localhost:11434',
+  endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' },
   defaultModelId: 'llama3',
   storageType: 'local' as StorageType,
   autoTitleEnabled: true,
@@ -56,7 +56,7 @@ vi.mock('../composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('../composables/useFileExplorerModal', () => ({
+vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
   useFileExplorerModal: () => ({
     openFileExplorer: mockOpenFileExplorer,
   }),
@@ -193,7 +193,7 @@ vi.mock('../composables/useConfirm', () => ({
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),
@@ -287,7 +287,7 @@ describe('Sidebar Logic Stability', () => {
   beforeEach(() => {
     mockChatGroups.value = [];
     mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Initial Chat', updatedAt: 0 }];
-    mockSettings.value.endpointUrl = 'http://localhost:11434';
+    mockSettings.value.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
     mockSettings.value.defaultModelId = 'llama3';
     mockSettings.value.storageType = 'local';
     mockAvailableModels.value = ['llama3', 'mistral', 'phi3'];
@@ -305,11 +305,13 @@ describe('Sidebar Logic Stability', () => {
 
       const selector = wrapper.find('[data-testid="model-selector-mock"]');
       expect(selector.exists()).toBe(true);
-      expect(wrapper.text()).toContain('Default model');
+      await vi.waitFor(() => {
+        expect(wrapper.text()).toContain('Default model');
+      });
     });
 
     it('does not render the selector if endpointUrl is missing', async () => {
-      mockSettings.value.endpointUrl = '';
+      mockSettings.value.endpoint = { type: 'ollama', url: '' };
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -621,7 +623,9 @@ describe('Sidebar Logic Stability', () => {
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
-      expect(mockShowConfirm).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalled();
+      });
     });
 
     it('should prompt for confirmation when deleting an empty group with custom settings', async () => {
@@ -642,7 +646,9 @@ describe('Sidebar Logic Stability', () => {
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
-      expect(mockShowConfirm).toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalled();
+      });
     });
 
     it('should delete IMMEDIATELY without confirmation for an empty group with no settings', async () => {
@@ -684,10 +690,9 @@ describe('Sidebar Logic Stability', () => {
       await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
 
-      await nextTick();
-      await nextTick();
-
-      expect(mockDeleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
+      await vi.waitFor(() => {
+        expect(mockDeleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
+      });
     });
 
     it('should NOT call deleteChatGroup if confirmation is cancelled', async () => {
@@ -708,9 +713,9 @@ describe('Sidebar Logic Stability', () => {
       await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
 
-      await nextTick();
-      await nextTick();
-
+      await vi.waitFor(() => {
+        expect(mockShowConfirm).toHaveBeenCalled();
+      });
       expect(mockDeleteChatGroup).not.toHaveBeenCalled();
     });
   });

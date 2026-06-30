@@ -1,4 +1,4 @@
-import { toProviderProfileId } from '@/models/ids';
+import { toProviderProfileId } from '@/01-models/ids';
 // Mock the dynamic import for licenses
 vi.mock('virtual:naidan-licenses', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
 
@@ -14,19 +14,19 @@ import { useSettings } from '@/composables/useSettings';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSampleChat } from '@/composables/useSampleChat';
-import { storageService } from '@/services/storage';
-import type { ProviderProfile } from '@/models/types';
+import { storageService } from '@/00-storage/service';
+import type { ProviderProfile, Settings } from '@/01-models/types';
 
 // --- Mocks ---
 
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-vi.mock('../services/lm/openai', () => ({
+vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     listModels = mockListModels;
   },
 }));
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     listModels = mockListModels;
   },
@@ -48,7 +48,9 @@ vi.mock('../composables/useSettings', () => ({
     updateProviderProfiles: vi.fn(),
     fetchModels: vi.fn(async ({ overrides }) => {
       if (overrides) {
-        return await mockListModels(overrides.url, overrides.headers);
+        return overrides.type === 'transformers_js'
+          ? []
+          : await mockListModels(overrides.url, overrides.httpHeaders);
       }
       return [];
     }),
@@ -117,7 +119,7 @@ vi.mock('../composables/useToast', () => ({
   })),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -144,9 +146,8 @@ vi.mock('../services/storage', () => ({
 describe('SettingsModal.vue (Tabbed Interface)', () => {
   const mockSave = vi.fn();
   const mockCreateSampleChat = vi.fn();
-  const mockSettings = {
-    endpointType: 'openai',
-    endpointUrl: 'http://localhost:1234/v1',
+  const mockSettings: Settings = {
+    endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
     defaultModelId: 'gpt-4',
     autoTitleEnabled: true,
     storageType: 'local',
@@ -223,7 +224,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       updateProviderProfiles: vi.fn(),
       fetchModels: vi.fn(async ({ overrides }) => {
         if (overrides) {
-          return await mockListModels(overrides.url, overrides.headers);
+          return overrides.type === 'transformers_js'
+            ? []
+            : await mockListModels(overrides.url, overrides.httpHeaders);
         }
         return [];
       }),
@@ -274,7 +277,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         save: mockSave,
         fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
-            return await mockListModels(overrides.url, overrides.headers);
+            return overrides.type === 'transformers_js'
+              ? []
+              : await mockListModels(overrides.url, overrides.httpHeaders);
           }
           return [];
         }),
@@ -417,7 +422,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(settingsModalElement.classes()).toContain('z-[100]'); // Ensure modal's z-index class remains as expected
 
       // Note: Directly testing the global dialog's z-index from this unit test is complex
-      // as it's rendered in App.vue's wrapper. This test confirms the modal doesn't
+      // as it's rendered in MainApp.vue's wrapper. This test confirms the modal doesn't
       // inadvertently raise its own z-index, allowing the global dialog (z-[110]) to overlay it.
     });
   });
@@ -563,22 +568,19 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     // Test LM Studio
     await lmstudioPreset.trigger('click');
-    const vm = wrapper.vm as unknown as { form: { endpointType: string, endpointUrl: string } };
-    expect(vm.form.endpointType).toBe('openai');
-    expect(vm.form.endpointUrl).toBe('http://localhost:1234/v1');
+    const vm = wrapper.vm as unknown as { form: Settings };
+    expect(vm.form.endpoint).toEqual({ type: 'openai', url: 'http://localhost:1234/v1' });
     expect(lmstudioPreset.attributes('class')).toContain('bg-blue-600'); // Highlighted
 
     // Test Ollama
     await ollamaPreset.trigger('click');
-    expect(vm.form.endpointType).toBe('ollama');
-    expect(vm.form.endpointUrl).toBe('http://localhost:11434');
+    expect(vm.form.endpoint).toEqual({ type: 'ollama', url: 'http://localhost:11434' });
     expect(ollamaPreset.attributes('class')).toContain('bg-blue-600');
     expect(lmstudioPreset.attributes('class')).not.toContain('bg-blue-600');
 
     // Test llama-server
     await llamaPreset.trigger('click');
-    expect(vm.form.endpointType).toBe('openai');
-    expect(vm.form.endpointUrl).toBe('http://localhost:8080/v1');
+    expect(vm.form.endpoint).toEqual({ type: 'openai', url: 'http://localhost:8080/v1' });
     expect(llamaPreset.attributes('class')).toContain('bg-blue-600');
   });
 
@@ -701,7 +703,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const connectionVm = connectionTab.vm as any;
 
     // Simulate some change to enable save button
-    connectionVm.form.endpointUrl = 'http://changed';
+    connectionVm.form.endpoint = { type: 'openai', url: 'http://changed' };
     await nextTick();
 
     await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
@@ -731,7 +733,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       updateProviderProfiles: vi.fn(),
       fetchModels: vi.fn(async ({ overrides }) => {
         if (overrides) {
-          return await mockListModels(overrides.url, overrides.headers);
+          return overrides.type === 'transformers_js'
+            ? []
+            : await mockListModels(overrides.url, overrides.httpHeaders);
         }
         return [];
       }),
@@ -873,7 +877,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await wrapper.find('[data-testid="setting-clear-history-button"]').trigger('click');
       await flushPromises();
 
-      // Ensure the store value (which App.vue uses) would remain true if endpoint is there.
+      // Ensure the store value (which MainApp.vue uses) would remain true if endpoint is there.
       // Since we already removed the code that sets it to false, this is indirectly tested.
       expect(mockDeleteAllChats).toHaveBeenCalled();
     });
@@ -897,7 +901,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
-            return await mockListModels(overrides.url, overrides.headers);
+            return overrides.type === 'transformers_js'
+              ? []
+              : await mockListModels(overrides.url, overrides.httpHeaders);
           }
           return [];
         }),
@@ -962,7 +968,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       wrapper.unmount();
     });
     it('supports renaming a profile in the UI', async () => {
-      const mockProviderProfile = { id: 'p1', name: 'Original Name', endpointType: 'openai' as const };
+      const mockProviderProfile = {
+        id: 'p1',
+        name: 'Original Name',
+        endpoint: { type: 'openai' as const, url: '' },
+      };
       (useSettings as unknown as Mock).mockReturnValue({
         settings: ref({ ...mockSettings, providerProfiles: [mockProviderProfile] }),
         availableModels: ref([]),
@@ -971,7 +981,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
-            return await mockListModels(overrides.url, overrides.headers);
+            return overrides.type === 'transformers_js'
+              ? []
+              : await mockListModels(overrides.url, overrides.httpHeaders);
           }
           return [];
         }),
@@ -1001,8 +1013,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const mockProviderProfile = {
         id: 'quick-1',
         name: 'Quick',
-        endpointType: 'ollama' as const,
-        endpointUrl: 'http://quick:11434',
+        endpoint: { type: 'ollama' as const, url: 'http://quick:11434' },
         defaultModelId: 'model-a',
         titleModelId: 'model-title',
       };
@@ -1016,7 +1027,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
-            return await mockListModels(overrides.url, overrides.headers);
+            return overrides.type === 'transformers_js'
+              ? []
+              : await mockListModels(overrides.url, overrides.httpHeaders);
           }
           return [];
         }),
@@ -1033,7 +1046,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await connectionVm.handleQuickProviderProfileChange();
       await flushPromises();
 
-      expect(connectionVm.form.endpointUrl).toBe('http://quick:11434');
+      expect(connectionVm.form.endpoint).toEqual({
+        type: 'ollama',
+        url: 'http://quick:11434',
+      });
       expect(connectionVm.form.defaultModelId).toBe('model-a');
       expect(connectionVm.form.titleModelId).toBe('model-title');
       expect(connectionVm.selectedProviderProfileId).toBe('');
@@ -1054,7 +1070,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
-            return await mockListModels(overrides.url, overrides.headers);
+            return overrides.type === 'transformers_js'
+              ? []
+              : await mockListModels(overrides.url, overrides.httpHeaders);
           }
           return [];
         }),
@@ -1081,8 +1099,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const vm = wrapper.vm as unknown as { form: { providerProfiles: Partial<ProviderProfile>[] } };
       vm.form.providerProfiles = [
-        { id: toProviderProfileId({ raw: '1' }), name: 'With Title', endpointType: 'ollama', titleModelId: 't-1' },
-        { id: toProviderProfileId({ raw: '2' }), name: 'Without Title', endpointType: 'openai' },
+        {
+          id: toProviderProfileId({ raw: '1' }),
+          name: 'With Title',
+          endpoint: { type: 'ollama', url: '' },
+          titleModelId: 't-1',
+        },
+        {
+          id: toProviderProfileId({ raw: '2' }),
+          name: 'Without Title',
+          endpoint: { type: 'openai', url: '' },
+        },
       ];
 
       const navButtons = wrapper.findAll('nav button');
@@ -1108,8 +1135,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const initialProfile = {
         id: toProviderProfileId({ raw: 'undo-1' }),
         name: 'Undo Me',
-        endpointType: 'ollama' as const,
-        endpointUrl: 'http://localhost:11434',
+        endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' },
       };
       vm.form.providerProfiles = [initialProfile];
 
@@ -1119,6 +1145,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const deleteBtn = wrapper.find('[data-testid="provider-profile-delete-button"]');
       await deleteBtn.trigger('click');
+      await flushPromises();
 
       // Should be deleted immediately
       expect(vm.form.providerProfiles).toHaveLength(0);
@@ -1148,8 +1175,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       vm.form.providerProfiles = [{
         id: toProviderProfileId({ raw: '1' }),
         name: 'Test Profile',
-        endpointType: 'ollama' as const,
-        endpointUrl: 'http://localhost:11434',
+        endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' },
       }];
 
       const navButtons = wrapper.findAll('nav button');
@@ -1166,9 +1192,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const mockProfile = {
         id: 'p-headers',
         name: 'Header Profile',
-        endpointType: 'openai' as const,
-        endpointUrl: 'http://headers:8080',
-        endpointHttpHeaders: [['X-From-Profile', 'val-1']] as [string, string][],
+        endpoint: {
+          type: 'openai' as const,
+          url: 'http://headers:8080',
+          httpHeaders: [['X-From-Profile', 'val-1']] as [string, string][],
+        },
       };
 
       (useSettings as unknown as Mock).mockReturnValue({
@@ -1178,7 +1206,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         save: mockSave,
         fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
-            return await mockListModels(overrides.url, overrides.headers);
+            return overrides.type === 'transformers_js'
+              ? []
+              : await mockListModels(overrides.url, overrides.httpHeaders);
           }
           return [];
         }),
@@ -1192,12 +1222,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       // 1. Add a header manually in Connection tab
       await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click');
-      if (!connectionVm.form.endpointHttpHeaders) {
+      if (connectionVm.form.endpoint.type === 'transformers_js') {
+        throw new Error('Expected an HTTP endpoint');
+      }
+      if (!connectionVm.form.endpoint.httpHeaders) {
         connectionVm.addHeader();
       }
       await nextTick();
 
-      connectionVm.form.endpointHttpHeaders[0] = ['X-Manual', 'val-manual'];
+      connectionVm.form.endpoint.httpHeaders[0] = ['X-Manual', 'val-manual'];
 
       // 2. Switch to profile with headers
       const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
@@ -1206,12 +1239,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       // Verify headers were overwritten by profile
-      expect(connectionVm.form.endpointHttpHeaders).toEqual([['X-From-Profile', 'val-1']]);
+      expect(connectionVm.form.endpoint).toEqual({
+        type: 'openai',
+        url: 'http://headers:8080',
+        httpHeaders: [['X-From-Profile', 'val-1']],
+      });
 
       // 3. Remove header
       const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
       await removeBtn?.trigger('click');
-      expect(connectionVm.form.endpointHttpHeaders).toHaveLength(0);
+      expect(connectionVm.form.endpoint.httpHeaders).toHaveLength(0);
     });
   });
 

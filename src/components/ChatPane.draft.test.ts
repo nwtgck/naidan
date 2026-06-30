@@ -1,4 +1,4 @@
-import type { ChatId, MessageId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -9,7 +9,7 @@ import { useChatDraft } from '@/composables/useChatDraft';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
-import { toChatId } from '@/models/ids';
+import { toChatId } from '@/01-models/ids';
 
 
 // Mock router
@@ -18,7 +18,7 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode, Chat } from '@/models/types';
+import type { MessageNode, Chat } from '@/01-models/types';
 
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);
@@ -39,6 +39,17 @@ const mockChatGroups = ref<any[]>([]);
 const mockAvailableModels = ref<string[]>([]);
 const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
+
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -257,7 +268,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost'  }}),
   }),
 }));
 
@@ -265,7 +276,7 @@ describe('ChatPane Draft Maintenance', () => {
   let wrapper: VueWrapper<any>;
   beforeEach(() => {
     setupScrollToMock();
-    const { clearAllDrafts } = useChatDraft();
+    const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
     clearAllDrafts();
     mockCurrentChat.value = {
       id: toChatId({ raw: '1' }),
@@ -279,12 +290,14 @@ describe('ChatPane Draft Maintenance', () => {
       updatedAt: Date.now(),
     };
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'm1',
-      sources: { modelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'global' },
     };
     mockInheritedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'm1',
-      sources: { modelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'global' },
     };
   });
 

@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
-import type { Chat } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { Chat } from '@/01-models/types';
+import type { ChatId } from '@/01-models/ids';
 
 export type ChatRuntimeTaskKind = 'title' | 'fetch' | 'process';
 
@@ -362,9 +362,15 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
     deleteActiveTitleGeneration,
     clearActiveGenerations,
     clearActiveTaskCounts,
-    TEST_ONLY: {
-      activeTaskCounts,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        activeTaskCounts,
+      },
+    }) || {}),
   };
 }
-import { idToRaw } from '@/models/ids';
+import { idToRaw } from '@/01-models/ids';
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

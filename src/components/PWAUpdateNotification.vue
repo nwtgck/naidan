@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lazyStrings } from '@/strings';
 import { RotateCwIcon } from 'lucide-vue-next';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useLayout } from '@/composables/useLayout';
@@ -8,9 +9,11 @@ const { isSidebarOpen } = useLayout();
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -36,7 +39,7 @@ defineExpose({
           <RotateCwIcon class="w-3.5 h-3.5 transition-all duration-500 group-hover:rotate-180" />
         </div>
 
-        <span class="tracking-widest uppercase opacity-90 group-hover:opacity-100 transition-opacity">Reload to Update</span>
+        <span class="tracking-widest uppercase opacity-90 group-hover:opacity-100 transition-opacity">{{ lazyStrings.PWAUpdateNotification__reload_to_update() }}</span>
       </button>
     </div>
   </Transition>

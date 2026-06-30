@@ -34,7 +34,7 @@ const removeToast = ({ id, reason = 'dismiss' }: { id: string, reason?: 'timeout
   toasts.value = toasts.value.filter(t => t.id !== id);
 };
 
-export const toastStore = {
+const toastStore = {
   toasts,
   addToast,
   removeToast,
@@ -43,3 +43,9 @@ export const toastStore = {
 export function useToast() {
   return toastStore;
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {
+  toastStore,
+};

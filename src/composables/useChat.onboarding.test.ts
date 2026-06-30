@@ -3,7 +3,7 @@ import { useChat } from './useChat';
 import { reactive } from 'vue';
 
 // Mock storage service
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -25,8 +25,10 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 const mockSettings = {
   value: {
-    endpointType: 'openai' as const,
-    endpointUrl: '',
+    endpoint: {
+      type: 'openai' as const,
+      url: '',
+    },
     defaultModelId: '',
     storageType: 'local' as const,
     mounts: [],
@@ -52,7 +54,7 @@ vi.mock('./useSettings', () => ({
 
 // Mock LM Provider
 const mockListModels = vi.fn();
-vi.mock('../services/lm/openai', () => {
+vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
     chat = vi.fn();
     listModels = mockListModels;
@@ -62,7 +64,7 @@ vi.mock('../services/lm/openai', () => {
   };
 });
 
-vi.mock('../services/lm/ollama', () => ({
+vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 
@@ -73,7 +75,7 @@ describe('useChat Onboarding Trigger', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSettings.value.endpointUrl = '';
+    mockSettings.value.endpoint = { type: 'openai', url: '' };
     mockSettings.value.defaultModelId = '';
     mockIsOnboardingDismissed.value = true;
     mockOnboardingDraft.value = null;
@@ -92,7 +94,7 @@ describe('useChat Onboarding Trigger', () => {
   });
 
   it('should trigger onboarding and populate draft if modelId is missing when sending a message', async () => {
-    mockSettings.value.endpointUrl = 'http://localhost:11434';
+    mockSettings.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
     __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
@@ -110,7 +112,7 @@ describe('useChat Onboarding Trigger', () => {
   });
 
   it('should NOT use gpt-3.5-turbo as fallback model anymore', async () => {
-    mockSettings.value.endpointUrl = 'http://localhost:11434';
+    mockSettings.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
     // No default model in settings and no model in chat
     __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',

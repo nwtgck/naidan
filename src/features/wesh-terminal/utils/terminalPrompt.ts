@@ -1,4 +1,4 @@
-import type { WeshWorkerShellState } from '@/services/wesh/worker/types';
+import type { WeshWorkerShellState } from '@/features/wesh/worker/types';
 
 export function formatWeshTerminalPrompt({ shellState }: {
   shellState: WeshWorkerShellState | undefined,
@@ -16,3 +16,7 @@ export function formatWeshTerminalPrompt({ shellState }: {
 
   return `${displayCwd} $`;
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

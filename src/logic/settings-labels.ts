@@ -1,0 +1,34 @@
+import { lazyStrings } from '@/strings';
+export type SettingsSource = 'chat' | 'chat_group' | 'global';
+
+/**
+ * Formats a settings value for reactive rendering. Boundary Strings may be
+ * unresolved on the first evaluation, so callers must keep this result in a
+ * template or computed path that will be evaluated again.
+ */
+export function formatSettingsSourceLabel({
+  value,
+  source,
+}: {
+  value: string | undefined,
+  source: SettingsSource | undefined,
+}): string | undefined {
+  if (!value) return lazyStrings.formatSettingsSourceLabel__default();
+  switch (source) {
+  case 'chat_group':
+    return lazyStrings.formatSettingsSourceLabel__value_from_group({ value });
+  case 'global':
+    return lazyStrings.formatSettingsSourceLabel__value_from_global({ value });
+  case 'chat':
+  case undefined:
+    return value;
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled source: ${_ex}`);
+  }
+  }
+}
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

@@ -1,7 +1,9 @@
 import { toRaw } from 'vue';
-import type { ChatGroup, EndpointType } from '@/models/types';
-import type { LmProvider } from '@/services/lm/types';
-import { createLmProvider } from '@/services/lm/providerFactory';
+import { ensureStrings } from '@/strings';
+import type { ChatGroup, Endpoint } from '@/01-models/types';
+import type { LmProvider } from '@/01-models/lm';
+import { isHttpEndpoint } from '@/01-models/endpoint';
+import { createLmProvider } from '@/features/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import {
@@ -12,7 +14,7 @@ import {
   rootItems,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 import {
   resolveChatEndpointForChat,
   resolveGlobalEndpoint,
@@ -39,9 +41,7 @@ export async function fetchModelsForChat({
       settings: settings.value,
     });
     const models = await fetchModelsForEndpoint({
-      endpointType: endpoint.type,
-      endpointUrl: endpoint.url,
-      endpointHttpHeaders: endpoint.headers,
+      endpoint,
       errorSource,
     });
 
@@ -73,9 +73,7 @@ export async function fetchModelsForGlobalEndpoint({
       settings: settings.value,
     });
     const models = await fetchModelsForEndpoint({
-      endpointType: endpoint.type,
-      endpointUrl: endpoint.url,
-      endpointHttpHeaders: endpoint.headers,
+      endpoint,
       errorSource,
     });
     availableModels.value = models;
@@ -86,34 +84,26 @@ export async function fetchModelsForGlobalEndpoint({
 }
 
 export async function fetchModelsForEndpoint({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
   errorSource,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
   errorSource: string,
 }): Promise<string[]> {
-  if (!endpointUrl && endpointType !== 'transformers_js') {
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     return [];
   }
 
   const { addErrorEvent } = useGlobalEvents();
 
   try {
-    const provider = createProviderForEndpoint({
-      endpointType,
-      endpointUrl,
-      endpointHttpHeaders,
-    });
+    const provider = createProviderForEndpoint({ endpoint });
     const models = await provider.listModels({});
     return Array.isArray(models) ? models : [];
   } catch (error) {
     addErrorEvent({
       source: errorSource,
-      message: 'Failed to fetch models for resolution',
+      message: await ensureStrings.chatModelFetch__failed_to_fetch_models_for_resolution(),
       details: error instanceof Error ? error.message : String(error),
     });
     return [];
@@ -140,19 +130,17 @@ function collectChatGroups({
 }
 
 function createProviderForEndpoint({
-  endpointType,
-  endpointUrl,
-  endpointHttpHeaders,
+  endpoint,
 }: {
-  endpointType: EndpointType,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint,
 }): LmProvider {
   const { settings } = useSettings();
   return createLmProvider({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
+    endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

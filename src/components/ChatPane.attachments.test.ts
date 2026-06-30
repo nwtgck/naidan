@@ -1,5 +1,5 @@
-import type { ChatId, MessageId } from '@/models/ids';
-import { toChatId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -16,12 +16,27 @@ const mockCurrentChat = ref({
 });
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
-const mockResolvedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
+const mockResolvedSettings = ref<any>({
+  endpoint: { type: 'openai', url: '' },
+  modelId: 'm1',
+  sources: { modelId: 'global' },
+});
 const mockInheritedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
 const mockStreaming = ref(false);
 const mockSendMessage = vi.fn().mockResolvedValue(true);
 
 // Mock dependencies
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
@@ -249,6 +264,7 @@ vi.mock('vue-router', () => ({
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({
+      endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       provider: 'ollama',
       ollama: {
         baseUrl: 'http://localhost:11434',
@@ -264,7 +280,7 @@ vi.mock('../composables/useToast', () => ({
   }),
 }));
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => { }),
@@ -277,7 +293,7 @@ vi.mock('../services/storage', () => ({
 describe('ChatPane - Attachment UI', () => {
   beforeEach(() => {
     setupScrollToMock();
-    const { clearAllDrafts } = useChatDraft();
+    const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
     clearAllDrafts();
   });
   it('should show preview when files are selected', async () => {

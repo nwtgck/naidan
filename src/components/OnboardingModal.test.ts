@@ -2,31 +2,31 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
-import ThemeToggle from './ThemeToggle.vue';
+import ThemeToggle from '@/features/theme/components/ThemeToggle.vue';
 import { useSettings } from '@/composables/useSettings';
-import { useTheme } from '@/composables/useTheme';
+import { useTheme } from '@/features/theme/composables/useTheme';
 import { useToast } from '@/composables/useToast';
 import { SettingsIcon } from 'lucide-vue-next';
-import * as openaiModule from '@/services/lm/openai';
-import * as ollamaModule from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
-import { type EndpointType } from '@/models/types';
+import * as openaiModule from '@/features/lm/openai';
+import * as ollamaModule from '@/features/lm/ollama';
+import { TransformersJsProvider } from '@/features/transformers-js/provider';
+import { type EndpointType } from '@/01-models/types';
 import { detectOllama } from '@/utils/ollama-detection';
 
 // Mock the services.
-vi.mock('../services/lm/openai', () => {
+vi.mock('../features/lm/openai', () => {
   return {
     OpenAIProvider: vi.fn(),
   };
 });
 
-vi.mock('../services/lm/ollama', () => {
+vi.mock('../features/lm/ollama', () => {
   return {
     OllamaProvider: vi.fn(),
   };
 });
 
-vi.mock('../services/transformers-js/provider', () => ({
+vi.mock('../features/transformers-js/provider', () => ({
   TransformersJsProvider: vi.fn(),
 }));
 
@@ -38,7 +38,7 @@ vi.mock('../utils/ollama-detection', () => ({
 // Mock the composables
 vi.mock('../composables/useSettings', () => ({ useSettings: vi.fn() }));
 vi.mock('../composables/useToast', () => ({ useToast: vi.fn() }));
-vi.mock('../composables/useTheme', () => ({ useTheme: vi.fn() }));
+vi.mock('../features/theme/composables/useTheme', () => ({ useTheme: vi.fn() }));
 
 const mockSetActiveFocusArea = vi.fn();
 
@@ -50,7 +50,12 @@ vi.mock('../composables/useLayout', () => ({
 
 describe('OnboardingModal.vue', () => {
   const mockSave = vi.fn();
-  const mockSettings = { value: { endpointType: 'openai', autoTitleEnabled: true } };
+  const mockSettings = {
+    value: {
+      endpoint: { type: 'openai' as const, url: '' },
+      autoTitleEnabled: true,
+    },
+  };
   const mockIsOnboardingDismissed = ref(false);
   const mockOnboardingDraft = ref<{ url: string, type: EndpointType, headers: [string, string][], models: string[], selectedModel: string } | null>(null);
   const listModelsMock = vi.fn();
@@ -99,9 +104,11 @@ describe('OnboardingModal.vue', () => {
     });
   });
 
-  it('renders Step 1 by default and shows correct labels', () => {
+  it('renders Step 1 by default and shows correct labels', async () => {
     const wrapper = mount(OnboardingModal);
-    expect(wrapper.text()).toContain('Setup Endpoint');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Setup Endpoint');
+    });
     expect(wrapper.find('input').exists()).toBe(true);
     expect(wrapper.text()).toContain('OpenAI');
     expect(wrapper.text()).toContain('Ollama');
@@ -198,13 +205,30 @@ describe('OnboardingModal.vue', () => {
     await wrapper.find('[data-testid="onboarding-finish-button"]').trigger('click'); // "Get Started" button
     await flushPromises();
 
-    expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
-      endpointUrl: 'http://api.openai.com',
-      defaultModelId: 'model-1',
-      titleModelId: 'model-1',
-    }) });
+    expect(mockSave).toHaveBeenCalledWith({
+      patch: expect.objectContaining({
+        endpoint: { type: 'openai', url: 'http://api.openai.com' },
+        defaultModelId: 'model-1',
+        titleModelId: 'model-1',
+      }),
+      modelRefresh: 'await',
+    });
     expect(mockOnboardingDraft.value).toBe(null); // Draft cleared on success
     expect(mockIsOnboardingDismissed.value).toBe(true);
+  });
+
+  it('exposes modal semantics and moves focus into onboarding', async () => {
+    const wrapper = mount(OnboardingModal, {
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    const dialog = wrapper.get('[role="dialog"]');
+    expect(dialog.attributes('aria-modal')).toBe('true');
+    expect(dialog.attributes('aria-labelledby')).toBe('onboarding-title');
+    expect(document.activeElement).toBe(dialog.element);
+
+    wrapper.unmount();
   });
 
   it('applies the backdrop blur class to the overlay', () => {
@@ -488,11 +512,14 @@ describe('OnboardingModal.vue', () => {
       await finishBtn?.trigger('click');
       await flushPromises();
 
-      expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
-        endpointType: 'transformers_js',
-        defaultModelId: 'Xenova/gpt2',
-        titleModelId: undefined,
-      }) });
+      expect(mockSave).toHaveBeenCalledWith({
+        patch: expect.objectContaining({
+          endpoint: { type: 'transformers_js' },
+          defaultModelId: 'Xenova/gpt2',
+          titleModelId: undefined,
+        }),
+        modelRefresh: 'await',
+      });
     });
   });
 });

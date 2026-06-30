@@ -1,5 +1,6 @@
+import { ensureStrings } from '@/strings';
 import { computed, ref } from 'vue';
-import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
+import { createFileProtocolCompatibleWeshWorkerClient } from '@/features/wesh/worker/client';
 import {
   completeCommandToken,
   completePathToken,
@@ -7,8 +8,8 @@ import {
   splitPathToken,
   type WeshTerminalCompletionResult,
 } from '@/features/wesh-terminal/utils/terminalCompletion';
-import type { WeshWorkerShellState } from '@/services/wesh/worker/types';
-import type { WeshMount } from '@/services/wesh/types';
+import type { WeshWorkerShellState } from '@/features/wesh/worker/types';
+import type { WeshMount } from '@/features/wesh/types';
 
 export type WeshTerminalLineKind = 'system' | 'command' | 'stdout' | 'stderr' | 'error';
 
@@ -117,7 +118,7 @@ export function createWeshTerminalSessions({
     const id = `session-${nextSessionNumber++}`;
     const session: InternalSession = {
       id,
-      title: `Session ${nextSessionNumber - 1}`,
+      title: await ensureStrings.weshTerminal__session({ sessionNumber: nextSessionNumber - 1 }),
       lines: [],
       state: 'initializing',
       errorMessage: undefined,

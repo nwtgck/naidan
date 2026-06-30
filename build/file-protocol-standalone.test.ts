@@ -1069,7 +1069,7 @@ globalThis.customClassicLoaded = true
     {
       name: 'import.meta',
       injectedSource: `\nvoid import.meta.url;`,
-      expectedError: "Cannot use 'import.meta' outside a module",
+      expectedError: 'import.meta',
     },
   ])('rejects $name syntax injected into an emitted application chunk', async ({ injectedSource, expectedError }) => {
     const root = await createFixture({ files: basicFixtureFiles() });

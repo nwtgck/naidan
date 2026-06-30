@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ensureStrings, lazyStrings } from '@/strings';
 import { onClickOutside, useToggle } from '@vueuse/core';
-import { storageService } from '@/services/storage';
-import { checkOPFSSupport, checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
+import { storageService } from '@/00-storage/service';
+import { checkOPFSSupport, checkFileSystemAccessSupport } from '@/utils/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import {
   FolderDownIcon,
@@ -12,7 +13,7 @@ import {
   PencilIcon,
   InfoIcon,
 } from 'lucide-vue-next';
-import type { VolumeId } from '@/models/ids';
+import type { VolumeId } from '@/01-models/ids';
 
 const props = defineProps<{
   /** Existing mount paths used to avoid conflicts when suggesting a default path. */
@@ -150,16 +151,16 @@ async function handleFileSelect({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   if (!target.files || target.files.length === 0) return;
 
-  const folderName = target.files[0]?.webkitRelativePath.split('/')[0] || 'Imported Folder';
+  const folderName = target.files[0]?.webkitRelativePath.split('/')[0] || await ensureStrings.volumes__imported_folder();
   const entries = fileListToEntries({ files: target.files });
 
   try {
-    await startCopyAndEmit({ name: folderName, entries, label: 'Copying folder to browser...', readOnly: true });
-    addToast({ message: `"${folderName}" added to your folders` });
+    await startCopyAndEmit({ name: folderName, entries, label: await ensureStrings.volumes__copying_folder_to_browser(), readOnly: true });
+    addToast({ message: await ensureStrings.volumes__folder_added_to_your_folders({ name: folderName }) });
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
     console.error('Failed to import volume:', e);
-    addToast({ message: `Failed to copy folder: ${(e as Error).message}` });
+    addToast({ message: await ensureStrings.volumes__failed_to_copy_folder({ errorMessage: (e as Error).message }) });
   } finally {
     if (fileInput.value) fileInput.value.value = '';
   }
@@ -173,12 +174,12 @@ async function handleSingleFileSelect({ event }: { event: Event }) {
 
   const entries = [{ file, relativePath: file.name }];
   try {
-    await startCopyAndEmit({ name: file.name, entries, label: 'Copying file to browser...', readOnly: true });
-    addToast({ message: `"${file.name}" copied to your folders` });
+    await startCopyAndEmit({ name: file.name, entries, label: await ensureStrings.volumes__copying_file_to_browser(), readOnly: true });
+    addToast({ message: await ensureStrings.volumes__file_copied_to_your_folders({ name: file.name }) });
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
     console.error('Failed to copy file:', e);
-    addToast({ message: `Failed to copy file: ${(e as Error).message}` });
+    addToast({ message: await ensureStrings.volumes__failed_to_copy_file({ errorMessage: (e as Error).message }) });
   } finally {
     if (fileInputSingle.value) fileInputSingle.value.value = '';
   }
@@ -200,11 +201,11 @@ async function handleDrop({ event }: { event: DragEvent }) {
     try {
       const entries = await readDirectoryEntries({ entry: dirEntry, basePath: '' });
       const normalized = entries.map(e => ({ file: e.file, relativePath: e.relativePath.replace(/^\//, '') }));
-      await startCopyAndEmit({ name: folderName, entries: normalized, label: 'Copying folder to browser...', readOnly: true });
-      addToast({ message: `"${folderName}" added to your folders` });
+      await startCopyAndEmit({ name: folderName, entries: normalized, label: await ensureStrings.volumes__copying_folder_to_browser(), readOnly: true });
+      addToast({ message: await ensureStrings.volumes__folder_added_to_your_folders({ name: folderName }) });
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
-      addToast({ message: `Failed to copy folder: ${(e as Error).message}` });
+      addToast({ message: await ensureStrings.volumes__failed_to_copy_folder({ errorMessage: (e as Error).message }) });
     }
     return;
   }
@@ -213,11 +214,11 @@ async function handleDrop({ event }: { event: DragEvent }) {
     const fileEntry = fsEntries[0] as FileSystemFileEntry;
     try {
       const file = await new Promise<File>((res, rej) => fileEntry.file(res, rej));
-      await startCopyAndEmit({ name: file.name, entries: [{ file, relativePath: file.name }], label: 'Copying file to browser...', readOnly: true });
-      addToast({ message: `"${file.name}" copied to your folders` });
+      await startCopyAndEmit({ name: file.name, entries: [{ file, relativePath: file.name }], label: await ensureStrings.volumes__copying_file_to_browser(), readOnly: true });
+      addToast({ message: await ensureStrings.volumes__file_copied_to_your_folders({ name: file.name }) });
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
-      addToast({ message: `Failed to copy file: ${(e as Error).message}` });
+      addToast({ message: await ensureStrings.volumes__failed_to_copy_file({ errorMessage: (e as Error).message }) });
     }
     return;
   }
@@ -234,11 +235,11 @@ async function handleDrop({ event }: { event: DragEvent }) {
         allEntries.push(...nested.map(e => ({ file: e.file, relativePath: e.relativePath.replace(/^\//, '') })));
       }
     }
-    await startCopyAndEmit({ name: folderName, entries: allEntries, label: 'Copying folder to browser...', readOnly: true });
-    addToast({ message: `"${folderName}" added to your folders` });
+    await startCopyAndEmit({ name: folderName, entries: allEntries, label: await ensureStrings.volumes__copying_folder_to_browser(), readOnly: true });
+    addToast({ message: await ensureStrings.volumes__folder_added_to_your_folders({ name: folderName }) });
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
-    addToast({ message: `Failed to copy: ${(e as Error).message}` });
+    addToast({ message: await ensureStrings.volumes__failed_to_copy({ errorMessage: (e as Error).message }) });
   }
 }
 
@@ -251,10 +252,10 @@ async function pickHostVolume({ mode }: { mode: 'read' | 'readwrite' }) {
     const name = handle.name;
     const vol = await storageService.createVolume({ name, type: 'host', sourceHandle: handle });
     emit('created', { volumeId: vol.id, mountPath: generateSuggestedPath({ baseName: name }), readOnly: mode === 'read' });
-    addToast({ message: `"${name}" added to your folders` });
+    addToast({ message: await ensureStrings.volumes__folder_added_to_your_folders({ name }) });
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
-    addToast({ message: `Failed to add folder: ${(e as Error).message}` });
+    addToast({ message: await ensureStrings.volumes__failed_to_add_folder_with_error({ errorMessage: (e as Error).message }) });
   } finally {
     isCreating.value = false;
   }
@@ -267,7 +268,7 @@ async function createVolume({ type }: { type: 'opfs' | 'host' }) {
   case 'host': {
     // @ts-expect-error: File System Access API
     if (!window.showDirectoryPicker) {
-      addToast({ message: 'Linking external folders is not supported in this browser.' });
+      addToast({ message: await ensureStrings.volumes__linking_external_folders_not_supported() });
       return;
     }
     toggleAddFolderMode(true);
@@ -276,7 +277,7 @@ async function createVolume({ type }: { type: 'opfs' | 'host' }) {
   case 'opfs': {
     const isOPFSSupported = await checkOPFSSupport();
     if (!isOPFSSupported) {
-      addToast({ message: 'OPFS is not supported in this browser.' });
+      addToast({ message: await ensureStrings.volumes__opfs_not_supported() });
       return;
     }
     // @ts-expect-error: File System Access API
@@ -288,10 +289,10 @@ async function createVolume({ type }: { type: 'opfs' | 'host' }) {
         const name = handle.name;
         const vol = await storageService.createVolume({ name, type: 'opfs', sourceHandle: handle });
         emit('created', { volumeId: vol.id, mountPath: generateSuggestedPath({ baseName: name }), readOnly: true });
-        addToast({ message: `"${name}" copied to your folders` });
+        addToast({ message: await ensureStrings.volumes__file_copied_to_your_folders({ name }) });
       } catch (e) {
         if ((e as Error).name === 'AbortError') return;
-        addToast({ message: `Failed to copy folder: ${(e as Error).message}` });
+        addToast({ message: await ensureStrings.volumes__failed_to_copy_folder({ errorMessage: (e as Error).message }) });
       } finally {
         isCreating.value = false;
       }
@@ -354,9 +355,11 @@ onUnmounted(() => {
 
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -371,8 +374,8 @@ defineExpose({
         <div class="flex flex-col items-center gap-4 border-2 border-dashed border-blue-400 dark:border-blue-400 rounded-3xl px-16 py-14 bg-white/80 dark:bg-gray-900/80 shadow-2xl text-blue-600 dark:text-blue-300">
           <FolderDownIcon class="w-14 h-14" />
           <div class="text-center">
-            <p class="text-xl font-bold">Drop to copy to browser</p>
-            <p class="text-sm font-medium text-blue-500/80 dark:text-blue-400/70 mt-1">Folder or file</p>
+            <p class="text-xl font-bold">{{ lazyStrings.volumes__drop_to_copy_to_browser() }}</p>
+            <p class="text-sm font-medium text-blue-500/80 dark:text-blue-400/70 mt-1">{{ lazyStrings.volumes__folder_or_file() }}</p>
           </div>
         </div>
       </div>
@@ -391,14 +394,14 @@ defineExpose({
           </span>
           <div class="flex items-center gap-3">
             <span v-if="progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
-              {{ progress.processed }} / {{ progress.total }} files
+              {{ lazyStrings.volumes__file_progress({ processed: progress.processed, total: progress.total }) }}
             </span>
             <button
               data-testid="copy-cancel-btn"
               @click="copyAbortController?.abort()"
               class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
             >
-              Cancel
+              {{ lazyStrings.volumes__cancel() }}
             </button>
           </div>
         </div>
@@ -426,7 +429,7 @@ defineExpose({
             : 'bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed border border-gray-200 dark:border-gray-700'"
         >
           <FolderPlusIcon class="w-4 h-4" />
-          Add Folder
+          {{ lazyStrings.volumes__add_folder() }}
         </button>
         <div
           v-else
@@ -434,13 +437,13 @@ defineExpose({
         >
           <button disabled class="flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-300 dark:text-gray-600 cursor-not-allowed border-r border-gray-200 dark:border-gray-700">
             <FolderPlusIcon class="w-4 h-4" />
-            Add Folder
+            {{ lazyStrings.volumes__add_folder() }}
           </button>
           <button
             @click="toggleAddFolderInfo()"
             class="flex items-center px-2 transition-colors"
             :class="isAddFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'"
-            title="Why is Add Folder disabled?"
+            :title="lazyStrings.volumes__why_add_folder_disabled()"
           >
             <InfoIcon class="w-3.5 h-3.5" />
           </button>
@@ -451,8 +454,8 @@ defineExpose({
           data-testid="add-folder-mode-panel"
           class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden"
         >
-          <p class="px-3 pt-3 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Choose access level</p>
-          <p class="px-3 pb-1.5 text-[10px] text-gray-400 dark:text-gray-500">You can change this later in folder settings.</p>
+          <p class="px-3 pt-3 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ lazyStrings.volumes__choose_access_level() }}</p>
+          <p class="px-3 pb-1.5 text-[10px] text-gray-400 dark:text-gray-500">{{ lazyStrings.volumes__change_access_later() }}</p>
           <button
             data-testid="add-folder-read-only-btn"
             @click="pickHostVolume({ mode: 'read' })"
@@ -460,8 +463,8 @@ defineExpose({
           >
             <LockIcon class="w-4 h-4 mt-0.5 shrink-0 text-green-500" />
             <div>
-              <p class="text-xs font-bold text-gray-800 dark:text-gray-100">Read Only</p>
-              <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">AI can read files, not write</p>
+              <p class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.volumes__read_only() }}</p>
+              <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{{ lazyStrings.volumes__ai_can_read_not_write() }}</p>
             </div>
           </button>
           <button
@@ -471,8 +474,8 @@ defineExpose({
           >
             <PencilIcon class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
             <div>
-              <p class="text-xs font-bold text-gray-800 dark:text-gray-100">Read & Write</p>
-              <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">AI can read and modify files</p>
+              <p class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.volumes__read_write() }}</p>
+              <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{{ lazyStrings.volumes__ai_can_read_and_modify_files() }}</p>
             </div>
           </button>
         </div>
@@ -481,9 +484,9 @@ defineExpose({
           v-if="isAddFolderInfoOpen"
           class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
         >
-          <p class="text-[11px] font-bold text-blue-600 dark:text-blue-400">Add Folder requires a Chromium-based browser</p>
+          <p class="text-[11px] font-bold text-blue-600 dark:text-blue-400">{{ lazyStrings.volumes__add_folder_requires_chromium() }}</p>
           <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-            Chrome, Edge, Brave, Opera, Vivaldi, or Arc — over HTTPS.
+            {{ lazyStrings.volumes__chromium_browser_over_https() }}
           </p>
         </div>
       </div>
@@ -503,13 +506,13 @@ defineExpose({
               : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'"
           >
             <FolderDownIcon class="w-4 h-4" />
-            Copy Folder
+            {{ lazyStrings.volumes__copy_folder() }}
           </button>
           <button
             @click="toggleCopyFolderInfo()"
             class="flex items-center px-2 transition-colors"
             :class="isCopyFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'"
-            title="What is Copy Folder?"
+            :title="lazyStrings.volumes__what_is_copy_folder()"
           >
             <InfoIcon class="w-3.5 h-3.5" />
           </button>
@@ -518,12 +521,12 @@ defineExpose({
           v-if="isCopyFolderInfoOpen"
           class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
         >
-          <p class="text-[11px] font-bold text-blue-600 dark:text-blue-400">Your original folder is never touched</p>
+          <p class="text-[11px] font-bold text-blue-600 dark:text-blue-400">{{ lazyStrings.volumes__original_folder_is_never_touched() }}</p>
           <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-            A copy is made — your files on disk stay exactly as they are.
+            {{ lazyStrings.volumes__copy_does_not_change_disk_files() }}
           </p>
           <p class="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed pt-1 border-t border-gray-100 dark:border-gray-700">
-            The copy is stored in your browser's origin-isolated private storage (OPFS), persists between sessions, and works offline.
+            {{ lazyStrings.volumes__copy_is_stored_in_browser_opfs() }}
           </p>
           <div v-if="hasOPFS && !isDetecting" class="pt-1 border-t border-gray-100 dark:border-gray-700">
             <button
@@ -531,11 +534,11 @@ defineExpose({
               class="flex items-center gap-1.5 text-[11px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
             >
               <FileDownIcon class="w-3 h-3" />
-              Copy a single file instead
+              {{ lazyStrings.volumes__copy_single_file_instead() }}
             </button>
           </div>
           <p v-if="!hasOPFS && !isDetecting" class="text-[11px] text-amber-600 dark:text-amber-400 font-medium pt-1">
-            Not supported in this browser or context.
+            {{ lazyStrings.volumes__not_supported_in_browser_or_context() }}
           </p>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
-import type { MessageId } from '@/models/ids';
+import type { MessageId } from '@/01-models/ids';
 
 type OutlineVisibility = 'hidden' | 'visible';
 
@@ -109,9 +109,15 @@ export function useChatPaneSession({
     closeOutline,
     playNeuralSyncEffect,
     clearNeuralSyncEffect,
-    TEST_ONLY: {
-      hideNeuralSyncEffectTimer,
-      clearNeuralSyncEffectTimer,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        hideNeuralSyncEffectTimer,
+        clearNeuralSyncEffectTimer,
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

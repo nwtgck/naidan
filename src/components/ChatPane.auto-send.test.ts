@@ -1,4 +1,4 @@
-import type { ChatId, MessageId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -7,7 +7,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
-import { idToRaw, toChatId } from '@/models/ids';
+import { idToRaw, toChatId } from '@/01-models/ids';
 
 // Mock router
 const router = createRouter({
@@ -15,7 +15,7 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode, Chat } from '@/models/types';
+import type { MessageNode, Chat } from '@/01-models/types';
 
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);
@@ -30,12 +30,23 @@ const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
 
+
+vi.mock('@/composables/useAppPresentation', () => ({
+  isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',
+  useAppPresentation: () => ({
+    appInteraction: {
+      __v_isRef: true,
+      value: 'enabled',
+    },
+  }),
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: ref(null),
     chatGroups: mockChatGroups,
-    resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
+    resolvedSettings: mockResolvedSettings.value || ref({ endpoint: { type: 'openai', url: 'http://localhost' }, lmParameters: { reasoning: { effort: undefined } } }),
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
     updateChatModel: vi.fn(),
@@ -266,7 +277,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'global-default-model' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'global-default-model' }),
     availableModels: mockAvailableModels,
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
@@ -297,8 +308,9 @@ describe('ChatPane Auto-send', () => {
       updatedAt: Date.now(),
     };
     mockResolvedSettings.value = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'model-1',
-      sources: { modelId: 'global' },
+      sources: { endpoint: 'global', modelId: 'global' },
     };
     mockSendMessage.mockResolvedValue(true);
   });

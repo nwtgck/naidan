@@ -1,4 +1,4 @@
-import type { ChatId } from '@/models/ids';
+import type { ChatId } from '@/01-models/ids';
 import {
   abortContextCompactForChat,
   runCompactCurrentBranchForChat,
@@ -55,8 +55,14 @@ export function useChatCompaction(): ChatCompactionAdapter {
   return {
     compactCurrentBranch,
     abort,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

@@ -1,0 +1,1 @@
+export const OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again = (): string => 'アンロードを要求しました。実行中のリクエストが完了するまで Ollama にモデルが表示され続ける場合があります。更新して再確認してください。';

@@ -1,8 +1,8 @@
-import type { Attachment, Chat } from '@/models/types';
-import type { ChatId, MessageId } from '@/models/ids';
-import { UNKNOWN_STEPS } from '@/services/lm/types';
+import type { Attachment, Chat } from '@/01-models/types';
+import type { ChatId, MessageId } from '@/01-models/ids';
+import { UNKNOWN_STEPS } from '@/01-models/lm';
 import { useImageGeneration } from '@/composables/useImageGeneration';
-import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { resolveChatSettings } from '@/logic/chat-settings-resolver';
 import type { ImageRequestParams } from '@/utils/image-generation';
 
 export async function sendImageRequestForChat({
@@ -99,7 +99,7 @@ export async function handleImageGenerationForChat({
     updater,
   }: {
     chatId: ChatId,
-    updater: ({ current }: { current: import('@/models/types').ChatContent }) => import('@/models/types').ChatContent,
+    updater: ({ current }: { current: import('@/01-models/types').ChatContent }) => import('@/01-models/types').ChatContent,
   }) => Promise<void>,
   triggerChatRef: ({ chatId }: { chatId: ChatId }) => void,
   incTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void,
@@ -152,8 +152,8 @@ export async function generateImageForChat({
   seed: number | undefined,
   images: { blob: Blob }[],
   chat: Chat,
-  chatGroups: import('@/models/types').ChatGroup[],
-  settings: import('@/models/types').Settings,
+  chatGroups: import('@/01-models/types').ChatGroup[],
+  settings: import('@/01-models/types').Settings,
   signal: AbortSignal | undefined,
 }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> {
   const imageGeneration = useImageGeneration();
@@ -162,8 +162,8 @@ export async function generateImageForChat({
     groups: chatGroups,
     globalSettings: settings,
   });
-  if (resolved.endpointUrl === undefined) {
-    throw new Error('Image generation requires an endpoint URL');
+  if (resolved.endpoint.type !== 'ollama' || resolved.endpoint.url === '') {
+    throw new Error('Image generation requires an Ollama endpoint URL');
   }
 
   return await imageGeneration.performBase64Generation({
@@ -174,9 +174,15 @@ export async function generateImageForChat({
     steps,
     seed,
     images,
-    endpointUrl: resolved.endpointUrl,
-    endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+    endpointUrl: resolved.endpoint.url,
+    endpointHttpHeaders: resolved.endpoint.httpHeaders
+      ? [...resolved.endpoint.httpHeaders]
+      : undefined,
     onProgress: ({ currentStep: _currentStep, totalSteps: _totalSteps }) => {},
     signal,
   });
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

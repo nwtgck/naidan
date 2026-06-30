@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { ref, computed, nextTick } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
-import type { MessageNode, Chat } from '@/models/types';
-import { generateId } from '@/utils/id';
-import { toChatId, toMessageId, toToolCallId } from '@/models/ids';
-import type { MessageId } from '@/models/ids';
+import type { MessageNode, Chat } from '@/01-models/types';
+import { generateId } from '@/01-models/id';
+import { toChatId, toMessageId, toToolCallId } from '@/01-models/ids';
+import type { MessageId } from '@/01-models/ids';
 
 describe('useChatDisplayFlow', () => {
   const createAssistantMsg = (content: string): MessageNode => ({

@@ -2,15 +2,19 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
-import ensureReadyStateAwareAppStartup from './eslint-local-rules/ensure-ready-state-aware-app-startup.js';
+import ensureReadyStateAwareAppBootstrap from './eslint-local-rules/ensure-ready-state-aware-app-bootstrap.js';
 import ensureVueErrorHandler from './eslint-local-rules/ensure-vue-error-handler.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
-import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
-import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
+import requireTestOnlyForComposableReturn from './eslint-local-rules/require-test-only-for-composable-return.js';
+import requireTestOnlyForModuleExport from './eslint-local-rules/require-test-only-for-module-export.js';
+import requireTestOnlyForDefineExpose from './eslint-local-rules/require-test-only-for-define-expose.js';
+import requireTestOnlyGuard from './eslint-local-rules/require-test-only-guard.js';
+import noTestOnlyAccessInProduction from './eslint-local-rules/no-test-only-access-in-production.js';
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
 import requireNamedArgs from './eslint-local-rules/require-named-args.js';
+import requireStaticStringAccess from './eslint-local-rules/require-static-string-access.js';
 import noRawVHtml from './eslint-local-rules/no-raw-v-html.js';
 import noAllowedHtmlCast from './eslint-local-rules/no-allowed-html-cast.js';
 import noNaidanIdCast from './eslint-local-rules/no-naidan-id-cast.js';
@@ -18,6 +22,7 @@ import noInvalidAllowedHtmlTemplate from './eslint-local-rules/no-invalid-allowe
 import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
 import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
 import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
+import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -61,7 +66,7 @@ import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-impor
 //       }],
 //     },
 //   },
-//   ensureReadyStateAwareAppStartup,
+//   ensureReadyStateAwareAppBootstrap,
 //   ensureVueErrorHandler,
 //   {
 //     files: ['**/*.test.ts'],
@@ -98,6 +103,7 @@ export default tseslint.config(
         ...globals.node,
         __BUILD_MODE_IS_STANDALONE__: 'readonly',
         __BUILD_MODE_IS_HOSTED__: 'readonly',
+        __BUILD_MODE_IS_TEST__: 'readonly',
         __APP_VERSION__: 'readonly',
       },
     },
@@ -145,64 +151,37 @@ export default tseslint.config(
         paths: [
           {
             name: '@huggingface/transformers',
-            message: 'Do not import @huggingface/transformers directly. Use the worker thread via transformers-js-loader to keep the UI responsive and allow proper tree-shaking in standalone mode.'
+            message: 'Do not import @huggingface/transformers directly from main-thread code. Use the Transformers.js worker client facade to keep the UI responsive and preserve standalone tree shaking.'
           },
           {
-            name: '@/services/transformers-js.worker',
-            message: 'Do not import the worker directly. Use transformers-js-loader instead.'
-          },
-          {
-            name: './transformers-js.worker',
-            message: 'Do not import the worker directly. Use transformers-js-loader instead.'
+            name: '@/features/transformers-js/worker/entry',
+            message: 'Do not import the worker entry directly. Use the Transformers.js worker client facade instead.'
           },
           {
             name: 'highlight.js',
             message: 'Do not import highlight.js in main-thread code. Use the highlight worker client and keep highlight.js bundled only in the worker path.'
           },
           {
-            name: '@/services/highlight.worker-core',
+            name: '@/features/highlight/worker/core',
             message: 'Do not import worker-only highlight helpers from main-thread code. Use the highlight worker client or plain HTML escaping.'
           },
-          {
-            name: './highlight.worker-core',
-            message: 'Do not import worker-only highlight helpers from main-thread code. Use the highlight worker client or plain HTML escaping.'
-          }
         ]
       }]
     },
   },
-  {
-    // Exception: The worker itself must be allowed to import @huggingface/transformers
-    files: [
-      'src/services/transformers-js.worker.ts',
-      'src/services/transformers-js.scanner.worker.ts',
-      'src/services/transformers-js.types.ts',
-      'src/services/highlight.worker.ts',
-      'src/services/highlight.worker.impl.ts',
-      'src/services/highlight.worker.types.ts',
-      'src/services/highlight.worker-core.ts',
-      'src/services/highlight.worker.test.ts'
-    ],
-    rules: {
-      'no-restricted-imports': 'off'
-    }
-  },
-  {
-    // Exception: The loader itself must be allowed to reference the worker (via URL)
-    files: ['src/services/transformers-js-loader.ts'],
-    rules: {
-      'no-restricted-imports': 'off'
-    }
-  },
-  ensureReadyStateAwareAppStartup,
+  ensureReadyStateAwareAppBootstrap,
   ensureVueErrorHandler,
   forceSwitchForUnion,
   preferMultilineTemplateLiterals,
-  requireTestOnlyExport,
-  requireDefineExposeTestOnly,
+  requireTestOnlyForComposableReturn,
+  requireTestOnlyForModuleExport,
+  requireTestOnlyForDefineExpose,
+  requireTestOnlyGuard,
+  noTestOnlyAccessInProduction,
   requireIconSuffix,
   requireWorkerClientFacade,
   requireNamedArgs,
+  requireStaticStringAccess,
   noRawVHtml,
   noAllowedHtmlCast,
   noNaidanIdCast,
@@ -210,6 +189,7 @@ export default tseslint.config(
   noRawDompurify,
   noXssProneBrowserApis,
   preferRootAliasImports,
+  enforceDependencyDirections,
   {
     files: ['**/*.test.ts'],
     languageOptions: {

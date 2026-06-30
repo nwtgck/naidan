@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue';
-import type { ChatSummary } from '@/models/types';
-import type { Settings } from '@/models/types';
+import type { ChatSummary } from '@/01-models/types';
+import type { Settings } from '@/01-models/types';
 import { useSettings } from '@/composables/useSettings';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
@@ -21,6 +21,12 @@ export function useChatListData(): ChatListDataAdapter {
 
   return {
     chats: computed(() => chatDerivedState.chats.value),
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

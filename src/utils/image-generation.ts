@@ -6,8 +6,8 @@
  */
 import { z } from 'zod';
 
-export const SENTINEL_IMAGE_REQUEST_PREFIX = '<!-- naidan_experimental_image_request';
-export const SENTINEL_IMAGE_RESPONSE_PREFIX = '<!-- naidan_experimental_image_response';
+const SENTINEL_IMAGE_REQUEST_PREFIX = '<!-- naidan_experimental_image_request';
+const SENTINEL_IMAGE_RESPONSE_PREFIX = '<!-- naidan_experimental_image_response';
 export const SENTINEL_IMAGE_PENDING = '<!-- naidan_experimental_image_generation_pending -->';
 export const SENTINEL_IMAGE_PROCESSED = '<!-- naidan_experimental_image_generation_processed -->';
 
@@ -239,3 +239,10 @@ export function getImageGenerationProgress({ content }: { content: string }): {
     totalSteps,
   };
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {
+  SENTINEL_IMAGE_REQUEST_PREFIX,
+  SENTINEL_IMAGE_RESPONSE_PREFIX,
+};

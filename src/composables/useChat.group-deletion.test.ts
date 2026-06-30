@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { reactive } from 'vue';
-import type { Chat, SidebarItem, ChatGroup } from '@/models/types';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import type { Chat, SidebarItem, ChatGroup } from '@/01-models/types';
+import { toChatGroupId, toChatId } from '@/01-models/ids';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
 
-vi.mock('../services/storage', () => ({
+vi.mock('../00-storage/service', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -27,7 +27,7 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
   }),
 }));
 

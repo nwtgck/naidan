@@ -4,8 +4,8 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, nextTick, reactive, computed } from 'vue';
 import { useLayout } from '@/composables/useLayout';
-import type { ChatGroup, SidebarItem } from '@/models/types';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import type { ChatGroup, SidebarItem } from '@/01-models/types';
+import { toChatGroupId, toChatId } from '@/01-models/ids';
 
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),
@@ -104,7 +104,7 @@ vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpointUrl: 'http://localhost' }),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' } }),
     availableModels: ref([]),
     isFetchingModels: ref(false),
     save: vi.fn(),
@@ -112,7 +112,7 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('../composables/useTheme', () => ({
+vi.mock('../features/theme/composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),

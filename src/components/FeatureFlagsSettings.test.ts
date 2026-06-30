@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const {
   mockFakeLmDebugModeAvailability,
@@ -16,8 +17,10 @@ const {
 const mockShowConfirm = vi.fn();
 const mockSaveSettings = vi.fn();
 const mockSettings = ref({
-  endpointType: 'openai',
-  endpointUrl: 'http://localhost',
+  endpoint: {
+    type: 'openai',
+    url: 'http://localhost',
+  },
   storageType: 'local',
   autoTitleEnabled: true,
   defaultModelId: 'gpt-4',
@@ -44,7 +47,7 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/services/fake-lm', () => ({
+vi.mock('@/features/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
   preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
   useFakeLmDebugMode: () => ({
@@ -62,7 +65,7 @@ vi.mock('lucide-vue-next', () => ({
 }));
 
 describe('FeatureFlagsSettings.vue', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear();
     mockShowConfirm.mockReset();
     mockSaveSettings.mockReset();
@@ -72,6 +75,7 @@ describe('FeatureFlagsSettings.vue', () => {
     mockSettings.value.experimental = undefined;
     const { TEST_ONLY } = useFeatureFlags();
     TEST_ONLY.reset();
+    await ensureAllStringsForTest({ locale: 'en' });
   });
 
   it('renders all feature controls in one vertical settings list', () => {
@@ -162,8 +166,10 @@ describe('FeatureFlagsSettings.vue', () => {
     await wrapper.find('[data-testid="feature-flag-volume-toggle"]').trigger('click');
     await wrapper.find('[data-testid="feature-flag-volume-toggle"]').trigger('click');
 
-    expect(mockShowConfirm).toHaveBeenCalled();
-    expect(useFeatureFlags().isFeatureEnabled({ feature: 'volume' })).toBe(true);
+    await vi.waitFor(() => {
+      expect(mockShowConfirm).toHaveBeenCalled();
+      expect(useFeatureFlags().isFeatureEnabled({ feature: 'volume' })).toBe(true);
+    });
   });
 
   it('describes persistence across Global, Chat Group, and Chat layers', () => {
@@ -183,6 +189,7 @@ describe('FeatureFlagsSettings.vue', () => {
           toolConfigPersistence: 'enabled',
         },
       },
+      modelRefresh: 'await',
     });
   });
 
@@ -196,6 +203,7 @@ describe('FeatureFlagsSettings.vue', () => {
           sidebarSendMessageReorder: 'move_sent_chat',
         },
       },
+      modelRefresh: 'await',
     });
   });
 

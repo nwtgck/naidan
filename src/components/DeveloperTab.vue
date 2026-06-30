@@ -2,10 +2,11 @@
 import { useSampleChat } from '@/composables/useSampleChat';
 import { useConfirm } from '@/composables/useConfirm';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
-import { storageService } from '@/services/storage';
+import { storageService } from '@/00-storage/service';
 import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
+import { lazyStrings, ensureStrings } from '@/strings';
 
 defineProps<{
   storageType: string,
@@ -27,9 +28,9 @@ function togglePWAUpdate() {
 
 async function handleResetData() {
   const confirmed = await showConfirm({
-    title: 'Confirm Data Reset',
-    message: 'Are you sure you want to reset all app data? This will delete all chats, chat groups, and settings for the current storage location.',
-    confirmButtonText: 'Reset',
+    title: await ensureStrings.DeveloperTab__confirm_data_reset(),
+    message: await ensureStrings.DeveloperTab__reset_all_app_data_warning(),
+    confirmButtonText: await ensureStrings.DeveloperTab__reset(),
     confirmButtonVariant: 'danger',
   });
   if (confirmed) {
@@ -40,9 +41,9 @@ async function handleResetData() {
 
 async function handleClearAllCacheStorage() {
   const confirmed = await showConfirm({
-    title: 'Clear All Cache Storage',
-    message: "Are you sure you want to delete all entries in the browser's Cache Storage API? This will force the application to redownload all assets on the next reload.",
-    confirmButtonText: 'Clear All',
+    title: await ensureStrings.DeveloperTab__clear_all_cache_storage(),
+    message: await ensureStrings.DeveloperTab__clear_cache_storage_warning(),
+    confirmButtonText: await ensureStrings.DeveloperTab__clear_all(),
     confirmButtonVariant: 'danger',
   });
   if (confirmed) {
@@ -58,9 +59,11 @@ function handleReload() {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -69,17 +72,17 @@ defineExpose({
     <section class="space-y-8">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
         <CpuIcon class="w-5 h-5 text-blue-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Developer Tools</h2>
+        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.DeveloperTab__developer_tools() }}</h2>
       </div>
 
       <div class="space-y-8">
         <div class="space-y-4">
-          <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Experimental Features</h3>
+          <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__experimental_features() }}</h3>
           <FeatureFlagsSettings />
         </div>
 
         <div class="space-y-4">
-          <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Debug & Testing</h3>
+          <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__debug_and_testing() }}</h3>
           <div class="flex flex-col gap-2 sm:flex-row">
             <button
               @click="createSampleChat"
@@ -87,7 +90,7 @@ defineExpose({
               data-testid="setting-create-sample-button"
             >
               <FlaskConicalIcon class="h-4 w-4" />
-              Create Sample Chat
+              {{ lazyStrings.DeveloperTab__create_sample_chat() }}
             </button>
             <button
               @click="createLongSampleChat"
@@ -95,10 +98,10 @@ defineExpose({
               data-testid="setting-create-long-sample-button"
             >
               <ScrollTextIcon class="h-4 w-4" />
-              Create Long Sample Chat
+              {{ lazyStrings.DeveloperTab__create_long_sample_chat() }}
             </button>
           </div>
-          <p class="text-[11px] font-medium text-gray-400 ml-1">Adds sample conversations for rendering checks and long-thread navigation testing.</p>
+          <p class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.DeveloperTab__sample_conversations_description() }}</p>
         </div>
 
         <DeveloperOpenStateLinks />
@@ -115,8 +118,8 @@ defineExpose({
                 <RefreshCwIcon class="w-4 h-4" :class="needRefresh ? 'text-emerald-500 animate-spin-slow' : 'text-gray-400'" />
               </div>
               <div class="flex flex-col">
-                <span class="text-sm font-bold">Simulate PWA Update</span>
-                <span class="text-[10px] font-medium text-gray-500">Toggle update notification for testing</span>
+                <span class="text-sm font-bold">{{ lazyStrings.DeveloperTab__simulate_pwa_update() }}</span>
+                <span class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__toggle_update_notification() }}</span>
               </div>
             </div>
             <div v-if="needRefresh" class="flex h-2 w-2 relative">
@@ -135,8 +138,8 @@ defineExpose({
                 <Trash2Icon class="w-4 h-4 text-gray-400" />
               </div>
               <div class="flex flex-col">
-                <span class="text-sm font-bold">Clear All Cache Storage</span>
-                <span class="text-[10px] font-medium text-gray-500">Deletes all entries in the browser's Cache Storage API</span>
+                <span class="text-sm font-bold">{{ lazyStrings.DeveloperTab__clear_all_cache_storage() }}</span>
+                <span class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__deletes_cache_storage_entries() }}</span>
               </div>
             </div>
           </button>
@@ -151,24 +154,24 @@ defineExpose({
                 <RefreshCwIcon class="w-4 h-4 text-gray-400" />
               </div>
               <div class="flex flex-col">
-                <span class="text-sm font-bold">Reload Application</span>
-                <span class="text-[10px] font-medium text-gray-500">Perform a simple window reload</span>
+                <span class="text-sm font-bold">{{ lazyStrings.DeveloperTab__reload_application() }}</span>
+                <span class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__perform_window_reload() }}</span>
               </div>
             </div>
           </button>
         </div>
 
         <div class="pt-8 border-t border-gray-100 dark:border-gray-800 space-y-5">
-          <h3 class="text-sm font-bold text-red-500 uppercase tracking-widest ml-1">Danger Zone</h3>
+          <h3 class="text-sm font-bold text-red-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__danger_zone() }}</h3>
           <div class="p-5 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
             <div class="flex items-start gap-3">
               <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/20">
                 <AlertTriangleIcon class="w-6 h-6 text-red-500 shrink-0" />
               </div>
               <div>
-                <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">Reset All Application Data</h4>
+                <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">{{ lazyStrings.DeveloperTab__reset_all_application_data() }}</h4>
                 <p class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
-                  This action cannot be undone. It will permanently delete all chat history, chat groups, and settings stored in the <strong>{{ storageType }}</strong> provider.
+                  {{ lazyStrings.DeveloperTab__reset_data_provider_warning({ storageType }) }}
                 </p>
               </div>
             </div>
@@ -178,7 +181,7 @@ defineExpose({
               data-testid="setting-reset-data-button"
             >
               <Trash2Icon class="w-4 h-4" />
-              Execute Reset
+              {{ lazyStrings.DeveloperTab__execute_reset() }}
             </button>
           </div>
         </div>

@@ -1,21 +1,29 @@
 <script setup lang="ts">
+import { ensureStrings, lazyStrings } from '@/strings';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/models/scoped-setting-change';
+import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import type {
   Chat,
   Endpoint,
   EndpointType,
   LmParameters,
   SystemPrompt,
-} from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import type { ChatId } from '@/models/ids';
-import { idToRaw } from '@/models/ids';
+} from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import {
+  areOptionalEndpointsEqual,
+  cloneEndpoint,
+  cloneOptionalEndpoint,
+  isHttpEndpoint,
+  selectHttpEndpointSeed,
+} from '@/01-models/endpoint';
+import type { ChatId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 import {
   XIcon,
   Settings2Icon,
@@ -27,9 +35,10 @@ import {
   PlusIcon,
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-import { ENDPOINT_PRESETS } from '@/models/constants';
+import { ENDPOINT_PRESETS } from '@/constants';
 import { naturalSort } from '@/utils/string';
-import { hasChatOverrides } from '@/utils/chat-settings-resolver';
+import { hasChatOverrides } from '@/logic/chat-settings-resolver';
+import { formatSettingsSourceLabel } from '@/logic/settings-labels';
 import {
   cloneLmParameters,
   hasLmParameterOverrides,
@@ -38,13 +47,13 @@ import {
 import {
   createChangedLmParameterSettingChanges,
   createSystemPromptSettingChange,
-} from '@/utils/scoped-setting-changes';
+} from '@/logic/scoped-setting-changes';
 
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/transformers-js/components/TransformersJsUpsell.vue') });
 
 const props = defineProps<{
   show?: boolean,
@@ -63,9 +72,7 @@ const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
 type ChatSettingsDraft = {
-  endpointType: EndpointType | undefined,
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
+  endpoint: Endpoint | undefined,
   modelId: string | undefined,
   autoTitleEnabled: boolean | undefined,
   titleModelId: string | undefined,
@@ -75,9 +82,7 @@ type ChatSettingsDraft = {
 
 function emptyDraft(): ChatSettingsDraft {
   return {
-    endpointType: undefined,
-    endpointUrl: undefined,
-    endpointHttpHeaders: undefined,
+    endpoint: undefined,
     modelId: undefined,
     autoTitleEnabled: undefined,
     titleModelId: undefined,
@@ -88,9 +93,7 @@ function emptyDraft(): ChatSettingsDraft {
 
 function cloneDraft({ draft }: { draft: ChatSettingsDraft }): ChatSettingsDraft {
   return {
-    endpointType: draft.endpointType,
-    endpointUrl: draft.endpointUrl,
-    endpointHttpHeaders: draft.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+    endpoint: cloneOptionalEndpoint({ endpoint: draft.endpoint }),
     modelId: draft.modelId,
     autoTitleEnabled: draft.autoTitleEnabled,
     titleModelId: draft.titleModelId,
@@ -101,27 +104,13 @@ function cloneDraft({ draft }: { draft: ChatSettingsDraft }): ChatSettingsDraft 
 
 function draftFromChat({ chat }: { chat: Chat }): ChatSettingsDraft {
   return {
-    endpointType: chat.endpointType,
-    endpointUrl: chat.endpointUrl,
-    endpointHttpHeaders: chat.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+    endpoint: cloneOptionalEndpoint({ endpoint: chat.endpoint }),
     modelId: chat.modelId,
     autoTitleEnabled: chat.autoTitleEnabled,
     titleModelId: chat.titleModelId,
     systemPrompt: chat.systemPrompt === undefined ? undefined : { ...chat.systemPrompt },
     lmParameters: cloneLmParameters({ lmParameters: chat.lmParameters }),
   };
-}
-
-function areHeadersEqual({
-  left,
-  right,
-}: {
-  left: [string, string][] | undefined,
-  right: [string, string][] | undefined,
-}): boolean {
-  if (left === right) return true;
-  if (left === undefined || right === undefined || left.length !== right.length) return false;
-  return left.every(([name, value], index) => name === right[index]?.[0] && value === right[index]?.[1]);
 }
 
 function areSystemPromptsEqual({
@@ -148,14 +137,14 @@ function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType
   throw new Error(`Unhandled endpoint type value: ${value}`);
 }
 
-function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string {
+function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string | undefined {
   switch (endpointType) {
   case 'openai':
     return 'OpenAI';
   case 'ollama':
-    return 'Ollama';
+    return lazyStrings.ChatSettingsPanel__ollama();
   case 'transformers_js':
-    return 'Transformers.js';
+    return lazyStrings.ChatSettingsPanel__transformers_js();
   default: {
     const _ex: never = endpointType;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -163,40 +152,45 @@ function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): st
   }
 }
 
-function endpointFromDraft({
-  draft,
-  inheritedEndpointType,
-}: {
-  draft: ChatSettingsDraft,
-  inheritedEndpointType: EndpointType | undefined,
-}): Endpoint | undefined {
-  const endpointType = draft.endpointType ?? inheritedEndpointType;
-  if (endpointType === undefined) return undefined;
-  switch (endpointType) {
-  case 'transformers_js':
-    return { type: endpointType };
-  case 'openai':
-  case 'ollama':
-    return {
-      type: endpointType,
-      url: draft.endpointUrl,
-      httpHeaders: draft.endpointHttpHeaders?.map(([name, value]) => [name, value]),
-    };
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
+function inheritedEndpointTypeLabel(): string | undefined {
+  const endpointType = inheritedSettings.value?.endpoint.type;
+  if (endpointType === undefined) {
+    return formatSettingsSourceLabel({
+      value: undefined,
+      source: inheritedSettings.value?.sources.endpoint,
+    });
   }
+  const label = endpointTypeLabel({ endpointType });
+  if (label === undefined) return undefined;
+  return formatSettingsSourceLabel({
+    value: label,
+    source: inheritedSettings.value?.sources.endpoint,
+  });
+}
+
+function titleModelExplanation(): string | undefined {
+  const source = resolvedSettings.value?.sources.autoTitleEnabled;
+  if (localSettings.value.autoTitleEnabled !== undefined || source === undefined) {
+    return lazyStrings.ChatSettingsPanel__title_model_explanation({
+      inheritance: { type: 'none' },
+    });
   }
+
+  return lazyStrings.ChatSettingsPanel__title_model_explanation({
+    inheritance: {
+      type: 'inherited',
+      state: resolvedSettings.value?.autoTitleEnabled ? 'enabled' : 'disabled',
+      source,
+    },
+  });
 }
 
 function createChanges({
   previous,
   next,
-  inheritedEndpointType,
 }: {
   previous: ChatSettingsDraft,
   next: ChatSettingsDraft,
-  inheritedEndpointType: EndpointType | undefined,
 }): ScopedSettingChange[] {
   const changes: ScopedSettingChange[] = [];
   const lmChanges = new Map(
@@ -210,26 +204,17 @@ function createChanges({
   // fails typechecking here until draft comparison semantics are implemented.
   for (const field of SCOPED_SETTING_FIELDS) {
     switch (field) {
-    case 'endpoint': {
-      const endpointChanged = previous.endpointType !== next.endpointType
-        || previous.endpointUrl !== next.endpointUrl
-        || !areHeadersEqual({ left: previous.endpointHttpHeaders, right: next.endpointHttpHeaders });
-      if (!endpointChanged) break;
-
-      // The persisted Chat model can contain legacy URL/header-only states.
-      // Treat a fully empty next draft as an explicit return to inheritance even
-      // when the previous endpoint type was already missing.
-      const inheritsEndpoint = next.endpointType === undefined
-        && next.endpointUrl === undefined
-        && next.endpointHttpHeaders === undefined;
-      const endpoint = inheritsEndpoint
-        ? undefined
-        : endpointFromDraft({ draft: next, inheritedEndpointType });
-      changes.push(endpoint === undefined
-        ? { field: 'endpoint', behavior: 'inherit' }
-        : { field: 'endpoint', behavior: 'override', value: endpoint });
+    case 'endpoint':
+      if (!areOptionalEndpointsEqual({ left: previous.endpoint, right: next.endpoint })) {
+        changes.push(next.endpoint === undefined
+          ? { field: 'endpoint', behavior: 'inherit' }
+          : {
+            field: 'endpoint',
+            behavior: 'override',
+            value: cloneEndpoint({ endpoint: next.endpoint }),
+          });
+      }
       break;
-    }
     case 'model_id':
       if (previous.modelId !== next.modelId) {
         changes.push(next.modelId === undefined
@@ -280,14 +265,64 @@ function createChanges({
 const localSettings = ref<ChatSettingsDraft>(emptyDraft());
 const baselineSettings = ref<ChatSettingsDraft>(emptyDraft());
 const editingChatId = ref<ChatId | undefined>(undefined);
-const editingInheritedEndpointType = ref<EndpointType | undefined>(undefined);
 const pendingFieldRevisions = new Map<ScopedSettingChange['field'], number>();
 const saveQueues = new Map<ChatId, Promise<void>>();
 const saveError = ref<string | null>(null);
 let nextSaveRevision = 0;
 
 const hasActiveOverrides = computed(() => hasChatOverrides({ chat: localSettings.value }));
-const effectiveEndpointType = computed(() => localSettings.value.endpointType || resolvedSettings?.value?.endpointType);
+const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? inheritedSettings.value?.endpoint);
+const effectiveEndpointType = computed(() => effectiveEndpoint.value?.type);
+
+const localEndpointUrl = computed({
+  get: () => {
+    const endpoint = localSettings.value.endpoint;
+    return endpoint !== undefined && isHttpEndpoint(endpoint)
+      ? endpoint.url
+      : '';
+  },
+  set: (url: string) => {
+    const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint;
+    if (!endpoint || !isHttpEndpoint(endpoint)) return;
+    localSettings.value.endpoint = {
+      type: endpoint.type,
+      url,
+      httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
+    };
+  },
+});
+
+const localEndpointHttpHeaders = computed<[string, string][] | undefined>({
+  get: () => {
+    const endpoint = localSettings.value.endpoint;
+    return endpoint !== undefined && isHttpEndpoint(endpoint)
+      ? endpoint.httpHeaders
+      : undefined;
+  },
+  set: (httpHeaders) => {
+    const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint;
+    if (!endpoint || !isHttpEndpoint(endpoint)) return;
+    localSettings.value.endpoint = {
+      type: endpoint.type,
+      url: endpoint.url,
+      httpHeaders,
+    };
+  },
+});
+
+const inheritedEndpointUrlPlaceholder = computed(() => {
+  const inherited = inheritedSettings.value;
+  if (inherited === null || inherited === undefined || !isHttpEndpoint(inherited.endpoint)) {
+    return formatSettingsSourceLabel({
+      value: undefined,
+      source: inherited?.sources.endpoint,
+    });
+  }
+  return formatSettingsSourceLabel({
+    value: inherited.endpoint.url,
+    source: inherited.sources.endpoint,
+  });
+});
 
 // Keep field synchronization exhaustive. A new LM setting command must
 // fail typechecking here until clean/dirty draft merge semantics are defined.
@@ -358,9 +393,7 @@ function applyFieldFromDraft({
 }): void {
   switch (field) {
   case 'endpoint':
-    target.endpointType = source.endpointType;
-    target.endpointUrl = source.endpointUrl;
-    target.endpointHttpHeaders = source.endpointHttpHeaders?.map(([name, value]) => [name, value]);
+    target.endpoint = cloneOptionalEndpoint({ endpoint: source.endpoint });
     return;
   case 'model_id':
     target.modelId = source.modelId;
@@ -399,7 +432,6 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
     pendingFieldRevisions.clear();
     saveError.value = null;
     editingChatId.value = chat.id;
-    editingInheritedEndpointType.value = inheritedSettings.value?.endpointType;
     localSettings.value = cloneDraft({ draft: current });
     baselineSettings.value = cloneDraft({ draft: current });
     return;
@@ -409,7 +441,6 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
     ...createChanges({
       previous: baselineSettings.value,
       next: localSettings.value,
-      inheritedEndpointType: editingInheritedEndpointType.value,
     }).map(change => change.field),
     ...pendingFieldRevisions.keys(),
   ]);
@@ -418,9 +449,6 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
     if (dirtyFields.has(field)) continue;
     applyFieldFromDraft({ field, target: localSettings.value, source: current });
     applyFieldFromDraft({ field, target: baselineSettings.value, source: current });
-  }
-  if (!dirtyFields.has('endpoint')) {
-    editingInheritedEndpointType.value = inheritedSettings.value?.endpointType;
   }
 }
 
@@ -431,7 +459,6 @@ function saveChangesForChat({ chatId }: { chatId: ChatId | undefined }): Promise
   // for this chat settle. This lets a close or navigation wait for an in-flight
   // blur save and retry its draft if that earlier save failed.
   const snapshot = cloneDraft({ draft: localSettings.value });
-  const inheritedEndpointType = editingInheritedEndpointType.value;
   const previous = saveQueues.get(chatId) ?? Promise.resolve();
   const operation = previous
     .catch(() => undefined)
@@ -440,7 +467,6 @@ function saveChangesForChat({ chatId }: { chatId: ChatId | undefined }): Promise
       const changes = createChanges({
         previous: baselineSettings.value,
         next: snapshot,
-        inheritedEndpointType,
       });
       if (changes.length === 0) return;
 
@@ -473,7 +499,7 @@ function saveChangesForChat({ chatId }: { chatId: ChatId | undefined }): Promise
         if (editingChatId.value === chatId) {
           saveError.value = cause instanceof Error
             ? cause.message
-            : 'Failed to save chat settings.';
+            : await ensureStrings.ChatSettingsPanel__failed_to_save_chat_settings();
         }
         throw cause;
       }
@@ -522,8 +548,9 @@ async function closePanel(): Promise<void> {
 onMounted(() => {
   syncLocalWithCurrent({ preserveDirty: false });
   if (currentChat.value) {
-    const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
-    const type = currentChat.value.endpointType || settings.value.endpointType;
+    const endpoint = currentChat.value.endpoint ?? settings.value.endpoint;
+    const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
+    const type = endpoint.type;
     if (type === 'transformers_js' || isLocalhost({ url })) void fetchModels();
   }
 });
@@ -576,23 +603,6 @@ watch(() => props.show, (show) => {
   }
 });
 
-function formatLabel({ value, source }: { value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined }) {
-  if (!value) return 'Default';
-  switch (source) {
-  case 'chat_group':
-    return `${value} (Group)`;
-  case 'global':
-    return `${value} (Global)`;
-  case 'chat':
-  case undefined:
-    return value;
-  default: {
-    const _ex: never = source;
-    throw new Error(`Unhandled source: ${_ex}`);
-  }
-  }
-}
-
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
 
@@ -608,19 +618,24 @@ async function updateEndpointType({
 }): Promise<void> {
   switch (endpointType) {
   case undefined:
-    localSettings.value.endpointType = undefined;
-    localSettings.value.endpointUrl = undefined;
-    localSettings.value.endpointHttpHeaders = undefined;
+    localSettings.value.endpoint = undefined;
     break;
   case 'transformers_js':
-    localSettings.value.endpointType = endpointType;
-    localSettings.value.endpointUrl = undefined;
-    localSettings.value.endpointHttpHeaders = undefined;
+    localSettings.value.endpoint = { type: endpointType };
     break;
   case 'openai':
-  case 'ollama':
-    localSettings.value.endpointType = endpointType;
+  case 'ollama': {
+    const seed = selectHttpEndpointSeed({
+      preferred: localSettings.value.endpoint,
+      fallback: inheritedSettings.value?.endpoint,
+    });
+    localSettings.value.endpoint = {
+      type: endpointType,
+      url: seed?.url ?? '',
+      httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
+    };
     break;
+  }
   default: {
     const _ex: never = endpointType;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -631,8 +646,7 @@ async function updateEndpointType({
 }
 
 async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
-  localSettings.value.endpointType = preset.type;
-  localSettings.value.endpointUrl = preset.url;
+  localSettings.value.endpoint = { type: preset.type, url: preset.url };
   error.value = null;
   await saveChangesFromUi();
 }
@@ -640,25 +654,7 @@ async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number]
 async function handleQuickProviderProfileChange() {
   const providerProfile = settings.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
-    switch (providerProfile.endpointType) {
-    case 'transformers_js':
-      // Provider profiles share the EndpointType union, but Transformers.js is
-      // in-process and must not leave HTTP-only draft fields behind on failure.
-      localSettings.value.endpointType = providerProfile.endpointType;
-      localSettings.value.endpointUrl = undefined;
-      localSettings.value.endpointHttpHeaders = undefined;
-      break;
-    case 'openai':
-    case 'ollama':
-      localSettings.value.endpointType = providerProfile.endpointType;
-      localSettings.value.endpointUrl = providerProfile.endpointUrl;
-      localSettings.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders?.map(([name, value]) => [name, value]);
-      break;
-    default: {
-      const _ex: never = providerProfile.endpointType;
-      throw new Error(`Unhandled provider profile endpoint type: ${_ex}`);
-    }
-    }
+    localSettings.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     localSettings.value.modelId = providerProfile.defaultModelId;
     localSettings.value.systemPrompt = providerProfile.systemPrompt
       ? { content: providerProfile.systemPrompt, behavior: 'override' }
@@ -671,12 +667,19 @@ async function handleQuickProviderProfileChange() {
 }
 
 function addHeader() {
-  if (!localSettings.value.endpointHttpHeaders) localSettings.value.endpointHttpHeaders = [];
-  localSettings.value.endpointHttpHeaders.push(['', '']);
+  const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint;
+  if (!endpoint || !isHttpEndpoint(endpoint)) return;
+  localEndpointHttpHeaders.value = [
+    ...(endpoint.httpHeaders ?? []),
+    ['', ''],
+  ];
 }
 
 async function removeHeader({ index }: { index: number }) {
-  localSettings.value.endpointHttpHeaders?.splice(index, 1);
+  const headers = localEndpointHttpHeaders.value;
+  if (headers !== undefined) {
+    localEndpointHttpHeaders.value = headers.filter((_, headerIndex) => headerIndex !== index);
+  }
   await saveChangesFromUi();
 }
 
@@ -686,20 +689,19 @@ async function fetchModels() {
   error.value = null;
   try {
     const models = await chatModels.fetchForChat({ chatId });
-    if (models.length === 0) error.value = 'No models found at this endpoint.';
+    if (models.length === 0) error.value = await ensureStrings.SHARED__no_models_found_at_this_endpoint();
     if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
       localSettings.value.modelId = undefined;
       await saveChangesFromUi();
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : 'Connection failed. Check URL or provider.';
+    error.value = caught instanceof Error
+      ? caught.message
+      : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
   }
 }
 
-watch([
-  () => localSettings.value.endpointUrl,
-  () => localSettings.value.endpointType,
-], ([url, type]) => {
+watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
   if (type === 'transformers_js' || (url && isLocalhost({ url }))) void fetchModels();
 });
@@ -748,9 +750,11 @@ async function handleRestoreDefaults() {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 
@@ -764,7 +768,7 @@ defineExpose({
             <div class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
               <Settings2Icon class="w-4 h-4 text-blue-600" />
             </div>
-            <h3 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Chat Specific Overrides</h3>
+            <h3 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__chat_specific_overrides() }}</h3>
           </div>
 
           <div class="flex items-center gap-2">
@@ -773,7 +777,7 @@ defineExpose({
               class="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-full"
             >
               <div class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
-              <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Active Overrides</span>
+              <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__active_overrides() }}</span>
             </div>
 
             <button
@@ -800,21 +804,21 @@ defineExpose({
             <div class="flex flex-col md:flex-row gap-8 flex-1">
               <!-- Quick Switcher -->
               <div v-if="settings.providerProfiles && settings.providerProfiles.length > 0" class="w-full md:max-w-[240px] space-y-2">
-                <label class="block text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider ml-1">Quick Profile Switcher</label>
+                <label class="block text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider ml-1">{{ lazyStrings.ChatSettingsPanel__quick_profile_switcher() }}</label>
                 <select
                   v-model="selectedProviderProfileId"
                   @change="handleQuickProviderProfileChange"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                   style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                 >
-                  <option value="" disabled>Load from saved profiles...</option>
-                  <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpointType }) }})</option>
+                  <option value="" disabled>{{ lazyStrings.ChatSettingsPanel__load_from_saved_profiles() }}</option>
+                  <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpoint.type }) }})</option>
                 </select>
               </div>
 
               <!-- Endpoint Presets -->
               <div class="space-y-2 flex-1">
-                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider ml-1">Quick Endpoint Presets</label>
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider ml-1">{{ lazyStrings.ChatSettingsPanel__quick_endpoint_presets() }}</label>
                 <div class="flex flex-wrap gap-1.5">
                   <button
                     v-for="preset in ENDPOINT_PRESETS"
@@ -822,7 +826,7 @@ defineExpose({
                     @click="applyPreset({ preset })"
                     type="button"
                     class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
-                    :class="localSettings.endpointUrl === preset.url && localSettings.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
+                    :class="localEndpointUrl === preset.url && localSettings.endpoint?.type === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
                   >
                     {{ preset.name }}
                   </button>
@@ -833,10 +837,10 @@ defineExpose({
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="space-y-2">
-              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
+              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_type() }}</label>
               <select
                 data-testid="chat-setting-endpoint-type-select"
-                :value="localSettings.endpointType || 'global'"
+                :value="localSettings.endpoint?.type || 'global'"
                 @change="async (e) => {
                   const value = (e.target as HTMLSelectElement).value;
                   await updateEndpointType({ endpointType: endpointTypeFromSelectValue({ value }) });
@@ -844,23 +848,23 @@ defineExpose({
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
               >
-                <option value="global">{{ formatLabel({ value: resolvedSettings?.endpointType === 'transformers_js' ? 'Transformers.js' : resolvedSettings?.endpointType, source: resolvedSettings?.sources.endpointType }) }}</option>
-                <option value="openai">OpenAI Compatible</option>
-                <option value="ollama">Ollama</option>
-                <option value="transformers_js">Transformers.js (Experimental)</option>
+                <option value="global">{{ inheritedEndpointTypeLabel() }}</option>
+                <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
+                <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
+                <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
               </select>
             </div>
 
             <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
-              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
+              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</label>
               <input
-                v-model="localSettings.endpointUrl"
+                v-model="localEndpointUrl"
                 @blur="saveChangesFromUi"
                 @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
                 @input="error = null"
                 type="text"
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                :placeholder="formatLabel({ value: resolvedSettings?.endpointUrl, source: resolvedSettings?.sources.endpointUrl })"
+                :placeholder="inheritedEndpointUrlPlaceholder"
                 data-testid="chat-setting-url-input"
               />
               <div v-if="error" class="mt-2">
@@ -870,20 +874,20 @@ defineExpose({
 
             <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
               <div class="flex items-center justify-between ml-1">
-                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__custom_http_headers() }}</label>
                 <button
                   @click="addHeader"
                   type="button"
                   class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
                 >
                   <PlusIcon class="w-2.5 h-2.5" />
-                  Add Header
+                  {{ lazyStrings.ChatSettingsPanel__add_header() }}
                 </button>
               </div>
 
-              <div v-if="localSettings.endpointHttpHeaders && localSettings.endpointHttpHeaders.length > 0" class="space-y-2">
+              <div v-if="localEndpointHttpHeaders && localEndpointHttpHeaders.length > 0" class="space-y-2">
                 <div
-                  v-for="(header, index) in localSettings.endpointHttpHeaders"
+                  v-for="(header, index) in localEndpointHttpHeaders"
                   :key="index"
                   class="flex gap-2"
                 >
@@ -892,14 +896,14 @@ defineExpose({
                     @blur="saveChangesFromUi"
                     type="text"
                     class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                    placeholder="Name"
+                    :placeholder="lazyStrings.ChatSettingsPanel__name()"
                   />
                   <input
                     v-model="header[1]"
                     @blur="saveChangesFromUi"
                     type="text"
                     class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                    placeholder="Value"
+                    :placeholder="lazyStrings.ChatSettingsPanel__value()"
                   />
                   <button
                     @click="removeHeader({ index })"
@@ -909,18 +913,18 @@ defineExpose({
                   </button>
                 </div>
               </div>
-              <div v-else class="text-[10px] text-gray-400 italic ml-1">No custom headers.</div>
+              <div v-else class="text-[10px] text-gray-400 italic ml-1">{{ lazyStrings.ChatSettingsPanel__no_custom_headers() }}</div>
             </div>
 
             <div class="space-y-4">
               <div class="space-y-2">
-                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__model_override() }}</label>
                 <ModelSelector
                   :model-value="localSettings.modelId"
                   @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
                   :models="sortedAvailableModels"
                   :loading="isFetchingModels"
-                  :placeholder="formatLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
+                  :placeholder="formatSettingsSourceLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"
                   data-testid="chat-setting-model-select"
@@ -949,8 +953,8 @@ defineExpose({
                   <Settings2Icon class="w-4 h-4 text-blue-600" />
                 </div>
                 <div>
-                  <h4 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Automatic Title</h4>
-                  <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Configure how this chat is automatically named.</p>
+                  <h4 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__automatic_title() }}</h4>
+                  <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">{{ lazyStrings.ChatSettingsPanel__configure_how_this_chat_is_automatically_named() }}</p>
                 </div>
               </div>
               <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
@@ -959,34 +963,34 @@ defineExpose({
                   class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                   :class="localSettings.autoTitleEnabled === undefined ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                 >
-                  Inherit
+                  {{ lazyStrings.ChatSettingsPanel__inherit() }}
                 </button>
                 <button
                   @click="localSettings.autoTitleEnabled = true; saveChangesFromUi();"
                   class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                   :class="localSettings.autoTitleEnabled === true ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                 >
-                  Enabled
+                  {{ lazyStrings.ChatSettingsPanel__enabled() }}
                 </button>
                 <button
                   @click="localSettings.autoTitleEnabled = false; saveChangesFromUi();"
                   class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                   :class="localSettings.autoTitleEnabled === false ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                 >
-                  Disabled
+                  {{ lazyStrings.ChatSettingsPanel__disabled() }}
                 </button>
               </div>
             </div>
 
             <div v-if="localSettings.autoTitleEnabled !== false" class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
               <div class="space-y-2">
-                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Title Model Override</label>
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__title_model_override() }}</label>
                 <ModelSelector
                   :model-value="localSettings.titleModelId"
                   @update:model-value="val => { localSettings.titleModelId = val; saveChangesFromUi(); }"
                   :models="sortedAvailableModels"
                   :loading="isFetchingModels"
-                  :placeholder="formatLabel({ value: resolvedSettings?.titleModelId, source: resolvedSettings?.sources.titleModelId })"
+                  :placeholder="formatSettingsSourceLabel({ value: resolvedSettings?.titleModelId, source: resolvedSettings?.sources.titleModelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"
                   data-testid="chat-setting-title-model-select"
@@ -994,8 +998,7 @@ defineExpose({
               </div>
               <div class="flex items-center">
                 <p class="text-[10px] text-gray-400 italic leading-relaxed">
-                  The title model is used only once to summarize the first user message.
-                  {{ localSettings.autoTitleEnabled === undefined ? ' Currently inheriting ' + (resolvedSettings?.autoTitleEnabled ? 'Enabled' : 'Disabled') + ' from ' + resolvedSettings?.sources.autoTitleEnabled + '.' : '' }}
+                  {{ titleModelExplanation() }}
                 </p>
               </div>
             </div>
@@ -1008,8 +1011,8 @@ defineExpose({
                 <GlobeIcon class="w-4 h-4 text-blue-500" />
               </div>
               <div class="space-y-1">
-                <p class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">Auto-Check</p>
-                <p class="text-[11px] text-gray-500 dark:text-blue-400/70 leading-relaxed font-medium">Connection check is automatically performed only for localhost URLs.</p>
+                <p class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__auto_check() }}</p>
+                <p class="text-[11px] text-gray-500 dark:text-blue-400/70 leading-relaxed font-medium">{{ lazyStrings.ChatSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls() }}</p>
               </div>
             </div>
 
@@ -1018,15 +1021,15 @@ defineExpose({
                 <AlertCircleIcon class="w-4 h-4 text-gray-400" />
               </div>
               <div class="space-y-1">
-                <p class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Local Overrides</p>
+                <p class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__local_overrides() }}</p>
                 <p class="text-[11px] text-gray-500/70 dark:text-gray-400/70 leading-relaxed font-medium">
-                  These settings only apply to this chat.
+                  {{ lazyStrings.ChatSettingsPanel__these_settings_only_apply_to_this_chat() }}
                   <button
                     @click="handleRestoreDefaults"
                     class="font-bold underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     data-testid="chat-setting-restore-defaults"
                   >
-                    Restore defaults
+                    {{ lazyStrings.ChatSettingsPanel__restore_defaults() }}
                   </button>.
                 </p>
               </div>
@@ -1040,7 +1043,7 @@ defineExpose({
                 <div class="flex items-center justify-between">
                   <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                     <MessageSquareQuoteIcon class="w-3 h-3" />
-                    Chat System Prompt
+                    {{ lazyStrings.ChatSettingsPanel__chat_system_prompt() }}
                   </label>
 
                   <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
@@ -1049,40 +1052,40 @@ defineExpose({
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
-                      Inherit
+                      {{ lazyStrings.ChatSettingsPanel__inherit() }}
                     </button>
                     <button
                       @click="updateSystemPromptBehavior({ behavior: 'clear' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
-                      Clear
+                      {{ lazyStrings.ChatSettingsPanel__clear() }}
                     </button>
                     <button
                       @click="updateSystemPromptBehavior({ behavior: 'replace' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
-                      Override
+                      {{ lazyStrings.ChatSettingsPanel__override() }}
                     </button>
                     <button
                       @click="updateSystemPromptBehavior({ behavior: 'append' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
-                      Append
+                      {{ lazyStrings.ChatSettingsPanel__append() }}
                     </button>
                   </div>
                 </div>
                 <div v-if="!localSettings.systemPrompt" class="w-full bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-4 text-left">
-                  <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Inherited Instructions</p>
+                  <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">{{ lazyStrings.ChatSettingsPanel__inherited_instructions() }}</p>
                   <p class="text-xs text-gray-400 dark:text-gray-500 italic whitespace-pre-wrap line-clamp-6">
-                    {{ inheritedSettings?.systemPromptMessages?.join('\n\n') || 'No instructions inherited.' }}
+                    {{ inheritedSettings?.systemPromptMessages?.join('\n\n') || lazyStrings.ChatSettingsPanel__no_instructions_inherited() }}
                   </p>
                 </div>
                 <div v-else-if="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null" class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center">
-                  <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
-                  <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat will not use any system instructions.</p>
+                  <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__parent_prompt_cleared() }}</p>
+                  <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{{ lazyStrings.ChatSettingsPanel__this_chat_will_not_use_any_system_instructions() }}</p>
                 </div>
                 <textarea
                   v-else
@@ -1091,7 +1094,7 @@ defineExpose({
                   @blur="saveChangesFromUi"
                   rows="4"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
-                  :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
+                  :placeholder="localSettings.systemPrompt?.behavior === 'append' ? lazyStrings.ChatSettingsPanel__added_after_global_instructions() : lazyStrings.ChatSettingsPanel__completely_replaces_global_instructions()"
                   data-testid="chat-setting-system-prompt-textarea"
                 ></textarea>
               </div>
@@ -1099,23 +1102,23 @@ defineExpose({
               <div class="space-y-4">
                 <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                   <LayersIcon class="w-3 h-3" />
-                  Settings Resolution
+                  {{ lazyStrings.ChatSettingsPanel__settings_resolution() }}
                 </label>
                 <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3">
                   <div class="flex items-center justify-between text-[10px] font-bold">
-                    <span class="text-gray-400">System Prompt</span>
+                    <span class="text-gray-400">{{ lazyStrings.ChatSettingsPanel__system_prompt() }}</span>
                     <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">
-                      {{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : (localSettings.systemPrompt.content === null ? 'Cleared' : 'Overriding')) : 'Group/Global Default' }}
+                      {{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? lazyStrings.ChatSettingsPanel__appending() : (localSettings.systemPrompt.content === null ? lazyStrings.ChatSettingsPanel__cleared() : lazyStrings.ChatSettingsPanel__overriding())) : lazyStrings.ChatSettingsPanel__group_global_default() }}
                     </span>
                   </div>
                   <div class="flex items-center justify-between text-[10px] font-bold">
-                    <span class="text-gray-400">Parameters</span>
+                    <span class="text-gray-400">{{ lazyStrings.ChatSettingsPanel__parameters() }}</span>
                     <span :class="hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-lm-parameters">
-                      {{ hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? 'Chat Overrides' : 'Inherited' }}
+                      {{ hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? lazyStrings.ChatSettingsPanel__chat_overrides() : lazyStrings.ChatSettingsPanel__inherited() }}
                     </span>
                   </div>
                   <div class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
-                    <p class="text-[9px] text-gray-400 leading-relaxed italic">Chat settings take precedence over Provider Profiles, which take precedence over Group settings, which take precedence over Global settings.</p>
+                    <p class="text-[9px] text-gray-400 leading-relaxed italic">{{ lazyStrings.ChatSettingsPanel__chat_settings_take_precedence_over_provider_profiles_which_take_precedence_over_group_settings_which_take_precedence_over_global_settings() }}</p>
                   </div>
                 </div>
               </div>
