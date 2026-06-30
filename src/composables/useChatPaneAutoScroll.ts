@@ -324,8 +324,10 @@ export function useChatPaneAutoScroll({
     snapshot,
     consumeScrollAction,
     markAssistantAutoScrolled,
-    TEST_ONLY: {
-      state,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        state,
+      },
+    }) || {}),
   };
 }

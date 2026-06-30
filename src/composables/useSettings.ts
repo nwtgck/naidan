@@ -642,9 +642,11 @@ export function useSettings(): UseSettingsApi {
     setGlobalSearchRoleFilter,
     setSearchPreviewMode,
     setSearchContextSize,
-    TEST_ONLY: {
-      __testOnlyReset,
-      __testOnlySetSettings,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        __testOnlyReset,
+        __testOnlySetSettings,
+      },
+    }) || {}),
   };
 }

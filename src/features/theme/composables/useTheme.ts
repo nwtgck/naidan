@@ -140,25 +140,27 @@ export function useTheme(): UseThemeApi {
       }
       }
     },
-    TEST_ONLY: {
-      __testOnlyReset: () => {
-        switch (controllerState.kind) {
-        case 'not-initialized':
-          break;
-        case 'initialized':
-          controllerState.disposePersistedThemeSubscription();
-          controllerState.disposeSystemThemeSubscription();
-          break;
-        default: {
-          const _ex: never = controllerState;
-          return _ex;
-        }
-        }
-        themeMode.value = 'system';
-        controllerState = {
-          kind: 'not-initialized',
-        };
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        __testOnlyReset: () => {
+          switch (controllerState.kind) {
+          case 'not-initialized':
+            break;
+          case 'initialized':
+            controllerState.disposePersistedThemeSubscription();
+            controllerState.disposeSystemThemeSubscription();
+            break;
+          default: {
+            const _ex: never = controllerState;
+            return _ex;
+          }
+          }
+          themeMode.value = 'system';
+          controllerState = {
+            kind: 'not-initialized',
+          };
+        },
       },
-    },
+    }) || {}),
   };
 }

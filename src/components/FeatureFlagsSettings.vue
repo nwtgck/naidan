@@ -292,12 +292,14 @@ async function handleFakeLmDebugModeToggle() {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    handleFeatureToggle,
-    handleToolConfigPersistenceToggle,
-    handleSidebarSendMessageReorderToggle,
-    handleFakeLmDebugModeToggle,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      handleFeatureToggle,
+      handleToolConfigPersistenceToggle,
+      handleSidebarSendMessageReorderToggle,
+      handleFakeLmDebugModeToggle,
+    },
+  }) || {}),
 });
 </script>
 

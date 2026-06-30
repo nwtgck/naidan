@@ -322,9 +322,9 @@ export function createAdvancedTextEditorV3Worker(): IAdvancedTextEditorV3Worker 
   };
 }
 
-export const TEST_ONLY = {
+export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
   searchTextWithWorkerLogic,
   replaceSingleWithWorkerLogic,
   prepareMultiEditWithWorkerLogic,
   applyMultiEditWithWorkerLogic,
-};
+}) || undefined;

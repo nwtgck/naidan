@@ -46,8 +46,10 @@ export function useChatWeshTerminalSessions() {
       store.ensureSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }) }),
     reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }: SessionArgs) =>
       store.ensureSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }) }),
-    TEST_ONLY: {
-      buildWorkerMountsForChat,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        buildWorkerMountsForChat,
+      },
+    }) || {}),
   };
 }

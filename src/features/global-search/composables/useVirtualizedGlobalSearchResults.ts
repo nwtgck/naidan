@@ -264,8 +264,10 @@ export function useVirtualizedGlobalSearchResults({
     virtualizationEnabled,
     setResultElement,
     scrollResultIntoView,
-    TEST_ONLY: {
-      updateViewportMetrics,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        updateViewportMetrics,
+      },
+    }) || {}),
   };
 }

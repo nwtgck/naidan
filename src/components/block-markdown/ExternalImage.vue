@@ -38,11 +38,13 @@ function loadAll() {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    showThisImage,
-    isExternal,
-    shouldShow,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      showThisImage,
+      isExternal,
+      shouldShow,
+    },
+  }) || {}),
 });
 </script>
 

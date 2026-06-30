@@ -17,10 +17,12 @@ const toggleExpand = () => {
 };
 
 defineExpose({
-  TEST_ONLY: {
-    isExpanded,
-    toggleExpand,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      isExpanded,
+      toggleExpand,
+    },
+  }) || {}),
 });
 </script>
 

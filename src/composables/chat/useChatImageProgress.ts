@@ -28,6 +28,8 @@ export function useChatImageProgress({
     progress,
     currentStep,
     totalSteps,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

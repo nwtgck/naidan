@@ -32,9 +32,11 @@ const parts = computed<MarkdownInlinePart[]>(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    parts,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      parts,
+    },
+  }) || {}),
 });
 </script>
 

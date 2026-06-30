@@ -33,9 +33,11 @@ function selectChoice({
 }
 
 defineExpose({
-  TEST_ONLY: {
-    selectedIndex,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      selectedIndex,
+    },
+  }) || {}),
 });
 </script>
 

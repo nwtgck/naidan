@@ -105,9 +105,11 @@ function handleExclusionFocusOut({ event }: { event: FocusEvent }): void {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    handleSuggestionInputKeyDown,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      handleSuggestionInputKeyDown,
+    },
+  }) || {}),
 });
 </script>
 

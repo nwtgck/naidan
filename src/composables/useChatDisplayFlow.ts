@@ -369,6 +369,8 @@ export function useChatDisplayFlow({
     chatFlow,
     isThinkingActive: ({ item }: { item: ChatFlowItem }) => item.type === 'message' && item.mode === 'thinking' && item.isCompletedThinking === false,
     isWaitingResponse: ({ item }: { item: ChatFlowItem }) => item.type === 'message' && item.mode === 'waiting',
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

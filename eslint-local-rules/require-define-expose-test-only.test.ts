@@ -1,11 +1,10 @@
-
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
-import path from 'path';
 import fs from 'fs';
-import { rule } from './require-define-expose-test-only.js';
-import * as parser from 'vue-eslint-parser';
+import path from 'path';
 import * as tsParser from '@typescript-eslint/parser';
+import * as parser from 'vue-eslint-parser';
+import { rule } from './require-define-expose-test-only.js';
 
 describe('require-define-expose-test-only rule', () => {
   let eslint: ESLint;
@@ -15,16 +14,14 @@ describe('require-define-expose-test-only rule', () => {
   const testFilePath = path.resolve(testFileDir, testFileName);
 
   beforeAll(() => {
-    if (!fs.existsSync(testFileDir)) {
-      fs.mkdirSync(testFileDir, { recursive: true });
-    }
+    fs.mkdirSync(testFileDir, { recursive: true });
 
     const baseConfig = {
       overrideConfigFile: true,
       overrideConfig: {
         files: ['**/*.vue'],
         languageOptions: {
-          parser: parser,
+          parser,
           parserOptions: {
             parser: tsParser,
             sourceType: 'module',
@@ -48,103 +45,90 @@ describe('require-define-expose-test-only rule', () => {
   });
 
   afterAll(() => {
-    if (fs.existsSync(testFilePath)) {
-      fs.unlinkSync(testFilePath);
-    }
+    fs.rmSync(testFilePath, { force: true });
   });
 
   async function lint(code: string) {
     fs.writeFileSync(testFilePath, code);
-    const results = await eslint.lintFiles([testFilePath]);
-    return results[0];
+    const [result] = await eslint.lintFiles([testFilePath]);
+    return result;
   }
 
   async function fix(code: string) {
     fs.writeFileSync(testFilePath, code);
-    const results = await eslintFix.lintFiles([testFilePath]);
-    return results[0];
+    const [result] = await eslintFix.lintFiles([testFilePath]);
+    return result;
   }
 
-  it('should report error for .vue file missing defineExpose', async () => {
-    const code = `<script setup lang="ts">
-      const a = 1;
-</script>`;
-    const result = await lint(code);
-    expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only' && m.messageId === 'missingDefineExpose')).toBe(true);
+  it('reports and fixes a missing defineExpose', async () => {
+    const result = await fix(`<script setup lang="ts">
+const value = 1;
+</script>`);
 
-    const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('defineExpose({');
-    expect(fixedResult.output).toContain('TEST_ONLY: {');
+    expect(result.output).toContain('defineExpose({');
+    expect(result.output).toContain('...((__BUILD_MODE_IS_TEST__ && {');
+    expect(result.output).toContain('TEST_ONLY: {');
   });
 
-  it('should report error for defineExpose missing TEST_ONLY and fix it correctly', async () => {
-    const code = `<script setup lang="ts">
-      defineExpose({
-        a: 1
-      });
-</script>`;
-    const result = await lint(code);
-    expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only' && m.messageId === 'missingTestOnly')).toBe(true);
+  it('reports and fixes a defineExpose missing TEST_ONLY', async () => {
+    const result = await fix(`<script setup lang="ts">
+defineExpose({
+  value: 1,
+});
+</script>`);
 
-    const fixedResult = await fix(code);
-    expect(fixedResult.output).toMatch(/a: 1,\s+TEST_ONLY: {/);
-    expect(fixedResult.output).toContain('// Export internal state and logic used only for testing here.');
-    expect(fixedResult.output).toContain('// ESLint-required for defineExpose.');
+    expect(result.output).toMatch(/value: 1,\s+\.\.\.\(\(__BUILD_MODE_IS_TEST__/);
+    expect(result.output).toContain('// ESLint-required for defineExpose.');
   });
 
-  it('should handle trailing commas in defineExpose autofix', async () => {
-    const code = `<script setup lang="ts">
-      defineExpose({
-        a: 1,
-      });
-</script>`;
-    const fixedResult = await fix(code);
-    // Should NOT result in a: 1,, TEST_ONLY
-    expect(fixedResult.output).toMatch(/a: 1,\s+TEST_ONLY: {/);
-    expect(fixedResult.output).not.toMatch(/a: 1,,\s+TEST_ONLY: {/);
+  it('accepts the exact guarded spread', async () => {
+    const result = await lint(`<script setup lang="ts">
+defineExpose({
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      internal: true,
+    },
+  }) || {}),
+});
+</script>`);
+
+    expect(result.messages).toHaveLength(0);
   });
 
-  it('should NOT report error if defineExpose with TEST_ONLY already exists', async () => {
-    const code = `<script setup lang="ts">
-      defineExpose({
-        TEST_ONLY: {
-          internal: true
-        }
-      });
-</script>`;
-    const result = await lint(code);
-    expect(result.messages.filter(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only')).toHaveLength(0);
+  it('rejects an unguarded TEST_ONLY property', async () => {
+    const result = await lint(`<script setup lang="ts">
+defineExpose({
+  TEST_ONLY: {
+    internal: true,
+  },
+});
+</script>`);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('invalidTestOnlyGuard');
+    expect(result.messages[0]?.message).toContain('__BUILD_MODE_IS_TEST__');
   });
 
-  it('should handle empty defineExpose()', async () => {
-    const code = `<script setup lang="ts">
-      defineExpose();
-</script>`;
-    const result = await lint(code);
-    expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only')).toBe(true);
+  it('fixes an empty defineExpose object', async () => {
+    const result = await fix(`<script setup lang="ts">
+defineExpose({});
+</script>`);
 
-    const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('TEST_ONLY: {');
+    expect(result.output).toContain('...((__BUILD_MODE_IS_TEST__ && {');
   });
 
-  it('should handle defineExpose({})', async () => {
-    const code = `<script setup lang="ts">
-      defineExpose({});
-</script>`;
-    const result = await lint(code);
-    expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only')).toBe(true);
+  it('reports defineExpose without an object argument', async () => {
+    const result = await lint(`<script setup lang="ts">
+defineExpose();
+</script>`);
 
-    const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('TEST_ONLY: {');
+    expect(result.messages.some((message) => message.messageId === 'missingTestOnly')).toBe(true);
   });
 
-  it('should handle .vue file with only <template> and no <script>', async () => {
-    const code = `<template><div /></template>`;
-    const result = await lint(code);
-    expect(result.messages.some(m => m.messageId === 'missingDefineExpose')).toBe(true);
+  it('adds script setup to a template-only component', async () => {
+    const result = await fix('<template><div /></template>');
 
-    const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('<script setup lang="ts">');
-    expect(fixedResult.output).toContain('defineExpose');
+    expect(result.output).toContain('<script setup lang="ts">');
+    expect(result.output).toContain('__BUILD_MODE_IS_TEST__');
   });
 });

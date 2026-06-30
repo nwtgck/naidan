@@ -96,6 +96,8 @@ export function useChatNavigation(): ChatNavigationAdapter {
     openChat,
     openChatAtMessage,
     openChatGroup,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

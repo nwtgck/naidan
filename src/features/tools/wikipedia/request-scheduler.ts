@@ -143,23 +143,25 @@ export async function runWikipediaApiRequest<T>({
   }
 }
 
-export function TEST_ONLY_resetWikipediaApiRequestScheduler({
-  _testOnly,
-}: {
-  _testOnly: undefined,
-}): void {
-  void _testOnly;
+export const TEST_ONLY_resetWikipediaApiRequestScheduler = (
+  __BUILD_MODE_IS_TEST__ && (({
+    _testOnly,
+  }: {
+    _testOnly: undefined,
+  }): void => {
+    void _testOnly;
 
-  if (isWikipediaApiSlotLocked) {
-    throw new Error('Cannot reset Wikipedia API request scheduler while a request is running');
-  }
-
-  for (const slot of wikipediaApiSlotQueue.splice(0)) {
-    if (slot.onAbort !== undefined) {
-      slot.signal?.removeEventListener('abort', slot.onAbort);
+    if (isWikipediaApiSlotLocked) {
+      throw new Error('Cannot reset Wikipedia API request scheduler while a request is running');
     }
-    slot.reject(new Error('Wikipedia API request scheduler was reset during a test'));
-  }
 
-  nextWikipediaApiAttemptStartAt = 0;
-}
+    for (const slot of wikipediaApiSlotQueue.splice(0)) {
+      if (slot.onAbort !== undefined) {
+        slot.signal?.removeEventListener('abort', slot.onAbort);
+      }
+      slot.reject(new Error('Wikipedia API request scheduler was reset during a test'));
+    }
+
+    nextWikipediaApiAttemptStartAt = 0;
+  })
+) || undefined;

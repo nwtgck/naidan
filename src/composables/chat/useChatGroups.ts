@@ -383,6 +383,8 @@ export function useChatGroups(): ChatGroupsAdapter {
     updateToolConfigs,
     updateScopedSettingsAndToolConfigs,
     moveChatToGroup,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

@@ -334,7 +334,7 @@ export function createWeshTerminalSessions({
 }
 
 export type WeshTerminalStore = ReturnType<typeof createWeshTerminalSessions>;
-export const TEST_ONLY = {
+export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
   ensureDirectoryPath,
   shouldClearTerminalOutput,
-};
+}) || undefined;

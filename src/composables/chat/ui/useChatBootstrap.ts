@@ -103,6 +103,8 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   return {
     loadChats,
     openChat,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

@@ -453,7 +453,7 @@ export async function setLocale({ locale }: {
   }
 }
 
-export const TEST_ONLY = {
+export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
   boundaryIdsByKey,
   boundaryRegistrations,
   ensureBoundaryLoaded,
@@ -491,4 +491,4 @@ export const TEST_ONLY = {
   scheduledBoundaryWarmups,
   usedBoundaryIds,
   warmedBoundaryIds,
-};
+}) || undefined;

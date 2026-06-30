@@ -86,10 +86,12 @@ const modelId = computed(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    isExpanded,
-    toggle,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      isExpanded,
+      toggle,
+    },
+  }) || {}),
 });
 </script>
 

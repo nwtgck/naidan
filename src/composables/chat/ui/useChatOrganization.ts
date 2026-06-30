@@ -350,7 +350,9 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     updateChatGroupMetadata,
     moveChatToGroup,
     reorderSidebarChatAfterSend,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }
 

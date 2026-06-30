@@ -158,8 +158,10 @@ export function createChatVolatileState(): ChatVolatileState {
     appendVolatileToolOutput,
     deleteVolatileToolOutput,
     getVolatileToolOutput,
-    TEST_ONLY: {
-      volatileToolOutputs,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        volatileToolOutputs,
+      },
+    }) || {}),
   };
 }

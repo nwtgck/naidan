@@ -1112,14 +1112,16 @@ function focusInput({
 }
 
 defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, processDropItems, formatLabel,
-  TEST_ONLY: {
-    attachments: testOnlyAttachments,
-    editingAttachmentId: testOnlyEditingAttachmentId,
-    editingAttachment: testOnlyEditingAttachment,
-    openAdvancedEditor,
-    handleAdvancedEditorModeUpdate,
-    selectedReasoningEffort,
-  } });
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      attachments: testOnlyAttachments,
+      editingAttachmentId: testOnlyEditingAttachmentId,
+      editingAttachment: testOnlyEditingAttachment,
+      openAdvancedEditor,
+      handleAdvancedEditorModeUpdate,
+      selectedReasoningEffort,
+    },
+  }) || {}) });
 </script>
 
 <template>

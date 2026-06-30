@@ -15,6 +15,8 @@ export type ChatTmpDirectoryAdapter = {
 export function useChatTmpDirectory(): ChatTmpDirectoryAdapter {
   return {
     ensureChatTmpDirectory,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

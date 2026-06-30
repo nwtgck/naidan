@@ -279,9 +279,11 @@ export function useApproval(): {
     ensureApproval,
     getActiveApprovalRequest,
     resolveApprovalRequest,
-    TEST_ONLY: {
-      getStoredApprovalStatus,
-      clearAll,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        getStoredApprovalStatus,
+        clearAll,
+      },
+    }) || {}),
   };
 }

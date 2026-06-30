@@ -729,28 +729,30 @@ const cropBoxStyle = computed(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    history,
-    historyIndex,
-    undo,
-    redo,
-    applyTransform,
-    applyResize,
-    executeAction,
-    selectedFill,
-    colorHistory,
-    isPickingColor,
-    TRANSPARENT,
-    resizeW,
-    resizeH,
-    selection,
-    resizeLock,
-    hasChanges,
-    isSidebarOpen,
-    zoom,
-    panOffset,
-    showCloseConfirm,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      history,
+      historyIndex,
+      undo,
+      redo,
+      applyTransform,
+      applyResize,
+      executeAction,
+      selectedFill,
+      colorHistory,
+      isPickingColor,
+      TRANSPARENT,
+      resizeW,
+      resizeH,
+      selection,
+      resizeLock,
+      hasChanges,
+      isSidebarOpen,
+      zoom,
+      panOffset,
+      showCloseConfirm,
+    },
+  }) || {}),
 });
 </script>
 

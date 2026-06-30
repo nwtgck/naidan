@@ -720,6 +720,8 @@ export function useFileExplorerUpload({
     confirm,
     close,
     dispose,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

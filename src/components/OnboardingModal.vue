@@ -433,12 +433,14 @@ async function handleFinish() {
 
 
 defineExpose({
-  TEST_ONLY: {
-    selectedType,
-    effectiveType,
-    availableModels,
-    handleConnect,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      selectedType,
+      effectiveType,
+      availableModels,
+      handleConnect,
+    },
+  }) || {}),
 });
 </script>
 

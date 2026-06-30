@@ -20,10 +20,12 @@ const stepProgress = computed(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    currentNumber,
-    stepProgress,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      currentNumber,
+      stepProgress,
+    },
+  }) || {}),
 });
 </script>
 

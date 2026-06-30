@@ -130,6 +130,8 @@ export function useGlobalToolConfigs(): GlobalToolConfigsApi {
     setToolStatus,
     resetAllTools,
     setWeshAccessScope,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

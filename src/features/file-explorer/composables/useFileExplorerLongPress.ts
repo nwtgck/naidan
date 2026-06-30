@@ -220,9 +220,11 @@ export function useFileExplorerLongPress({
     onPointerDown,
     cancel,
     consumeClick,
-    TEST_ONLY: {
-      LONG_PRESS_DELAY_MS,
-      LONG_PRESS_MOVE_THRESHOLD_PX,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        LONG_PRESS_DELAY_MS,
+        LONG_PRESS_MOVE_THRESHOLD_PX,
+      },
+    }) || {}),
   };
 }

@@ -257,19 +257,21 @@ onBeforeUnmount(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    display,
-    visibleDisplay,
-    shouldRender,
-    animatedPercent,
-    requestPreview,
-    outputPreview,
-    shouldAutoScrollOutput,
-    syncOutputAutoScrollState,
-    scrollRequestToBottom,
-    scrollOutputToBottom,
-    showRequestPreview,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      display,
+      visibleDisplay,
+      shouldRender,
+      animatedPercent,
+      requestPreview,
+      outputPreview,
+      shouldAutoScrollOutput,
+      syncOutputAutoScrollState,
+      scrollRequestToBottom,
+      scrollOutputToBottom,
+      showRequestPreview,
+    },
+  }) || {}),
 });
 </script>
 

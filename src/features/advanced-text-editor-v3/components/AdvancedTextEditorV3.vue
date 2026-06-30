@@ -63,9 +63,11 @@ function useTextModel({ initialValue }: {
   };
 
   return { fullText, lines, updateContent, syncLines,
-    TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    } };
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}) };
 }
 
 const { fullText, lines, updateContent, syncLines } = useTextModel({
@@ -836,18 +838,20 @@ onUnmounted(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    isMultiEditMode,
-    isMultiEditBusy,
-    isSearchBusy,
-    searchMatches,
-    history,
-    historyIndex,
-    wrapMode,
-    calculateLineHeights,
-    lineHeights,
-    lines,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      isMultiEditMode,
+      isMultiEditBusy,
+      isSearchBusy,
+      searchMatches,
+      history,
+      historyIndex,
+      wrapMode,
+      calculateLineHeights,
+      lineHeights,
+      lines,
+    },
+  }) || {}),
 });
 </script>
 

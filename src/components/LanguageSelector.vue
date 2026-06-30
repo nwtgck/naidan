@@ -65,9 +65,11 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 defineExpose({
-  TEST_ONLY: {
-    changeLocale,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      changeLocale,
+    },
+  }) || {}),
 });
 </script>
 

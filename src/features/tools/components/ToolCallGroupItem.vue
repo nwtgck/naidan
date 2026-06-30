@@ -40,10 +40,12 @@ const toolNamesDisplay = computed(() => {
 const isNested = computed(() => props.flow.nesting === 'inside-group');
 
 defineExpose({
-  TEST_ONLY: {
-    isExpanded,
-    toggleExpand,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      isExpanded,
+      toggleExpand,
+    },
+  }) || {}),
 });
 </script>
 

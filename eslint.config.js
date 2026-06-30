@@ -8,6 +8,8 @@ import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js'
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
 import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
 import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
+import requireTestOnlyGuard from './eslint-local-rules/require-test-only-guard.js';
+import noTestOnlyAccessInProduction from './eslint-local-rules/no-test-only-access-in-production.js';
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
 import requireNamedArgs from './eslint-local-rules/require-named-args.js';
@@ -100,6 +102,7 @@ export default tseslint.config(
         ...globals.node,
         __BUILD_MODE_IS_STANDALONE__: 'readonly',
         __BUILD_MODE_IS_HOSTED__: 'readonly',
+        __BUILD_MODE_IS_TEST__: 'readonly',
         __APP_VERSION__: 'readonly',
       },
     },
@@ -171,6 +174,8 @@ export default tseslint.config(
   preferMultilineTemplateLiterals,
   requireTestOnlyExport,
   requireDefineExposeTestOnly,
+  requireTestOnlyGuard,
+  noTestOnlyAccessInProduction,
   requireIconSuffix,
   requireWorkerClientFacade,
   requireNamedArgs,

@@ -96,10 +96,12 @@ export function useRecentChats(): UseRecentChatsResult {
     closeRecent,
     toggleRecent,
     addRecentChat,
-    TEST_ONLY: {
-      recentChatEntries,
-      allRecentChats: recentChats,
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        recentChatEntries,
+        allRecentChats: recentChats,
+        // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      },
+    }) || {}),
   };
 }

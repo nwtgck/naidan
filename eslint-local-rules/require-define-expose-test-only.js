@@ -1,13 +1,31 @@
+import {
+  containsTestOnlyProperty,
+  GUARDED_TEST_ONLY_EXAMPLE,
+  isGuardedTestOnlySpread,
+} from './test-only-guard.js';
+
+const COMMENT_LINES = [
+  '// Export internal state and logic used only for testing here. Do not reference these in production logic.',
+  '// ESLint-required for defineExpose.',
+];
+
+function createGuardedTestOnlyText({ indent }) {
+  const comment = COMMENT_LINES.join(`\n${indent}    `);
+
+  return `...((__BUILD_MODE_IS_TEST__ && {\n${indent}  TEST_ONLY: {\n${indent}    ${comment}\n${indent}  },\n${indent}}) || {})`;
+}
+
 export const rule = {
   meta: {
     type: 'suggestion',
     docs: {
-      description: "Ensure defineExpose is called with a TEST_ONLY object in .vue files.",
+      description: 'Ensure defineExpose includes a guarded TEST_ONLY object in .vue files.',
     },
     fixable: 'code',
     messages: {
-      missingDefineExpose: "All .vue files must include: defineExpose({ TEST_ONLY: { /* internal state for testing */ } });",
-      missingTestOnly: "defineExpose must include: TEST_ONLY: { /* internal state for testing */ }",
+      missingDefineExpose: `All .vue files must include a guarded TEST_ONLY exposure:\n\n${GUARDED_TEST_ONLY_EXAMPLE}`,
+      missingTestOnly: `defineExpose must include this guarded TEST_ONLY spread:\n\n${GUARDED_TEST_ONLY_EXAMPLE}`,
+      invalidTestOnlyGuard: `defineExpose TEST_ONLY must use this exact guarded spread:\n\n${GUARDED_TEST_ONLY_EXAMPLE}`,
     },
   },
   create(context) {
@@ -24,102 +42,92 @@ export const rule = {
         }
       },
       'Program:exit'(node) {
-        const commentLines = [
-          '// Export internal state and logic used only for testing here. Do not reference these in production logic.',
-          '// ESLint-required for defineExpose.',
-        ];
-        const comment = commentLines.join('\n    ');
-        
-        if (!defineExposeNode) {
+        const sourceCode = context.sourceCode;
+
+        if (defineExposeNode === null) {
           context.report({
             node,
             messageId: 'missingDefineExpose',
             fix(fixer) {
-              const sourceCode = context.sourceCode;
               const text = sourceCode.getText();
-              
-              // Check for <script setup>
               const scriptSetupMatch = text.match(/<script\s+setup[^>]*>/);
-              const defineExposeText = `\n\ndefineExpose({\n  TEST_ONLY: {\n    ${comment}\n  }\n});\n`;
+              const guardedText = createGuardedTestOnlyText({ indent: '  ' });
+              const defineExposeText = `\n\ndefineExpose({\n  ${guardedText},\n});\n`;
 
-              if (scriptSetupMatch) {
-                // <script setup> exists but no defineExpose
+              if (scriptSetupMatch !== null) {
                 const endOfScriptSetup = text.indexOf('</script>', scriptSetupMatch.index);
                 if (endOfScriptSetup !== -1) {
-                  return fixer.insertTextBeforeRange([endOfScriptSetup, endOfScriptSetup], defineExposeText);
+                  return fixer.insertTextBeforeRange(
+                    [endOfScriptSetup, endOfScriptSetup],
+                    defineExposeText,
+                  );
                 }
               }
 
-              // No <script setup> at all
-              const newScriptSetup = `<script setup lang="ts">\ndefineExpose({\n  TEST_ONLY: {\n    ${comment}\n  }\n});\n</script>\n\n`;
-              
-              // Try to insert before <template> or at the beginning of the file
+              const newScriptSetup = `<script setup lang="ts">\ndefineExpose({\n  ${guardedText},\n});\n</script>\n\n`;
               const templateMatch = text.match(/<template>/);
-              if (templateMatch) {
-                return fixer.insertTextBeforeRange([templateMatch.index, templateMatch.index], newScriptSetup);
+
+              if (templateMatch !== null) {
+                return fixer.insertTextBeforeRange(
+                  [templateMatch.index, templateMatch.index],
+                  newScriptSetup,
+                );
               }
-              
+
               return fixer.insertTextBeforeRange([0, 0], newScriptSetup);
             },
           });
-        } else {
-          const arg = defineExposeNode.arguments[0];
-          if (!arg || arg.type !== 'ObjectExpression') {
-            context.report({
-              node: defineExposeNode,
-              messageId: 'missingTestOnly',
-              fix(fixer) {
-                const text = `{\n  TEST_ONLY: {\n    ${comment}\n  }\n}`;
-                if (!arg) {
-                  const openingParen = context.sourceCode.getTokenAfter(context.sourceCode.getFirstToken(defineExposeNode));
-                  return fixer.insertTextAfter(openingParen, text);
-                }
-                return fixer.replaceText(arg, text);
-              },
-            });
-            return;
-          }
-
-          const hasTestOnly = arg.properties.some(prop => 
-            (prop.type === 'Property' || prop.type === 'MethodDefinition') &&
-            ((prop.key.type === 'Identifier' && prop.key.name === 'TEST_ONLY') ||
-             (prop.key.type === 'Literal' && prop.key.value === 'TEST_ONLY')),
-          );
-
-          if (!hasTestOnly) {
-            context.report({
-              node: arg,
-              messageId: 'missingTestOnly',
-              fix(fixer) {
-                const sourceCode = context.sourceCode;
-                
-                if (arg.properties.length > 0) {
-                  const lastProperty = arg.properties[arg.properties.length - 1];
-                  const tokenAfterLastProperty = sourceCode.getTokenAfter(lastProperty);
-                  const hasTrailingComma = tokenAfterLastProperty && tokenAfterLastProperty.value === ',';
-                  
-                  const lineOfLastProperty = sourceCode.lines[lastProperty.loc.start.line - 1];
-                  const indentationMatch = lineOfLastProperty.match(/^\s*/);
-                  const indent = indentationMatch ? indentationMatch[0] : '  ';
-                  
-                  const target = hasTrailingComma ? tokenAfterLastProperty : lastProperty;
-                  const indentedComment = commentLines.join(`\n${indent}  `);
-                  const textToInsert = (hasTrailingComma ? '' : ',') + `\n${indent}TEST_ONLY: {\n${indent}  ${indentedComment}\n${indent}},`;
-                  
-                  return fixer.insertTextAfter(target, textToInsert);
-                } else {
-                  const lineOfDefineExpose = sourceCode.lines[defineExposeNode.loc.start.line - 1];
-                  const indentationMatch = lineOfDefineExpose.match(/^\s*/);
-                  const indent = indentationMatch ? indentationMatch[0] : '';
-                  const innerIndent = indent + '  ';
-                  const indentedComment = commentLines.join(`\n${innerIndent}  `);
-                  
-                  return fixer.replaceText(arg, `{\n${innerIndent}TEST_ONLY: {\n${innerIndent}  ${indentedComment}\n${innerIndent}},\n${indent}}`);
-                }
-              },
-            });
-          }
+          return;
         }
+
+        const argument = defineExposeNode.arguments[0];
+        if (argument === undefined || argument.type !== 'ObjectExpression') {
+          context.report({
+            node: defineExposeNode,
+            messageId: 'missingTestOnly',
+          });
+          return;
+        }
+
+        if (argument.properties.some(isGuardedTestOnlySpread)) {
+          return;
+        }
+
+        if (containsTestOnlyProperty(argument)) {
+          context.report({
+            node: argument,
+            messageId: 'invalidTestOnlyGuard',
+          });
+          return;
+        }
+
+        context.report({
+          node: argument,
+          messageId: 'missingTestOnly',
+          fix(fixer) {
+            const line = sourceCode.lines[argument.loc.start.line - 1];
+            const indent = line.match(/^\s*/)?.[0] ?? '';
+            const propertyIndent = `${indent}  `;
+            const guardedText = createGuardedTestOnlyText({ indent: propertyIndent });
+
+            if (argument.properties.length === 0) {
+              return fixer.replaceText(
+                argument,
+                `{\n${propertyIndent}${guardedText},\n${indent}}`,
+              );
+            }
+
+            const lastProperty = argument.properties.at(-1);
+            const tokenAfterLastProperty = sourceCode.getTokenAfter(lastProperty);
+            const hasTrailingComma = tokenAfterLastProperty?.value === ',';
+            const target = hasTrailingComma ? tokenAfterLastProperty : lastProperty;
+
+            return fixer.insertTextAfter(
+              target,
+              `${hasTrailingComma ? '' : ','}\n${propertyIndent}${guardedText},`,
+            );
+          },
+        });
       },
     };
   },

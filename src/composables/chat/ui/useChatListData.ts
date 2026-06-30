@@ -21,6 +21,8 @@ export function useChatListData(): ChatListDataAdapter {
 
   return {
     chats: computed(() => chatDerivedState.chats.value),
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

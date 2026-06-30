@@ -213,6 +213,8 @@ export function useChatImageGeneration({
     updateSeed,
     setImageModel,
     sendImageRequest,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

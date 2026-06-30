@@ -93,11 +93,13 @@ watch([displayThinking, mode], async ([, newMode]) => {
 }, { immediate: true });
 
 defineExpose({
-  TEST_ONLY: {
-    isUserExpanded,
-    mode,
-    handleToggleThinking,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      isUserExpanded,
+      mode,
+      handleToggleThinking,
+    },
+  }) || {}),
 });
 </script>
 

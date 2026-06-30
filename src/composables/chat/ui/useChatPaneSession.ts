@@ -109,9 +109,11 @@ export function useChatPaneSession({
     closeOutline,
     playNeuralSyncEffect,
     clearNeuralSyncEffect,
-    TEST_ONLY: {
-      hideNeuralSyncEffectTimer,
-      clearNeuralSyncEffectTimer,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        hideNeuralSyncEffectTimer,
+        clearNeuralSyncEffectTimer,
+      },
+    }) || {}),
   };
 }
