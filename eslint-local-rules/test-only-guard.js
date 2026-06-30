@@ -4,10 +4,6 @@ export const GUARDED_TEST_ONLY_EXAMPLE = `...((__BUILD_MODE_IS_TEST__ && {
   },
 }) || {})`;
 
-export const GUARDED_TEST_ONLY_EXPORT_EXAMPLE = `export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
-  // test API
-}) || undefined;`;
-
 export const GUARDED_TEST_ONLY_NAMED_EXPORT_EXAMPLE = `export const TEST_ONLY_example = (
   __BUILD_MODE_IS_TEST__ && (() => {
     // test API

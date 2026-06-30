@@ -41,7 +41,7 @@ describe('require-test-only-guard rule', () => {
     return result;
   }
 
-  it('accepts guarded object properties and exports', async () => {
+  it('accepts guarded object properties and prefixed exports', async () => {
     const result = await lint(`
       const value = {
         ...((__BUILD_MODE_IS_TEST__ && {
@@ -50,11 +50,6 @@ describe('require-test-only-guard rule', () => {
           },
         }) || {}),
       };
-
-      export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
-        reset,
-      }) || undefined;
-
       export const TEST_ONLY_reset = (
         __BUILD_MODE_IS_TEST__ && (() => {
           reset();
@@ -209,10 +204,17 @@ describe('require-test-only-guard rule', () => {
     expect(result.messages[0]?.message).toContain('TEST_ONLY_example');
   });
 
-  it('rejects an unguarded module export', async () => {
+  it('accepts a direct top-level TEST_ONLY object export', async () => {
     const result = await lint(`export const TEST_ONLY = { reset };`);
+
+    expect(result.messages).toHaveLength(0);
+  });
+
+  it('rejects a non-object TEST_ONLY export', async () => {
+    const result = await lint(`export const TEST_ONLY = createTestOnly();`);
 
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.messageId).toBe('invalidExport');
+    expect(result.messages[0]?.message).toContain('direct top-level object export');
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
 import * as parser from '@typescript-eslint/parser';
 import moduleTestOnlyConfig, { rule } from './require-module-test-only-export.js';
+import testOnlyGuardConfig from './require-test-only-guard.js';
 
 const ruleId = 'local-rules-module-test-only/require-module-test-only-export';
 
@@ -53,6 +54,7 @@ async function lintWithDefaultConfig({ code, filePath }: {
         },
       },
       moduleTestOnlyConfig,
+      testOnlyGuardConfig,
     ],
   });
   const [result] = await eslint.lintText(code, { filePath });
@@ -94,6 +96,14 @@ describe('require-module-test-only-export rule', () => {
     });
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.messageId).toBe('missing');
+  });
+
+  it('accepts the required module export with the guard rule enabled', async () => {
+    const result = await lintWithDefaultConfig({
+      code: 'export const TEST_ONLY = {};\n',
+      filePath: 'src/example.ts',
+    });
+    expect(result.messages).toHaveLength(0);
   });
 
   it('accepts an empty top-level TEST_ONLY object export', async () => {

@@ -89,12 +89,12 @@ describe('no-test-only-access-in-production rule', () => {
     expect(result.messages).toHaveLength(0);
   });
 
-  it('allows nested TEST_ONLY access inside a guarded module export', async () => {
+  it('allows nested TEST_ONLY access inside a guarded prefixed export', async () => {
     const result = await lint({
       code: `
-        export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
-          nested: child.TEST_ONLY.value,
-        }) || undefined;
+        export const TEST_ONLY_nested = (
+          __BUILD_MODE_IS_TEST__ && (() => child.TEST_ONLY.value)
+        ) || undefined;
       `,
       filePath: productionFilePath,
     });
