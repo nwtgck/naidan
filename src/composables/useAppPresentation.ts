@@ -118,6 +118,6 @@ export function useAppPresentation(): AppPresentation {
   return presentation;
 }
 
-export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
+export const TEST_ONLY = {
   createAppPresentation,
-}) || undefined;
+};

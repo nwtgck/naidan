@@ -50,3 +50,7 @@ export function createFakeLmFetchForEndpoint({ endpointUrl: _endpointUrl, fakeLm
 export function preloadFakeLmLanguagePacks(): void {
   // Standalone builds intentionally exclude hosted fake LM language data.
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

@@ -34,3 +34,7 @@ export const FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS = [
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRetryHook,
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap,
 ] as const;
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

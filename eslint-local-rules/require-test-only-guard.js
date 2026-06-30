@@ -1,22 +1,36 @@
 import {
   getGuardedTestOnlyExportPayload,
   GUARDED_TEST_ONLY_EXAMPLE,
-  GUARDED_TEST_ONLY_EXPORT_EXAMPLE,
   GUARDED_TEST_ONLY_NAMED_EXPORT_EXAMPLE,
   isInsideGuardedTestOnlyPayload,
   isTestOnlyExportIdentifierName,
   isTestSupportFilename,
 } from './test-only-guard.js';
 
+function isDirectModuleTestOnlyObjectExport(node) {
+  const declaration = node.parent;
+  const exportDeclaration = declaration?.parent;
+
+  return node.id.type === 'Identifier'
+    && node.id.name === 'TEST_ONLY'
+    && node.init?.type === 'ObjectExpression'
+    && declaration?.type === 'VariableDeclaration'
+    && declaration.kind === 'const'
+    && declaration.declarations.length === 1
+    && exportDeclaration?.type === 'ExportNamedDeclaration'
+    && exportDeclaration.declaration === declaration
+    && exportDeclaration.parent.type === 'Program';
+}
+
 export const rule = {
   meta: {
     type: 'problem',
     docs: {
-      description: 'Require TEST_ONLY definitions to use compile-time test guards.',
+      description: 'Require test-only object fields and prefixed exports to use compile-time test guards.',
     },
     messages: {
       invalidObjectProperty: `TEST_ONLY must use this guarded spread so production bundling can remove both the field and its value:\n\n${GUARDED_TEST_ONLY_EXAMPLE}`,
-      invalidExport: `A module-level test-only export must use a direct compile-time guard so production bundling can remove its value:\n\n${GUARDED_TEST_ONLY_EXPORT_EXAMPLE}\n\n${GUARDED_TEST_ONLY_NAMED_EXPORT_EXAMPLE}`,
+      invalidExport: `TEST_ONLY must be a direct top-level object export. TEST_ONLY_-prefixed exports must use a direct compile-time guard so production bundling can remove their values:\n\nexport const TEST_ONLY = {\n  // test API\n};\n\n${GUARDED_TEST_ONLY_NAMED_EXPORT_EXAMPLE}`,
     },
   },
   create(context) {
@@ -70,6 +84,10 @@ export const rule = {
         });
       },
       VariableDeclarator(node) {
+        if (isDirectModuleTestOnlyObjectExport(node)) {
+          return;
+        }
+
         if (
           node.id.type !== 'Identifier'
           || !isTestOnlyExportIdentifierName(node.id)

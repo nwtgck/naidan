@@ -386,3 +386,7 @@ export function buildQwen3_5ToolContinuationPrompt({
     .join('\n');
   return `${trimmedPromptHistory}\n${serializedToolMessages}\n${buildQwen3_5AssistantPrefix({ reasoningMode: 'enabled' })}`;
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

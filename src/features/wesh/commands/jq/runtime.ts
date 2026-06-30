@@ -698,3 +698,7 @@ function evaluateJqFilterWithContext({
   if (!result.ok) return result;
   return checkOutputLimit({ outputs: result.outputs, context });
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

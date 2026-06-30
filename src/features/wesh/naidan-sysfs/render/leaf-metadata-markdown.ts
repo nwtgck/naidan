@@ -24,3 +24,7 @@ ${nodes.map(({ role }) => `- ${role}`).join('\n')}
 currentLeafId: ${chat.currentLeafId === undefined ? 'undefined' : idToRaw({ id: chat.currentLeafId })}
 `;
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

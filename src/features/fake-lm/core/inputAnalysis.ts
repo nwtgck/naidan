@@ -332,3 +332,7 @@ const jaStopwords = new Set([
 const enStopwords = new Set([
   'the', 'and', 'for', 'with', 'this', 'that', 'please', 'would', 'could', 'should', 'about', 'into', 'from', 'there', 'their', 'your', 'have', 'hello', 'thanks', 'thank', 'just', 'make', 'made', 'need', 'want', 'good', 'bad', 'more', 'less', 'can', 'you', 'are', 'is', 'to', 'of', 'in', 'on', 'it', 'be', 'as', 'or', 'if', 'we', 'do', 'does', 'did', 'done', 'not',
 ]);
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

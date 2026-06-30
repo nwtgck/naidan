@@ -51,3 +51,7 @@ export function debugRecordFileProtocolStandaloneAppStartupFailure({ error }: {
     console.warn('[naidan] Failed to update standalone startup Debug state:', debugError);
   }
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

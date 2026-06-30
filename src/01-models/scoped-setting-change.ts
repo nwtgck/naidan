@@ -147,3 +147,7 @@ const scopedSettingFieldRecord: Readonly<Record<ScopedSettingChange['field'], tr
 export const SCOPED_SETTING_FIELDS: readonly ScopedSettingChange['field'][] = Object.freeze(
   Object.keys(scopedSettingFieldRecord) as ScopedSettingChange['field'][],
 );
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

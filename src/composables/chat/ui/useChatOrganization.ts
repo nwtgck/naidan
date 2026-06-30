@@ -367,3 +367,7 @@ function insertTopLevelChat({
   const insertIndex = firstChatIndex !== -1 ? firstChatIndex : current.items.length;
   current.items.splice(insertIndex, 0, node);
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

@@ -40,3 +40,7 @@ export function renderChatMetadataJson({ metadata }: { metadata: ChatMeta }): st
     mounts: cloneMounts({ mounts: metadata.mounts }),
   }, null, 2);
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

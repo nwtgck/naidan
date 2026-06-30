@@ -83,9 +83,9 @@ describe('TEST_ONLY production bundling', () => {
         return 'MODULE_PRODUCTION_SENTINEL_VALUE';
       }
 
-      export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
-        sentinel: moduleTestOnlySentinelFunction(),
-      }) || undefined;
+      export const TEST_ONLY = {
+        sentinel: moduleTestOnlySentinelFunction,
+      };
 
       export const TEST_ONLY_resetModule = (
         __BUILD_MODE_IS_TEST__ && (() => 'PREFIXED_TEST_ONLY_SENTINEL_VALUE')
@@ -94,7 +94,7 @@ describe('TEST_ONLY production bundling', () => {
 
     fs.writeFileSync(entryPath, `
       import TestOnlyComponent from './${path.basename(componentPath)}';
-      import { readModuleProductionValue } from './${path.basename(modulePath)}';
+      import * as testOnlyModule from './${path.basename(modulePath)}';
 
       function childTestOnlySentinelFunction(): string {
         return 'CHILD_TEST_ONLY_SENTINEL_VALUE';
@@ -123,7 +123,7 @@ describe('TEST_ONLY production bundling', () => {
           value: [
             'PRODUCTION_SENTINEL_VALUE',
             child.value,
-            readModuleProductionValue(),
+            testOnlyModule.readModuleProductionValue(),
           ].join(':'),
           ...((__BUILD_MODE_IS_TEST__ && {
             TEST_ONLY: {
@@ -146,9 +146,9 @@ describe('TEST_ONLY production bundling', () => {
         };
       }
 
-      export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
+      export const TEST_ONLY = {
         read: () => 'RUNTIME_EXPORT_TEST_ONLY_SENTINEL_VALUE',
-      }) || undefined;
+      };
 
       export const TEST_ONLY_reset = (
         __BUILD_MODE_IS_TEST__ && (() => 'RUNTIME_PREFIXED_TEST_ONLY_SENTINEL_VALUE')

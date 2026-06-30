@@ -87,3 +87,7 @@ export function toOPFSTmpOwnerScopeId({ raw }: { raw: string }): OPFSTmpOwnerSco
 export function idToRaw({ id }: { id: NaidanId }): string {
   return id as unknown as string;
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};
