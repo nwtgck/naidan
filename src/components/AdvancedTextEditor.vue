@@ -600,15 +600,17 @@ onUnmounted(() => {
 });
 
 defineExpose({
-  TEST_ONLY: {
-    isMultiEditMode,
-    searchMatches,
-    history,
-    historyIndex,
-    wrapMode,
-    calculateLineHeights,
-    lineHeights,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      isMultiEditMode,
+      searchMatches,
+      history,
+      historyIndex,
+      wrapMode,
+      calculateLineHeights,
+      lineHeights,
+    },
+  }) || {}),
 });
 </script>
 

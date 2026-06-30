@@ -1,13 +1,9 @@
-
-function isTestOnlyPropertyName(node) {
-  if (node.type === 'Identifier') {
-    return node.name === 'TEST_ONLY';
-  }
-  if (node.type === 'Literal') {
-    return node.value === 'TEST_ONLY';
-  }
-  return false;
-}
+import {
+  containsTestOnlyProperty,
+  GUARDED_TEST_ONLY_EXAMPLE,
+  isGuardedTestOnlySpread,
+  isTestOnlyPropertyName,
+} from './test-only-guard.js';
 
 function isNeverRecord(node) {
   if (node.type !== 'TSTypeReference') {
@@ -82,15 +78,63 @@ function hasOpenEndedIndexSignature(node) {
   });
 }
 
+function getFunctionName({ node, context }) {
+  let scope = context.sourceCode.getScope(node);
+  while (scope && scope.type !== 'function') {
+    scope = scope.upper;
+  }
+
+  if (!scope || !scope.block) {
+    return undefined;
+  }
+
+  const block = scope.block;
+  if (block.type === 'FunctionDeclaration' && block.id) {
+    return block.id.name;
+  }
+
+  if (block.type !== 'ArrowFunctionExpression' && block.type !== 'FunctionExpression') {
+    return undefined;
+  }
+
+  let parent = block.parent;
+  if (parent.type === 'ExportNamedDeclaration' && parent.declaration) {
+    parent = parent.declaration;
+  }
+
+  if (parent.type === 'VariableDeclarator' && parent.id.type === 'Identifier') {
+    return parent.id.name;
+  }
+  if (parent.type === 'AssignmentExpression' && parent.left.type === 'Identifier') {
+    return parent.left.name;
+  }
+  if (parent.type === 'Property' && parent.key.type === 'Identifier') {
+    return parent.key.name;
+  }
+
+  return undefined;
+}
+
+function createGuardedTestOnlyText({ indent }) {
+  const commentLines = [
+    '// Export internal state and logic used only for testing here. Do not reference these in production logic.',
+    '// ESLint-required for useXxx return objects.',
+  ];
+  const comment = commentLines.join(`\n${indent}    `);
+
+  return `...((__BUILD_MODE_IS_TEST__ && {\n${indent}  TEST_ONLY: {\n${indent}    ${comment}\n${indent}  },\n${indent}}) || {})`;
+}
+
 export const rule = {
   meta: {
     type: 'problem',
     docs: {
-      description: "Ensure useXxx composables return a strongly typed TEST_ONLY object for testing internals.",
+      description: 'Ensure useXxx composables return a strongly typed guarded TEST_ONLY object.',
     },
     fixable: 'code',
     messages: {
-      missingTestOnly: "Composable '{{ name }}' must return a 'TEST_ONLY' object for testing purposes.",
+      missingTestOnly: `Composable '{{ name }}' must return this guarded TEST_ONLY spread:\n\n${GUARDED_TEST_ONLY_EXAMPLE}`,
+      invalidTestOnlyGuard: `Composable '{{ name }}' must use this exact guarded TEST_ONLY spread:\n\n${GUARDED_TEST_ONLY_EXAMPLE}`,
       optionalTestOnly: 'TEST_ONLY must be a required property, not an optional one.',
       openEndedRecord: 'TEST_ONLY must not use open-ended key types like Record<string, ...>. Use an explicit object type or Record<never, never>.',
       openEndedIndexSignature: 'TEST_ONLY must not use string/number/symbol index signatures. Use explicit property names or Record<never, never>.',
@@ -111,11 +155,7 @@ export const rule = {
         }
 
         const annotation = node.typeAnnotation?.typeAnnotation;
-        if (!annotation) {
-          return;
-        }
-
-        if (isNeverRecord(annotation)) {
+        if (!annotation || isNeverRecord(annotation)) {
           return;
         }
 
@@ -135,89 +175,58 @@ export const rule = {
         }
       },
       ReturnStatement(node) {
-        // Get the function scope we are currently in
-        let scope = context.sourceCode.getScope(node);
-        while (scope && scope.type !== 'function') {
-          scope = scope.upper;
-        }
-
-        if (!scope || !scope.block) return;
-
-        const block = scope.block;
-        let name = '';
-
-        if (block.type === 'FunctionDeclaration' && block.id) {
-          name = block.id.name;
-        } else if (block.type === 'ArrowFunctionExpression' || block.type === 'FunctionExpression') {
-          let parent = block.parent;
-          // Skip ExportNamedDeclaration or other wrappers if necessary
-          if (parent.type === 'ExportNamedDeclaration' && parent.declaration) {
-            parent = parent.declaration;
-          }
-          
-          if (parent.type === 'VariableDeclarator' && parent.id.type === 'Identifier') {
-            name = parent.id.name;
-          } else if (parent.type === 'AssignmentExpression' && parent.left.type === 'Identifier') {
-            name = parent.left.name;
-          } else if (parent.type === 'Property' && parent.key.type === 'Identifier') {
-            name = parent.key.name;
-          }
-        }
-
-        // Only match useXxx where X is uppercase
+        const name = getFunctionName({ node, context });
         if (!name || !/^use[A-Z]/.test(name)) {
           return;
         }
 
-        // Only check if it returns an object literal
-        if (node.argument && node.argument.type === 'ObjectExpression') {
-          const hasTestOnly = node.argument.properties.some(prop => 
-            (prop.type === 'Property' || prop.type === 'MethodDefinition') &&
-            isTestOnlyPropertyName(prop.key),
-          );
-
-          if (!hasTestOnly) {
-            context.report({
-              node: node.argument,
-              messageId: 'missingTestOnly',
-              data: { name },
-              fix(fixer) {
-                const obj = node.argument;
-                const sourceCode = context.sourceCode;
-                const commentLines = [
-                  '// Export internal state and logic used only for testing here. Do not reference these in production logic.',
-                  '// ESLint-required for useXxx return objects.',
-                ];
-                
-                if (obj.properties.length > 0) {
-                  const lastProperty = obj.properties[obj.properties.length - 1];
-                  const tokenAfterLastProperty = sourceCode.getTokenAfter(lastProperty);
-                  const hasTrailingComma = tokenAfterLastProperty && tokenAfterLastProperty.value === ',';
-                  
-                  // Detect indentation from the last property
-                  const lineOfLastProperty = sourceCode.lines[lastProperty.loc.start.line - 1];
-                  const indentationMatch = lineOfLastProperty.match(/^\s*/);
-                  const indent = indentationMatch ? indentationMatch[0] : '    ';
-                  
-                  const target = hasTrailingComma ? tokenAfterLastProperty : lastProperty;
-                  const indentedComment = commentLines.join(`\n${indent}  `);
-                  const textToInsert = (hasTrailingComma ? '' : ',') + `\n${indent}TEST_ONLY: {\n${indent}  ${indentedComment}\n${indent}},`;
-                  
-                  return fixer.insertTextAfter(target, textToInsert);
-                } else {
-                  // Empty object {}
-                  const lineOfReturn = sourceCode.lines[node.loc.start.line - 1];
-                  const indentationMatch = lineOfReturn.match(/^\s*/);
-                  const indent = indentationMatch ? indentationMatch[0] : '  ';
-                  const innerIndent = indent + '  ';
-                  const indentedComment = commentLines.join(`\n${innerIndent}  `);
-                  
-                  return fixer.replaceText(obj, `{\n${innerIndent}TEST_ONLY: {\n${innerIndent}  ${indentedComment}\n${innerIndent}},\n${indent}}`);
-                }
-              },
-            });
-          }
+        if (!node.argument || node.argument.type !== 'ObjectExpression') {
+          return;
         }
+
+        if (node.argument.properties.some(isGuardedTestOnlySpread)) {
+          return;
+        }
+
+        if (containsTestOnlyProperty(node.argument)) {
+          context.report({
+            node: node.argument,
+            messageId: 'invalidTestOnlyGuard',
+            data: { name },
+          });
+          return;
+        }
+
+        context.report({
+          node: node.argument,
+          messageId: 'missingTestOnly',
+          data: { name },
+          fix(fixer) {
+            const sourceCode = context.sourceCode;
+            const objectExpression = node.argument;
+            const returnLine = sourceCode.lines[node.loc.start.line - 1];
+            const returnIndent = returnLine.match(/^\s*/)?.[0] ?? '';
+            const propertyIndent = `${returnIndent}  `;
+            const guardedText = createGuardedTestOnlyText({ indent: propertyIndent });
+
+            if (objectExpression.properties.length === 0) {
+              return fixer.replaceText(
+                objectExpression,
+                `{\n${propertyIndent}${guardedText},\n${returnIndent}}`,
+              );
+            }
+
+            const lastProperty = objectExpression.properties.at(-1);
+            const tokenAfterLastProperty = sourceCode.getTokenAfter(lastProperty);
+            const hasTrailingComma = tokenAfterLastProperty?.value === ',';
+            const target = hasTrailingComma ? tokenAfterLastProperty : lastProperty;
+
+            return fixer.insertTextAfter(
+              target,
+              `${hasTrailingComma ? '' : ','}\n${propertyIndent}${guardedText},`,
+            );
+          },
+        });
       },
     };
   },

@@ -609,10 +609,12 @@ export function useChatTools(): ChatToolsApi {
     addToolCall,
     updateToolCall,
     clearToolCallsForMessage,
-    TEST_ONLY: {
-      _messageToolCalls,
-      _runtimeToolConfigChangesByChat,
-      _currentChatId,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        _messageToolCalls,
+        _runtimeToolConfigChangesByChat,
+        _currentChatId,
+      },
+    }) || {}),
   };
 }

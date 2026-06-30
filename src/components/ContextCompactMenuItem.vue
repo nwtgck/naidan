@@ -7,7 +7,9 @@ defineEmits<{
 }>();
 
 defineExpose({
-  TEST_ONLY: {},
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {},
+  }) || {}),
 });
 </script>
 

@@ -187,8 +187,10 @@ export function useChoices(): {
     requestChoice,
     getActiveChoiceRequest,
     resolveChoiceRequest,
-    TEST_ONLY: {
-      clearAll,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        clearAll,
+      },
+    }) || {}),
   };
 }

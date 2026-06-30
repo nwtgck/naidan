@@ -320,6 +320,8 @@ export function useChatSearch({ sidebarItems }: {
     clearSearch,
     stopSearch,
     disposeSearch,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

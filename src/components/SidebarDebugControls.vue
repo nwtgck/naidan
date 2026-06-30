@@ -26,9 +26,11 @@ function handleOpenRecent() {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    showOpfsMenu,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      showOpfsMenu,
+    },
+  }) || {}),
 });
 </script>
 

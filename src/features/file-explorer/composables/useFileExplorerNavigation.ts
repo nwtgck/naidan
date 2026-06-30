@@ -221,10 +221,12 @@ export function useFileExplorerNavigation({
     selectColumnEntry,
     loadDirectory,
     loadColumnPane,
-    TEST_ONLY: {
-      normalizeExplorerPath,
-      getParentPath,
-      resolveDirectoryLoadError,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        normalizeExplorerPath,
+        getParentPath,
+        resolveDirectoryLoadError,
+      },
+    }) || {}),
   };
 }

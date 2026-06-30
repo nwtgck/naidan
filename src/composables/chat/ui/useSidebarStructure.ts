@@ -82,6 +82,8 @@ export function useSidebarStructure(): SidebarStructureAdapter {
   return {
     persistSidebarStructure,
     setChatGroupCollapsed,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

@@ -133,6 +133,8 @@ export function useChatGroupToolConfigs(): ChatGroupToolConfigsApi {
     setToolStatus,
     resetTool,
     setWeshAccessScope,
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

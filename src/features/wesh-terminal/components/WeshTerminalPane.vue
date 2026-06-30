@@ -235,9 +235,11 @@ function stateDotClass({ state }: { state: WeshTerminalSessionState }): string {
 
 defineExpose({
   focusInput,
-  TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
+  }) || {}),
 });
 </script>
 

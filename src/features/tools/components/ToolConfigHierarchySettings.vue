@@ -237,10 +237,12 @@ function toggleWeshMount(): void {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    hasOverrides,
-    isWeshMounted,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      hasOverrides,
+      isWeshMounted,
+    },
+  }) || {}),
 });
 </script>
 

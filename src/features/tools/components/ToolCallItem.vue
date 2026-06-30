@@ -132,14 +132,16 @@ const formatArgs = ({ args }: { args: string | Record<string, unknown> }): strin
 };
 
 defineExpose({
-  TEST_ONLY: {
-    detailState,
-    handleHeaderClick,
-    handlePreviewClick,
-    // Backward compat for existing tests
-    isExpanded: isDetailVisible,
-    toggleExpand: handleHeaderClick,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      detailState,
+      handleHeaderClick,
+      handlePreviewClick,
+      // Backward compat for existing tests
+      isExpanded: isDetailVisible,
+      toggleExpand: handleHeaderClick,
+    },
+  }) || {}),
 });
 </script>
 

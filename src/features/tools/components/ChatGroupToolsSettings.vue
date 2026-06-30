@@ -4,7 +4,9 @@ import ToolConfigHierarchySettings from './ToolConfigHierarchySettings.vue';
 
 const groupTools = useChatGroupToolConfigs();
 
-defineExpose({ TEST_ONLY: {} });
+defineExpose({ ...((__BUILD_MODE_IS_TEST__ && {
+  TEST_ONLY: {},
+}) || {}) });
 
 </script>
 

@@ -153,9 +153,11 @@ export function createContextCompactRuntime(): ContextCompactRuntime {
     clearActiveContextCompaction,
     setProgress,
     getProgress,
-    TEST_ONLY: {
-      compactProgressByChat,
-      compactProgressResetTimers,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        compactProgressByChat,
+        compactProgressResetTimers,
+      },
+    }) || {}),
   };
 }

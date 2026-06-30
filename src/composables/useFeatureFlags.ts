@@ -93,10 +93,12 @@ export function useFeatureFlags() {
     isFeatureEnabled,
     setFeatureEnabled,
     setFeatureParams,
-    TEST_ONLY: {
-      reset: () => {
-        featureFlags.value = createDefaultFeatureFlags();
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        reset: () => {
+          featureFlags.value = createDefaultFeatureFlags();
+        },
       },
-    },
+    }) || {}),
   };
 }

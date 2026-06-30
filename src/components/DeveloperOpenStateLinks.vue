@@ -129,13 +129,15 @@ async function openCurrentState({ target }: { target: DeploymentTarget }) {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    DEPLOYMENT_GROUPS,
-    DEPLOYMENT_TARGETS,
-    buildExcludeList,
-    copyCurrentStateURL,
-    openCurrentState,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      DEPLOYMENT_GROUPS,
+      DEPLOYMENT_TARGETS,
+      buildExcludeList,
+      copyCurrentStateURL,
+      openCurrentState,
+    },
+  }) || {}),
 });
 </script>
 

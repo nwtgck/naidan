@@ -63,9 +63,11 @@ export function usePrint() {
     activePrintMode,
     print,
     markPrintReady,
-    TEST_ONLY: {
-      setActivePrintMode,
-      waitForPrintReady,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        setActivePrintMode,
+        waitForPrintReady,
+      },
+    }) || {}),
   };
 }

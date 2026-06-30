@@ -70,10 +70,12 @@ function handleNaidanSysfsSelectionChange({ event }: { event: Event }) {
 }
 
 defineExpose({
-  TEST_ONLY: {
-    isNaidanSysfsMounted,
-    naidanSysfsAccessScope,
-  },
+  ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {
+      isNaidanSysfsMounted,
+      naidanSysfsAccessScope,
+    },
+  }) || {}),
 });
 </script>
 

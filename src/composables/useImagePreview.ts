@@ -40,14 +40,18 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
       closePreview: () => {
         state.value = null;
       },
-      TEST_ONLY: {},
+      ...((__BUILD_MODE_IS_TEST__ && {
+        TEST_ONLY: {},
+      }) || {}),
     };
     provide(PREVIEW_KEY, api);
     return api;
   }
 
   const injected = inject(PREVIEW_KEY, null);
-  if (injected) return { ...injected, TEST_ONLY: {} };
+  if (injected) return { ...injected, ...((__BUILD_MODE_IS_TEST__ && {
+    TEST_ONLY: {},
+  }) || {}) };
 
   // Fallback to local ref if not provided (allows simple local use in a component)
   const state = ref<PreviewState | null>(null);
@@ -59,6 +63,8 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
     closePreview: () => {
       state.value = null;
     },
-    TEST_ONLY: {},
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
   };
 }

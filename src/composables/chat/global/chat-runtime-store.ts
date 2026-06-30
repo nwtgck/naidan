@@ -362,9 +362,11 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
     deleteActiveTitleGeneration,
     clearActiveGenerations,
     clearActiveTaskCounts,
-    TEST_ONLY: {
-      activeTaskCounts,
-    },
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {
+        activeTaskCounts,
+      },
+    }) || {}),
   };
 }
 import { idToRaw } from '@/01-models/ids';

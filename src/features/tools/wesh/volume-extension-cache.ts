@@ -90,11 +90,11 @@ export function isVolumeScanned({ volumeId }: { volumeId: VolumeId }): boolean {
   return _extensionsByVolume.has(volumeId);
 }
 
-export const TEST_ONLY = {
+export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
   reset() {
     abortOngoingScans();
     _extensionsByVolume.clear();
     _scanPromises.clear();
   },
   scanPromises: _scanPromises,
-};
+}) || undefined;
