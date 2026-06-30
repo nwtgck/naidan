@@ -137,3 +137,7 @@ export function generateDefaultModelPatterns({ modelId }: { modelId: string }): 
   // Unique patterns only
   return Array.from(new Set(patterns));
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

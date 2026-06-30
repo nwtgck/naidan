@@ -95,3 +95,7 @@ export type SearchSource = z.infer<typeof searchSourceSchema>;
 export type SearchOptions = z.infer<typeof searchOptionsSchema>;
 export type SearchResultItem = z.infer<typeof searchResultItemSchema>;
 export type FlatSearchResultItem = z.infer<typeof flatSearchResultItemSchema>;
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

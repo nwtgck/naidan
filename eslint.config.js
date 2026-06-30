@@ -7,6 +7,7 @@ import ensureVueErrorHandler from './eslint-local-rules/ensure-vue-error-handler
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
 import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
+import requireModuleTestOnlyExport from './eslint-local-rules/require-module-test-only-export.js';
 import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
 import requireTestOnlyGuard from './eslint-local-rules/require-test-only-guard.js';
 import noTestOnlyAccessInProduction from './eslint-local-rules/no-test-only-access-in-production.js';
@@ -173,6 +174,7 @@ export default tseslint.config(
   forceSwitchForUnion,
   preferMultilineTemplateLiterals,
   requireTestOnlyExport,
+  requireModuleTestOnlyExport,
   requireDefineExposeTestOnly,
   requireTestOnlyGuard,
   noTestOnlyAccessInProduction,

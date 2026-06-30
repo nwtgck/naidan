@@ -53,3 +53,7 @@ export function applyResolvedTheme({ document, resolvedTheme, control }: {
   rootElement.setAttribute(RESOLVED_THEME_ATTRIBUTE_NAME, resolvedTheme);
   rootElement.setAttribute(THEME_CONTROL_ATTRIBUTE_NAME, control);
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

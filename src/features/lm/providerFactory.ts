@@ -70,3 +70,7 @@ export function cloneEndpointHttpHeaders({ headers }: {
     ? undefined
     : headers.map(([name, value]) => [name, value]);
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

@@ -536,3 +536,7 @@ export const MigrationStateSchemaDto = z.object({
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalMigrationStateSchemaDto }),
 });
 export type MigrationStateDto = z.infer<typeof MigrationStateSchemaDto>;
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

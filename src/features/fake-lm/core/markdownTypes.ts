@@ -19,3 +19,7 @@ export type BlockPlan =
   | { kind: 'list', itemCount: number }
   | { kind: 'table', rowCount: number, columnCount: 2 | 3 }
   | { kind: 'closingParagraph' };
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

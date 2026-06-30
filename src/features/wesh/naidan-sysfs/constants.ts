@@ -69,3 +69,7 @@ export const NAIDAN_SYSFS_BRANCH_TREE_MARKDOWN_DIRECTORY_NAME = 'tree-md';
 export const NAIDAN_SYSFS_BRANCH_TREE_JSON_DIRECTORY_NAME = 'tree-json';
 export const NAIDAN_SYSFS_BRANCH_LEAVES_MARKDOWN_DIRECTORY_NAME = 'leaves-md';
 export const NAIDAN_SYSFS_BRANCH_LEAVES_JSON_DIRECTORY_NAME = 'leaves-json';
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};

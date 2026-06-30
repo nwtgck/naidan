@@ -11,3 +11,7 @@ export const ALL_TOOLS: Tool[] = [
 export function getToolByName({ name }: { name: string }): Tool | undefined {
   return ALL_TOOLS.find((t) => t.name === name);
 }
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {};
