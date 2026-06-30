@@ -41,7 +41,7 @@ describe('require-test-only-guard rule', () => {
     return result;
   }
 
-  it('accepts guarded object properties and prefixed exports', async () => {
+  it('accepts guarded object properties', async () => {
     const result = await lint(`
       const value = {
         ...((__BUILD_MODE_IS_TEST__ && {
@@ -50,16 +50,10 @@ describe('require-test-only-guard rule', () => {
           },
         }) || {}),
       };
-      export const TEST_ONLY_reset = (
-        __BUILD_MODE_IS_TEST__ && (() => {
-          reset();
-        })
-      ) || undefined;
     `);
 
     expect(result.messages).toHaveLength(0);
   });
-
 
   it('rejects quoted and computed TEST_ONLY keys in the guarded shape', async () => {
     const quotedResult = await lint(`
@@ -83,16 +77,22 @@ describe('require-test-only-guard rule', () => {
     expect(computedResult.messages[0]?.messageId).toBe('invalidObjectProperty');
   });
 
-  it('rejects runtime class and enum declarations with test-only names', async () => {
+  it('rejects a runtime class named TEST_ONLY', async () => {
+    const result = await lint(`export class TEST_ONLY {}`);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('invalidExport');
+  });
+
+  it('rejects a runtime enum named TEST_ONLY', async () => {
     const result = await lint(`
-      export class TEST_ONLY_Helper {}
-      export enum TEST_ONLY_Mode {
+      export enum TEST_ONLY {
         Enabled = 'enabled',
       }
     `);
 
-    expect(result.messages).toHaveLength(2);
-    expect(result.messages.every((message) => message.messageId === 'invalidExport')).toBe(true);
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('invalidExport');
   });
 
   it('rejects an unguarded object property', async () => {
@@ -192,16 +192,16 @@ describe('require-test-only-guard rule', () => {
     expect(result.messages[0]?.message).toContain('__BUILD_MODE_IS_TEST__');
   });
 
-  it('rejects an unguarded TEST_ONLY_-prefixed function export', async () => {
+  it('rejects a function named TEST_ONLY', async () => {
     const result = await lint(`
-      export function TEST_ONLY_reset(): void {
+      export function TEST_ONLY(): void {
         reset();
       }
     `);
 
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.messageId).toBe('invalidExport');
-    expect(result.messages[0]?.message).toContain('TEST_ONLY_example');
+    expect(result.messages[0]?.message).toContain('direct top-level object export');
   });
 
   it('accepts a direct top-level TEST_ONLY object export', async () => {

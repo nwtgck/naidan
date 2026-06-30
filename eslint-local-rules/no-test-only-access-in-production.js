@@ -1,6 +1,6 @@
 import {
   isInsideGuardedTestOnlyPayload,
-  isTestOnlyExportIdentifierName,
+  isTestOnlyPropertyName,
   isTestSupportFilename,
 } from './test-only-guard.js';
 
@@ -94,10 +94,10 @@ function isHandledIdentifierPosition(node) {
 }
 
 function isTestOnlyMemberExpression(node) {
-  return isTestOnlyExportIdentifierName(node.property)
+  return isTestOnlyPropertyName(node.property)
     || (
       node.object.type === 'Identifier'
-      && isTestOnlyExportIdentifierName(node.object)
+      && isTestOnlyPropertyName(node.object)
     );
 }
 
@@ -108,8 +108,8 @@ export const rule = {
       description: 'Disallow test-only API access from production code.',
     },
     messages: {
-      forbiddenAccess: 'TEST_ONLY and TEST_ONLY_-prefixed APIs may only be accessed by tests or from within a guarded test-only payload.',
-      forbiddenImport: 'TEST_ONLY and TEST_ONLY_-prefixed imports and re-exports are only allowed in test support files.',
+      forbiddenAccess: 'TEST_ONLY APIs may only be accessed by tests or from within a guarded test-only payload.',
+      forbiddenImport: 'TEST_ONLY imports and re-exports are only allowed in test support files.',
     },
   },
   create(context) {
@@ -120,7 +120,7 @@ export const rule = {
     return {
       Identifier(node) {
         if (
-          !isTestOnlyExportIdentifierName(node)
+          !isTestOnlyPropertyName(node)
           || isInsideGuardedTestOnlyPayload(node)
           || isTypeOnlyIdentifier(node)
           || isHandledIdentifierPosition(node)
@@ -149,7 +149,7 @@ export const rule = {
       Property(node) {
         if (
           node.parent.type !== 'ObjectPattern'
-          || !isTestOnlyExportIdentifierName(node.key)
+          || !isTestOnlyPropertyName(node.key)
         ) {
           return;
         }
@@ -161,8 +161,8 @@ export const rule = {
       },
       ImportSpecifier(node) {
         if (
-          !isTestOnlyExportIdentifierName(node.imported)
-          && !isTestOnlyExportIdentifierName(node.local)
+          !isTestOnlyPropertyName(node.imported)
+          && !isTestOnlyPropertyName(node.local)
         ) {
           return;
         }
@@ -173,7 +173,7 @@ export const rule = {
         });
       },
       ImportDefaultSpecifier(node) {
-        if (!isTestOnlyExportIdentifierName(node.local)) {
+        if (!isTestOnlyPropertyName(node.local)) {
           return;
         }
 
@@ -183,7 +183,7 @@ export const rule = {
         });
       },
       ImportNamespaceSpecifier(node) {
-        if (!isTestOnlyExportIdentifierName(node.local)) {
+        if (!isTestOnlyPropertyName(node.local)) {
           return;
         }
 
@@ -194,8 +194,8 @@ export const rule = {
       },
       ExportSpecifier(node) {
         if (
-          !isTestOnlyExportIdentifierName(node.local)
-          && !isTestOnlyExportIdentifierName(node.exported)
+          !isTestOnlyPropertyName(node.local)
+          && !isTestOnlyPropertyName(node.exported)
         ) {
           return;
         }
@@ -208,7 +208,7 @@ export const rule = {
       ExportAllDeclaration(node) {
         if (
           node.exported === null
-          || !isTestOnlyExportIdentifierName(node.exported)
+          || !isTestOnlyPropertyName(node.exported)
         ) {
           return;
         }

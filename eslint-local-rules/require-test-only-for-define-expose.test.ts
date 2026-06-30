@@ -4,9 +4,9 @@ import fs from 'fs';
 import path from 'path';
 import * as tsParser from '@typescript-eslint/parser';
 import * as parser from 'vue-eslint-parser';
-import { rule } from './require-define-expose-test-only.js';
+import { rule } from './require-test-only-for-define-expose.js';
 
-describe('require-define-expose-test-only rule', () => {
+describe('require-test-only-for-define-expose rule', () => {
   let eslint: ESLint;
   let eslintFix: ESLint;
   const testFileDir = path.resolve(__dirname, '../src/test-tmp');
@@ -30,12 +30,12 @@ describe('require-define-expose-test-only rule', () => {
         plugins: {
           'local-rules-define-expose': {
             rules: {
-              'require-define-expose-test-only': rule,
+              'require-test-only-for-define-expose': rule,
             },
           },
         },
         rules: {
-          'local-rules-define-expose/require-define-expose-test-only': 'error',
+          'local-rules-define-expose/require-test-only-for-define-expose': 'error',
         },
       },
     };

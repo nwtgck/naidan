@@ -89,19 +89,6 @@ describe('no-test-only-access-in-production rule', () => {
     expect(result.messages).toHaveLength(0);
   });
 
-  it('allows nested TEST_ONLY access inside a guarded prefixed export', async () => {
-    const result = await lint({
-      code: `
-        export const TEST_ONLY_nested = (
-          __BUILD_MODE_IS_TEST__ && (() => child.TEST_ONLY.value)
-        ) || undefined;
-      `,
-      filePath: productionFilePath,
-    });
-
-    expect(result.messages).toHaveLength(0);
-  });
-
   it('rejects dot, optional-chain, and static computed member access', async () => {
     const result = await lint({
       code: `
@@ -122,17 +109,12 @@ describe('no-test-only-access-in-production rule', () => {
         export const TEST_ONLY = (__BUILD_MODE_IS_TEST__ && {
           reset() {},
         }) || undefined;
-        export const TEST_ONLY_reset = (
-          __BUILD_MODE_IS_TEST__ && (() => {})
-        ) || undefined;
-
         TEST_ONLY.reset();
-        TEST_ONLY_reset();
       `,
       filePath: productionFilePath,
     });
 
-    expect(result.messages).toHaveLength(2);
+    expect(result.messages).toHaveLength(1);
     expect(result.messages.every((message) => message.messageId === 'forbiddenAccess')).toBe(true);
   });
 
@@ -143,7 +125,6 @@ describe('no-test-only-access-in-production rule', () => {
           TEST_ONLY: {
             reset: () => void,
           },
-          TEST_ONLY_Result: string,
         };
       `,
       filePath: productionFilePath,
@@ -161,22 +142,16 @@ describe('no-test-only-access-in-production rule', () => {
     expect(result.messages).toHaveLength(1);
   });
 
-  it('rejects exact and prefixed imports and re-exports', async () => {
+  it('rejects TEST_ONLY imports and re-exports', async () => {
     const result = await lint({
       code: `
-        import {
-          TEST_ONLY,
-          TEST_ONLY_reset as resetForTest,
-        } from './runtime';
-        export {
-          TEST_ONLY,
-          resetForTest as TEST_ONLY_resetAgain,
-        };
+        import { TEST_ONLY } from './runtime';
+        export { TEST_ONLY };
       `,
       filePath: productionFilePath,
     });
 
-    expect(result.messages).toHaveLength(4);
+    expect(result.messages).toHaveLength(2);
     expect(result.messages.every((message) => message.messageId === 'forbiddenImport')).toBe(true);
   });
 

@@ -244,11 +244,11 @@ export default {
   plugins: {
     'local-rules-test-only': {
       rules: {
-        'require-test-only-export': rule,
+        'require-test-only-for-composable-return': rule,
       },
     },
   },
   rules: {
-    'local-rules-test-only/require-test-only-export': 'error',
+    'local-rules-test-only/require-test-only-for-composable-return': 'error',
   },
 };

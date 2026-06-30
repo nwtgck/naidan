@@ -4,12 +4,6 @@ export const GUARDED_TEST_ONLY_EXAMPLE = `...((__BUILD_MODE_IS_TEST__ && {
   },
 }) || {})`;
 
-export const GUARDED_TEST_ONLY_NAMED_EXPORT_EXAMPLE = `export const TEST_ONLY_example = (
-  __BUILD_MODE_IS_TEST__ && (() => {
-    // test API
-  })
-) || undefined;`;
-
 function getStaticPropertyName(node) {
   if (node.type === 'Identifier') {
     return node.name;
@@ -32,11 +26,6 @@ function getStaticPropertyName(node) {
 
 export function isTestOnlyPropertyName(node) {
   return getStaticPropertyName(node) === 'TEST_ONLY';
-}
-
-export function isTestOnlyExportIdentifierName(node) {
-  const name = getStaticPropertyName(node);
-  return name === 'TEST_ONLY' || name?.startsWith('TEST_ONLY_') === true;
 }
 
 export function isTestOnlyProperty(node) {
@@ -145,32 +134,6 @@ export function isGuardedTestOnlySpread(node) {
   return getGuardedTestOnlySpreadParts(node) !== undefined;
 }
 
-export function getGuardedTestOnlyExportPayload(node) {
-  if (
-    node.type !== 'LogicalExpression'
-    || node.operator !== '||'
-    || node.right.type !== 'Identifier'
-    || node.right.name !== 'undefined'
-  ) {
-    return undefined;
-  }
-
-  const guardedExpression = node.left;
-  if (
-    guardedExpression.type !== 'LogicalExpression'
-    || guardedExpression.operator !== '&&'
-    || !isBuildModeTestIdentifier(guardedExpression.left)
-  ) {
-    return undefined;
-  }
-
-  return guardedExpression.right;
-}
-
-export function isGuardedTestOnlyExportValue(node) {
-  return getGuardedTestOnlyExportPayload(node) !== undefined;
-}
-
 export function isInsideGuardedTestOnlyPayload(node) {
   const ancestors = new Set([node]);
   let current = node;
@@ -179,24 +142,19 @@ export function isInsideGuardedTestOnlyPayload(node) {
     current = current.parent;
     ancestors.add(current);
 
-    if (current.type === 'SpreadElement') {
-      const guardedParts = getGuardedTestOnlySpreadParts(current);
-      if (
-        guardedParts !== undefined
-        && (
-          ancestors.has(guardedParts.testOnlyProperty)
-          || ancestors.has(guardedParts.payload)
-        )
-      ) {
-        return true;
-      }
+    if (current.type !== 'SpreadElement') {
+      continue;
     }
 
-    if (current.type === 'VariableDeclarator' && current.init !== null) {
-      const exportPayload = getGuardedTestOnlyExportPayload(current.init);
-      if (exportPayload !== undefined && ancestors.has(exportPayload)) {
-        return true;
-      }
+    const guardedParts = getGuardedTestOnlySpreadParts(current);
+    if (
+      guardedParts !== undefined
+      && (
+        ancestors.has(guardedParts.testOnlyProperty)
+        || ancestors.has(guardedParts.payload)
+      )
+    ) {
+      return true;
     }
   }
 

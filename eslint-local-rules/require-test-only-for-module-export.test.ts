@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
 import * as parser from '@typescript-eslint/parser';
-import moduleTestOnlyConfig, { rule } from './require-module-test-only-export.js';
+import moduleTestOnlyConfig, { rule } from './require-test-only-for-module-export.js';
 import testOnlyGuardConfig from './require-test-only-guard.js';
 
-const ruleId = 'local-rules-module-test-only/require-module-test-only-export';
+const ruleId = 'local-rules-module-test-only/require-test-only-for-module-export';
 
 function createEslint({ fix }: { fix: boolean }): ESLint {
   return new ESLint({
@@ -18,7 +18,7 @@ function createEslint({ fix }: { fix: boolean }): ESLint {
       plugins: {
         'local-rules-module-test-only': {
           rules: {
-            'require-module-test-only-export': rule,
+            'require-test-only-for-module-export': rule,
           },
         },
       },
@@ -61,7 +61,7 @@ async function lintWithDefaultConfig({ code, filePath }: {
   return result;
 }
 
-describe('require-module-test-only-export rule', () => {
+describe('require-test-only-for-module-export rule', () => {
   it.each([
     'src/example.d.ts',
     'src/example.test.ts',

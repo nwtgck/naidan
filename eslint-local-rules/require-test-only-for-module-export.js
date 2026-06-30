@@ -248,11 +248,11 @@ export default {
   plugins: {
     'local-rules-module-test-only': {
       rules: {
-        'require-module-test-only-export': rule,
+        'require-test-only-for-module-export': rule,
       },
     },
   },
   rules: {
-    'local-rules-module-test-only/require-module-test-only-export': 'error',
+    'local-rules-module-test-only/require-test-only-for-module-export': 'error',
   },
 };

@@ -85,12 +85,7 @@ describe('TEST_ONLY production bundling', () => {
 
       export const TEST_ONLY = {
         sentinel: moduleTestOnlySentinelFunction,
-      };
-
-      export const TEST_ONLY_resetModule = (
-        __BUILD_MODE_IS_TEST__ && (() => 'PREFIXED_TEST_ONLY_SENTINEL_VALUE')
-      ) || undefined;
-    `);
+      };    `);
 
     fs.writeFileSync(entryPath, `
       import TestOnlyComponent from './${path.basename(componentPath)}';
@@ -148,12 +143,7 @@ describe('TEST_ONLY production bundling', () => {
 
       export const TEST_ONLY = {
         read: () => 'RUNTIME_EXPORT_TEST_ONLY_SENTINEL_VALUE',
-      };
-
-      export const TEST_ONLY_reset = (
-        __BUILD_MODE_IS_TEST__ && (() => 'RUNTIME_PREFIXED_TEST_ONLY_SENTINEL_VALUE')
-      ) || undefined;
-    `);
+      };    `);
   });
 
   afterAll(() => {
@@ -182,7 +172,6 @@ describe('TEST_ONLY production bundling', () => {
     expect(javascript).not.toContain('PARENT_TEST_ONLY_SENTINEL_VALUE');
     expect(javascript).not.toContain('moduleTestOnlySentinelFunction');
     expect(javascript).not.toContain('MODULE_TEST_ONLY_SENTINEL_VALUE');
-    expect(javascript).not.toContain('PREFIXED_TEST_ONLY_SENTINEL_VALUE');
     expect(javascript).not.toContain('vueTestOnlySentinelFunction');
     expect(javascript).not.toContain('VUE_TEST_ONLY_SENTINEL_VALUE');
   });
@@ -203,14 +192,11 @@ describe('TEST_ONLY production bundling', () => {
       TEST_ONLY: {
         read: () => string,
       },
-      TEST_ONLY_reset: () => string,
     };
 
     expect(moduleNamespace.createTestValue().TEST_ONLY.read())
       .toBe('RUNTIME_OBJECT_TEST_ONLY_SENTINEL_VALUE');
     expect(moduleNamespace.TEST_ONLY.read())
       .toBe('RUNTIME_EXPORT_TEST_ONLY_SENTINEL_VALUE');
-    expect(moduleNamespace.TEST_ONLY_reset())
-      .toBe('RUNTIME_PREFIXED_TEST_ONLY_SENTINEL_VALUE');
   });
 });

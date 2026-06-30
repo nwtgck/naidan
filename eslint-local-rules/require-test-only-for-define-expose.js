@@ -138,11 +138,11 @@ export default {
   plugins: {
     'local-rules-define-expose': {
       rules: {
-        'require-define-expose-test-only': rule,
+        'require-test-only-for-define-expose': rule,
       },
     },
   },
   rules: {
-    'local-rules-define-expose/require-define-expose-test-only': 'error',
+    'local-rules-define-expose/require-test-only-for-define-expose': 'error',
   },
 };

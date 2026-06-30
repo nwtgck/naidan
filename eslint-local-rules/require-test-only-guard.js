@@ -1,9 +1,7 @@
 import {
-  getGuardedTestOnlyExportPayload,
   GUARDED_TEST_ONLY_EXAMPLE,
-  GUARDED_TEST_ONLY_NAMED_EXPORT_EXAMPLE,
   isInsideGuardedTestOnlyPayload,
-  isTestOnlyExportIdentifierName,
+  isTestOnlyPropertyName,
   isTestSupportFilename,
 } from './test-only-guard.js';
 
@@ -26,11 +24,11 @@ export const rule = {
   meta: {
     type: 'problem',
     docs: {
-      description: 'Require test-only object fields and prefixed exports to use compile-time test guards.',
+      description: 'Require test-only object fields to use compile-time test guards.',
     },
     messages: {
       invalidObjectProperty: `TEST_ONLY must use this guarded spread so production bundling can remove both the field and its value:\n\n${GUARDED_TEST_ONLY_EXAMPLE}`,
-      invalidExport: `TEST_ONLY must be a direct top-level object export. TEST_ONLY_-prefixed exports must use a direct compile-time guard so production bundling can remove their values:\n\nexport const TEST_ONLY = {\n  // test API\n};\n\n${GUARDED_TEST_ONLY_NAMED_EXPORT_EXAMPLE}`,
+      invalidExport: `TEST_ONLY must be a direct top-level object export:\n\nexport const TEST_ONLY = {\n  // test API\n};`,
     },
   },
   create(context) {
@@ -40,7 +38,7 @@ export const rule = {
 
     return {
       FunctionDeclaration(node) {
-        if (node.id === null || !isTestOnlyExportIdentifierName(node.id)) {
+        if (node.id === null || !isTestOnlyPropertyName(node.id)) {
           return;
         }
 
@@ -50,7 +48,7 @@ export const rule = {
         });
       },
       ClassDeclaration(node) {
-        if (node.id === null || !isTestOnlyExportIdentifierName(node.id)) {
+        if (node.id === null || !isTestOnlyPropertyName(node.id)) {
           return;
         }
 
@@ -60,7 +58,7 @@ export const rule = {
         });
       },
       TSEnumDeclaration(node) {
-        if (!isTestOnlyExportIdentifierName(node.id)) {
+        if (!isTestOnlyPropertyName(node.id)) {
           return;
         }
 
@@ -72,7 +70,7 @@ export const rule = {
       Property(node) {
         if (
           node.parent.type !== 'ObjectExpression'
-          || !isTestOnlyExportIdentifierName(node.key)
+          || !isTestOnlyPropertyName(node.key)
           || isInsideGuardedTestOnlyPayload(node)
         ) {
           return;
@@ -90,21 +88,8 @@ export const rule = {
 
         if (
           node.id.type !== 'Identifier'
-          || !isTestOnlyExportIdentifierName(node.id)
+          || !isTestOnlyPropertyName(node.id)
         ) {
-          return;
-        }
-
-        const payload = node.init === null
-          ? undefined
-          : getGuardedTestOnlyExportPayload(node.init);
-        const validPayload = payload !== undefined
-          && (
-            node.id.name !== 'TEST_ONLY'
-            || payload.type === 'ObjectExpression'
-          );
-
-        if (validPayload) {
           return;
         }
 

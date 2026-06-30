@@ -15,7 +15,7 @@ import {
 } from './client';
 import { WIKIPEDIA_INLINE_CONTENT_MAX_LINES } from './binary-object';
 import {
-  TEST_ONLY_resetWikipediaApiRequestScheduler,
+  TEST_ONLY,
 } from './request-scheduler';
 
 const {
@@ -97,15 +97,11 @@ function createPrivacyFetchResponse({
 describe('Retry-After helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
   });
 
   afterEach(() => {
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
     vi.useRealTimers();
   });
 
@@ -346,15 +342,11 @@ describe('searchWikipedia', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
   });
 
   afterEach(() => {
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
     vi.useRealTimers();
   });
 
@@ -1047,15 +1039,11 @@ describe('getWikipediaPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
   });
 
   afterEach(() => {
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
   });
 
   it('uses pageids and not titles', async () => {

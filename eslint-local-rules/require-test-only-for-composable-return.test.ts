@@ -3,9 +3,9 @@ import { ESLint } from 'eslint';
 import fs from 'fs';
 import path from 'path';
 import * as parser from '@typescript-eslint/parser';
-import { rule } from './require-test-only-export.js';
+import { rule } from './require-test-only-for-composable-return.js';
 
-describe('require-test-only-export rule', () => {
+describe('require-test-only-for-composable-return rule', () => {
   let eslint: ESLint;
   let eslintFix: ESLint;
   const testFileName = `temp-test-only-lint-${Math.random().toString(36).slice(2)}.ts`;
@@ -24,12 +24,12 @@ describe('require-test-only-export rule', () => {
         plugins: {
           'local-rules-test-only': {
             rules: {
-              'require-test-only-export': rule,
+              'require-test-only-for-composable-return': rule,
             },
           },
         },
         rules: {
-          'local-rules-test-only/require-test-only-export': 'error',
+          'local-rules-test-only/require-test-only-for-composable-return': 'error',
         },
       },
     };

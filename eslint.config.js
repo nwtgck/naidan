@@ -6,9 +6,9 @@ import ensureReadyStateAwareAppBootstrap from './eslint-local-rules/ensure-ready
 import ensureVueErrorHandler from './eslint-local-rules/ensure-vue-error-handler.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
-import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
-import requireModuleTestOnlyExport from './eslint-local-rules/require-module-test-only-export.js';
-import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
+import requireTestOnlyForComposableReturn from './eslint-local-rules/require-test-only-for-composable-return.js';
+import requireTestOnlyForModuleExport from './eslint-local-rules/require-test-only-for-module-export.js';
+import requireTestOnlyForDefineExpose from './eslint-local-rules/require-test-only-for-define-expose.js';
 import requireTestOnlyGuard from './eslint-local-rules/require-test-only-guard.js';
 import noTestOnlyAccessInProduction from './eslint-local-rules/no-test-only-access-in-production.js';
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
@@ -173,9 +173,9 @@ export default tseslint.config(
   ensureVueErrorHandler,
   forceSwitchForUnion,
   preferMultilineTemplateLiterals,
-  requireTestOnlyExport,
-  requireModuleTestOnlyExport,
-  requireDefineExposeTestOnly,
+  requireTestOnlyForComposableReturn,
+  requireTestOnlyForModuleExport,
+  requireTestOnlyForDefineExpose,
   requireTestOnlyGuard,
   noTestOnlyAccessInProduction,
   requireIconSuffix,

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   runWikipediaApiRequest,
-  TEST_ONLY_resetWikipediaApiRequestScheduler,
+  TEST_ONLY,
   waitForWikipediaApiAttemptWindow,
   WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS,
 } from './request-scheduler';
@@ -27,12 +27,7 @@ function createDeferred<T>(): Deferred<T> {
   };
 }
 
-async function flushMicrotasks({
-  _testOnly,
-}: {
-  _testOnly: undefined,
-}): Promise<void> {
-  void _testOnly;
+async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
@@ -42,15 +37,11 @@ describe('runWikipediaApiRequest', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
   });
 
   afterEach(() => {
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
     vi.useRealTimers();
   });
 
@@ -73,15 +64,11 @@ describe('runWikipediaApiRequest', () => {
       },
     });
 
-    await flushMicrotasks({
-      _testOnly: undefined,
-    });
+    await flushMicrotasks();
     expect(startedRequests).toEqual(['first']);
 
     firstRequest.resolve('first-result');
-    await flushMicrotasks({
-      _testOnly: undefined,
-    });
+    await flushMicrotasks();
 
     expect(startedRequests).toEqual(['first', 'second']);
     await expect(firstPromise).resolves.toBe('first-result');
@@ -106,14 +93,10 @@ describe('runWikipediaApiRequest', () => {
     });
     void secondPromise.catch(() => undefined);
 
-    await flushMicrotasks({
-      _testOnly: undefined,
-    });
+    await flushMicrotasks();
     secondController.abort();
     firstRequest.resolve('first-result');
-    await flushMicrotasks({
-      _testOnly: undefined,
-    });
+    await flushMicrotasks();
 
     expect(secondStarted).not.toHaveBeenCalled();
     await expect(firstPromise).resolves.toBe('first-result');
@@ -140,9 +123,7 @@ describe('runWikipediaApiRequest', () => {
       },
     });
 
-    await flushMicrotasks({
-      _testOnly: undefined,
-    });
+    await flushMicrotasks();
 
     expect(secondStarted).toHaveBeenCalledTimes(1);
     await expect(firstPromise).rejects.toThrow(/first failed/i);
@@ -157,17 +138,13 @@ describe('runWikipediaApiRequest', () => {
     const secondAttemptPromise = waitForWikipediaApiAttemptWindow({
       signal: undefined,
     });
-    await flushMicrotasks({
-      _testOnly: undefined,
-    });
+    await flushMicrotasks();
 
     let settled = false;
     void secondAttemptPromise.then(() => {
       settled = true;
     });
-    await flushMicrotasks({
-      _testOnly: undefined,
-    });
+    await flushMicrotasks();
     expect(settled).toBe(false);
 
     await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS);
@@ -179,22 +156,16 @@ describe('runWikipediaApiRequest', () => {
       signal: undefined,
     });
 
-    TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    });
+    TEST_ONLY.resetWikipediaApiRequestScheduler();
 
     const runningRequest = createDeferred<string>();
     const runningPromise = runWikipediaApiRequest({
       signal: undefined,
       request: async () => runningRequest.promise,
     });
-    await flushMicrotasks({
-      _testOnly: undefined,
-    });
+    await flushMicrotasks();
 
-    expect(() => TEST_ONLY_resetWikipediaApiRequestScheduler({
-      _testOnly: undefined,
-    })).toThrow(/while a request is running/i);
+    expect(() => TEST_ONLY.resetWikipediaApiRequestScheduler()).toThrow(/while a request is running/i);
 
     runningRequest.resolve('done');
     await expect(runningPromise).resolves.toBe('done');
