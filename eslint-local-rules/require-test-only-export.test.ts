@@ -8,13 +8,14 @@ import { rule } from './require-test-only-export.js';
 describe('require-test-only-export rule', () => {
   let eslint: ESLint;
   let eslintFix: ESLint;
-  const testFileDir = path.resolve(__dirname, '../src/test-tmp');
   const testFileName = `temp-test-only-lint-${Math.random().toString(36).slice(2)}.ts`;
-  const testFilePath = path.resolve(testFileDir, testFileName);
+  const testFilePath = path.resolve(__dirname, testFileName);
+  const testSupportFilePath = path.resolve(
+    __dirname,
+    `temp-test-only-lint-${Math.random().toString(36).slice(2)}.test.ts`,
+  );
 
   beforeAll(() => {
-    fs.mkdirSync(testFileDir, { recursive: true });
-
     const baseConfig = {
       overrideConfigFile: true,
       overrideConfig: {
@@ -39,6 +40,7 @@ describe('require-test-only-export rule', () => {
 
   afterAll(() => {
     fs.rmSync(testFilePath, { force: true });
+    fs.rmSync(testSupportFilePath, { force: true });
   });
 
   async function lint(code: string) {
@@ -50,6 +52,14 @@ describe('require-test-only-export rule', () => {
   async function fix(code: string) {
     fs.writeFileSync(testFilePath, code);
     const [result] = await eslintFix.lintFiles([testFilePath]);
+    return result;
+  }
+
+  async function lintTestSupportFile({ code }: {
+    code: string,
+  }) {
+    fs.writeFileSync(testSupportFilePath, code);
+    const [result] = await eslint.lintFiles([testSupportFilePath]);
     return result;
   }
 
@@ -106,6 +116,52 @@ describe('require-test-only-export rule', () => {
 
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.messageId).toBe('invalidTestOnlyGuard');
+  });
+
+  it('ignores useXxx mock factories declared inside test files', async () => {
+    const chatPaneStateResult = await lintTestSupportFile({
+      code: `
+        vi.mock('./useChatPaneState', () => ({
+          useChatPaneState: () => {
+            return {
+              chat: undefined,
+              TEST_ONLY: {},
+            };
+          },
+        }));
+      `,
+    });
+
+    expect(chatPaneStateResult.messages).toHaveLength(0);
+
+    const chatBootstrapResult = await lintTestSupportFile({
+      code: `
+        vi.mock('./useChatBootstrap', () => ({
+          useChatBootstrap: () => {
+            return {
+              loadChats: async () => undefined,
+              openChat: async () => undefined,
+              TEST_ONLY: {},
+            };
+          },
+        }));
+      `,
+    });
+
+    expect(chatBootstrapResult.messages).toHaveLength(0);
+  });
+
+  it('still validates TEST_ONLY type declarations inside test files', async () => {
+    const result = await lintTestSupportFile({
+      code: `
+        type MockComposable = {
+          TEST_ONLY?: Record<never, never>,
+        };
+      `,
+    });
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('optionalTestOnly');
   });
 
   it('ignores non-composable functions', async () => {

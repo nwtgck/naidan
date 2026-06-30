@@ -3,6 +3,7 @@ import {
   GUARDED_TEST_ONLY_EXAMPLE,
   isGuardedTestOnlySpread,
   isTestOnlyPropertyName,
+  isTestSupportFilename,
 } from './test-only-guard.js';
 
 function isNeverRecord(node) {
@@ -141,6 +142,8 @@ export const rule = {
     },
   },
   create(context) {
+    const isTestSupportFile = isTestSupportFilename(context.filename);
+
     return {
       TSPropertySignature(node) {
         if (!isTestOnlyPropertyName(node.key)) {
@@ -175,6 +178,10 @@ export const rule = {
         }
       },
       ReturnStatement(node) {
+        if (isTestSupportFile) {
+          return;
+        }
+
         const name = getFunctionName({ node, context });
         if (!name || !/^use[A-Z]/.test(name)) {
           return;
