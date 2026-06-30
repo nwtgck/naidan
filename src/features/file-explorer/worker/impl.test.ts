@@ -46,6 +46,104 @@ describe('file-explorer.worker.impl', () => {
     expect(response.entries.find(entry => entry.name === 'readme.txt')?.size).toBe(5);
   });
 
+  it('rejects ZIP execution when a same-kind target appeared after preview', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+    const zip = new JSZip();
+    zip.file('note.txt', 'from zip');
+    const blob = new Blob([
+      Uint8Array.from(await zip.generateAsync({ type: 'uint8array' })).buffer,
+    ]);
+
+    await worker.analyzeZipUpload({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-1',
+        targetDirectoryPath: '/',
+        fileName: 'upload.zip',
+        blob,
+      },
+    });
+    await worker.readZipUploadPreviewDirectory({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-1',
+        placement: { kind: 'extract', rootHandling: 'not_applicable' },
+        relativePath: '',
+      },
+    });
+
+    const targetFile = await rootHandle.getFileHandle('note.txt', { create: true });
+    const writable = await targetFile.createWritable();
+    await writable.write('external change');
+    await writable.close();
+
+    await expect(worker.executeZipUpload({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-1',
+        jobId: 'zip-job-1',
+        placement: { kind: 'extract', rootHandling: 'not_applicable' },
+      },
+    })).resolves.toEqual({ status: 'preview_outdated' });
+    expect(await (await targetFile.getFile()).text()).toBe('external change');
+  });
+
+  it('keeps global ZIP conflicts visible while previewing another directory', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const left = await rootHandle.getDirectoryHandle('left', { create: true });
+    const conflicting = await left.getFileHandle('nested', { create: true });
+    const conflictingWritable = await conflicting.createWritable();
+    await conflictingWritable.write('file instead of directory');
+    await conflictingWritable.close();
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'native-directory',
+          rootName: 'Files',
+          handle: rootHandle as unknown as FileSystemDirectoryHandle,
+          readOnly: false,
+        },
+      },
+    });
+    const zip = new JSZip();
+    zip.file('left/nested/file.txt', 'blocked');
+    zip.file('right/file.txt', 'safe');
+    const blob = new Blob([
+      Uint8Array.from(await zip.generateAsync({ type: 'uint8array' })).buffer,
+    ]);
+
+    await worker.analyzeZipUpload({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-global-conflict',
+        targetDirectoryPath: '/',
+        fileName: 'upload.zip',
+        blob,
+      },
+    });
+    const response = await worker.readZipUploadPreviewDirectory({
+      request: {
+        sessionId,
+        analysisId: 'zip-analysis-global-conflict',
+        placement: { kind: 'extract', rootHandling: 'not_applicable' },
+        relativePath: 'right',
+      },
+    });
+
+    expect(response.entries.map(entry => entry.name)).toEqual(['file.txt']);
+    expect(response.summary.blockedCount).toBe(1);
+  });
+
   it('suggests descendants and archives a directory with its own root', async () => {
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     const projectHandle = await rootHandle.getDirectoryHandle('my-project', { create: true });

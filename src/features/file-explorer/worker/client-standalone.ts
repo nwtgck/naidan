@@ -4,7 +4,11 @@ import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import {
   fileExplorerCreateDirectoryArchiveResponseSchema,
+  fileExplorerAnalyzeZipUploadResponseSchema,
+  fileExplorerExecuteZipUploadResponseSchema,
+  fileExplorerReadZipUploadPreviewDirectoryResponseSchema,
   fileExplorerSuggestArchiveExclusionsResponseSchema,
+  toPlainFileExplorerZipUploadPlacement,
   fileExplorerPrepareSessionResponseSchema,
   fileExplorerReadDirectoryResponseSchema,
   fileExplorerReadFileResponseSchema,
@@ -20,6 +24,14 @@ function createDirectoryArchiveJobId(): string {
     return globalThis.crypto.randomUUID();
   }
   return `file-explorer-directory-archive-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+
+function createZipUploadJobId(): string {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `file-explorer-zip-upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export async function createFileExplorerWorkerClient({
@@ -119,6 +131,36 @@ export async function createFileExplorerWorkerClient({
     },
     async moveEntries({ sourcePaths, targetDirectoryPath }) {
       await fileExplorer.moveEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
+    },
+    async analyzeZipUpload({ analysisId, targetDirectoryPath, fileName, blob }) {
+      return fileExplorerAnalyzeZipUploadResponseSchema.parse(
+        await fileExplorer.analyzeZipUpload({
+          request: { sessionId, analysisId, targetDirectoryPath, fileName, blob },
+        }),
+      );
+    },
+    async readZipUploadPreviewDirectory({ analysisId, placement, relativePath }) {
+      const plainPlacement = toPlainFileExplorerZipUploadPlacement({ placement });
+      return fileExplorerReadZipUploadPreviewDirectoryResponseSchema.parse(
+        await fileExplorer.readZipUploadPreviewDirectory({
+          request: { sessionId, analysisId, placement: plainPlacement, relativePath },
+        }),
+      );
+    },
+    startZipUpload({ analysisId, placement }) {
+      const jobId = createZipUploadJobId();
+      const plainPlacement = toPlainFileExplorerZipUploadPlacement({ placement });
+      return {
+        result: fileExplorer.executeZipUpload({
+          request: { sessionId, analysisId, jobId, placement: plainPlacement },
+        }).then(response => fileExplorerExecuteZipUploadResponseSchema.parse(response)),
+        async cancel() {
+          await fileExplorer.cancelZipUpload({ request: { sessionId, jobId } });
+        },
+      };
+    },
+    async disposeZipUploadAnalysis({ analysisId }) {
+      await fileExplorer.disposeZipUploadAnalysis({ request: { sessionId, analysisId } });
     },
     async uploadFiles({ targetDirectoryPath, files }) {
       await fileExplorer.uploadFiles({ request: { sessionId, targetDirectoryPath, files } });

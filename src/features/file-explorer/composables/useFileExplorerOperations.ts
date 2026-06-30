@@ -169,20 +169,6 @@ export function useFileExplorerOperations({
     renamingEntryName.value = undefined;
   }
 
-  async function uploadFiles({ files }: { files: FileList | File[] }): Promise<void> {
-    const fileArray = Array.from(files);
-    if (fileArray.length === 0) return;
-
-    try {
-      await client.uploadFiles({
-        targetDirectoryPath: currentDirectoryPath.value,
-        files: fileArray.map(file => ({ name: file.name, blob: file })),
-      });
-      await refresh();
-    } catch (error) {
-      addToast({ message: await ensureStrings.fileExplorer__failed_to_upload_files({ errorMessage: error instanceof Error ? error.message : String(error) }) });
-    }
-  }
 
   return {
     renamingEntryName,
@@ -193,7 +179,6 @@ export function useFileExplorerOperations({
     moveEntries,
     copyEntriesToDir,
     downloadEntry,
-    uploadFiles,
     startRename,
     cancelRename,
     TEST_ONLY: {

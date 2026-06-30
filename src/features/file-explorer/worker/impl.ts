@@ -19,7 +19,27 @@ import {
   type FileExplorerDirectoryArchiveSourceEntry,
 } from './directory-archive';
 import {
+  buildZipUploadPreview,
+  executeParsedZipUpload,
+  inspectZipUploadTarget,
+  parseZipUpload,
+  type ParsedZipUpload,
+} from './zip-upload';
+import {
+  copyFileSystemFileHandle,
+  isFileSystemEntryLookupMiss,
+  writeReadableStreamToFileHandle,
+} from '@/utils/file-system-stream';
+import {
   fileExplorerCancelDirectoryArchiveRequestSchema,
+  fileExplorerAnalyzeZipUploadRequestSchema,
+  fileExplorerAnalyzeZipUploadResponseSchema,
+  fileExplorerCancelZipUploadRequestSchema,
+  fileExplorerDisposeZipUploadAnalysisRequestSchema,
+  fileExplorerExecuteZipUploadRequestSchema,
+  fileExplorerExecuteZipUploadResponseSchema,
+  fileExplorerReadZipUploadPreviewDirectoryRequestSchema,
+  fileExplorerReadZipUploadPreviewDirectoryResponseSchema,
   fileExplorerCreateDirectoryArchiveRequestSchema,
   fileExplorerCreateDirectoryArchiveResponseSchema,
   fileExplorerCreateFileRequestSchema,
@@ -43,6 +63,7 @@ import {
   type FileExplorerEntryRecord,
   type FileExplorerPathSegment,
   type FileExplorerRootDescriptor,
+  type FileExplorerZipUploadPlacement,
   type IFileExplorerWorker,
 } from './types';
 
@@ -92,6 +113,33 @@ type ResolvedVirtualFile = {
 
 const sessions = new Map<string, FileExplorerSession>();
 const directoryArchiveJobs = new Map<string, AbortController>();
+const zipUploadJobs = new Map<string, AbortController>();
+const zipUploadAnalyses = new Map<string, {
+  readonly targetDirectoryPath: string,
+  readonly analysis: ParsedZipUpload,
+  readonly previewFingerprints: Map<string, string>,
+}>();
+
+function createZipUploadKey({ sessionId, id }: { sessionId: string, id: string }): string {
+  return `${sessionId}\0${id}`;
+}
+
+function createZipUploadPlacementKey({
+  placement,
+}: {
+  placement: FileExplorerZipUploadPlacement,
+}): string {
+  switch (placement.kind) {
+  case 'keep_archive':
+    return 'keep_archive';
+  case 'extract':
+    return `extract:${placement.rootHandling}`;
+  default: {
+    const _exhaustiveCheck: never = placement;
+    throw new Error(`Unhandled ZIP upload placement: ${String(_exhaustiveCheck)}`);
+  }
+  }
+}
 
 function createDirectoryArchiveJobKey({ sessionId, jobId }: { sessionId: string, jobId: string }): string {
   return `${sessionId}\0${jobId}`;
@@ -965,16 +1013,12 @@ async function copyFileHandleToDirectory({
   sourceHandle: FileSystemFileHandle,
   targetDirectoryHandle: FileSystemDirectoryHandle,
 }): Promise<void> {
-  const file = await sourceHandle.getFile();
   const targetFileHandle = await targetDirectoryHandle.getFileHandle(sourceHandle.name, { create: true });
-  const writable = await (targetFileHandle as unknown as {
-    createWritable: () => Promise<FileSystemWritableFileStream>,
-  }).createWritable();
-  try {
-    await writable.write(await file.arrayBuffer());
-  } finally {
-    await writable.close();
-  }
+  await copyFileSystemFileHandle({
+    sourceHandle,
+    targetHandle: targetFileHandle,
+    signal: undefined,
+  });
 }
 
 async function copyDirectoryHandleToDirectory({
@@ -1024,6 +1068,70 @@ async function deleteEntryPath({
   });
   const writableParentDirectory = getWritableNativeDirectory({ directory: parentDirectory });
   await writableParentDirectory.removeEntry(name, { recursive: true });
+}
+
+async function listZipUploadExistingEntries({
+  targetDirectory,
+  relativePath,
+}: {
+  targetDirectory: FileSystemDirectoryHandle,
+  relativePath: string,
+}): Promise<Array<{
+  name: string,
+  path: string,
+  kind: 'file' | 'directory',
+  size: number | undefined,
+  lastModified: number | undefined,
+}>> {
+  let directory = targetDirectory;
+  if (relativePath !== '') {
+    for (const segment of relativePath.split('/')) {
+      try {
+        directory = await directory.getDirectoryHandle(segment);
+      } catch (error) {
+        if (isFileSystemEntryLookupMiss({ error })) {
+          return [];
+        }
+        throw error;
+      }
+    }
+  }
+  const entries: Array<{
+    name: string,
+    path: string,
+    kind: 'file' | 'directory',
+    size: number | undefined,
+    lastModified: number | undefined,
+  }> = [];
+  for await (const child of directory.values()) {
+    switch (child.kind) {
+    case 'directory':
+      entries.push({
+        name: child.name,
+        path: relativePath === '' ? child.name : `${relativePath}/${child.name}`,
+        kind: 'directory',
+        size: undefined,
+        lastModified: undefined,
+      });
+      break;
+    case 'file': {
+      const file = await (child as FileSystemFileHandle).getFile();
+      entries.push({
+        name: child.name,
+        path: relativePath === '' ? child.name : `${relativePath}/${child.name}`,
+        kind: 'file',
+        size: file.size,
+        lastModified: file.lastModified,
+      });
+      break;
+    }
+    default: {
+      const _exhaustiveCheck: never = child;
+      throw new Error(`Unhandled preview child: ${String(_exhaustiveCheck)}`);
+    }
+    }
+  }
+  return entries;
 }
 
 export function createFileExplorerWorker(): IFileExplorerWorker {
@@ -1357,15 +1465,11 @@ export function createFileExplorerWorker(): IFileExplorerWorker {
       try {
         const sourceFile = await writableParentDirectory.getFileHandle(sourceName);
         const targetFile = await writableParentDirectory.getFileHandle(validated.newName, { create: true });
-        const file = await sourceFile.getFile();
-        const writable = await (targetFile as unknown as {
-          createWritable: () => Promise<FileSystemWritableFileStream>,
-        }).createWritable();
-        try {
-          await writable.write(await file.arrayBuffer());
-        } finally {
-          await writable.close();
-        }
+        await copyFileSystemFileHandle({
+          sourceHandle: sourceFile,
+          targetHandle: targetFile,
+          signal: undefined,
+        });
       } catch {
         const sourceDirectory = await writableParentDirectory.getDirectoryHandle(sourceName);
         const targetDirectoryHandle = await writableParentDirectory.getDirectoryHandle(validated.newName, { create: true });
@@ -1459,6 +1563,180 @@ export function createFileExplorerWorker(): IFileExplorerWorker {
       }
     },
 
+    async analyzeZipUpload({ request }) {
+      const validated = fileExplorerAnalyzeZipUploadRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      const targetDirectory = await resolveDirectory({
+        session,
+        path: validated.targetDirectoryPath,
+      });
+      getWritableNativeDirectory({ directory: targetDirectory });
+      const analysisKey = createZipUploadKey({
+        sessionId: validated.sessionId,
+        id: validated.analysisId,
+      });
+      try {
+        const analysis = await parseZipUpload({
+          blob: validated.blob,
+          fileName: validated.fileName,
+        });
+        zipUploadAnalyses.set(analysisKey, {
+          targetDirectoryPath: validated.targetDirectoryPath,
+          analysis,
+          previewFingerprints: new Map(),
+        });
+        return fileExplorerAnalyzeZipUploadResponseSchema.parse({
+          status: 'extractable',
+          analysisId: validated.analysisId,
+          entryCount: analysis.entries.length,
+          totalUncompressedSize: analysis.totalUncompressedSize,
+          singleRootDirectoryName: analysis.singleRootDirectoryName,
+        });
+      } catch {
+        zipUploadAnalyses.delete(analysisKey);
+        return fileExplorerAnalyzeZipUploadResponseSchema.parse({
+          status: 'not_extractable',
+          analysisId: validated.analysisId,
+          reason: 'invalid_or_unsupported_archive',
+        });
+      }
+    },
+
+    async readZipUploadPreviewDirectory({ request }) {
+      const validated = fileExplorerReadZipUploadPreviewDirectoryRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      const analysisState = zipUploadAnalyses.get(createZipUploadKey({
+        sessionId: validated.sessionId,
+        id: validated.analysisId,
+      }));
+      if (analysisState === undefined) {
+        throw new Error(`Unknown ZIP upload analysis: ${validated.analysisId}`);
+      }
+      const targetDirectory = getWritableNativeDirectory({
+        directory: await resolveDirectory({
+          session,
+          path: analysisState.targetDirectoryPath,
+        }),
+      });
+      const inspection = await inspectZipUploadTarget({
+        analysis: analysisState.analysis,
+        placement: validated.placement,
+        targetDirectory,
+      });
+      analysisState.previewFingerprints.set(
+        createZipUploadPlacementKey({ placement: validated.placement }),
+        inspection.fingerprint,
+      );
+      const existingEntries = await listZipUploadExistingEntries({
+        targetDirectory,
+        relativePath: validated.relativePath,
+      });
+      const preview = await buildZipUploadPreview({
+        analysis: analysisState.analysis,
+        placement: validated.placement,
+        relativePath: validated.relativePath,
+        existingEntries,
+        blockedPaths: inspection.blockedPaths,
+      });
+      const pathSegments = validated.relativePath === ''
+        ? []
+        : validated.relativePath.split('/').map((name, index, segments) => ({
+          name,
+          relativePath: segments.slice(0, index + 1).join('/'),
+        }));
+      return fileExplorerReadZipUploadPreviewDirectoryResponseSchema.parse({
+        relativePath: validated.relativePath,
+        pathSegments,
+        entries: preview.entries,
+        summary: {
+          ...preview.summary,
+          blockedCount: inspection.blockedPaths.size,
+        },
+      });
+    },
+
+    async executeZipUpload({ request }) {
+      const validated = fileExplorerExecuteZipUploadRequestSchema.parse(request);
+      const session = getSession({ sessionId: validated.sessionId });
+      const analysisState = zipUploadAnalyses.get(createZipUploadKey({
+        sessionId: validated.sessionId,
+        id: validated.analysisId,
+      }));
+      if (analysisState === undefined) {
+        throw new Error(`Unknown ZIP upload analysis: ${validated.analysisId}`);
+      }
+      const jobKey = createZipUploadKey({ sessionId: validated.sessionId, id: validated.jobId });
+      if (zipUploadJobs.has(jobKey)) {
+        throw new Error(`ZIP upload job already exists: ${validated.jobId}`);
+      }
+      const abortController = new AbortController();
+      zipUploadJobs.set(jobKey, abortController);
+      try {
+        const targetDirectory = getWritableNativeDirectory({
+          directory: await resolveDirectory({
+            session,
+            path: analysisState.targetDirectoryPath,
+          }),
+        });
+        const inspection = await inspectZipUploadTarget({
+          analysis: analysisState.analysis,
+          placement: validated.placement,
+          targetDirectory,
+        });
+        const previewFingerprint = analysisState.previewFingerprints.get(
+          createZipUploadPlacementKey({ placement: validated.placement }),
+        );
+        if (
+          previewFingerprint === undefined
+          || previewFingerprint !== inspection.fingerprint
+          || inspection.blockedPaths.size > 0
+        ) {
+          return fileExplorerExecuteZipUploadResponseSchema.parse({ status: 'preview_outdated' });
+        }
+        const result = await executeParsedZipUpload({
+          analysis: analysisState.analysis,
+          placement: validated.placement,
+          targetDirectory,
+          jobId: validated.jobId,
+          expectedFingerprint: previewFingerprint,
+          signal: abortController.signal,
+        });
+        switch (result) {
+        case 'completed':
+          return fileExplorerExecuteZipUploadResponseSchema.parse({ status: 'completed' });
+        case 'preview-outdated':
+          return fileExplorerExecuteZipUploadResponseSchema.parse({ status: 'preview_outdated' });
+        default: {
+          const _exhaustiveCheck: never = result;
+          throw new Error(`Unhandled ZIP upload result: ${String(_exhaustiveCheck)}`);
+        }
+        }
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return fileExplorerExecuteZipUploadResponseSchema.parse({ status: 'cancelled' });
+        }
+        throw error;
+      } finally {
+        zipUploadJobs.delete(jobKey);
+      }
+    },
+
+    async cancelZipUpload({ request }) {
+      const validated = fileExplorerCancelZipUploadRequestSchema.parse(request);
+      zipUploadJobs.get(createZipUploadKey({
+        sessionId: validated.sessionId,
+        id: validated.jobId,
+      }))?.abort(new DOMException('ZIP upload cancelled', 'AbortError'));
+    },
+
+    async disposeZipUploadAnalysis({ request }) {
+      const validated = fileExplorerDisposeZipUploadAnalysisRequestSchema.parse(request);
+      zipUploadAnalyses.delete(createZipUploadKey({
+        sessionId: validated.sessionId,
+        id: validated.analysisId,
+      }));
+    },
+
     async uploadFiles({ request }) {
       const validated = fileExplorerUploadFilesRequestSchema.parse(request);
       const session = getSession({ sessionId: validated.sessionId });
@@ -1470,14 +1748,11 @@ export function createFileExplorerWorker(): IFileExplorerWorker {
 
       for (const file of validated.files) {
         const targetFileHandle = await writableTargetDirectory.getFileHandle(file.name, { create: true });
-        const writable = await (targetFileHandle as unknown as {
-          createWritable: () => Promise<FileSystemWritableFileStream>,
-        }).createWritable();
-        try {
-          await writable.write(await file.blob.arrayBuffer());
-        } finally {
-          await writable.close();
-        }
+        await writeReadableStreamToFileHandle({
+          source: file.blob.stream(),
+          targetHandle: targetFileHandle,
+          signal: undefined,
+        });
       }
     },
 
@@ -1488,6 +1763,17 @@ export function createFileExplorerWorker(): IFileExplorerWorker {
         if (jobKey.startsWith(`${validated.sessionId}\0`)) {
           abortController.abort(new DOMException('File explorer session disposed', 'AbortError'));
           directoryArchiveJobs.delete(jobKey);
+        }
+      }
+      for (const [jobKey, abortController] of zipUploadJobs) {
+        if (jobKey.startsWith(`${validated.sessionId}\0`)) {
+          abortController.abort(new DOMException('File explorer session disposed', 'AbortError'));
+          zipUploadJobs.delete(jobKey);
+        }
+      }
+      for (const analysisKey of zipUploadAnalyses.keys()) {
+        if (analysisKey.startsWith(`${validated.sessionId}\0`)) {
+          zipUploadAnalyses.delete(analysisKey);
         }
       }
     },

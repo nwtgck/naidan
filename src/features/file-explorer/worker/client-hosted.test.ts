@@ -1,12 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Blob as NodeBlob } from 'node:buffer';
 import * as Comlink from 'comlink';
+import JSZip from 'jszip';
+import { isProxy, reactive } from 'vue';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { createFileExplorerWorker } from './impl';
+import type { FileExplorerZipUploadPlacement } from './types';
 
 type MessageListener = (event: MessageEvent) => void;
 
 function cloneMessageForTest<T>(value: T): T {
+  if (isProxy(value)) {
+    throw new DOMException('Proxy object could not be cloned.', 'DataCloneError');
+  }
   if (
     value instanceof MockFileSystemDirectoryHandle ||
     value instanceof MockFileSystemFileHandle ||
@@ -210,6 +216,53 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     await client.deleteEntries({ paths: ['/final.txt', '/upload.txt'] });
     const afterDeleteListing = await client.readDirectory({ path: '/' });
     expect(afterDeleteListing.entries.map(entry => entry.name).sort()).toEqual(['data.json', 'docs']);
+
+    await client.dispose();
+    expect(createdWorkers).toHaveLength(1);
+    expect(createdWorkers[0]?.terminated).toBe(true);
+  });
+
+
+  it('converts reactive ZIP placements to cloneable worker requests', async () => {
+    const { createFileExplorerWorkerClient } = await import('./client-hosted');
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const client = await createFileExplorerWorkerClient({
+      root: {
+        kind: 'native-directory',
+        rootName: 'Files',
+        handle: rootHandle as unknown as FileSystemDirectoryHandle,
+        readOnly: false,
+      },
+    });
+    const zip = new JSZip();
+    zip.file('note.txt', 'hello from ZIP');
+    const zipBytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    const analysisId = 'reactive-placement-analysis';
+    const analysis = await client.analyzeZipUpload({
+      analysisId,
+      targetDirectoryPath: '/',
+      fileName: 'archive.zip',
+      blob: new NodeBlob([zipBytes]) as unknown as Blob,
+    });
+    expect(analysis.status).toBe('extractable');
+
+    const placement = reactive<FileExplorerZipUploadPlacement>({
+      kind: 'extract',
+      rootHandling: 'not_applicable',
+    });
+    expect(isProxy(placement)).toBe(true);
+
+    const preview = await client.readZipUploadPreviewDirectory({
+      analysisId,
+      placement,
+      relativePath: '',
+    });
+    expect(preview.entries.map(entry => entry.name)).toEqual(['note.txt']);
+
+    const job = client.startZipUpload({ analysisId, placement });
+    await expect(job.result).resolves.toEqual({ status: 'completed' });
+    const listing = await client.readDirectory({ path: '/' });
+    expect(listing.entries.map(entry => entry.name)).toEqual(['note.txt']);
 
     await client.dispose();
     expect(createdWorkers).toHaveLength(1);

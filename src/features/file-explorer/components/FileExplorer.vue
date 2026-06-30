@@ -9,6 +9,7 @@ import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue';
 import FileExplorerStatusBar from './FileExplorerStatusBar.vue';
 import FileExplorerContextMenu from './FileExplorerContextMenu.vue';
 import FileExplorerDirectoryDownloadDialog from './FileExplorerDirectoryDownloadDialog.vue';
+import FileExplorerZipUploadDialog from './FileExplorerZipUploadDialog.vue';
 import { useFileExplorer, FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import { useFileExplorerKeyboard } from '@/features/file-explorer/composables/useFileExplorerKeyboard';
 import type { ViewMode, PreviewVisibility } from '@/features/file-explorer/logic/types';
@@ -48,6 +49,7 @@ const { handleKeyDown } = useFileExplorerKeyboard({ ctx: context });
 onUnmounted(() => {
   _preview.dispose();
   context.directoryDownload.dispose();
+  context.upload.dispose();
   void client.dispose();
 });
 </script>
@@ -102,5 +104,6 @@ onUnmounted(() => {
     <FileExplorerContextMenu />
 
     <FileExplorerDirectoryDownloadDialog />
+    <FileExplorerZipUploadDialog />
   </div>
 </template>

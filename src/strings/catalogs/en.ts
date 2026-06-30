@@ -1317,6 +1317,35 @@ import { fileExplorer__unlocked_click_to_lock } from '@/strings/messages/fileExp
 import { fileExplorer__unsupported_items_were_skipped } from '@/strings/messages/fileExplorer__unsupported_items_were_skipped/en';
 import { fileExplorer__upload_files } from '@/strings/messages/fileExplorer__upload_files/en';
 import { fileExplorer__upload_files_unlock_to_enable } from '@/strings/messages/fileExplorer__upload_files_unlock_to_enable/en';
+import { fileExplorer__addition_count } from '@/strings/messages/fileExplorer__addition_count/en';
+import { fileExplorer__analyzing_zip } from '@/strings/messages/fileExplorer__analyzing_zip/en';
+import { fileExplorer__blocked_count } from '@/strings/messages/fileExplorer__blocked_count/en';
+import { fileExplorer__cannot_be_placed } from '@/strings/messages/fileExplorer__cannot_be_placed/en';
+import { fileExplorer__existing } from '@/strings/messages/fileExplorer__existing/en';
+import { fileExplorer__extract_and_place } from '@/strings/messages/fileExplorer__extract_and_place/en';
+import { fileExplorer__extract_and_place_description } from '@/strings/messages/fileExplorer__extract_and_place_description/en';
+import { fileExplorer__merge_count } from '@/strings/messages/fileExplorer__merge_count/en';
+import { fileExplorer__next_zip } from '@/strings/messages/fileExplorer__next_zip/en';
+import { fileExplorer__not_changed_yet } from '@/strings/messages/fileExplorer__not_changed_yet/en';
+import { fileExplorer__overwrite_count } from '@/strings/messages/fileExplorer__overwrite_count/en';
+import { fileExplorer__place_contents_here } from '@/strings/messages/fileExplorer__place_contents_here/en';
+import { fileExplorer__place_contents_here_description } from '@/strings/messages/fileExplorer__place_contents_here_description/en';
+import { fileExplorer__place_directory_itself } from '@/strings/messages/fileExplorer__place_directory_itself/en';
+import { fileExplorer__place_directory_itself_description } from '@/strings/messages/fileExplorer__place_directory_itself_description/en';
+import { fileExplorer__place_zip_file_as_is } from '@/strings/messages/fileExplorer__place_zip_file_as_is/en';
+import { fileExplorer__place_zip_file_as_is_description } from '@/strings/messages/fileExplorer__place_zip_file_as_is_description/en';
+import { fileExplorer__placement_method } from '@/strings/messages/fileExplorer__placement_method/en';
+import { fileExplorer__placement_preview } from '@/strings/messages/fileExplorer__placement_preview/en';
+import { fileExplorer__planned_addition } from '@/strings/messages/fileExplorer__planned_addition/en';
+import { fileExplorer__planned_merge } from '@/strings/messages/fileExplorer__planned_merge/en';
+import { fileExplorer__planned_overwrite } from '@/strings/messages/fileExplorer__planned_overwrite/en';
+import { fileExplorer__root_directory_handling } from '@/strings/messages/fileExplorer__root_directory_handling/en';
+import { fileExplorer__status } from '@/strings/messages/fileExplorer__status/en';
+import { fileExplorer__uploading } from '@/strings/messages/fileExplorer__uploading/en';
+import { fileExplorer__zip_archive } from '@/strings/messages/fileExplorer__zip_archive/en';
+import { fileExplorer__zip_cannot_be_extracted } from '@/strings/messages/fileExplorer__zip_cannot_be_extracted/en';
+import { fileExplorer__zip_file_upload } from '@/strings/messages/fileExplorer__zip_file_upload/en';
+import { fileExplorer__zip_upload_preview_outdated } from '@/strings/messages/fileExplorer__zip_upload_preview_outdated/en';
 import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/en';
 import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/en';
 import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/en';
@@ -2761,6 +2790,35 @@ export const en = {
   fileExplorer__unsupported_items_were_skipped,
   fileExplorer__upload_files,
   fileExplorer__upload_files_unlock_to_enable,
+  fileExplorer__addition_count,
+  fileExplorer__analyzing_zip,
+  fileExplorer__blocked_count,
+  fileExplorer__cannot_be_placed,
+  fileExplorer__existing,
+  fileExplorer__extract_and_place,
+  fileExplorer__extract_and_place_description,
+  fileExplorer__merge_count,
+  fileExplorer__next_zip,
+  fileExplorer__not_changed_yet,
+  fileExplorer__overwrite_count,
+  fileExplorer__place_contents_here,
+  fileExplorer__place_contents_here_description,
+  fileExplorer__place_directory_itself,
+  fileExplorer__place_directory_itself_description,
+  fileExplorer__place_zip_file_as_is,
+  fileExplorer__place_zip_file_as_is_description,
+  fileExplorer__placement_method,
+  fileExplorer__placement_preview,
+  fileExplorer__planned_addition,
+  fileExplorer__planned_merge,
+  fileExplorer__planned_overwrite,
+  fileExplorer__root_directory_handling,
+  fileExplorer__status,
+  fileExplorer__uploading,
+  fileExplorer__zip_archive,
+  fileExplorer__zip_cannot_be_extracted,
+  fileExplorer__zip_file_upload,
+  fileExplorer__zip_upload_preview_outdated,
   formatSettingsSourceLabel__default,
   formatSettingsSourceLabel__value_from_global,
   formatSettingsSourceLabel__value_from_group,

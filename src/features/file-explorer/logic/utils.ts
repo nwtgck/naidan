@@ -1,6 +1,7 @@
 import type { FileExplorerEntry, MimeCategory, SortConfig } from './types';
 import type { ExplorerDirectory } from './explorer-directory';
 import { EXTENSION_MIME_MAP } from './constants';
+import { writeReadableStreamToFileHandle } from '@/utils/file-system-stream';
 
 export function getFileExtension({ name }: { name: string }): string {
   const dot = name.lastIndexOf('.');
@@ -97,6 +98,7 @@ export function filterEntries({
   return entries.filter(e => e.name.toLowerCase().includes(q));
 }
 
+
 /**
  * Recursively copy a FileSystemDirectoryHandle tree into an ExplorerDirectory target.
  * Reads from the raw source handle; writes through the ExplorerDirectory abstraction.
@@ -118,9 +120,11 @@ export async function copyDirectoryHandle({
       const fh = entry as FileSystemFileHandle;
       const file = await fh.getFile();
       const destFh = await destDir.fileCreate({ name: entry.name });
-      const writable = await (destFh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
-      await writable.write(await file.arrayBuffer());
-      await writable.close();
+      await writeReadableStreamToFileHandle({
+        source: file.stream(),
+        targetHandle: destFh,
+        signal,
+      });
       break;
     }
     case 'directory':
@@ -145,7 +149,9 @@ export async function copyFileHandle({
 }): Promise<void> {
   const file = await source.getFile();
   const destFh = await targetDir.fileCreate({ name: source.name });
-  const writable = await (destFh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
-  await writable.write(await file.arrayBuffer());
-  await writable.close();
+  await writeReadableStreamToFileHandle({
+    source: file.stream(),
+    targetHandle: destFh,
+    signal: undefined,
+  });
 }

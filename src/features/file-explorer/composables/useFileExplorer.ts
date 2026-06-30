@@ -20,6 +20,7 @@ import { useFileExplorerClipboard } from './useFileExplorerClipboard';
 import { useFileExplorerContextMenu } from './useFileExplorerContextMenu';
 import { useFileExplorerDragDrop } from './useFileExplorerDragDrop';
 import { useFileExplorerDirectoryDownload } from './useFileExplorerDirectoryDownload';
+import { useFileExplorerUpload } from './useFileExplorerUpload';
 import { useToast } from '@/composables/useToast';
 import { usePrompt } from '@/composables/usePrompt';
 
@@ -83,6 +84,12 @@ export async function useFileExplorer({
 
   const preview = useFileExplorerPreview({ client });
   const directoryDownload = useFileExplorerDirectoryDownload({ client });
+  const upload = useFileExplorerUpload({
+    client,
+    currentDirectoryPath: nav.currentDirectoryPath,
+    currentEntries: nav.entries,
+    refresh: nav.refresh,
+  });
   const clipboard = useFileExplorerClipboard();
   const ctxMenu = useFileExplorerContextMenu();
   const dnd = useFileExplorerDragDrop({
@@ -425,7 +432,8 @@ export async function useFileExplorer({
     moveEntries: ops.moveEntries,
     copyEntriesToDir: ops.copyEntriesToDir,
     downloadEntry: ops.downloadEntry,
-    uploadFiles: ops.uploadFiles,
+    uploadFiles: upload.begin,
+    upload,
 
     get renamingEntryName() {
       return ops.renamingEntryName.value;

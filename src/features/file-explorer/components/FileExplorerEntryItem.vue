@@ -2,6 +2,7 @@
 import { lazyStrings } from '@/strings';
 import { ChevronRightIcon, LockIcon } from 'lucide-vue-next';
 import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
+import FileExplorerListEntryRow from './FileExplorerListEntryRow.vue';
 import FileExplorerRenameInput from './FileExplorerRenameInput.vue';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import { formatSize, formatDate } from '@/features/file-explorer/logic/utils';
@@ -53,16 +54,13 @@ defineExpose({
 
 <template>
   <!-- LIST MODE ROW -->
-  <div
+  <FileExplorerListEntryRow
     v-if="displayMode === 'list'"
     :data-testid="`entry-item-${entry.name}`"
-    class="group flex items-center gap-3 px-3 py-0 h-9 cursor-pointer select-none rounded-md transition-all"
+    :entry="entry"
+    :appearance="isSelected ? 'selected' : isFocused ? 'focused' : 'default'"
     :class="[
-      isSelected
-        ? 'bg-blue-500 text-white'
-        : isFocused
-          ? 'bg-gray-100 dark:bg-gray-800'
-          : 'hover:bg-gray-50 dark:hover:bg-gray-800/60',
+      'cursor-pointer',
       isDragTarget ? 'ring-2 ring-blue-400 ring-inset' : '',
       isCut ? 'opacity-50' : '',
     ]"
@@ -76,39 +74,34 @@ defineExpose({
     @dragleave="emit('dragleave')"
     @drop.prevent="emit('drop', { event: $event })"
   >
-    <FileExplorerEntryIcon
-      :kind="entry.kind"
-      :extension="entry.extension"
-      :mime-category="entry.mimeCategory"
-      size="sm"
-    />
-    <div class="flex-1 min-w-0">
+    <template #name>
       <FileExplorerRenameInput
         v-if="isRenaming"
         :current-name="entry.name"
         @confirm="emit('rename-confirm', { newName: $event })"
         @cancel="emit('rename-cancel')"
       />
-      <span v-else class="text-xs truncate block" :class="isSelected ? 'text-white' : 'text-gray-800 dark:text-gray-200'">
+      <span
+        v-else
+        class="text-xs truncate block"
+        :class="isSelected ? 'text-white' : 'text-gray-800 dark:text-gray-200'"
+      >
         {{ entry.name }}
       </span>
-    </div>
-    <LockIcon
-      v-if="entry.readOnly"
-      class="w-2.5 h-2.5 shrink-0 opacity-50"
-      :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
-      data-testid="entry-lock-icon"
-    />
-    <span class="text-[10px] font-mono w-16 text-right shrink-0" :class="isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'">
-      {{ entry.kind === 'file' ? formatSize({ bytes: entry.size }) : '' }}
-    </span>
-    <span class="text-[10px] w-28 text-right shrink-0 hidden md:block" :class="isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'">
-      {{ entry.kind === 'file' ? formatDate({ timestamp: entry.lastModified }) : '' }}
-    </span>
-    <span class="text-[10px] w-16 text-right shrink-0 hidden lg:block uppercase" :class="isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'">
-      {{ entry.kind === 'file' ? (entry.extension || '—') : lazyStrings.fileExplorer__folder() }}
-    </span>
-  </div>
+    </template>
+
+    <template #trailing>
+      <span class="text-[10px] font-mono w-16 text-right shrink-0" :class="isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'">
+        {{ entry.kind === 'file' ? formatSize({ bytes: entry.size }) : '' }}
+      </span>
+      <span class="text-[10px] w-28 text-right shrink-0 hidden md:block" :class="isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'">
+        {{ entry.kind === 'file' ? formatDate({ timestamp: entry.lastModified }) : '' }}
+      </span>
+      <span class="text-[10px] w-16 text-right shrink-0 hidden lg:block uppercase" :class="isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'">
+        {{ entry.kind === 'file' ? (entry.extension || '—') : lazyStrings.fileExplorer__folder() }}
+      </span>
+    </template>
+  </FileExplorerListEntryRow>
 
   <!-- ICON MODE CARD -->
   <div

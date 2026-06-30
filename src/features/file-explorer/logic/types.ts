@@ -1,4 +1,9 @@
-import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
+import type {
+  FileExplorerRootDescriptor,
+  FileExplorerZipUploadPlacement,
+  FileExplorerZipUploadPreviewEntry,
+  FileExplorerZipUploadPreviewSummary,
+} from '@/features/file-explorer/worker/types';
 import type { AllowedHtml } from '@/logic/security/allowedHtml';
 
 export type EntryKind = 'file' | 'directory';
@@ -10,6 +15,46 @@ export type PreviewVisibility = 'visible' | 'hidden';
 export type ClipboardOperation = 'cut' | 'copy';
 export type PathBarMode = 'breadcrumb' | 'editable';
 export type RenameState = 'idle' | 'renaming';
+
+
+export type FileExplorerListEntryAppearance =
+  | 'default'
+  | 'selected'
+  | 'focused'
+  | 'planned'
+  | 'warning'
+  | 'blocked';
+
+export type ZipUploadPhase = 'idle' | 'analyzing' | 'configuring' | 'uploading';
+
+export interface ZipUploadState {
+  visibility: 'visible' | 'hidden',
+  phase: ZipUploadPhase,
+  currentFileName: string | undefined,
+  currentFileSize: number | undefined,
+  targetDirectoryPath: string,
+  currentZipIndex: number,
+  totalZipCount: number,
+  extractability: 'extractable' | 'not_extractable' | undefined,
+  singleRootDirectoryName: string | undefined,
+  placement: FileExplorerZipUploadPlacement,
+  previewRelativePath: string,
+  previewPathSegments: Array<{ name: string, relativePath: string }>,
+  previewEntries: FileExplorerZipUploadPreviewEntry[],
+  previewSummary: FileExplorerZipUploadPreviewSummary,
+  errorMessage: string | undefined,
+}
+
+export interface FileExplorerUploadController {
+  readonly state: ZipUploadState,
+  begin({ files }: { files: FileList | File[] }): Promise<void>,
+  setPlacement({ placement }: { placement: FileExplorerZipUploadPlacement }): Promise<void>,
+  navigatePreview({ relativePath }: { relativePath: string }): Promise<void>,
+  confirm(): Promise<void>,
+  close(): Promise<void>,
+  dispose(): void,
+  readonly TEST_ONLY: Record<never, never>,
+}
 
 export type DirectoryDownloadSuggestion = {
   relativePath: string,
@@ -196,6 +241,7 @@ export interface FileExplorerContext {
   copyEntriesToDir: ({ entries, targetPath }: { entries: FileExplorerEntry[], targetPath: string }) => Promise<void>,
   downloadEntry: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>,
   uploadFiles: ({ files }: { files: FileList | File[] }) => Promise<void>,
+  upload: FileExplorerUploadController,
 
   renamingEntryName: string | undefined,
   startRename: ({ entry }: { entry: FileExplorerEntry }) => void,

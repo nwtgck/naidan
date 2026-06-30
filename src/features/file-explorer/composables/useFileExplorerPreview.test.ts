@@ -86,6 +86,24 @@ describe('useFileExplorerPreview', () => {
       renameEntry: vi.fn(),
       copyEntries: vi.fn(),
       moveEntries: vi.fn(),
+      async analyzeZipUpload({ analysisId }) {
+        return { status: 'not_extractable' as const, analysisId, reason: 'invalid_or_unsupported_archive' as const };
+      },
+      async readZipUploadPreviewDirectory() {
+        return {
+          relativePath: '',
+          pathSegments: [],
+          entries: [],
+          summary: { addedCount: 0, mergedCount: 0, replacedCount: 0, blockedCount: 0 },
+        };
+      },
+      startZipUpload() {
+        return {
+          result: Promise.resolve({ status: 'completed' as const }),
+          async cancel() {},
+        };
+      },
+      async disposeZipUploadAnalysis() {},
       uploadFiles: vi.fn(),
       suggestArchiveExclusions: vi.fn().mockResolvedValue({
         suggestions: [],

@@ -50,6 +50,24 @@ describe('useFileExplorerOperations', () => {
       renameEntry: vi.fn().mockResolvedValue(undefined),
       copyEntries: vi.fn().mockResolvedValue(undefined),
       moveEntries: vi.fn().mockResolvedValue(undefined),
+      async analyzeZipUpload({ analysisId }) {
+        return { status: 'not_extractable' as const, analysisId, reason: 'invalid_or_unsupported_archive' as const };
+      },
+      async readZipUploadPreviewDirectory() {
+        return {
+          relativePath: '',
+          pathSegments: [],
+          entries: [],
+          summary: { addedCount: 0, mergedCount: 0, replacedCount: 0, blockedCount: 0 },
+        };
+      },
+      startZipUpload() {
+        return {
+          result: Promise.resolve({ status: 'completed' as const }),
+          async cancel() {},
+        };
+      },
+      async disposeZipUploadAnalysis() {},
       uploadFiles: vi.fn().mockResolvedValue(undefined),
       suggestArchiveExclusions: vi.fn().mockResolvedValue({
         suggestions: [],
@@ -208,30 +226,4 @@ describe('useFileExplorerOperations', () => {
     expect(revokeSpy).toHaveBeenCalledWith('blob:fake');
   });
 
-  it('uploadFiles writes each file to currentDirectory and refreshes', async () => {
-    const ops = makeOps();
-    const file = new File(['hello'], 'upload.txt', { type: 'text/plain' });
-    await ops.uploadFiles({ files: [file] });
-
-    expect(client.uploadFiles).toHaveBeenCalledWith({
-      targetDirectoryPath: '/workspace',
-      files: [{ name: 'upload.txt', blob: file }],
-    });
-    expect(refresh).toHaveBeenCalled();
-  });
-
-  it('uploadFiles does nothing for empty array', async () => {
-    const ops = makeOps();
-    await ops.uploadFiles({ files: [] });
-    expect(client.uploadFiles).not.toHaveBeenCalled();
-    expect(refresh).not.toHaveBeenCalled();
-  });
-
-  it('uploadFiles shows toast when a file write fails', async () => {
-    client.uploadFiles = vi.fn().mockRejectedValueOnce(new Error('quota exceeded'));
-    const ops = makeOps();
-    const file = new File(['x'], 'fail.txt');
-    await ops.uploadFiles({ files: [file] });
-    expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('Failed to upload') }));
-  });
 });

@@ -36,6 +36,33 @@ function makeKey(key: string, opts: { ctrlKey?: boolean, metaKey?: boolean, shif
 
 function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerContext {
   const entries = [makeEntry('alpha'), makeEntry('bravo'), makeEntry('charlie')];
+  const upload = overrides.upload ?? {
+    TEST_ONLY: {},
+    state: {
+      visibility: 'hidden' as const,
+      phase: 'idle' as const,
+      currentFileName: undefined,
+      currentFileSize: undefined,
+      targetDirectoryPath: '',
+      currentZipIndex: 0,
+      totalZipCount: 0,
+      extractability: undefined,
+      singleRootDirectoryName: undefined,
+      placement: { kind: 'keep_archive' as const },
+      previewRelativePath: '',
+      previewPathSegments: [],
+      previewEntries: [],
+      previewSummary: { addedCount: 0, mergedCount: 0, replacedCount: 0, blockedCount: 0 },
+      errorMessage: undefined,
+    },
+    begin: vi.fn().mockResolvedValue(undefined),
+    setPlacement: vi.fn().mockResolvedValue(undefined),
+    navigatePreview: vi.fn().mockResolvedValue(undefined),
+    confirm: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+    dispose: vi.fn(),
+  };
+
   const directoryDownload = overrides.directoryDownload ?? {
     TEST_ONLY: {},
     state: {
@@ -145,6 +172,7 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
     toggleLock: vi.fn(),
     ...overrides,
     directoryDownload,
+    upload,
   };
 }
 
