@@ -8,14 +8,20 @@ import { rule } from './require-test-only-for-composable-return.js';
 describe('require-test-only-for-composable-return rule', () => {
   let eslint: ESLint;
   let eslintFix: ESLint;
-  const testFileName = `temp-test-only-lint-${Math.random().toString(36).slice(2)}.ts`;
-  const testFilePath = path.resolve(__dirname, testFileName);
+  const productionFileDir = path.resolve(__dirname, '../src/lint-rule-tmp');
+  const testSupportFileDir = path.resolve(__dirname, '../src/test-tmp');
+  const testFilePath = path.resolve(
+    productionFileDir,
+    `temp-test-only-lint-${Math.random().toString(36).slice(2)}.ts`,
+  );
   const testSupportFilePath = path.resolve(
-    __dirname,
-    `temp-test-only-lint-${Math.random().toString(36).slice(2)}.test.ts`,
+    testSupportFileDir,
+    `temp-test-only-lint-${Math.random().toString(36).slice(2)}.ts`,
   );
 
   beforeAll(() => {
+    fs.mkdirSync(productionFileDir, { recursive: true });
+    fs.mkdirSync(testSupportFileDir, { recursive: true });
     const baseConfig = {
       overrideConfigFile: true,
       overrideConfig: {

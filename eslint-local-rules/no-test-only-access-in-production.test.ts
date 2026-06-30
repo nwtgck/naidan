@@ -8,12 +8,14 @@ import { isTestSupportFilename } from './test-only-guard.js';
 
 describe('no-test-only-access-in-production rule', () => {
   let eslint: ESLint;
-  const testFileDir = path.resolve(__dirname, '../src/lint-rule-tmp');
-  const productionFilePath = path.resolve(testFileDir, `production-${Math.random().toString(36).slice(2)}.ts`);
-  const testFilePath = path.resolve(testFileDir, `consumer-${Math.random().toString(36).slice(2)}.test.ts`);
+  const productionFileDir = path.resolve(__dirname, '../src/lint-rule-tmp');
+  const testSupportFileDir = path.resolve(__dirname, '../src/test-tmp');
+  const productionFilePath = path.resolve(productionFileDir, `production-${Math.random().toString(36).slice(2)}.ts`);
+  const testFilePath = path.resolve(testSupportFileDir, `consumer-${Math.random().toString(36).slice(2)}.ts`);
 
   beforeAll(() => {
-    fs.mkdirSync(testFileDir, { recursive: true });
+    fs.mkdirSync(productionFileDir, { recursive: true });
+    fs.mkdirSync(testSupportFileDir, { recursive: true });
     eslint = new ESLint({
       overrideConfigFile: true,
       overrideConfig: {

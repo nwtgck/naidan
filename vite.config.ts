@@ -1,6 +1,6 @@
 /// <reference types="vitest" />
 import VueRouter from 'vue-router/vite';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import type { Alias } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import legacy from '@vitejs/plugin-legacy';
@@ -391,6 +391,11 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      exclude: [
+        ...configDefaults.exclude,
+        'src/test-tmp/**',
+        'src/lint-rule-tmp/**',
+      ],
       setupFiles: ['./src/test-setup.ts'],
     },
   };
