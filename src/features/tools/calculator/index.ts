@@ -1,15 +1,29 @@
 import { z } from 'zod';
-import { evaluate } from 'mathjs';
-import type { Tool, ToolExecutionEvent } from '@/01-models/tool';
+import type { Tool, ToolExecutionErrorCode, ToolExecutionEvent } from '@/01-models/tool';
+import {
+  CALCULATOR_MAX_INPUT_LENGTH,
+  runCalculator,
+} from '@/features/calculator';
 import type { ToolApprovalContext } from '@/features/tools/approval';
 
 const CalculatorArgsSchema = z.object({
-  expression: z.string().describe('The mathematical expression to evaluate (e.g., "2 + 3 * 4", "sqrt(16)", "cos(pi / 2)")'),
+  expression: z
+    .string()
+    .max(CALCULATOR_MAX_INPUT_LENGTH)
+    .refine(value => value.trim().length > 0, 'Expression must not be empty.')
+    .describe('A numeric expression or help query, such as "(2 + 3) * 4", "mean(1, 2, 3)", "help", or "help log".'),
 });
+
+function throwIfAborted({ signal }: { signal: AbortSignal | undefined }): void {
+  if (signal?.aborted !== true) return;
+  const error = new Error('Generation aborted');
+  error.name = 'AbortError';
+  throw error;
+}
 
 export class CalculatorTool implements Tool {
   name = 'calculator';
-  description = 'Evaluate mathematical expressions using mathjs.';
+  description = 'Evaluate deterministic numeric expressions without executing code. Use `help` for an overview or `help <topic>` for details.';
   parametersSchema = CalculatorArgsSchema;
 
   async execute({
@@ -24,27 +38,43 @@ export class CalculatorTool implements Tool {
     approvalContext?: ToolApprovalContext,
   }): Promise<
     | { status: 'success', content: string }
-    | { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string }
+    | { status: 'error', code: ToolExecutionErrorCode, message: string }
   > {
-    try {
-      if (signal?.aborted) throw new Error('Generation aborted');
-      const validated = CalculatorArgsSchema.parse(args);
-      const result = evaluate(validated.expression);
+    throwIfAborted({ signal });
+    const validated = CalculatorArgsSchema.safeParse(args);
+    if (!validated.success) {
+      return {
+        status: 'error',
+        code: 'invalid_arguments',
+        message: `Invalid arguments: ${validated.error.message}`,
+      };
+    }
+
+    const result = runCalculator({ input: validated.data.expression });
+    throwIfAborted({ signal });
+    switch (result.status) {
+    case 'success':
       return {
         status: 'success',
-        content: String(result),
+        content: result.output.text,
       };
-    } catch (error) {
-      // Calculation errors should be communicated to the LM.
+    case 'error':
       return {
         status: 'error',
         code: 'execution_failed',
-        message: `Error evaluating expression: ${error instanceof Error ? error.message : String(error)}`,
+        message: result.text,
       };
+    default: {
+      const _exhaustive: never = result;
+      throw new Error(`Unhandled calculator result: ${String(_exhaustive)}`);
+    }
     }
   }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+  CalculatorArgsSchema,
+  throwIfAborted,
+};
