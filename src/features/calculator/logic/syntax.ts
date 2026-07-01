@@ -8,7 +8,7 @@ export type CalculatorOperator = '+' | '-' | '*' | '/' | '%' | '^';
 export type CalculatorToken =
   | {
       readonly type: 'number',
-      readonly value: number,
+      readonly literal: string,
       readonly span: SourceSpan,
     }
   | {
@@ -41,7 +41,7 @@ export type CalculatorToken =
 export type CalculatorExpression =
   | {
       readonly type: 'number',
-      readonly value: number,
+      readonly literal: string,
       readonly span: SourceSpan,
     }
   | {

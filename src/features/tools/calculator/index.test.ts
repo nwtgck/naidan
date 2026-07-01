@@ -2,32 +2,66 @@ import { describe, expect, it } from 'vitest';
 import { CalculatorTool, TEST_ONLY as CALCULATOR_TOOL_TEST_ONLY } from '.';
 
 describe('CalculatorTool', () => {
-  it('preserves the calculator Tool contract', async () => {
+  it('uses decimal output with 15 significant digits by default', async () => {
     const tool = new CalculatorTool();
-    expect(tool.name).toBe('calculator');
-    expect(tool.description).toContain('help <topic>');
-    await expect(tool.execute({ args: { expression: '2 + 3 * 4' } })).resolves.toEqual({
+    await expect(tool.execute({ args: { expression: '1 / 3' } })).resolves.toEqual({
       status: 'success',
-      content: '14',
+      content: '0.333333333333333',
+    });
+    await expect(tool.execute({ args: { expression: 'pi * 2' } })).resolves.toEqual({
+      status: 'success',
+      content: '6.28318530717959',
     });
   });
 
-  it('exposes calculator help through the expression argument', async () => {
+  it('supports explicit decimal significant digits', async () => {
     const tool = new CalculatorTool();
-    const result = await tool.execute({ args: { expression: 'help log' } });
-    expect(result.status).toBe('success');
-    if (result.status === 'success') expect(result.content).toContain('Usage: log(value, base)');
+    await expect(tool.execute({
+      args: {
+        expression: '1 / 3',
+        output: { format: 'decimal', significantDigits: 30 },
+      },
+    })).resolves.toEqual({
+      status: 'success',
+      content: '0.333333333333333333333333333333',
+    });
   });
 
-  it('separates invalid Tool arguments from calculator execution errors', async () => {
+  it('supports strict rational output', async () => {
     const tool = new CalculatorTool();
-    const invalidArguments = await tool.execute({ args: { expression: '' } });
-    expect(invalidArguments.status).toBe('error');
-    if (invalidArguments.status === 'error') expect(invalidArguments.code).toBe('invalid_arguments');
+    await expect(tool.execute({
+      args: { expression: '1 / 3', output: { format: 'rational' } },
+    })).resolves.toEqual({ status: 'success', content: '1/3' });
 
-    const invalidExpression = await tool.execute({ args: { expression: 'sqrt(-1)' } });
-    expect(invalidExpression.status).toBe('error');
-    if (invalidExpression.status === 'error') expect(invalidExpression.code).toBe('execution_failed');
+    const approximate = await tool.execute({
+      args: { expression: 'pi * 2', output: { format: 'rational' } },
+    });
+    expect(approximate.status).toBe('error');
+    if (approximate.status === 'error') expect(approximate.code).toBe('execution_failed');
+  });
+
+  it('exposes calculator precision help', async () => {
+    const tool = new CalculatorTool();
+    const result = await tool.execute({ args: { expression: 'help precision' } });
+    expect(result.status).toBe('success');
+    if (result.status === 'success') expect(result.content).toContain('Rational Tool output');
+  });
+
+  it('strictly rejects invalid Tool argument combinations', async () => {
+    const tool = new CalculatorTool();
+    const invalidArguments = [
+      { expression: '' },
+      { expression: '1 / 3', output: { format: 'decimal', significantDigits: 0 } },
+      { expression: '1 / 3', output: { format: 'decimal', significantDigits: 51 } },
+      { expression: '1 / 3', output: { format: 'decimal', significantDigits: 1.5 } },
+      { expression: '1 / 3', output: { format: 'rational', significantDigits: 15 } },
+      { expression: '1 / 3', extra: true },
+    ];
+    for (const args of invalidArguments) {
+      const result = await tool.execute({ args });
+      expect(result.status, JSON.stringify(args)).toBe('error');
+      if (result.status === 'error') expect(result.code).toBe('invalid_arguments');
+    }
   });
 
   it('throws AbortError instead of returning a calculator error', async () => {

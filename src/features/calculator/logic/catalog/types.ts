@@ -1,14 +1,14 @@
+import type { CalculatorNumericValue } from '@/features/calculator/logic/numeric/numeric-value';
 import type { SourceSpan } from '@/features/calculator/logic/syntax';
 
 export type CalculatorFunctionCategory =
   | 'arithmetic'
   | 'powers'
   | 'rounding'
-  | 'logarithms'
-  | 'trigonometry'
   | 'aggregation'
   | 'percentages'
-  | 'integers';
+  | 'integers'
+  | 'angles';
 
 export type CalculatorRuntime = {
   consumeOperations: ({ count, span }: {
@@ -18,10 +18,7 @@ export type CalculatorRuntime = {
 };
 
 export type CalculatorArgumentShape =
-  | {
-      readonly type: 'exact',
-      readonly names: readonly string[],
-    }
+  | { readonly type: 'exact', readonly names: readonly string[] }
   | {
       readonly type: 'variadic',
       readonly requiredNames: readonly string[],
@@ -32,24 +29,27 @@ export type CalculatorFunctionDefinition = {
   readonly name: string,
   readonly category: CalculatorFunctionCategory,
   readonly arguments: CalculatorArgumentShape,
+  readonly precision: 'exact' | 'conditional' | 'approximate',
   readonly summary: string,
   readonly requirements: readonly string[],
   readonly examples: readonly {
     readonly expression: string,
     readonly result: string,
+    readonly exactness: 'rational' | 'approximate',
   }[],
   readonly related: readonly string[],
   readonly evaluate: ({ values, argumentSpans, callSpan, runtime }: {
-    values: readonly number[],
+    values: readonly CalculatorNumericValue[],
     argumentSpans: readonly SourceSpan[],
     callSpan: SourceSpan,
     runtime: CalculatorRuntime,
-  }) => number,
+  }) => CalculatorNumericValue,
 };
 
 export type CalculatorConstantDefinition = {
   readonly name: string,
-  readonly value: number,
+  readonly value: CalculatorNumericValue,
+  readonly precision: 'approximate',
   readonly summary: string,
 };
 

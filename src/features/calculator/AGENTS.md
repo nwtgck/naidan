@@ -13,3 +13,10 @@ The calculator is a deterministic numeric expression interpreter. Preserve these
 - Keep Tool, Zod, Vue, storage, and chat concerns outside this Feature.
 - Do not add mathjs compatibility syntax unless it independently improves the calculator language.
 - Treat calculator input failures as diagnostics. Unexpected implementation errors must remain exceptions.
+- Never convert calculator numeric values to JavaScript `number`. JavaScript numbers are only for validated bounded counters, indexes, exponents, and limits.
+- Exact arithmetic must not silently degrade to an approximate result when a resource limit is reached.
+- Approximate values must be rounded back to the bounded working decimal context after arithmetic operations.
+- Integer-only and modulo operations require exact rational inputs.
+- Check digit and exponent limits before materializing powers of ten or expanded integers.
+- Do not add transcendental functions without a separate numerical design and independent validation plan.
+- Formatting must not guess that a small result is floating-point noise or replace it with zero.

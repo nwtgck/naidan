@@ -13,8 +13,8 @@ export type CalculatorDiagnosticCode =
   | 'invalid_argument'
   | 'domain_error'
   | 'division_by_zero'
-  | 'non_finite_result'
   | 'limit_exceeded'
+  | 'result_not_rational'
   | 'unknown_help_topic'
   | 'invalid_help_usage';
 

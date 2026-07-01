@@ -10,35 +10,35 @@ function getHelpText({ input }: { input: string }): string {
 }
 
 describe('calculator help', () => {
+  it('documents exact rational and approximate decimal behavior', () => {
+    const text = getHelpText({ input: 'help precision' });
+    expect(text).toContain('1 / 3');
+    expect(text).toContain('significant digits');
+    expect(text).toContain('pi * 2');
+  });
+
   it('describes variadic arity without inventing another required argument', () => {
     expect(getHelpText({ input: 'help mean' })).toContain('Usage: mean(value, ...)');
-    expect(getHelpText({ input: 'help gcd' })).toContain('Usage: gcd(value, value, ...)');
+    expect(getHelpText({ input: 'help gcd' })).toContain('Usage: gcd(value, ...)');
   });
 
-  it('renders category help from the function catalog', () => {
-    const text = getHelpText({ input: 'help logarithms' });
-    expect(text).toContain('log(value, base)');
-    expect(text).toContain('ln(value)');
+  it('renders categories from the active catalog only', () => {
+    const angles = getHelpText({ input: 'help angles' });
+    expect(angles).toContain('deg_to_rad');
+    expect(angles).toContain('rad_to_deg');
+    expect(getHelpText({ input: 'help' })).not.toContain('log10');
   });
 
-  it('documents percentage-change behavior for negative starting values', () => {
-    expect(getHelpText({ input: 'help percent_change' })).toContain(
-      'absolute starting value',
-    );
-  });
+  it('suggests related topics and rejects multiple topics', () => {
+    const unknown = runCalculator({ input: 'help percent_chang' });
+    expect(unknown.status).toBe('error');
+    if (unknown.status === 'error') {
+      expect(unknown.diagnostic.code).toBe('unknown_help_topic');
+      expect(unknown.text).toContain('percent_change');
+    }
 
-  it('suggests related topics for an unknown topic', () => {
-    const result = runCalculator({ input: 'help logarithm' });
-    expect(result.status).toBe('error');
-    if (result.status !== 'error') throw new Error('Expected unknown help topic error');
-    expect(result.diagnostic.code).toBe('unknown_help_topic');
-    expect(result.text).toContain('logarithms');
-  });
-
-  it('rejects multiple help topics', () => {
-    const result = runCalculator({ input: 'help log extra' });
-    expect(result.status).toBe('error');
-    if (result.status !== 'error') throw new Error('Expected invalid help usage error');
-    expect(result.diagnostic.code).toBe('invalid_help_usage');
+    const multiple = runCalculator({ input: 'help mean extra' });
+    expect(multiple.status).toBe('error');
+    if (multiple.status === 'error') expect(multiple.diagnostic.code).toBe('invalid_help_usage');
   });
 });

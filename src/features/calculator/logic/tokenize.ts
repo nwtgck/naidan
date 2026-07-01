@@ -75,19 +75,10 @@ export function tokenizeCalculatorInput({ input }: { input: string }): readonly 
           hint: undefined,
         });
       }
-      const value = Number(raw);
-      if (!Number.isFinite(value)) {
-        failCalculatorInput({
-          code: 'invalid_number',
-          message: `The numeric literal ${raw} is outside the supported finite range.`,
-          span: makeSpan({ start, end: position }),
-          hint: 'Use a smaller finite number.',
-        });
-      }
       pushToken({
         token: {
           type: 'number',
-          value,
+          literal: raw,
           span: makeSpan({ start, end: position }),
         },
       });

@@ -3,27 +3,21 @@ import { CALCULATOR_LIMITS } from './limits';
 import { tokenizeCalculatorInput } from './tokenize';
 
 describe('tokenizeCalculatorInput', () => {
-  it('tokenizes decimal and scientific number forms with source spans', () => {
-    const tokens = tokenizeCalculatorInput({ input: '.5 1. 2.5e-3' });
-    expect(tokens).toEqual([
-      { type: 'number', value: 0.5, span: { start: 0, end: 2 } },
-      { type: 'number', value: 1, span: { start: 3, end: 5 } },
-      { type: 'number', value: 0.0025, span: { start: 6, end: 12 } },
+  it('preserves decimal and scientific literals with source spans', () => {
+    expect(tokenizeCalculatorInput({ input: '.5 1. 2.5e-3' })).toEqual([
+      { type: 'number', literal: '.5', span: { start: 0, end: 2 } },
+      { type: 'number', literal: '1.', span: { start: 3, end: 5 } },
+      { type: 'number', literal: '2.5e-3', span: { start: 6, end: 12 } },
       { type: 'end', span: { start: 12, end: 12 } },
     ]);
   });
 
   it('counts source tokens without charging the synthetic end token', () => {
-    const maximumInput = Array.from(
-      { length: CALCULATOR_LIMITS.maximumTokenCount },
-      () => '1',
-    ).join(' ');
+    const maximumInput = Array.from({ length: CALCULATOR_LIMITS.maximumTokenCount }, () => '1').join(' ');
     expect(tokenizeCalculatorInput({ input: maximumInput })).toHaveLength(
       CALCULATOR_LIMITS.maximumTokenCount + 1,
     );
-
-    const excessiveInput = `${maximumInput} 1`;
-    expect(() => tokenizeCalculatorInput({ input: excessiveInput })).toThrow(
+    expect(() => tokenizeCalculatorInput({ input: `${maximumInput} 1` })).toThrow(
       `maximum of ${CALCULATOR_LIMITS.maximumTokenCount} tokens`,
     );
   });
@@ -33,7 +27,6 @@ describe('tokenizeCalculatorInput', () => {
       'exponent must contain at least one digit',
     );
   });
-
 
   it('reports a complete Unicode code point for unsupported input', () => {
     expect(() => tokenizeCalculatorInput({ input: '🙂' })).toThrow(

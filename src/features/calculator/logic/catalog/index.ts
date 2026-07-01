@@ -3,7 +3,6 @@ import { BASIC_CALCULATOR_FUNCTIONS } from './basic-functions';
 import { CALCULATOR_CONSTANT_DEFINITIONS } from './constants';
 import { INTEGER_CALCULATOR_FUNCTIONS } from './integer-functions';
 import { CALCULATOR_OPERATOR_DEFINITIONS } from './operators';
-import { TRANSCENDENTAL_CALCULATOR_FUNCTIONS } from './transcendental-functions';
 import type {
   CalculatorConstantDefinition,
   CalculatorFunctionCategory,
@@ -22,11 +21,10 @@ export const CALCULATOR_CATEGORY_DEFINITIONS = [
   { name: 'arithmetic', title: 'Arithmetic' },
   { name: 'powers', title: 'Powers and roots' },
   { name: 'rounding', title: 'Rounding' },
-  { name: 'logarithms', title: 'Exponential and logarithmic' },
-  { name: 'trigonometry', title: 'Trigonometry' },
   { name: 'aggregation', title: 'Aggregation' },
   { name: 'percentages', title: 'Percentages' },
   { name: 'integers', title: 'Integer functions' },
+  { name: 'angles', title: 'Angle conversion' },
 ] as const satisfies readonly {
   readonly name: CalculatorFunctionCategory,
   readonly title: string,
@@ -34,14 +32,12 @@ export const CALCULATOR_CATEGORY_DEFINITIONS = [
 
 const allFunctions: readonly CalculatorFunctionDefinition[] = [
   ...BASIC_CALCULATOR_FUNCTIONS,
-  ...TRANSCENDENTAL_CALCULATOR_FUNCTIONS,
   ...AGGREGATION_CALCULATOR_FUNCTIONS,
   ...INTEGER_CALCULATOR_FUNCTIONS,
 ];
-
 const functionsByName = new Map<string, CalculatorFunctionDefinition>();
 const constantsByName = new Map<string, CalculatorConstantDefinition>();
-const categories = new Set<CalculatorFunctionCategory>(CALCULATOR_CATEGORY_DEFINITIONS.map(definition => definition.name));
+const categories = new Set<CalculatorFunctionCategory>(CALCULATOR_CATEGORY_DEFINITIONS.map(item => item.name));
 const identifierPattern = /^[a-z][a-z0-9_]*$/;
 
 for (const definition of CALCULATOR_CONSTANT_DEFINITIONS) {
@@ -55,7 +51,8 @@ for (const definition of allFunctions) {
   if (functionsByName.has(definition.name)) throw new Error(`Duplicate calculator function: ${definition.name}`);
   if (constantsByName.has(definition.name)) throw new Error(`Calculator function conflicts with constant: ${definition.name}`);
   if (definition.examples.length === 0) throw new Error(`Calculator function lacks an example: ${definition.name}`);
-  if (definition.arguments.type === 'variadic' && definition.arguments.requiredNames.length > definition.arguments.maximumCount) {
+  if (definition.arguments.type === 'variadic'
+    && definition.arguments.requiredNames.length > definition.arguments.maximumCount) {
     throw new Error(`Invalid variadic calculator arity: ${definition.name}`);
   }
   functionsByName.set(definition.name, definition);
@@ -98,7 +95,4 @@ export function isCalculatorFunctionCategory(value: string): value is Calculator
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {
-  functionsByName,
-  constantsByName,
-};
+export const TEST_ONLY = { functionsByName, constantsByName };

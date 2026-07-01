@@ -6,6 +6,18 @@ import {
 } from './catalog';
 import { failCalculatorInput } from './diagnostics';
 import { CALCULATOR_LIMITS } from './limits';
+import { NumericLimitError } from './numeric/numeric-limit-error';
+import {
+  addNumericValues,
+  divideNumericValues,
+  moduloNumericValues,
+  multiplyNumericValues,
+  negateNumericValue,
+  parseCalculatorNumericLiteral,
+  powerNumericValue,
+  subtractNumericValues,
+  type CalculatorNumericValue,
+} from './numeric/numeric-value';
 import type { CalculatorExpression, SourceSpan } from './syntax';
 
 function createCalculatorRuntime(): CalculatorRuntime {
@@ -28,18 +40,6 @@ function createCalculatorRuntime(): CalculatorRuntime {
   };
 }
 
-function ensureFiniteResult({ value, span }: { value: number, span: SourceSpan }): number {
-  if (!Number.isFinite(value)) {
-    failCalculatorInput({
-      code: 'non_finite_result',
-      message: 'The calculation produced a non-finite result.',
-      span,
-      hint: 'Use smaller values or check the function domain.',
-    });
-  }
-  return value;
-}
-
 function getArgumentCountRange({ shape }: {
   shape: CalculatorArgumentShape,
 }): { minimum: number, maximum: number } {
@@ -55,12 +55,7 @@ function getArgumentCountRange({ shape }: {
   }
 }
 
-function validateArgumentCount({
-  functionName,
-  shape,
-  actual,
-  span,
-}: {
+function validateArgumentCount({ functionName, shape, actual, span }: {
   functionName: string,
   shape: CalculatorArgumentShape,
   actual: number,
@@ -68,9 +63,7 @@ function validateArgumentCount({
 }): void {
   const { minimum, maximum } = getArgumentCountRange({ shape });
   if (actual >= minimum && actual <= maximum) return;
-  const expected = minimum === maximum
-    ? String(minimum)
-    : `${minimum} through ${maximum}`;
+  const expected = minimum === maximum ? String(minimum) : `${minimum} through ${maximum}`;
   failCalculatorInput({
     code: 'invalid_argument_count',
     message: `${functionName} expects ${expected} argument${maximum === 1 ? '' : 's'}, but received ${actual}.`,
@@ -79,15 +72,11 @@ function validateArgumentCount({
   });
 }
 
-function evaluateExpression({
-  expression,
-  runtime,
-  depth,
-}: {
+function evaluateExpressionUnchecked({ expression, runtime, depth }: {
   expression: CalculatorExpression,
   runtime: CalculatorRuntime,
   depth: number,
-}): number {
+}): CalculatorNumericValue {
   if (depth > CALCULATOR_LIMITS.maximumEvaluationDepth) {
     failCalculatorInput({
       code: 'limit_exceeded',
@@ -100,7 +89,7 @@ function evaluateExpression({
 
   switch (expression.type) {
   case 'number':
-    return expression.value;
+    return parseCalculatorNumericLiteral({ literal: expression.literal });
   case 'identifier': {
     const constant = getCalculatorConstant({ name: expression.name });
     if (constant === undefined) {
@@ -116,10 +105,8 @@ function evaluateExpression({
   case 'unary': {
     const operand = evaluateExpression({ expression: expression.operand, runtime, depth: depth + 1 });
     switch (expression.operator) {
-    case '+':
-      return operand;
-    case '-':
-      return -operand;
+    case '+': return operand;
+    case '-': return negateNumericValue({ value: operand });
     default: {
       const _exhaustive: never = expression.operator;
       throw new Error(`Unhandled calculator unary operator: ${String(_exhaustive)}`);
@@ -129,8 +116,13 @@ function evaluateExpression({
   case 'power': {
     const base = evaluateExpression({ expression: expression.base, runtime, depth: depth + 1 });
     const exponent = evaluateExpression({ expression: expression.exponent, runtime, depth: depth + 1 });
-    runtime.consumeOperations({ count: 1, span: expression.operatorSpan });
-    return ensureFiniteResult({ value: Math.pow(base, exponent), span: expression.span });
+    return powerNumericValue({
+      base,
+      exponentValue: exponent,
+      exponentSpan: expression.exponent.span,
+      operatorSpan: expression.operatorSpan,
+      runtime,
+    });
   }
   case 'sequence': {
     let result = evaluateExpression({ expression: expression.head, runtime, depth: depth + 1 });
@@ -138,43 +130,16 @@ function evaluateExpression({
       const operand = evaluateExpression({ expression: item.operand, runtime, depth: depth + 1 });
       runtime.consumeOperations({ count: 1, span: item.operatorSpan });
       switch (item.operator) {
-      case '+':
-        result += operand;
-        break;
-      case '-':
-        result -= operand;
-        break;
-      case '*':
-        result *= operand;
-        break;
-      case '/':
-        if (operand === 0) {
-          failCalculatorInput({
-            code: 'division_by_zero',
-            message: 'Division by zero is not defined.',
-            span: item.operatorSpan,
-            hint: undefined,
-          });
-        }
-        result /= operand;
-        break;
-      case '%':
-        if (operand <= 0) {
-          failCalculatorInput({
-            code: 'invalid_argument',
-            message: 'Modulo requires a positive divisor.',
-            span: item.operand.span,
-            hint: '`%` is modulo, not a percentage operator. Evaluate `help percentages` for percentage functions.',
-          });
-        }
-        result = ((result % operand) + operand) % operand;
-        break;
+      case '+': result = addNumericValues({ left: result, right: operand }); break;
+      case '-': result = subtractNumericValues({ left: result, right: operand }); break;
+      case '*': result = multiplyNumericValues({ left: result, right: operand }); break;
+      case '/': result = divideNumericValues({ numerator: result, denominator: operand, span: item.operatorSpan }); break;
+      case '%': result = moduloNumericValues({ left: result, right: operand, span: item.operatorSpan }); break;
       default: {
         const _exhaustive: never = item.operator;
         throw new Error(`Unhandled calculator sequence operator: ${String(_exhaustive)}`);
       }
       }
-      result = ensureFiniteResult({ value: result, span: expression.span });
     }
     return result;
   }
@@ -199,13 +164,12 @@ function evaluateExpression({
       runtime,
       depth: depth + 1,
     }));
-    const result = definition.evaluate({
+    return definition.evaluate({
       values,
       argumentSpans: expression.arguments_.map(argument => argument.span),
       callSpan: expression.span,
       runtime,
     });
-    return ensureFiniteResult({ value: result, span: expression.span });
   }
   default: {
     const _exhaustive: never = expression;
@@ -214,19 +178,30 @@ function evaluateExpression({
   }
 }
 
+function evaluateExpression({ expression, runtime, depth }: {
+  expression: CalculatorExpression,
+  runtime: CalculatorRuntime,
+  depth: number,
+}): CalculatorNumericValue {
+  try {
+    return evaluateExpressionUnchecked({ expression, runtime, depth });
+  } catch (error) {
+    if (!(error instanceof NumericLimitError)) throw error;
+    return failCalculatorInput({
+      code: 'limit_exceeded',
+      message: error.message,
+      span: expression.span,
+      hint: 'Use smaller values or a simpler expression.',
+    });
+  }
+}
+
 export function evaluateCalculatorExpression({ expression }: {
   expression: CalculatorExpression,
-}): number {
-  return evaluateExpression({
-    expression,
-    runtime: createCalculatorRuntime(),
-    depth: 1,
-  });
+}): CalculatorNumericValue {
+  return evaluateExpression({ expression, runtime: createCalculatorRuntime(), depth: 1 });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {
-  createCalculatorRuntime,
-  getArgumentCountRange,
-};
+export const TEST_ONLY = { createCalculatorRuntime, getArgumentCountRange };

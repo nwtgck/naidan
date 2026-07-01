@@ -7,6 +7,7 @@ import {
 } from '.';
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]*$/;
+const DECIMAL_15 = { format: 'decimal' as const, significantDigits: 15 };
 
 describe('calculator catalog', () => {
   it('keeps names unique and valid', () => {
@@ -25,14 +26,21 @@ describe('calculator catalog', () => {
     }
   });
 
-  it('executes every documented example', () => {
+  it('does not expose removed transcendental functions', () => {
+    const names = listCalculatorFunctions().map(definition => definition.name);
+    for (const removed of ['exp', 'ln', 'log', 'log2', 'log10', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2']) {
+      expect(names).not.toContain(removed);
+    }
+  });
+
+  it('executes every documented example with its documented exactness', () => {
     for (const definition of listCalculatorFunctions()) {
       for (const example of definition.examples) {
-        const result = runCalculator({ input: example.expression });
+        const result = runCalculator({ input: example.expression, output: DECIMAL_15 });
         expect(result.status, `${definition.name}: ${example.expression}`).toBe('success');
-        if (result.status !== 'success') continue;
-        expect(result.output.kind).toBe('value');
+        if (result.status !== 'success' || result.output.kind !== 'value') continue;
         expect(result.output.text, `${definition.name}: ${example.expression}`).toBe(example.result);
+        expect(result.output.exactness, `${definition.name}: ${example.expression}`).toBe(example.exactness);
       }
     }
   });

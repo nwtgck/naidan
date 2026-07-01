@@ -214,7 +214,7 @@ function parsePrimary({ state, depth }: { state: ParserState, depth: number }): 
   case 'number':
     advanceToken({ state });
     registerAstItem({ state, span: token.span });
-    return { type: 'number', value: token.value, span: token.span };
+    return { type: 'number', literal: token.literal, span: token.span };
   case 'identifier': {
     advanceToken({ state });
     const next = currentToken({ state });
