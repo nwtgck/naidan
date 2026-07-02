@@ -1,27 +1,63 @@
-
 import { createHighlightWorkerClient } from '@/features/highlight/worker/client';
 import type { HighlightWorkerClient } from './types';
 
-let sharedHighlightWorkerClientPromise: Promise<HighlightWorkerClient> | undefined;
-let sharedHighlightWorkerClientRefCount = 0;
-
-export async function acquireSharedHighlightWorkerClient(): Promise<HighlightWorkerClient> {
-  sharedHighlightWorkerClientRefCount += 1;
-  sharedHighlightWorkerClientPromise ??= createHighlightWorkerClient();
-  return sharedHighlightWorkerClientPromise;
+export interface SharedHighlightWorkerClientLease {
+  client: HighlightWorkerClient;
+  release(): Promise<void>;
 }
 
-export async function releaseSharedHighlightWorkerClient(): Promise<void> {
-  sharedHighlightWorkerClientRefCount = Math.max(0, sharedHighlightWorkerClientRefCount - 1);
+interface SharedHighlightWorkerClientState {
+  clientPromise: Promise<HighlightWorkerClient>;
+  leaseCount: number;
+}
 
-  if (sharedHighlightWorkerClientRefCount > 0 || !sharedHighlightWorkerClientPromise) {
-    return;
+let sharedHighlightWorkerClientState: SharedHighlightWorkerClientState | undefined;
+
+function createSharedHighlightWorkerClientState(): SharedHighlightWorkerClientState {
+  return {
+    clientPromise: (async () => await createHighlightWorkerClient())(),
+    leaseCount: 0,
+  };
+}
+
+export async function acquireSharedHighlightWorkerClientLease(): Promise<SharedHighlightWorkerClientLease> {
+  const state = sharedHighlightWorkerClientState ?? createSharedHighlightWorkerClientState();
+  sharedHighlightWorkerClientState = state;
+  state.leaseCount += 1;
+
+  let client: HighlightWorkerClient;
+  try {
+    client = await state.clientPromise;
+  } catch (error) {
+    state.leaseCount = Math.max(0, state.leaseCount - 1);
+    if (sharedHighlightWorkerClientState === state) {
+      sharedHighlightWorkerClientState = undefined;
+    }
+    throw error;
   }
 
-  const clientPromise = sharedHighlightWorkerClientPromise;
-  sharedHighlightWorkerClientPromise = undefined;
-  const client = await clientPromise;
-  await client.dispose();
+  let released = false;
+
+  return {
+    client,
+    async release(): Promise<void> {
+      if (released) {
+        return;
+      }
+      released = true;
+      state.leaseCount = Math.max(0, state.leaseCount - 1);
+
+      if (
+        state.leaseCount > 0
+        || sharedHighlightWorkerClientState !== state
+      ) {
+        return;
+      }
+
+      sharedHighlightWorkerClientState = undefined;
+      await client.dispose();
+    },
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

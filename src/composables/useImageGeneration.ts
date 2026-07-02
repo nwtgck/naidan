@@ -22,19 +22,13 @@ import type { Chat, ChatContent, Attachment } from '@/01-models/types';
 import { findNodeInBranch } from '@/logic/chat-tree';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
+import { createLmFetch } from '@/features/lm/fetchFactory';
 import { createModuleLoader } from '@/utils/module-loader';
 
 const ollamaProviderModuleLoader = createModuleLoader({
   importModule: () => import('@/features/lm/ollama'),
   onPrefetchError: ({ error }) => {
     console.error('Failed to prefetch image generation provider:', error);
-  },
-});
-
-const lmFetchFactoryModuleLoader = createModuleLoader({
-  importModule: () => import('@/features/lm/fetchFactory'),
-  onPrefetchError: ({ error }) => {
-    console.error('Failed to prefetch LM fetch factory:', error);
   },
 });
 
@@ -49,10 +43,7 @@ const imageSeedMap = ref(new Map<ChatId, number | 'browser_random' | undefined>(
 const imageProgressMap = ref(new Map<ChatId, { currentStep: number, totalSteps: number } | undefined>());
 
 export async function prefetchImageGenerationRuntime(): Promise<void> {
-  await Promise.all([
-    ollamaProviderModuleLoader.prefetch(),
-    lmFetchFactoryModuleLoader.prefetch(),
-  ]);
+  await ollamaProviderModuleLoader.prefetch();
 }
 
 export function useImageGeneration() {
@@ -166,10 +157,7 @@ export function useImageGeneration() {
     signal: AbortSignal | undefined,
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
     signal?.throwIfAborted();
-    const [{ OllamaProvider }, { createLmFetch }] = await Promise.all([
-      ollamaProviderModuleLoader.load(),
-      lmFetchFactoryModuleLoader.load(),
-    ]);
+    const { OllamaProvider } = await ollamaProviderModuleLoader.load();
     signal?.throwIfAborted();
     const provider = new OllamaProvider({
       endpoint: endpointUrl,
