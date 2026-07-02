@@ -1,17 +1,22 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import StandardCodeBlock from './StandardCodeBlock.vue';
 import { createHighlightWorker } from '@/features/highlight/worker/impl';
 import type { HighlightRequest, HighlightResponse } from '@/features/highlight/worker/types';
+import type { SharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
 
-const highlightMock = vi.fn();
+const {
+  highlightMock,
+  releaseLeaseMock,
+  acquireLeaseMock,
+} = vi.hoisted(() => ({
+  highlightMock: vi.fn(),
+  releaseLeaseMock: vi.fn(),
+  acquireLeaseMock: vi.fn(),
+}));
 
 vi.mock('@/features/highlight/worker/client-shared', () => ({
-  acquireSharedHighlightWorkerClient: vi.fn(async () => ({
-    highlight: highlightMock,
-    dispose: vi.fn(async () => undefined),
-  })),
-  releaseSharedHighlightWorkerClient: vi.fn(async () => undefined),
+  acquireSharedHighlightWorkerClientLease: acquireLeaseMock,
 }));
 
 function createDeferredHighlightResponse({
@@ -36,12 +41,26 @@ function createDeferredHighlightResponse({
 }
 
 describe('StandardCodeBlock worker integration', () => {
+  beforeEach(() => {
+    highlightMock.mockReset();
+    releaseLeaseMock.mockReset();
+    releaseLeaseMock.mockResolvedValue(undefined);
+    acquireLeaseMock.mockReset();
+    acquireLeaseMock.mockImplementation(async () => ({
+      client: {
+        highlight: highlightMock,
+        dispose: vi.fn(async () => undefined),
+      },
+      release: releaseLeaseMock,
+    }));
+  });
+
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
   it('renders plain code first and replaces it with highlighted html after the worker resolves', async () => {
-    highlightMock.mockReset();
     highlightMock.mockImplementationOnce(async () => ({
       html: '<span class="hljs-keyword">const</span> value = 1;',
       resolvedLanguage: 'javascript',
@@ -76,8 +95,11 @@ describe('StandardCodeBlock worker integration', () => {
       },
     });
 
-    highlightMock.mockReset();
     highlightMock
+      .mockResolvedValueOnce({
+        html: '<span>initial</span>',
+        resolvedLanguage: 'javascript',
+      })
       .mockImplementationOnce(async ({ request }: { request: HighlightRequest }) => {
         expect(request.code).toContain('first');
         return firstDeferred.promise;
@@ -93,6 +115,7 @@ describe('StandardCodeBlock worker integration', () => {
         lang: 'js',
       },
     });
+    await flushPromises();
 
     await wrapper.setProps({
       code: 'const first = true;',
@@ -114,7 +137,7 @@ describe('StandardCodeBlock worker integration', () => {
   });
 
   it('keeps plain code visible when the worker highlight fails', async () => {
-    highlightMock.mockReset();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     highlightMock.mockRejectedValueOnce(new Error('worker unavailable'));
 
     const wrapper = mount(StandardCodeBlock, {
@@ -128,6 +151,72 @@ describe('StandardCodeBlock worker integration', () => {
 
     expect(wrapper.html()).toContain('const fallback = true;');
     expect(wrapper.html()).not.toContain('hljs');
+    expect(consoleError).toHaveBeenCalledWith('Failed to highlight code in worker:', expect.any(Error));
+  });
+
+
+  it('retries client acquisition after a transient creation failure', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    acquireLeaseMock
+      .mockRejectedValueOnce(new Error('worker startup failed'))
+      .mockResolvedValueOnce({
+        client: {
+          highlight: highlightMock,
+          dispose: vi.fn(async () => undefined),
+        },
+        release: releaseLeaseMock,
+      });
+    highlightMock.mockResolvedValueOnce({
+      html: '<span class="hljs-keyword">const</span> recovered = true;',
+      resolvedLanguage: 'javascript',
+    });
+
+    const wrapper = mount(StandardCodeBlock, {
+      props: {
+        code: 'const initial = true;',
+        lang: 'js',
+      },
+    });
+    await flushPromises();
+
+    await wrapper.setProps({
+      code: 'const recovered = true;',
+      lang: 'js',
+    });
+    await flushPromises();
+
+    expect(acquireLeaseMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.html()).toContain('hljs-keyword');
+    consoleError.mockRestore();
+  });
+
+
+  it('releases a pending lease when the component unmounts before acquisition completes', async () => {
+    let resolveLease: ((lease: SharedHighlightWorkerClientLease) => void) | undefined;
+    const leasePromise = new Promise<SharedHighlightWorkerClientLease>((resolve) => {
+      resolveLease = resolve;
+    });
+    acquireLeaseMock.mockReturnValueOnce(leasePromise);
+
+    const wrapper = mount(StandardCodeBlock, {
+      props: {
+        code: 'const pending = true;',
+        lang: 'js',
+      },
+    });
+    wrapper.unmount();
+
+    resolveLease?.({
+      client: {
+        highlight: highlightMock,
+        dispose: vi.fn(async () => undefined),
+      },
+      release: releaseLeaseMock,
+    });
+    await flushPromises();
+
+    expect(highlightMock).not.toHaveBeenCalled();
+    expect(releaseLeaseMock).toHaveBeenCalledOnce();
   });
 
   it('does not materialize hostile html during plain render or worker render', async () => {
@@ -136,7 +225,6 @@ describe('StandardCodeBlock worker integration', () => {
     vi.stubGlobal('__xssProbe', probe);
     const hostileCode = '<img src=x onerror="globalThis.__xssProbe?.(\'img-error\')"><svg onload="globalThis.__xssProbe?.(\'svg-load\')"></svg><a href="javascript:globalThis.__xssProbe?.(\'link-click\')">click</a><script>globalThis.__xssProbe?.(\'script-run\')</script>';
 
-    highlightMock.mockReset();
     highlightMock.mockImplementationOnce(async ({ request }: { request: HighlightRequest }) => {
       return await worker.highlight({ request });
     });

@@ -50,6 +50,23 @@ describe('transformersJsService worker restart', () => {
     MockWorker.constructorCount = 0;
   });
 
+  it('serializes concurrent explicit restart requests', async () => {
+    (Comlink.wrap as any).mockImplementation(() => ({
+      [Comlink.releaseProxy]: vi.fn(),
+    }));
+
+    const { transformersJsService } = await import('@/features/transformers-js/index');
+    expect(MockWorker.constructorCount).toBe(0);
+
+    await Promise.all([
+      transformersJsService.restart(),
+      transformersJsService.restart(),
+      transformersJsService.restart(),
+    ]);
+
+    expect(MockWorker.constructorCount).toBe(1);
+  });
+
   it('should recreate worker when loadModel fails with Aborted()', async () => {
     // 1. Setup mock remote BEFORE importing service
     const mockRemote = {

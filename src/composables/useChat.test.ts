@@ -1204,18 +1204,13 @@ describe('useChat Composable Logic', () => {
     });
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
-    let wasAborted = false;
     mockLmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
-      try {
-        await new Promise((_resolve, reject) => {
-          params.signal?.addEventListener('abort', () => {
-            reject(new Error('Aborted'));
-          });
-        });
-      } catch (e) {
-        if ((e as Error).message === 'Aborted') wasAborted = true;
-        throw e;
-      }
+      params.signal?.throwIfAborted();
+      await new Promise((_resolve, reject) => {
+        params.signal?.addEventListener('abort', () => {
+          reject(params.signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+        }, { once: true });
+      });
     });
 
     const promise = generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
@@ -1223,13 +1218,7 @@ describe('useChat Composable Logic', () => {
 
     abortTitleGeneration({ chatId: idToRaw({ id: chatObj.id }) });
 
-    try {
-      await promise;
-    } catch (e) {
-      // expected
-    }
-
-    expect(wasAborted).toBe(true);
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
     expect(chatStore.generatingTitle.value).toBe(false);
   });
 

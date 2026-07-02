@@ -4,7 +4,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { ensureStrings, lazyStrings } from '@/strings';
 import type { LmProvider } from '@/01-models/lm';
-import { createLmProvider } from '@/features/lm/providerFactory';
+import { loadLmProvider } from '@/features/lm/providerFactory';
 import { type Endpoint, type EndpointType, type Settings as SettingsType } from '@/01-models/types';
 import { ENDPOINT_PRESETS } from '@/constants';
 
@@ -141,60 +141,80 @@ onMounted(async () => {
     }
   }
 
-  unsubscribe = transformersJsService.subscribe({ listener: () => {
-    const state = transformersJsService.getState();
-    const type = effectiveType.value;
-    switch (type) {
-    case 'transformers_js':
-      if (state.activeModelId) {
-        selectedModel.value = state.activeModelId;
-      }
-      break;
-    case 'openai':
-    case 'ollama':
-      break;
-    default: {
-      const _ex: never = type;
-      return _ex;
-    }
-    }
-  } });
 });
 
 onUnmounted(() => {
   if (unsubscribe) unsubscribe();
 });
 
-// Auto-load existing model when switching to transformers_js
-watch(effectiveType, async (newType) => {
-  switch (newType) {
-  case 'transformers_js': {
-    const cached = await transformersJsService.listCachedModels();
-    const completeModels = cached.filter(m => m.isComplete);
-    if (completeModels.length > 0 && !transformersJsService.getState().activeModelId) {
-      // Load the most recently modified model among complete ones
-      const sorted = [...completeModels].sort((a, b) => b.lastModified - a.lastModified);
-      const target = sorted[0]?.id;
-      if (target) {
+// Subscribe and auto-load only while Transformers.js is selected. The service
+// state is lightweight, while cache scans, model loading, and Worker creation
+// remain isolated from ordinary OpenAI or Ollama onboarding.
+watch(
+  effectiveType,
+  (newType, _previousType, onCleanup) => {
+    switch (newType) {
+    case 'openai':
+    case 'ollama':
+      return;
+    case 'transformers_js':
+      break;
+    default: {
+      const _ex: never = newType;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
+
+    let cancelled = false;
+    unsubscribe = transformersJsService.subscribe({ listener: () => {
+      const state = transformersJsService.getState();
+      if (state.activeModelId) {
+        selectedModel.value = state.activeModelId;
+      }
+    } });
+    onCleanup(() => {
+      cancelled = true;
+      unsubscribe?.();
+      unsubscribe = null;
+    });
+
+    (async () => {
+      try {
+        const cached = await transformersJsService.listCachedModels();
+        if (cancelled) {
+          return;
+        }
+
+        const completeModels = cached.filter(model => model.isComplete);
+        if (completeModels.length === 0 || transformersJsService.getState().activeModelId) {
+          return;
+        }
+
+        const sorted = [...completeModels].sort((a, b) => b.lastModified - a.lastModified);
+        const target = sorted[0]?.id;
+        if (target === undefined) {
+          return;
+        }
+
         try {
           await transformersJsService.loadModel({ modelId: target });
-          selectedModel.value = target;
-        } catch (e) {
-          console.warn('Auto-load failed:', e);
+          if (!cancelled) {
+            selectedModel.value = target;
+          }
+        } catch (error) {
+          if (!cancelled) {
+            console.warn('Auto-load failed:', error);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to prepare Transformers.js onboarding:', error);
         }
       }
-    }
-    break;
-  }
-  case 'openai':
-  case 'ollama':
-    break;
-  default: {
-    const _ex: never = newType;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
-  }
-  }
-});
+    })();
+  },
+  { immediate: true },
+);
 
 const customUrl = ref(getDefaultCustomUrl());
 const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? JSON.parse(JSON.stringify(onboardingDraft.value.headers)) : []);
@@ -303,7 +323,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
   })();
 
   if (isAutoFetch) {
-    handleConnect();
+    await handleConnect();
   }
 });
 function selectPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
@@ -330,9 +350,11 @@ async function handleConnect() {
     return;
   }
 
+  abortController?.abort();
   isTesting.value = true;
   error.value = null;
-  abortController = new AbortController();
+  const currentAbortController = new AbortController();
+  abortController = currentAbortController;
 
   try {
     // We've moved primary auto-detection to the watcher for a better UX,
@@ -340,13 +362,15 @@ async function handleConnect() {
     const normalizedUrl = url || '';
     if (selectedType.value === DEFAULT_TYPE && isLocalhost({ url: normalizedUrl }) && normalizedUrl) {
       const isOllama = await detectOllama({ url: normalizedUrl, headers: customHeaders.value });
+      currentAbortController.signal.throwIfAborted();
       if (isOllama) {
         selectedType.value = 'ollama';
         // The watcher will handle the update, but we continue here with Ollama.
       }
     }
 
-    const provider: LmProvider = createLmProvider({
+    currentAbortController.signal.throwIfAborted();
+    const provider: LmProvider = await loadLmProvider({
       endpoint: createEndpoint({
         type: effectiveType.value,
         url,
@@ -354,7 +378,9 @@ async function handleConnect() {
       }),
       fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
     });
-    const models = await provider.listModels({ signal: abortController.signal });
+    currentAbortController.signal.throwIfAborted();
+    const models = await provider.listModels({ signal: currentAbortController.signal });
+    currentAbortController.signal.throwIfAborted();
 
     if (models.length === 0) {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
@@ -369,8 +395,10 @@ async function handleConnect() {
     }
     error.value = e instanceof Error ? e.message : await ensureStrings.OnboardingModal__failed_to_connect();
   } finally {
-    isTesting.value = false;
-    abortController = null;
+    if (abortController === currentAbortController) {
+      isTesting.value = false;
+      abortController = null;
+    }
   }
 }
 

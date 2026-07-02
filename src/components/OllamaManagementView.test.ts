@@ -7,7 +7,7 @@ const { mockCreateOllamaProvider } = vi.hoisted(() => ({
   mockCreateOllamaProvider: vi.fn(),
 }));
 
-vi.mock('@/features/lm/providerFactory', () => ({
+vi.mock('@/features/lm/ollamaProviderFactory', () => ({
   createOllamaProvider: mockCreateOllamaProvider,
 }));
 

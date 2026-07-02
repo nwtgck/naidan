@@ -2,9 +2,8 @@ import { ensureStrings } from '@/strings';
 import { generateId } from '@/01-models/id';
 import { ref } from 'vue';
 import { UNKNOWN_STEPS } from '@/01-models/lm';
-import { OllamaProvider } from '@/features/lm/ollama';
-import { createLmFetch } from '@/features/lm/providerFactory';
 import { useSettings } from '@/composables/useSettings';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { storageService } from '@/00-storage/service';
 import {
   getImageGenerationModels,
@@ -23,6 +22,15 @@ import type { Chat, ChatContent, Attachment } from '@/01-models/types';
 import { findNodeInBranch } from '@/logic/chat-tree';
 import { idToRaw } from '@/01-models/ids';
 import type { BinaryObjectId, ChatId, MessageId } from '@/01-models/ids';
+import { createLmFetch } from '@/features/lm/fetchFactory';
+import { createModuleLoader } from '@/utils/module-loader';
+
+const ollamaProviderModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/lm/ollama'),
+  onPrefetchError: ({ error }) => {
+    console.error('Failed to prefetch image generation provider:', error);
+  },
+});
 
 // Shared state across all instances to maintain consistency
 const imageModeMap = ref(new Map<ChatId, boolean>());
@@ -33,6 +41,10 @@ const imagePersistAsMap = ref(new Map<ChatId, ImageRequestParams['persistAs']>()
 const imageStepsMap = ref(new Map<ChatId, number | undefined>());
 const imageSeedMap = ref(new Map<ChatId, number | 'browser_random' | undefined>());
 const imageProgressMap = ref(new Map<ChatId, { currentStep: number, totalSteps: number } | undefined>());
+
+export async function prefetchImageGenerationRuntime(): Promise<void> {
+  await ollamaProviderModuleLoader.prefetch();
+}
 
 export function useImageGeneration() {
   const { settings } = useSettings();
@@ -144,6 +156,9 @@ export function useImageGeneration() {
     onProgress: ({ currentStep, totalSteps }: { currentStep: number, totalSteps: number }) => void,
     signal: AbortSignal | undefined,
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
+    signal?.throwIfAborted();
+    const { OllamaProvider } = await ollamaProviderModuleLoader.load();
+    signal?.throwIfAborted();
     const provider = new OllamaProvider({
       endpoint: endpointUrl,
       headers: endpointHttpHeaders,
@@ -299,7 +314,6 @@ export function useImageGeneration() {
             finalBlob = await reencodeImage({ blob, format: persistAs });
             extension = `.${persistAs}`;
           } catch (e) {
-            const { useGlobalEvents } = await import('@/composables/useGlobalEvents');
             const { addErrorEvent } = useGlobalEvents();
             addErrorEvent({
               source: 'useImageGeneration:handleImageGeneration',

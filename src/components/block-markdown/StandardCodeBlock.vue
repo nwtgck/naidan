@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
 import { ref, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, watch } from 'vue';
-import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/features/highlight/worker/client-shared';
+import { acquireSharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
+import type { HighlightWorkerClient } from '@/features/highlight/worker/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { escapeTextAsHtml, sanitizeHighlightHtml } from '@/logic/security/allowedHtml';
 import { CheckIcon, CopyIcon, TerminalIcon, WrapTextIcon } from 'lucide-vue-next';
@@ -21,7 +22,23 @@ const renderedCodeHtml = ref(escapeTextAsHtml({
 }));
 let latestHighlightRequestId = 0;
 let isDisposed = false;
-let highlightWorkerClientPromise: ReturnType<typeof acquireSharedHighlightWorkerClient> | undefined;
+let highlightWorkerClientLeasePromise: ReturnType<typeof acquireSharedHighlightWorkerClientLease> | undefined;
+
+async function getHighlightWorkerClient(): Promise<HighlightWorkerClient | undefined> {
+  const currentLeasePromise = highlightWorkerClientLeasePromise
+    ?? acquireSharedHighlightWorkerClientLease();
+  highlightWorkerClientLeasePromise = currentLeasePromise;
+
+  try {
+    const lease = await currentLeasePromise;
+    return isDisposed ? undefined : lease.client;
+  } catch (error) {
+    if (highlightWorkerClientLeasePromise === currentLeasePromise) {
+      highlightWorkerClientLeasePromise = undefined;
+    }
+    throw error;
+  }
+}
 
 async function syncHighlightedCodeFromWorker({
   code,
@@ -33,8 +50,10 @@ async function syncHighlightedCodeFromWorker({
   const requestId = ++latestHighlightRequestId;
 
   try {
-    highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient();
-    const client = await highlightWorkerClientPromise;
+    const client = await getHighlightWorkerClient();
+    if (client === undefined) {
+      return;
+    }
     const response = await client.highlight({
       request: {
         code,
@@ -78,11 +97,16 @@ onUpdated(() => {
 });
 
 onMounted(() => {
-  highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient();
-  void syncHighlightedCodeFromWorker({
-    code: props.code,
-    lang: props.lang,
-  });
+  (async () => {
+    try {
+      await syncHighlightedCodeFromWorker({
+        code: props.code,
+        lang: props.lang,
+      });
+    } catch (error) {
+      console.error('Failed to synchronize highlighted code:', error);
+    }
+  })();
 });
 
 watch(() => [props.code, props.lang] as const, async ([code, lang], [previousCode, previousLang]) => {
@@ -90,14 +114,27 @@ watch(() => [props.code, props.lang] as const, async ([code, lang], [previousCod
     return;
   }
 
+  renderedCodeHtml.value = escapeTextAsHtml({ text: code });
   await syncHighlightedCodeFromWorker({ code, lang });
 });
 
 onBeforeUnmount(() => {
   isDisposed = true;
   latestHighlightRequestId += 1;
-  highlightWorkerClientPromise = undefined;
-  void releaseSharedHighlightWorkerClient();
+  const currentLeasePromise = highlightWorkerClientLeasePromise;
+  highlightWorkerClientLeasePromise = undefined;
+  if (currentLeasePromise === undefined) {
+    return;
+  }
+
+  (async () => {
+    try {
+      const lease = await currentLeasePromise;
+      await lease.release();
+    } catch (error) {
+      console.error('Failed to release highlight worker client:', error);
+    }
+  })();
 });
 
 const copied = ref(false);

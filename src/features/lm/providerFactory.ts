@@ -1,33 +1,55 @@
-import type { Endpoint } from '@/01-models/types';
-import { createFakeLmFetchForEndpoint, type FakeLmDebugModeStatus } from '@/features/fake-lm';
-import { getDefaultLmFetch, type LmFetch } from '@/features/lm/fetch';
-import { OllamaProvider } from '@/features/lm/ollama';
-import { OpenAIProvider } from '@/features/lm/openai';
 import type { LmProvider } from '@/01-models/lm';
-import { TransformersJsProvider } from '@/features/transformers-js/provider';
+import type { Endpoint, EndpointType } from '@/01-models/types';
+import type { FakeLmDebugModeStatus } from '@/features/fake-lm/runtime/fakeLmDebugMode';
+import { createLmFetch } from '@/features/lm/fetchFactory';
+import { createModuleLoader } from '@/utils/module-loader';
 
-export function createLmProvider({ endpoint, fakeLmDebugModeStatus }: {
+const openAiProviderModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/lm/openai'),
+  onPrefetchError: ({ error }) => {
+    console.error('Failed to prefetch OpenAI provider:', error);
+  },
+});
+
+const ollamaProviderModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/lm/ollama'),
+  onPrefetchError: ({ error }) => {
+    console.error('Failed to prefetch Ollama provider:', error);
+  },
+});
+
+const transformersJsProviderModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/transformers-js/provider'),
+  onPrefetchError: ({ error }) => {
+    console.error('Failed to prefetch Transformers.js provider:', error);
+  },
+});
+
+export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
   endpoint: Endpoint,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
-}): LmProvider {
+}): Promise<LmProvider> {
   switch (endpoint.type) {
-  case 'openai':
+  case 'openai': {
+    const { OpenAIProvider } = await openAiProviderModuleLoader.load();
     return new OpenAIProvider({
       endpoint: endpoint.url,
       headers: cloneEndpointHttpHeaders({ headers: endpoint.httpHeaders }),
-      fetcher: createLmFetch({
-        endpointUrl: endpoint.url,
-        fakeLmDebugModeStatus,
-      }),
+      fetcher: createLmFetch({ endpointUrl: endpoint.url, fakeLmDebugModeStatus }),
     });
-  case 'ollama':
-    return createOllamaProvider({
-      endpointUrl: endpoint.url,
-      endpointHttpHeaders: endpoint.httpHeaders,
-      fakeLmDebugModeStatus,
+  }
+  case 'ollama': {
+    const { OllamaProvider } = await ollamaProviderModuleLoader.load();
+    return new OllamaProvider({
+      endpoint: endpoint.url ?? '',
+      headers: cloneEndpointHttpHeaders({ headers: endpoint.httpHeaders }),
+      fetcher: createLmFetch({ endpointUrl: endpoint.url, fakeLmDebugModeStatus }),
     });
-  case 'transformers_js':
+  }
+  case 'transformers_js': {
+    const { TransformersJsProvider } = await transformersJsProviderModuleLoader.load();
     return new TransformersJsProvider();
+  }
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
@@ -35,32 +57,24 @@ export function createLmProvider({ endpoint, fakeLmDebugModeStatus }: {
   }
 }
 
-export function createOllamaProvider({ endpointUrl, endpointHttpHeaders, fakeLmDebugModeStatus }: {
-  endpointUrl: string | undefined,
-  endpointHttpHeaders: [string, string][] | undefined,
-  fakeLmDebugModeStatus: FakeLmDebugModeStatus,
-}): OllamaProvider {
-  return new OllamaProvider({
-    endpoint: endpointUrl ?? '',
-    headers: cloneEndpointHttpHeaders({ headers: endpointHttpHeaders }),
-    fetcher: createLmFetch({ endpointUrl, fakeLmDebugModeStatus }),
-  });
-}
-
-export function createLmFetch({ endpointUrl, fakeLmDebugModeStatus }: {
-  endpointUrl: string | undefined,
-  fakeLmDebugModeStatus: FakeLmDebugModeStatus,
-}): LmFetch {
-  const fakeLmFetch = createFakeLmFetchForEndpoint({
-    endpointUrl,
-    fakeLmDebugModeStatus,
-  });
-
-  if (fakeLmFetch !== undefined) {
-    return fakeLmFetch;
+export async function prefetchLmProvider({ endpointType }: {
+  endpointType: EndpointType,
+}): Promise<void> {
+  switch (endpointType) {
+  case 'openai':
+    await openAiProviderModuleLoader.prefetch();
+    break;
+  case 'ollama':
+    await ollamaProviderModuleLoader.prefetch();
+    break;
+  case 'transformers_js':
+    await transformersJsProviderModuleLoader.prefetch();
+    break;
+  default: {
+    const _ex: never = endpointType;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
   }
-
-  return getDefaultLmFetch();
+  }
 }
 
 export function cloneEndpointHttpHeaders({ headers }: {
