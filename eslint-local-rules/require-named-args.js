@@ -601,7 +601,25 @@ function isTaggedTemplateFunctionSignature({ params, sourceCode }) {
   );
 }
 
-function isAllowedSignature({ node, params, sourceCode }) {
+function normalizePath(filePath = '') {
+  return filePath.replace(/\\/gu, '/');
+}
+
+function isPromiseAllKeyedCompatibilitySignature({ filePath, node, params }) {
+  return (
+    normalizePath(filePath).endsWith('/src/utils/promise.ts') &&
+    node.type === 'FunctionDeclaration' &&
+    node.id?.name === 'promiseAllKeyed' &&
+    node.parent?.type === 'ExportNamedDeclaration' &&
+    params.length === 1
+  );
+}
+
+function isAllowedSignature({ filePath, node, params, sourceCode }) {
+  if (isPromiseAllKeyedCompatibilitySignature({ filePath, node, params })) {
+    return true;
+  }
+
   if (params.length === 0) {
     return true;
   }
@@ -718,7 +736,12 @@ function checkFunctionLike(node, context, state) {
 
   const params = getFunctionParams(node);
 
-  if (isAllowedSignature({ node, params, sourceCode })) {
+  if (isAllowedSignature({
+    filePath: state.filePath,
+    node,
+    params,
+    sourceCode,
+  })) {
     return;
   }
 
@@ -753,6 +776,7 @@ export const rule = {
     const services = getParserServices(context);
     const state = {
       checker: services?.program.getTypeChecker(),
+      filePath: context.filename ?? context.getFilename?.() ?? '',
       services,
       vueComputedLocalNames: new Set(),
     };

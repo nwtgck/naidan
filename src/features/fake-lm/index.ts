@@ -1,6 +1,7 @@
 import type { LmFetch } from '@/features/lm/fetch';
 import type { FakeLmDebugModeStatus } from '@/features/fake-lm/runtime/fakeLmDebugMode';
 import { createModuleLoader } from '@/utils/module-loader';
+import { promiseAllKeyed } from '@/utils/promise';
 
 export {
   FAKE_LM_ENDPOINT_HOSTNAME,
@@ -36,10 +37,11 @@ export async function createFakeLmFetchForEndpoint({ endpointUrl, fakeLmDebugMod
 }
 
 export async function preloadFakeLmRuntime(): Promise<void> {
-  const [, { preloadFakeLmLanguagePacks }] = await Promise.all([
-    fakeLmFetchModuleLoader.load(),
-    fakeLmLexiconModuleLoader.load(),
-  ]);
+  const { lexiconModule } = await promiseAllKeyed({
+    fetchModule: fakeLmFetchModuleLoader.load(),
+    lexiconModule: fakeLmLexiconModuleLoader.load(),
+  });
+  const { preloadFakeLmLanguagePacks } = lexiconModule;
   await preloadFakeLmLanguagePacks();
 }
 

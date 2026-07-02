@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { FakeLmLanguage } from '@/features/fake-lm/core/markdownTypes';
 import type { TextPattern } from '@/features/fake-lm/core/textPattern';
 import type { WeightedValue } from '@/features/fake-lm/core/weighted';
+import { promiseAllKeyed } from '@/utils/promise';
 
 const WeightedTextSchema = z.object({
   value: z.string(),
@@ -121,10 +122,10 @@ const fakeLmLanguageJsonLoaders = {
 const languagePackCache = new Map<FakeLmLanguage, Promise<LoadedLexicons>>();
 
 export async function preloadFakeLmLanguagePacks(): Promise<void> {
-  await Promise.all([
-    loadLanguageLexicons({ language: 'ja' }),
-    loadLanguageLexicons({ language: 'en' }),
-  ]);
+  await promiseAllKeyed({
+    ja: loadLanguageLexicons({ language: 'ja' }),
+    en: loadLanguageLexicons({ language: 'en' }),
+  });
 }
 
 export async function loadLanguageLexicons({ language }: {

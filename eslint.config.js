@@ -14,6 +14,7 @@ import noTestOnlyAccessInProduction from './eslint-local-rules/no-test-only-acce
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
 import requireNamedArgs from './eslint-local-rules/require-named-args.js';
+import requirePromiseAllKeyed from './eslint-local-rules/require-promise-all-keyed.js';
 import requireStaticStringAccess from './eslint-local-rules/require-static-string-access.js';
 import noRawVHtml from './eslint-local-rules/no-raw-v-html.js';
 import noAllowedHtmlCast from './eslint-local-rules/no-allowed-html-cast.js';
@@ -181,6 +182,7 @@ export default tseslint.config(
   requireIconSuffix,
   requireWorkerClientFacade,
   requireNamedArgs,
+  requirePromiseAllKeyed,
   requireStaticStringAccess,
   noRawVHtml,
   noAllowedHtmlCast,

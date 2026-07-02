@@ -2,6 +2,7 @@
 
 *   **Zod**: Must be used for all data persistence and API communication to ensure safe serialization. All API responses MUST be validated to protect the application from unreliable external data structures. Persisted data must maintain backward compatibility.
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
+*   **Keyed Promise Aggregation**: Use `promiseAllKeyed` from `@/utils/promise` instead of `Promise.all` for a fixed set of concurrent operations that produce values. Use `Promise.all` only for fixed operations that produce no values or for dynamic collections.
 *   **LM Terminology**: Use `LM` rather than `LLM` for generative language-model domain terminology, regardless of model size. In identifiers, use `Lm` or `lm` (for example, `LmProvider` and `lmParameters`). User-facing prose may intentionally use `LLM` when it is clearer to a general audience; explain ambiguous cases to the user before changing them.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.

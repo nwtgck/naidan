@@ -59,9 +59,16 @@ describe('require-named-args rule', () => {
     }
   });
 
-  async function lint(code: string) {
-    fs.writeFileSync(testFilePath, code);
-    const results = await eslint.lintFiles([testFilePath]);
+  async function lint(code: string, { filePath = testFilePath }: {
+    filePath?: string,
+  } = {}) {
+    if (filePath === testFilePath) {
+      fs.writeFileSync(testFilePath, code);
+    }
+
+    const results = filePath === testFilePath
+      ? await eslint.lintFiles([testFilePath])
+      : await eslint.lintText(code, { filePath });
     return results[0]?.messages ?? [];
   }
 
@@ -104,13 +111,37 @@ describe('require-named-args rule', () => {
       include: [typedTestFileName],
       exclude: [],
     }));
-    const results = await createTypedEslint({ typedTsconfigPath }).lintFiles([typedTestFilePath]);
-    return results[0]?.messages ?? [];
+
+    try {
+      const results = await createTypedEslint({ typedTsconfigPath }).lintFiles([typedTestFilePath]);
+      return results[0]?.messages ?? [];
+    } finally {
+      fs.rmSync(typedTestFilePath, { force: true });
+      fs.rmSync(typedTsconfigPath, { force: true });
+    }
   }
 
   it('exports a config that applies only to production src files', () => {
     expect(ruleConfig.files).toEqual(['src/**/*.ts', 'src/**/*.vue']);
     expect(ruleConfig.ignores).toEqual(['src/**/*.test.ts', 'src/**/*.spec.ts']);
+  });
+
+  it('allows the canonical promiseAllKeyed compatibility API to remain positional', async () => {
+    await expect(lint(
+      `export function promiseAllKeyed(values: object) { return values; }`,
+      { filePath: path.resolve(testFileDir, 'compatibility-fixture/src/utils/promise.ts') },
+    )).resolves.toHaveLength(0);
+  });
+
+  it('does not exempt same-named exports outside the canonical file', async () => {
+    await expect(lint(`export function promiseAllKeyed(values: object) { return values; }`)).resolves.toHaveLength(1);
+  });
+
+  it('does not exempt non-exported functions named promiseAllKeyed in the canonical file', async () => {
+    await expect(lint(
+      `function promiseAllKeyed(values: object) { return values; }`,
+      { filePath: path.resolve(testFileDir, 'compatibility-fixture/src/utils/promise.ts') },
+    )).resolves.toHaveLength(1);
   });
 
   it('allows no-argument functions', async () => {
