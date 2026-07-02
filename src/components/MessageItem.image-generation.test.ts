@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
@@ -99,11 +99,13 @@ describe('MessageItem Image Generation', () => {
       createdAt: Date.now(),
     });
 
-    // Reset URL.createObjectURL for tests
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn().mockReturnValue('blob:mock-url'),
-      revokeObjectURL: vi.fn(),
-    });
+    // Preserve the URL constructor because Vite needs it to resolve dynamic imports.
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('shows ImageConjuringLoader when generation is pending', () => {

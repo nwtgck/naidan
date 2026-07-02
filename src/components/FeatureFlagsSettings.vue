@@ -6,7 +6,6 @@ import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
 import {
   FAKE_LM_ENDPOINT_URL,
-  preloadFakeLmLanguagePacks,
   useFakeLmDebugMode,
   type FakeLmDebugModeStatus,
 } from '@/features/fake-lm';
@@ -187,7 +186,6 @@ const fakeLmFeatureCopy = computed(() => resolveFeatureRowCopy({
   toggleLabel: fakeLmToggleLabel(),
 }));
 
-preloadFakeLmLanguagePacks();
 
 async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool' }) {
   if (isFeatureEnabled({ feature })) {

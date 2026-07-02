@@ -10,6 +10,10 @@ import { transformersJsService } from '@/features/transformers-js';
 import { setupScrollToMock } from '@/utils/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
+vi.mock('@/utils/idle-task', () => ({
+  scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })),
+}));
+
 // Mock router
 const router = createRouter({
   history: createWebHistory(),
@@ -292,8 +296,11 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
   }),
 }));
 
-vi.mock('../composables/useChatWeshTerminalSessions', () => ({
+vi.mock('@/features/wesh/chat-worker-mounts', () => ({
   buildWorkerMountsForChat: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../composables/useChatWeshTerminalSessions', () => ({
   useChatWeshTerminalSessions: vi.fn(() => ({
     createChatWorkerSession: vi.fn(),
     ensureActiveSession: vi.fn(),

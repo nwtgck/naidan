@@ -5,6 +5,7 @@ import { loadData } from '@/composables/chat/global/chat-core-singletons';
 import { chatRuntimeStore, currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import type { Settings } from '@/01-models/types';
+import { watch } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
 import { useSettings } from '@/composables/useSettings';
 import type { ChatId } from '@/01-models/ids';
@@ -58,30 +59,38 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
       };
     },
     subscribeModelList: () => {
-      return transformersJsService.subscribeModelList({ listener: async () => {
-        const type = chatDerivedState.resolvedSettings.value?.endpoint.type;
-        if (type === undefined) {
-          return;
-        }
-
-        switch (type) {
-        case 'transformers_js':
-          if (currentChatRef.value === null) {
+      return watch(
+        () => chatDerivedState.resolvedSettings.value?.endpoint.type,
+        (type, _previousType, onCleanup) => {
+          switch (type) {
+          case undefined:
+          case 'openai':
+          case 'ollama':
             return;
+          case 'transformers_js':
+            break;
+          default: {
+            const _ex: never = type;
+            throw new Error(`Unhandled endpoint type: ${_ex}`);
           }
-          await chatModels.fetchForChat({
-            chatId: currentChatRef.value.id,
+          }
+
+          const unsubscribe = transformersJsService.subscribeModelList({ listener: async () => {
+            if (currentChatRef.value === null) {
+              return;
+            }
+            try {
+              await chatModels.fetchForChat({ chatId: currentChatRef.value.id });
+            } catch (error) {
+              console.error('Failed to refresh chat models after a Transformers.js model change:', error);
+            }
+          } });
+          onCleanup(() => {
+            unsubscribe();
           });
-          return;
-        case 'openai':
-        case 'ollama':
-          return;
-        default: {
-          const _ex: never = type;
-          throw new Error(`Unhandled endpoint type: ${_ex}`);
-        }
-        }
-      } });
+        },
+        { immediate: true },
+      );
     },
   });
 

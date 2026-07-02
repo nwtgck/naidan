@@ -18,7 +18,6 @@ import { useChatImageGeneration } from '@/composables/chat/useChatImageGeneratio
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
-import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/00-storage/service';
 import { startVolumeExtensionScan } from '@/features/tools/wesh/volume-extension-cache';
 import { checkFileSystemAccessSupport } from '@/utils/opfs-detection';
@@ -28,6 +27,7 @@ import { useFileExplorerModal } from '@/features/file-explorer/composables/useFi
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
 import { lazyStrings, ensureStrings } from '@/strings';
+import { loadChatWorkerMountsModule } from '@/features/wesh/chat-worker-mounts-loader';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
@@ -568,6 +568,7 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Pr
   const mounts = chatMountList.value;
   if (mounts.length === 0) return;
 
+  const { buildWorkerMountsForChat } = await loadChatWorkerMountsModule();
   const workerMounts = await buildWorkerMountsForChat({
     chatMounts: mounts,
     chatGroupMounts: chatGroup.value?.mounts,

@@ -2,7 +2,7 @@ import type { Chat, ChatMessage, Endpoint } from '@/01-models/types';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import type { LmProvider } from '@/01-models/lm';
-import { createLmProvider } from '@/features/lm/providerFactory';
+import { loadLmProvider } from '@/features/lm/providerFactory';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
@@ -90,9 +90,12 @@ export async function generateChatTitleForChat({
       return undefined;
     }
 
-    const provider = createTitleProvider({
+    const combinedSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+    combinedSignal.throwIfAborted();
+    const provider = await loadTitleProvider({
       endpoint: resolved.endpoint,
     });
+    combinedSignal.throwIfAborted();
 
     const { language } = getTitleLanguage({ content });
     const systemPrompt = getTitleSystemPrompt({ language });
@@ -100,8 +103,6 @@ export async function generateChatTitleForChat({
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
     ];
-    const combinedSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
-
     let generatedTitle = '';
     await provider.chat({
       messages: promptMessages,
@@ -217,17 +218,17 @@ function getTitleLanguage({
   }
 }
 
-function createTitleProvider({
+async function loadTitleProvider({
   endpoint,
 }: {
   endpoint: Endpoint,
-}): LmProvider {
+}): Promise<LmProvider> {
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     throw new Error(`${endpoint.type} title generation requires an endpoint URL`);
   }
 
   const { settings } = useSettings();
-  return createLmProvider({
+  return await loadLmProvider({
     endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });

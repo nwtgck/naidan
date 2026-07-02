@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
@@ -158,13 +158,15 @@ ${'```'}
       const wrapper = mountRenderer({ content });
       await flushPromises();
       await nextTick();
-      const dom = getDom(wrapper);
 
-      expect(dom).toContain('<summary><span>Blocks</span></summary>');
-      expect(dom).toContain('<h1><span>Heading</span></h1>');
-      expect(dom).toContain('<table>');
-      expect(dom).toContain('<code><span>const</span> x = <span>1</span>;</code>');
-      expect(dom).toContain('<blockquote>');
+      await vi.waitFor(() => {
+        const dom = getDom(wrapper);
+        expect(dom).toContain('<summary><span>Blocks</span></summary>');
+        expect(dom).toContain('<h1><span>Heading</span></h1>');
+        expect(dom).toContain('<table>');
+        expect(dom).toContain('<code><span>const</span> x = <span>1</span>;</code>');
+        expect(dom).toContain('<blockquote>');
+      });
     });
 
     it('handles details without a summary', () => {

@@ -3,7 +3,7 @@ import { ensureStrings } from '@/strings';
 import type { ChatGroup, Endpoint } from '@/01-models/types';
 import type { LmProvider } from '@/01-models/lm';
 import { isHttpEndpoint } from '@/01-models/endpoint';
-import { createLmProvider } from '@/features/lm/providerFactory';
+import { loadLmProvider } from '@/features/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import {
@@ -97,7 +97,7 @@ export async function fetchModelsForEndpoint({
   const { addErrorEvent } = useGlobalEvents();
 
   try {
-    const provider = createProviderForEndpoint({ endpoint });
+    const provider = await loadProviderForEndpoint({ endpoint });
     const models = await provider.listModels({});
     return Array.isArray(models) ? models : [];
   } catch (error) {
@@ -129,13 +129,13 @@ function collectChatGroups({
   });
 }
 
-function createProviderForEndpoint({
+async function loadProviderForEndpoint({
   endpoint,
 }: {
   endpoint: Endpoint,
-}): LmProvider {
+}): Promise<LmProvider> {
   const { settings } = useSettings();
-  return createLmProvider({
+  return await loadLmProvider({
     endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });

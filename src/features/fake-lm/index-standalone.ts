@@ -40,15 +40,15 @@ export function useFakeLmDebugMode() {
   };
 }
 
-export function createFakeLmFetchForEndpoint({ endpointUrl: _endpointUrl, fakeLmDebugModeStatus: _fakeLmDebugModeStatus }: {
+export async function createFakeLmFetchForEndpoint({ endpointUrl: _endpointUrl, fakeLmDebugModeStatus: _fakeLmDebugModeStatus }: {
   endpointUrl: string | undefined,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
-}): LmFetch | undefined {
+}): Promise<LmFetch | undefined> {
   return undefined;
 }
 
-export function preloadFakeLmLanguagePacks(): void {
-  // Standalone builds intentionally exclude hosted fake LM language data.
+export async function preloadFakeLmRuntime(): Promise<void> {
+  // Standalone builds intentionally exclude the hosted Fake LM runtime.
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

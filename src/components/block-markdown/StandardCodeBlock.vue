@@ -79,10 +79,16 @@ onUpdated(() => {
 
 onMounted(() => {
   highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient();
-  void syncHighlightedCodeFromWorker({
-    code: props.code,
-    lang: props.lang,
-  });
+  (async () => {
+    try {
+      await syncHighlightedCodeFromWorker({
+        code: props.code,
+        lang: props.lang,
+      });
+    } catch (error) {
+      console.error('Failed to synchronize highlighted code:', error);
+    }
+  })();
 });
 
 watch(() => [props.code, props.lang] as const, async ([code, lang], [previousCode, previousLang]) => {
@@ -90,6 +96,7 @@ watch(() => [props.code, props.lang] as const, async ([code, lang], [previousCod
     return;
   }
 
+  renderedCodeHtml.value = escapeTextAsHtml({ text: code });
   await syncHighlightedCodeFromWorker({ code, lang });
 });
 
@@ -97,7 +104,13 @@ onBeforeUnmount(() => {
   isDisposed = true;
   latestHighlightRequestId += 1;
   highlightWorkerClientPromise = undefined;
-  void releaseSharedHighlightWorkerClient();
+  (async () => {
+    try {
+      await releaseSharedHighlightWorkerClient();
+    } catch (error) {
+      console.error('Failed to release highlight worker client:', error);
+    }
+  })();
 });
 
 const copied = ref(false);

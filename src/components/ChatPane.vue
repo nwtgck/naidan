@@ -19,10 +19,15 @@ import {
   isChatProcessing,
 } from '@/composables/chat/chat-activity-queries';
 import { useChatDisplayFlow, type ChatFlowItem } from '@/composables/useChatDisplayFlow';
-import { useImageGeneration } from '@/composables/useImageGeneration';
+import { prefetchImageGenerationRuntime, useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+import { createModuleLoader } from '@/utils/module-loader';
+import { scheduleIdleTask } from '@/utils/idle-task';
+import { prefetchLmProvider } from '@/features/lm/providerFactory';
+import { prefetchEnabledToolModules } from '@/features/tools/factory';
+import { lmToolNamesFromToolConfigs, resolveToolConfigsForChat } from '@/features/tools/tool-config';
 
 // IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously
 // to ensure the chat history displays immediately and smoothly without individual components popping in.
@@ -70,12 +75,12 @@ import {
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/features/global-search/composables/useGlobalSearch';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
-import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
+import { loadChatWorkerMountsModule, prefetchChatWorkerMountsModule } from '@/features/wesh/chat-worker-mounts-loader';
+import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { hasChatOverrides } from '@/logic/chat-settings-resolver';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
-import { generateChatShareURL } from '@/features/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
 import { storageService } from '@/00-storage/service';
 import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/logic/context-compact';
@@ -83,6 +88,13 @@ import { useApproval } from '@/features/tools/composables/useApproval';
 import { useChoices } from '@/features/tools/composables/useChoices';
 import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/features/fake-lm';
 import type { ApprovalUiDecision } from '@/features/tools/approval';
+
+const chatUrlShareModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/import-export/chat-url-share'),
+  onPrefetchError: ({ error }) => {
+    console.error('Failed to prefetch chat URL sharing:', error);
+  },
+});
 
 const { addToast } = useToast();
 const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
@@ -512,6 +524,7 @@ async function shareAsURL() {
   if (!chat.value) return;
 
   try {
+    const { generateChatShareURL } = await chatUrlShareModuleLoader.load();
     const url = await generateChatShareURL({ chatId: chat.value.id });
     await navigator.clipboard.writeText(url);
     addToast({
@@ -529,6 +542,7 @@ async function shareAsURL() {
 async function openChatFileExplorer() {
   if (!chat.value) return;
 
+  const { buildWorkerMountsForChat } = await loadChatWorkerMountsModule();
   const mounts = await buildWorkerMountsForChat({
     chatMounts: chat.value.mounts ?? [],
     chatGroupMounts: chatGroup.value?.mounts,
@@ -722,6 +736,76 @@ const canGenerateImage = computed(() => {
   return availableImageModels.value.length > 0;
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
+
+const enabledToolNames = computed(() => {
+  const chatValue = chat.value;
+  if (chatValue === null) {
+    return [];
+  }
+  const toolConfigs = resolveToolConfigsForChat({
+    globalToolConfigs: settings.value.experimental?.toolConfigs,
+    chatGroupToolConfigs: chatGroup.value?.toolConfigs,
+    chatToolConfigs: chatValue.toolConfigs,
+  });
+  return lmToolNamesFromToolConfigs({ toolConfigs });
+});
+
+const shouldPrepareWeshMountRuntime = computed(() => {
+  const chatValue = chat.value;
+  if (chatValue === null) {
+    return false;
+  }
+  if (enabledToolNames.value.includes('shell_execute')) {
+    return true;
+  }
+  const storageType = settings.value.storageType;
+  // This is a performance-only decision. Incomplete settings must skip the
+  // optional prefetch instead of affecting application correctness.
+  if (storageType !== undefined && shouldIncludeWritableTmpMount({ storageType })) {
+    return true;
+  }
+  if ((settings.value.mounts?.length ?? 0) > 0 || (chatGroup.value?.mounts?.length ?? 0) > 0 || (chatValue.mounts?.length ?? 0) > 0) {
+    return true;
+  }
+  return getNaidanSysfsAccessScope({ chatId: chatValue.id }) !== 'none';
+});
+
+// Performance-only watcher: this does not maintain application correctness.
+// It only prefetches the selected provider and enabled feature modules during
+// idle time to reduce the latency of the first related action.
+watch(
+  () => ({
+    endpointType: resolvedSettings.value?.endpoint.type,
+    enabledToolNames: enabledToolNames.value,
+    canGenerateImage: canGenerateImage.value,
+    shouldPrepareWeshMountRuntime: shouldPrepareWeshMountRuntime.value,
+  }),
+  ({ endpointType, enabledToolNames: names, canGenerateImage: shouldPrepareImageRuntime, shouldPrepareWeshMountRuntime }, _previous, onCleanup) => {
+    if (endpointType === undefined) {
+      return;
+    }
+
+    const scheduled = scheduleIdleTask({
+      task: async () => {
+        await prefetchLmProvider({ endpointType });
+        await prefetchEnabledToolModules({ enabledNames: names });
+        if (shouldPrepareImageRuntime) {
+          await prefetchImageGenerationRuntime();
+        }
+        if (shouldPrepareWeshMountRuntime) {
+          await prefetchChatWorkerMountsModule();
+        }
+        await chatUrlShareModuleLoader.prefetch();
+      },
+      timeoutMs: 3_000,
+      fallbackDelayMs: 800,
+    });
+    onCleanup(() => {
+      scheduled.cancel();
+    });
+  },
+  { immediate: true, flush: 'post' },
+);
 
 const chatGroupBadge = computed(() => {
   const groupId = chat.value?.groupId;
@@ -920,10 +1004,10 @@ function handleAbortContextCompact() {
   });
 }
 
-function handleSwitchVersion({ messageId }: { messageId: MessageId }) {
+async function handleSwitchVersion({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return;
-  void chatBranches.switchVersion({
+  await chatBranches.switchVersion({
     chatId: chatValue.id,
     messageId,
   });
@@ -941,7 +1025,7 @@ async function handleFork({ messageId }: { messageId: MessageId }) {
   }
 }
 
-function handleForkLastMessage() {
+async function handleForkLastMessage() {
   // We need to find the last message across all potential levels of nesting in chatFlow
   const findLastMessage = ({ items }: { items: ChatFlowItem[] }): ChatFlowItem | null => {
     for (let i = items.length - 1; i >= 0; i--) {
@@ -967,7 +1051,7 @@ function handleForkLastMessage() {
 
   const lastMsgItem = findLastMessage({ items: chatFlow.value });
   if (lastMsgItem && lastMsgItem.type === 'message') {
-    handleFork({ messageId: lastMsgItem.node.id });
+    await handleFork({ messageId: lastMsgItem.node.id });
   }
 }
 
@@ -980,10 +1064,10 @@ function getChatSiblings({ messageId }: { messageId: MessageId }) {
   })];
 }
 
-function handleRefreshModels() {
+async function handleRefreshModels() {
   const chatValue = chat.value;
   if (!chatValue) return;
-  void chatModels.fetchForChat({
+  await chatModels.fetchForChat({
     chatId: chatValue.id,
   });
 }
@@ -1026,10 +1110,10 @@ function handleAbortGeneration() {
   });
 }
 
-function handleToggleDebug() {
+async function handleToggleDebug() {
   const chatValue = chat.value;
   if (!chatValue) return;
-  void chatMetadata.toggleDebug({
+  await chatMetadata.toggleDebug({
     chatId: chatValue.id,
   });
 }
