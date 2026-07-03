@@ -32,7 +32,7 @@ function readExpectedTailwindVersion({ projectRoot }) {
 }
 
 function groupHash({ ownerKey }) {
-  return crypto.createHash('sha256').update(ownerKey).digest('hex').slice(0, 16);
+  return crypto.createHash('sha256').update(ownerKey).digest('hex');
 }
 
 function normalizeAliases({ aliases, projectRoot }) {
@@ -44,6 +44,12 @@ function normalizeAliases({ aliases, projectRoot }) {
 
 function ownerNamesFromKey({ key }) {
   return key === '' ? [] : key.split('|');
+}
+
+function isPathInside({ directory, candidate }) {
+  const relativePath = path.relative(path.resolve(directory), path.resolve(candidate));
+  return relativePath === ''
+    || (!path.isAbsolute(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
 }
 
 export function createTwClassVitePlugin({
@@ -126,6 +132,7 @@ export function createTwClassVitePlugin({
       entryModule: absoluteEntryModule,
       aliases: resolvedAliases,
       additionalLazyRootDirectories,
+      ownershipMode: splitCss ? 'module-graph' : 'single-css',
     });
     if (splitCss && nextAnalysis.unresolvedDynamicImports.length > 0) {
       const details = nextAnalysis.unresolvedDynamicImports.map(({ filename, line, column, expression }) => (
@@ -138,6 +145,7 @@ export function createTwClassVitePlugin({
       cssEntryPath: absoluteTailwindCssPath,
       expectedTailwindVersion,
       analysis: nextAnalysis,
+      outputMode: splitCss ? 'split' : 'single',
       maxLazyCssGroups,
     });
     const state = buildVirtualState({ nextAnalysis, nextPlan });
@@ -168,9 +176,13 @@ export function createTwClassVitePlugin({
     };
   }
 
+  function clearDebugOutput() {
+    if (absoluteDebugOutputDirectory === undefined) return;
+    fs.rmSync(absoluteDebugOutputDirectory, { recursive: true, force: true });
+  }
+
   function writeDebugOutput() {
     if (absoluteDebugOutputDirectory === undefined || analysis === undefined || plan === undefined) return;
-    fs.rmSync(absoluteDebugOutputDirectory, { recursive: true, force: true });
     fs.mkdirSync(absoluteDebugOutputDirectory, { recursive: true });
     fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'source-analysis.json'), `${JSON.stringify(serializeSourceAnalysis({ analysis }), null, 2)}\n`);
     fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'ownership-plan.json'), `${JSON.stringify(serializeCssOwnershipPlan({ plan }), null, 2)}\n`);
@@ -186,6 +198,7 @@ export function createTwClassVitePlugin({
     },
     async buildStart() {
       if (cssPlanning === 'disabled') return;
+      if (command === 'build') clearDebugOutput();
       await refreshPlan();
       this.info(splitCss
         ? `[tw-class] planned ${plan.candidates.length} candidates into ${plan.cssGroups.size} virtual CSS ownership groups.`
@@ -236,7 +249,8 @@ export function createTwClassVitePlugin({
       order: 'pre',
       async handler(options) {
         if (cssPlanning === 'disabled') return options.modules;
-        if (!path.resolve(options.file).startsWith(absoluteSourceRoot) && path.resolve(options.file) !== absoluteTailwindCssPath) return options.modules;
+        const absoluteFile = path.resolve(options.file);
+        if (!isPathInside({ directory: absoluteSourceRoot, candidate: absoluteFile }) && absoluteFile !== absoluteTailwindCssPath) return options.modules;
         if (lastRefreshTimestamp !== options.timestamp) {
           lastRefreshTimestamp = options.timestamp;
           lastRefreshPromise = refreshPlan();

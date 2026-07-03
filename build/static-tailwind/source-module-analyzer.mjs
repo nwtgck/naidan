@@ -14,6 +14,12 @@ import {
 
 const moduleExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
 
+function isPathInside({ directory, candidate }) {
+  const relativePath = path.relative(path.resolve(directory), path.resolve(candidate));
+  return relativePath === ''
+    || (!path.isAbsolute(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
+}
+
 function walkFiles({ directory }) {
   if (!fs.existsSync(directory)) return [];
   let entries;
@@ -42,11 +48,16 @@ function scriptBlocksFromVue({ source, filename }) {
   if (errors.length > 0) throw new Error(`${filename}: ${errors.map(String).join('; ')}`);
   return {
     descriptor,
-    blocks: [descriptor.script, descriptor.scriptSetup]
-      .filter((block) => block !== null)
-      .map((block) => ({
+    blocks: [
+      { block: descriptor.script, kind: 'script' },
+      { block: descriptor.scriptSetup, kind: 'script-setup' },
+    ]
+      .filter(({ block }) => block !== null)
+      .map(({ block, kind }) => ({
         source: block.content,
         filename: `${filename}.${block.lang === 'js' || block.lang === 'jsx' ? block.lang : 'ts'}`,
+        blockStart: block.loc.start,
+        groupIdPrefix: kind,
       })),
   };
 }
@@ -64,7 +75,7 @@ function resolveSourceSpecifier({ importer, specifier, sourceRoot, aliases }) {
   const resolved = attempts.find((attempt) => fs.existsSync(attempt) && fs.statSync(attempt).isFile());
   if (resolved === undefined) return undefined;
   const normalized = path.resolve(resolved);
-  return normalized.startsWith(path.resolve(sourceRoot)) ? normalized : undefined;
+  return isPathInside({ directory: sourceRoot, candidate: normalized }) ? normalized : undefined;
 }
 
 function collectImportsFromSourceFile({ sourceFile, importer, sourceRoot, aliases }) {
@@ -180,7 +191,7 @@ function collectVueTemplateGroups({ source, filename }) {
   return groups;
 }
 
-function collectMacroGroupsFromSourceFile({ sourceFile, filename }) {
+function collectMacroGroupsFromSourceFile({ sourceFile, filename, blockStart, groupIdPrefix }) {
   const twNames = new Set();
   const twClassStringNames = new Set();
   const groups = [];
@@ -211,12 +222,14 @@ function collectMacroGroupsFromSourceFile({ sourceFile, filename }) {
       if (candidates.length === 0) return;
       const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
       groups.push({
-        id: `${filename}:macro:${index}`,
+        id: `${filename}:${groupIdPrefix}:macro:${index}`,
         filename,
         sourceKind: isTw ? 'tw()' : 'twClassString()',
         candidates: [...new Set(candidates)],
-        line: position.line + 1,
-        column: position.character + 1,
+        line: blockStart.line + position.line,
+        column: position.line === 0
+          ? blockStart.column + position.character
+          : position.character + 1,
       });
       index += 1;
     },
@@ -226,7 +239,12 @@ function collectMacroGroupsFromSourceFile({ sourceFile, filename }) {
 
 function collectCandidateGroups({ source, filename }) {
   if (!filename.endsWith('.vue')) {
-    return collectMacroGroupsFromSourceFile({ sourceFile: createTypeScriptSourceFile({ source, filename }), filename });
+    return collectMacroGroupsFromSourceFile({
+      sourceFile: createTypeScriptSourceFile({ source, filename }),
+      filename,
+      blockStart: { line: 1, column: 1 },
+      groupIdPrefix: 'module',
+    });
   }
   const result = collectVueTemplateGroups({ source, filename });
   const { blocks } = scriptBlocksFromVue({ source, filename });
@@ -234,6 +252,8 @@ function collectCandidateGroups({ source, filename }) {
     result.push(...collectMacroGroupsFromSourceFile({
       sourceFile: createTypeScriptSourceFile({ source: block.source, filename: block.filename }),
       filename,
+      blockStart: block.blockStart,
+      groupIdPrefix: block.groupIdPrefix,
     }));
   }
   return result;
@@ -255,7 +275,10 @@ function ownerName({ sourceRoot, moduleId }) {
   return `lazy:${path.relative(sourceRoot, moduleId).replaceAll(path.sep, '/')}`;
 }
 
-export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, aliases, additionalLazyRootDirectories }) {
+export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, aliases, additionalLazyRootDirectories, ownershipMode }) {
+  if (ownershipMode !== 'single-css' && ownershipMode !== 'module-graph') {
+    throw new Error(`[tw-class] Unknown source ownership mode: ${String(ownershipMode)}`);
+  }
   const absoluteProjectRoot = path.resolve(projectRoot);
   const absoluteSourceRoot = path.resolve(sourceRoot);
   const files = walkFiles({ directory: absoluteSourceRoot })
@@ -271,12 +294,42 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, ali
       if (error?.code === 'ENOENT') continue;
       throw error;
     }
-    const imports = collectModuleImports({ source, filename: file, sourceRoot: absoluteSourceRoot, aliases });
-    graph.set(file, imports);
-    unresolvedDynamicImports.push(...imports.unresolvedDynamicImports.map((record) => ({ filename: file, ...record })));
+    if (ownershipMode === 'module-graph') {
+      const imports = collectModuleImports({ source, filename: file, sourceRoot: absoluteSourceRoot, aliases });
+      graph.set(file, imports);
+      unresolvedDynamicImports.push(...imports.unresolvedDynamicImports.map((record) => ({ filename: file, ...record })));
+    }
     candidateGroups.push(...collectCandidateGroups({ source, filename: file }));
   }
   const absoluteEntry = path.resolve(entryModule);
+  if (ownershipMode === 'single-css') {
+    const initialModules = new Set();
+    const moduleOwners = new Map(files.map((file) => [file, new Set()]));
+    const candidateOwners = new Map();
+    for (const group of candidateGroups) {
+      const owners = new Set(['initial']);
+      group.owners = ['initial'];
+      moduleOwners.set(group.filename, owners);
+      initialModules.add(group.filename);
+      for (const candidate of group.candidates) {
+        candidateOwners.set(candidate, new Set(['initial']));
+      }
+    }
+    return {
+      projectRoot: absoluteProjectRoot,
+      sourceRoot: absoluteSourceRoot,
+      entryModule: absoluteEntry,
+      files,
+      graph,
+      unresolvedDynamicImports,
+      initialModules,
+      lazyOwners: [],
+      moduleOwners,
+      candidateGroups,
+      candidateOwners,
+      fallbackInitialModules: new Set(),
+    };
+  }
   const initialModules = staticClosure({ root: absoluteEntry, graph });
   const dynamicRoots = new Set();
   for (const module of graph.values()) module.dynamicImports.forEach((value) => dynamicRoots.add(value));

@@ -277,14 +277,20 @@ function compressAtomGroups({ atomGroups, maxLazyCssGroups }) {
   };
 }
 
-
 export async function createCssOwnershipPlan({
   projectRoot,
   cssEntryPath,
   expectedTailwindVersion,
   analysis,
+  outputMode,
   maxLazyCssGroups,
 }) {
+  if (outputMode !== 'single' && outputMode !== 'split') {
+    throw new Error(`[tw-class] Unknown CSS output mode: ${String(outputMode)}`);
+  }
+  if (maxLazyCssGroups !== undefined && (!Number.isInteger(maxLazyCssGroups) || maxLazyCssGroups < 0)) {
+    throw new Error(`[tw-class] maxLazyCssGroups must be a non-negative integer or undefined: ${String(maxLazyCssGroups)}`);
+  }
   const candidates = [...analysis.candidateOwners.keys()].sort();
   const validator = await createTailwindCandidateValidator({ projectRoot, cssEntryPath, expectedTailwindVersion });
   const classification = validator.classify({ candidates });
@@ -303,6 +309,66 @@ export async function createCssOwnershipPlan({
       `Unknown Tailwind candidate "${candidate}" at ${filename}:${line}:${column} (${sourceKind}).`
     ));
     throw new Error(`[tw-class] ${details.join('\n[tw-class] ')}`);
+  }
+  if (outputMode === 'single') {
+    const sourceOwnerGroups = groupCandidatesByOwner({ candidateOwners: analysis.candidateOwners });
+    const originalLazyOwnerKeys = [...sourceOwnerGroups.keys()]
+      .filter((key) => key !== 'initial')
+      .sort();
+    const candidateOwners = new Map(candidates.map((candidate) => [candidate, new Set(['initial'])]));
+    const ownerCandidateGroups = candidates.length === 0
+      ? new Map()
+      : new Map([['initial', candidates]]);
+    const baseline = await compileTailwindCss({ cssEntryPath, candidates: [], expectedTailwindVersion });
+    const baselineCss = baseline.css;
+    const globalCompilation = await compileTailwindCss({ cssEntryPath, candidates, expectedTailwindVersion });
+    const globalCss = globalCompilation.css;
+    const globalDelta = subtractCss({ css: globalCss, baselineCss });
+    const cssGroups = globalDelta.trim() === ''
+      ? new Map()
+      : new Map([['initial', globalDelta]]);
+    const uniqueDelta = bytes({ css: globalDelta });
+    const promotedCandidateCount = candidates.filter((candidate) => (
+      analysis.candidateOwners.get(candidate)?.has('initial') !== true
+    )).length;
+    return {
+      outputMode,
+      candidates,
+      candidateOwners,
+      ownerCandidateGroups,
+      baselineCss,
+      globalCss,
+      globalDelta,
+      cssGroups,
+      conflicts: [],
+      compression: {
+        maxLazyCssGroups: undefined,
+        candidates: {
+          originalLazyGroupCount: originalLazyOwnerKeys.length,
+          retainedLazyGroupCount: 0,
+          promotedCandidateCount,
+          retainedOwnerKeys: [],
+        },
+        atoms: {
+          originalLazyGroupCount: 0,
+          retainedLazyGroupCount: 0,
+          promotedAtomCount: 0,
+          retainedOwnerKeys: [],
+        },
+      },
+      metrics: {
+        baseline: bytes({ css: baselineCss }),
+        uniqueDelta,
+        emitted: {
+          groupCount: cssGroups.size,
+          raw: uniqueDelta.raw,
+          gzip: uniqueDelta.gzip,
+          duplicateRaw: 0,
+          duplicateRatio: 0,
+        },
+      },
+      tailwindVersion: validator.tailwindVersion,
+    };
   }
   const candidateCss = new Map(candidates.map((candidate, index) => [candidate, classification.generatedCss[index]]));
   const propertyFamilies = new Map(candidates.map((candidate) => [candidate, cssPropertyFamilies({ css: candidateCss.get(candidate) })]));
@@ -413,6 +479,7 @@ export async function createCssOwnershipPlan({
   };
 
   return {
+    outputMode,
     candidates,
     candidateOwners,
     ownerCandidateGroups,
@@ -433,6 +500,7 @@ export async function createCssOwnershipPlan({
 
 export function serializeCssOwnershipPlan({ plan }) {
   return {
+    outputMode: plan.outputMode,
     tailwindVersion: plan.tailwindVersion,
     candidates: plan.candidates,
     candidateOwners: Object.fromEntries([...plan.candidateOwners].sort(([left], [right]) => left.localeCompare(right)).map(([candidate, owners]) => [candidate, [...owners].sort()])),

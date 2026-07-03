@@ -733,7 +733,7 @@ function isTailwindCompilerMacroDeclaration({ node, filePath }) {
     return false;
   }
   const normalizedFilePath = filePath.replaceAll('\\', '/');
-  return normalizedFilePath.endsWith('/src/virtual-naidan-tailwind.d.ts');
+  return normalizedFilePath.endsWith('/src/utils/virtual-naidan-tailwind.d.ts');
 }
 
 function checkFunctionLike(node, context, state) {

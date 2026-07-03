@@ -22,6 +22,7 @@ export type CssOwnershipCompression = {
 };
 
 export type CssOwnershipPlan = {
+  outputMode: 'single' | 'split',
   candidates: string[],
   candidateOwners: Map<string, Set<string>>,
   ownerCandidateGroups: Map<string, string[]>,
@@ -44,6 +45,7 @@ export function createCssOwnershipPlan(options: {
   cssEntryPath: string,
   expectedTailwindVersion: string | undefined,
   analysis: CssOwnershipAnalysis,
+  outputMode: 'single' | 'split',
   maxLazyCssGroups: number | undefined,
 }): Promise<CssOwnershipPlan>;
 

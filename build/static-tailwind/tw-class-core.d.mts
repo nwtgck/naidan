@@ -8,6 +8,22 @@ export type TailwindCandidateOccurrence = {
   sourceKind: string,
 };
 
+export type ParsedTwClassExpression = {
+  classes: string[],
+  runtimeExpression: string,
+  dynamic: boolean,
+};
+
+export function parseTwClassTokens(options: {
+  value: string,
+  filename: string,
+  loc?: unknown,
+}): string[];
+export function parseTwClassExpression(options: {
+  expression: string,
+  filename: string,
+  loc?: unknown,
+}): ParsedTwClassExpression;
 export function parseStaticTwClassExpression(options: {
   expression: string,
   filename: string,

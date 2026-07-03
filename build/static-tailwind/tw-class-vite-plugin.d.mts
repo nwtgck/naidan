@@ -1,9 +1,11 @@
 import type { Plugin } from 'vite';
+import type { CssOwnershipPlan } from './css-ownership-planner.mjs';
+import type { SourceModuleAnalysis, StaticTailwindAlias } from './source-module-analyzer.mjs';
 
 export interface TwClassVitePlugin extends Plugin {
   api: {
-    getAnalysis(): unknown,
-    getPlan(): unknown,
+    getAnalysis(): SourceModuleAnalysis | undefined,
+    getPlan(): CssOwnershipPlan | undefined,
     getImportsByModule(): Map<string, string[]>,
     getOwnerRootByName(): Map<string, string>,
   },
@@ -14,7 +16,7 @@ export function createTwClassVitePlugin(options: {
   sourceRoot: string,
   entryModule: string,
   tailwindCssPath: string,
-  aliases: { find: string, replacement: string }[],
+  aliases: StaticTailwindAlias[],
   additionalLazyRootDirectories: string[],
   debugOutputDirectory: string | undefined,
   splitCss: boolean,

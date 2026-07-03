@@ -55,6 +55,41 @@ function createFixture(): string {
   return root;
 }
 
+describe('static Tailwind Vite plugin build diagnostics', () => {
+  it('removes stale debug output before build planning starts', async () => {
+    const root = createFixture();
+    const sourceRoot = path.join(root, 'src');
+    const debugOutputDirectory = path.join(root, 'dist/debug-tailwind');
+    const staleFile = path.join(debugOutputDirectory, 'stale.json');
+    fs.mkdirSync(debugOutputDirectory, { recursive: true });
+    fs.writeFileSync(staleFile, '{}\n');
+    const plugin = createTwClassVitePlugin({
+      projectRoot: root,
+      sourceRoot,
+      entryModule: path.join(sourceRoot, 'main.ts'),
+      tailwindCssPath: path.join(sourceRoot, 'style.css'),
+      aliases: [],
+      additionalLazyRootDirectories: [],
+      debugOutputDirectory,
+      splitCss: false,
+      cssPlanning: 'enabled',
+      maxLazyCssGroups: undefined,
+    });
+    const configResolved = getHookHandler<[unknown], void | Promise<void>>({
+      hook: plugin.configResolved,
+      name: 'configResolved',
+    });
+    await configResolved.call({} as never, { command: 'build' });
+    const buildStart = getHookHandler<[unknown], void | Promise<void>>({
+      hook: plugin.buildStart,
+      name: 'buildStart',
+    });
+    await buildStart.call({ info() {} } as never, {});
+
+    expect(fs.existsSync(staleFile)).toBe(false);
+  });
+});
+
 describe('static Tailwind Vite plugin HMR ownership', () => {
   it('retires the private CSS module when a candidate becomes shared', async () => {
     const root = createFixture();

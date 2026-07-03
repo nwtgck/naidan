@@ -21,8 +21,9 @@ function createAnalysis({ candidateOwners, candidates }: {
   };
 }
 
-async function plan({ analysis, maxLazyCssGroups }: {
+async function plan({ analysis, outputMode, maxLazyCssGroups }: {
   analysis: ReturnType<typeof createAnalysis>,
+  outputMode: 'single' | 'split',
   maxLazyCssGroups: number | undefined,
 }) {
   return createCssOwnershipPlan({
@@ -30,16 +31,36 @@ async function plan({ analysis, maxLazyCssGroups }: {
     cssEntryPath: path.resolve(import.meta.dirname, '../../src/style.css'),
     expectedTailwindVersion: '4.3.1',
     analysis,
+    outputMode,
     maxLazyCssGroups,
   });
 }
 
 describe('static Tailwind CSS ownership planner', () => {
+  it('collapses all candidates into one initial group in single CSS mode', async () => {
+    const result = await plan({
+      analysis: createAnalysis({
+        candidates: ['p-2', 'text-blue-500'],
+        candidateOwners: {
+          'p-2': ['initial'],
+          'text-blue-500': ['lazy:feature.vue'],
+        },
+      }),
+      outputMode: 'single',
+      maxLazyCssGroups: undefined,
+    });
+    expect(result.outputMode).toBe('single');
+    expect(result.cssGroups.size).toBe(1);
+    expect([...result.candidateOwners.get('p-2') ?? []]).toEqual(['initial']);
+    expect([...result.candidateOwners.get('text-blue-500') ?? []]).toEqual(['initial']);
+    expect(result.globalCss).toContain('.text-blue-500');
+  });
+
   it('keeps canonical initial-to-lazy order split', async () => {
     const result = await plan({ analysis: createAnalysis({
       candidates: ['p-2', 'p-4'],
       candidateOwners: { 'p-2': ['initial'], 'p-4': ['lazy:feature.vue'] },
-    }), maxLazyCssGroups: undefined });
+    }), outputMode: 'split', maxLazyCssGroups: undefined });
     expect([...result.candidateOwners.get('p-4') ?? []]).toEqual(['lazy:feature.vue']);
   });
 
@@ -47,7 +68,7 @@ describe('static Tailwind CSS ownership planner', () => {
     const result = await plan({ analysis: createAnalysis({
       candidates: ['p-4', 'p-2'],
       candidateOwners: { 'p-4': ['initial'], 'p-2': ['lazy:feature.vue'] },
-    }), maxLazyCssGroups: undefined });
+    }), outputMode: 'split', maxLazyCssGroups: undefined });
     expect([...result.candidateOwners.get('p-2') ?? []]).toEqual(['initial']);
   });
 
@@ -60,6 +81,7 @@ describe('static Tailwind CSS ownership planner', () => {
       writeCssOwnershipDebugFiles({
         directory,
         plan: {
+          outputMode: 'split',
           candidates: ['p-2'],
           candidateOwners: new Map([['p-2', new Set(ownerKey.split('|'))]]),
           ownerCandidateGroups: new Map([[ownerKey, ['p-2']]]),
@@ -99,6 +121,17 @@ describe('static Tailwind CSS ownership planner', () => {
     }
   });
 
+  it('rejects invalid lazy group limits before compiling CSS', async () => {
+    await expect(plan({
+      analysis: createAnalysis({
+        candidates: ['p-2'],
+        candidateOwners: { 'p-2': ['initial'] },
+      }),
+      outputMode: 'split',
+      maxLazyCssGroups: -1,
+    })).rejects.toThrow('maxLazyCssGroups must be a non-negative integer');
+  });
+
   it('caps lazy ownership groups without duplicate CSS atoms', async () => {
     const analysis = {
       candidateGroups: [
@@ -112,7 +145,7 @@ describe('static Tailwind CSS ownership planner', () => {
         ['border-green-500', new Set(['lazy:green.vue'])],
       ]),
     };
-    const result = await plan({ analysis, maxLazyCssGroups: 2 });
+    const result = await plan({ analysis, outputMode: 'split', maxLazyCssGroups: 2 });
     expect(result.compression.candidates.originalLazyGroupCount).toBe(3);
     expect(result.compression.candidates.retainedLazyGroupCount).toBe(2);
     expect(result.cssGroups.size).toBeLessThanOrEqual(3);
