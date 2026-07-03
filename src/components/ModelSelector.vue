@@ -340,12 +340,12 @@ defineExpose({
             v-if="allowClear"
             @click="selectModel({ model: undefined })"
             :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1',
-              !modelValue
-                ? 'text-blue-600 dark:text-blue-400 font-bold'
-                : 'text-gray-500 dark:text-gray-400',
-              highlightedIndex === 0
-                ? 'bg-gray-100 dark:bg-gray-700/50'
-                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                        !modelValue
+                          ? 'text-blue-600 dark:text-blue-400 font-bold'
+                          : 'text-gray-500 dark:text-gray-400',
+                        highlightedIndex === 0
+                          ? 'bg-gray-100 dark:bg-gray-700/50'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
             ]"
             data-testid="model-selector-clear"
             data-index="0"
@@ -366,12 +366,12 @@ defineExpose({
             :key="model"
             @click="selectModel({ model })"
             :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors',
-              model === modelValue
-                ? 'text-blue-600 dark:text-blue-400 font-bold'
-                : 'text-gray-700 dark:text-gray-300',
-              highlightedIndex === (allowClear ? index + 1 : index)
-                ? 'bg-gray-100 dark:bg-gray-700/50'
-                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                        model === modelValue
+                          ? 'text-blue-600 dark:text-blue-400 font-bold'
+                          : 'text-gray-700 dark:text-gray-300',
+                        highlightedIndex === (allowClear ? index + 1 : index)
+                          ? 'bg-gray-100 dark:bg-gray-700/50'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
             ]"
             :data-index="allowClear ? index + 1 : index"
             @mouseenter="highlightedIndex = allowClear ? index + 1 : index"

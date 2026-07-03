@@ -1144,8 +1144,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
 
     <div
       :tw-class="['max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col',
-        isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
-        visibility === 'submerged' ? 'cursor-pointer' : ''
+                  isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
+                  visibility === 'submerged' ? 'cursor-pointer' : ''
       ]"
       @mouseenter="handleMouseEnter"
       @mouseleave="handleMouseLeave"

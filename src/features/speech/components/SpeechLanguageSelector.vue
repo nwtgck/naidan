@@ -117,9 +117,9 @@ defineExpose({
     <button
       @click.stop="showMenu = !showMenu"
       :tw-class="['flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-[9px] font-bold transition-colors',
-        isMini
-          ? 'text-gray-500 hover:text-blue-600'
-          : 'bg-white/50 dark:bg-gray-800/50 text-blue-600/70 hover:text-blue-600'
+                  isMini
+                    ? 'text-gray-500 hover:text-blue-600'
+                    : 'bg-white/50 dark:bg-gray-800/50 text-blue-600/70 hover:text-blue-600'
       ]"
     >
       <LanguagesIcon tw-class="w-3 h-3" />
@@ -134,7 +134,7 @@ defineExpose({
         v-if="showMenu"
         class="animate-in zoom-in-95"
         :tw-class="['absolute w-40 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden duration-200',
-          align === 'down' ? 'top-full left-0 mt-1 origin-top-left' : 'bottom-full left-0 mb-1 origin-bottom-left'
+                    align === 'down' ? 'top-full left-0 mt-1 origin-top-left' : 'bottom-full left-0 mb-1 origin-bottom-left'
         ]"
       >
         <div tw-class="px-3 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">{{ lazyStrings.SpeechLanguageSelector__language() }}</div>

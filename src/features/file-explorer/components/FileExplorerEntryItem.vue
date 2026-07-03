@@ -109,13 +109,13 @@ defineExpose({
     v-else-if="displayMode === 'icon'"
     :data-testid="`entry-item-${entry.name}`"
     :tw-class="['group flex flex-col items-center gap-1.5 p-2 rounded-xl cursor-pointer select-none transition-all w-24',
-      isSelected
-        ? 'bg-blue-500 text-white'
-        : isFocused
-          ? 'bg-gray-100 dark:bg-gray-800'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-800',
-      isDragTarget ? 'ring-2 ring-blue-400 ring-inset' : '',
-      isCut ? 'opacity-50' : '',
+                isSelected
+                  ? 'bg-blue-500 text-white'
+                  : isFocused
+                    ? 'bg-gray-100 dark:bg-gray-800'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800',
+                isDragTarget ? 'ring-2 ring-blue-400 ring-inset' : '',
+                isCut ? 'opacity-50' : '',
     ]"
     :draggable="!isRenaming"
     @pointerdown="longPress.onPointerDown({ event: $event })"
@@ -155,12 +155,12 @@ defineExpose({
     v-else-if="displayMode === 'column'"
     :data-testid="`entry-item-${entry.name}`"
     :tw-class="['flex items-center gap-2 px-2 py-1.5 cursor-pointer select-none rounded-md transition-all',
-      isSelected
-        ? 'bg-blue-500 text-white'
-        : isFocused
-          ? 'bg-gray-100 dark:bg-gray-800'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-800',
-      isCut ? 'opacity-50' : '',
+                isSelected
+                  ? 'bg-blue-500 text-white'
+                  : isFocused
+                    ? 'bg-gray-100 dark:bg-gray-800'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800',
+                isCut ? 'opacity-50' : '',
     ]"
     @pointerdown="longPress.onPointerDown({ event: $event })"
     @click="onClick({ event: $event })"

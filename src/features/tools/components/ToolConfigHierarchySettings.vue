@@ -266,10 +266,10 @@ defineExpose({
         v-for="tool in visibleToolDefinitions"
         :key="tool.key"
         :tw-class="['overflow-hidden rounded-xl border transition-all duration-300 active:scale-[0.995]',
-          'h-[52px]',
-          isEffectivelyEnabled({ key: tool.key })
-            ? 'border-blue-200 bg-blue-50/30 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/5'
-            : 'border-gray-100 bg-white/70 hover:border-gray-200 dark:border-gray-700/60 dark:bg-gray-800/40 dark:hover:border-gray-700',
+                    'h-[52px]',
+                    isEffectivelyEnabled({ key: tool.key })
+                      ? 'border-blue-200 bg-blue-50/30 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/5'
+                      : 'border-gray-100 bg-white/70 hover:border-gray-200 dark:border-gray-700/60 dark:bg-gray-800/40 dark:hover:border-gray-700',
         ]"
         :data-testid="`tool-config-card-${tool.key}`"
       >

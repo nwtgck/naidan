@@ -497,14 +497,14 @@ defineExpose({
     v-if="!(isGenerating && (transformersStatus === 'loading' || transformersStatus === 'error') && endpointType === 'transformers_js')"
     ref="messageRef"
     :tw-class="['flex flex-col gap-2 group transition-colors',
-      isNested ? 'px-5' : 'p-5',
-      {
-        'bg-gray-50/30 dark:bg-gray-800/20': !isUser && !isNested,
-        'border-t border-gray-100 dark:border-gray-800/50': !isUser && !isNested && (flow.position === 'standalone' || flow.position === 'start'),
-        'border-b border-gray-100 dark:border-gray-800/50': !isUser && !isNested && (flow.position === 'standalone' || flow.position === 'end'),
-        'pt-2': !isUser && (isNested || flow.position === 'middle' || flow.position === 'end'),
-        'pb-2': !isUser && (isNested || flow.position === 'start' || flow.position === 'middle')
-      }
+                isNested ? 'px-5' : 'p-5',
+                {
+                  'bg-gray-50/30 dark:bg-gray-800/20': !isUser && !isNested,
+                  'border-t border-gray-100 dark:border-gray-800/50': !isUser && !isNested && (flow.position === 'standalone' || flow.position === 'start'),
+                  'border-b border-gray-100 dark:border-gray-800/50': !isUser && !isNested && (flow.position === 'standalone' || flow.position === 'end'),
+                  'pt-2': !isUser && (isNested || flow.position === 'middle' || flow.position === 'end'),
+                  'pb-2': !isUser && (isNested || flow.position === 'start' || flow.position === 'middle')
+                }
     ]"
   >
     <div v-if="showHeader && isFirstInTurn && !isNested" tw-class="flex items-center gap-3 mb-1">

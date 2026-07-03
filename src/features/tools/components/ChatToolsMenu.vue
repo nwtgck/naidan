@@ -97,8 +97,8 @@ defineExpose({
     <button
       @click="showMenu = !showMenu"
       :tw-class="['p-2 rounded-xl transition-colors',
-        showMenu || isImageMode || isThinkActive || hasActiveTools ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
-        (isImageMode || isThinkActive || hasActiveTools) && !showMenu ? 'ring-2 ring-blue-500/20' : ''
+                  showMenu || isImageMode || isThinkActive || hasActiveTools ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
+                  (isImageMode || isThinkActive || hasActiveTools) && !showMenu ? 'ring-2 ring-blue-500/20' : ''
       ]"
       :title="lazyStrings.ChatToolsMenu__tools()"
       data-testid="chat-tools-button"

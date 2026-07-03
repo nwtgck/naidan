@@ -110,10 +110,10 @@ defineExpose({
         :ref="el => buttonRefs[idx] = el as HTMLElement"
         @click="setEffort({ effort: opt.value })"
         :tw-class="['relative z-10 flex-1 py-1 text-[10px] font-medium transition-colors truncate px-0.5',
-          selectedEffort === opt.value
-            ? 'text-blue-600 dark:text-blue-400 font-bold'
-            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
-          opt.value === undefined ? 'flex-[1.4]' : 'flex-1'
+                    selectedEffort === opt.value
+                      ? 'text-blue-600 dark:text-blue-400 font-bold'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+                    opt.value === undefined ? 'flex-[1.4]' : 'flex-1'
         ]"
         :data-testid="`reasoning-effort-${opt.testId}`"
         :title="opt.label"

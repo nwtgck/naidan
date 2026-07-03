@@ -339,8 +339,8 @@ defineExpose({
             type="button"
             :disabled="!isOPFSSupported"
             :tw-class="['text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3',
-              storageType === 'opfs' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700',
-              !isOPFSSupported ? 'opacity-50 cursor-not-allowed grayscale' : ''
+                        storageType === 'opfs' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700',
+                        !isOPFSSupported ? 'opacity-50 cursor-not-allowed grayscale' : ''
             ]"
             data-testid="storage-opfs"
           >

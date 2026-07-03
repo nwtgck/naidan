@@ -20,8 +20,8 @@ defineExpose({
 <template>
   <div
     :tw-class="['flex items-center gap-2',
-      noPadding ? '' : 'py-2',
-      (isNested && !noPadding) ? 'px-5' : ''
+                noPadding ? '' : 'py-2',
+                (isNested && !noPadding) ? 'px-5' : ''
     ]"
     data-testid="assistant-waiting-indicator"
   >

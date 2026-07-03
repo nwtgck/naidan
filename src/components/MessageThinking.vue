@@ -107,22 +107,22 @@ defineExpose({
   <div v-if="hasThinking" :tw-class="noMargin ? '' : 'mb-3'" data-testid="thinking-block">
     <div
       :tw-class="['transition-all duration-500 ease-in-out relative group/thinking w-full',
-        /* Shape & Size */
-        mode === 'expanded' ? 'p-5 rounded-2xl min-h-[100px]' : '',
-        mode === 'collapsed-active' ? 'p-4 rounded-xl h-32 overflow-hidden' : '',
-        mode === 'collapsed-finished' ? 'px-3 py-1.5 rounded-xl' : '',
+                  /* Shape & Size */
+                  mode === 'expanded' ? 'p-5 rounded-2xl min-h-[100px]' : '',
+                  mode === 'collapsed-active' ? 'p-4 rounded-xl h-32 overflow-hidden' : '',
+                  mode === 'collapsed-finished' ? 'px-3 py-1.5 rounded-xl' : '',
 
-        'cursor-pointer',
+                  'cursor-pointer',
 
-        /* State: Active Thinking */
-        isThinkingNow
-          ? 'overflow-visible'
-          : 'border shadow-sm overflow-hidden',
+                  /* State: Active Thinking */
+                  isThinkingNow
+                    ? 'overflow-visible'
+                    : 'border shadow-sm overflow-hidden',
 
-        /* Background & Colors */
-        mode === 'expanded' || mode === 'collapsed-active'
-          ? 'bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner'
-          : 'bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800'
+                  /* Background & Colors */
+                  mode === 'expanded' || mode === 'collapsed-active'
+                    ? 'bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner'
+                    : 'bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800'
       ]"
       @click="handleToggleThinking"
       data-testid="toggle-thinking"
@@ -138,8 +138,8 @@ defineExpose({
       <div
         data-testid="thinking-header"
         :tw-class="['flex items-center gap-2 text-[10px] font-bold tracking-wider relative z-20 transition-colors',
-          mode === 'expanded' || mode === 'collapsed-active' ? 'mb-2 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 group-hover/thinking:text-blue-600',
-          isThinkingNow ? 'animate-pulse text-blue-700 dark:text-blue-400' : ''
+                    mode === 'expanded' || mode === 'collapsed-active' ? 'mb-2 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 group-hover/thinking:text-blue-600',
+                    isThinkingNow ? 'animate-pulse text-blue-700 dark:text-blue-400' : ''
         ]"
       >
         <BrainIcon tw-class="w-3.5 h-3.5" />

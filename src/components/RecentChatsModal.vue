@@ -268,10 +268,10 @@ defineExpose({
             @mouseenter="isHoveringResults = true"
             @mouseleave="isHoveringResults = false"
             :tw-class="['overflow-y-auto scrollbar-thin p-2 space-y-1 bg-white dark:bg-gray-900 transition-all duration-300 relative outline-none',
-              isPreviewVisible
-                ? (isPreviewExpanded ? 'w-[15%] min-w-[200px]' : (searchPreviewMode === 'peek' ? 'w-full' : 'w-[75%] min-w-[320px]'))
-                : 'w-full',
-              activePane === 'results' ? 'ring-2 ring-inset ring-blue-500/10' : ''
+                        isPreviewVisible
+                          ? (isPreviewExpanded ? 'w-[15%] min-w-[200px]' : (searchPreviewMode === 'peek' ? 'w-full' : 'w-[75%] min-w-[320px]'))
+                          : 'w-full',
+                        activePane === 'results' ? 'ring-2 ring-inset ring-blue-500/10' : ''
             ]"
           >
             <div v-if="filteredRecentChats.length === 0" tw-class="p-8 text-center text-gray-500 text-sm">
@@ -299,8 +299,8 @@ defineExpose({
                @mouseleave="handlePreviewMouseLeave"
                @click.capture="!isPreviewExpanded ? (isExpandedByClick = true, $event.stopPropagation(), $event.preventDefault()) : null"
                :tw-class="['bg-white dark:bg-gray-900 overflow-hidden transition-all duration-300 border-l border-gray-100 dark:border-gray-800 cursor-pointer relative',
-                 isPreviewExpanded ? 'w-[85%]' : 'w-[25%]',
-                 activePane === 'preview' ? 'ring-2 ring-inset ring-blue-500/20' : ''
+                           isPreviewExpanded ? 'w-[85%]' : 'w-[25%]',
+                           activePane === 'preview' ? 'ring-2 ring-inset ring-blue-500/20' : ''
                ]">
             <template v-if="shouldLoadPreview">
               <SearchPreview

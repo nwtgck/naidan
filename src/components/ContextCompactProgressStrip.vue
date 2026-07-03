@@ -341,7 +341,7 @@ defineExpose({
 
             <div
               :tw-class="['h-1.5 overflow-hidden rounded-full transition-colors duration-500 ring-1 ring-inset',
-                progress.phase === 'complete' ? 'bg-emerald-100/50 dark:bg-emerald-950/40 ring-emerald-500/10' : 'bg-indigo-100 dark:bg-gray-800 ring-indigo-500/10 dark:ring-indigo-400/10'
+                          progress.phase === 'complete' ? 'bg-emerald-100/50 dark:bg-emerald-950/40 ring-emerald-500/10' : 'bg-indigo-100 dark:bg-gray-800 ring-indigo-500/10 dark:ring-indigo-400/10'
               ]"
             >
               <!-- Animated Gradient Bar -->

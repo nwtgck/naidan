@@ -107,9 +107,9 @@ defineExpose({
               v-for="i in 20"
               :key="i"
               :tw-class="['flex-1 rounded-t-sm transition-all duration-500',
-                i > (20 - (percentageToKeep / 100 * 20))
-                  ? 'h-full bg-indigo-500/80 dark:bg-indigo-400/80 shadow-[0_-4px_10px_rgba(99,102,241,0.2)]'
-                  : 'h-1/3 bg-gray-200 dark:bg-gray-800 opacity-40'
+                          i > (20 - (percentageToKeep / 100 * 20))
+                            ? 'h-full bg-indigo-500/80 dark:bg-indigo-400/80 shadow-[0_-4px_10px_rgba(99,102,241,0.2)]'
+                            : 'h-1/3 bg-gray-200 dark:bg-gray-800 opacity-40'
               ]"
             ></div>
             <div tw-class="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -147,9 +147,9 @@ defineExpose({
               v-for="preset in compactPresets"
               :key="preset.label"
               :tw-class="['px-2 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border',
-                keepCount === preset.value
-                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                  : 'bg-white dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/40 text-indigo-600/60 dark:text-indigo-400/60 hover:border-indigo-300 dark:hover:border-indigo-700'
+                          keepCount === preset.value
+                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                            : 'bg-white dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/40 text-indigo-600/60 dark:text-indigo-400/60 hover:border-indigo-300 dark:hover:border-indigo-700'
               ]"
               :disabled="preset.value > maxKeepCount"
               @click="keepCount = Math.min(preset.value, maxKeepCount)"

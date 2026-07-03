@@ -298,11 +298,11 @@ defineExpose({
               <!-- Version Card -->
               <div
                 :tw-class="['bg-white dark:bg-gray-900 rounded-2xl border transition-all shadow-sm group/card',
-                  diff.isCurrent ? 'ring-2 ring-blue-500/10' : '',
-                  diff.isSkipped ? 'bg-gray-50/30 dark:bg-gray-800/20 border-dashed border-gray-200 dark:border-gray-700' :
-                  baseVersionId === diff.id ? 'border-blue-500 bg-blue-50/5 dark:bg-blue-900/5' :
-                  targetVersionId === diff.id ? 'border-green-500 bg-green-50/5 dark:bg-green-900/5' :
-                  'border-gray-100 dark:border-gray-800'
+                            diff.isCurrent ? 'ring-2 ring-blue-500/10' : '',
+                            diff.isSkipped ? 'bg-gray-50/30 dark:bg-gray-800/20 border-dashed border-gray-200 dark:border-gray-700' :
+                            baseVersionId === diff.id ? 'border-blue-500 bg-blue-50/5 dark:bg-blue-900/5' :
+                            targetVersionId === diff.id ? 'border-green-500 bg-green-50/5 dark:bg-green-900/5' :
+                            'border-gray-100 dark:border-gray-800'
                 ]"
               >
                 <!-- Card Header -->

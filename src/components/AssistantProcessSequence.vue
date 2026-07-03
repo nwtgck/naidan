@@ -99,8 +99,8 @@ defineExpose({
   <div
     class="assistant-process-sequence"
     :tw-class="['flex flex-col transition-all duration-300 bg-gray-50/30 dark:bg-gray-800/20',
-      (flow.position === 'standalone' || flow.position === 'start') ? 'border-t border-gray-100 dark:border-gray-800/50 pt-1.5' : 'pt-0',
-      (flow.position === 'standalone' || flow.position === 'end') ? 'border-b border-gray-100 dark:border-gray-800/50' : ''
+                (flow.position === 'standalone' || flow.position === 'start') ? 'border-t border-gray-100 dark:border-gray-800/50 pt-1.5' : 'pt-0',
+                (flow.position === 'standalone' || flow.position === 'end') ? 'border-b border-gray-100 dark:border-gray-800/50' : ''
     ]"
   >
     <!-- Turn Header (Icon + Model ID) -->
@@ -118,9 +118,9 @@ defineExpose({
       <div
         @click="toggle"
         :tw-class="['inline-flex items-center gap-2 px-2.5 py-1 transition-all duration-200 group/seq cursor-pointer rounded-lg border shadow-sm select-none',
-          isExpanded
-            ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200/60 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
-            : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-600'
+                    isExpanded
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200/60 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
+                      : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-600'
         ]"
         data-testid="assistant-process-toggle"
       >

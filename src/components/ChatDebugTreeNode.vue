@@ -192,8 +192,8 @@ export default {
     >
       <span
         :tw-class="['font-black uppercase text-[7px] tracking-widest px-1 py-0.5 rounded-sm shrink-0 border border-gray-200 dark:border-white/10',
-          node.role === 'user' ? 'text-blue-500' :
-          node.role === 'assistant' ? 'text-emerald-500' : 'text-gray-400'
+                    node.role === 'user' ? 'text-blue-500' :
+                    node.role === 'assistant' ? 'text-emerald-500' : 'text-gray-400'
         ]"
       >
         {{ node.role }}
@@ -222,9 +222,9 @@ export default {
 
           <span
             :tw-class="['font-black uppercase text-[8px] tracking-[0.15em] px-2 py-0.5 rounded-sm shrink-0 border',
-              node.role === 'user' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20 text-blue-600' :
-              node.role === 'assistant' ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-500/20 text-emerald-600' :
-              'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-400'
+                        node.role === 'user' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20 text-blue-600' :
+                        node.role === 'assistant' ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-500/20 text-emerald-600' :
+                        'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-400'
             ]"
           >
             {{ node.role }}

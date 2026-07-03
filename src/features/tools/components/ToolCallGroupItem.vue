@@ -53,10 +53,10 @@ defineExpose({
   <div
     v-if="toolCalls.length > 0"
     :tw-class="['flex flex-col transition-colors',
-      !isNested ? 'bg-gray-50/30 dark:bg-gray-800/20' : '',
-      (!isNested && (flow.position === 'standalone' || flow.position === 'start')) ? 'border-t border-gray-100 dark:border-gray-800/50 pt-4' : 'pt-2',
-      (!isNested && (flow.position === 'standalone' || flow.position === 'end')) ? 'border-b border-gray-100 dark:border-gray-800/50' : '',
-      isNested ? 'pb-2' : ''
+                !isNested ? 'bg-gray-50/30 dark:bg-gray-800/20' : '',
+                (!isNested && (flow.position === 'standalone' || flow.position === 'start')) ? 'border-t border-gray-100 dark:border-gray-800/50 pt-4' : 'pt-2',
+                (!isNested && (flow.position === 'standalone' || flow.position === 'end')) ? 'border-b border-gray-100 dark:border-gray-800/50' : '',
+                isNested ? 'pb-2' : ''
     ]"
     data-testid="tool-call-group"
   >
@@ -73,19 +73,19 @@ defineExpose({
     <div :tw-class="['px-5', (!isNested && (flow.position === 'standalone' || flow.position === 'end')) ? 'pb-3' : 'pb-2']">      <div
       @click="toggleExpand"
       :tw-class="['transition-all duration-500 ease-in-out relative group/tool-group w-full cursor-pointer overflow-hidden border shadow-sm',
-        /* Shape & Background */
-        isExpanded
-          ? 'p-5 rounded-2xl bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner'
-          : 'px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800'
+                  /* Shape & Background */
+                  isExpanded
+                    ? 'p-5 rounded-2xl bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner'
+                    : 'px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800'
       ]"
     >
       <!-- Header -->
       <div
         data-testid="tool-call-group-header"
         :tw-class="['flex items-center gap-2 text-[10px] font-bold transition-colors tracking-wider relative z-20',
-          isExpanded
-            ? 'mb-2 text-blue-600 dark:text-blue-400'
-            : 'text-gray-500 dark:text-gray-400 group-hover/tool-group:text-blue-600'
+                    isExpanded
+                      ? 'mb-2 text-blue-600 dark:text-blue-400'
+                      : 'text-gray-500 dark:text-gray-400 group-hover/tool-group:text-blue-600'
         ]"
       >
         <ShapesIcon tw-class="w-3.5 h-3.5" />

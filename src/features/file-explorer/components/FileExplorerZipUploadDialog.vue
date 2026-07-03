@@ -139,10 +139,10 @@ defineExpose({
 
               <label
                 :tw-class="['grid grid-cols-[18px_minmax(0,1fr)] gap-2.5 p-3 border rounded-lg',
-                  state.placement.kind === 'extract'
-                    ? 'bg-blue-50 dark:bg-blue-950/25 border-blue-500 ring-1 ring-blue-500'
-                    : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
-                  state.extractability !== 'extractable' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
+                            state.placement.kind === 'extract'
+                              ? 'bg-blue-50 dark:bg-blue-950/25 border-blue-500 ring-1 ring-blue-500'
+                              : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800',
+                            state.extractability !== 'extractable' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
                 ]"
               >
                 <input

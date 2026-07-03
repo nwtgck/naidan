@@ -477,7 +477,7 @@ defineExpose({
 
               <div tw-class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label
-                       :tw-class="['cursor-pointer p-4 rounded-2xl border-2 transition-all flex flex-col gap-2', activePreset === 'append' ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300']">
+                  :tw-class="['cursor-pointer p-4 rounded-2xl border-2 transition-all flex flex-col gap-2', activePreset === 'append' ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300']">
                   <div tw-class="flex items-center justify-between">
                     <div tw-class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
                       <CopyPlusIcon tw-class="w-4 h-4" /> {{ lazyStrings.ImportExportModal__append_merge() }}
@@ -488,7 +488,7 @@ defineExpose({
                 </label>
 
                 <label
-                       :tw-class="['cursor-pointer p-4 rounded-2xl border-2 transition-all flex flex-col gap-2', activePreset === 'replace' ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300']">
+                  :tw-class="['cursor-pointer p-4 rounded-2xl border-2 transition-all flex flex-col gap-2', activePreset === 'replace' ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300']">
                   <div tw-class="flex items-center justify-between">
                     <div tw-class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
                       <RefreshCwIcon tw-class="w-4 h-4" /> {{ lazyStrings.ImportExportModal__replace_restore() }}

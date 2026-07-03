@@ -535,12 +535,12 @@ defineExpose({
 
         <!-- Status Card -->
         <div
-             :tw-class="['rounded-3xl border border-gray-200 dark:border-gray-700 p-6', {
-               'bg-gray-50/50 dark:bg-gray-800/30': status === 'idle',
-               'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200/50 dark:border-blue-800/50': status === 'loading',
-               'bg-green-50/50 dark:bg-green-900/10 border-green-200/50 dark:border-green-800/50': status === 'ready',
-               'bg-red-50/50 dark:bg-red-900/10 border-red-200/50 dark:border-red-800/50': status === 'error'
-             }]">
+          :tw-class="['rounded-3xl border border-gray-200 dark:border-gray-700 p-6', {
+            'bg-gray-50/50 dark:bg-gray-800/30': status === 'idle',
+            'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200/50 dark:border-blue-800/50': status === 'loading',
+            'bg-green-50/50 dark:bg-green-900/10 border-green-200/50 dark:border-green-800/50': status === 'ready',
+            'bg-red-50/50 dark:bg-red-900/10 border-red-200/50 dark:border-red-800/50': status === 'error'
+          }]">
           <div tw-class="flex items-start gap-4">
             <div tw-class="mt-1">
               <Loader2Icon v-if="status === 'loading' || isImporting" tw-class="w-6 h-6 animate-spin text-blue-600 dark:text-blue-400" />

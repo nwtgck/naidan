@@ -97,9 +97,9 @@ defineExpose({
               v-for="i in totalCount"
               :key="i"
               :tw-class="['w-1.5 h-1.5 rounded-full transition-all duration-500',
-                i < (currentNumber || 0) ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' :
-                i === (currentNumber || 0) ? 'bg-blue-400 scale-125 ring-2 ring-blue-500/20 animate-pulse' :
-                'bg-gray-200 dark:bg-white/10'
+                          i < (currentNumber || 0) ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' :
+                          i === (currentNumber || 0) ? 'bg-blue-400 scale-125 ring-2 ring-blue-500/20 animate-pulse' :
+                          'bg-gray-200 dark:bg-white/10'
               ]"
             ></div>
           </div>

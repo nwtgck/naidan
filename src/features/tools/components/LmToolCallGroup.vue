@@ -30,9 +30,9 @@ defineExpose({
   <div v-if="toolCalls.length > 0" tw-class="mb-3" data-testid="lm-tool-call-group">
     <div
       :tw-class="['border rounded-xl transition-all duration-300 overflow-hidden',
-        isExpanded
-          ? 'bg-gray-50/30 dark:bg-gray-800/20 border-gray-100 dark:border-gray-800/50'
-          : 'bg-white dark:bg-gray-800/50 border-gray-100/50 dark:border-gray-800/30 hover:border-gray-200 dark:hover:border-gray-700'
+                  isExpanded
+                    ? 'bg-gray-50/30 dark:bg-gray-800/20 border-gray-100 dark:border-gray-800/50'
+                    : 'bg-white dark:bg-gray-800/50 border-gray-100/50 dark:border-gray-800/30 hover:border-gray-200 dark:hover:border-gray-700'
       ]"
     >
       <!-- Header / Toggle -->
@@ -41,7 +41,7 @@ defineExpose({
         tw-class="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group/tool-group"
       >
         <div
-             :tw-class="['flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-colors', isExpanded ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 group-hover/tool-group:text-blue-600']"
+          :tw-class="['flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-colors', isExpanded ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 group-hover/tool-group:text-blue-600']"
         >
           <ShapesIcon :tw-class="['w-3.5 h-3.5', isExpanded ? 'text-blue-600 dark:text-blue-400' : '']" />
           <span>{{ isExpanded ? lazyStrings.toolCall__tool_executions() : lazyStrings.toolCall__show_tools_count({ count: toolCalls.length }) }}</span>
