@@ -76,6 +76,9 @@ export type CssOwnershipPlan = {
   tailwindVersion: string,
 };
 
+export function createCssOwnerKey(options: { owners: string[] }): string;
+export function parseCssOwnerKey(options: { key: string }): string[];
+
 export function createCssOwnershipPlan(options: {
   projectRoot: string,
   cssEntryPath: string,

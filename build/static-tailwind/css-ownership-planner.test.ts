@@ -2,7 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createCssOwnershipPlan, writeCssOwnershipDebugFiles } from './css-ownership-planner.mjs';
+import {
+  createCssOwnerKey,
+  createCssOwnershipPlan,
+  parseCssOwnerKey,
+  writeCssOwnershipDebugFiles,
+} from './css-ownership-planner.mjs';
 
 function createAnalysis({ candidateOwners, candidates }: {
   candidateOwners: Record<string, string[]>,
@@ -45,6 +50,14 @@ function fragmentOrderContaining({ result, owner, needle }: {
 }
 
 describe('static Tailwind CSS ownership planner', () => {
+  it('round-trips shared owner names without delimiter collisions', () => {
+    const owners = ['module:src/Feature|Legacy.vue', 'module:src/Other.vue'];
+    const key = createCssOwnerKey({ owners });
+
+    expect(key).toBe(JSON.stringify([...owners].sort()));
+    expect(parseCssOwnerKey({ key })).toEqual([...owners].sort());
+    expect(() => parseCssOwnerKey({ key: '[not-json' })).toThrow(/Invalid serialized CSS owner key/u);
+  });
   it('collapses all candidates into one initial group in single CSS mode', async () => {
     const result = await plan({
       analysis: createAnalysis({
@@ -125,6 +138,22 @@ describe('static Tailwind CSS ownership planner', () => {
     expect(result.cssGroups.get('initial')).not.toContain('.\\!p-2');
   });
 
+  it('keeps Autoprefixer-generated declarations with their lazy candidate owner', async () => {
+    const owner = 'module:src/Feature.vue';
+    const result = await plan({
+      analysis: createAnalysis({
+        candidates: ['appearance-none'],
+        candidateOwners: { 'appearance-none': [owner] },
+      }),
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    });
+
+    expect(result.cssGroups.get(owner)).toContain('.appearance-none');
+    expect(result.cssGroups.get(owner)).toContain('-webkit-appearance: none');
+    expect(result.cssGroups.get('initial')).not.toContain('.appearance-none');
+  });
+
   it('maps compiled fallback rules to their source owners and keeps support CSS initial', async () => {
     const owner = 'module:src/Feature.vue';
     const result = await plan({
@@ -147,9 +176,10 @@ describe('static Tailwind CSS ownership planner', () => {
   });
 
   it('uses bounded debug filenames for large shared owner sets', () => {
-    const ownerKey = Array.from({ length: 80 }, (_, index) => (
+    const owners = Array.from({ length: 80 }, (_, index) => (
       `lazy:features/large-owner-set/Component-${String(index).padStart(3, '0')}.vue`
-    )).join('|');
+    ));
+    const ownerKey = createCssOwnerKey({ owners });
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-debug-'));
     try {
       writeCssOwnershipDebugFiles({
@@ -157,7 +187,7 @@ describe('static Tailwind CSS ownership planner', () => {
         plan: {
           outputMode: 'split',
           candidates: ['p-2'],
-          candidateOwners: new Map([['p-2', new Set(ownerKey.split('|'))]]),
+          candidateOwners: new Map([['p-2', new Set(owners)]]),
           ownerCandidateGroups: new Map([[ownerKey, ['p-2']]]),
           baselineCss: '',
           entryCss: '',
@@ -226,6 +256,39 @@ describe('static Tailwind CSS ownership planner', () => {
     }
   });
 
+  it('rejects inconsistent or ownerless source analysis before CSS compilation', async () => {
+    const base = createAnalysis({
+      candidates: ['p-2'],
+      candidateOwners: { 'p-2': ['initial'] },
+    });
+    await expect(plan({
+      analysis: {
+        ...base,
+        candidateOwners: new Map(),
+      },
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    })).rejects.toThrow(/candidates missing owner entries: p-2/u);
+
+    await expect(plan({
+      analysis: {
+        ...base,
+        candidateGroups: [],
+      },
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    })).rejects.toThrow(/owner entries missing source occurrences: p-2/u);
+
+    await expect(plan({
+      analysis: {
+        ...base,
+        candidateOwners: new Map([['p-2', new Set()]]),
+      },
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    })).rejects.toThrow(/candidates with invalid or empty owner sets: p-2/u);
+  });
+
   it('rejects invalid lazy group limits before compiling CSS', async () => {
     await expect(plan({
       analysis: createAnalysis({
@@ -235,6 +298,28 @@ describe('static Tailwind CSS ownership planner', () => {
       outputMode: 'split',
       maxSplitCssGroups: -1,
     })).rejects.toThrow('maxSplitCssGroups must be a non-negative integer');
+  });
+
+  it('promotes the smallest excess CSS group instead of a larger shared group', async () => {
+    const sharedOwners = ['module:src/FeatureA.vue', 'module:src/FeatureB.vue'];
+    const sharedOwnerKey = createCssOwnerKey({ owners: sharedOwners });
+    const privateOwnerKey = 'module:src/FeatureC.vue';
+    const result = await plan({
+      analysis: createAnalysis({
+        candidates: ['shadow-2xl', 'p-px'],
+        candidateOwners: {
+          'shadow-2xl': sharedOwners,
+          'p-px': [privateOwnerKey],
+        },
+      }),
+      outputMode: 'split',
+      maxSplitCssGroups: 1,
+    });
+
+    expect(result.compression.atoms.retainedOwnerKeys).toEqual([sharedOwnerKey]);
+    expect(result.cssGroups.get(sharedOwnerKey)).toContain('.shadow-2xl');
+    expect(result.cssGroups.get('initial')).toContain('.p-px');
+    expect(result.cssGroups.has(privateOwnerKey)).toBe(false);
   });
 
   it('caps lazy ownership groups without duplicate CSS atoms', async () => {

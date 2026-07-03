@@ -1,10 +1,12 @@
-import { NodeTypes, createSimpleExpression, parse as parseTemplate } from '@vue/compiler-dom';
+import path from 'node:path';
+import { NodeTypes, compile as compileTemplate, createSimpleExpression, parse as parseTemplate } from '@vue/compiler-dom';
 import { processExpression } from '@vue/compiler-core';
 import { parse as parseSfc } from '@vue/compiler-sfc';
 import MagicString from 'magic-string';
 import {
   parseTypeScriptExpression,
   createTypeScriptSourceFile,
+  createTypeScriptTypeChecker,
   nodePosition,
   nodeRange,
   staticStringValue,
@@ -29,6 +31,21 @@ function absolutePosition({ relative, blockStart, columnIsZeroBased }) {
   };
 }
 
+function absoluteSourceLocation({ loc, blockStart }) {
+  if (blockStart === undefined) return loc;
+  return {
+    ...loc,
+    start: {
+      ...loc.start,
+      ...absolutePosition({ relative: loc.start, blockStart, columnIsZeroBased: false }),
+    },
+    end: {
+      ...loc.end,
+      ...absolutePosition({ relative: loc.end, blockStart, columnIsZeroBased: false }),
+    },
+  };
+}
+
 function createOccurrence({ candidate, filename, position, sourceKind }) {
   return { candidate, filename, line: position.line, column: position.column, sourceKind };
 }
@@ -43,14 +60,72 @@ export function parseTwClassTokens({ value, filename, loc }) {
   return tokens;
 }
 
-function expressionLoc({ sourceFile, node }) {
-  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-  return { start: { line: position.line + 1, column: position.character + 1 } };
+function expressionLoc({ sourceFile, node, blockStart = { line: 1, column: 1 } }) {
+  return { start: nodePosition({ sourceFile, node, blockStart }) };
 }
 
 function isIdentifierCall({ node, name }) {
   const expression = unwrapTypeScriptExpression({ node: node.expression });
   return ts.isIdentifier(expression) && expression.text === name;
+}
+
+function classMacroName({ node }) {
+  if (!ts.isCallExpression(node)) return undefined;
+  const expression = unwrapTypeScriptExpression({ node: node.expression });
+  if (!ts.isIdentifier(expression)) return undefined;
+  return ['tw', 'twClassString', 'twClasses', 'customClasses'].includes(expression.text)
+    ? expression.text
+    : undefined;
+}
+
+function classWrapperName({ node }) {
+  const name = classMacroName({ node });
+  return name === 'twClasses' || name === 'customClasses' ? name : undefined;
+}
+
+function failUnsupportedTemplateMacro({ macroName, filename, loc }) {
+  fail({
+    filename,
+    loc,
+    message: `${macroName}() is not supported in Vue template expressions; use tw-class / :tw-class syntax.`,
+  });
+}
+
+function assertNoNestedClassMacros({ node, filename, loc }) {
+  visitTypeScriptAst({
+    node,
+    visitor(candidate) {
+      const macroName = classMacroName({ node: candidate });
+      if (macroName === undefined) return;
+      const wrapperName = classWrapperName({ node: candidate });
+      if (wrapperName !== undefined) {
+        fail({
+          filename,
+          loc,
+          message: `${wrapperName}() may not be nested inside another class wrapper.`,
+        });
+      }
+      failUnsupportedTemplateMacro({ macroName, filename, loc });
+    },
+  });
+}
+
+function assertNoMisplacedClassMacros({ node, filename, loc }) {
+  visitTypeScriptAst({
+    node,
+    visitor(candidate) {
+      const macroName = classMacroName({ node: candidate });
+      if (macroName === undefined) return;
+      const wrapperName = classWrapperName({ node: candidate });
+      if (wrapperName === undefined) {
+        failUnsupportedTemplateMacro({ macroName, filename, loc });
+      }
+      const placement = wrapperName === 'customClasses'
+        ? 'the complete value of an ordinary :class binding'
+        : 'a class-value position inside :tw-class';
+      fail({ filename, loc, message: `${wrapperName}() may only be used as ${placement}.` });
+    },
+  });
 }
 
 function unwrapTopLevelClassWrapper({ expression, wrapperName, filename, loc }) {
@@ -61,8 +136,12 @@ function unwrapTopLevelClassWrapper({ expression, wrapperName, filename, loc }) 
     fail({ filename, loc, message: `Unable to parse class expression: ${String(error)}` });
   }
   const root = unwrapTypeScriptExpression({ node: parsed.root });
-  if (!ts.isCallExpression(root) || !isIdentifierCall({ node: root, name: wrapperName })) return undefined;
+  if (!ts.isCallExpression(root) || !isIdentifierCall({ node: root, name: wrapperName })) {
+    assertNoMisplacedClassMacros({ node: root, filename, loc });
+    return undefined;
+  }
   if (root.arguments.length !== 1) fail({ filename, loc, message: `${wrapperName}() requires exactly one class value argument.` });
+  assertNoNestedClassMacros({ node: root.arguments[0], filename, loc });
   const range = nodeRange({ sourceFile: parsed.sourceFile, node: root.arguments[0], offset: parsed.offset });
   return expression.slice(range.start, range.end);
 }
@@ -83,10 +162,13 @@ export function parseTwClassExpression({ expression, filename, loc }) {
   }
   const classes = [];
   const dynamicWrappers = [];
+  const acceptedWrapperNodes = new Set();
   function visit(input) {
     const node = unwrapTypeScriptExpression({ node: input });
     if (ts.isCallExpression(node) && isIdentifierCall({ node, name: 'twClasses' })) {
       if (node.arguments.length !== 1) fail({ filename, loc, message: 'twClasses() requires exactly one class value argument.' });
+      assertNoNestedClassMacros({ node: node.arguments[0], filename, loc });
+      acceptedWrapperNodes.add(node);
       const nodeRangeValue = nodeRange({ sourceFile: parsed.sourceFile, node, offset: parsed.offset });
       const argumentRange = nodeRange({ sourceFile: parsed.sourceFile, node: node.arguments[0], offset: parsed.offset });
       dynamicWrappers.push({
@@ -136,6 +218,21 @@ export function parseTwClassExpression({ expression, filename, loc }) {
     });
   }
   visit(parsed.root);
+  visitTypeScriptAst({
+    node: parsed.root,
+    visitor(candidate) {
+      const macroName = classMacroName({ node: candidate });
+      if (macroName === undefined || acceptedWrapperNodes.has(candidate)) return;
+      const wrapperName = classWrapperName({ node: candidate });
+      if (wrapperName === undefined) {
+        failUnsupportedTemplateMacro({ macroName, filename, loc });
+      }
+      const placement = wrapperName === 'customClasses'
+        ? 'an ordinary :class binding'
+        : 'a class-value position inside :tw-class';
+      fail({ filename, loc, message: `${wrapperName}() may not be used as a condition; use it only in ${placement}.` });
+    },
+  });
   if (classes.length === 0 && dynamicWrappers.length === 0) {
     fail({ filename, loc, message: ':tw-class must contain at least one class literal or twClasses() value.' });
   }
@@ -174,20 +271,24 @@ export function collectTwCandidateOccurrencesFromTemplateAst({ ast, filename, bl
       for (const prop of node.props) {
         const definition = classAttributeDefinition({ prop });
         if (definition === undefined) continue;
+        const reportLoc = absoluteSourceLocation({ loc: prop.loc, blockStart });
+        if (prop.type === NodeTypes.DIRECTIVE && prop.modifiers.length > 0) {
+          fail({ filename, loc: reportLoc, message: `:${definition.source} does not support v-bind modifiers.` });
+        }
         const position = absolutePosition({ relative: prop.loc.start, blockStart, columnIsZeroBased: false });
         if (prop.type === NodeTypes.ATTRIBUTE) {
-          if (prop.value === undefined) fail({ filename, loc: prop.loc, message: `${definition.source} requires a static string value.` });
-          for (const token of parseTwClassTokens({ value: prop.value.content, filename, loc: prop.loc })) {
+          if (prop.value === undefined) fail({ filename, loc: reportLoc, message: `${definition.source} requires a static string value.` });
+          for (const token of parseTwClassTokens({ value: prop.value.content, filename, loc: reportLoc })) {
             occurrences.push(createOccurrence({ candidate: token, filename, position, sourceKind: definition.source }));
           }
           continue;
         }
         if (definition.target !== 'class') {
-          fail({ filename, loc: prop.loc, message: `Dynamic :${definition.source} is not supported. Use a static ${definition.source} value.` });
+          fail({ filename, loc: reportLoc, message: `Dynamic :${definition.source} is not supported. Use a static ${definition.source} value.` });
         }
-        if (prop.exp === undefined) fail({ filename, loc: prop.loc, message: ':tw-class requires an expression.' });
+        if (prop.exp === undefined) fail({ filename, loc: reportLoc, message: ':tw-class requires an expression.' });
         const expression = typeof prop.exp.content === 'string' ? prop.exp.content : prop.exp.loc.source;
-        for (const token of parseTwClassExpression({ expression, filename, loc: prop.loc }).classes) {
+        for (const token of parseTwClassExpression({ expression, filename, loc: reportLoc }).classes) {
           occurrences.push(createOccurrence({ candidate: token, filename, position, sourceKind: ':tw-class' }));
         }
       }
@@ -199,24 +300,49 @@ export function collectTwCandidateOccurrencesFromTemplateAst({ ast, filename, bl
   return occurrences;
 }
 
+function assertSupportedVueTemplateBlock({ template, filename }) {
+  if (template === null) return;
+  if (template.src !== undefined) {
+    fail({ filename, message: 'External Vue template src files are not supported by static Tailwind analysis.' });
+  }
+  if (template.lang !== undefined && template.lang !== 'html') {
+    fail({ filename, message: `Unsupported Vue template language ${JSON.stringify(template.lang)} for static Tailwind analysis.` });
+  }
+}
+
 export function collectTwCandidateOccurrencesFromVueSource({ source, filename }) {
   const { descriptor, errors } = parseSfc(source, { filename });
   if (errors.length > 0) fail({ filename, message: `Unable to parse Vue SFC: ${errors.map(String).join('; ')}` });
+  assertSupportedVueTemplateBlock({ template: descriptor.template, filename });
   const occurrences = [];
   if (descriptor.template !== null) {
+    const blockStart = descriptor.template.loc.start;
+    const reportCompilerError = (error) => {
+      fail({
+        filename,
+        loc: absoluteSourceLocation({ loc: error.loc, blockStart }),
+        message: error.message,
+      });
+    };
     const templateAst = parseTemplate(descriptor.template.content, {
       comments: true,
       expressionPlugins: ['typescript'],
-      onError(error) { fail({ filename, loc: error.loc, message: error.message }); },
+      onError: reportCompilerError,
     });
-    occurrences.push(...collectTwCandidateOccurrencesFromTemplateAst({ ast: templateAst, filename, blockStart: descriptor.template.loc.start }));
+    compileTemplate(descriptor.template.content, {
+      comments: true,
+      expressionPlugins: ['typescript'],
+      onError: reportCompilerError,
+      nodeTransforms: [createTwClassNodeTransform({ filename, blockStart })],
+    });
+    occurrences.push(...collectTwCandidateOccurrencesFromTemplateAst({ ast: templateAst, filename, blockStart }));
   }
   for (const scriptBlock of [descriptor.script, descriptor.scriptSetup]) {
     if (scriptBlock === null) continue;
     const result = transformTwCallsInModule({
       source: scriptBlock.content,
       filename,
-      sourceType: scriptBlock.lang === 'js' || scriptBlock.lang === 'jsx' ? 'javascript' : 'typescript',
+      sourceType: sourceTypeForVueScriptBlock({ lang: scriptBlock.lang, filename }),
       blockStart: scriptBlock.loc.start,
       additionalImports: [],
     });
@@ -233,7 +359,8 @@ function dynamicPropsByName({ node, name }) {
   return node.props.filter((prop) => prop.type === NodeTypes.DIRECTIVE && prop.name === 'bind' && isStaticArgument({ argument: prop.arg, name }));
 }
 
-export function createTwClassNodeTransform({ filename }) {
+export function createTwClassNodeTransform({ filename, blockStart }) {
+  const reportLocation = ({ loc }) => absoluteSourceLocation({ loc, blockStart });
   return (node, context) => {
     if (node.type !== NodeTypes.ELEMENT) return;
     for (const prop of node.props) {
@@ -243,14 +370,22 @@ export function createTwClassNodeTransform({ filename }) {
           ? prop.arg.content
           : undefined;
       if (sourceName?.startsWith('tw-') && !tailwindClassAttributeBySource.has(sourceName)) {
-        fail({ filename, loc: prop.loc, message: `Unknown Tailwind class attribute ${sourceName}.` });
+        fail({ filename, loc: reportLocation({ loc: prop.loc }), message: `Unknown Tailwind class attribute ${sourceName}.` });
+      }
+      if (
+        sourceName !== undefined
+        && tailwindClassAttributeBySource.has(sourceName)
+        && prop.type === NodeTypes.DIRECTIVE
+        && prop.modifiers.length > 0
+      ) {
+        fail({ filename, loc: reportLocation({ loc: prop.loc }), message: `:${sourceName} does not support v-bind modifiers.` });
       }
     }
 
     for (const classProp of dynamicPropsByName({ node, name: 'class' })) {
       if (classProp.exp === undefined) continue;
       const expression = classProp.exp.loc.source;
-      const unwrapped = unwrapTopLevelClassWrapper({ expression, wrapperName: 'customClasses', filename, loc: classProp.loc });
+      const unwrapped = unwrapTopLevelClassWrapper({ expression, wrapperName: 'customClasses', filename, loc: reportLocation({ loc: classProp.loc }) });
       if (unwrapped === undefined) continue;
       classProp.exp = processExpression(createSimpleExpression(unwrapped, false, classProp.exp.loc), context);
     }
@@ -258,22 +393,22 @@ export function createTwClassNodeTransform({ filename }) {
     for (const definition of tailwindClassAttributeBySource.values()) {
       const staticTwProps = staticPropsByName({ node, name: definition.source });
       const dynamicTwProps = dynamicPropsByName({ node, name: definition.source });
-      if (staticTwProps.length > 1) fail({ filename, loc: staticTwProps[1].loc, message: `Only one ${definition.source} attribute is allowed per element.` });
-      if (dynamicTwProps.length > 1) fail({ filename, loc: dynamicTwProps[1].loc, message: `Only one :${definition.source} binding is allowed per element.` });
+      if (staticTwProps.length > 1) fail({ filename, loc: reportLocation({ loc: staticTwProps[1].loc }), message: `Only one ${definition.source} attribute is allowed per element.` });
+      if (dynamicTwProps.length > 1) fail({ filename, loc: reportLocation({ loc: dynamicTwProps[1].loc }), message: `Only one :${definition.source} binding is allowed per element.` });
       if (staticTwProps.length === 1 && dynamicTwProps.length === 1) {
-        fail({ filename, loc: dynamicTwProps[0].loc, message: `Do not combine ${definition.source} and :${definition.source} on one element because vue-tsc treats them as duplicate attributes.` });
+        fail({ filename, loc: reportLocation({ loc: dynamicTwProps[0].loc }), message: `Do not combine ${definition.source} and :${definition.source} on one element because vue-tsc treats them as duplicate attributes.` });
       }
       if (staticTwProps.length === 1) {
         const twProp = staticTwProps[0];
-        if (twProp.value === undefined) fail({ filename, loc: twProp.loc, message: `${definition.source} requires a static string value.` });
-        parseTwClassTokens({ value: twProp.value.content, filename, loc: twProp.loc });
+        if (twProp.value === undefined) fail({ filename, loc: reportLocation({ loc: twProp.loc }), message: `${definition.source} requires a static string value.` });
+        parseTwClassTokens({ value: twProp.value.content, filename, loc: reportLocation({ loc: twProp.loc }) });
         const targetStaticProps = staticPropsByName({ node, name: definition.target }).filter((prop) => prop !== twProp);
         const targetDynamicProps = dynamicPropsByName({ node, name: definition.target });
         if (targetStaticProps.length > 1 || targetDynamicProps.length > 1) {
-          fail({ filename, loc: twProp.loc, message: `Multiple ${definition.target} attributes cannot be merged safely.` });
+          fail({ filename, loc: reportLocation({ loc: twProp.loc }), message: `Multiple ${definition.target} attributes cannot be merged safely.` });
         }
         if (definition.target !== 'class' && targetDynamicProps.length > 0) {
-          fail({ filename, loc: twProp.loc, message: `${definition.source} cannot be combined with :${definition.target}.` });
+          fail({ filename, loc: reportLocation({ loc: twProp.loc }), message: `${definition.source} cannot be combined with :${definition.target}.` });
         }
         const targetStatic = targetStaticProps[0];
         if (targetStatic?.type === NodeTypes.ATTRIBUTE) {
@@ -285,16 +420,16 @@ export function createTwClassNodeTransform({ filename }) {
       if (dynamicTwProps.length === 1) {
         const twProp = dynamicTwProps[0];
         if (definition.target !== 'class') {
-          fail({ filename, loc: twProp.loc, message: `Dynamic :${definition.source} is not supported. Use a static ${definition.source} value.` });
+          fail({ filename, loc: reportLocation({ loc: twProp.loc }), message: `Dynamic :${definition.source} is not supported. Use a static ${definition.source} value.` });
         }
-        if (twProp.exp === undefined) fail({ filename, loc: twProp.loc, message: ':tw-class requires an expression.' });
-        const parsed = parseTwClassExpression({ expression: twProp.exp.loc.source, filename, loc: twProp.loc });
+        if (twProp.exp === undefined) fail({ filename, loc: reportLocation({ loc: twProp.loc }), message: ':tw-class requires an expression.' });
+        const parsed = parseTwClassExpression({ expression: twProp.exp.loc.source, filename, loc: reportLocation({ loc: twProp.loc }) });
         twProp.exp = processExpression(createSimpleExpression(parsed.runtimeExpression, false, twProp.exp.loc), context);
         const targetDynamic = dynamicPropsByName({ node, name: 'class' }).find((prop) => prop !== twProp);
         if (targetDynamic?.type === NodeTypes.DIRECTIVE) {
-          if (targetDynamic.exp === undefined) fail({ filename, loc: targetDynamic.loc, message: ':class requires an expression.' });
+          if (targetDynamic.exp === undefined) fail({ filename, loc: reportLocation({ loc: targetDynamic.loc }), message: ':class requires an expression.' });
           const original = targetDynamic.exp.loc.source;
-          const custom = unwrapTopLevelClassWrapper({ expression: original, wrapperName: 'customClasses', filename, loc: targetDynamic.loc }) ?? original;
+          const custom = unwrapTopLevelClassWrapper({ expression: original, wrapperName: 'customClasses', filename, loc: reportLocation({ loc: targetDynamic.loc }) }) ?? original;
           targetDynamic.exp = processExpression(createSimpleExpression(`[${custom}, ${parsed.runtimeExpression}]`, false, targetDynamic.exp.loc), context);
           node.props.splice(node.props.indexOf(twProp), 1);
         } else twProp.arg.content = 'class';
@@ -312,6 +447,81 @@ function isImportIdentifier({ node }) {
   return ts.isImportSpecifier(node.parent) || ts.isImportClause(node.parent) || ts.isNamespaceImport(node.parent) || ts.isImportEqualsDeclaration(node.parent);
 }
 
+function isVirtualModuleStringLiteral({ node }) {
+  return ts.isStringLiteralLike(node) && node.text === virtualModuleId;
+}
+
+function containsVirtualModuleString({ node }) {
+  let found = false;
+  visitTypeScriptAst({
+    node,
+    visitor(candidate) {
+      if (isVirtualModuleStringLiteral({ node: candidate })) found = true;
+    },
+  });
+  return found;
+}
+
+function assertSupportedVirtualModuleReference({ node, filename, sourceFile, blockStart }) {
+  if (ts.isExportDeclaration(node) && isVirtualModuleStringLiteral({ node: node.moduleSpecifier })) {
+    fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'virtual:naidan-tailwind may not be re-exported.' });
+  }
+  if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)
+    && isVirtualModuleStringLiteral({ node: node.moduleReference.expression })) {
+    fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'virtual:naidan-tailwind only supports named ES module imports.' });
+  }
+  if (!ts.isCallExpression(node)) return;
+  const referencesVirtualModule = node.arguments.some((argument) => containsVirtualModuleString({ node: argument }));
+  if (!referencesVirtualModule) return;
+  if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+    fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'virtual:naidan-tailwind may not be dynamically imported.' });
+  }
+  if (ts.isIdentifier(node.expression) && node.expression.text === 'require') {
+    fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'virtual:naidan-tailwind may not be loaded with require().' });
+  }
+}
+
+function isDirectCallTarget({ node }) {
+  let current = node;
+  while (
+    ts.isParenthesizedExpression(current.parent)
+    || ts.isAsExpression(current.parent)
+    || ts.isTypeAssertionExpression(current.parent)
+    || ts.isNonNullExpression(current.parent)
+    || ts.isSatisfiesExpression(current.parent)
+    || ts.isPartiallyEmittedExpression(current.parent)
+  ) current = current.parent;
+  return ts.isCallExpression(current.parent)
+    && unwrapTypeScriptExpression({ node: current.parent.expression }) === node;
+}
+
+function parserFilenameForSourceType({ filename, sourceType }) {
+  const extensionBySourceType = {
+    javascript: '.js',
+    jsx: '.jsx',
+    typescript: '.ts',
+    tsx: '.tsx',
+  };
+  const compatibleExtensions = {
+    javascript: new Set(['.js', '.mjs', '.cjs']),
+    jsx: new Set(['.jsx']),
+    typescript: new Set(['.ts', '.mts', '.cts']),
+    tsx: new Set(['.tsx']),
+  };
+  const extension = path.extname(filename).toLowerCase();
+  return compatibleExtensions[sourceType].has(extension)
+    ? filename
+    : `${filename}${extensionBySourceType[sourceType]}`;
+}
+
+export function sourceTypeForVueScriptBlock({ lang, filename }) {
+  if (lang === undefined || lang === 'js') return 'javascript';
+  if (lang === 'jsx') return 'jsx';
+  if (lang === 'ts') return 'typescript';
+  if (lang === 'tsx') return 'tsx';
+  throw new Error(`[tw-class] ${filename} Unsupported Vue script language ${JSON.stringify(lang)}.`);
+}
+
 function transformTwCallsIntoMagicString({
   source,
   filename,
@@ -321,7 +531,7 @@ function transformTwCallsIntoMagicString({
   magicString,
   sourceOffset,
 }) {
-  const parseFilename = sourceType === 'javascript' && filename.endsWith('.ts') ? `${filename}.js` : filename;
+  const parseFilename = parserFilenameForSourceType({ filename, sourceType });
   let sourceFile;
   try {
     sourceFile = createTypeScriptSourceFile({ source, filename: parseFilename });
@@ -331,81 +541,101 @@ function transformTwCallsIntoMagicString({
   const classes = new Set();
   const occurrences = [];
   const macroImports = [];
-  const twLocalNames = new Set();
-  const twClassStringLocalNames = new Set();
-  const templateOnlyLocalNames = new Set();
+  const typeChecker = source.includes(virtualModuleId)
+    ? createTypeScriptTypeChecker({ sourceFile })
+    : undefined;
+  const twSymbols = new Set();
+  const twClassStringSymbols = new Set();
+  const templateOnlySymbols = new Map();
 
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== virtualModuleId) continue;
     macroImports.push(statement);
     const clause = statement.importClause;
     if (clause === undefined || clause.name !== undefined || clause.namedBindings === undefined || !ts.isNamedImports(clause.namedBindings)) {
-      fail({ filename, loc: expressionLoc({ sourceFile, node: statement }), message: 'virtual:naidan-tailwind only supports named imports.' });
+      fail({ filename, loc: expressionLoc({ sourceFile, node: statement, blockStart }), message: 'virtual:naidan-tailwind only supports named imports.' });
     }
     for (const specifier of clause.namedBindings.elements) {
       const binding = importBindingName({ specifier });
       const isTypeOnly = clause.isTypeOnly || binding.typeOnly;
       if (isTypeOnly) {
         if (binding.imported !== 'TailwindClass' && binding.imported !== 'TailwindClassValue') {
-          fail({ filename, loc: expressionLoc({ sourceFile, node: specifier }), message: `Unsupported virtual:naidan-tailwind type ${binding.imported}.` });
+          fail({ filename, loc: expressionLoc({ sourceFile, node: specifier, blockStart }), message: `Unsupported virtual:naidan-tailwind type ${binding.imported}.` });
         }
         continue;
       }
-      if (binding.imported === 'tw') twLocalNames.add(binding.local);
+      const symbol = typeChecker?.getSymbolAtLocation(specifier.name);
+      if (symbol === undefined) {
+        fail({ filename, loc: expressionLoc({ sourceFile, node: specifier, blockStart }), message: `Unable to resolve virtual:naidan-tailwind import ${binding.imported}.` });
+      }
+      if (binding.imported === 'tw') twSymbols.add(symbol);
       else if (binding.imported === 'twClassString') {
-        if (binding.local !== binding.imported) fail({ filename, loc: expressionLoc({ sourceFile, node: specifier }), message: 'twClassString may not be aliased.' });
-        twClassStringLocalNames.add(binding.local);
+        if (binding.local !== binding.imported) fail({ filename, loc: expressionLoc({ sourceFile, node: specifier, blockStart }), message: 'twClassString may not be aliased.' });
+        twClassStringSymbols.add(symbol);
       } else if (binding.imported === 'twClasses' || binding.imported === 'customClasses') {
-        if (binding.local !== binding.imported) fail({ filename, loc: expressionLoc({ sourceFile, node: specifier }), message: `${binding.imported} may not be aliased because Vue template analysis uses its canonical name.` });
-        templateOnlyLocalNames.add(binding.local);
-      } else fail({ filename, loc: expressionLoc({ sourceFile, node: specifier }), message: `Unsupported virtual:naidan-tailwind macro ${binding.imported}.` });
+        if (binding.local !== binding.imported) fail({ filename, loc: expressionLoc({ sourceFile, node: specifier, blockStart }), message: `${binding.imported} may not be aliased because Vue template analysis uses its canonical name.` });
+        templateOnlySymbols.set(symbol, binding.imported);
+      } else fail({ filename, loc: expressionLoc({ sourceFile, node: specifier, blockStart }), message: `Unsupported virtual:naidan-tailwind macro ${binding.imported}.` });
     }
+  }
+  if (source.includes(virtualModuleId)) {
+    visitTypeScriptAst({
+      node: sourceFile,
+      visitor(node) {
+        assertSupportedVirtualModuleReference({ node, filename, sourceFile, blockStart });
+      },
+    });
   }
   if (macroImports.length === 0 && additionalImports.length === 0) {
     return { classes, occurrences, changed: false };
   }
 
-  visitTypeScriptAst({
-    node: sourceFile,
-    visitor(node) {
-      if (ts.isCallExpression(node) && ts.isIdentifier(unwrapTypeScriptExpression({ node: node.expression }))) {
-        const callee = unwrapTypeScriptExpression({ node: node.expression });
-        if (twLocalNames.has(callee.text)) {
-          if (node.arguments.length !== 1) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: "tw() requires exactly one string literal, for example tw('opacity-50')." });
-          const className = staticStringValue({ node: node.arguments[0] });
-          if (className === undefined) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: "tw() requires exactly one string literal, for example tw('opacity-50')." });
-          const tokens = parseTwClassTokens({ value: className, filename, loc: expressionLoc({ sourceFile, node }) });
-          if (tokens.length !== 1) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: 'tw() accepts exactly one Tailwind class token.' });
-          classes.add(className);
-          occurrences.push(createOccurrence({ candidate: className, filename, position: nodePosition({ sourceFile, node, blockStart }), sourceKind: 'tw()' }));
-          const range = nodeRange({ sourceFile, node, offset: 0 });
-          magicString.overwrite(sourceOffset + range.start, sourceOffset + range.end, JSON.stringify(className));
-          return;
-        }
-        if (twClassStringLocalNames.has(callee.text)) {
-          if (node.arguments.length === 0) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: 'twClassString() requires one or more string literals.' });
-          const classNames = node.arguments.map((argument) => staticStringValue({ node: argument }));
-          if (classNames.some((className) => className === undefined)) {
-            fail({ filename, loc: expressionLoc({ sourceFile, node }), message: 'twClassString() requires one or more string literals, each containing exactly one Tailwind class token.' });
-          }
-          for (const className of classNames) {
-            const tokens = parseTwClassTokens({ value: className, filename, loc: expressionLoc({ sourceFile, node }) });
-            if (tokens.length !== 1) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: 'Each twClassString() argument must contain exactly one Tailwind class token.' });
+  if (macroImports.length > 0) {
+    visitTypeScriptAst({
+      node: sourceFile,
+      visitor(node) {
+        if (ts.isCallExpression(node) && ts.isIdentifier(unwrapTypeScriptExpression({ node: node.expression }))) {
+          const callee = unwrapTypeScriptExpression({ node: node.expression });
+          const symbol = typeChecker?.getSymbolAtLocation(callee);
+          if (symbol !== undefined && twSymbols.has(symbol)) {
+            if (node.arguments.length !== 1) fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: "tw() requires exactly one string literal, for example tw('opacity-50')." });
+            const className = staticStringValue({ node: node.arguments[0] });
+            if (className === undefined) fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: "tw() requires exactly one string literal, for example tw('opacity-50')." });
+            const tokens = parseTwClassTokens({ value: className, filename, loc: expressionLoc({ sourceFile, node, blockStart }) });
+            if (tokens.length !== 1) fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'tw() accepts exactly one Tailwind class token.' });
             classes.add(className);
-            occurrences.push(createOccurrence({ candidate: className, filename, position: nodePosition({ sourceFile, node, blockStart }), sourceKind: 'twClassString()' }));
+            occurrences.push(createOccurrence({ candidate: className, filename, position: nodePosition({ sourceFile, node, blockStart }), sourceKind: 'tw()' }));
+            const range = nodeRange({ sourceFile, node, offset: 0 });
+            magicString.overwrite(sourceOffset + range.start, sourceOffset + range.end, JSON.stringify(className));
+            return;
           }
-          const range = nodeRange({ sourceFile, node, offset: 0 });
-          magicString.overwrite(sourceOffset + range.start, sourceOffset + range.end, JSON.stringify(classNames.join(' ')));
+          if (symbol !== undefined && twClassStringSymbols.has(symbol)) {
+            if (node.arguments.length === 0) fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'twClassString() requires one or more string literals.' });
+            const classNames = node.arguments.map((argument) => staticStringValue({ node: argument }));
+            if (classNames.some((className) => className === undefined)) {
+              fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'twClassString() requires one or more string literals, each containing exactly one Tailwind class token.' });
+            }
+            for (const className of classNames) {
+              const tokens = parseTwClassTokens({ value: className, filename, loc: expressionLoc({ sourceFile, node, blockStart }) });
+              if (tokens.length !== 1) fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'Each twClassString() argument must contain exactly one Tailwind class token.' });
+              classes.add(className);
+              occurrences.push(createOccurrence({ candidate: className, filename, position: nodePosition({ sourceFile, node, blockStart }), sourceKind: 'twClassString()' }));
+            }
+            const range = nodeRange({ sourceFile, node, offset: 0 });
+            magicString.overwrite(sourceOffset + range.start, sourceOffset + range.end, JSON.stringify(classNames.join(' ')));
+          }
         }
-      }
-      if (!ts.isIdentifier(node) || isImportIdentifier({ node })) return;
-      const parent = node.parent;
-      const isDirectCall = ts.isCallExpression(parent) && parent.expression === node;
-      if (twLocalNames.has(node.text) && !isDirectCall) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: 'tw may only be used as a direct function call.' });
-      if (twClassStringLocalNames.has(node.text) && !isDirectCall) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: 'twClassString may only be used as a direct function call.' });
-      if (templateOnlyLocalNames.has(node.text)) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: `${node.text} may only be used directly in a Vue template class binding.` });
-    },
-  });
+        if (!ts.isIdentifier(node) || isImportIdentifier({ node })) return;
+        const symbol = typeChecker?.getSymbolAtLocation(node);
+        if (symbol === undefined) return;
+        const isDirectCall = isDirectCallTarget({ node });
+        if (twSymbols.has(symbol) && !isDirectCall) fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'tw may only be used as a direct function call.' });
+        if (twClassStringSymbols.has(symbol) && !isDirectCall) fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: 'twClassString may only be used as a direct function call.' });
+        const templateOnlyName = templateOnlySymbols.get(symbol);
+        if (templateOnlyName !== undefined) fail({ filename, loc: expressionLoc({ sourceFile, node, blockStart }), message: `${templateOnlyName} may only be used directly in a Vue template class binding.` });
+      },
+    });
+  }
 
   for (const declaration of macroImports) {
     magicString.remove(sourceOffset + declaration.getStart(sourceFile), sourceOffset + declaration.getEnd());
@@ -440,15 +670,22 @@ export function transformTwCallsInModule({ source, filename, sourceType, blockSt
 export function transformTwCallsInVueSource({ source, filename, additionalImports }) {
   const { descriptor, errors } = parseSfc(source, { filename });
   if (errors.length > 0) fail({ filename, message: `Unable to parse Vue SFC: ${errors.map(String).join('; ')}` });
+  assertSupportedVueTemplateBlock({ template: descriptor.template, filename });
   const magicString = new MagicString(source);
   const importBlock = descriptor.scriptSetup ?? descriptor.script;
+  if (additionalImports.length > 0 && importBlock?.src !== undefined) {
+    fail({
+      filename,
+      message: 'Cannot inject static Tailwind CSS registration imports into an external Vue script src block.',
+    });
+  }
   let changed = false;
   for (const scriptBlock of [descriptor.script, descriptor.scriptSetup]) {
     if (scriptBlock === null) continue;
     const result = transformTwCallsIntoMagicString({
       source: scriptBlock.content,
       filename,
-      sourceType: scriptBlock.lang === 'js' || scriptBlock.lang === 'jsx' ? 'javascript' : 'typescript',
+      sourceType: sourceTypeForVueScriptBlock({ lang: scriptBlock.lang, filename }),
       blockStart: scriptBlock.loc.start,
       additionalImports: scriptBlock === importBlock ? additionalImports : [],
       magicString,

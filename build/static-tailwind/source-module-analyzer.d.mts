@@ -1,21 +1,4 @@
-export type StaticTailwindAlias = {
-  find: string,
-  replacement: string,
-};
-
-export type UnresolvedDynamicImport = {
-  line: number,
-  column: number,
-  expression: string,
-};
-
-export type SourceModuleImports = {
-  staticImports: string[],
-  dynamicImports: string[],
-  unresolvedDynamicImports: UnresolvedDynamicImport[],
-};
-
-export type SourceCandidateGroup = {
+export type SourceCandidateGroupBase = {
   id: string,
   filename: string,
   sourceKind: string,
@@ -23,6 +6,9 @@ export type SourceCandidateGroup = {
   candidates: string[],
   line: number,
   column: number,
+};
+
+export type SourceCandidateGroup = SourceCandidateGroupBase & {
   owners: string[],
 };
 
@@ -31,44 +17,41 @@ export type SourceCssOwner = {
   root: string,
 };
 
+export type SourceModuleAnalysisCache = Map<string, {
+  source: string,
+  groups: SourceCandidateGroupBase[],
+}>;
+
 export type SourceModuleAnalysis = {
   projectRoot: string,
   sourceRoot: string,
-  entryModule: string,
   files: string[],
-  graph: Map<string, SourceModuleImports>,
-  unresolvedDynamicImports: (UnresolvedDynamicImport & { filename: string })[],
-  initialModules: Set<string>,
   cssOwners: SourceCssOwner[],
-  lazyOwners: SourceCssOwner[],
-  moduleOwners: Map<string, Set<string>>,
   candidateGroups: SourceCandidateGroup[],
   candidateOwners: Map<string, Set<string>>,
-  fallbackInitialModules: Set<string>,
 };
 
 export type SerializedSourceModuleAnalysis = {
   projectRoot: string,
   sourceRoot: string,
-  entryModule: string,
   files: string[],
-  unresolvedDynamicImports: (UnresolvedDynamicImport & { filename: string })[],
-  initialModules: string[],
   cssOwners: SourceCssOwner[],
-  lazyOwners: SourceCssOwner[],
-  moduleOwners: Record<string, string[]>,
-  fallbackInitialModules: string[],
   candidateOwners: Record<string, string[]>,
   candidateGroups: SourceCandidateGroup[],
 };
 
+export function isStaticTailwindSourceFile(options: {
+  filename: string,
+  sourceRoot: string,
+}): boolean;
+
+export function createSourceModuleAnalysisCache(): SourceModuleAnalysisCache;
+
 export function analyzeSourceModules(options: {
   projectRoot: string,
   sourceRoot: string,
-  entryModule: string,
-  aliases: StaticTailwindAlias[],
-  additionalLazyRootDirectories: string[],
-  ownershipMode: 'single-css' | 'source-module' | 'module-graph',
+  ownershipMode: 'single-css' | 'source-module',
+  cache: SourceModuleAnalysisCache,
 }): SourceModuleAnalysis;
 
 export function serializeSourceAnalysis(options: {

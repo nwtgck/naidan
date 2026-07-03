@@ -11,6 +11,21 @@ export interface TwClassVitePlugin extends Plugin {
   },
 }
 
+export function assertCssRegistrationBundleIntegrity(options: {
+  bundle: Record<string, {
+    type: string,
+    fileName?: string,
+    imports?: string[],
+    dynamicImports?: string[],
+    isEntry?: boolean,
+    isImplicitEntry?: boolean,
+    modules?: Record<string, unknown>,
+  }>,
+  projectRoot: string,
+  importsByModule: Map<string, string[]>,
+  moduleSourceByResolvedId: Map<string, string>,
+}): void;
+
 export function createTwClassVitePlugin(options: {
   projectRoot: string,
   sourceRoot: string,

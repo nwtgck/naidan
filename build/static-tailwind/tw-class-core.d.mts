@@ -1,5 +1,10 @@
 import type { NodeTransform, RootNode } from '@vue/compiler-core';
 
+export type SourcePosition = {
+  line: number,
+  column: number,
+};
+
 export type TailwindCandidateOccurrence = {
   candidate: string,
   column: number,
@@ -29,12 +34,19 @@ export function parseStaticTwClassExpression(options: {
   filename: string,
   loc?: unknown,
 }): string[];
-export function createTwClassNodeTransform(options: { filename: string }): NodeTransform;
+export function createTwClassNodeTransform(options: {
+  filename: string;
+  blockStart: SourcePosition | undefined;
+}): NodeTransform;
+export function sourceTypeForVueScriptBlock(options: {
+  lang: string | undefined,
+  filename: string,
+}): 'javascript' | 'jsx' | 'typescript' | 'tsx';
 export function collectTwCandidateOccurrencesFromVueSource(options: { source: string, filename: string }): TailwindCandidateOccurrence[];
 export function transformTwCallsInModule(options: {
   source: string,
   filename: string,
-  sourceType: 'javascript' | 'typescript',
+  sourceType: 'javascript' | 'jsx' | 'typescript' | 'tsx',
   blockStart: { line: number, column: number },
   additionalImports: string[],
 }): { code: string, map: unknown, classes: Set<string>, occurrences: TailwindCandidateOccurrence[], changed: boolean };

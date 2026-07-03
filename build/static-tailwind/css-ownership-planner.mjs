@@ -9,13 +9,24 @@ import {
   createTailwindCandidateValidator,
 } from './tailwind-candidate-validator.mjs';
 
-function ownerKey({ owners }) {
+export function createCssOwnerKey({ owners }) {
   const normalized = owners.includes('initial') ? ['initial'] : [...new Set(owners)].sort();
-  return normalized.join('|');
+  return normalized.length === 1 ? normalized[0] : JSON.stringify(normalized);
 }
 
-function ownerSetFromKey({ key }) {
-  return key === '' ? [] : key.split('|');
+export function parseCssOwnerKey({ key }) {
+  if (key === '') return [];
+  if (!key.startsWith('[')) return [key];
+  let owners;
+  try {
+    owners = JSON.parse(key);
+  } catch (error) {
+    throw new Error(`[tw-class] Invalid serialized CSS owner key: ${key}`, { cause: error });
+  }
+  if (!Array.isArray(owners) || owners.length < 2 || owners.some((owner) => typeof owner !== 'string' || owner === '')) {
+    throw new Error(`[tw-class] Invalid serialized CSS owner key: ${key}`);
+  }
+  return owners;
 }
 
 function nodeHeader({ node }) {
@@ -222,10 +233,44 @@ function bytes({ css }) {
   return { raw: Buffer.byteLength(css), gzip: gzipSync(css).length };
 }
 
+function assertAnalysisIntegrity({ analysis }) {
+  const occurrenceCandidates = new Set(
+    analysis.candidateGroups.flatMap((group) => group.candidates),
+  );
+  const ownerCandidates = new Set(analysis.candidateOwners.keys());
+  const missingOwners = [...occurrenceCandidates]
+    .filter((candidate) => !ownerCandidates.has(candidate))
+    .sort();
+  const missingOccurrences = [...ownerCandidates]
+    .filter((candidate) => !occurrenceCandidates.has(candidate))
+    .sort();
+  const invalidOwnerEntries = [...analysis.candidateOwners]
+    .filter(([, owners]) => (
+      !(owners instanceof Set)
+      || owners.size === 0
+      || [...owners].some((owner) => typeof owner !== 'string' || owner.length === 0)
+    ))
+    .map(([candidate]) => candidate)
+    .sort();
+  if (missingOwners.length === 0 && missingOccurrences.length === 0 && invalidOwnerEntries.length === 0) return;
+  const details = [
+    missingOwners.length === 0
+      ? undefined
+      : `candidates missing owner entries: ${missingOwners.join(', ')}`,
+    missingOccurrences.length === 0
+      ? undefined
+      : `owner entries missing source occurrences: ${missingOccurrences.join(', ')}`,
+    invalidOwnerEntries.length === 0
+      ? undefined
+      : `candidates with invalid or empty owner sets: ${invalidOwnerEntries.join(', ')}`,
+  ].filter(Boolean);
+  throw new Error(`[tw-class] Invalid source ownership analysis: ${details.join('; ')}`);
+}
+
 function groupCandidatesByOwner({ candidateOwners }) {
   const result = new Map();
   for (const [candidate, owners] of candidateOwners) {
-    const key = ownerKey({ owners: [...owners] });
+    const key = createCssOwnerKey({ owners: [...owners] });
     const candidates = result.get(key) ?? [];
     candidates.push(candidate);
     result.set(key, candidates);
@@ -235,12 +280,12 @@ function groupCandidatesByOwner({ candidateOwners }) {
 }
 
 function lazyGroupPriority({ left, right }) {
-  const leftSingleOwner = ownerSetFromKey({ key: left.key }).length === 1;
-  const rightSingleOwner = ownerSetFromKey({ key: right.key }).length === 1;
-  if (leftSingleOwner !== rightSingleOwner) return leftSingleOwner ? -1 : 1;
   if (left.bytes !== right.bytes) return right.bytes - left.bytes;
   if (left.itemCount !== right.itemCount) return right.itemCount - left.itemCount;
-  return left.key.localeCompare(right.key);
+  const leftSingleOwner = parseCssOwnerKey({ key: left.key }).length === 1;
+  const rightSingleOwner = parseCssOwnerKey({ key: right.key }).length === 1;
+  if (leftSingleOwner !== rightSingleOwner) return leftSingleOwner ? -1 : 1;
+  return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
 }
 
 function compressAtomGroups({ atomGroups, maxSplitCssGroups }) {
@@ -285,6 +330,7 @@ export async function createCssOwnershipPlan({
   if (maxSplitCssGroups !== undefined && (!Number.isInteger(maxSplitCssGroups) || maxSplitCssGroups < 0)) {
     throw new Error(`[tw-class] maxSplitCssGroups must be a non-negative integer or undefined: ${String(maxSplitCssGroups)}`);
   }
+  assertAnalysisIntegrity({ analysis });
   const candidates = [...analysis.candidateOwners.keys()].sort();
   const validator = await createTailwindCandidateValidator({ projectRoot, cssEntryPath, expectedTailwindVersion });
   const classification = validator.classify({ candidates });
@@ -412,7 +458,7 @@ export async function createCssOwnershipPlan({
       : atomOwners({ atom, ownershipHints });
     if (placement.sourceOwned) sourceOwnedAtomCount += 1;
     else initialSupportAtomCount += 1;
-    const key = ownerKey({ owners: [...placement.owners] });
+    const key = createCssOwnerKey({ owners: [...placement.owners] });
     const values = atomGroups.get(key) ?? [];
     values.push(atom);
     atomGroups.set(key, values);
@@ -499,7 +545,7 @@ export function serializeCssOwnershipPlan({ plan }) {
     outputMode: plan.outputMode,
     tailwindVersion: plan.tailwindVersion,
     candidates: plan.candidates,
-    candidateOwners: Object.fromEntries([...plan.candidateOwners].sort(([left], [right]) => left.localeCompare(right)).map(([candidate, owners]) => [candidate, [...owners].sort()])),
+    candidateOwners: Object.fromEntries([...plan.candidateOwners].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)).map(([candidate, owners]) => [candidate, [...owners].sort()])),
     ownerCandidateGroups: Object.fromEntries([...plan.ownerCandidateGroups]),
     entryCssBytes: Buffer.byteLength(plan.entryCss),
     cssGroups: Object.fromEntries([...plan.cssGroups].map(([key, css]) => [key, {
@@ -528,7 +574,7 @@ export function writeCssOwnershipDebugFiles({ directory, plan }) {
     groups[hash] = {
       filename,
       ownerKey: ownerKeyValue,
-      owners: ownerSetFromKey({ key: ownerKeyValue }),
+      owners: parseCssOwnerKey({ key: ownerKeyValue }),
       bytes: Buffer.byteLength(css),
       fragmentCount: plan.runtimeFragmentsByOwner.get(ownerKeyValue)?.length ?? 0,
       fragmentOrders: plan.runtimeFragmentsByOwner.get(ownerKeyValue)?.map(({ order }) => order) ?? [],

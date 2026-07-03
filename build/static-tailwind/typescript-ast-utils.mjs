@@ -34,6 +34,54 @@ export function createTypeScriptSourceFile({ source, filename }) {
   return sourceFile;
 }
 
+export function createTypeScriptTypeChecker({ sourceFile }) {
+  const fileName = sourceFile.fileName;
+  const compilerOptions = {
+    allowJs: true,
+    checkJs: false,
+    jsx: ts.JsxEmit.Preserve,
+    module: ts.ModuleKind.ESNext,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.Latest,
+  };
+  const host = {
+    fileExists(candidate) {
+      return candidate === fileName;
+    },
+    getCanonicalFileName(candidate) {
+      return candidate;
+    },
+    getCurrentDirectory() {
+      return path.dirname(path.resolve(fileName));
+    },
+    getDefaultLibFileName() {
+      return 'lib.d.ts';
+    },
+    getDirectories() {
+      return [];
+    },
+    getNewLine() {
+      return '\n';
+    },
+    getSourceFile(candidate) {
+      return candidate === fileName ? sourceFile : undefined;
+    },
+    readFile(candidate) {
+      return candidate === fileName ? sourceFile.text : undefined;
+    },
+    useCaseSensitiveFileNames() {
+      return true;
+    },
+    writeFile() {},
+  };
+  return ts.createProgram({
+    rootNames: [fileName],
+    options: compilerOptions,
+    host,
+  }).getTypeChecker();
+}
+
 export function visitTypeScriptAst({ node, visitor }) {
   visitor(node);
   ts.forEachChild(node, (child) => visitTypeScriptAst({ node: child, visitor }));

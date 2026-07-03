@@ -6,6 +6,7 @@ import vue from '@vitejs/plugin-vue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from 'vite';
 import { fileProtocolStandalone } from '../file-protocol-standalone';
+import { serializeCssOwnershipPlan } from './css-ownership-planner.mjs';
 import { createTwClassNodeTransform } from './tw-class-core.mjs';
 import { createTwClassVitePlugin } from './tw-class-vite-plugin.mjs';
 
@@ -49,6 +50,8 @@ function createFixture(): string {
     root,
     relativePath: 'src/main.ts',
     content: `import './style.css';
+import { tw } from 'virtual:naidan-tailwind';
+document.documentElement.classList.add(tw('antialiased'));
 Object.assign(window, {
   loadFeatureA: () => import('./FeatureA.vue'),
   loadFeatureB: () => import('./FeatureB.vue'),
@@ -63,14 +66,57 @@ Object.assign(window, {
   writeFile({
     root,
     relativePath: 'src/FeatureA.vue',
-    content: '<script setup lang="ts">import Shared from \'./Shared.vue\';</script>\n<template><section tw-class="animate-spin"><Shared /></section></template>\n',
+    content: '<script setup lang="ts">import Shared from \'./Shared.vue\';</script>\n<template><section tw-class="animate-spin appearance-none"><Shared /></section></template>\n',
   });
   writeFile({
     root,
     relativePath: 'src/FeatureB.vue',
     content: '<script setup lang="ts">import Shared from \'./Shared.vue\';</script>\n<template><section tw-class="italic"><Shared /></section></template>\n',
   });
+  writeFile({
+    root,
+    relativePath: 'src/Unreachable.vue',
+    content: '<template><div tw-class="bg-fuchsia-500">Unreachable</div></template>\n',
+  });
   return root;
+}
+
+
+
+function createPlugin({ root, debugOutputDirectory }: {
+  root: string,
+  debugOutputDirectory: string | undefined,
+}) {
+  const sourceRoot = path.join(root, 'src');
+  return createTwClassVitePlugin({
+    projectRoot: root,
+    sourceRoot,
+    entryModule: path.join(sourceRoot, 'main.ts'),
+    tailwindCssPath: path.join(sourceRoot, 'style.css'),
+    debugOutputDirectory,
+    outputMode: 'split',
+    cssPlanning: 'enabled',
+    maxSplitCssGroups: undefined,
+  });
+}
+
+function createVuePlugin() {
+  return vue({
+    template: {
+      compilerOptions: {
+        nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template', blockStart: undefined })],
+      },
+    },
+  });
+}
+
+function serializeImports({ importsByModule, root }: {
+  importsByModule: Map<string, string[]>,
+  root: string,
+}): Record<string, string[]> {
+  return Object.fromEntries([...importsByModule]
+    .map(([filename, imports]) => [path.relative(root, filename).replaceAll(path.sep, '/'), imports] as const)
+    .sort(([left], [right]) => left.localeCompare(right)));
 }
 
 function readCssAssets({ outputDirectory }: { outputDirectory: string }): Map<string, string> {
@@ -95,32 +141,62 @@ function readJavaScriptAssets({ outputDirectory }: { outputDirectory: string }):
 }
 
 describe('static Tailwind Vite plugin production CSS splitting', () => {
+  it('uses the same candidate plan and CSS ownership in serve and build modes', async () => {
+    const root = createFixture();
+    const initialize = async ({ plugin, command }: {
+      plugin: ReturnType<typeof createPlugin>,
+      command: 'build' | 'serve',
+    }): Promise<void> => {
+      const configResolved = plugin.configResolved;
+      if (typeof configResolved !== 'function') throw new TypeError('Expected configResolved hook.');
+      await configResolved.call({} as never, { command } as never);
+      const buildStart = plugin.buildStart;
+      if (typeof buildStart !== 'function') throw new TypeError('Expected buildStart hook.');
+      await buildStart.call({ info() {} } as never, {} as never);
+    };
+    const cssImports = ({ plugin }: { plugin: ReturnType<typeof createPlugin> }): Record<string, string[]> => (
+      serializeImports({
+        importsByModule: new Map([...plugin.api.getImportsByModule()].map(([filename, imports]) => [
+          filename,
+          imports.filter((id) => id.startsWith('virtual:naidan-tailwind-css-module/')),
+        ])),
+        root,
+      })
+    );
+
+    const servePlugin = createPlugin({ root, debugOutputDirectory: undefined });
+    await initialize({ plugin: servePlugin, command: 'serve' });
+    const buildPlugin = createPlugin({ root, debugOutputDirectory: undefined });
+    await initialize({ plugin: buildPlugin, command: 'build' });
+
+    const servePlan = servePlugin.api.getPlan();
+    const productionPlan = buildPlugin.api.getPlan();
+    expect(servePlan).toBeDefined();
+    expect(productionPlan).toBeDefined();
+    if (servePlan === undefined || productionPlan === undefined) {
+      throw new TypeError('Expected static Tailwind plans for serve and build modes.');
+    }
+    expect(serializeCssOwnershipPlan({ plan: servePlan })).toEqual(
+      serializeCssOwnershipPlan({ plan: productionPlan }),
+    );
+    expect(cssImports({ plugin: servePlugin })).toEqual(cssImports({ plugin: buildPlugin }));
+
+    const serveEntryImports = servePlugin.api.getImportsByModule().get(path.join(root, 'src/main.ts')) ?? [];
+    const buildEntryImports = buildPlugin.api.getImportsByModule().get(path.join(root, 'src/main.ts')) ?? [];
+    expect(serveEntryImports).toContain('virtual:naidan-tailwind-hmr-client');
+    expect(buildEntryImports).not.toContain('virtual:naidan-tailwind-hmr-client');
+  });
+
   it('keeps lazy utilities out of the hosted entry and emits shared utility CSS once', async () => {
     const root = createFixture();
-    const sourceRoot = path.join(root, 'src');
     const outputDirectory = path.join(root, 'dist');
     await build({
       root,
       configFile: false,
       logLevel: 'silent',
       plugins: [
-        createTwClassVitePlugin({
-          projectRoot: root,
-          sourceRoot,
-          entryModule: path.join(sourceRoot, 'main.ts'),
-          tailwindCssPath: path.join(sourceRoot, 'style.css'),
-          debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind'),
-          outputMode: 'split',
-          cssPlanning: 'enabled',
-          maxSplitCssGroups: undefined,
-        }),
-        vue({
-          template: {
-            compilerOptions: {
-              nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template' })],
-            },
-          },
-        }),
+        createPlugin({ root, debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind') }),
+        createVuePlugin(),
       ],
       build: {
         cssCodeSplit: true,
@@ -140,25 +216,36 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
 
     const hostedCss = [...readCssAssets({ outputDirectory }).values()].join('\n');
     expect(hostedCss).not.toContain('.animate-spin');
+    expect(hostedCss).not.toContain('.appearance-none');
     expect(hostedCss).not.toContain('.italic');
     expect(hostedCss).not.toContain('.p-2');
     const javascriptAssets = readJavaScriptAssets({ outputDirectory });
     const entryJavaScript = fs.readFileSync(path.join(outputDirectory, entry.file), 'utf8');
     const allJavaScript = javascriptAssets.map(({ source }) => source).join('\n');
+    expect(entryJavaScript).toContain('.antialiased');
     expect(entryJavaScript).not.toContain('.animate-spin');
+    expect(entryJavaScript).not.toContain('.appearance-none');
     expect(entryJavaScript).not.toContain('.italic');
     expect(entryJavaScript).not.toContain('.p-2');
     expect(allJavaScript).toContain('.animate-spin');
+    expect(allJavaScript).toContain('.appearance-none');
     expect(allJavaScript).toContain('.italic');
     expect(allJavaScript).toContain('.p-2');
+    expect(allJavaScript).not.toContain('.bg-fuchsia-500');
+    expect(allJavaScript).not.toContain(
+      'Tailwind compile-time macro was not transformed',
+    );
+    expect(allJavaScript).not.toContain('import.meta.hot');
     expect(javascriptAssets.filter(({ source }) => source.includes('.p-2'))).toHaveLength(1);
+    const appearanceAssets = javascriptAssets.filter(({ source }) => source.includes('.appearance-none'));
+    expect(appearanceAssets).toHaveLength(1);
+    expect(appearanceAssets[0]?.source).toContain('-webkit-appearance');
     expect(allJavaScript).toContain('data-naidan-tailwind-runtime');
     expect(allJavaScript).not.toContain('@layer utilities.naidan-');
   });
 
   it('preserves lazy CSS splitting in the file-protocol standalone output', async () => {
     const root = createFixture();
-    const sourceRoot = path.join(root, 'src');
     const outputDirectory = path.join(root, 'dist-standalone');
     await build({
       root,
@@ -166,23 +253,8 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
       configFile: false,
       logLevel: 'silent',
       plugins: [
-        createTwClassVitePlugin({
-          projectRoot: root,
-          sourceRoot,
-          entryModule: path.join(sourceRoot, 'main.ts'),
-          tailwindCssPath: path.join(sourceRoot, 'style.css'),
-          debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind'),
-          outputMode: 'split',
-          cssPlanning: 'enabled',
-          maxSplitCssGroups: undefined,
-        }),
-        vue({
-          template: {
-            compilerOptions: {
-              nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template' })],
-            },
-          },
-        }),
+        createPlugin({ root, debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind') }),
+        createVuePlugin(),
         legacy({
           targets: ['Chrome >= 140'],
           renderModernChunks: false,
@@ -219,13 +291,24 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
     const javascriptAssets = readJavaScriptAssets({ outputDirectory });
     const entryJavaScript = fs.readFileSync(path.join(outputDirectory, entry.file), 'utf8');
     const allJavaScript = javascriptAssets.map(({ source }) => source).join('\n');
+    expect(entryJavaScript).toContain('.antialiased');
     expect(entryJavaScript).not.toContain('.animate-spin');
+    expect(entryJavaScript).not.toContain('.appearance-none');
     expect(entryJavaScript).not.toContain('.italic');
     expect(entryJavaScript).not.toContain('.p-2');
     expect(allJavaScript).toContain('.animate-spin');
+    expect(allJavaScript).toContain('.appearance-none');
     expect(allJavaScript).toContain('.italic');
     expect(allJavaScript).toContain('.p-2');
+    expect(allJavaScript).not.toContain('.bg-fuchsia-500');
+    expect(allJavaScript).not.toContain(
+      'Tailwind compile-time macro was not transformed',
+    );
+    expect(allJavaScript).not.toContain('import.meta.hot');
     expect(javascriptAssets.filter(({ source }) => source.includes('.p-2'))).toHaveLength(1);
+    const appearanceAssets = javascriptAssets.filter(({ source }) => source.includes('.appearance-none'));
+    expect(appearanceAssets).toHaveLength(1);
+    expect(appearanceAssets[0]?.source).toContain('-webkit-appearance');
     expect(allJavaScript).toContain('data-naidan-tailwind-runtime');
     expect(allJavaScript).not.toContain('@layer utilities.naidan-');
 

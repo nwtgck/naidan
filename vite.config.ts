@@ -296,7 +296,7 @@ export default defineConfig(({ mode }) => {
       vue({
         template: {
           compilerOptions: {
-            nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template' })],
+            nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template', blockStart: undefined })],
           },
         },
       }),

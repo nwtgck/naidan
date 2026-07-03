@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { __unstable__loadDesignSystem, compile } from 'tailwindcss';
 import { isTailwindMarkerCandidate } from './marker-candidates.mjs';
+import { postprocessStaticTailwindCss } from './css-postprocessor.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -70,7 +71,9 @@ export async function compileTailwindCss({
   const css = fs.readFileSync(absoluteCssEntryPath, 'utf8');
   const compiler = await compile(css, compileOptions({ absoluteCssEntryPath }));
   return {
-    css: compiler.build([...new Set(candidates)].sort()),
+    css: postprocessStaticTailwindCss({
+      css: compiler.build([...new Set(candidates)].sort()),
+    }),
     tailwindVersion: installedTailwindVersion,
   };
 }
@@ -99,7 +102,9 @@ export async function createTailwindCandidateValidator({
 
   function classify({ candidates }) {
     const uniqueCandidates = [...new Set(candidates)].sort();
-    const generatedCss = designSystem.candidatesToCss(uniqueCandidates);
+    const generatedCss = designSystem.candidatesToCss(uniqueCandidates).map((css) => (
+      css === null ? null : postprocessStaticTailwindCss({ css })
+    ));
     const generatedCandidates = uniqueCandidates.filter((candidate, index) => generatedCss[index] !== null);
     const markerCandidates = uniqueCandidates.filter((candidate, index) => (
       generatedCss[index] === null && isTailwindMarkerCandidate({ candidate })
