@@ -68,12 +68,10 @@ describe('static Tailwind Vite plugin build diagnostics', () => {
       sourceRoot,
       entryModule: path.join(sourceRoot, 'main.ts'),
       tailwindCssPath: path.join(sourceRoot, 'style.css'),
-      aliases: [],
-      additionalLazyRootDirectories: [],
       debugOutputDirectory,
-      splitCss: false,
+      outputMode: 'single',
       cssPlanning: 'enabled',
-      maxLazyCssGroups: undefined,
+      maxSplitCssGroups: undefined,
     });
     const configResolved = getHookHandler<[unknown], void | Promise<void>>({
       hook: plugin.configResolved,
@@ -99,12 +97,10 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
       sourceRoot,
       entryModule: path.join(sourceRoot, 'main.ts'),
       tailwindCssPath: path.join(sourceRoot, 'style.css'),
-      aliases: [],
-      additionalLazyRootDirectories: [],
       debugOutputDirectory: path.join(root, 'dist/debug-tailwind'),
-      splitCss: true,
+      outputMode: 'split',
       cssPlanning: 'enabled',
-      maxLazyCssGroups: undefined,
+      maxSplitCssGroups: undefined,
     });
     const configResolved = getHookHandler<[unknown], void | Promise<void>>({
       hook: plugin.configResolved,
@@ -167,7 +163,7 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     expect(customMessages).toContainEqual({
       type: 'custom',
       event: 'naidan-tailwind:retire-css',
-      data: { ids: expect.arrayContaining([`\0${privateA}`]) },
+      data: { moduleIds: expect.arrayContaining([`\0${privateA}`]) },
     });
     expect(reloads.length).toBeGreaterThan(0);
   });
@@ -181,12 +177,10 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
       sourceRoot,
       entryModule: path.join(sourceRoot, 'main.ts'),
       tailwindCssPath: stylePath,
-      aliases: [],
-      additionalLazyRootDirectories: [],
       debugOutputDirectory: path.join(root, 'dist/debug-tailwind'),
-      splitCss: false,
+      outputMode: 'single',
       cssPlanning: 'enabled',
-      maxLazyCssGroups: undefined,
+      maxSplitCssGroups: undefined,
     });
     const configResolved = getHookHandler<[unknown], void | Promise<void>>({
       hook: plugin.configResolved,

@@ -21,22 +21,58 @@ export type CssOwnershipCompression = {
   retainedOwnerKeys: string[],
 };
 
+export type CssByteMetrics = {
+  raw: number,
+  gzip: number,
+};
+
+export type CssOwnershipMetrics = {
+  baseline: CssByteMetrics,
+  uniqueDelta: CssByteMetrics,
+  ordering: {
+    runtimeFragmentCount: number,
+    runtimeMetadataRaw: number,
+    runtimeMetadataGzip: number,
+  },
+  placement: {
+    globalAtomCount: number,
+    sourceOwnedAtomCount: number,
+    initialSupportAtomCount: number,
+  },
+  emitted: {
+    groupCount: number,
+    raw: number,
+    gzip: number,
+    duplicateAtomCount: number,
+    duplicateRaw: number,
+    duplicateRatio: number,
+    structuralOverheadRaw: number,
+  },
+};
+
+export type CssRuntimeFragment = {
+  order: number,
+  css: string,
+};
+
 export type CssOwnershipPlan = {
   outputMode: 'single' | 'split',
   candidates: string[],
   candidateOwners: Map<string, Set<string>>,
   ownerCandidateGroups: Map<string, string[]>,
   baselineCss: string,
+  entryCss: string,
   globalCss: string,
   globalDelta: string,
   cssGroups: Map<string, string>,
+  runtimeFragmentsByOwner: Map<string, CssRuntimeFragment[]>,
   conflicts: unknown[],
   compression: {
-    maxLazyCssGroups: number | undefined,
+    maxSplitCssGroups: number | undefined,
     candidates: CssOwnershipCompression,
     atoms: CssOwnershipCompression,
   },
-  metrics: unknown,
+  metrics: CssOwnershipMetrics,
   tailwindVersion: string,
 };
 
@@ -46,7 +82,7 @@ export function createCssOwnershipPlan(options: {
   expectedTailwindVersion: string | undefined,
   analysis: CssOwnershipAnalysis,
   outputMode: 'single' | 'split',
-  maxLazyCssGroups: number | undefined,
+  maxSplitCssGroups: number | undefined,
 }): Promise<CssOwnershipPlan>;
 
 export function serializeCssOwnershipPlan(options: { plan: CssOwnershipPlan }): unknown;

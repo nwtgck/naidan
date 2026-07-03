@@ -64,6 +64,47 @@ describe('static Tailwind source module analysis', () => {
     }
   });
 
+  it('assigns candidates to stable source-module owners without building an import graph', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
+    const sourceRoot = path.join(root, 'src');
+    try {
+      fs.mkdirSync(sourceRoot, { recursive: true });
+      const entryModule = path.join(sourceRoot, 'main.ts');
+      const featureA = path.join(sourceRoot, 'FeatureA.vue');
+      const featureB = path.join(sourceRoot, 'nested', 'FeatureB.vue');
+      fs.writeFileSync(entryModule, "const target = './FeatureA.vue'; import(target);\n");
+      fs.writeFileSync(featureA, '<template><div tw-class="underline p-2">A</div></template>\n');
+      fs.mkdirSync(path.dirname(featureB), { recursive: true });
+      fs.writeFileSync(featureB, '<template><div tw-class="underline italic">B</div></template>\n');
+
+      const analysis = analyzeSourceModules({
+        projectRoot: root,
+        sourceRoot,
+        entryModule,
+        aliases: [],
+        additionalLazyRootDirectories: [],
+        ownershipMode: 'source-module',
+      });
+
+      expect(analysis.graph.size).toBe(0);
+      expect(analysis.unresolvedDynamicImports).toEqual([]);
+      expect(analysis.cssOwners).toEqual([
+        { name: 'module:src/FeatureA.vue', root: featureA },
+        { name: 'module:src/nested/FeatureB.vue', root: featureB },
+      ]);
+      expect(analysis.moduleOwners.get(featureA)).toEqual(new Set(['module:src/FeatureA.vue']));
+      expect(analysis.moduleOwners.get(featureB)).toEqual(new Set(['module:src/nested/FeatureB.vue']));
+      expect(analysis.candidateOwners.get('p-2')).toEqual(new Set(['module:src/FeatureA.vue']));
+      expect(analysis.candidateOwners.get('italic')).toEqual(new Set(['module:src/nested/FeatureB.vue']));
+      expect(analysis.candidateOwners.get('underline')).toEqual(new Set([
+        'module:src/FeatureA.vue',
+        'module:src/nested/FeatureB.vue',
+      ]));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('reports Vue script macro candidates at file-relative locations with unique group IDs', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');

@@ -26,7 +26,7 @@ export type SourceCandidateGroup = {
   owners: string[],
 };
 
-export type SourceLazyOwner = {
+export type SourceCssOwner = {
   name: string,
   root: string,
 };
@@ -39,7 +39,8 @@ export type SourceModuleAnalysis = {
   graph: Map<string, SourceModuleImports>,
   unresolvedDynamicImports: (UnresolvedDynamicImport & { filename: string })[],
   initialModules: Set<string>,
-  lazyOwners: SourceLazyOwner[],
+  cssOwners: SourceCssOwner[],
+  lazyOwners: SourceCssOwner[],
   moduleOwners: Map<string, Set<string>>,
   candidateGroups: SourceCandidateGroup[],
   candidateOwners: Map<string, Set<string>>,
@@ -53,7 +54,8 @@ export type SerializedSourceModuleAnalysis = {
   files: string[],
   unresolvedDynamicImports: (UnresolvedDynamicImport & { filename: string })[],
   initialModules: string[],
-  lazyOwners: SourceLazyOwner[],
+  cssOwners: SourceCssOwner[],
+  lazyOwners: SourceCssOwner[],
   moduleOwners: Record<string, string[]>,
   fallbackInitialModules: string[],
   candidateOwners: Record<string, string[]>,
@@ -66,7 +68,7 @@ export function analyzeSourceModules(options: {
   entryModule: string,
   aliases: StaticTailwindAlias[],
   additionalLazyRootDirectories: string[],
-  ownershipMode: 'single-css' | 'module-graph',
+  ownershipMode: 'single-css' | 'source-module' | 'module-graph',
 }): SourceModuleAnalysis;
 
 export function serializeSourceAnalysis(options: {

@@ -14,10 +14,16 @@ import {
   serializeCssOwnershipPlan,
   writeCssOwnershipDebugFiles,
 } from './css-ownership-planner.mjs';
+import {
+  createTailwindCssRegistrationModuleSource,
+  createTailwindCssRuntimeModuleSource,
+} from './tailwind-css-runtime-source.mjs';
 
 const virtualMacroModuleId = 'virtual:naidan-tailwind';
 const resolvedVirtualMacroModuleId = '\0virtual:naidan-tailwind';
-const virtualCssPrefix = 'virtual:naidan-tailwind-css/';
+const virtualCssPrefix = 'virtual:naidan-tailwind-css-module/';
+const virtualCssRuntimeModuleId = 'virtual:naidan-tailwind-css-runtime';
+const resolvedVirtualCssRuntimeModuleId = '\0virtual:naidan-tailwind-css-runtime';
 const virtualHmrClientModuleId = 'virtual:naidan-tailwind-hmr-client';
 const resolvedVirtualHmrClientModuleId = '\0virtual:naidan-tailwind-hmr-client';
 const supportedModuleExtensions = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
@@ -35,13 +41,6 @@ function groupHash({ ownerKey }) {
   return crypto.createHash('sha256').update(ownerKey).digest('hex');
 }
 
-function normalizeAliases({ aliases, projectRoot }) {
-  return aliases.map(({ find, replacement }) => ({
-    find: String(find),
-    replacement: path.isAbsolute(replacement) ? replacement : path.resolve(projectRoot, replacement),
-  }));
-}
-
 function ownerNamesFromKey({ key }) {
   return key === '' ? [] : key.split('|');
 }
@@ -57,13 +56,15 @@ export function createTwClassVitePlugin({
   sourceRoot,
   entryModule,
   tailwindCssPath,
-  aliases,
-  additionalLazyRootDirectories,
   debugOutputDirectory,
-  splitCss,
+  outputMode,
   cssPlanning,
-  maxLazyCssGroups,
+  maxSplitCssGroups,
 }) {
+  if (outputMode !== 'single' && outputMode !== 'split') {
+    throw new Error(`[tw-class] Unknown CSS output mode: ${String(outputMode)}`);
+  }
+  const splitCss = outputMode === 'split';
   const absoluteProjectRoot = path.resolve(projectRoot);
   const absoluteSourceRoot = path.resolve(sourceRoot);
   const absoluteEntryModule = path.resolve(entryModule);
@@ -72,39 +73,42 @@ export function createTwClassVitePlugin({
     ? undefined
     : path.resolve(debugOutputDirectory);
   const expectedTailwindVersion = readExpectedTailwindVersion({ projectRoot: absoluteProjectRoot });
-  const resolvedAliases = normalizeAliases({ aliases, projectRoot: absoluteProjectRoot });
   let command = 'build';
   let environmentName = 'client';
   let analysis;
   let plan;
-  let baselineCss = '';
-  let cssByResolvedId = new Map();
+  let entryCss = '';
+  let moduleSourceByResolvedId = new Map();
   let importsByModule = new Map();
   let ownerRootByName = new Map();
-  const retiredCssIds = new Set();
+  const retiredCssModuleIds = new Set();
   let lastRefreshTimestamp;
   let lastRefreshPromise;
 
   function buildVirtualState({ nextAnalysis, nextPlan }) {
     if (!splitCss) {
       return {
-        nextCssByResolvedId: new Map(),
+        nextModuleSourceByResolvedId: new Map(),
         nextImportsByModule: new Map(),
         nextOwnerRootByName: new Map([['initial', absoluteEntryModule]]),
       };
     }
-    const nextCssByResolvedId = new Map();
+    const nextModuleSourceByResolvedId = new Map();
     const nextImportsByModule = new Map();
     const nextOwnerRootByName = new Map([['initial', absoluteEntryModule]]);
-    for (const owner of nextAnalysis.lazyOwners) nextOwnerRootByName.set(owner.name, owner.root);
+    for (const owner of nextAnalysis.cssOwners) nextOwnerRootByName.set(owner.name, owner.root);
 
-    for (const [ownerKey, css] of nextPlan.cssGroups) {
-      if (css.trim() === '') continue;
+    for (const [ownerKey, fragments] of nextPlan.runtimeFragmentsByOwner) {
+      if (fragments.length === 0) continue;
       const normalizedOwners = ownerNamesFromKey({ key: ownerKey });
       const owners = normalizedOwners.length === 0 ? ['initial'] : normalizedOwners;
-      const publicId = `${virtualCssPrefix}${groupHash({ ownerKey: owners.join('|') })}.css`;
+      const publicId = `${virtualCssPrefix}${groupHash({ ownerKey: owners.join('|') })}.js`;
       const resolvedId = `\0${publicId}`;
-      nextCssByResolvedId.set(resolvedId, css);
+      nextModuleSourceByResolvedId.set(resolvedId, createTailwindCssRegistrationModuleSource({
+        moduleId: resolvedId,
+        fragments: fragments.map(({ order, css }) => [order, css]),
+        runtimeModuleId: virtualCssRuntimeModuleId,
+      }));
       for (const owner of owners) {
         const root = nextOwnerRootByName.get(owner);
         if (root === undefined) throw new Error(`[tw-class] CSS owner has no module root: ${owner}`);
@@ -119,7 +123,7 @@ export function createTwClassVitePlugin({
       nextImportsByModule.set(absoluteEntryModule, entryImports);
     }
     return {
-      nextCssByResolvedId,
+      nextModuleSourceByResolvedId,
       nextImportsByModule: new Map([...nextImportsByModule].map(([file, values]) => [file, [...values].sort()])),
       nextOwnerRootByName,
     };
@@ -130,46 +134,40 @@ export function createTwClassVitePlugin({
       projectRoot: absoluteProjectRoot,
       sourceRoot: absoluteSourceRoot,
       entryModule: absoluteEntryModule,
-      aliases: resolvedAliases,
-      additionalLazyRootDirectories,
-      ownershipMode: splitCss ? 'module-graph' : 'single-css',
+      aliases: [],
+      additionalLazyRootDirectories: [],
+      ownershipMode: splitCss ? 'source-module' : 'single-css',
     });
-    if (splitCss && nextAnalysis.unresolvedDynamicImports.length > 0) {
-      const details = nextAnalysis.unresolvedDynamicImports.map(({ filename, line, column, expression }) => (
-        `${filename}:${line}:${column} import(${expression})`
-      ));
-      throw new Error(`[tw-class] Dynamic imports must use static string literals for safe CSS ownership:\n${details.join('\n')}`);
-    }
     const nextPlan = await createCssOwnershipPlan({
       projectRoot: absoluteProjectRoot,
       cssEntryPath: absoluteTailwindCssPath,
       expectedTailwindVersion,
       analysis: nextAnalysis,
-      outputMode: splitCss ? 'split' : 'single',
-      maxLazyCssGroups,
+      outputMode,
+      maxSplitCssGroups,
     });
     const state = buildVirtualState({ nextAnalysis, nextPlan });
-    const previousCssByResolvedId = cssByResolvedId;
+    const previousModuleSourceByResolvedId = moduleSourceByResolvedId;
     const previousImportsByModule = importsByModule;
-    const previousBaselineCss = baselineCss;
+    const previousEntryCss = entryCss;
     analysis = nextAnalysis;
     plan = nextPlan;
-    baselineCss = splitCss ? nextPlan.baselineCss : nextPlan.globalCss;
-    for (const id of previousCssByResolvedId.keys()) {
-      if (!state.nextCssByResolvedId.has(id)) retiredCssIds.add(id);
+    entryCss = nextPlan.entryCss;
+    for (const id of previousModuleSourceByResolvedId.keys()) {
+      if (!state.nextModuleSourceByResolvedId.has(id)) retiredCssModuleIds.add(id);
     }
-    for (const id of state.nextCssByResolvedId.keys()) retiredCssIds.delete(id);
-    cssByResolvedId = state.nextCssByResolvedId;
+    for (const id of state.nextModuleSourceByResolvedId.keys()) retiredCssModuleIds.delete(id);
+    moduleSourceByResolvedId = state.nextModuleSourceByResolvedId;
     importsByModule = state.nextImportsByModule;
     ownerRootByName = state.nextOwnerRootByName;
 
-    const changedCssIds = new Set([...previousCssByResolvedId.keys(), ...cssByResolvedId.keys()].filter((id) => previousCssByResolvedId.get(id) !== cssByResolvedId.get(id)));
-    const removedCssIds = new Set([...previousCssByResolvedId.keys()].filter((id) => !cssByResolvedId.has(id)));
+    const changedCssIds = new Set([...previousModuleSourceByResolvedId.keys(), ...moduleSourceByResolvedId.keys()].filter((id) => previousModuleSourceByResolvedId.get(id) !== moduleSourceByResolvedId.get(id)));
+    const removedCssIds = new Set([...previousModuleSourceByResolvedId.keys()].filter((id) => !moduleSourceByResolvedId.has(id)));
     const changedOwnerModules = new Set([...previousImportsByModule.keys(), ...importsByModule.keys()].filter((id) => (
       JSON.stringify(previousImportsByModule.get(id) ?? []) !== JSON.stringify(importsByModule.get(id) ?? [])
     )));
     return {
-      baseCssChanged: previousBaselineCss !== '' && previousBaselineCss !== baselineCss,
+      baseCssChanged: previousEntryCss !== '' && previousEntryCss !== entryCss,
       changedCssIds,
       removedCssIds,
       changedOwnerModules,
@@ -210,20 +208,27 @@ export function createTwClassVitePlugin({
     resolveId(id) {
       if (id === virtualMacroModuleId) return resolvedVirtualMacroModuleId;
       if (id === virtualHmrClientModuleId) return resolvedVirtualHmrClientModuleId;
+      if (id === virtualCssRuntimeModuleId) return resolvedVirtualCssRuntimeModuleId;
       if (id.startsWith(virtualCssPrefix)) return `\0${id}`;
       return null;
     },
     load(id) {
       if (id === resolvedVirtualHmrClientModuleId) {
-        return `if (import.meta.hot) { import.meta.hot.on('naidan-tailwind:retire-css', ({ ids }) => { for (const id of ids) { for (const element of document.querySelectorAll('style[data-vite-dev-id]')) { if (element.dataset.viteDevId === id) element.remove(); } } }); }`;
+        return `import { unregisterTailwindCssModules } from ${JSON.stringify(virtualCssRuntimeModuleId)};
+if (import.meta.hot) {
+  import.meta.hot.on('naidan-tailwind:retire-css', ({ moduleIds }) => {
+    unregisterTailwindCssModules({ moduleIds });
+  });
+}`;
       }
+      if (id === resolvedVirtualCssRuntimeModuleId) return createTailwindCssRuntimeModuleSource();
       if (id === resolvedVirtualMacroModuleId) {
         return "const fail = () => { throw new Error('Tailwind compile-time macro was not transformed.'); }; export const tw = fail; export const twClassString = fail; export const twClasses = fail; export const customClasses = fail;";
       }
-      if (cssByResolvedId.has(id)) return cssByResolvedId.get(id);
-      if (retiredCssIds.has(id)) return '';
+      if (moduleSourceByResolvedId.has(id)) return moduleSourceByResolvedId.get(id);
+      if (retiredCssModuleIds.has(id)) return 'export {};';
       const cleanId = id.split('?', 1)[0];
-      if (path.resolve(cleanId) === absoluteTailwindCssPath) return baselineCss;
+      if (path.resolve(cleanId) === absoluteTailwindCssPath) return entryCss;
       return null;
     },
     transform(source, id) {
@@ -276,7 +281,7 @@ export function createTwClassVitePlugin({
           this.environment.hot.send?.({
             type: 'custom',
             event: 'naidan-tailwind:retire-css',
-            data: { ids: [...result.removedCssIds] },
+            data: { moduleIds: [...result.removedCssIds] },
           });
         }
         return options.modules;

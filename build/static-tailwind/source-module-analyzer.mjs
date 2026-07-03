@@ -275,8 +275,12 @@ function ownerName({ sourceRoot, moduleId }) {
   return `lazy:${path.relative(sourceRoot, moduleId).replaceAll(path.sep, '/')}`;
 }
 
+function sourceModuleOwnerName({ projectRoot, moduleId }) {
+  return `module:${path.relative(projectRoot, moduleId).replaceAll(path.sep, '/')}`;
+}
+
 export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, aliases, additionalLazyRootDirectories, ownershipMode }) {
-  if (ownershipMode !== 'single-css' && ownershipMode !== 'module-graph') {
+  if (ownershipMode !== 'single-css' && ownershipMode !== 'source-module' && ownershipMode !== 'module-graph') {
     throw new Error(`[tw-class] Unknown source ownership mode: ${String(ownershipMode)}`);
   }
   const absoluteProjectRoot = path.resolve(projectRoot);
@@ -323,6 +327,43 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, ali
       graph,
       unresolvedDynamicImports,
       initialModules,
+      cssOwners: [],
+      lazyOwners: [],
+      moduleOwners,
+      candidateGroups,
+      candidateOwners,
+      fallbackInitialModules: new Set(),
+    };
+  }
+  if (ownershipMode === 'source-module') {
+    const initialModules = new Set([absoluteEntry]);
+    const moduleOwners = new Map(files.map((file) => [file, new Set()]));
+    const ownerByFile = new Map();
+    const candidateOwners = new Map();
+    for (const group of candidateGroups) {
+      const owner = ownerByFile.get(group.filename) ?? {
+        name: sourceModuleOwnerName({ projectRoot: absoluteProjectRoot, moduleId: group.filename }),
+        root: group.filename,
+      };
+      ownerByFile.set(group.filename, owner);
+      const owners = new Set([owner.name]);
+      group.owners = [owner.name];
+      moduleOwners.set(group.filename, owners);
+      for (const candidate of group.candidates) {
+        const current = candidateOwners.get(candidate) ?? new Set();
+        current.add(owner.name);
+        candidateOwners.set(candidate, current);
+      }
+    }
+    return {
+      projectRoot: absoluteProjectRoot,
+      sourceRoot: absoluteSourceRoot,
+      entryModule: absoluteEntry,
+      files,
+      graph,
+      unresolvedDynamicImports,
+      initialModules,
+      cssOwners: [...ownerByFile.values()].sort((left, right) => left.name.localeCompare(right.name)),
       lazyOwners: [],
       moduleOwners,
       candidateGroups,
@@ -370,6 +411,7 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, ali
     graph,
     unresolvedDynamicImports,
     initialModules,
+    cssOwners: lazyOwners,
     lazyOwners,
     moduleOwners,
     candidateGroups,
@@ -387,6 +429,7 @@ export function serializeSourceAnalysis({ analysis }) {
     files: analysis.files.map(relative),
     unresolvedDynamicImports: analysis.unresolvedDynamicImports.map(({ filename, ...record }) => ({ filename: relative(filename), ...record })),
     initialModules: [...analysis.initialModules].map(relative).sort(),
+    cssOwners: analysis.cssOwners.map(({ name, root }) => ({ name, root: relative(root) })),
     lazyOwners: analysis.lazyOwners.map(({ name, root }) => ({ name, root: relative(root) })),
     moduleOwners: Object.fromEntries([...analysis.moduleOwners].map(([file, owners]) => [relative(file), [...owners].sort()])),
     fallbackInitialModules: [...analysis.fallbackInitialModules].map(relative).sort(),

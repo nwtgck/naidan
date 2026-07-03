@@ -18,11 +18,6 @@ function ownerSetFromKey({ key }) {
   return key === '' ? [] : key.split('|');
 }
 
-function unionOwners({ left, right }) {
-  const values = new Set([...left, ...right]);
-  return values.has('initial') ? new Set(['initial']) : values;
-}
-
 function nodeHeader({ node }) {
   if (node.type === 'rule') return `rule:${node.selector}`;
   if (node.type === 'atrule') return `atrule:${node.name}:${node.params}`;
@@ -78,7 +73,9 @@ function flattenCssAtoms({ css }) {
   function append({ wrappers, node }) {
     const nodeCss = node.type === 'atrule' && !Array.isArray(node.nodes)
       ? `@${node.name}${node.params === '' ? '' : ` ${node.params}`};`
-      : node.toString();
+      : node.type === 'decl'
+        ? `${node.toString()};`
+        : node.toString();
     const cssText = wrapAtom({ wrappers, nodeCss });
     atoms.push({
       fingerprint: cssText,
@@ -89,7 +86,6 @@ function flattenCssAtoms({ css }) {
     });
   }
   for (const node of root.nodes ?? []) {
-    if (node.type === 'comment') continue;
     if (node.type === 'atrule' && node.name === 'layer' && Array.isArray(node.nodes)) {
       const layerWrapper = [{ type: 'atrule', name: 'layer', params: node.params }];
       for (const child of node.nodes) {
@@ -124,81 +120,106 @@ function serializeCssAtoms({ atoms }) {
   return output.length === 0 ? '' : `${output.join('\n')}\n`;
 }
 
-function propertyFamily({ property }) {
-  if (property.startsWith('--')) return property;
-  const normalized = property.toLowerCase();
-  const shorthandGroups = [
-    ['margin', ['margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'margin-inline', 'margin-block']],
-    ['padding', ['padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'padding-inline', 'padding-block']],
-    ['inset', ['inset', 'top', 'right', 'bottom', 'left', 'inset-inline', 'inset-block']],
-    ['border-width', ['border-width', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width']],
-    ['border-color', ['border-color', 'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color']],
-    ['border-style', ['border-style', 'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style']],
-    ['background', ['background', 'background-color', 'background-image', 'background-position', 'background-size', 'background-repeat']],
-    ['overflow', ['overflow', 'overflow-x', 'overflow-y']],
-    ['outline', ['outline', 'outline-width', 'outline-color', 'outline-style']],
-    ['transition', ['transition', 'transition-property', 'transition-duration', 'transition-delay', 'transition-timing-function']],
-    ['animation', ['animation', 'animation-name', 'animation-duration', 'animation-delay', 'animation-timing-function', 'animation-iteration-count']],
-    ['flex', ['flex', 'flex-grow', 'flex-shrink', 'flex-basis']],
-    ['grid', ['grid', 'grid-template', 'grid-template-columns', 'grid-template-rows', 'grid-auto-flow', 'grid-auto-columns', 'grid-auto-rows']],
-  ];
-  for (const [family, properties] of shorthandGroups) if (properties.includes(normalized)) return family;
-  return normalized;
+function cssOwnershipKeys({ css }) {
+  if (css === null || css.trim() === '') return new Set();
+  const keys = new Set();
+  const root = postcss.parse(css);
+  root.walkRules((rule) => {
+    const selectorPath = [];
+    let current = rule;
+    while (current !== undefined && current.type !== 'root') {
+      if (current.type === 'atrule' && current.name === 'keyframes') return;
+      if (current.type === 'rule') selectorPath.unshift(current.selector);
+      current = current.parent;
+    }
+    keys.add(`selector-path:${selectorPath.join('\0')}`);
+  });
+  root.walkAtRules('keyframes', (atRule) => {
+    keys.add(`keyframes:${atRule.params}`);
+  });
+  return keys;
 }
 
-function cssPropertyFamilies({ css }) {
-  if (css === null) return new Set();
-  const families = new Set();
-  const root = postcss.parse(css);
-  function visitContainer({ container, sameElement }) {
-    for (const node of container.nodes ?? []) {
-      if (node.type === 'decl' && sameElement) families.add(propertyFamily({ property: node.prop }));
-      else if (node.type === 'atrule') visitContainer({ container: node, sameElement });
-      else if (node.type === 'rule') {
-        const childIsSameElement = sameElement && node.selector.includes('&');
-        if (childIsSameElement) visitContainer({ container: node, sameElement: true });
-      }
+function createOwnershipHints({ candidates, candidateCss, candidateOwners }) {
+  const hints = new Map();
+  for (const candidate of candidates) {
+    const owners = candidateOwners.get(candidate);
+    if (owners === undefined) continue;
+    for (const key of cssOwnershipKeys({ css: candidateCss.get(candidate) })) {
+      const values = hints.get(key) ?? new Set();
+      owners.forEach((owner) => values.add(owner));
+      hints.set(key, values);
     }
   }
-  for (const node of root.nodes ?? []) {
-    if (node.type === 'rule') visitContainer({ container: node, sameElement: true });
-    else if (node.type === 'atrule') visitContainer({ container: node, sameElement: true });
+  return hints;
+}
+
+function atomOwners({ atom, ownershipHints }) {
+  const owners = new Set();
+  for (const key of cssOwnershipKeys({ css: atom.nodeCss })) {
+    ownershipHints.get(key)?.forEach((owner) => owners.add(owner));
   }
-  return families;
+  return owners.size === 0
+    ? { owners: new Set(['initial']), sourceOwned: false }
+    : { owners, sourceOwned: true };
 }
 
-function intersects({ left, right }) {
-  for (const value of left) if (right.has(value)) return true;
-  return false;
+function annotateCanonicalAtoms({ atoms }) {
+  return atoms.map((atom, canonicalOrder) => ({
+    ...atom,
+    canonicalOrder,
+  }));
 }
 
-function hasInitialOwner({ owners }) {
-  return owners.has('initial');
+function fingerprintCounts({ atoms }) {
+  const counts = new Map();
+  for (const atom of atoms) counts.set(atom.fingerprint, (counts.get(atom.fingerprint) ?? 0) + 1);
+  return counts;
 }
 
-function orderRequiresOwnerMerge({ left, right, leftOwners, rightOwners, classOrder }) {
-  const leftKey = ownerKey({ owners: [...leftOwners] });
-  const rightKey = ownerKey({ owners: [...rightOwners] });
-  if (leftKey === rightKey) return false;
-  const leftInitial = hasInitialOwner({ owners: leftOwners });
-  const rightInitial = hasInitialOwner({ owners: rightOwners });
-  if (!leftInitial && !rightInitial) return true;
-  if (leftInitial && rightInitial) return false;
-  const leftOrder = classOrder.get(left);
-  const rightOrder = classOrder.get(right);
-  if (leftOrder === null || leftOrder === undefined || rightOrder === null || rightOrder === undefined) return true;
-  const initialOrder = leftInitial ? leftOrder : rightOrder;
-  const lazyOrder = leftInitial ? rightOrder : leftOrder;
-  return initialOrder > lazyOrder;
+function consumeFingerprint({ counts, fingerprint }) {
+  const count = counts.get(fingerprint) ?? 0;
+  if (count === 0) return false;
+  if (count === 1) counts.delete(fingerprint);
+  else counts.set(fingerprint, count - 1);
+  return true;
+}
+
+function createOrderedFragments({ atoms }) {
+  const ordered = [...atoms].sort((left, right) => left.canonicalOrder - right.canonicalOrder);
+  const runs = [];
+  for (const atom of ordered) {
+    const previous = runs.at(-1);
+    if (previous === undefined || previous.atoms.at(-1)?.canonicalOrder + 1 !== atom.canonicalOrder) {
+      runs.push({ order: atom.canonicalOrder, atoms: [atom] });
+    } else previous.atoms.push(atom);
+  }
+  return runs.map(({ order, atoms: runAtoms }) => ({
+    order,
+    css: serializeCssAtoms({ atoms: runAtoms }),
+  }));
+}
+
+function assertOrderedFragmentsReconstructGlobalCss({ globalAtoms, fragmentsByOwner }) {
+  const fragments = [...fragmentsByOwner.values()]
+    .flat()
+    .sort((left, right) => left.order - right.order);
+  const reconstructedAtoms = flattenCssAtoms({ css: fragments.map(({ css }) => css).join('\n') });
+  const expectedFingerprints = globalAtoms.map(({ fingerprint }) => fingerprint);
+  const actualFingerprints = reconstructedAtoms.map(({ fingerprint }) => fingerprint);
+  if (JSON.stringify(actualFingerprints) !== JSON.stringify(expectedFingerprints)) {
+    const mismatchIndex = expectedFingerprints.findIndex((fingerprint, index) => fingerprint !== actualFingerprints[index]);
+    throw new Error(
+      '[tw-class] Ordered runtime CSS fragments do not reconstruct the canonical global CSS atom sequence. '
+      + `Mismatch at ${mismatchIndex}; expected=${JSON.stringify(expectedFingerprints[mismatchIndex])}; `
+      + `actual=${JSON.stringify(actualFingerprints[mismatchIndex])}; `
+      + `expectedCount=${expectedFingerprints.length}; actualCount=${actualFingerprints.length}.`,
+    );
+  }
 }
 
 function bytes({ css }) {
   return { raw: Buffer.byteLength(css), gzip: gzipSync(css).length };
-}
-
-async function compileDelta({ cssEntryPath, candidates, expectedTailwindVersion, baselineCss }) {
-  const compiled = await compileTailwindCss({ cssEntryPath, candidates, expectedTailwindVersion });
-  return subtractCss({ css: compiled.css, baselineCss });
 }
 
 function groupCandidatesByOwner({ candidateOwners }) {
@@ -222,34 +243,7 @@ function lazyGroupPriority({ left, right }) {
   return left.key.localeCompare(right.key);
 }
 
-function compressCandidateOwnerGroups({ candidateOwners, candidateCss, maxLazyCssGroups }) {
-  const groups = groupCandidatesByOwner({ candidateOwners });
-  const lazyGroups = [...groups]
-    .filter(([key]) => key !== 'initial')
-    .map(([key, candidates]) => ({
-      key,
-      candidates,
-      itemCount: candidates.length,
-      bytes: candidates.reduce((sum, candidate) => sum + Buffer.byteLength(candidateCss.get(candidate) ?? ''), 0),
-    }))
-    .sort((left, right) => lazyGroupPriority({ left, right }));
-  const retained = new Set(lazyGroups.slice(0, maxLazyCssGroups).map(({ key }) => key));
-  const promoted = [];
-  for (const [candidate, owners] of candidateOwners) {
-    const key = ownerKey({ owners: [...owners] });
-    if (key === 'initial' || retained.has(key)) continue;
-    candidateOwners.set(candidate, new Set(['initial']));
-    promoted.push(candidate);
-  }
-  return {
-    originalLazyGroupCount: lazyGroups.length,
-    retainedLazyGroupCount: retained.size,
-    promotedCandidateCount: promoted.length,
-    retainedOwnerKeys: [...retained].sort(),
-  };
-}
-
-function compressAtomGroups({ atomGroups, maxLazyCssGroups }) {
+function compressAtomGroups({ atomGroups, maxSplitCssGroups }) {
   const lazyGroups = [...atomGroups]
     .filter(([key]) => key !== 'initial')
     .map(([key, atoms]) => ({
@@ -259,7 +253,7 @@ function compressAtomGroups({ atomGroups, maxLazyCssGroups }) {
       bytes: atoms.reduce((sum, atom) => sum + Buffer.byteLength(atom.css), 0),
     }))
     .sort((left, right) => lazyGroupPriority({ left, right }));
-  const retained = new Set(lazyGroups.slice(0, maxLazyCssGroups).map(({ key }) => key));
+  const retained = new Set(lazyGroups.slice(0, maxSplitCssGroups).map(({ key }) => key));
   const initialAtoms = atomGroups.get('initial') ?? [];
   let promotedAtomCount = 0;
   for (const { key, atoms } of lazyGroups) {
@@ -283,13 +277,13 @@ export async function createCssOwnershipPlan({
   expectedTailwindVersion,
   analysis,
   outputMode,
-  maxLazyCssGroups,
+  maxSplitCssGroups,
 }) {
   if (outputMode !== 'single' && outputMode !== 'split') {
     throw new Error(`[tw-class] Unknown CSS output mode: ${String(outputMode)}`);
   }
-  if (maxLazyCssGroups !== undefined && (!Number.isInteger(maxLazyCssGroups) || maxLazyCssGroups < 0)) {
-    throw new Error(`[tw-class] maxLazyCssGroups must be a non-negative integer or undefined: ${String(maxLazyCssGroups)}`);
+  if (maxSplitCssGroups !== undefined && (!Number.isInteger(maxSplitCssGroups) || maxSplitCssGroups < 0)) {
+    throw new Error(`[tw-class] maxSplitCssGroups must be a non-negative integer or undefined: ${String(maxSplitCssGroups)}`);
   }
   const candidates = [...analysis.candidateOwners.keys()].sort();
   const validator = await createTailwindCandidateValidator({ projectRoot, cssEntryPath, expectedTailwindVersion });
@@ -328,6 +322,7 @@ export async function createCssOwnershipPlan({
       ? new Map()
       : new Map([['initial', globalDelta]]);
     const uniqueDelta = bytes({ css: globalDelta });
+    const globalAtomCount = flattenCssAtoms({ css: globalDelta }).length;
     const promotedCandidateCount = candidates.filter((candidate) => (
       analysis.candidateOwners.get(candidate)?.has('initial') !== true
     )).length;
@@ -337,12 +332,14 @@ export async function createCssOwnershipPlan({
       candidateOwners,
       ownerCandidateGroups,
       baselineCss,
+      entryCss: globalCss,
       globalCss,
       globalDelta,
       cssGroups,
+      runtimeFragmentsByOwner: new Map(),
       conflicts: [],
       compression: {
-        maxLazyCssGroups: undefined,
+        maxSplitCssGroups: undefined,
         candidates: {
           originalLazyGroupCount: originalLazyOwnerKeys.length,
           retainedLazyGroupCount: 0,
@@ -359,89 +356,63 @@ export async function createCssOwnershipPlan({
       metrics: {
         baseline: bytes({ css: baselineCss }),
         uniqueDelta,
+        ordering: {
+          runtimeFragmentCount: 0,
+          runtimeMetadataRaw: 0,
+          runtimeMetadataGzip: 0,
+        },
+        placement: {
+          globalAtomCount,
+          sourceOwnedAtomCount: 0,
+          initialSupportAtomCount: globalAtomCount,
+        },
         emitted: {
           groupCount: cssGroups.size,
           raw: uniqueDelta.raw,
           gzip: uniqueDelta.gzip,
+          duplicateAtomCount: 0,
           duplicateRaw: 0,
           duplicateRatio: 0,
+          structuralOverheadRaw: 0,
         },
       },
       tailwindVersion: validator.tailwindVersion,
     };
   }
   const candidateCss = new Map(candidates.map((candidate, index) => [candidate, classification.generatedCss[index]]));
-  const propertyFamilies = new Map(candidates.map((candidate) => [candidate, cssPropertyFamilies({ css: candidateCss.get(candidate) })]));
   const candidateOwners = new Map([...analysis.candidateOwners].map(([candidate, owners]) => [candidate, new Set(owners)]));
-  const classOrder = validator.getClassOrder({ candidates });
   const conflicts = [];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const group of analysis.candidateGroups) {
-      const generated = group.candidates.filter((candidate) => (
-        candidateOwners.has(candidate) && candidateCss.get(candidate) !== null
-      ));
-      for (let leftIndex = 0; leftIndex < generated.length; leftIndex += 1) {
-        for (let rightIndex = leftIndex + 1; rightIndex < generated.length; rightIndex += 1) {
-          const left = generated[leftIndex];
-          const right = generated[rightIndex];
-          if (!intersects({ left: propertyFamilies.get(left), right: propertyFamilies.get(right) })) continue;
-          const leftOwners = candidateOwners.get(left);
-          const rightOwners = candidateOwners.get(right);
-          if (!orderRequiresOwnerMerge({ left, right, leftOwners, rightOwners, classOrder })) continue;
-          const merged = unionOwners({ left: leftOwners, right: rightOwners });
-          const leftBefore = ownerKey({ owners: [...leftOwners] });
-          const rightBefore = ownerKey({ owners: [...rightOwners] });
-          const after = ownerKey({ owners: [...merged] });
-          if (leftBefore !== after) {
-            candidateOwners.set(left, new Set(merged));
-            changed = true;
-          }
-          if (rightBefore !== after) {
-            candidateOwners.set(right, new Set(merged));
-            changed = true;
-          }
-          if (leftBefore !== after || rightBefore !== after) {
-            conflicts.push({ groupId: group.id, left, right, leftBefore, rightBefore, after });
-          }
-        }
-      }
-    }
-  }
-
   const candidateOwnerKeysBeforeCompression = [...groupCandidatesByOwner({ candidateOwners }).keys()]
     .filter((key) => key !== 'initial')
     .sort();
-  const candidateCompression = maxLazyCssGroups === undefined
-    ? {
-      originalLazyGroupCount: candidateOwnerKeysBeforeCompression.length,
-      retainedLazyGroupCount: candidateOwnerKeysBeforeCompression.length,
-      promotedCandidateCount: 0,
-      retainedOwnerKeys: candidateOwnerKeysBeforeCompression,
-    }
-    : compressCandidateOwnerGroups({ candidateOwners, candidateCss, maxLazyCssGroups });
+  const candidateCompression = {
+    originalLazyGroupCount: candidateOwnerKeysBeforeCompression.length,
+    retainedLazyGroupCount: candidateOwnerKeysBeforeCompression.length,
+    promotedCandidateCount: 0,
+    retainedOwnerKeys: candidateOwnerKeysBeforeCompression,
+  };
   const baseline = await compileTailwindCss({ cssEntryPath, candidates: [], expectedTailwindVersion });
-  const baselineCss = baseline.css;
   const ownerCandidateGroups = groupCandidatesByOwner({ candidateOwners });
   const globalCompilation = await compileTailwindCss({ cssEntryPath, candidates, expectedTailwindVersion });
   const globalCss = globalCompilation.css;
-  const globalDelta = subtractCss({ css: globalCss, baselineCss });
-  const globalAtoms = flattenCssAtoms({ css: globalDelta });
-  const globalOrder = new Map(globalAtoms.map((atom, index) => [atom.fingerprint, index]));
-  const atomRecords = new Map();
-  for (const [key, groupCandidates] of ownerCandidateGroups) {
-    const css = await compileDelta({ cssEntryPath, candidates: groupCandidates, expectedTailwindVersion, baselineCss });
-    for (const atom of flattenCssAtoms({ css })) {
-      const record = atomRecords.get(atom.fingerprint) ?? { ...atom, owners: new Set(), sourceOwnerKeys: new Set() };
-      ownerSetFromKey({ key }).forEach((owner) => record.owners.add(owner));
-      record.sourceOwnerKeys.add(key);
-      atomRecords.set(atom.fingerprint, record);
-    }
-  }
+  const globalDelta = subtractCss({ css: globalCss, baselineCss: baseline.css });
+  const globalAtoms = annotateCanonicalAtoms({ atoms: flattenCssAtoms({ css: globalCss }) });
+  const baselineFingerprints = fingerprintCounts({ atoms: flattenCssAtoms({ css: baseline.css }) });
+  const ownershipHints = createOwnershipHints({ candidates, candidateCss, candidateOwners });
   const atomGroups = new Map();
-  for (const atom of atomRecords.values()) {
-    const key = ownerKey({ owners: [...atom.owners] });
+  let sourceOwnedAtomCount = 0;
+  let initialSupportAtomCount = 0;
+  for (const atom of globalAtoms) {
+    const isBaselineAtom = consumeFingerprint({
+      counts: baselineFingerprints,
+      fingerprint: atom.fingerprint,
+    });
+    const placement = isBaselineAtom
+      ? { owners: new Set(['initial']), sourceOwned: false }
+      : atomOwners({ atom, ownershipHints });
+    if (placement.sourceOwned) sourceOwnedAtomCount += 1;
+    else initialSupportAtomCount += 1;
+    const key = ownerKey({ owners: [...placement.owners] });
     const values = atomGroups.get(key) ?? [];
     values.push(atom);
     atomGroups.set(key, values);
@@ -449,32 +420,54 @@ export async function createCssOwnershipPlan({
   const atomOwnerKeysBeforeCompression = [...atomGroups.keys()]
     .filter((key) => key !== 'initial')
     .sort();
-  const atomCompression = maxLazyCssGroups === undefined
+  const atomCompression = maxSplitCssGroups === undefined
     ? {
       originalLazyGroupCount: atomOwnerKeysBeforeCompression.length,
       retainedLazyGroupCount: atomOwnerKeysBeforeCompression.length,
       promotedAtomCount: 0,
       retainedOwnerKeys: atomOwnerKeysBeforeCompression,
     }
-    : compressAtomGroups({ atomGroups, maxLazyCssGroups });
+    : compressAtomGroups({ atomGroups, maxSplitCssGroups });
+  const runtimeFragmentsByOwner = new Map();
   const cssGroups = new Map();
   for (const [key, atoms] of atomGroups) {
-    atoms.sort((left, right) => (globalOrder.get(left.fingerprint) ?? Number.MAX_SAFE_INTEGER) - (globalOrder.get(right.fingerprint) ?? Number.MAX_SAFE_INTEGER));
-    cssGroups.set(key, serializeCssAtoms({ atoms }));
+    const fragments = createOrderedFragments({ atoms });
+    runtimeFragmentsByOwner.set(key, fragments);
+    cssGroups.set(key, fragments.map(({ css }) => css).join('\n'));
   }
+  assertOrderedFragmentsReconstructGlobalCss({ globalAtoms, fragmentsByOwner: runtimeFragmentsByOwner });
 
   const emittedRaw = [...cssGroups.values()].reduce((sum, css) => sum + Buffer.byteLength(css), 0);
   const emittedGzip = [...cssGroups.values()].reduce((sum, css) => sum + gzipSync(css).length, 0);
   const uniqueDelta = bytes({ css: globalDelta });
+  const serializedGlobalCss = serializeCssAtoms({ atoms: globalAtoms });
+  const runtimeFragmentCount = [...runtimeFragmentsByOwner.values()].reduce((sum, fragments) => sum + fragments.length, 0);
+  const runtimeMetadata = JSON.stringify([...runtimeFragmentsByOwner].map(([key, fragments]) => [
+    key,
+    fragments.map(({ order }) => order),
+  ]));
+  const structuralOverheadRaw = Math.max(0, emittedRaw - Buffer.byteLength(serializedGlobalCss));
   const metrics = {
-    baseline: bytes({ css: baselineCss }),
+    baseline: bytes({ css: baseline.css }),
     uniqueDelta,
+    ordering: {
+      runtimeFragmentCount,
+      runtimeMetadataRaw: Buffer.byteLength(runtimeMetadata),
+      runtimeMetadataGzip: gzipSync(runtimeMetadata).length,
+    },
+    placement: {
+      globalAtomCount: globalAtoms.length,
+      sourceOwnedAtomCount,
+      initialSupportAtomCount,
+    },
     emitted: {
       groupCount: cssGroups.size,
       raw: emittedRaw,
       gzip: emittedGzip,
-      duplicateRaw: Math.max(0, emittedRaw - uniqueDelta.raw),
-      duplicateRatio: uniqueDelta.raw === 0 ? 0 : Math.max(0, emittedRaw - uniqueDelta.raw) / uniqueDelta.raw,
+      duplicateAtomCount: 0,
+      duplicateRaw: 0,
+      duplicateRatio: 0,
+      structuralOverheadRaw,
     },
   };
 
@@ -483,19 +476,22 @@ export async function createCssOwnershipPlan({
     candidates,
     candidateOwners,
     ownerCandidateGroups,
-    baselineCss,
+    baselineCss: baseline.css,
+    entryCss: '',
     globalCss,
     globalDelta,
     cssGroups,
+    runtimeFragmentsByOwner,
     conflicts,
     compression: {
-      maxLazyCssGroups,
+      maxSplitCssGroups,
       candidates: candidateCompression,
       atoms: atomCompression,
     },
     metrics,
     tailwindVersion: validator.tailwindVersion,
   };
+
 }
 
 export function serializeCssOwnershipPlan({ plan }) {
@@ -505,7 +501,13 @@ export function serializeCssOwnershipPlan({ plan }) {
     candidates: plan.candidates,
     candidateOwners: Object.fromEntries([...plan.candidateOwners].sort(([left], [right]) => left.localeCompare(right)).map(([candidate, owners]) => [candidate, [...owners].sort()])),
     ownerCandidateGroups: Object.fromEntries([...plan.ownerCandidateGroups]),
-    cssGroups: Object.fromEntries([...plan.cssGroups].map(([key, css]) => [key, { bytes: Buffer.byteLength(css), css }])),
+    entryCssBytes: Buffer.byteLength(plan.entryCss),
+    cssGroups: Object.fromEntries([...plan.cssGroups].map(([key, css]) => [key, {
+      bytes: Buffer.byteLength(css),
+      fragmentCount: plan.runtimeFragmentsByOwner.get(key)?.length ?? 0,
+      fragmentOrders: plan.runtimeFragmentsByOwner.get(key)?.map(({ order }) => order) ?? [],
+      css,
+    }])),
     conflicts: plan.conflicts,
     compression: plan.compression,
     globalCssBytes: Buffer.byteLength(plan.globalCss),
@@ -528,6 +530,8 @@ export function writeCssOwnershipDebugFiles({ directory, plan }) {
       ownerKey: ownerKeyValue,
       owners: ownerSetFromKey({ key: ownerKeyValue }),
       bytes: Buffer.byteLength(css),
+      fragmentCount: plan.runtimeFragmentsByOwner.get(ownerKeyValue)?.length ?? 0,
+      fragmentOrders: plan.runtimeFragmentsByOwner.get(ownerKeyValue)?.map(({ order }) => order) ?? [],
     };
   }
   fs.writeFileSync(path.join(directory, 'groups.json'), `${JSON.stringify({ groups }, null, 2)}\n`);

@@ -282,13 +282,15 @@ export default defineConfig(({ mode }) => {
         sourceRoot: path.resolve(__dirname, 'src'),
         entryModule: path.resolve(__dirname, 'src/main.ts'),
         tailwindCssPath: path.resolve(__dirname, 'src/style.css'),
-        aliases: [{ find: '@', replacement: path.resolve(__dirname, 'src') }],
-        additionalLazyRootDirectories: [],
         debugOutputDirectory: path.resolve(__dirname, 'dist/debug-tailwind'),
-        // Keep one static CSS asset until ownership is derived from the actual Vite/Rollup graph.
-        splitCss: false,
+        // Source modules import canonical runtime CSS fragment modules. Rolldown
+        // places private and shared fragments according to its actual chunk graph.
+        outputMode: 'split',
         cssPlanning: mode === 'test' ? 'disabled' : 'enabled',
-        maxLazyCssGroups: undefined,
+        // Bound runtime fragment module count so static analysis does not make
+        // production builds disproportionately expensive. Smaller groups are
+        // promoted to the initial registry module, never discarded.
+        maxSplitCssGroups: 256,
       }),
       VueDevTools(),
       vue({

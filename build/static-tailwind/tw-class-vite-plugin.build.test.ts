@@ -48,7 +48,12 @@ function createFixture(): string {
   writeFile({
     root,
     relativePath: 'src/main.ts',
-    content: `import './style.css';\nObject.assign(window, {\n  loadFeatureA: () => import('./FeatureA.vue'),\n  loadFeatureB: () => import('./FeatureB.vue'),\n});\n`,
+    content: `import './style.css';
+Object.assign(window, {
+  loadFeatureA: () => import('./FeatureA.vue'),
+  loadFeatureB: () => import('./FeatureB.vue'),
+});
+`,
   });
   writeFile({
     root,
@@ -76,8 +81,21 @@ function readCssAssets({ outputDirectory }: { outputDirectory: string }): Map<st
     .map((filename) => [filename, fs.readFileSync(path.join(assetsDirectory, filename), 'utf8')]));
 }
 
+function readJavaScriptAssets({ outputDirectory }: { outputDirectory: string }): {
+  filename: string,
+  source: string,
+}[] {
+  return fs.readdirSync(path.join(outputDirectory, 'assets'))
+    .filter((filename) => filename.endsWith('.js'))
+    .sort()
+    .map((filename) => ({
+      filename,
+      source: fs.readFileSync(path.join(outputDirectory, 'assets', filename), 'utf8'),
+    }));
+}
+
 describe('static Tailwind Vite plugin production CSS splitting', () => {
-  it('keeps lazy utilities out of initial CSS and emits shared utility CSS once', async () => {
+  it('keeps lazy utilities out of the hosted entry and emits shared utility CSS once', async () => {
     const root = createFixture();
     const sourceRoot = path.join(root, 'src');
     const outputDirectory = path.join(root, 'dist');
@@ -91,12 +109,10 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
           sourceRoot,
           entryModule: path.join(sourceRoot, 'main.ts'),
           tailwindCssPath: path.join(sourceRoot, 'style.css'),
-          aliases: [],
-          additionalLazyRootDirectories: [],
           debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind'),
-          splitCss: true,
+          outputMode: 'split',
           cssPlanning: 'enabled',
-          maxLazyCssGroups: undefined,
+          maxSplitCssGroups: undefined,
         }),
         vue({
           template: {
@@ -115,23 +131,29 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
     });
 
     const manifest = JSON.parse(fs.readFileSync(path.join(outputDirectory, '.vite', 'manifest.json'), 'utf8')) as Record<string, {
-      css?: string[],
+      file: string,
       isEntry?: boolean,
     }>;
     const entry = Object.values(manifest).find(({ isEntry }) => isEntry === true);
     expect(entry).toBeDefined();
-    const cssAssets = readCssAssets({ outputDirectory });
-    expect(cssAssets.size).toBeGreaterThanOrEqual(3);
+    if (entry === undefined) throw new TypeError('Expected one hosted entry chunk.');
 
-    const initialCss = (entry?.css ?? []).map((filename) => cssAssets.get(path.basename(filename)) ?? '').join('\n');
-    const allCss = [...cssAssets.values()].join('\n');
-    expect(initialCss).not.toContain('.animate-spin');
-    expect(initialCss).not.toContain('.italic');
-    expect(initialCss).not.toContain('.p-2');
-    expect(allCss).toContain('.animate-spin');
-    expect(allCss).toContain('.italic');
-    expect(allCss).toContain('.p-2');
-    expect([...cssAssets.values()].filter((css) => css.includes('.p-2'))).toHaveLength(1);
+    const hostedCss = [...readCssAssets({ outputDirectory }).values()].join('\n');
+    expect(hostedCss).not.toContain('.animate-spin');
+    expect(hostedCss).not.toContain('.italic');
+    expect(hostedCss).not.toContain('.p-2');
+    const javascriptAssets = readJavaScriptAssets({ outputDirectory });
+    const entryJavaScript = fs.readFileSync(path.join(outputDirectory, entry.file), 'utf8');
+    const allJavaScript = javascriptAssets.map(({ source }) => source).join('\n');
+    expect(entryJavaScript).not.toContain('.animate-spin');
+    expect(entryJavaScript).not.toContain('.italic');
+    expect(entryJavaScript).not.toContain('.p-2');
+    expect(allJavaScript).toContain('.animate-spin');
+    expect(allJavaScript).toContain('.italic');
+    expect(allJavaScript).toContain('.p-2');
+    expect(javascriptAssets.filter(({ source }) => source.includes('.p-2'))).toHaveLength(1);
+    expect(allJavaScript).toContain('data-naidan-tailwind-runtime');
+    expect(allJavaScript).not.toContain('@layer utilities.naidan-');
   });
 
   it('preserves lazy CSS splitting in the file-protocol standalone output', async () => {
@@ -149,12 +171,10 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
           sourceRoot,
           entryModule: path.join(sourceRoot, 'main.ts'),
           tailwindCssPath: path.join(sourceRoot, 'style.css'),
-          aliases: [],
-          additionalLazyRootDirectories: [],
           debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind'),
-          splitCss: true,
+          outputMode: 'split',
           cssPlanning: 'enabled',
-          maxLazyCssGroups: undefined,
+          maxSplitCssGroups: undefined,
         }),
         vue({
           template: {
@@ -195,15 +215,8 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
     expect(entry).toBeDefined();
     if (entry === undefined) throw new TypeError('Expected one standalone entry chunk.');
 
-    const cssAssets = readCssAssets({ outputDirectory });
-    expect(cssAssets.size).toBe(0);
-    const javascriptAssets = fs.readdirSync(path.join(outputDirectory, 'assets'))
-      .filter((filename) => filename.endsWith('.js'))
-      .sort()
-      .map((filename) => ({
-        filename,
-        source: fs.readFileSync(path.join(outputDirectory, 'assets', filename), 'utf8'),
-      }));
+    expect(readCssAssets({ outputDirectory }).size).toBe(0);
+    const javascriptAssets = readJavaScriptAssets({ outputDirectory });
     const entryJavaScript = fs.readFileSync(path.join(outputDirectory, entry.file), 'utf8');
     const allJavaScript = javascriptAssets.map(({ source }) => source).join('\n');
     expect(entryJavaScript).not.toContain('.animate-spin');
@@ -213,6 +226,8 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
     expect(allJavaScript).toContain('.italic');
     expect(allJavaScript).toContain('.p-2');
     expect(javascriptAssets.filter(({ source }) => source.includes('.p-2'))).toHaveLength(1);
+    expect(allJavaScript).toContain('data-naidan-tailwind-runtime');
+    expect(allJavaScript).not.toContain('@layer utilities.naidan-');
 
     const html = fs.readFileSync(path.join(outputDirectory, 'index.html'), 'utf8');
     expect(html).toContain('file-protocol-standalone');

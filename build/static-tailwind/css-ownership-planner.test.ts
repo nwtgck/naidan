@@ -21,10 +21,10 @@ function createAnalysis({ candidateOwners, candidates }: {
   };
 }
 
-async function plan({ analysis, outputMode, maxLazyCssGroups }: {
+async function plan({ analysis, outputMode, maxSplitCssGroups }: {
   analysis: ReturnType<typeof createAnalysis>,
   outputMode: 'single' | 'split',
-  maxLazyCssGroups: number | undefined,
+  maxSplitCssGroups: number | undefined,
 }) {
   return createCssOwnershipPlan({
     projectRoot: path.resolve(import.meta.dirname, '../..'),
@@ -32,8 +32,16 @@ async function plan({ analysis, outputMode, maxLazyCssGroups }: {
     expectedTailwindVersion: '4.3.1',
     analysis,
     outputMode,
-    maxLazyCssGroups,
+    maxSplitCssGroups,
   });
+}
+
+function fragmentOrderContaining({ result, owner, needle }: {
+  result: Awaited<ReturnType<typeof plan>>,
+  owner: string,
+  needle: string,
+}): number | undefined {
+  return result.runtimeFragmentsByOwner.get(owner)?.find(({ css }) => css.includes(needle))?.order;
 }
 
 describe('static Tailwind CSS ownership planner', () => {
@@ -47,29 +55,95 @@ describe('static Tailwind CSS ownership planner', () => {
         },
       }),
       outputMode: 'single',
-      maxLazyCssGroups: undefined,
+      maxSplitCssGroups: undefined,
     });
     expect(result.outputMode).toBe('single');
     expect(result.cssGroups.size).toBe(1);
+    expect(result.runtimeFragmentsByOwner.size).toBe(0);
+    expect(result.entryCss).toBe(result.globalCss);
     expect([...result.candidateOwners.get('p-2') ?? []]).toEqual(['initial']);
     expect([...result.candidateOwners.get('text-blue-500') ?? []]).toEqual(['initial']);
     expect(result.globalCss).toContain('.text-blue-500');
   });
 
-  it('keeps canonical initial-to-lazy order split', async () => {
-    const result = await plan({ analysis: createAnalysis({
-      candidates: ['p-2', 'p-4'],
-      candidateOwners: { 'p-2': ['initial'], 'p-4': ['lazy:feature.vue'] },
-    }), outputMode: 'split', maxLazyCssGroups: undefined });
-    expect([...result.candidateOwners.get('p-4') ?? []]).toEqual(['lazy:feature.vue']);
+  it('retains generated license comments in the initial runtime fragment', async () => {
+    const result = await plan({
+      analysis: createAnalysis({
+        candidates: ['p-2'],
+        candidateOwners: { 'p-2': ['module:src/Feature.vue'] },
+      }),
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    });
+    expect(result.cssGroups.get('initial')).toContain('/*! tailwindcss');
   });
 
-  it('promotes lazy CSS when load order would reverse Tailwind order', async () => {
-    const result = await plan({ analysis: createAnalysis({
-      candidates: ['p-4', 'p-2'],
-      candidateOwners: { 'p-4': ['initial'], 'p-2': ['lazy:feature.vue'] },
-    }), outputMode: 'split', maxLazyCssGroups: undefined });
-    expect([...result.candidateOwners.get('p-2') ?? []]).toEqual(['initial']);
+  it('keeps canonical source order as runtime fragment order without nested cascade layers', async () => {
+    const result = await plan({
+      analysis: createAnalysis({
+        candidates: ['p-2', 'p-4'],
+        candidateOwners: { 'p-2': ['initial'], 'p-4': ['lazy:feature.vue'] },
+      }),
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    });
+    const p2Order = fragmentOrderContaining({ result, owner: 'initial', needle: '.p-2' });
+    const p4Order = fragmentOrderContaining({ result, owner: 'lazy:feature.vue', needle: '.p-4' });
+    expect(p2Order).toBeDefined();
+    expect(p4Order).toBeDefined();
+    expect(Math.sign((p2Order ?? 0) - (p4Order ?? 0))).toBe(
+      Math.sign(result.globalCss.indexOf('.p-2') - result.globalCss.indexOf('.p-4')),
+    );
+    expect([...result.cssGroups.values()].join('\n')).not.toContain('@layer utilities.naidan-');
+    expect(result.entryCss).toBe('');
+  });
+
+  it('uses one runtime fragment for adjacent atoms in the same final CSS group', async () => {
+    const owner = 'module:src/Feature.vue';
+    const result = await plan({
+      analysis: createAnalysis({
+        candidates: ['p-2', 'p-4'],
+        candidateOwners: { 'p-2': [owner], 'p-4': [owner] },
+      }),
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    });
+    expect(result.runtimeFragmentsByOwner.get(owner)).toHaveLength(1);
+    expect(result.metrics.ordering.runtimeFragmentCount).toBeGreaterThan(0);
+  });
+
+  it('keeps important utility rules lazy because runtime ordering preserves the original layer semantics', async () => {
+    const result = await plan({
+      analysis: createAnalysis({
+        candidates: ['!p-2'],
+        candidateOwners: { '!p-2': ['lazy:feature.vue'] },
+      }),
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    });
+    expect(result.cssGroups.get('lazy:feature.vue')).toContain('.\\!p-2');
+    expect(result.cssGroups.get('initial')).not.toContain('.\\!p-2');
+  });
+
+  it('maps compiled fallback rules to their source owners and keeps support CSS initial', async () => {
+    const owner = 'module:src/Feature.vue';
+    const result = await plan({
+      analysis: createAnalysis({
+        candidates: ['bg-blue-500/10'],
+        candidateOwners: { 'bg-blue-500/10': [owner] },
+      }),
+      outputMode: 'split',
+      maxSplitCssGroups: undefined,
+    });
+
+    expect(result.cssGroups.get(owner)).toContain('.bg-blue-500\\/10');
+    expect(result.cssGroups.get('initial')).not.toContain('.bg-blue-500\\/10');
+    expect(result.metrics.placement.sourceOwnedAtomCount).toBeGreaterThan(0);
+    expect(result.metrics.placement.initialSupportAtomCount).toBeGreaterThan(0);
+    expect(
+      result.metrics.placement.sourceOwnedAtomCount
+      + result.metrics.placement.initialSupportAtomCount,
+    ).toBe(result.metrics.placement.globalAtomCount);
   });
 
   it('uses bounded debug filenames for large shared owner sets', () => {
@@ -86,12 +160,14 @@ describe('static Tailwind CSS ownership planner', () => {
           candidateOwners: new Map([['p-2', new Set(ownerKey.split('|'))]]),
           ownerCandidateGroups: new Map([[ownerKey, ['p-2']]]),
           baselineCss: '',
+          entryCss: '',
           globalCss: '.p-2 {}\n',
           globalDelta: '.p-2 {}\n',
           cssGroups: new Map([[ownerKey, '.p-2 {}\n']]),
+          runtimeFragmentsByOwner: new Map([[ownerKey, [{ order: 7, css: '.p-2 {}\n' }]]]),
           conflicts: [],
           compression: {
-            maxLazyCssGroups: undefined,
+            maxSplitCssGroups: undefined,
             candidates: {
               originalLazyGroupCount: 1,
               retainedLazyGroupCount: 1,
@@ -103,18 +179,47 @@ describe('static Tailwind CSS ownership planner', () => {
               retainedOwnerKeys: [ownerKey],
             },
           },
-          metrics: {},
+          metrics: {
+            baseline: { raw: 0, gzip: 0 },
+            uniqueDelta: { raw: 8, gzip: 8 },
+            ordering: {
+              runtimeFragmentCount: 1,
+              runtimeMetadataRaw: 1,
+              runtimeMetadataGzip: 1,
+            },
+            placement: {
+              globalAtomCount: 1,
+              sourceOwnedAtomCount: 1,
+              initialSupportAtomCount: 0,
+            },
+            emitted: {
+              groupCount: 1,
+              raw: 8,
+              gzip: 8,
+              duplicateAtomCount: 0,
+              duplicateRaw: 0,
+              duplicateRatio: 0,
+              structuralOverheadRaw: 0,
+            },
+          },
           tailwindVersion: '4.3.1',
         },
       });
       const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'groups.json'), 'utf8')) as {
-        groups: Record<string, { filename: string, ownerKey: string }>,
+        groups: Record<string, {
+          filename: string,
+          ownerKey: string,
+          fragmentCount: number,
+          fragmentOrders: number[],
+        }>,
       };
       const [group] = Object.values(manifest.groups);
       expect(group).toBeDefined();
       expect(group?.filename).toMatch(/^group-[a-f0-9]{64}\.css$/u);
       expect(group?.filename.length).toBeLessThan(96);
       expect(group?.ownerKey).toBe(ownerKey);
+      expect(group?.fragmentCount).toBe(1);
+      expect(group?.fragmentOrders).toEqual([7]);
       expect(fs.existsSync(path.join(directory, group?.filename ?? 'missing'))).toBe(true);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -128,8 +233,8 @@ describe('static Tailwind CSS ownership planner', () => {
         candidateOwners: { 'p-2': ['initial'] },
       }),
       outputMode: 'split',
-      maxLazyCssGroups: -1,
-    })).rejects.toThrow('maxLazyCssGroups must be a non-negative integer');
+      maxSplitCssGroups: -1,
+    })).rejects.toThrow('maxSplitCssGroups must be a non-negative integer');
   });
 
   it('caps lazy ownership groups without duplicate CSS atoms', async () => {
@@ -145,9 +250,10 @@ describe('static Tailwind CSS ownership planner', () => {
         ['border-green-500', new Set(['lazy:green.vue'])],
       ]),
     };
-    const result = await plan({ analysis, outputMode: 'split', maxLazyCssGroups: 2 });
+    const result = await plan({ analysis, outputMode: 'split', maxSplitCssGroups: 2 });
     expect(result.compression.candidates.originalLazyGroupCount).toBe(3);
-    expect(result.compression.candidates.retainedLazyGroupCount).toBe(2);
+    expect(result.compression.candidates.retainedLazyGroupCount).toBe(3);
+    expect(result.compression.atoms.retainedLazyGroupCount).toBe(2);
     expect(result.cssGroups.size).toBeLessThanOrEqual(3);
   });
 });
