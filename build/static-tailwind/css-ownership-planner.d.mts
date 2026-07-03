@@ -31,7 +31,7 @@ export type CssOwnershipPlan = {
   cssGroups: Map<string, string>,
   conflicts: unknown[],
   compression: {
-    maxLazyCssGroups: number,
+    maxLazyCssGroups: number | undefined,
     candidates: CssOwnershipCompression,
     atoms: CssOwnershipCompression,
   },
@@ -42,9 +42,9 @@ export type CssOwnershipPlan = {
 export function createCssOwnershipPlan(options: {
   projectRoot: string,
   cssEntryPath: string,
-  expectedTailwindVersion?: string,
+  expectedTailwindVersion: string | undefined,
   analysis: CssOwnershipAnalysis,
-  maxLazyCssGroups?: number,
+  maxLazyCssGroups: number | undefined,
 }): Promise<CssOwnershipPlan>;
 
 export function serializeCssOwnershipPlan(options: { plan: CssOwnershipPlan }): unknown;

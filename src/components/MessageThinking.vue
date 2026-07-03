@@ -169,9 +169,11 @@ defineExpose({
       <div
         ref="thinkingContentRef"
         v-if="mode === 'expanded' || mode === 'collapsed-active'"
-        class="animate-in fade-in slide-in-from-top-1" tw-class="relative z-20 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed duration-200 scroll-smooth"
-        :class="[
-          mode === 'collapsed-active' ? 'h-20 overflow-y-auto no-scrollbar mask-fade-top pt-2' : ''
+        class="animate-in fade-in slide-in-from-top-1"
+        :class="[mode === 'collapsed-active' ? 'no-scrollbar mask-fade-top' : '']"
+        :tw-class="[
+          'relative z-20 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed duration-200 scroll-smooth',
+          mode === 'collapsed-active' ? 'h-20 overflow-y-auto pt-2' : ''
         ]"
         data-testid="thinking-content"
       >

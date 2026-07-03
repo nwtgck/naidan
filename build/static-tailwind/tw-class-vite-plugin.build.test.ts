@@ -91,12 +91,17 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
           sourceRoot,
           entryModule: path.join(sourceRoot, 'main.ts'),
           tailwindCssPath: path.join(sourceRoot, 'style.css'),
-          debugOutputDirectory: path.join(root, '.generated'),
+          aliases: [],
+          additionalLazyRootDirectories: [],
+          debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind'),
+          splitCss: true,
+          cssPlanning: 'enabled',
+          maxLazyCssGroups: undefined,
         }),
         vue({
           template: {
             compilerOptions: {
-              nodeTransforms: [createTwClassNodeTransform()],
+              nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template' })],
             },
           },
         }),
@@ -144,12 +149,17 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
           sourceRoot,
           entryModule: path.join(sourceRoot, 'main.ts'),
           tailwindCssPath: path.join(sourceRoot, 'style.css'),
-          debugOutputDirectory: path.join(root, '.generated-standalone'),
+          aliases: [],
+          additionalLazyRootDirectories: [],
+          debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind'),
+          splitCss: true,
+          cssPlanning: 'enabled',
+          maxLazyCssGroups: undefined,
         }),
         vue({
           template: {
             compilerOptions: {
-              nodeTransforms: [createTwClassNodeTransform()],
+              nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template' })],
             },
           },
         }),

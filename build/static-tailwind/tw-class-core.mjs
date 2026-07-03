@@ -21,7 +21,7 @@ function fail({ filename, message, loc }) {
   throw new Error(`[tw-class] ${filename}${location} ${message}`);
 }
 
-function absolutePosition({ relative, blockStart, columnIsZeroBased = false }) {
+function absolutePosition({ relative, blockStart, columnIsZeroBased }) {
   const relativeColumn = relative.column + (columnIsZeroBased ? 1 : 0);
   return {
     line: blockStart.line + relative.line - 1,
@@ -164,7 +164,7 @@ function classAttributeDefinition({ prop }) {
   return undefined;
 }
 
-export function collectTwCandidateOccurrencesFromTemplateAst({ ast, filename, blockStart = { line: 1, column: 1 } }) {
+export function collectTwCandidateOccurrencesFromTemplateAst({ ast, filename, blockStart }) {
   const occurrences = [];
   const visited = new Set();
   function visit(node) {
@@ -174,7 +174,7 @@ export function collectTwCandidateOccurrencesFromTemplateAst({ ast, filename, bl
       for (const prop of node.props) {
         const definition = classAttributeDefinition({ prop });
         if (definition === undefined) continue;
-        const position = absolutePosition({ relative: prop.loc.start, blockStart });
+        const position = absolutePosition({ relative: prop.loc.start, blockStart, columnIsZeroBased: false });
         if (prop.type === NodeTypes.ATTRIBUTE) {
           if (prop.value === undefined) fail({ filename, loc: prop.loc, message: `${definition.source} requires a static string value.` });
           for (const token of parseTwClassTokens({ value: prop.value.content, filename, loc: prop.loc })) {
@@ -218,6 +218,7 @@ export function collectTwCandidateOccurrencesFromVueSource({ source, filename })
       filename,
       sourceType: scriptBlock.lang === 'js' || scriptBlock.lang === 'jsx' ? 'javascript' : 'typescript',
       blockStart: scriptBlock.loc.start,
+      additionalImports: [],
     });
     occurrences.push(...result.occurrences);
   }
@@ -232,7 +233,7 @@ function dynamicPropsByName({ node, name }) {
   return node.props.filter((prop) => prop.type === NodeTypes.DIRECTIVE && prop.name === 'bind' && isStaticArgument({ argument: prop.arg, name }));
 }
 
-export function createTwClassNodeTransform({ filename = 'Vue template' } = {}) {
+export function createTwClassNodeTransform({ filename }) {
   return (node, context) => {
     if (node.type !== NodeTypes.ELEMENT) return;
     for (const prop of node.props) {
@@ -314,9 +315,9 @@ function isImportIdentifier({ node }) {
 function transformTwCallsIntoMagicString({
   source,
   filename,
-  sourceType = 'typescript',
-  blockStart = { line: 1, column: 1 },
-  additionalImports = [],
+  sourceType,
+  blockStart,
+  additionalImports,
   magicString,
   sourceOffset,
 }) {
@@ -377,7 +378,7 @@ function transformTwCallsIntoMagicString({
           if (tokens.length !== 1) fail({ filename, loc: expressionLoc({ sourceFile, node }), message: 'tw() accepts exactly one Tailwind class token.' });
           classes.add(className);
           occurrences.push(createOccurrence({ candidate: className, filename, position: nodePosition({ sourceFile, node, blockStart }), sourceKind: 'tw()' }));
-          const range = nodeRange({ sourceFile, node });
+          const range = nodeRange({ sourceFile, node, offset: 0 });
           magicString.overwrite(sourceOffset + range.start, sourceOffset + range.end, JSON.stringify(className));
           return;
         }
@@ -393,7 +394,7 @@ function transformTwCallsIntoMagicString({
             classes.add(className);
             occurrences.push(createOccurrence({ candidate: className, filename, position: nodePosition({ sourceFile, node, blockStart }), sourceKind: 'twClassString()' }));
           }
-          const range = nodeRange({ sourceFile, node });
+          const range = nodeRange({ sourceFile, node, offset: 0 });
           magicString.overwrite(sourceOffset + range.start, sourceOffset + range.end, JSON.stringify(classNames.join(' ')));
         }
       }
@@ -416,7 +417,7 @@ function transformTwCallsIntoMagicString({
   return { classes, occurrences, changed: true };
 }
 
-export function transformTwCallsInModule({ source, filename, sourceType = 'typescript', blockStart = { line: 1, column: 1 }, additionalImports = [] }) {
+export function transformTwCallsInModule({ source, filename, sourceType, blockStart, additionalImports }) {
   const magicString = new MagicString(source);
   const result = transformTwCallsIntoMagicString({
     source,
@@ -436,7 +437,7 @@ export function transformTwCallsInModule({ source, filename, sourceType = 'types
   };
 }
 
-export function transformTwCallsInVueSource({ source, filename, additionalImports = [] }) {
+export function transformTwCallsInVueSource({ source, filename, additionalImports }) {
   const { descriptor, errors } = parseSfc(source, { filename });
   if (errors.length > 0) fail({ filename, message: `Unable to parse Vue SFC: ${errors.map(String).join('; ')}` });
   const magicString = new MagicString(source);

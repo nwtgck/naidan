@@ -42,25 +42,29 @@ function normalizeAliases({ aliases, projectRoot }) {
   }));
 }
 
-function ownerNamesFromKey(key) {
+function ownerNamesFromKey({ key }) {
   return key === '' ? [] : key.split('|');
 }
 
 export function createTwClassVitePlugin({
   projectRoot,
-  sourceRoot = path.join(projectRoot, 'src'),
-  entryModule = path.join(sourceRoot, 'main.ts'),
-  tailwindCssPath = path.join(sourceRoot, 'style.css'),
-  aliases = [{ find: '@', replacement: sourceRoot }],
-  additionalLazyRootDirectories = [],
-  debugOutputDirectory = path.join(projectRoot, '.generated', 'tailwind'),
-  splitCss = true,
-  cssPlanning = 'enabled',
+  sourceRoot,
+  entryModule,
+  tailwindCssPath,
+  aliases,
+  additionalLazyRootDirectories,
+  debugOutputDirectory,
+  splitCss,
+  cssPlanning,
+  maxLazyCssGroups,
 }) {
   const absoluteProjectRoot = path.resolve(projectRoot);
   const absoluteSourceRoot = path.resolve(sourceRoot);
   const absoluteEntryModule = path.resolve(entryModule);
   const absoluteTailwindCssPath = path.resolve(tailwindCssPath);
+  const absoluteDebugOutputDirectory = debugOutputDirectory === undefined
+    ? undefined
+    : path.resolve(debugOutputDirectory);
   const expectedTailwindVersion = readExpectedTailwindVersion({ projectRoot: absoluteProjectRoot });
   const resolvedAliases = normalizeAliases({ aliases, projectRoot: absoluteProjectRoot });
   let command = 'build';
@@ -90,7 +94,7 @@ export function createTwClassVitePlugin({
 
     for (const [ownerKey, css] of nextPlan.cssGroups) {
       if (css.trim() === '') continue;
-      const normalizedOwners = ownerNamesFromKey(ownerKey);
+      const normalizedOwners = ownerNamesFromKey({ key: ownerKey });
       const owners = normalizedOwners.length === 0 ? ['initial'] : normalizedOwners;
       const publicId = `${virtualCssPrefix}${groupHash({ ownerKey: owners.join('|') })}.css`;
       const resolvedId = `\0${publicId}`;
@@ -115,7 +119,7 @@ export function createTwClassVitePlugin({
     };
   }
 
-  async function refreshPlan({ writeDebugFiles }) {
+  async function refreshPlan() {
     const nextAnalysis = analyzeSourceModules({
       projectRoot: absoluteProjectRoot,
       sourceRoot: absoluteSourceRoot,
@@ -123,7 +127,7 @@ export function createTwClassVitePlugin({
       aliases: resolvedAliases,
       additionalLazyRootDirectories,
     });
-    if (nextAnalysis.unresolvedDynamicImports.length > 0) {
+    if (splitCss && nextAnalysis.unresolvedDynamicImports.length > 0) {
       const details = nextAnalysis.unresolvedDynamicImports.map(({ filename, line, column, expression }) => (
         `${filename}:${line}:${column} import(${expression})`
       ));
@@ -134,10 +138,12 @@ export function createTwClassVitePlugin({
       cssEntryPath: absoluteTailwindCssPath,
       expectedTailwindVersion,
       analysis: nextAnalysis,
+      maxLazyCssGroups,
     });
     const state = buildVirtualState({ nextAnalysis, nextPlan });
     const previousCssByResolvedId = cssByResolvedId;
     const previousImportsByModule = importsByModule;
+    const previousBaselineCss = baselineCss;
     analysis = nextAnalysis;
     plan = nextPlan;
     baselineCss = splitCss ? nextPlan.baselineCss : nextPlan.globalCss;
@@ -149,20 +155,26 @@ export function createTwClassVitePlugin({
     importsByModule = state.nextImportsByModule;
     ownerRootByName = state.nextOwnerRootByName;
 
-    if (writeDebugFiles) {
-      fs.rmSync(debugOutputDirectory, { recursive: true, force: true });
-      fs.mkdirSync(debugOutputDirectory, { recursive: true });
-      fs.writeFileSync(path.join(debugOutputDirectory, 'source-analysis.json'), `${JSON.stringify(serializeSourceAnalysis({ analysis }), null, 2)}\n`);
-      fs.writeFileSync(path.join(debugOutputDirectory, 'ownership-plan.json'), `${JSON.stringify(serializeCssOwnershipPlan({ plan }), null, 2)}\n`);
-      writeCssOwnershipDebugFiles({ directory: path.join(debugOutputDirectory, 'css-groups'), plan });
-    }
-
     const changedCssIds = new Set([...previousCssByResolvedId.keys(), ...cssByResolvedId.keys()].filter((id) => previousCssByResolvedId.get(id) !== cssByResolvedId.get(id)));
     const removedCssIds = new Set([...previousCssByResolvedId.keys()].filter((id) => !cssByResolvedId.has(id)));
     const changedOwnerModules = new Set([...previousImportsByModule.keys(), ...importsByModule.keys()].filter((id) => (
       JSON.stringify(previousImportsByModule.get(id) ?? []) !== JSON.stringify(importsByModule.get(id) ?? [])
     )));
-    return { changedCssIds, removedCssIds, changedOwnerModules };
+    return {
+      baseCssChanged: previousBaselineCss !== '' && previousBaselineCss !== baselineCss,
+      changedCssIds,
+      removedCssIds,
+      changedOwnerModules,
+    };
+  }
+
+  function writeDebugOutput() {
+    if (absoluteDebugOutputDirectory === undefined || analysis === undefined || plan === undefined) return;
+    fs.rmSync(absoluteDebugOutputDirectory, { recursive: true, force: true });
+    fs.mkdirSync(absoluteDebugOutputDirectory, { recursive: true });
+    fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'source-analysis.json'), `${JSON.stringify(serializeSourceAnalysis({ analysis }), null, 2)}\n`);
+    fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'ownership-plan.json'), `${JSON.stringify(serializeCssOwnershipPlan({ plan }), null, 2)}\n`);
+    writeCssOwnershipDebugFiles({ directory: path.join(absoluteDebugOutputDirectory, 'css-groups'), plan });
   }
 
   return {
@@ -174,10 +186,13 @@ export function createTwClassVitePlugin({
     },
     async buildStart() {
       if (cssPlanning === 'disabled') return;
-      await refreshPlan({ writeDebugFiles: command === 'build' });
+      await refreshPlan();
       this.info(splitCss
         ? `[tw-class] planned ${plan.candidates.length} candidates into ${plan.cssGroups.size} virtual CSS ownership groups.`
-        : `[tw-class] planned ${plan.candidates.length} candidates into one comparison CSS asset.`);
+        : `[tw-class] planned ${plan.candidates.length} candidates into one global CSS asset.`);
+    },
+    writeBundle() {
+      if (cssPlanning === 'enabled' && command === 'build') writeDebugOutput();
     },
     resolveId(id) {
       if (id === virtualMacroModuleId) return resolvedVirtualMacroModuleId;
@@ -212,6 +227,7 @@ export function createTwClassVitePlugin({
         source,
         filename: cleanId,
         sourceType: ['.js', '.jsx', '.mjs', '.cjs'].includes(extension) ? 'javascript' : 'typescript',
+        blockStart: { line: 1, column: 1 },
         additionalImports: imports,
       });
       return result.changed ? { code: result.code, map: result.map } : null;
@@ -223,10 +239,16 @@ export function createTwClassVitePlugin({
         if (!path.resolve(options.file).startsWith(absoluteSourceRoot) && path.resolve(options.file) !== absoluteTailwindCssPath) return options.modules;
         if (lastRefreshTimestamp !== options.timestamp) {
           lastRefreshTimestamp = options.timestamp;
-          lastRefreshPromise = refreshPlan({ writeDebugFiles: false });
+          lastRefreshPromise = refreshPlan();
         }
         const result = await lastRefreshPromise;
         if (this.environment.name !== environmentName) return options.modules;
+        if (result.baseCssChanged) {
+          const modules = this.environment.moduleGraph.getModulesByFile(absoluteTailwindCssPath);
+          if (modules !== undefined) {
+            for (const module of modules) await this.environment.reloadModule(module);
+          }
+        }
         for (const resolvedId of result.changedCssIds) {
           const module = this.environment.moduleGraph.getModuleById(resolvedId);
           if (module !== undefined) await this.environment.reloadModule(module);

@@ -283,16 +283,18 @@ export default defineConfig(({ mode }) => {
         entryModule: path.resolve(__dirname, 'src/main.ts'),
         tailwindCssPath: path.resolve(__dirname, 'src/style.css'),
         aliases: [{ find: '@', replacement: path.resolve(__dirname, 'src') }],
-        additionalLazyRootDirectories: [path.resolve(__dirname, 'src/pages')],
-        debugOutputDirectory: path.resolve(__dirname, '.generated/tailwind'),
-        splitCss: true,
+        additionalLazyRootDirectories: [],
+        debugOutputDirectory: path.resolve(__dirname, 'dist/debug-tailwind'),
+        // Keep one static CSS asset until ownership is derived from the actual Vite/Rollup graph.
+        splitCss: false,
         cssPlanning: mode === 'test' ? 'disabled' : 'enabled',
+        maxLazyCssGroups: undefined,
       }),
       VueDevTools(),
       vue({
         template: {
           compilerOptions: {
-            nodeTransforms: [createTwClassNodeTransform()],
+            nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template' })],
           },
         },
       }),

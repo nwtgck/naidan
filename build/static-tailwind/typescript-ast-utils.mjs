@@ -52,7 +52,7 @@ export function unwrapTypeScriptExpression({ node }) {
   return current;
 }
 
-export function parseTypeScriptExpression({ expression, filename = 'expression.ts' }) {
+export function parseTypeScriptExpression({ expression, filename }) {
   const prefix = 'const __naidanExpression = ';
   const sourceFile = createTypeScriptSourceFile({ source: `${prefix}${expression};`, filename });
   const statement = sourceFile.statements[0];
@@ -62,7 +62,7 @@ export function parseTypeScriptExpression({ expression, filename = 'expression.t
   return { sourceFile, root: declaration.initializer, offset: prefix.length };
 }
 
-export function nodePosition({ sourceFile, node, blockStart = { line: 1, column: 1 } }) {
+export function nodePosition({ sourceFile, node, blockStart }) {
   const local = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
   return {
     line: blockStart.line + local.line,
@@ -70,7 +70,7 @@ export function nodePosition({ sourceFile, node, blockStart = { line: 1, column:
   };
 }
 
-export function nodeRange({ sourceFile, node, offset = 0 }) {
+export function nodeRange({ sourceFile, node, offset }) {
   return {
     start: node.getStart(sourceFile) - offset,
     end: node.getEnd() - offset,

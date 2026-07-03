@@ -255,7 +255,7 @@ function ownerName({ sourceRoot, moduleId }) {
   return `lazy:${path.relative(sourceRoot, moduleId).replaceAll(path.sep, '/')}`;
 }
 
-export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, aliases = [], additionalLazyRootDirectories = [] }) {
+export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, aliases, additionalLazyRootDirectories }) {
   const absoluteProjectRoot = path.resolve(projectRoot);
   const absoluteSourceRoot = path.resolve(sourceRoot);
   const files = walkFiles({ directory: absoluteSourceRoot })
@@ -294,10 +294,15 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, ali
     }
   }
   const candidateOwners = new Map();
+  const fallbackInitialModules = new Set();
   for (const group of candidateGroups) {
     const owners = moduleOwners.get(group.filename) ?? new Set();
+    if (owners.size === 0) {
+      owners.add('initial');
+      moduleOwners.set(group.filename, owners);
+      fallbackInitialModules.add(group.filename);
+    }
     group.owners = [...owners].sort();
-    if (owners.size === 0) continue;
     for (const candidate of group.candidates) {
       const current = candidateOwners.get(candidate) ?? new Set();
       owners.forEach((owner) => current.add(owner));
@@ -316,6 +321,7 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, entryModule, ali
     moduleOwners,
     candidateGroups,
     candidateOwners,
+    fallbackInitialModules,
   };
 }
 
@@ -330,6 +336,7 @@ export function serializeSourceAnalysis({ analysis }) {
     initialModules: [...analysis.initialModules].map(relative).sort(),
     lazyOwners: analysis.lazyOwners.map(({ name, root }) => ({ name, root: relative(root) })),
     moduleOwners: Object.fromEntries([...analysis.moduleOwners].map(([file, owners]) => [relative(file), [...owners].sort()])),
+    fallbackInitialModules: [...analysis.fallbackInitialModules].map(relative).sort(),
     candidateOwners: Object.fromEntries([...analysis.candidateOwners].sort(([left], [right]) => left.localeCompare(right)).map(([candidate, owners]) => [candidate, [...owners].sort()])),
     candidateGroups: analysis.candidateGroups.map((group) => ({ ...group, filename: relative(group.filename) })),
   };

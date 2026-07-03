@@ -64,7 +64,12 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
       sourceRoot,
       entryModule: path.join(sourceRoot, 'main.ts'),
       tailwindCssPath: path.join(sourceRoot, 'style.css'),
-      debugOutputDirectory: path.join(root, '.generated'),
+      aliases: [],
+      additionalLazyRootDirectories: [],
+      debugOutputDirectory: path.join(root, 'dist/debug-tailwind'),
+      splitCss: true,
+      cssPlanning: 'enabled',
+      maxLazyCssGroups: undefined,
     });
     const configResolved = getHookHandler<[unknown], void | Promise<void>>({
       hook: plugin.configResolved,
@@ -130,5 +135,66 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
       data: { ids: expect.arrayContaining([`\0${privateA}`]) },
     });
     expect(reloads.length).toBeGreaterThan(0);
+  });
+
+  it('reloads the global stylesheet when single-asset candidate CSS changes', async () => {
+    const root = createFixture();
+    const sourceRoot = path.join(root, 'src');
+    const stylePath = path.join(sourceRoot, 'style.css');
+    const plugin = createTwClassVitePlugin({
+      projectRoot: root,
+      sourceRoot,
+      entryModule: path.join(sourceRoot, 'main.ts'),
+      tailwindCssPath: stylePath,
+      aliases: [],
+      additionalLazyRootDirectories: [],
+      debugOutputDirectory: path.join(root, 'dist/debug-tailwind'),
+      splitCss: false,
+      cssPlanning: 'enabled',
+      maxLazyCssGroups: undefined,
+    });
+    const configResolved = getHookHandler<[unknown], void | Promise<void>>({
+      hook: plugin.configResolved,
+      name: 'configResolved',
+    });
+    await configResolved.call({} as never, { command: 'serve' });
+    const buildStart = getHookHandler<[unknown], void | Promise<void>>({
+      hook: plugin.buildStart,
+      name: 'buildStart',
+    });
+    await buildStart.call({ info() {} } as never, {});
+
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    fs.writeFileSync(featureA, '<template><div tw-class="p-4">A</div></template>\n');
+    const styleModule = { id: stylePath };
+    const reloads: unknown[] = [];
+    const context = {
+      environment: {
+        name: 'client',
+        moduleGraph: {
+          getModuleById() {
+            return undefined;
+          },
+          getModulesByFile(filename: string) {
+            return filename === stylePath ? new Set([styleModule]) : undefined;
+          },
+        },
+        async reloadModule(module: unknown) {
+          reloads.push(module);
+        },
+        hot: { send() {} },
+      },
+    };
+    const hotUpdate = getHookHandler<[unknown], unknown | Promise<unknown>>({
+      hook: plugin.hotUpdate,
+      name: 'hotUpdate',
+    });
+    await hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: Date.now(),
+      modules: [],
+    });
+
+    expect(reloads).toContain(styleModule);
   });
 });

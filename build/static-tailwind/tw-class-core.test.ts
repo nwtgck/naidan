@@ -113,6 +113,9 @@ import { tw, twClasses } from 'virtual:naidan-tailwind';
 const value = tw('opacity-50');
 `,
       filename: 'fixture.ts',
+      sourceType: 'typescript',
+      blockStart: { line: 1, column: 1 },
+      additionalImports: [],
     });
     expect(result.code).not.toContain('virtual:naidan-tailwind');
     expect(result.code).toContain('const value = "opacity-50";');
@@ -127,6 +130,9 @@ import { twClassString } from 'virtual:naidan-tailwind';
 const value = twClassString('rounded-xl', 'dark:border-gray-800');
 `,
       filename: 'fixture.ts',
+      sourceType: 'typescript',
+      blockStart: { line: 1, column: 1 },
+      additionalImports: [],
     });
     expect(result.code).not.toContain('twClassString');
     expect(result.code).toContain('const value = "rounded-xl dark:border-gray-800";');
@@ -140,14 +146,23 @@ const value = twClassString('rounded-xl', 'dark:border-gray-800');
     expect(() => transformTwCallsInModule({
       source: `import { twClassString } from 'virtual:naidan-tailwind'; twClassString();`,
       filename: 'fixture.ts',
+      sourceType: 'typescript',
+      blockStart: { line: 1, column: 1 },
+      additionalImports: [],
     })).toThrow(/one or more string literals/u);
     expect(() => transformTwCallsInModule({
       source: `import { twClassString } from 'virtual:naidan-tailwind'; twClassString(value);`,
       filename: 'fixture.ts',
+      sourceType: 'typescript',
+      blockStart: { line: 1, column: 1 },
+      additionalImports: [],
     })).toThrow(/one or more string literals/u);
     expect(() => transformTwCallsInModule({
       source: `import { twClassString } from 'virtual:naidan-tailwind'; twClassString('flex gap-2');`,
       filename: 'fixture.ts',
+      sourceType: 'typescript',
+      blockStart: { line: 1, column: 1 },
+      additionalImports: [],
     })).toThrow(/Each twClassString/u);
   });
 
@@ -182,6 +197,8 @@ const after = 2;
     const result = transformTwCallsInModule({
       source: `import { tw } from 'virtual:naidan-tailwind';\nconst value = tw('opacity-50');`,
       filename: 'fixture.ts',
+      sourceType: 'typescript',
+      blockStart: { line: 1, column: 1 },
       additionalImports: ['virtual:naidan-tailwind-css/example.css'],
     });
     expect(result.code).toContain('const value = "opacity-50";');
@@ -195,12 +212,18 @@ const after = 2;
 import { tw } from 'virtual:naidan-tailwind';
 tw(value);`,
       filename: 'fixture.ts',
+      sourceType: 'typescript',
+      blockStart: { line: 1, column: 1 },
+      additionalImports: [],
     })).toThrow(/exactly one string literal/u);
     expect(() => transformTwCallsInModule({
       source: `\
 import { tw } from 'virtual:naidan-tailwind';
 tw('flex gap-2');`,
       filename: 'fixture.ts',
+      sourceType: 'typescript',
+      blockStart: { line: 1, column: 1 },
+      additionalImports: [],
     })).toThrow(/exactly one Tailwind class token/u);
   });
 });

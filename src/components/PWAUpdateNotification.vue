@@ -19,7 +19,7 @@ defineExpose({
 
 <template>
   <Transition
-    enter-active-class="transition duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
+    tw-enter-active-class="transition duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
     tw-enter-from-class="transform -translate-y-2 opacity-0 scale-95"
     tw-enter-to-class="transform translate-y-0 opacity-100 scale-100"
     tw-leave-active-class="transition duration-300 ease-in"

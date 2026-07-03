@@ -30,5 +30,3 @@ __pycache__/
 /coverage
 src/test-tmp/
 src/lint-rule-tmp/
-
-/.generated/

@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -282,7 +283,7 @@ export async function createCssOwnershipPlan({
   cssEntryPath,
   expectedTailwindVersion,
   analysis,
-  maxLazyCssGroups = 40,
+  maxLazyCssGroups,
 }) {
   const candidates = [...analysis.candidateOwners.keys()].sort();
   const validator = await createTailwindCandidateValidator({ projectRoot, cssEntryPath, expectedTailwindVersion });
@@ -343,7 +344,17 @@ export async function createCssOwnershipPlan({
     }
   }
 
-  const candidateCompression = compressCandidateOwnerGroups({ candidateOwners, candidateCss, maxLazyCssGroups });
+  const candidateOwnerKeysBeforeCompression = [...groupCandidatesByOwner({ candidateOwners }).keys()]
+    .filter((key) => key !== 'initial')
+    .sort();
+  const candidateCompression = maxLazyCssGroups === undefined
+    ? {
+      originalLazyGroupCount: candidateOwnerKeysBeforeCompression.length,
+      retainedLazyGroupCount: candidateOwnerKeysBeforeCompression.length,
+      promotedCandidateCount: 0,
+      retainedOwnerKeys: candidateOwnerKeysBeforeCompression,
+    }
+    : compressCandidateOwnerGroups({ candidateOwners, candidateCss, maxLazyCssGroups });
   const baseline = await compileTailwindCss({ cssEntryPath, candidates: [], expectedTailwindVersion });
   const baselineCss = baseline.css;
   const ownerCandidateGroups = groupCandidatesByOwner({ candidateOwners });
@@ -369,7 +380,17 @@ export async function createCssOwnershipPlan({
     values.push(atom);
     atomGroups.set(key, values);
   }
-  const atomCompression = compressAtomGroups({ atomGroups, maxLazyCssGroups });
+  const atomOwnerKeysBeforeCompression = [...atomGroups.keys()]
+    .filter((key) => key !== 'initial')
+    .sort();
+  const atomCompression = maxLazyCssGroups === undefined
+    ? {
+      originalLazyGroupCount: atomOwnerKeysBeforeCompression.length,
+      retainedLazyGroupCount: atomOwnerKeysBeforeCompression.length,
+      promotedAtomCount: 0,
+      retainedOwnerKeys: atomOwnerKeysBeforeCompression,
+    }
+    : compressAtomGroups({ atomGroups, maxLazyCssGroups });
   const cssGroups = new Map();
   for (const [key, atoms] of atomGroups) {
     atoms.sort((left, right) => (globalOrder.get(left.fingerprint) ?? Number.MAX_SAFE_INTEGER) - (globalOrder.get(right.fingerprint) ?? Number.MAX_SAFE_INTEGER));
@@ -429,8 +450,17 @@ export function writeCssOwnershipDebugFiles({ directory, plan }) {
   fs.writeFileSync(path.join(directory, 'base.css'), plan.baselineCss);
   fs.writeFileSync(path.join(directory, 'single-global.css'), plan.globalCss);
   fs.writeFileSync(path.join(directory, 'all-utilities.css'), plan.globalDelta);
-  for (const [key, css] of plan.cssGroups) {
-    const name = key === '' ? 'unowned' : key.replaceAll(/[^a-zA-Z0-9._-]+/gu, '__');
-    fs.writeFileSync(path.join(directory, `${name}.css`), css);
+  const groups = {};
+  for (const [ownerKeyValue, css] of plan.cssGroups) {
+    const hash = crypto.createHash('sha256').update(ownerKeyValue).digest('hex');
+    const filename = `group-${hash}.css`;
+    fs.writeFileSync(path.join(directory, filename), css);
+    groups[hash] = {
+      filename,
+      ownerKey: ownerKeyValue,
+      owners: ownerSetFromKey({ key: ownerKeyValue }),
+      bytes: Buffer.byteLength(css),
+    };
   }
+  fs.writeFileSync(path.join(directory, 'groups.json'), `${JSON.stringify({ groups }, null, 2)}\n`);
 }

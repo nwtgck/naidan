@@ -12,13 +12,13 @@ export type TailwindCandidateClassification = {
 export function compileTailwindCss(options: {
   cssEntryPath: string,
   candidates: string[],
-  expectedTailwindVersion?: string,
+  expectedTailwindVersion: string | undefined,
 }): Promise<{ css: string, tailwindVersion: string }>;
 
 export function createTailwindCandidateValidator(options: {
   projectRoot: string,
   cssEntryPath: string,
-  expectedTailwindVersion?: string,
+  expectedTailwindVersion: string | undefined,
 }): Promise<{
   tailwindVersion: string,
   cssEntryPath: string,

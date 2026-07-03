@@ -1,6 +1,8 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createCssOwnershipPlan } from './css-ownership-planner.mjs';
+import { createCssOwnershipPlan, writeCssOwnershipDebugFiles } from './css-ownership-planner.mjs';
 
 function createAnalysis({ candidateOwners, candidates }: {
   candidateOwners: Record<string, string[]>,
@@ -19,9 +21,9 @@ function createAnalysis({ candidateOwners, candidates }: {
   };
 }
 
-async function plan({ analysis, maxLazyCssGroups = 40 }: {
+async function plan({ analysis, maxLazyCssGroups }: {
   analysis: ReturnType<typeof createAnalysis>,
-  maxLazyCssGroups?: number,
+  maxLazyCssGroups: number | undefined,
 }) {
   return createCssOwnershipPlan({
     projectRoot: path.resolve(import.meta.dirname, '../..'),
@@ -37,7 +39,7 @@ describe('static Tailwind CSS ownership planner', () => {
     const result = await plan({ analysis: createAnalysis({
       candidates: ['p-2', 'p-4'],
       candidateOwners: { 'p-2': ['initial'], 'p-4': ['lazy:feature.vue'] },
-    }) });
+    }), maxLazyCssGroups: undefined });
     expect([...result.candidateOwners.get('p-4') ?? []]).toEqual(['lazy:feature.vue']);
   });
 
@@ -45,8 +47,56 @@ describe('static Tailwind CSS ownership planner', () => {
     const result = await plan({ analysis: createAnalysis({
       candidates: ['p-4', 'p-2'],
       candidateOwners: { 'p-4': ['initial'], 'p-2': ['lazy:feature.vue'] },
-    }) });
+    }), maxLazyCssGroups: undefined });
     expect([...result.candidateOwners.get('p-2') ?? []]).toEqual(['initial']);
+  });
+
+  it('uses bounded debug filenames for large shared owner sets', () => {
+    const ownerKey = Array.from({ length: 80 }, (_, index) => (
+      `lazy:features/large-owner-set/Component-${String(index).padStart(3, '0')}.vue`
+    )).join('|');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-debug-'));
+    try {
+      writeCssOwnershipDebugFiles({
+        directory,
+        plan: {
+          candidates: ['p-2'],
+          candidateOwners: new Map([['p-2', new Set(ownerKey.split('|'))]]),
+          ownerCandidateGroups: new Map([[ownerKey, ['p-2']]]),
+          baselineCss: '',
+          globalCss: '.p-2 {}\n',
+          globalDelta: '.p-2 {}\n',
+          cssGroups: new Map([[ownerKey, '.p-2 {}\n']]),
+          conflicts: [],
+          compression: {
+            maxLazyCssGroups: undefined,
+            candidates: {
+              originalLazyGroupCount: 1,
+              retainedLazyGroupCount: 1,
+              retainedOwnerKeys: [ownerKey],
+            },
+            atoms: {
+              originalLazyGroupCount: 1,
+              retainedLazyGroupCount: 1,
+              retainedOwnerKeys: [ownerKey],
+            },
+          },
+          metrics: {},
+          tailwindVersion: '4.3.1',
+        },
+      });
+      const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'groups.json'), 'utf8')) as {
+        groups: Record<string, { filename: string, ownerKey: string }>,
+      };
+      const [group] = Object.values(manifest.groups);
+      expect(group).toBeDefined();
+      expect(group?.filename).toMatch(/^group-[a-f0-9]{64}\.css$/u);
+      expect(group?.filename.length).toBeLessThan(96);
+      expect(group?.ownerKey).toBe(ownerKey);
+      expect(fs.existsSync(path.join(directory, group?.filename ?? 'missing'))).toBe(true);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('caps lazy ownership groups without duplicate CSS atoms', async () => {

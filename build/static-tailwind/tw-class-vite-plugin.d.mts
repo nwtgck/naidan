@@ -11,12 +11,13 @@ export interface TwClassVitePlugin extends Plugin {
 
 export function createTwClassVitePlugin(options: {
   projectRoot: string,
-  sourceRoot?: string,
-  entryModule?: string,
-  tailwindCssPath?: string,
-  aliases?: { find: string, replacement: string }[],
-  additionalLazyRootDirectories?: string[],
-  debugOutputDirectory?: string,
-  splitCss?: boolean,
-  cssPlanning?: 'enabled' | 'disabled',
+  sourceRoot: string,
+  entryModule: string,
+  tailwindCssPath: string,
+  aliases: { find: string, replacement: string }[],
+  additionalLazyRootDirectories: string[],
+  debugOutputDirectory: string | undefined,
+  splitCss: boolean,
+  cssPlanning: 'enabled' | 'disabled',
+  maxLazyCssGroups: number | undefined,
 }): TwClassVitePlugin;
