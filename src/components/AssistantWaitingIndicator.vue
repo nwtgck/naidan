@@ -19,8 +19,7 @@ defineExpose({
 
 <template>
   <div
-    class="flex items-center gap-2"
-    :class="[
+    :tw-class="['flex items-center gap-2',
       noPadding ? '' : 'py-2',
       (isNested && !noPadding) ? 'px-5' : ''
     ]"
@@ -32,7 +31,7 @@ defineExpose({
       <span class="wi-orb wi-o2" />
       <span class="wi-orb wi-o3" />
     </div>
-    <span class="text-[10px] font-bold tracking-tight text-gray-400 dark:text-gray-500 select-none">{{ lazyStrings.AssistantWaitingIndicator__waiting_for_response() }}</span>
+    <span tw-class="text-[10px] font-bold tracking-tight text-gray-400 dark:text-gray-500 select-none">{{ lazyStrings.AssistantWaitingIndicator__waiting_for_response() }}</span>
   </div>
 </template>
 

@@ -474,7 +474,7 @@ defineExpose({
 
 <template>
   <div
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4"
+    tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4"
     @keydown="handleModalKeydown({ event: $event })"
   >
     <div
@@ -483,88 +483,85 @@ defineExpose({
       aria-modal="true"
       aria-labelledby="onboarding-title"
       tabindex="-1"
-      class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom outline-none"
+      class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative outline-none"
     >
       <!-- Header Actions (Top Right) -->
-      <div class="absolute top-4 right-4 z-10 flex items-center gap-2">
-        <div class="w-20 md:w-28 shrink-0">
+      <div tw-class="absolute top-4 right-4 z-10 flex items-center gap-2">
+        <div tw-class="w-20 md:w-28 shrink-0">
           <ThemeToggle />
         </div>
         <LanguageSelector />
         <button
           @click="handleClose"
-          class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
+          tw-class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
           data-testid="onboarding-close-x"
         >
-          <XIcon class="w-5 h-5" />
+          <XIcon tw-class="w-5 h-5" />
         </button>
       </div>
 
-      <div class="px-6 md:px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
-        <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <Logo class="w-6 h-6 md:w-8 md:h-8" />
+      <div tw-class="px-6 md:px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
+        <div tw-class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <Logo tw-class="w-6 h-6 md:w-8 md:h-8" />
         </div>
-        <div class="text-left flex-1">
-          <h2 id="onboarding-title" class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.OnboardingModal__setup_endpoint() }}</h2>
-          <p class="hidden sm:block text-xs text-gray-600 dark:text-gray-400">{{ lazyStrings.OnboardingModal__setup_endpoint_description() }}</p>
+        <div tw-class="text-left flex-1">
+          <h2 id="onboarding-title" tw-class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.OnboardingModal__setup_endpoint() }}</h2>
+          <p tw-class="hidden sm:block text-xs text-gray-600 dark:text-gray-400">{{ lazyStrings.OnboardingModal__setup_endpoint_description() }}</p>
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+      <div tw-class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
 
-        <div class="flex flex-col lg:flex-row h-full">
+        <div tw-class="flex flex-col lg:flex-row h-full">
 
           <!-- Left Column: Configuration (Primary) -->
 
-          <div :class="isTransformersJs ? 'w-full' : 'w-full lg:w-[62%]'" class="p-6 md:p-10 space-y-6 md:space-y-8">
+          <div :tw-class="['p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs ? 'w-full' : 'w-full lg:w-[62%]']">
 
             <template v-if="isTransformersJs">
               <!-- Transformers.js Integrated View -->
-              <div class="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-6 md:space-y-8 duration-300">
                 <!-- Type Switcher (Repeated here for easy switching) -->
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                <div tw-class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
                   <div>
-                    <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                      <FlaskConicalIcon class="w-4 h-4 text-purple-500" />
+                    <h3 tw-class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                      <FlaskConicalIcon tw-class="w-4 h-4 text-purple-500" />
                       {{ lazyStrings.OnboardingModal__in_browser_ai() }}
-                      <span class="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-bold uppercase tracking-wider">{{ lazyStrings.OnboardingModal__experimental() }}</span>
+                      <span tw-class="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-bold uppercase tracking-wider">{{ lazyStrings.OnboardingModal__experimental() }}</span>
                     </h3>
-                    <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{{ lazyStrings.OnboardingModal__run_models_in_browser() }}</p>
+                    <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{{ lazyStrings.OnboardingModal__run_models_in_browser() }}</p>
                   </div>
-                  <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit shrink-0">
+                  <div tw-class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit shrink-0">
                     <button
                       @click="selectedType = 'openai'; availableModels = []"
-                      class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400"
-                      :class="effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : ''"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400', effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : '']"
                     >{{ lazyStrings.OnboardingModal__openai_compatible() }}</button>
 
                     <button
                       @click="selectedType = 'ollama'; availableModels = []"
-                      class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400"
-                      :class="effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : ''"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400', effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : '']"
                     >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
                     <button
                       @click="selectedType = 'transformers_js'; availableModels = []"
-                      class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
-                      :class="effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400'"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
                   </div>
                 </div>
 
                 <TransformersJsManager @model-loaded="modelId => handleModelLoaded({ modelId })" />
 
-                <div class="flex flex-col sm:flex-row items-center gap-4 pt-6 border-t border-gray-100 dark:border-gray-800">
+                <div tw-class="flex flex-col sm:flex-row items-center gap-4 pt-6 border-t border-gray-100 dark:border-gray-800">
                   <button
                     @click="handleFinish"
                     :disabled="!selectedModel"
-                    class="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
+                    tw-class="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                   >
-                    <PlayIcon class="w-5 h-5 fill-current" />
+                    <PlayIcon tw-class="w-5 h-5 fill-current" />
                     <span>{{ lazyStrings.OnboardingModal__get_started() }}</span>
                   </button>
-                  <p class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
-                    <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
+                  <p tw-class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
+                    <SettingsIcon tw-class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
                     {{ lazyStrings.OnboardingModal__settings_saved_for_local_inference() }}
                   </p>
                 </div>
@@ -577,41 +574,37 @@ defineExpose({
 
 
               <div>
-                <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 ml-1">{{ lazyStrings.OnboardingModal__quick_presets() }}</label>
-                <div class="flex flex-wrap gap-1.5">
+                <label tw-class="block text-[10px] font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 ml-1">{{ lazyStrings.OnboardingModal__quick_presets() }}</label>
+                <div tw-class="flex flex-wrap gap-1.5">
                   <button
                     v-for="preset in ENDPOINT_PRESETS"
                     :key="preset.name"
                     @click="selectPreset({ preset })"
-                    class="px-2.5 py-1.5 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold border rounded-lg transition-all duration-200"
-                    :class="customUrl === preset.url ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600'"
+                    :tw-class="['px-2.5 py-1.5 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold border rounded-lg transition-all duration-200', customUrl === preset.url ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600']"
                   >
                     {{ preset.name }}
                   </button>
                 </div>
               </div>
-              <div class="space-y-3">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ lazyStrings.OnboardingModal__endpoint_configuration() }}</label>
-                  <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
+              <div tw-class="space-y-3">
+                <div tw-class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ lazyStrings.OnboardingModal__endpoint_configuration() }}</label>
+                  <div tw-class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
                     <button
                       @click="selectedType = 'openai'; availableModels = []"
-                      class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
-                      :class="effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__openai_compatible() }}</button>
 
                     <button
                       @click="selectedType = 'ollama'; availableModels = []"
-                      class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors"
-                      :class="effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors', effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
                     <button
                       @click="selectedType = 'transformers_js'; availableModels = []"
-                      class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1"
-                      :class="effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                     >
-                      <FlaskConicalIcon class="w-2.5 h-2.5" />
+                      <FlaskConicalIcon tw-class="w-2.5 h-2.5" />
                       {{ lazyStrings.OnboardingModal__transformers_js() }}
                     </button>
                   </div>
@@ -622,85 +615,85 @@ defineExpose({
                   v-model="customUrl"
                   type="text"
                   placeholder="http://localhost:11434"
-                  class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white text-sm"
+                  tw-class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white text-sm"
                   @keydown.enter="$event => !$event.isComposing && handleConnect()"
                 />
 
                 <!-- Custom HTTP Headers -->
-                <div class="space-y-3" v-if="!isTransformersJs">
-                  <div class="flex items-center justify-between ml-1">
-                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">{{ lazyStrings.OnboardingModal__custom_http_headers() }}</label>
+                <div tw-class="space-y-3" v-if="!isTransformersJs">
+                  <div tw-class="flex items-center justify-between ml-1">
+                    <label tw-class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">{{ lazyStrings.OnboardingModal__custom_http_headers() }}</label>
                     <button
                       @click="addHeader"
                       type="button"
-                      class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
+                      tw-class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
                     >
-                      <PlusIcon class="w-2.5 h-2.5" />
+                      <PlusIcon tw-class="w-2.5 h-2.5" />
                       {{ lazyStrings.OnboardingModal__add_header() }}
                     </button>
                   </div>
 
-                  <div v-if="customHeaders.length > 0" class="space-y-2 max-h-[120px] overflow-y-auto no-scrollbar">
+                  <div v-if="customHeaders.length > 0" class="no-scrollbar" tw-class="space-y-2 max-h-[120px] overflow-y-auto">
                     <div
                       v-for="(header, index) in customHeaders"
                       :key="index"
-                      class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
+                      class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
                     >
                       <input
                         v-model="header[0]"
                         type="text"
-                        class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                        tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
                         :placeholder="lazyStrings.OnboardingModal__name()"
                       />
                       <input
                         v-model="header[1]"
                         type="text"
-                        class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                        tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
                         :placeholder="lazyStrings.OnboardingModal__value()"
                       />
                       <button
                         @click="removeHeader({ index })"
-                        class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                        tw-class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                       >
-                        <Trash2Icon class="w-3.5 h-3.5" />
+                        <Trash2Icon tw-class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
                 </div>
 
-                <p v-if="error" class="text-[11px] text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
+                <p v-if="error" tw-class="text-[11px] text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
                   {{ error }}
                 </p>
               </div>
 
-              <div class="space-y-3">
-                <div class="flex gap-2">
+              <div tw-class="space-y-3">
+                <div tw-class="flex gap-2">
                   <button
                     @click="handleConnect"
                     :disabled="!isValidUrl || isTesting"
-                    class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
+                    tw-class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                     data-testid="onboarding-connect-button"
                   >
                     <template v-if="isTesting">
-                      <span class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      <span tw-class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                       <span>{{ lazyStrings.OnboardingModal__connecting() }}</span>
                     </template>
                     <template v-else>
-                      <ActivityIcon class="w-5 h-5" />
+                      <ActivityIcon tw-class="w-5 h-5" />
                       <span>{{ lazyStrings.OnboardingModal__check_connection() }}</span>
                     </template>
                   </button>
                   <button
                     v-if="isTesting"
                     @click="handleCancelConnect"
-                    class="px-4 py-3.5 md:px-5 md:py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/10 transition-all flex items-center gap-2 text-sm"
+                    tw-class="px-4 py-3.5 md:px-5 md:py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/10 transition-all flex items-center gap-2 text-sm"
                   >
                     <span>{{ lazyStrings.OnboardingModal__cancel() }}</span>
                   </button>
                 </div>
 
-                <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
-                  <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
+                <p tw-class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
+                  <SettingsIcon tw-class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                   {{ lazyStrings.OnboardingModal__settings_can_be_changed_later() }}
                 </p>
               </div>
@@ -708,19 +701,19 @@ defineExpose({
 
             <template v-else>
               <!-- Step 2: Model Selection -->
-              <div class="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div class="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 p-4 rounded-xl flex items-center gap-3">
-                  <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-500/20">
-                    <CheckCircle2Icon class="w-6 h-6" />
+              <div class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-4 duration-300">
+                <div tw-class="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 p-4 rounded-xl flex items-center gap-3">
+                  <div tw-class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-500/20">
+                    <CheckCircle2Icon tw-class="w-6 h-6" />
                   </div>
-                  <div class="overflow-hidden">
-                    <p class="text-sm font-bold text-green-800 dark:text-green-300">{{ lazyStrings.OnboardingModal__successfully_connected() }}</p>
-                    <p class="text-xs text-green-600 dark:text-green-400 opacity-80 truncate">{{ customUrl }}</p>
+                  <div tw-class="overflow-hidden">
+                    <p tw-class="text-sm font-bold text-green-800 dark:text-green-300">{{ lazyStrings.OnboardingModal__successfully_connected() }}</p>
+                    <p tw-class="text-xs text-green-600 dark:text-green-400 opacity-80 truncate">{{ customUrl }}</p>
                   </div>
                 </div>
 
-                <div class="space-y-2">
-                  <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <div tw-class="space-y-2">
+                  <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     {{ lazyStrings.OnboardingModal__default_model() }}
                   </label>
                   <ModelSelector
@@ -732,30 +725,30 @@ defineExpose({
                   />
                 </div>
 
-                <p v-if="error" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
+                <p v-if="error" tw-class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
                   {{ error }}
                 </p>
 
-                <div class="flex gap-2">
+                <div tw-class="flex gap-2">
                   <button
                     @click="availableModels = []"
-                    class="px-4 py-3.5 md:px-5 md:py-4 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center gap-2 text-sm"
+                    tw-class="px-4 py-3.5 md:px-5 md:py-4 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center gap-2 text-sm"
                   >
-                    <ArrowLeftIcon class="w-5 h-5" />
+                    <ArrowLeftIcon tw-class="w-5 h-5" />
                     <span>{{ lazyStrings.OnboardingModal__back() }}</span>
                   </button>
                   <button
                     @click="handleFinish"
-                    class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
+                    tw-class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                     data-testid="onboarding-finish-button"
                   >
-                    <PlayIcon class="w-5 h-5 fill-current" />
+                    <PlayIcon tw-class="w-5 h-5 fill-current" />
                     <span>{{ lazyStrings.OnboardingModal__get_started() }}</span>
                   </button>
                 </div>
 
-                <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
-                  <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
+                <p tw-class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
+                  <SettingsIcon tw-class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                   {{ lazyStrings.OnboardingModal__settings_can_be_changed_later() }}
                 </p>
               </div>
@@ -763,15 +756,15 @@ defineExpose({
           </div>
 
           <!-- Right Column: Setup Guide (Secondary/Auxiliary) -->
-          <div v-if="!isTransformersJs" class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
-            <div class="flex items-center gap-2 mb-4">
-              <span class="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-widest">{{ lazyStrings.OnboardingModal__help_and_guide() }}</span>
+          <div v-if="!isTransformersJs" tw-class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
+            <div tw-class="flex items-center gap-2 mb-4">
+              <span tw-class="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-widest">{{ lazyStrings.OnboardingModal__help_and_guide() }}</span>
             </div>
-            <h3 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4">{{ lazyStrings.OnboardingModal__do_not_have_a_server() }}</h3>
-            <div class="opacity-70 hover:opacity-100 transition-opacity">
+            <h3 tw-class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4">{{ lazyStrings.OnboardingModal__do_not_have_a_server() }}</h3>
+            <div tw-class="opacity-70 hover:opacity-100 transition-opacity">
               <ServerSetupGuide />
             </div>
-            <p class="mt-6 text-[10px] text-gray-400 leading-relaxed italic">
+            <p tw-class="mt-6 text-[10px] text-gray-400 leading-relaxed italic">
               {{ lazyStrings.OnboardingModal__enter_existing_server_url() }}
             </p>
           </div>

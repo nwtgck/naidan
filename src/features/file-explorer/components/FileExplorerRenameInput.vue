@@ -56,7 +56,7 @@ defineExpose({
     v-model="value"
     type="text"
     data-testid="rename-input"
-    class="w-full px-1.5 py-0.5 text-xs rounded border border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500/30"
+    tw-class="w-full px-1.5 py-0.5 text-xs rounded border border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500/30"
     @keydown="onKeyDown({ event: $event })"
     @click.stop
   />

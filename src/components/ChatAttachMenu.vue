@@ -58,103 +58,100 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative" ref="menuRef">
-    <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileInputChange({ event: $event })" data-testid="attach-file-input" />
-    <input ref="folderInputRef" type="file" webkitdirectory class="hidden" @change="handleFolderInputChange({ event: $event })" data-testid="attach-folder-input" />
+  <div tw-class="relative" ref="menuRef">
+    <input ref="fileInputRef" type="file" multiple tw-class="hidden" @change="handleFileInputChange({ event: $event })" data-testid="attach-file-input" />
+    <input ref="folderInputRef" type="file" webkitdirectory tw-class="hidden" @change="handleFolderInputChange({ event: $event })" data-testid="attach-folder-input" />
 
     <button
       @click="isOpen = !isOpen"
-      class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+      tw-class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       :title="lazyStrings.ChatAttachMenu__attach_files_or_folder()"
       data-testid="attach-button"
     >
-      <PlusIcon class="w-5 h-5" />
+      <PlusIcon tw-class="w-5 h-5" />
     </button>
 
     <div
       v-if="isOpen"
-      class="absolute bottom-full mb-2 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden w-56"
+      tw-class="absolute bottom-full mb-2 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden w-56"
     >
       <!-- Files -->
       <button
         @click="fileInputRef?.click(); isOpen = false"
-        class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+        tw-class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
         data-testid="attach-files-button"
       >
-        <FilesIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
+        <FilesIcon tw-class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
         {{ lazyStrings.ChatAttachMenu__files() }}
       </button>
 
       <!-- Folder (link) -->
-      <div class="border-t border-gray-100 dark:border-gray-700">
+      <div tw-class="border-t border-gray-100 dark:border-gray-700">
         <!-- Available -->
-        <div v-if="props.hasFileSystemAccess" class="flex items-stretch">
+        <div v-if="props.hasFileSystemAccess" tw-class="flex items-stretch">
           <button
             @click="handleFolderLink"
-            class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+            tw-class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
             data-testid="attach-folder-link-button"
           >
-            <FolderSymlinkIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
+            <FolderSymlinkIcon tw-class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
             {{ lazyStrings.ChatAttachMenu__folder_link() }}
           </button>
           <button
             @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
-            class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
-            :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
+            :tw-class="['flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700', isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500']"
             :title="lazyStrings.ChatAttachMenu__what_is_folder_link()"
           >
-            <InfoIcon class="w-3.5 h-3.5" />
+            <InfoIcon tw-class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Unavailable -->
-        <div v-else class="flex items-stretch">
+        <div v-else tw-class="flex items-stretch">
           <button
             disabled
-            class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-300 dark:text-gray-600 cursor-not-allowed text-left"
+            tw-class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-300 dark:text-gray-600 cursor-not-allowed text-left"
           >
-            <FolderSymlinkIcon class="w-4 h-4 shrink-0" />
+            <FolderSymlinkIcon tw-class="w-4 h-4 shrink-0" />
             {{ lazyStrings.ChatAttachMenu__folder_link() }}
           </button>
           <button
             @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
-            class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
-            :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-300 dark:text-gray-600 hover:text-blue-500'"
+            :tw-class="['flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700', isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-300 dark:text-gray-600 hover:text-blue-500']"
             :title="lazyStrings.ChatAttachMenu__why_is_folder_link_unavailable()"
           >
-            <InfoIcon class="w-3.5 h-3.5" />
+            <InfoIcon tw-class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Info panel for link -->
-        <div v-if="isFolderLinkInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
-          <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">{{ lazyStrings.ChatAttachMenu__requires_a_chromium_based_browser() }}</p>
-          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.ChatAttachMenu__chrome_edge_brave_opera_over_https_links_your_folder_directly_without_copying() }}</p>
+        <div v-if="isFolderLinkInfoOpen" tw-class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
+          <p tw-class="text-[11px] font-bold text-blue-700 dark:text-blue-400">{{ lazyStrings.ChatAttachMenu__requires_a_chromium_based_browser() }}</p>
+          <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.ChatAttachMenu__chrome_edge_brave_opera_over_https_links_your_folder_directly_without_copying() }}</p>
         </div>
       </div>
 
       <!-- Folder (copy) -->
-      <div class="border-t border-gray-100 dark:border-gray-700">
-        <div class="flex items-stretch">
+      <div tw-class="border-t border-gray-100 dark:border-gray-700">
+        <div tw-class="flex items-stretch">
           <button
             @click="folderInputRef?.click(); isOpen = false"
-            class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-left"
+            tw-class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-left"
             data-testid="attach-folder-copy-button"
           >
-            <FolderDownIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
+            <FolderDownIcon tw-class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
             {{ lazyStrings.ChatAttachMenu__folder_copy() }}
           </button>
           <button
             @click.stop="isFolderCopyInfoOpen = !isFolderCopyInfoOpen; isFolderLinkInfoOpen = false"
-            class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
-            :class="isFolderCopyInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
+            :tw-class="['flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700', isFolderCopyInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500']"
             :title="lazyStrings.ChatAttachMenu__what_is_folder_copy()"
           >
-            <InfoIcon class="w-3.5 h-3.5" />
+            <InfoIcon tw-class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Info panel for copy -->
-        <div v-if="isFolderCopyInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
-          <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">{{ lazyStrings.ChatAttachMenu__a_private_copy_is_saved_in_your_browser() }}</p>
-          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.ChatAttachMenu__naidan_works_from_the_copy_your_original_files_on_disk_stay_safe_and_intact() }}</p>
+        <div v-if="isFolderCopyInfoOpen" tw-class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
+          <p tw-class="text-[11px] font-bold text-blue-700 dark:text-blue-400">{{ lazyStrings.ChatAttachMenu__a_private_copy_is_saved_in_your_browser() }}</p>
+          <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{{ lazyStrings.ChatAttachMenu__naidan_works_from_the_copy_your_original_files_on_disk_stay_safe_and_intact() }}</p>
         </div>
       </div>
     </div>

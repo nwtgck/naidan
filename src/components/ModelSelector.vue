@@ -263,33 +263,31 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative w-full" ref="containerRef" @keydown="handleKeydown({ event: $event })">
+  <div tw-class="relative w-full" ref="containerRef" @keydown="handleKeydown({ event: $event })">
     <!-- Trigger -->
     <button
       type="button"
       @click="toggleDropdown"
       :disabled="disabled"
-      class="w-full flex items-center justify-between gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 outline-none focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300 dark:hover:border-gray-600 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-      :class="{ 'ring-4 ring-blue-500/10 border-blue-500/50': isOpen }"
+      :tw-class="['w-full flex items-center justify-between gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 outline-none focus:ring-4 focus:ring-blue-500/10 hover:border-gray-300 dark:hover:border-gray-600 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed', { 'ring-4 ring-blue-500/10 border-blue-500/50': isOpen }]"
       data-testid="model-selector-trigger"
     >
-      <div class="flex items-center min-w-0 flex-1 overflow-hidden">
+      <div tw-class="flex items-center min-w-0 flex-1 overflow-hidden">
         <span
           v-if="modelNameParts.prefix"
-          class="font-normal whitespace-nowrap overflow-hidden min-w-0"
+          tw-class="font-normal whitespace-nowrap overflow-hidden min-w-0"
           style="direction: rtl; text-align: left; text-overflow: ellipsis; flex: 0 1000 auto;"
         >
           <bdi style="direction: ltr; unicode-bidi: isolate;">{{ modelNameParts.prefix }}</bdi>
         </span>
-        <span class="truncate min-w-0 flex-1 text-left" style="flex: 1 1 auto;">
+        <span tw-class="truncate min-w-0 flex-1 text-left" style="flex: 1 1 auto;">
           {{ modelNameParts.suffix }}
         </span>
       </div>
-      <div class="flex items-center gap-1.5 shrink-0 ml-1">
-        <Loader2Icon v-if="isFetchingModels" class="w-3 h-3 animate-spin text-gray-400" />
+      <div tw-class="flex items-center gap-1.5 shrink-0 ml-1">
+        <Loader2Icon v-if="isFetchingModels" tw-class="w-3 h-3 animate-spin text-gray-400" />
         <ChevronDownIcon
-          class="w-3.5 h-3.5 text-gray-400 transition-transform duration-200"
-          :class="{ 'rotate-180': isOpen }"
+          :tw-class="['w-3.5 h-3.5 text-gray-400 transition-transform duration-200', { 'rotate-180': isOpen }]"
         />
       </div>
     </button>
@@ -300,49 +298,48 @@ defineExpose({
         v-if="isOpen"
         ref="dropdownRef"
         :style="floatingStyle"
-        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-200"
+        class="animate-in fade-in" tw-class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden duration-200"
         :class="dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'"
         @keydown="handleKeydown({ event: $event })"
       >
         <!-- Search and Actions -->
-        <div class="p-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/50">
-          <div class="relative flex-1">
-            <SearchIcon class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+        <div tw-class="p-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/50">
+          <div tw-class="relative flex-1">
+            <SearchIcon tw-class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               ref="searchInputRef"
               data-testid="model-selector-filter"
               v-model="searchQuery"
               type="text"
-              class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg pl-8 pr-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500/20 placeholder:text-gray-400"
+              tw-class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg pl-8 pr-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-500/20 placeholder:text-gray-400"
               :placeholder="lazyStrings.ModelSelector__filter_models()"
               @click.stop
             />
             <button
               v-if="searchQuery"
               @click="searchQuery = ''"
-              class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"
+              tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"
             >
-              <XIcon class="w-3 h-3" />
+              <XIcon tw-class="w-3 h-3" />
             </button>
           </div>
           <button
             @click="handleRefresh({ event: $event })"
-            class="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors shadow-sm disabled:opacity-50"
+            tw-class="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors shadow-sm disabled:opacity-50"
             :disabled="isFetchingModels"
             :title="lazyStrings.ModelSelector__refresh_model_list()"
           >
-            <RefreshCwIcon class="w-3.5 h-3.5" :class="{ 'animate-spin': isFetchingModels }" />
+            <RefreshCwIcon :tw-class="['w-3.5 h-3.5', { 'animate-spin': isFetchingModels }]" />
           </button>
         </div>
 
         <!-- List -->
-        <div ref="listContainerRef" class="max-h-60 overflow-y-auto py-1 custom-scrollbar overscroll-contain">
+        <div ref="listContainerRef" class="custom-scrollbar" tw-class="max-h-60 overflow-y-auto py-1 overscroll-contain">
           <!-- Inherited / Default option -->
           <button
             v-if="allowClear"
             @click="selectModel({ model: undefined })"
-            class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1"
-            :class="[
+            :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1',
               !modelValue
                 ? 'text-blue-600 dark:text-blue-400 font-bold'
                 : 'text-gray-500 dark:text-gray-400',
@@ -354,22 +351,21 @@ defineExpose({
             data-index="0"
             @mouseenter="highlightedIndex = 0"
           >
-            <div class="flex items-center gap-2">
-              <XIcon v-if="modelValue" class="w-3.5 h-3.5" />
-              <span class="truncate">{{ clearLabel || placeholder || lazyStrings.ModelSelector__inherit() }}</span>
+            <div tw-class="flex items-center gap-2">
+              <XIcon v-if="modelValue" tw-class="w-3.5 h-3.5" />
+              <span tw-class="truncate">{{ clearLabel || placeholder || lazyStrings.ModelSelector__inherit() }}</span>
             </div>
-            <CheckIcon v-if="!modelValue" class="w-3.5 h-3.5 shrink-0" />
+            <CheckIcon v-if="!modelValue" tw-class="w-3.5 h-3.5 shrink-0" />
           </button>
 
-          <div v-if="filteredModels.length === 0" class="px-4 py-8 text-center">
-            <p class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSelector__no_models_found() }}</p>
+          <div v-if="filteredModels.length === 0" tw-class="px-4 py-8 text-center">
+            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSelector__no_models_found() }}</p>
           </div>
           <button
             v-for="(model, index) in filteredModels"
             :key="model"
             @click="selectModel({ model })"
-            class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors"
-            :class="[
+            :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors',
               model === modelValue
                 ? 'text-blue-600 dark:text-blue-400 font-bold'
                 : 'text-gray-700 dark:text-gray-300',
@@ -380,8 +376,8 @@ defineExpose({
             :data-index="allowClear ? index + 1 : index"
             @mouseenter="highlightedIndex = allowClear ? index + 1 : index"
           >
-            <span class="break-all whitespace-normal pr-2">{{ model }}</span>
-            <CheckIcon v-if="model === modelValue" class="w-3.5 h-3.5 shrink-0" />
+            <span tw-class="break-all whitespace-normal pr-2">{{ model }}</span>
+            <CheckIcon v-if="model === modelValue" tw-class="w-3.5 h-3.5 shrink-0" />
           </button>
         </div>
       </div>

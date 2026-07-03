@@ -88,18 +88,18 @@ defineExpose({
 </script>
 
 <template>
-  <div class="px-3 py-2 border-b dark:border-gray-700">
-    <div class="flex items-center gap-2 mb-2">
-      <BrainIcon class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-      <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ReasoningSettings__think() }}</span>
+  <div tw-class="px-3 py-2 border-b dark:border-gray-700">
+    <div tw-class="flex items-center gap-2 mb-2">
+      <BrainIcon tw-class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+      <span tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ReasoningSettings__think() }}</span>
     </div>
 
     <!-- Segmented Control Container -->
-    <div class="relative flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+    <div tw-class="relative flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
 
       <!-- Animated Slider Background -->
       <div
-        class="absolute top-0.5 bottom-0.5 bg-white dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+        tw-class="absolute top-0.5 bottom-0.5 bg-white dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
         :style="sliderStyle"
       ></div>
 
@@ -109,8 +109,7 @@ defineExpose({
         :key="String(opt.value)"
         :ref="el => buttonRefs[idx] = el as HTMLElement"
         @click="setEffort({ effort: opt.value })"
-        class="relative z-10 flex-1 py-1 text-[10px] font-medium transition-colors truncate px-0.5"
-        :class="[
+        :tw-class="['relative z-10 flex-1 py-1 text-[10px] font-medium transition-colors truncate px-0.5',
           selectedEffort === opt.value
             ? 'text-blue-600 dark:text-blue-400 font-bold'
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
@@ -123,7 +122,7 @@ defineExpose({
       </button>
     </div>
 
-    <div class="mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5">
+    <div tw-class="mt-2 text-[8px] text-gray-400 dark:text-gray-500 leading-tight italic px-0.5">
       {{ lazyStrings.ReasoningSettings__effort_levels_may_be_ignored_by_some_models() }}
     </div>
   </div>

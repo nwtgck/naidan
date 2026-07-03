@@ -4,6 +4,7 @@ import { FolderIcon, MessageSquareIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import RelativeTime from './RelativeTime.vue';
 import type { ChatSummary } from '@/01-models/types';
+import { twClasses, twClassString } from 'virtual:naidan-tailwind';
 
 const props = defineProps<{
   chat: ChatSummary & { accessedAt: number },
@@ -23,15 +24,30 @@ function formatTime({ timestamp }: { timestamp: number }) {
 
 // Optimization: Pre-calculate classes to avoid complex logic in template
 const containerClasses = computed(() => {
-  const base = 'group flex flex-col p-2.5 rounded-xl cursor-pointer transition-[background-color,border-color,opacity] duration-150 border border-transparent';
-  if (!props.isSelected) return `${base} hover:bg-gray-50 dark:hover:bg-gray-800/50`;
+  if (!props.isSelected) {
+    return twClassString(
+      'group', 'flex', 'flex-col', 'p-2.5', 'rounded-xl', 'cursor-pointer',
+      'transition-[background-color,border-color,opacity]', 'duration-150', 'border',
+      'border-transparent', 'hover:bg-gray-50', 'dark:hover:bg-gray-800/50',
+    );
+  }
 
   const pane = props.activePane;
   switch (pane) {
   case 'results':
-    return `${base} bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800 shadow-sm`;
+    return twClassString(
+      'group', 'flex', 'flex-col', 'p-2.5', 'rounded-xl', 'cursor-pointer',
+      'transition-[background-color,border-color,opacity]', 'duration-150', 'border',
+      'border-transparent', 'bg-blue-50', 'dark:bg-blue-900/30', 'border-blue-100',
+      'dark:border-blue-800', 'shadow-sm',
+    );
   case 'preview':
-    return `${base} bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-80`;
+    return twClassString(
+      'group', 'flex', 'flex-col', 'p-2.5', 'rounded-xl', 'cursor-pointer',
+      'transition-[background-color,border-color,opacity]', 'duration-150', 'border',
+      'border-transparent', 'bg-gray-50', 'dark:bg-gray-800', 'border-gray-100',
+      'dark:border-gray-700', 'opacity-80',
+    );
   default: {
     const _ex: never = pane;
     throw new Error(`Unhandled pane: ${_ex}`);
@@ -49,24 +65,24 @@ defineExpose({
 </script>
 
 <template>
-  <div :class="containerClasses">
-    <div class="flex items-center justify-between gap-3">
-      <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
-        <MessageSquareIcon class="w-4 h-4" :class="isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'" />
+  <div :tw-class="twClasses(containerClasses)">
+    <div tw-class="flex items-center justify-between gap-3">
+      <div tw-class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
+        <MessageSquareIcon :tw-class="['w-4 h-4', isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400']" />
       </div>
-      <div class="flex flex-col flex-1 overflow-hidden">
-        <div class="flex items-center justify-between gap-2">
-          <div class="flex flex-col overflow-hidden">
-            <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100">{{ chat.title || lazyStrings.SHARED__new_chat() }}</span>
-            <span v-if="groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
-              <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
+      <div tw-class="flex flex-col flex-1 overflow-hidden">
+        <div tw-class="flex items-center justify-between gap-2">
+          <div tw-class="flex flex-col overflow-hidden">
+            <span tw-class="font-bold text-sm truncate text-gray-900 dark:text-gray-100">{{ chat.title || lazyStrings.SHARED__new_chat() }}</span>
+            <span v-if="groupName" tw-class="text-[10px] text-gray-400 truncate flex items-center gap-1">
+              <FolderIcon tw-class="w-2.5 h-2.5 opacity-50 text-blue-500" />
               <span>{{ groupName }}</span>
             </span>
-            <span class="text-[10px] text-gray-400 truncate opacity-60">
+            <span tw-class="text-[10px] text-gray-400 truncate opacity-60">
               <RelativeTime :timestamp="chat.accessedAt" prefix="Accessed " />
             </span>
           </div>
-          <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: chat.accessedAt }) }}</span>
+          <span tw-class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: chat.accessedAt }) }}</span>
         </div>
       </div>
     </div>

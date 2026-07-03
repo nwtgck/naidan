@@ -80,7 +80,7 @@ defineExpose({
     <div
       v-else
       data-testid="startup-background"
-      class="h-dvh bg-gray-50 dark:bg-gray-950"
+      tw-class="h-dvh bg-gray-50 dark:bg-gray-950"
     />
   </div>
 

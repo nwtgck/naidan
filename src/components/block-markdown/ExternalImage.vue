@@ -49,15 +49,15 @@ defineExpose({
 </script>
 
 <template>
-  <span v-if="!shouldShow" class="naidan-external-image-placeholder inline-flex items-center gap-1 px-1 py-0.5 my-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs text-gray-600 dark:text-gray-400 align-middle select-none">
-    <span class="flex items-center gap-1.5 px-2 py-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer rounded transition-colors" @click="load" :title="src">
-      <ImageIcon class="w-3.5 h-3.5" />
-      <span class="max-w-[150px] truncate font-medium">{{ alt || lazyStrings.blockMarkdown__external_image() }}</span>
-      <EyeIcon class="w-3.5 h-3.5 opacity-70" />
+  <span v-if="!shouldShow" class="naidan-external-image-placeholder" tw-class="inline-flex items-center gap-1 px-1 py-0.5 my-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs text-gray-600 dark:text-gray-400 align-middle select-none">
+    <span tw-class="flex items-center gap-1.5 px-2 py-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer rounded transition-colors" @click="load" :title="src">
+      <ImageIcon tw-class="w-3.5 h-3.5" />
+      <span tw-class="max-w-[150px] truncate font-medium">{{ alt || lazyStrings.blockMarkdown__external_image() }}</span>
+      <EyeIcon tw-class="w-3.5 h-3.5 opacity-70" />
     </span>
-    <span class="w-[1px] h-3 bg-gray-300 dark:bg-gray-600 mx-0.5"></span>
-    <button class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors" @click="loadAll" :title="lazyStrings.blockMarkdown__allow_all_external_images_in_this_session()">
-      <GlobeIcon class="w-3.5 h-3.5" />
+    <span tw-class="w-[1px] h-3 bg-gray-300 dark:bg-gray-600 mx-0.5"></span>
+    <button tw-class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors" @click="loadAll" :title="lazyStrings.blockMarkdown__allow_all_external_images_in_this_session()">
+      <GlobeIcon tw-class="w-3.5 h-3.5" />
     </button>
   </span>
   <img
@@ -65,6 +65,6 @@ defineExpose({
     :src="src"
     :alt="alt"
     :title="title"
-    class="max-w-full h-auto rounded-lg shadow-sm my-2 inline-block align-middle"
+    tw-class="max-w-full h-auto rounded-lg shadow-sm my-2 inline-block align-middle"
   />
 </template>

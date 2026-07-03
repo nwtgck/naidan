@@ -190,128 +190,118 @@ defineExpose({
 
 <template>
   <Transition name="modal">
-    <div v-if="isOpen" data-testid="settings-modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6">
-      <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-[95vw] h-[95vh] md:h-[90vh] overflow-hidden flex flex-col md:flex-row border border-gray-100 dark:border-gray-800 relative modal-content-zoom">
+    <div v-if="isOpen" data-testid="settings-modal" tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6">
+      <div class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-[95vw] h-[95vh] md:h-[90vh] overflow-hidden flex flex-col md:flex-row border border-gray-100 dark:border-gray-800 relative">
         <!-- Persistent Close Button (Top Right) -->
         <button
           @click="handleCancel"
-          class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
+          tw-class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
           data-testid="setting-close-x"
         >
-          <XIcon class="w-5 h-5" />
+          <XIcon tw-class="w-5 h-5" />
         </button>
 
         <!-- Sidebar (Tabs) -->
-        <aside class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
+        <aside tw-class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
           <!-- Header -->
-          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center justify-between gap-3 shrink-0">
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <Settings2Icon class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+          <div tw-class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center justify-between gap-3 shrink-0">
+            <div tw-class="flex items-center gap-3">
+              <div tw-class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <Settings2Icon tw-class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
               </div>
-              <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.SettingsModal__settings() }}</h2>
+              <h2 tw-class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.SettingsModal__settings() }}</h2>
             </div>
             <LanguageSelector />
           </div>
 
           <!-- Navigation -->
-          <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-3 md:p-4 flex md:flex-col gap-1.5 no-scrollbar min-h-0 overscroll-contain">
+          <nav class="no-scrollbar" tw-class="flex-1 overflow-x-auto md:overflow-y-auto p-3 md:p-4 flex md:flex-col gap-1.5 min-h-0 overscroll-contain">
             <button
               @click="activeTab = 'connection'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'connection' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'connection' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-connection"
             >
-              <GlobeIcon class="w-4 h-4" />
+              <GlobeIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__connection() }}
             </button>
             <button
               @click="activeTab = 'tools'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'tools' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'tools' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-tools"
             >
-              <WrenchIcon class="w-4 h-4" />
+              <WrenchIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__tools() }}
             </button>
             <button
               @click="activeTab = 'profiles'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-profiles"
             >
-              <BookmarkPlusIcon class="w-4 h-4" />
+              <BookmarkPlusIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__provider_profiles() }}
             </button>
             <button
               @click="activeTab = 'transformers_js'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-transformers-js"
             >
-              <BrainCircuitIcon class="w-4 h-4" />
+              <BrainCircuitIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__transformers_js() }}
             </button>
             <button
               @click="activeTab = 'recipes'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-recipes"
             >
-              <ChefHatIcon class="w-4 h-4" />
+              <ChefHatIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__recipes() }}
             </button>
             <button
               @click="activeTab = 'storage'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'storage' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'storage' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-storage"
             >
-              <DatabaseIcon class="w-4 h-4" />
+              <DatabaseIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__storage() }}
             </button>
             <button
               @click="activeTab = 'binary_objects'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'binary_objects' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'binary_objects' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-files"
             >
-              <FileIcon class="w-4 h-4" />
+              <FileIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__files() }}
             </button>
             <button
               v-if="isVolumesFeatureEnabled"
               @click="activeTab = 'volumes'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'volumes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'volumes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-volumes"
             >
-              <FolderIcon class="w-4 h-4" />
+              <FolderIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__folders() }}
             </button>
             <button
               @click="activeTab = 'developer'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-developer"
             >
-              <CpuIcon class="w-4 h-4" />
+              <CpuIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__developer() }}
             </button>
             <button
               @click="activeTab = 'about'"
-              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'about' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              :tw-class="['flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border', activeTab === 'about' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700']"
               data-testid="tab-about"
             >
-              <InfoIcon class="w-4 h-4" />
+              <InfoIcon tw-class="w-4 h-4" />
               {{ lazyStrings.SettingsModal__about() }}
             </button>
           </nav>
 
           <!-- Settings Footer -->
-          <div class="p-3 md:p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto flex items-center gap-3">
-            <div class="w-28 shrink-0">
+          <div tw-class="p-3 md:p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto flex items-center gap-3">
+            <div tw-class="w-28 shrink-0">
               <ThemeToggle />
             </div>
 
@@ -319,11 +309,11 @@ defineExpose({
               v-if="isHostedMode"
               href="./naidan-standalone.zip"
               :download="'naidan-standalone-v' + appVersion + '.zip'"
-              class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
+              tw-class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
               data-testid="sidebar-download-button"
             >
-              <DownloadIcon class="w-4 h-4 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
-              <div class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300 truncate">
+              <DownloadIcon tw-class="w-4 h-4 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
+              <div tw-class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300 truncate">
                 {{ lazyStrings.SettingsModal__standalone() }}
               </div>
             </a>
@@ -331,7 +321,7 @@ defineExpose({
         </aside>
 
         <!-- Main Content Area -->
-        <main data-settings-main class="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-gray-900 relative">
+        <main data-settings-main tw-class="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-gray-900 relative">
           <ConnectionTab
             v-if="activeTab === 'connection'"
             ref="connectionTabRef"
@@ -343,8 +333,8 @@ defineExpose({
             @go-to-profiles="activeTab = 'profiles'"
             @go-to-transformers-js="activeTab = 'transformers_js'"
           />
-          <div v-else class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-            <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
+          <div v-else tw-class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+            <div tw-class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
 
               <!-- Global Tools Tab -->
               <GlobalToolsSettings v-if="activeTab === 'tools'" />
@@ -357,7 +347,7 @@ defineExpose({
               />
 
               <!-- Transformers.js Tab -->
-              <div v-if="activeTab === 'transformers_js'" class="max-w-4xl mx-auto">
+              <div v-if="activeTab === 'transformers_js'" tw-class="max-w-4xl mx-auto">
                 <TransformersJsManager />
               </div>
 

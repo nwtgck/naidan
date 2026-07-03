@@ -967,22 +967,22 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none transition-colors">
+  <div tw-class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none transition-colors">
     <!-- Header -->
-    <div class="pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center overflow-hidden" :class="isSidebarOpen ? 'justify-between px-4' : 'justify-center px-1'">
-      <router-link v-if="isSidebarOpen" to="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer overflow-hidden">
-        <div class="p-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 shrink-0">
+    <div :tw-class="['pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center overflow-hidden', isSidebarOpen ? 'justify-between px-4' : 'justify-center px-1']">
+      <router-link v-if="isSidebarOpen" to="/" tw-class="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer overflow-hidden">
+        <div tw-class="p-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 shrink-0">
           <Logo :size="20" />
         </div>
-        <div class="flex items-baseline gap-1.5 animate-in fade-in duration-300">
-          <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
+        <div class="animate-in fade-in" tw-class="flex items-baseline gap-1.5 duration-300">
+          <h1 tw-class="text-lg font-bold tracking-tight bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
             Naidan
           </h1>
-          <div class="flex items-center gap-1">
-            <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">v{{ appVersion }}</span>
+          <div tw-class="flex items-center gap-1">
+            <span tw-class="text-[10px] font-medium text-gray-400 dark:text-gray-500">v{{ appVersion }}</span>
             <GhostIcon
               v-if="settings.storageType === 'memory'"
-              class="w-3.5 h-3.5 text-indigo-500/80 dark:text-indigo-400/80 animate-pulse"
+              tw-class="w-3.5 h-3.5 text-indigo-500/80 dark:text-indigo-400/80 animate-pulse"
               :title="lazyStrings.Sidebar__ephemeral_session()"
               data-testid="sidebar-ghost-icon"
             />
@@ -991,65 +991,63 @@ defineExpose({
       </router-link>
       <button
         @click="toggleSidebar"
-        class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shrink-0"
+        tw-class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shrink-0"
         :title="isSidebarOpen ? lazyStrings.Sidebar__close_sidebar() : lazyStrings.Sidebar__open_sidebar()"
         data-testid="sidebar-toggle"
       >
-        <PanelLeftIcon class="w-5 h-5" />
+        <PanelLeftIcon tw-class="w-5 h-5" />
       </button>
     </div>
 
     <PWAUpdateNotification />
 
     <!-- Actions -->
-    <div class="py-2 space-y-2" :class="isSidebarOpen ? 'px-4' : 'px-1'">
-      <div class="flex gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
+    <div :tw-class="['py-2 space-y-2', isSidebarOpen ? 'px-4' : 'px-1']">
+      <div :tw-class="['flex gap-2', { 'flex-col items-center': !isSidebarOpen }]">
         <button
           @click="handleNewChat({ groupId: undefined })"
-          class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
-          :class="isSidebarOpen ? 'flex-1 px-3 py-2 text-xs' : 'w-8 h-8'"
+          :tw-class="['flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50', isSidebarOpen ? 'flex-1 px-3 py-2 text-xs' : 'w-8 h-8']"
           data-testid="new-chat-button"
           :title="!isSidebarOpen ? lazyStrings.SHARED__new_chat() : ''"
         >
-          <SquarePenIcon class="w-4 h-4 shrink-0" />
+          <SquarePenIcon tw-class="w-4 h-4 shrink-0" />
           <template v-if="isSidebarOpen">
-            <span class="whitespace-nowrap overflow-hidden">{{ lazyStrings.SHARED__new_chat() }}</span>
-            <span class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
+            <span tw-class="whitespace-nowrap overflow-hidden">{{ lazyStrings.SHARED__new_chat() }}</span>
+            <span tw-class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
           </template>
         </button>
         <button
           v-if="!isSidebarOpen && (currentChatGroup?.id || currentChat?.groupId)"
           @click="handleNewChat({ groupId: (currentChatGroup?.id || currentChat?.groupId) ?? undefined })"
-          class="flex items-center justify-center bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-all shadow-sm w-8 h-8"
+          tw-class="flex items-center justify-center bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-all shadow-sm w-8 h-8"
           data-testid="new-chat-in-group-button"
           :title="newChatInGroupTitle()"
         >
-          <MessageSquarePlusIcon class="w-4 h-4 shrink-0" />
+          <MessageSquarePlusIcon tw-class="w-4 h-4 shrink-0" />
         </button>
         <button
           @click="useGlobalSearch().openSearch({})"
-          class="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
-          :class="isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0'"
+          :tw-class="['bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm', isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0']"
           :title="lazyStrings.Sidebar__search_cmd_k()"
           data-testid="search-button"
         >
-          <SearchIcon class="w-4 h-4" />
+          <SearchIcon tw-class="w-4 h-4" />
         </button>
         <button
           v-if="isSidebarOpen"
           @click="isCreatingChatGroup = true"
-          class="p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
+          tw-class="p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           :title="lazyStrings.Sidebar__create_chat_group()"
           data-testid="create-chat-group-button"
         >
-          <FolderPlusIcon class="w-4 h-4" />
+          <FolderPlusIcon tw-class="w-4 h-4" />
         </button>
       </div>
     </div>
     <!-- Navigation List -->
     <div
       ref="navContainer"
-      class="flex-1 overflow-y-auto px-3 py-1 scrollbar-hide focus:outline-none overscroll-contain"
+      class="scrollbar-hide" tw-class="flex-1 overflow-y-auto px-3 py-1 focus:outline-none overscroll-contain"
       :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
       tabindex="0"
@@ -1058,26 +1056,26 @@ defineExpose({
     >
       <template v-if="isSidebarOpen">
         <Transition name="chat-group-new">
-          <div v-if="isCreatingChatGroup" :class="{ 'skip-leave': skipLeaveAnimation }" class="flex items-center justify-between p-2 rounded-xl bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 mb-1" data-testid="chat-group-creation-container">
-            <div class="flex items-center gap-2 overflow-hidden flex-1">
-              <FolderIcon class="w-4 h-4 text-blue-500/60 shrink-0" />
+          <div v-if="isCreatingChatGroup" :class="{ 'skip-leave': skipLeaveAnimation }" tw-class="flex items-center justify-between p-2 rounded-xl bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 mb-1" data-testid="chat-group-creation-container">
+            <div tw-class="flex items-center gap-2 overflow-hidden flex-1">
+              <FolderIcon tw-class="w-4 h-4 text-blue-500/60 shrink-0" />
               <input
                 v-focus
                 v-model="newChatGroupName"
                 @keydown.enter="$event => !$event.isComposing && handleCreateChatGroup()"
                 @keyup.esc="cancelCreateChatGroup"
                 @blur="handleCreateChatGroupBlur"
-                class="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-full px-1 font-bold tracking-tight placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                tw-class="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-full px-1 font-bold tracking-tight placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-500"
                 :placeholder="lazyStrings.Sidebar__group_name()"
                 data-testid="chat-group-name-input"
               />
             </div>
-            <div class="flex items-center gap-0.5 shrink-0 ml-1">
-              <button @click="handleCreateChatGroup" class="p-1 text-gray-400 hover:text-green-600 dark:text-gray-400 dark:hover:text-white transition-colors" data-testid="confirm-create-chat-group">
-                <CheckIcon class="w-4 h-4" />
+            <div tw-class="flex items-center gap-0.5 shrink-0 ml-1">
+              <button @click="handleCreateChatGroup" tw-class="p-1 text-gray-400 hover:text-green-600 dark:text-gray-400 dark:hover:text-white transition-colors" data-testid="confirm-create-chat-group">
+                <CheckIcon tw-class="w-4 h-4" />
               </button>
-              <button @click="cancelCreateChatGroup" class="p-1 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-white transition-colors">
-                <XIcon class="w-4 h-4" />
+              <button @click="cancelCreateChatGroup" tw-class="p-1 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-white transition-colors">
+                <XIcon tw-class="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -1096,39 +1094,39 @@ defineExpose({
           @start="onDragStart"
           @end="onDragEnd"
           ghost-class="sortable-ghost"
-          :class="['space-y-1 min-h-[100px]', isDragging ? 'pb-32' : 'pb-4']"
+          :tw-class="['space-y-1 min-h-[100px]', isDragging ? 'pb-32' : 'pb-4']"
           :swap-threshold="0.5"
           :invert-swap="true"
           :scroll="true"
           :scroll-sensitivity="100"
           :scroll-speed="20"
           :force-fallback="true"
-          fallback-class="opacity-0"
+          tw-fallback-class="opacity-0"
         >
           <template #item="{ element }">
             <div :class="{ 'is-group': element.type === 'chat_group' }">
               <!-- Chat Group Item -->
-              <div v-if="element.type === 'chat_group'" class="space-y-1">
+              <div v-if="element.type === 'chat_group'" tw-class="space-y-1">
                 <div
                   @click="handleOpenChatGroup({ id: element.chatGroup.id })"
                   @dragover="onDragOverGroup({ groupId: element.chatGroup.id })"
                   @dragleave="onDragLeaveGroup"
-                  class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative handle"
-                  :class="{
+                  class="handle"
+                  :tw-class="['flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative', {
                     'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm': focusedId === element.chatGroup.id,
                     'ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-900/30': dragHoverGroup === element.chatGroup.id
-                  }"
+                  }]"
                   data-testid="chat-group-item"
                   :data-sidebar-group-id="element.chatGroup.id"
                 >
-                  <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
+                  <div tw-class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
                     <button
                       @click.stop="handleToggleChatGroupCollapse({ chatGroup: element.chatGroup })"
-                      class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
+                      tw-class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
                     >
-                      <component :is="element.chatGroup.isCollapsed ? ChevronRightIcon : ChevronDownIcon" class="w-3 h-3 flex-shrink-0" />
+                      <component :is="element.chatGroup.isCollapsed ? ChevronRightIcon : ChevronDownIcon" tw-class="w-3 h-3 flex-shrink-0" />
                     </button>
-                    <FolderIcon class="w-4 h-4 text-blue-500/60" />
+                    <FolderIcon tw-class="w-4 h-4 text-blue-500/60" />
 
                     <input
                       v-if="editingChatGroupId === element.chatGroup.id"
@@ -1138,14 +1136,14 @@ defineExpose({
                       @keyup.esc="editingChatGroupId = null"
                       @blur="saveChatGroupRename"
                       @click.stop
-                      class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
+                      tw-class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
                       data-testid="chat-group-rename-input"
                     />
-                    <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
+                    <span v-else tw-class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
 
-                  <div class="flex items-center group-action-container touch-visible" :class="activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity'">
-                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup })" class="p-1 hover:text-blue-600 dark:hover:text-white" :title="lazyStrings.Sidebar__rename_group()"><PencilIcon class="w-3 h-3" /></button>
+                  <div class="group-action-container touch-visible" :tw-class="['flex items-center', activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity']">
+                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup })" tw-class="p-1 hover:text-blue-600 dark:hover:text-white" :title="lazyStrings.Sidebar__rename_group()"><PencilIcon tw-class="w-3 h-3" /></button>
 
                     <ChatGroupActions
                       :chat-group="element.chatGroup"
@@ -1159,18 +1157,18 @@ defineExpose({
                 </div>
 
                 <!-- Nested Items in Chat Group -->
-                <div class="grid transition-all duration-200 ease-in-out" :style="{ gridTemplateRows: element.chatGroup.isCollapsed ? '0fr' : '1fr' }">
-                  <div class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5 overflow-hidden min-h-0">
+                <div tw-class="grid transition-all duration-200 ease-in-out" :style="{ gridTemplateRows: element.chatGroup.isCollapsed ? '0fr' : '1fr' }">
+                  <div tw-class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5 overflow-hidden min-h-0">
                     <button
                       @click.stop="handleNewChat({ groupId: element.chatGroup.id })"
-                      class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
+                      tw-class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                     >
-                      <MessageSquarePlusIcon class="w-3 h-3" /> {{ lazyStrings.Sidebar__add_chat() }}
+                      <MessageSquarePlusIcon tw-class="w-3 h-3" /> {{ lazyStrings.Sidebar__add_chat() }}
                     </button>
 
                     <!-- Smooth height for Show more/less -->
                     <div
-                      class="transition-[max-height] duration-400 ease-in-out overflow-hidden"
+                      tw-class="transition-[max-height] duration-400 ease-in-out overflow-hidden"
                       :style="{ maxHeight: isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? '2000px' : '250px' }"
                     >
                       <draggable
@@ -1186,24 +1184,24 @@ defineExpose({
                         @start="onDragStart"
                         @end="onDragEnd"
                         ghost-class="sortable-ghost"
-                        :class="['nested-draggable space-y-0.5', isDragging ? 'min-h-[40px] pb-4' : 'min-h-[20px]']"
+                        :class="['nested-draggable']" :tw-class="['space-y-0.5', isDragging ? 'min-h-[40px] pb-4' : 'min-h-[20px]']"
                         :swap-threshold="0.5"
                         :invert-swap="true"
                         :scroll="true"
                         :scroll-sensitivity="100"
                         :scroll-speed="20"
                         :force-fallback="true"
-                        fallback-class="opacity-0"
+                        tw-fallback-class="opacity-0"
                       >
                         <template #item="{ element: nestedItem }">
                           <div
                             @click="handleOpenChat({ id: nestedItem.chat.id })"
-                            class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
-                            :class="focusedId === nestedItem.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
+                            class="handle sidebar-chat-item"
+                            :tw-class="['group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer', focusedId === nestedItem.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200']"
                             :data-testid="'sidebar-chat-item-' + nestedItem.chat.id"
                             :data-sidebar-chat-id="nestedItem.chat.id"
                           >
-                            <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
+                            <div tw-class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                               <input
                                 v-if="editingId === nestedItem.chat.id"
                                 v-focus
@@ -1212,16 +1210,16 @@ defineExpose({
                                 @keyup.esc="editingId = null"
                                 @blur="saveRename"
                                 @click.stop
-                                class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
+                                tw-class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                                 data-testid="chat-rename-input"
                               />
-                              <span v-else class="truncate text-sm">{{ nestedItem.chat.title || lazyStrings.SHARED__new_chat() }}</span>
+                              <span v-else tw-class="truncate text-sm">{{ nestedItem.chat.title || lazyStrings.SHARED__new_chat() }}</span>
                             </div>
-                            <div class="flex items-center gap-1">
-                              <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
-                              <div v-if="editingId !== nestedItem.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                                <button @click.stop="startEditing({ id: nestedItem.chat.id, title: nestedItem.chat.title })" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
-                                <button @click.stop="handleDeleteChat({ id: nestedItem.chat.id })" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>
+                            <div tw-class="flex items-center gap-1">
+                              <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" tw-class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                              <div v-if="editingId !== nestedItem.chat.id" class="touch-visible" tw-class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                                <button @click.stop="startEditing({ id: nestedItem.chat.id, title: nestedItem.chat.title })" tw-class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon tw-class="w-3 h-3" /></button>
+                                <button @click.stop="handleDeleteChat({ id: nestedItem.chat.id })" tw-class="p-1 hover:text-red-500"><Trash2Icon tw-class="w-3 h-3" /></button>
                               </div>
                             </div>
                           </div>
@@ -1233,8 +1231,7 @@ defineExpose({
                     <button
                       v-if="element.chatGroup.items.length > COMPACT_THRESHOLD"
                       @click.stop="toggleGroupCompactExpansion({ groupId: element.chatGroup.id })"
-                      class="w-full flex items-center justify-between p-2 rounded-xl text-[10px] font-bold focus:outline-none transition-all"
-                      :class="[
+                      :tw-class="['w-full flex items-center justify-between p-2 rounded-xl text-[10px] font-bold focus:outline-none transition-all',
                         focusedId === `expand-${idToRaw({ id: element.chatGroup.id })}`
                           ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm'
                           : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50',
@@ -1242,11 +1239,11 @@ defineExpose({
                       ]"
                       data-testid="show-more-button"
                     >
-                      <span class="ml-1 flex items-center gap-1.5">
-                        <MoreHorizontalIcon v-if="!isGroupCompactExpanded({ groupId: element.chatGroup.id })" class="w-3 h-3 opacity-60" />
+                      <span tw-class="ml-1 flex items-center gap-1.5">
+                        <MoreHorizontalIcon v-if="!isGroupCompactExpanded({ groupId: element.chatGroup.id })" tw-class="w-3 h-3 opacity-60" />
                         {{ isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? lazyStrings.Sidebar__show_less() : lazyStrings.Sidebar__show_more({ count: element.chatGroup.items.length - COMPACT_THRESHOLD }) }}
                       </span>
-                      <component :is="isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? ChevronUpIcon : ChevronDownIcon" class="w-3 h-3" />
+                      <component :is="isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? ChevronUpIcon : ChevronDownIcon" tw-class="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -1256,12 +1253,12 @@ defineExpose({
               <div
                 v-else
                 @click="handleOpenChat({ id: element.chat.id })"
-                class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
-                :class="focusedId === element.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
+                class="handle sidebar-chat-item"
+                :tw-class="['group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer', focusedId === element.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200']"
                 :data-testid="'sidebar-chat-item-' + element.chat.id"
                 :data-sidebar-chat-id="element.chat.id"
               >
-                <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
+                <div tw-class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                   <input
                     v-if="editingId === element.chat.id"
                     v-focus
@@ -1270,16 +1267,16 @@ defineExpose({
                     @keyup.esc="editingId = null"
                     @blur="saveRename"
                     @click.stop
-                    class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
+                    tw-class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                     data-testid="chat-rename-input"
                   />
-                  <span v-else class="truncate text-sm">{{ element.chat.title || lazyStrings.SHARED__new_chat() }}</span>
+                  <span v-else tw-class="truncate text-sm">{{ element.chat.title || lazyStrings.SHARED__new_chat() }}</span>
                 </div>
-                <div class="flex items-center gap-1">
-                  <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
-                  <div v-if="editingId !== element.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                    <button @click.stop="startEditing({ id: element.chat.id, title: element.chat.title })" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
-                    <button @click.stop="handleDeleteChat({ id: element.chat.id })" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>
+                <div tw-class="flex items-center gap-1">
+                  <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" tw-class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                  <div v-if="editingId !== element.chat.id" class="touch-visible" tw-class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                    <button @click.stop="startEditing({ id: element.chat.id, title: element.chat.title })" tw-class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon tw-class="w-3 h-3" /></button>
+                    <button @click.stop="handleDeleteChat({ id: element.chat.id })" tw-class="p-1 hover:text-red-500"><Trash2Icon tw-class="w-3 h-3" /></button>
                   </div>
                 </div>
               </div>
@@ -1289,12 +1286,12 @@ defineExpose({
     </div>
 
     <!-- Footer -->
-    <div class="border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]'">
+    <div :tw-class="['border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20', isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]']">
       <!-- Global Model Selector -->
-      <div v-if="isSidebarOpen && (settings.endpoint.type === 'transformers_js' || settings.endpoint.url !== '')" class="px-1 space-y-2 animate-in fade-in duration-300">
-        <div class="flex items-center justify-between px-1">
-          <label class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
-            <BotIcon class="w-3 h-3" />
+      <div v-if="isSidebarOpen && (settings.endpoint.type === 'transformers_js' || settings.endpoint.url !== '')" class="animate-in fade-in" tw-class="px-1 space-y-2 duration-300">
+        <div tw-class="flex items-center justify-between px-1">
+          <label tw-class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
+            <BotIcon tw-class="w-3 h-3" />
             {{ lazyStrings.Sidebar__default_model() }}
           </label>
         </div>
@@ -1307,15 +1304,14 @@ defineExpose({
         />
       </div>
 
-      <div class="flex items-center gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
+      <div :tw-class="['flex items-center gap-2', { 'flex-col items-center': !isSidebarOpen }]">
         <button
           @click="router.push({ query: { ...route.query, settings: 'connection' } })"
-          class="flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm"
-          :class="isSidebarOpen ? 'flex-1 py-2 px-2' : 'w-8 h-8'"
+          :tw-class="['flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm', isSidebarOpen ? 'flex-1 py-2 px-2' : 'w-8 h-8']"
           :title="lazyStrings.Sidebar__settings()"
           data-testid="sidebar-settings-button"
         >
-          <SettingsIcon class="w-4 h-4 shrink-0" />
+          <SettingsIcon tw-class="w-4 h-4 shrink-0" />
           <span v-if="isSidebarOpen">{{ lazyStrings.Sidebar__settings() }}</span>
         </button>
 

@@ -87,19 +87,18 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex items-center gap-1 group/msg-footer-tools">
+  <div tw-class="flex items-center gap-1 group/msg-footer-tools">
     <!-- Generic More Button (Left Anchor for Footer) -->
     <button
       @click="emit('update:showExtensions', !showExtensions)"
-      class="p-1.5 rounded-md transition-colors"
-      :class="showExtensions ? 'text-blue-600 bg-blue-100/50 dark:bg-blue-800/50' : 'text-blue-600/40 dark:text-blue-400/40 hover:text-blue-600'"
+      :tw-class="['p-1.5 rounded-md transition-colors', showExtensions ? 'text-blue-600 bg-blue-100/50 dark:bg-blue-800/50' : 'text-blue-600/40 dark:text-blue-400/40 hover:text-blue-600']"
       :title="lazyStrings.MessageActions__more_message_tools()"
     >
-      <MoreHorizontalIcon class="w-3.5 h-3.5" />
+      <MoreHorizontalIcon tw-class="w-3.5 h-3.5" />
     </button>
 
     <!-- Footer Extensions Slot (Seamless transition) -->
-    <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-right-1 fade-in duration-200">
+    <div v-if="showExtensions" class="animate-in slide-in-from-right-1 fade-in" tw-class="flex items-center gap-1 mx-1 duration-200">
       <SpeechLanguageSelector :message-id="message.id" :content="speechText" align="up" />
       <!-- Future tools here -->
     </div>
@@ -110,49 +109,49 @@ defineExpose({
     <button
       v-if="!isUser"
       @click="emit('regenerate', message.id)"
-      class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+      tw-class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       :title="lazyStrings.MessageActions__regenerate_response()"
       data-testid="regenerate-button"
     >
-      <RefreshCwIcon class="w-3.5 h-3.5" />
+      <RefreshCwIcon tw-class="w-3.5 h-3.5" />
     </button>
     <button
       v-if="isUser"
       @click="emit('edit', message.id, message.content || '', message.lmParameters)"
-      class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+      tw-class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       :title="lazyStrings.MessageActions__resend_message()"
       data-testid="resend-button"
     >
-      <SendIcon class="w-3.5 h-3.5" />
+      <SendIcon tw-class="w-3.5 h-3.5" />
     </button>
     <button
       @click="handleCopy"
-      class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+      tw-class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       :title="copied ? lazyStrings.MessageActions__copied() : lazyStrings.MessageActions__copy_message()"
       data-testid="copy-message-button"
     >
-      <CheckIcon v-if="copied" class="w-3.5 h-3.5" />
-      <CopyIcon v-else class="w-3.5 h-3.5" />
+      <CheckIcon v-if="copied" tw-class="w-3.5 h-3.5" />
+      <CopyIcon v-else tw-class="w-3.5 h-3.5" />
     </button>
     <button
       @click="emit('enter-edit-mode')"
-      class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+      tw-class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       :title="lazyStrings.MessageActions__edit_message()"
       data-testid="edit-message-button"
     >
-      <PencilIcon class="w-3.5 h-3.5" />
+      <PencilIcon tw-class="w-3.5 h-3.5" />
     </button>
 
     <!-- More Actions Menu -->
-    <div class="relative">
+    <div tw-class="relative">
       <button
         ref="moreActionsTriggerRef"
         @click="showMoreMenu = !showMoreMenu"
-        class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+        tw-class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         :title="lazyStrings.MessageActions__more_actions()"
         data-testid="message-more-actions-button"
       >
-        <MoreVerticalIcon class="w-3.5 h-3.5" />
+        <MoreVerticalIcon tw-class="w-3.5 h-3.5" />
       </button>
 
       <MessageActionsMenu
@@ -162,38 +161,38 @@ defineExpose({
       >
         <button
           @click="emit('fork', message.id); showMoreMenu = false"
-          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+          tw-class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
           data-testid="fork-message-button"
         >
-          <GitForkIcon class="w-3.5 h-3.5" />
+          <GitForkIcon tw-class="w-3.5 h-3.5" />
           <span>{{ lazyStrings.MessageActions__fork_chat() }}</span>
         </button>
 
         <button
           @click="handleCopyRaw(); showMoreMenu = false"
-          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+          tw-class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
           data-testid="copy-raw-button"
         >
-          <CopyIcon class="w-3.5 h-3.5" />
+          <CopyIcon tw-class="w-3.5 h-3.5" />
           <span>{{ lazyStrings.MessageActions__copy_raw() }}</span>
         </button>
 
         <button
           v-if="chatId"
           @click="handleCopyLink(); showMoreMenu = false"
-          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+          tw-class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
           data-testid="copy-message-link-button"
         >
-          <LinkIcon class="w-3.5 h-3.5" />
+          <LinkIcon tw-class="w-3.5 h-3.5" />
           <span>{{ lazyStrings.MessageActions__copy_link() }}</span>
         </button>
 
         <button
           @click="emit('show-diff'); showMoreMenu = false"
-          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+          tw-class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
           data-testid="compare-versions-button"
         >
-          <HistoryIcon class="w-3.5 h-3.5" />
+          <HistoryIcon tw-class="w-3.5 h-3.5" />
           <span>{{ lazyStrings.MessageActions__compare_versions() }}</span>
         </button>
       </MessageActionsMenu>

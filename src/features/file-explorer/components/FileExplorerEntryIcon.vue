@@ -4,6 +4,7 @@ import {
   FileCodeIcon, FileJsonIcon, FileTypeIcon,
 } from 'lucide-vue-next';
 import type { EntryKind, MimeCategory } from '@/features/file-explorer/logic/types';
+import { tw, twClasses, twClassString, type TailwindClass } from 'virtual:naidan-tailwind';
 
 const props = defineProps<{
   kind: EntryKind,
@@ -12,10 +13,10 @@ const props = defineProps<{
   size?: 'sm' | 'md' | 'lg',
 }>();
 
-const sizeClass = {
-  sm: 'w-4 h-4',
-  md: 'w-6 h-6',
-  lg: 'w-10 h-10',
+const sizeClass: Record<NonNullable<typeof props.size>, TailwindClass> = {
+  sm: twClassString('w-4', 'h-4'),
+  md: twClassString('w-6', 'h-6'),
+  lg: twClassString('w-10', 'h-10'),
 };
 
 function getIcon() {
@@ -74,12 +75,12 @@ function getIcon() {
 
 function getColorClass() {
   switch (props.kind) {
-  case 'directory': return 'text-amber-500';
-  case 'file': return 'text-blue-500';
+  case 'directory': return tw('text-amber-500');
+  case 'file': return tw('text-blue-500');
   default: {
     const _ex: never = props.kind;
     void _ex;
-    return 'text-gray-400';
+    return tw('text-gray-400');
   }
   }
 }
@@ -97,6 +98,6 @@ defineExpose({
 <template>
   <component
     :is="getIcon()"
-    :class="[sizeClass[size ?? 'sm'], getColorClass()]"
+    :tw-class="twClasses([sizeClass[size ?? 'sm'], getColorClass()])"
   />
 </template>

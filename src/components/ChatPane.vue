@@ -81,6 +81,7 @@ import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { hasChatOverrides } from '@/logic/chat-settings-resolver';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
+import { tw } from 'virtual:naidan-tailwind';
 import { useToast } from '@/composables/useToast';
 import { storageService } from '@/00-storage/service';
 import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/logic/context-compact';
@@ -653,9 +654,9 @@ function jumpToMessage({ messageId }: { messageId: MessageId }): boolean {
       behavior: 'smooth',
       block: 'center',
     });
-    el.classList.add('bg-blue-50/50', 'dark:bg-blue-900/20');
+    el.classList.add(tw('bg-blue-50/50'), tw('dark:bg-blue-900/20'));
     setTimeout(() => {
-      el.classList.remove('bg-blue-50/50', 'dark:bg-blue-900/20');
+      el.classList.remove(tw('bg-blue-50/50'), tw('dark:bg-blue-900/20'));
     }, 2000);
     return true;
   }
@@ -1227,7 +1228,7 @@ watch(
 
 <template>
   <div
-    class="chat-pane flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
+    class="chat-pane" tw-class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
     @dragover="handleDragOver({ event: $event })"
     @dragleave="handleDragLeave({ event: $event })"
     @drop="handleDrop({ event: $event })"
@@ -1236,12 +1237,12 @@ watch(
     <!-- Drag Overlay -->
     <div
       v-if="isDragging"
-      class="absolute inset-0 z-50 bg-blue-500/10 border-2 border-dashed border-blue-500 pointer-events-none flex items-center justify-center"
+      tw-class="absolute inset-0 z-50 bg-blue-500/10 border-2 border-dashed border-blue-500 pointer-events-none flex items-center justify-center"
       data-testid="drag-overlay"
     >
-      <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in zoom-in duration-200">
-        <FolderInputIcon class="w-6 h-6 text-blue-500" />
-        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.ChatPane__drop_files_or_folders_to_attach() }}</span>
+      <div class="animate-in zoom-in" tw-class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-xl flex items-center gap-3 duration-200">
+        <FolderInputIcon tw-class="w-6 h-6 text-blue-500" />
+        <span tw-class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.ChatPane__drop_files_or_folders_to_attach() }}</span>
       </div>
     </div>
 
@@ -1325,12 +1326,12 @@ watch(
     />
 
     <!-- Messages Layer -->
-    <div class="flex-1 relative overflow-hidden">
+    <div tw-class="flex-1 relative overflow-hidden">
       <div
-        class="absolute inset-x-0 top-0 z-40 pointer-events-none"
+        tw-class="absolute inset-x-0 top-0 z-40 pointer-events-none"
         data-testid="context-compact-progress-overlay"
       >
-        <div class="pointer-events-auto">
+        <div tw-class="pointer-events-auto">
           <ContextCompactProgressStrip
             :progress="contextCompactProgress"
             @abort="handleAbortContextCompact()"
@@ -1341,7 +1342,7 @@ watch(
       <!-- Neural Sync Effect Overlay -->
       <div
         v-if="showNeuralSyncEffect"
-        class="absolute inset-0 z-50 pointer-events-none overflow-hidden"
+        tw-class="absolute inset-0 z-50 pointer-events-none overflow-hidden"
         data-testid="context-compact-neural-sync-effect"
       >
         <div class="neural-scan-line"></div>
@@ -1360,12 +1361,12 @@ watch(
       <div
         ref="container"
         data-testid="scroll-container"
-        class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
+        tw-class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
         style="overflow-anchor: none;"
         :style="{ paddingBottom: inputVisibility === 'submerged' ? '48px' : '300px' }"
       >
         <template v-if="chat">
-          <div v-if="activeMessages.length > 0" class="relative p-2">
+          <div v-if="activeMessages.length > 0" tw-class="relative p-2">
             <template v-for="(flowItem, flowIdx) in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
               <!-- AI Process Sequence (Collapsible Group) -->
               <AssistantProcessSequence
@@ -1378,7 +1379,7 @@ watch(
                 :is-first-in-turn="flowItem.isFirstInTurn"
               >
                 <template #cursor>
-                  <GeneratingIndicator v-if="flowIdx === generatingIndicatorIndex" class="ml-1" />
+                  <GeneratingIndicator v-if="flowIdx === generatingIndicatorIndex" tw-class="ml-1" />
                 </template>
                 <template #peek>
                   <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
@@ -1476,7 +1477,7 @@ watch(
             />
             <div
               v-if="isResponseViewportReserveActive && responseViewportReserveHeightPx > 0"
-              class="shrink-0 pointer-events-none"
+              tw-class="shrink-0 pointer-events-none"
               :style="{ height: `${responseViewportReserveHeightPx}px` }"
               data-testid="response-viewport-reserve"
             ></div>
@@ -1491,7 +1492,7 @@ watch(
         <!-- Conditional spacer: only large when maximized or animating to allow scrolling hidden content -->
         <div
           v-if="chatInputRef?.isMaximized || isAnimatingHeight"
-          class="h-[75vh] shrink-0 pointer-events-none"
+          tw-class="h-[75vh] shrink-0 pointer-events-none"
           data-testid="maximized-spacer"
         ></div>
       </div>

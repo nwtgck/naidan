@@ -496,8 +496,7 @@ defineExpose({
   <div
     v-if="!(isGenerating && (transformersStatus === 'loading' || transformersStatus === 'error') && endpointType === 'transformers_js')"
     ref="messageRef"
-    class="flex flex-col gap-2 group transition-colors"
-    :class="[
+    :tw-class="['flex flex-col gap-2 group transition-colors',
       isNested ? 'px-5' : 'p-5',
       {
         'bg-gray-50/30 dark:bg-gray-800/20': !isUser && !isNested,
@@ -508,29 +507,29 @@ defineExpose({
       }
     ]"
   >
-    <div v-if="showHeader && isFirstInTurn && !isNested" class="flex items-center gap-3 mb-1">
-      <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <UserIcon v-if="isUser" class="w-4 h-4 text-gray-500" />
-        <BirdIcon v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+    <div v-if="showHeader && isFirstInTurn && !isNested" tw-class="flex items-center gap-3 mb-1">
+      <div tw-class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <UserIcon v-if="isUser" tw-class="w-4 h-4 text-gray-500" />
+        <BirdIcon v-else tw-class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
-      <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
-        <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">{{ lazyStrings.MessageItem__you() }}</span>
+      <div tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
+        <span v-if="isUser" tw-class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">{{ lazyStrings.MessageItem__you() }}</span>
         <template v-else>
           <span>{{ message.modelId || lazyStrings.SHARED__assistant() }}</span>
           <div
             v-if="reasoningEffortLabel"
-            class="flex items-center gap-1 ml-1 text-[8px] font-mono text-gray-400 dark:text-gray-500 leading-none cursor-help"
+            tw-class="flex items-center gap-1 ml-1 text-[8px] font-mono text-gray-400 dark:text-gray-500 leading-none cursor-help"
             :title="reasoningEffortTooltip"
             data-testid="reasoning-effort-badge"
           >
-            <BrainIcon class="w-2.5 h-2.5" />
+            <BrainIcon tw-class="w-2.5 h-2.5" />
             <span>{{ reasoningEffortLabel }}</span>
           </div>
-          <div class="flex items-center gap-1 group/msg-header-tools">
+          <div tw-class="flex items-center gap-1 group/msg-header-tools">
             <SpeechControl v-if="speechText !== undefined && !isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
 
             <!-- Header Extensions Slot (Seamless transition) -->
-            <div v-if="showExtensions && speechText !== undefined" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
+            <div v-if="showExtensions && speechText !== undefined" class="animate-in slide-in-from-left-1 fade-in" tw-class="flex items-center gap-1 mx-1 duration-200">
               <SpeechLanguageSelector :message-id="message.id" :content="speechText" is-mini align="down" />
               <!-- Future tools here -->
             </div>
@@ -538,54 +537,53 @@ defineExpose({
             <button
               v-if="isGenerating"
               @click="emit('abort')"
-              class="p-1 rounded-lg text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              tw-class="p-1 rounded-lg text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               :title="lazyStrings.MessageItem__stop_generation()"
               data-testid="message-abort-button"
             >
-              <SquareIcon class="w-3 h-3" />
+              <SquareIcon tw-class="w-3 h-3" />
             </button>
 
             <!-- Generic More Button (Absolute Right Anchor for Header) -->
             <button
               v-if="!isImageResponse && !isImageGenerationPending({ content: message.content || '' })"
               @click="showExtensions = !showExtensions"
-              class="p-1 rounded-lg transition-colors"
-              :class="showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
+              :tw-class="['p-1 rounded-lg transition-colors', showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300']"
               :title="lazyStrings.MessageItem__more_message_tools()"
             >
-              <MoreHorizontalIcon class="w-3.5 h-3.5" />
+              <MoreHorizontalIcon tw-class="w-3.5 h-3.5" />
             </button>
           </div>
         </template>
       </div>
     </div>
 
-    <div :class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
+    <div :tw-class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
       <!-- Attachments (Only shown in the first part of a node if any) -->
-      <div v-if="isFirstInNode && message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
-        <div v-for="(att, idx) in message.attachments" :key="idToRaw({ id: att.id })" class="relative group/att">
+      <div v-if="isFirstInNode && message.attachments && message.attachments.length > 0" tw-class="flex flex-wrap gap-2 mb-3">
+        <div v-for="(att, idx) in message.attachments" :key="idToRaw({ id: att.id })" tw-class="relative group/att">
           <template v-if="att.status !== 'missing' && attachmentUrls.get(att.id)">
             <img
               :src="attachmentUrls.get(att.id)"
               @click="handlePreviewImage({ id: att.binaryObjectId })"
-              class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
+              tw-class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
-            <div v-if="message.attachments.length > 1" class="absolute bottom-2 left-2 z-10">
+            <div v-if="message.attachments.length > 1" tw-class="absolute bottom-2 left-2 z-10">
               <ImageIndexBadge :index="idx + 1" :total="message.attachments.length" />
             </div>
             <a
               :href="attachmentUrls.get(att.id)"
               :download="att.originalName"
-              class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-all z-10"
+              class="touch-visible" tw-class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/att:opacity-100 transition-all z-10"
               :title="lazyStrings.MessageItem__download_image()"
               data-testid="download-attachment"
             >
-              <DownloadIcon class="w-4 h-4" />
+              <DownloadIcon tw-class="w-4 h-4" />
             </a>
           </template>
           <template v-else>
-            <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500">
-              <AlertTriangleIcon class="w-3.5 h-3.5 text-amber-500" />
+            <div tw-class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500">
+              <AlertTriangleIcon tw-class="w-3.5 h-3.5 text-amber-500" />
               <span>{{ lazyStrings.MessageItem__image_missing({ fileName: att.originalName, fileSize: formatSize({ bytes: att.size }) }) }}</span>
             </div>
           </template>
@@ -601,62 +599,61 @@ defineExpose({
       />
 
       <!-- Content -->
-      <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
+      <div v-if="isEditing" tw-class="mt-1" data-testid="edit-mode">
         <!-- Edit mode remains full-content for now -->
-        <div class="border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-visible">
+        <div tw-class="border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-visible">
           <textarea
             ref="textareaRef"
             v-model="editContent"
             @keydown.enter.ctrl.prevent="handleSaveEdit"
             @keydown.enter.meta.prevent="handleSaveEdit"
             @keydown.esc.prevent="handleCancelEdit"
-            class="w-full p-4 bg-transparent text-gray-800 dark:text-gray-100 text-sm focus:outline-none h-32 resize-none"
+            tw-class="w-full p-4 bg-transparent text-gray-800 dark:text-gray-100 text-sm focus:outline-none h-32 resize-none"
             data-testid="edit-textarea"
           ></textarea>
 
-          <div class="flex items-center justify-between px-3 pb-3">
-            <div class="flex items-center gap-1">
+          <div tw-class="flex items-center justify-between px-3 pb-3">
+            <div tw-class="flex items-center gap-1">
               <button
                 v-if="canGenerateImage || true"
                 @click="showImageSettings = !showImageSettings"
-                class="p-2 rounded-xl transition-colors"
-                :class="showImageSettings || editImageMode || editReasoningEffort !== undefined ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
+                :tw-class="['p-2 rounded-xl transition-colors', showImageSettings || editImageMode || editReasoningEffort !== undefined ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800']"
                 :title="lazyStrings.MessageItem__tools()"
                 data-testid="toggle-edit-image-mode"
               >
-                <Settings2Icon class="w-5 h-5" />
+                <Settings2Icon tw-class="w-5 h-5" />
               </button>
               <button
                 @click="openAdvancedEditor"
-                class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                tw-class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 :title="lazyStrings.MessageItem__open_advanced_editor()"
                 data-testid="open-advanced-editor-button"
               >
-                <FileEditIcon class="w-5 h-5" />
+                <FileEditIcon tw-class="w-5 h-5" />
               </button>
             </div>
-            <div class="flex items-center gap-2">
+            <div tw-class="flex items-center gap-2">
               <button
                 v-if="editContent"
                 @click="handleClearContent"
-                class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                tw-class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
                 :title="lazyStrings.MessageItem__clear_all_text()"
                 data-testid="clear-edit-content"
               >
-                <XCircleIcon class="w-3.5 h-3.5" />
+                <XCircleIcon tw-class="w-3.5 h-3.5" />
                 <span>{{ lazyStrings.MessageItem__clear() }}</span>
               </button>
-              <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">{{ lazyStrings.MessageItem__cancel() }}</button>
-              <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
+              <button @click="handleCancelEdit" tw-class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">{{ lazyStrings.MessageItem__cancel() }}</button>
+              <button @click="handleSaveEdit" tw-class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
                 <span>{{ isUser ? lazyStrings.MessageItem__send_and_branch() : lazyStrings.MessageItem__update_and_branch() }}</span>
-                <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
+                <span tw-class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
               </button>
             </div>
           </div>
 
           <!-- Inline Experimental Tools (if active) -->
-          <div v-if="showImageSettings" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
-            <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
+          <div v-if="showImageSettings" tw-class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
+            <div tw-class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
               {{ lazyStrings.MessageItem__options_tools() }}
             </div>
             <ReasoningSettings
@@ -712,39 +709,39 @@ defineExpose({
         />
 
         <!-- Error State (Appended below content) -->
-        <div v-if="isLastInNode && message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
-          <div class="flex items-center gap-2 font-bold">
-            <AlertTriangleIcon class="w-4 h-4" />
+        <div v-if="isLastInNode && message.error" tw-class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
+          <div tw-class="flex items-center gap-2 font-bold">
+            <AlertTriangleIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.MessageItem__generation_failed() }}</span>
           </div>
-          <div class="opacity-90">{{ message.error }}</div>
+          <div tw-class="opacity-90">{{ message.error }}</div>
           <button
             @click="emit('regenerate', message.id)"
-            class="mt-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-colors flex items-center gap-2"
+            tw-class="mt-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-colors flex items-center gap-2"
             data-testid="retry-button"
           >
-            <RefreshCwIcon class="w-3.5 h-3.5" />
+            <RefreshCwIcon tw-class="w-3.5 h-3.5" />
             <span>{{ lazyStrings.MessageItem__retry() }}</span>
           </button>
         </div>
 
-        <div v-if="isLastInNode" class="flex items-center justify-between min-h-[28px]" :class="isNested ? 'mt-1' : 'mt-3'" data-testid="message-actions-wrapper">
+        <div v-if="isLastInNode" :tw-class="['flex items-center justify-between min-h-[28px]', isNested ? 'mt-1' : 'mt-3']" data-testid="message-actions-wrapper">
           <!-- Version Paging -->
-          <div v-if="versionInfo" class="message-version-paging flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
+          <div v-if="versionInfo" class="message-version-paging" tw-class="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
             <button
               @click="versionInfo.prevId && emit('switch-version', versionInfo.prevId)"
               :disabled="!versionInfo.hasPrev"
-              class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
+              tw-class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
             >
-              <ChevronLeftIcon class="w-3 h-3" />
+              <ChevronLeftIcon tw-class="w-3 h-3" />
             </button>
-            <span class="min-w-[2.5rem] text-center">{{ versionInfo.current }} / {{ versionInfo.total }}</span>
+            <span tw-class="min-w-[2.5rem] text-center">{{ versionInfo.current }} / {{ versionInfo.total }}</span>
             <button
               @click="versionInfo.nextId && emit('switch-version', versionInfo.nextId)"
               :disabled="!versionInfo.hasNext"
-              class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
+              tw-class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
             >
-              <ChevronRightIcon class="w-3 h-3" />
+              <ChevronRightIcon tw-class="w-3 h-3" />
             </button>
           </div>
           <div v-else></div>
@@ -782,8 +779,8 @@ defineExpose({
     />
 
     <Teleport to="body">
-      <div v-if="isAdvancedEditorOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 bg-black/50 backdrop-blur-sm">
-        <div class="w-full max-w-5xl h-full max-h-[90vh]">
+      <div v-if="isAdvancedEditorOpen" tw-class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 bg-black/50 backdrop-blur-sm">
+        <div tw-class="w-full max-w-5xl h-full max-h-[90vh]">
           <AdvancedTextEditor
             :initial-value="editContent"
             :title="undefined"

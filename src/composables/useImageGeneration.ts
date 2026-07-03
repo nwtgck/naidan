@@ -1,4 +1,5 @@
 import { ensureStrings } from '@/strings';
+import { twClassString } from 'virtual:naidan-tailwind';
 import { generateId } from '@/01-models/id';
 import { ref } from 'vue';
 import { UNKNOWN_STEPS } from '@/01-models/lm';
@@ -354,7 +355,10 @@ export function useImageGeneration() {
         case 'local': {
           const url = URL.createObjectURL(finalBlob);
           const { width: dw, height: dh } = getDisplayDimensions({ width, height });
-          const blockHtml = `<img src="${url}" width="${dw}" height="${dh}" alt="${await ensureStrings.SHARED__generated_image()}" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
+          const blockHtml = `<img src="${url}" width="${dw}" height="${dh}" alt="${await ensureStrings.SHARED__generated_image()}" class="${twClassString(
+            'rounded-xl', 'shadow-lg', 'border', 'border-gray-100', 'dark:border-gray-800',
+            'my-2', 'max-w-full', 'h-auto',
+          )}">`;
 
           if (i === 0) {
             assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blockHtml;

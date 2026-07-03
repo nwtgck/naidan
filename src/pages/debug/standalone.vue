@@ -209,32 +209,32 @@ defineExpose({
 </script>
 
 <template>
-  <main class="min-h-full bg-gray-50 px-4 py-8 dark:bg-gray-950 sm:px-8" data-testid="standalone-verification-page">
-    <section class="mx-auto max-w-5xl space-y-5 rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm dark:border-cyan-900/50 dark:bg-gray-900">
-      <div class="flex flex-wrap items-start justify-between gap-3">
+  <main tw-class="min-h-full bg-gray-50 px-4 py-8 dark:bg-gray-950 sm:px-8" data-testid="standalone-verification-page">
+    <section tw-class="mx-auto max-w-5xl space-y-5 rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm dark:border-cyan-900/50 dark:bg-gray-900">
+      <div tw-class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 class="text-lg font-bold text-cyan-900 dark:text-cyan-200">{{ lazyStrings.StandaloneVerificationPage__standalone_verification() }}</h1>
-          <p class="mt-1 max-w-2xl text-sm font-medium leading-relaxed text-cyan-800/70 dark:text-cyan-300/70">
+          <h1 tw-class="text-lg font-bold text-cyan-900 dark:text-cyan-200">{{ lazyStrings.StandaloneVerificationPage__standalone_verification() }}</h1>
+          <p tw-class="mt-1 max-w-2xl text-sm font-medium leading-relaxed text-cyan-800/70 dark:text-cyan-300/70">
             {{ lazyStrings.StandaloneVerificationPage__checks_file_protocol_startup_routing_styles_lazy_chunks_systemjs_and_repeated_worker_creation_without_changing_chats_or_settings() }}
           </p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div tw-class="flex flex-wrap gap-2">
           <button
-            class="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
+            tw-class="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
             data-testid="run-standalone-verification-button"
             :disabled="isRunning || !isStandaloneBuild"
             @click="debugRunVerification"
           >
-            <FlaskConicalIcon class="h-4 w-4" />
+            <FlaskConicalIcon tw-class="h-4 w-4" />
             {{ isRunning ? lazyStrings.StandaloneVerificationPage__running() : lazyStrings.StandaloneVerificationPage__run_standalone_verification() }}
           </button>
           <button
             v-if="verificationReport"
-            class="inline-flex items-center gap-2 rounded-xl border border-cyan-300 bg-white px-4 py-2.5 text-xs font-bold text-cyan-900 shadow-sm transition hover:bg-cyan-50 dark:border-cyan-800 dark:bg-gray-950 dark:text-cyan-200"
+            tw-class="inline-flex items-center gap-2 rounded-xl border border-cyan-300 bg-white px-4 py-2.5 text-xs font-bold text-cyan-900 shadow-sm transition hover:bg-cyan-50 dark:border-cyan-800 dark:bg-gray-950 dark:text-cyan-200"
             data-testid="copy-standalone-verification-json-button"
             @click="copyVerificationReportJson"
           >
-            <ClipboardCheckIcon class="h-4 w-4" />
+            <ClipboardCheckIcon tw-class="h-4 w-4" />
             {{ lazyStrings.StandaloneVerificationPage__copy_json() }}
           </button>
         </div>
@@ -242,34 +242,33 @@ defineExpose({
 
       <p
         v-if="!isStandaloneBuild"
-        class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+        tw-class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
         data-testid="standalone-verification-unavailable"
       >
         {{ lazyStrings.StandaloneVerificationPage__these_checks_require_a_standalone_build_opened_through_file() }}
       </p>
 
-      <p class="text-xs text-gray-500 dark:text-gray-400">
+      <p tw-class="text-xs text-gray-500 dark:text-gray-400">
         {{ lazyStrings.StandaloneVerificationPage__copied_diagnostics_may_contain_local_file_paths_in_browser_provided_error_stacks_or_resource_timing_entries() }}
       </p>
 
-      <div class="sr-only" aria-hidden="true">
-        <div ref="tailwindStyleProbeElement" class="h-[13px] w-[43px]" data-testid="standalone-tailwind-probe"></div>
+      <div tw-class="sr-only" aria-hidden="true">
+        <div ref="tailwindStyleProbeElement" tw-class="h-[13px] w-[43px]" data-testid="standalone-tailwind-probe"></div>
         <div ref="scopedStyleProbeElement" class="standalone-verification-scoped-probe" data-testid="standalone-scoped-probe"></div>
         <div ref="lazyStyleProbeElement" class="standalone-verification-lazy-style-probe" data-testid="standalone-lazy-style-probe"></div>
       </div>
 
-      <div v-if="verificationReport" class="space-y-3">
+      <div v-if="verificationReport" tw-class="space-y-3">
         <p
-          class="inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide"
-          :class="verificationReport.status === 'pass'
+          :tw-class="['inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide', verificationReport.status === 'pass'
             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-            : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'"
+            : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300']"
           data-testid="standalone-verification-status"
         >
           {{ lazyStrings.StandaloneVerificationPage__verification_summary({ status: verificationReport.status, passed: verificationReport.summary.passed, failed: verificationReport.summary.failed }) }}
         </p>
         <pre
-          class="max-h-[36rem] overflow-auto rounded-xl bg-gray-950 p-4 text-left text-[11px] leading-5 text-gray-100"
+          tw-class="max-h-[36rem] overflow-auto rounded-xl bg-gray-950 p-4 text-left text-[11px] leading-5 text-gray-100"
           data-testid="standalone-verification-json"
         >{{ verificationReportJson }}</pre>
       </div>

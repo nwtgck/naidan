@@ -161,40 +161,37 @@ defineExpose({
 </script>
 
 <template>
-  <div class="code-block-wrapper my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code shadow-sm">
-    <div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">
-      <div class="flex items-center gap-2">
-        <TerminalIcon class="w-3 h-3 opacity-50" />
-        <span class="font-mono font-medium">{{ lang || 'text' }}</span>
+  <div class="code-block-wrapper" tw-class="my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code shadow-sm">
+    <div tw-class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">
+      <div tw-class="flex items-center gap-2">
+        <TerminalIcon tw-class="w-3 h-3 opacity-50" />
+        <span tw-class="font-mono font-medium">{{ lang || 'text' }}</span>
       </div>
-      <div class="flex items-center gap-2.5">
+      <div tw-class="flex items-center gap-2.5">
         <button
           @click="toggleLineWrap"
-          class="flex items-center hover:text-white transition-colors cursor-pointer"
-          :class="isLineWrapEnabled ? 'text-indigo-400' : 'text-gray-400'"
+          :tw-class="['flex items-center hover:text-white transition-colors cursor-pointer', isLineWrapEnabled ? 'text-indigo-400' : 'text-gray-400']"
           :title="lazyStrings.blockMarkdown__toggle_line_wrap()"
         >
-          <WrapTextIcon class="w-3.5 h-3.5" />
+          <WrapTextIcon tw-class="w-3.5 h-3.5" />
         </button>
         <button
           @click="copyCode"
-          class="flex items-center hover:text-white transition-colors cursor-pointer"
-          :class="copied ? 'text-green-400' : 'text-gray-400'"
+          :tw-class="['flex items-center hover:text-white transition-colors cursor-pointer', copied ? 'text-green-400' : 'text-gray-400']"
           :title="copied ? lazyStrings.blockMarkdown__copied() : lazyStrings.blockMarkdown__copy_code()"
         >
-          <CheckIcon v-if="copied" class="w-3.5 h-3.5" />
-          <CopyIcon v-else class="w-3.5 h-3.5" />
+          <CheckIcon v-if="copied" tw-class="w-3.5 h-3.5" />
+          <CopyIcon v-else tw-class="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
     <pre
       ref="preRef"
-      class="!m-0 !p-4 !bg-transparent scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
-      :class="isLineWrapEnabled ? 'whitespace-pre-wrap break-words overflow-x-hidden' : 'whitespace-pre overflow-x-auto'"
+      :tw-class="['!m-0 !p-4 !bg-transparent scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent', isLineWrapEnabled ? 'whitespace-pre-wrap break-words overflow-x-hidden' : 'whitespace-pre overflow-x-auto']"
     ><AllowedHtmlView
       as="code"
       :html="renderedCodeHtml"
-      class="!bg-transparent !p-0 !border-none !text-sm font-mono leading-relaxed !text-gray-200"
+      tw-class="!bg-transparent !p-0 !border-none !text-sm font-mono leading-relaxed !text-gray-200"
     /></pre>
   </div>
 </template>

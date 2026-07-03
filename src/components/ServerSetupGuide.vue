@@ -115,46 +115,43 @@ defineExpose({
 </script>
 
 <template>
-  <div class="bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-    <div class="flex border-b border-gray-200 dark:border-gray-700">
+  <div tw-class="bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div tw-class="flex border-b border-gray-200 dark:border-gray-700">
       <button
         @click="activeServer = 'ollama'"
-        class="flex-1 py-3 text-sm font-semibold transition-colors"
-        :class="activeServer === 'ollama' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+        :tw-class="['flex-1 py-3 text-sm font-semibold transition-colors', activeServer === 'ollama' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300']"
       >
         Ollama
       </button>
       <button
         @click="activeServer = 'llama-server'"
-        class="flex-1 py-3 text-sm font-semibold transition-colors"
-        :class="activeServer === 'llama-server' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+        :tw-class="['flex-1 py-3 text-sm font-semibold transition-colors', activeServer === 'llama-server' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300']"
       >
         llama-server
       </button>
     </div>
 
-    <div class="p-3 space-y-3">
-      <div v-if="activeServer === 'ollama'" class="flex flex-wrap gap-1 p-0.5 bg-gray-100 dark:bg-gray-900 rounded-lg w-fit">
+    <div tw-class="p-3 space-y-3">
+      <div v-if="activeServer === 'ollama'" tw-class="flex flex-wrap gap-1 p-0.5 bg-gray-100 dark:bg-gray-900 rounded-lg w-fit">
         <button
           v-for="os in (['windows', 'mac', 'linux'] as const)"
           :key="os"
           @click="activeOs = os"
-          class="px-2 py-1 text-[10px] font-medium rounded-md transition-all capitalize"
-          :class="activeOs === os ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+          :tw-class="['px-2 py-1 text-[10px] font-medium rounded-md transition-all capitalize', activeOs === os ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300']"
         >
           {{ os }}
         </button>
       </div>
 
-      <div v-if="guides" class="space-y-3">
+      <div v-if="guides" tw-class="space-y-3">
         <div v-if="activeServer === 'ollama'">
-          <div class="space-y-3">
-            <div class="flex items-start gap-2">
-              <div class="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
-                <span class="text-[10px] font-bold">1</span>
+          <div tw-class="space-y-3">
+            <div tw-class="flex items-start gap-2">
+              <div tw-class="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
+                <span tw-class="text-[10px] font-bold">1</span>
               </div>
-              <div class="flex-1 min-w-0">
-                <p class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1.5 leading-tight">
+              <div tw-class="flex-1 min-w-0">
+                <p tw-class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1.5 leading-tight">
                   {{ guides.ollama[activeOs].install }}
                 </p>
                 <a
@@ -162,57 +159,57 @@ defineExpose({
                   :href="guides.ollama[activeOs].downloadUrl"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors max-w-full overflow-hidden"
+                  tw-class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors max-w-full overflow-hidden"
                 >
-                  <DownloadIcon class="w-3.5 h-3.5 shrink-0" />
-                  <span class="truncate">Ollama <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">{{ lazyStrings.ServerSetupGuide__external() }}</span></span>
-                  <ExternalLinkIcon class="w-3 h-3 opacity-50 shrink-0" />
+                  <DownloadIcon tw-class="w-3.5 h-3.5 shrink-0" />
+                  <span tw-class="truncate">Ollama <span tw-class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">{{ lazyStrings.ServerSetupGuide__external() }}</span></span>
+                  <ExternalLinkIcon tw-class="w-3 h-3 opacity-50 shrink-0" />
                 </a>
-                <div v-else-if="guides.ollama[activeOs].installCommand" class="relative group">
-                  <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].installCommand }}</code></pre>
+                <div v-else-if="guides.ollama[activeOs].installCommand" tw-class="relative group">
+                  <pre tw-class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].installCommand }}</code></pre>
                   <button
                     @click="copyToClipboard({ text: guides.ollama[activeOs].installCommand!, id: 'ollama-install' })"
-                    class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
+                    tw-class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                   >
-                    <CheckIcon v-if="copiedCommand === 'ollama-install'" class="w-3 h-3 text-white" />
-                    <CopyIcon v-else class="w-3 h-3" />
+                    <CheckIcon v-if="copiedCommand === 'ollama-install'" tw-class="w-3 h-3 text-white" />
+                    <CopyIcon v-else tw-class="w-3 h-3" />
                   </button>
                 </div>
               </div>
             </div>
 
-            <div class="flex items-start gap-2">
-              <div class="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
-                <span class="text-[10px] font-bold">2</span>
+            <div tw-class="flex items-start gap-2">
+              <div tw-class="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
+                <span tw-class="text-[10px] font-bold">2</span>
               </div>
-              <div class="flex-1 min-w-0 space-y-2">
+              <div tw-class="flex-1 min-w-0 space-y-2">
                 <div>
-                  <p class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1 leading-tight">
+                  <p tw-class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1 leading-tight">
                     {{ lazyStrings.ServerSetupGuide__start_server() }}
                   </p>
-                  <div class="relative group">
-                    <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ ollamaServeCommand }}</code></pre>
+                  <div tw-class="relative group">
+                    <pre tw-class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ ollamaServeCommand }}</code></pre>
                     <button
                       @click="copyToClipboard({ text: ollamaServeCommand, id: 'ollama-serve' })"
-                      class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
+                      tw-class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                     >
-                      <CheckIcon v-if="copiedCommand === 'ollama-serve'" class="w-3 h-3 text-white" />
-                      <CopyIcon v-else class="w-3 h-3" />
+                      <CheckIcon v-if="copiedCommand === 'ollama-serve'" tw-class="w-3 h-3 text-white" />
+                      <CopyIcon v-else tw-class="w-3 h-3" />
                     </button>
                   </div>
                 </div>
                 <div>
-                  <p class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1 leading-tight">
+                  <p tw-class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1 leading-tight">
                     {{ lazyStrings.ServerSetupGuide__run_gemma_3n() }}
                   </p>
-                  <div class="relative group">
-                    <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].runCommand }}</code></pre>
+                  <div tw-class="relative group">
+                    <pre tw-class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].runCommand }}</code></pre>
                     <button
                       @click="copyToClipboard({ text: guides.ollama[activeOs].runCommand, id: 'ollama-run' })"
-                      class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
+                      tw-class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                     >
-                      <CheckIcon v-if="copiedCommand === 'ollama-run'" class="w-3 h-3 text-white" />
-                      <CopyIcon v-else class="w-3 h-3" />
+                      <CheckIcon v-if="copiedCommand === 'ollama-run'" tw-class="w-3 h-3 text-white" />
+                      <CopyIcon v-else tw-class="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -221,44 +218,44 @@ defineExpose({
           </div>
         </div>
 
-        <div v-else class="space-y-3">
-          <div class="flex items-start gap-2">
-            <div class="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
-              <span class="text-[10px] font-bold">1</span>
+        <div v-else tw-class="space-y-3">
+          <div tw-class="flex items-start gap-2">
+            <div tw-class="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
+              <span tw-class="text-[10px] font-bold">1</span>
             </div>
-            <div class="flex-1 min-w-0">
-              <p class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1.5 leading-tight">
+            <div tw-class="flex-1 min-w-0">
+              <p tw-class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1.5 leading-tight">
                 {{ guides['llama-server'].all.install }}
               </p>
               <a
                 :href="guides['llama-server'].all.downloadUrl"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors max-w-full overflow-hidden"
+                tw-class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors max-w-full overflow-hidden"
               >
-                <DownloadIcon class="w-3.5 h-3.5 shrink-0" />
-                <span class="truncate">{{ lazyStrings.ServerSetupGuide__releases() }} <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">{{ lazyStrings.ServerSetupGuide__external() }}</span></span>
-                <ExternalLinkIcon class="w-3 h-3 opacity-50 shrink-0" />
+                <DownloadIcon tw-class="w-3.5 h-3.5 shrink-0" />
+                <span tw-class="truncate">{{ lazyStrings.ServerSetupGuide__releases() }} <span tw-class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">{{ lazyStrings.ServerSetupGuide__external() }}</span></span>
+                <ExternalLinkIcon tw-class="w-3 h-3 opacity-50 shrink-0" />
               </a>
             </div>
           </div>
 
-          <div class="flex items-start gap-2">
-            <div class="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
-              <span class="text-[10px] font-bold">2</span>
+          <div tw-class="flex items-start gap-2">
+            <div tw-class="w-5 h-5 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
+              <span tw-class="text-[10px] font-bold">2</span>
             </div>
-            <div class="flex-1 min-w-0">
-              <p class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1.5 leading-tight">
+            <div tw-class="flex-1 min-w-0">
+              <p tw-class="text-[11px] font-medium text-gray-700 dark:text-gray-300 mb-1.5 leading-tight">
                 {{ lazyStrings.ServerSetupGuide__run_gemma_3n() }}
               </p>
-              <div class="relative group">
-                <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides['llama-server'].all.runCommand }}</code></pre>
+              <div tw-class="relative group">
+                <pre tw-class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides['llama-server'].all.runCommand }}</code></pre>
                 <button
                   @click="copyToClipboard({ text: guides['llama-server'].all.runCommand, id: 'llama-run' })"
-                  class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
+                  tw-class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                 >
-                  <CheckIcon v-if="copiedCommand === 'llama-run'" class="w-3 h-3 text-white" />
-                  <CopyIcon v-else class="w-3 h-3" />
+                  <CheckIcon v-if="copiedCommand === 'llama-run'" tw-class="w-3 h-3 text-white" />
+                  <CopyIcon v-else tw-class="w-3 h-3" />
                 </button>
               </div>
             </div>

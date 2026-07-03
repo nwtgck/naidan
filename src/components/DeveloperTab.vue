@@ -68,119 +68,118 @@ defineExpose({
 </script>
 
 <template>
-  <div data-testid="developer-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
-    <section class="space-y-8">
-      <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <CpuIcon class="w-5 h-5 text-blue-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.DeveloperTab__developer_tools() }}</h2>
+  <div data-testid="developer-section" class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-8 duration-400">
+    <section tw-class="space-y-8">
+      <div tw-class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
+        <CpuIcon tw-class="w-5 h-5 text-blue-500" />
+        <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.DeveloperTab__developer_tools() }}</h2>
       </div>
 
-      <div class="space-y-8">
-        <div class="space-y-4">
-          <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__experimental_features() }}</h3>
+      <div tw-class="space-y-8">
+        <div tw-class="space-y-4">
+          <h3 tw-class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__experimental_features() }}</h3>
           <FeatureFlagsSettings />
         </div>
 
-        <div class="space-y-4">
-          <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__debug_and_testing() }}</h3>
-          <div class="flex flex-col gap-2 sm:flex-row">
+        <div tw-class="space-y-4">
+          <h3 tw-class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__debug_and_testing() }}</h3>
+          <div tw-class="flex flex-col gap-2 sm:flex-row">
             <button
               @click="createSampleChat"
-              class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              tw-class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
               data-testid="setting-create-sample-button"
             >
-              <FlaskConicalIcon class="h-4 w-4" />
+              <FlaskConicalIcon tw-class="h-4 w-4" />
               {{ lazyStrings.DeveloperTab__create_sample_chat() }}
             </button>
             <button
               @click="createLongSampleChat"
-              class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              tw-class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
               data-testid="setting-create-long-sample-button"
             >
-              <ScrollTextIcon class="h-4 w-4" />
+              <ScrollTextIcon tw-class="h-4 w-4" />
               {{ lazyStrings.DeveloperTab__create_long_sample_chat() }}
             </button>
           </div>
-          <p class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.DeveloperTab__sample_conversations_description() }}</p>
+          <p tw-class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.DeveloperTab__sample_conversations_description() }}</p>
         </div>
 
         <DeveloperOpenStateLinks />
 
-        <div class="space-y-2">
+        <div tw-class="space-y-2">
           <button
             @click="togglePWAUpdate"
-            class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
-            :class="{ 'ring-2 ring-emerald-500/20 border-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-900/10': needRefresh }"
+            :tw-class="['w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left', { 'ring-2 ring-emerald-500/20 border-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-900/10': needRefresh }]"
             data-testid="toggle-pwa-update-button"
           >
-            <div class="flex items-center gap-2">
-              <div class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-                <RefreshCwIcon class="w-4 h-4" :class="needRefresh ? 'text-emerald-500 animate-spin-slow' : 'text-gray-400'" />
+            <div tw-class="flex items-center gap-2">
+              <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
+                <RefreshCwIcon :class="needRefresh ? 'animate-spin-slow' : ''" :tw-class="['w-4 h-4', needRefresh ? 'text-emerald-500' : 'text-gray-400']" />
               </div>
-              <div class="flex flex-col">
-                <span class="text-sm font-bold">{{ lazyStrings.DeveloperTab__simulate_pwa_update() }}</span>
-                <span class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__toggle_update_notification() }}</span>
+              <div tw-class="flex flex-col">
+                <span tw-class="text-sm font-bold">{{ lazyStrings.DeveloperTab__simulate_pwa_update() }}</span>
+                <span tw-class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__toggle_update_notification() }}</span>
               </div>
             </div>
-            <div v-if="needRefresh" class="flex h-2 w-2 relative">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <div v-if="needRefresh" tw-class="flex h-2 w-2 relative">
+              <span tw-class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span tw-class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </div>
           </button>
 
           <button
             @click="handleClearAllCacheStorage"
-            class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+            tw-class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
             data-testid="clear-all-cache-storage-button"
           >
-            <div class="flex items-center gap-2">
-              <div class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-                <Trash2Icon class="w-4 h-4 text-gray-400" />
+            <div tw-class="flex items-center gap-2">
+              <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
+                <Trash2Icon tw-class="w-4 h-4 text-gray-400" />
               </div>
-              <div class="flex flex-col">
-                <span class="text-sm font-bold">{{ lazyStrings.DeveloperTab__clear_all_cache_storage() }}</span>
-                <span class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__deletes_cache_storage_entries() }}</span>
+              <div tw-class="flex flex-col">
+                <span tw-class="text-sm font-bold">{{ lazyStrings.DeveloperTab__clear_all_cache_storage() }}</span>
+                <span tw-class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__deletes_cache_storage_entries() }}</span>
               </div>
             </div>
           </button>
 
           <button
             @click="handleReload"
-            class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+            tw-class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
             data-testid="reload-app-button"
           >
-            <div class="flex items-center gap-2">
-              <div class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-                <RefreshCwIcon class="w-4 h-4 text-gray-400" />
+            <div tw-class="flex items-center gap-2">
+              <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
+                <RefreshCwIcon tw-class="w-4 h-4 text-gray-400" />
               </div>
-              <div class="flex flex-col">
-                <span class="text-sm font-bold">{{ lazyStrings.DeveloperTab__reload_application() }}</span>
-                <span class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__perform_window_reload() }}</span>
+              <div tw-class="flex flex-col">
+                <span tw-class="text-sm font-bold">{{ lazyStrings.DeveloperTab__reload_application() }}</span>
+                <span tw-class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__perform_window_reload() }}</span>
               </div>
             </div>
           </button>
         </div>
 
-        <div class="pt-8 border-t border-gray-100 dark:border-gray-800 space-y-5">
-          <h3 class="text-sm font-bold text-red-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__danger_zone() }}</h3>
-          <div class="p-5 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
-            <div class="flex items-start gap-3">
-              <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/20">
-                <AlertTriangleIcon class="w-6 h-6 text-red-500 shrink-0" />
+        <div tw-class="pt-8 border-t border-gray-100 dark:border-gray-800 space-y-5">
+          <h3 tw-class="text-sm font-bold text-red-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__danger_zone() }}</h3>
+          <div tw-class="p-5 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
+            <div tw-class="flex items-start gap-3">
+              <div tw-class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/20">
+                <AlertTriangleIcon tw-class="w-6 h-6 text-red-500 shrink-0" />
               </div>
               <div>
-                <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">{{ lazyStrings.DeveloperTab__reset_all_application_data() }}</h4>
-                <p class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
+                <h4 tw-class="font-bold text-red-800 dark:text-red-400 text-sm">{{ lazyStrings.DeveloperTab__reset_all_application_data() }}</h4>
+                <p tw-class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
                   {{ lazyStrings.DeveloperTab__reset_data_provider_warning({ storageType }) }}
                 </p>
               </div>
             </div>
             <button
               @click="handleResetData"
-              class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
+              tw-class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
               data-testid="setting-reset-data-button"
             >
-              <Trash2Icon class="w-4 h-4" />
+              <Trash2Icon tw-class="w-4 h-4" />
               {{ lazyStrings.DeveloperTab__execute_reset() }}
             </button>
           </div>

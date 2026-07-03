@@ -56,9 +56,9 @@ describe('FileExplorerListEntryRow', () => {
       },
     });
 
-    expect(wrapper.classes()).toContain('ring-blue-400/70');
+    expect(wrapper.classes()).toContain('border-blue-400/70');
 
     await wrapper.setProps({ appearance: 'blocked' });
-    expect(wrapper.classes()).toContain('ring-red-400/80');
+    expect(wrapper.classes()).toContain('border-red-400/80');
   });
 });

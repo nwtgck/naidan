@@ -104,10 +104,9 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="hasThinking" :class="noMargin ? '' : 'mb-3'" data-testid="thinking-block">
+  <div v-if="hasThinking" :tw-class="noMargin ? '' : 'mb-3'" data-testid="thinking-block">
     <div
-      class="transition-all duration-500 ease-in-out relative group/thinking w-full"
-      :class="[
+      :tw-class="['transition-all duration-500 ease-in-out relative group/thinking w-full',
         /* Shape & Size */
         mode === 'expanded' ? 'p-5 rounded-2xl min-h-[100px]' : '',
         mode === 'collapsed-active' ? 'p-4 rounded-xl h-32 overflow-hidden' : '',
@@ -131,20 +130,19 @@ defineExpose({
       <!-- Dedicated Thinking Border Element (Only when active) -->
       <div
         v-if="isThinkingNow"
-        class="absolute inset-0 pointer-events-none thinking-gradient-border"
+        class="thinking-gradient-border" tw-class="absolute inset-0 pointer-events-none"
         style="border-radius: inherit;"
       ></div>
 
       <!-- Header / Button Content -->
       <div
-        class="flex items-center gap-2 text-[10px] font-bold tracking-wider relative z-20 transition-colors"
         data-testid="thinking-header"
-        :class="[
+        :tw-class="['flex items-center gap-2 text-[10px] font-bold tracking-wider relative z-20 transition-colors',
           mode === 'expanded' || mode === 'collapsed-active' ? 'mb-2 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 group-hover/thinking:text-blue-600',
           isThinkingNow ? 'animate-pulse text-blue-700 dark:text-blue-400' : ''
         ]"
       >
-        <BrainIcon class="w-3.5 h-3.5" />
+        <BrainIcon tw-class="w-3.5 h-3.5" />
         <span v-if="isThinkingNow">{{ lazyStrings.MessageThinking__thinking() }}</span>
         <span v-else-if="mode === 'expanded'">{{ lazyStrings.MessageThinking__hide_thought_process() }}</span>
         <span v-else-if="inSequence">{{ lazyStrings.MessageThinking__thought_process() }}</span>
@@ -155,13 +153,13 @@ defineExpose({
       <div
         v-if="inSequence && mode === 'collapsed-finished' && displayThinking"
         ref="previewRef"
-        class="relative max-h-32 overflow-hidden mt-1 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed"
+        tw-class="relative max-h-32 overflow-hidden mt-1 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed"
         data-testid="thinking-preview"
       >
         {{ displayThinking }}
         <div
           v-if="isPreviewOverflowing"
-          class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white dark:from-gray-800 to-transparent cursor-pointer"
+          tw-class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white dark:from-gray-800 to-transparent cursor-pointer"
           data-testid="thinking-preview-expand"
           @click.stop="handleToggleThinking"
         />
@@ -171,24 +169,24 @@ defineExpose({
       <div
         ref="thinkingContentRef"
         v-if="mode === 'expanded' || mode === 'collapsed-active'"
-        class="relative z-20 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200 scroll-smooth"
+        class="animate-in fade-in slide-in-from-top-1" tw-class="relative z-20 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed duration-200 scroll-smooth"
         :class="[
           mode === 'collapsed-active' ? 'h-20 overflow-y-auto no-scrollbar mask-fade-top pt-2' : ''
         ]"
         data-testid="thinking-content"
       >
         <!-- Brain watermark -->
-        <div class="absolute top-0 right-0 opacity-[0.03] dark:opacity-[0.07] pointer-events-none -mt-4">
-          <BrainIcon class="w-16 h-16" />
+        <div tw-class="absolute top-0 right-0 opacity-[0.03] dark:opacity-[0.07] pointer-events-none -mt-4">
+          <BrainIcon tw-class="w-16 h-16" />
         </div>
 
-        <div class="flex flex-col min-h-full">
+        <div tw-class="flex flex-col min-h-full">
           <span>{{ displayThinking.trimEnd() }}<component :is="trailingInline" v-if="trailingInline" /></span>
         </div>
       </div>
     </div>
     <!-- Indicator shown after collapsed-finished pill while still generating -->
-    <component :is="trailingInline" v-if="trailingInline && mode === 'collapsed-finished'" class="ml-1" />
+    <component :is="trailingInline" v-if="trailingInline && mode === 'collapsed-finished'" tw-class="ml-1" />
   </div>
 </template>
 

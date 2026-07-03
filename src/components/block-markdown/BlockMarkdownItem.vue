@@ -84,25 +84,24 @@ defineExpose({
   <component
     v-else-if="token.type === 'heading'"
     :is="`h${(token as Tokens.Heading).depth}`"
-    class="font-bold my-4 scroll-mt-20 text-gray-900 dark:text-gray-100"
-    :class="{
+    :tw-class="['font-bold my-4 scroll-mt-20 text-gray-900 dark:text-gray-100', {
       'text-2xl pb-2 border-b border-gray-200 dark:border-gray-700': (token as Tokens.Heading).depth === 1,
       'text-xl': (token as Tokens.Heading).depth === 2,
       'text-lg': (token as Tokens.Heading).depth >= 3
-    }"
+    }]"
   >
     <MarkdownInline :text="(token as Tokens.Heading).text" mode="markdown" />
     <component :is="trailingInline" v-if="trailingInline" />
   </component>
 
   <!-- Paragraph -->
-  <p v-else-if="token.type === 'paragraph'" class="mb-4 last:mb-0 leading-relaxed text-gray-800 dark:text-gray-300">
+  <p v-else-if="token.type === 'paragraph'" tw-class="mb-4 last:mb-0 leading-relaxed text-gray-800 dark:text-gray-300">
     <MarkdownInline :text="(token as Tokens.Paragraph).text" mode="markdown" />
     <component :is="trailingInline" v-if="trailingInline" />
   </p>
 
   <!-- Blockquote -->
-  <blockquote v-else-if="token.type === 'blockquote'" class="border-l-4 border-gray-300 dark:border-gray-600 pl-4 my-4 italic text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/30 py-1 pr-2 rounded-r">
+  <blockquote v-else-if="token.type === 'blockquote'" tw-class="border-l-4 border-gray-300 dark:border-gray-600 pl-4 my-4 italic text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/30 py-1 pr-2 rounded-r">
     <BlockMarkdownItem
       v-for="(childToken, idx) in (token as Tokens.Blockquote).tokens"
       :key="idx"
@@ -115,24 +114,22 @@ defineExpose({
   <component
     v-else-if="token.type === 'list'"
     :is="(token as Tokens.List).ordered ? 'ol' : 'ul'"
-    class="mb-4"
-    :class="{
+    :tw-class="['mb-4', {
       'list-decimal ml-6 !pl-0': (token as Tokens.List).ordered,
       'list-disc ml-6 !pl-0': !(token as Tokens.List).ordered && !isTaskList,
       'list-none ml-2 !pl-0': !((token as Tokens.List).ordered) && isTaskList
-    }"
+    }]"
     :start="(token as Tokens.List).start || undefined"
   >
     <li
       v-for="(item, idx) in (token as Tokens.List).items"
       :key="idx"
-      class="mb-1 text-gray-800 dark:text-gray-300"
-      :class="{ '!pl-0': isTaskList }"
+      :tw-class="['mb-1 text-gray-800 dark:text-gray-300', { '!pl-0': isTaskList }]"
     >
       <template v-if="item.task">
-        <div class="flex items-start gap-2">
-          <input type="checkbox" :checked="item.checked" disabled class="mt-1 flex-shrink-0" />
-          <div class="flex-1 min-w-0">
+        <div tw-class="flex items-start gap-2">
+          <input type="checkbox" :checked="item.checked" disabled tw-class="mt-1 flex-shrink-0" />
+          <div tw-class="flex-1 min-w-0">
             <template v-if="item.tokens.length === 1">
               <BlockMarkdownItem
                 :token="(item.tokens[0] as Token)"
@@ -159,7 +156,7 @@ defineExpose({
           />
         </template>
         <template v-else>
-          <div class="inline-block w-full align-top">
+          <div tw-class="inline-block w-full align-top">
             <BlockMarkdownItem
               v-for="(childToken, cIdx) in item.tokens"
               :key="cIdx"
@@ -173,30 +170,30 @@ defineExpose({
   </component>
 
   <!-- Table -->
-  <div v-else-if="token.type === 'table'" class="not-prose overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950/20">
-    <table class="min-w-full border-collapse">
+  <div v-else-if="token.type === 'table'" tw-class="not-prose overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950/20">
+    <table tw-class="min-w-full border-collapse">
       <thead>
-        <tr class="bg-gray-100/50 dark:bg-gray-800/50">
+        <tr tw-class="bg-gray-100/50 dark:bg-gray-800/50">
           <th
             v-for="(header, idx) in (token as Tokens.Table).header"
             :key="idx"
-            class="px-3 py-2 text-left text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700"
+            tw-class="px-3 py-2 text-left text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700"
             :style="{ textAlign: (token as Tokens.Table).align[idx] || 'left' }"
           >
             <MarkdownInline :text="header.text" mode="markdown" />
           </th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+      <tbody tw-class="divide-y divide-gray-200 dark:divide-gray-700">
         <tr
           v-for="(row, rIdx) in (token as Tokens.Table).rows"
           :key="rIdx"
-          class="hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors"
+          tw-class="hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors"
         >
           <td
             v-for="(cell, cIdx) in row"
             :key="cIdx"
-            class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-normal leading-snug"
+            tw-class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-normal leading-snug"
             :style="{ textAlign: (token as Tokens.Table).align[cIdx] || 'left' }"
           >
             <MarkdownInline :text="cell.text" mode="markdown" />
@@ -210,11 +207,11 @@ defineExpose({
     </table>
   </div>
   <!-- Details -->
-  <details v-else-if="token.type === 'details' || token.type === 'detailsInline'" class="my-4 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50/50 dark:bg-gray-800/30">
-    <summary v-if="(token as any).summary" class="cursor-pointer font-medium p-1 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded transition-colors">
+  <details v-else-if="token.type === 'details' || token.type === 'detailsInline'" tw-class="my-4 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50/50 dark:bg-gray-800/30">
+    <summary v-if="(token as any).summary" tw-class="cursor-pointer font-medium p-1 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded transition-colors">
       <MarkdownInline :text="(token as any).summary" mode="markdown" />
     </summary>
-    <div class="mt-2 pl-4">
+    <div tw-class="mt-2 pl-4">
       <BlockMarkdownItem
         v-for="(childToken, idx) in (token as any).tokens"
         :key="idx"
@@ -225,12 +222,12 @@ defineExpose({
   </details>
 
   <!-- HTML -->
-  <div v-else-if="token.type === 'html'" class="my-4">
+  <div v-else-if="token.type === 'html'" tw-class="my-4">
     <MarkdownInline :text="(token as Tokens.HTML).text" mode="html" />
   </div>
 
   <!-- HR -->
-  <hr v-else-if="token.type === 'hr'" class="my-8 border-t-2 border-gray-100 dark:border-gray-800" />
+  <hr v-else-if="token.type === 'hr'" tw-class="my-8 border-t-2 border-gray-100 dark:border-gray-800" />
 
   <!-- BR -->
   <br v-else-if="token.type === 'br'" />
@@ -259,7 +256,7 @@ defineExpose({
     v-else-if="token.type === 'blockKatex'"
     as="div"
     :html="renderMarkedBlockHtml({ raw: token.raw })"
-    class="my-4 overflow-x-auto"
+    tw-class="my-4 overflow-x-auto"
   />
   <AllowedHtmlView
     v-else-if="token.type === 'katex' || token.type === 'inlineKatex'"
@@ -280,7 +277,7 @@ defineExpose({
   />
 
   <!-- Fallback -->
-  <div v-else class="text-red-500 text-xs p-2 border border-red-500 rounded my-2">
+  <div v-else tw-class="text-red-500 text-xs p-2 border border-red-500 rounded my-2">
     {{ lazyStrings.blockMarkdown__unknown_token_type({ tokenType: token.type }) }}
   </div>
 </template>

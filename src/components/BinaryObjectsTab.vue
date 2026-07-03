@@ -385,67 +385,64 @@ defineExpose({
 </script>
 
 <template>
-  <div class="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+  <div class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-6 duration-400">
     <!-- Header Section -->
-    <div class="flex flex-col gap-6">
-      <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
-        <div class="flex items-center gap-3">
-          <div class="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-            <HardDriveIcon class="w-5 h-5 text-blue-500" />
+    <div tw-class="flex flex-col gap-6">
+      <div tw-class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
+        <div tw-class="flex items-center gap-3">
+          <div tw-class="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+            <HardDriveIcon tw-class="w-5 h-5 text-blue-500" />
           </div>
           <div>
-            <div class="flex items-center gap-2">
-              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.binaryObjects__binary_objects() }}</h2>
+            <div tw-class="flex items-center gap-2">
+              <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.binaryObjects__binary_objects() }}</h2>
               <span
                 data-testid="binary-objects-count"
-                class="px-2 py-0.5 text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-full"
+                tw-class="px-2 py-0.5 text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-full"
               >
                 {{ filteredObjects.length }} / {{ objects.length }}
               </span>
             </div>
-            <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.binaryObjects__manage_persisted_files() }}</p>
+            <p tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.binaryObjects__manage_persisted_files() }}</p>
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-1 flex">
+        <div tw-class="flex items-center gap-2">
+          <div tw-class="bg-gray-100 dark:bg-gray-800 rounded-xl p-1 flex">
             <button
               @click="viewMode = 'grid'"
-              class="p-1.5 rounded-lg transition-all"
-              :class="viewMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
+              :tw-class="['p-1.5 rounded-lg transition-all', viewMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600']"
               data-testid="view-mode-grid"
             >
-              <LayoutGridIcon class="w-4 h-4" />
+              <LayoutGridIcon tw-class="w-4 h-4" />
             </button>
             <button
               @click="viewMode = 'table'"
-              class="p-1.5 rounded-lg transition-all"
-              :class="viewMode === 'table' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
+              :tw-class="['p-1.5 rounded-lg transition-all', viewMode === 'table' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600']"
               data-testid="view-mode-table"
             >
-              <ListIcon class="w-4 h-4" />
+              <ListIcon tw-class="w-4 h-4" />
             </button>
           </div>
           <button
             @click="fetchObjects"
-            class="p-2 text-gray-400 hover:text-blue-500 transition-colors"
-            :class="{ 'animate-spin': isLoading }"
+            :tw-class="['p-2 text-gray-400 hover:text-blue-500 transition-colors', { 'animate-spin': isLoading }]"
             data-testid="refresh-objects"
           >
-            <RefreshCwIcon class="w-4 h-4" />
+            <RefreshCwIcon tw-class="w-4 h-4" />
           </button>
         </div>
       </div>
 
       <!-- Controls -->
-      <div class="flex gap-4">
-        <div class="relative flex-1 group">
-          <SearchIcon class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+      <div tw-class="flex gap-4">
+        <div tw-class="relative flex-1 group">
+          <SearchIcon tw-class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
           <input
             v-model="searchQuery"
             type="text"
             :placeholder="lazyStrings.binaryObjects__search_by_name_id_or_type()"
-            class="w-full pl-10 pr-4 py-2.5 bg-gray-50/50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all dark:text-gray-200"
+            tw-class="w-full pl-10 pr-4 py-2.5 bg-gray-50/50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all dark:text-gray-200"
             data-testid="binary-search-input"
           >
         </div>
@@ -453,100 +450,100 @@ defineExpose({
     </div>
 
     <!-- Main Content -->
-    <div class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm transition-all duration-300">
+    <div tw-class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm transition-all duration-300">
       <!-- Table View -->
-      <div v-if="viewMode === 'table'" class="overflow-x-auto">
-        <table class="w-full text-left border-collapse min-w-[700px]">
+      <div v-if="viewMode === 'table'" tw-class="overflow-x-auto">
+        <table tw-class="w-full text-left border-collapse min-w-[700px]">
           <thead>
-            <tr class="bg-gray-50/50 dark:bg-black/20 border-b border-gray-100 dark:border-gray-800 sticky top-0 z-10">
-              <th data-testid="binary-sort-name" @click="handleSort({ key: 'name' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
-                <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
+            <tr tw-class="bg-gray-50/50 dark:bg-black/20 border-b border-gray-100 dark:border-gray-800 sticky top-0 z-10">
+              <th data-testid="binary-sort-name" @click="handleSort({ key: 'name' })" tw-class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+                <div tw-class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   {{ lazyStrings.binaryObjects__name() }}
-                  <span class="transition-opacity" :class="sortBy === 'name' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
-                    <ArrowUpIcon v-if="sortBy === 'name' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
-                    <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
+                  <span :tw-class="['transition-opacity', sortBy === 'name' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50']">
+                    <ArrowUpIcon v-if="sortBy === 'name' && sortOrder === 'asc'" tw-class="w-3 h-3 text-blue-500" />
+                    <ArrowDownIcon v-else tw-class="w-3 h-3 text-blue-500" />
                   </span>
                 </div>
               </th>
-              <th @click="handleSort({ key: 'size' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
-                <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
+              <th @click="handleSort({ key: 'size' })" tw-class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+                <div tw-class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   {{ lazyStrings.binaryObjects__size() }}
-                  <span class="transition-opacity" :class="sortBy === 'size' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
-                    <ArrowUpIcon v-if="sortBy === 'size' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
-                    <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
+                  <span :tw-class="['transition-opacity', sortBy === 'size' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50']">
+                    <ArrowUpIcon v-if="sortBy === 'size' && sortOrder === 'asc'" tw-class="w-3 h-3 text-blue-500" />
+                    <ArrowDownIcon v-else tw-class="w-3 h-3 text-blue-500" />
                   </span>
                 </div>
               </th>
-              <th @click="handleSort({ key: 'createdAt' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
-                <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
+              <th @click="handleSort({ key: 'createdAt' })" tw-class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+                <div tw-class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   {{ lazyStrings.binaryObjects__date() }}
-                  <span class="transition-opacity" :class="sortBy === 'createdAt' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
-                    <ArrowUpIcon v-if="sortBy === 'createdAt' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
-                    <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
+                  <span :tw-class="['transition-opacity', sortBy === 'createdAt' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50']">
+                    <ArrowUpIcon v-if="sortBy === 'createdAt' && sortOrder === 'asc'" tw-class="w-3 h-3 text-blue-500" />
+                    <ArrowDownIcon v-else tw-class="w-3 h-3 text-blue-500" />
                   </span>
                 </div>
               </th>
-              <th class="px-6 py-3 text-right"></th>
+              <th tw-class="px-6 py-3 text-right"></th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-gray-50 dark:divide-gray-800">
+          <tbody tw-class="divide-y divide-gray-50 dark:divide-gray-800">
             <tr v-if="isLoading && objects.length === 0">
-              <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__loading_objects() }}</td>
+              <td colspan="4" tw-class="px-6 py-12 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__loading_objects() }}</td>
             </tr>
             <tr v-else-if="filteredObjects.length === 0">
-              <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__no_objects_found() }}</td>
+              <td colspan="4" tw-class="px-6 py-12 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__no_objects_found() }}</td>
             </tr>
             <tr
               v-for="obj in renderedObjects"
               :key="idToRaw({ id: obj.id })"
               :ref="el => registerObserver({ el: el as HTMLElement, id: idToRaw({ id: obj.id }) })"
               @click="handlePreview({ obj })"
-              class="group cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors"
+              tw-class="group cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors"
               :data-testid="`binary-object-row-${idToRaw({ id: obj.id })}`"
             >
-              <td class="px-6 py-3">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-10 h-10 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg shrink-0 overflow-hidden border border-gray-100 dark:border-gray-700">
+              <td tw-class="px-6 py-3">
+                <div tw-class="flex items-center gap-3 min-w-0">
+                  <div tw-class="w-10 h-10 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg shrink-0 overflow-hidden border border-gray-100 dark:border-gray-700">
                     <img
                       v-if="thumbnails.get(obj.id)"
                       :src="thumbnails.get(obj.id)"
-                      class="w-full h-full object-cover"
+                      tw-class="w-full h-full object-cover"
                       :data-testid="`binary-thumbnail-${idToRaw({ id: obj.id })}`"
                     />
-                    <div v-else class="flex items-center justify-center w-full h-full">
-                      <EyeIcon v-if="obj.mimeType.startsWith('image/')" class="w-4 h-4 text-blue-500 opacity-50" />
-                      <FileIcon v-else class="w-4 h-4 text-gray-400" />
+                    <div v-else tw-class="flex items-center justify-center w-full h-full">
+                      <EyeIcon v-if="obj.mimeType.startsWith('image/')" tw-class="w-4 h-4 text-blue-500 opacity-50" />
+                      <FileIcon v-else tw-class="w-4 h-4 text-gray-400" />
                     </div>
                   </div>
-                  <div class="flex flex-col min-w-0">
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">{{ obj.name || lazyStrings.binaryObjects__unnamed() }}</span>
-                    <span class="text-[9px] font-medium text-gray-400 truncate lowercase">{{ obj.mimeType }}</span>
+                  <div tw-class="flex flex-col min-w-0">
+                    <span tw-class="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">{{ obj.name || lazyStrings.binaryObjects__unnamed() }}</span>
+                    <span tw-class="text-[9px] font-medium text-gray-400 truncate lowercase">{{ obj.mimeType }}</span>
                   </div>
                 </div>
               </td>
-              <td class="px-6 py-3">
-                <span class="text-[11px] font-bold text-gray-500">{{ formatSize({ bytes: obj.size }) }}</span>
+              <td tw-class="px-6 py-3">
+                <span tw-class="text-[11px] font-bold text-gray-500">{{ formatSize({ bytes: obj.size }) }}</span>
               </td>
-              <td class="px-6 py-3">
-                <span class="text-[11px] font-medium text-gray-400 whitespace-nowrap">{{ formatDate({ timestamp: obj.createdAt }) }}</span>
+              <td tw-class="px-6 py-3">
+                <span tw-class="text-[11px] font-medium text-gray-400 whitespace-nowrap">{{ formatDate({ timestamp: obj.createdAt }) }}</span>
               </td>
-              <td class="px-6 py-3 text-right">
-                <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <td tw-class="px-6 py-3 text-right">
+                <div tw-class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     @click.stop="handleDownload({ obj })"
-                    class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
+                    tw-class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
                     :title="lazyStrings.binaryObjects__download()"
                     :data-testid="`download-button-${idToRaw({ id: obj.id })}`"
                   >
-                    <DownloadIcon class="w-4 h-4" />
+                    <DownloadIcon tw-class="w-4 h-4" />
                   </button>
                   <button
                     @click.stop="handleDelete({ obj })"
-                    class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
+                    tw-class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
                     :title="lazyStrings.binaryObjects__delete()"
                     :data-testid="`delete-button-${idToRaw({ id: obj.id })}`"
                   >
-                    <Trash2Icon class="w-4 h-4" />
+                    <Trash2Icon tw-class="w-4 h-4" />
                   </button>
                 </div>
               </td>
@@ -556,37 +553,37 @@ defineExpose({
       </div>
 
       <!-- Grid/Thumbnail View -->
-      <div v-else class="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        <div v-if="isLoading && objects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__loading_objects() }}</div>
-        <div v-else-if="filteredObjects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__no_objects_found() }}</div>
+      <div v-else tw-class="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div v-if="isLoading && objects.length === 0" tw-class="col-span-full py-20 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__loading_objects() }}</div>
+        <div v-else-if="filteredObjects.length === 0" tw-class="col-span-full py-20 text-center opacity-40 italic text-sm">{{ lazyStrings.binaryObjects__no_objects_found() }}</div>
 
         <div
           v-for="obj in renderedObjects"
           :key="idToRaw({ id: obj.id })"
           :ref="el => registerObserver({ el: el as HTMLElement, id: idToRaw({ id: obj.id }) })"
           @click="handlePreview({ obj })"
-          class="group relative aspect-square bg-gray-50 dark:bg-gray-800 rounded-2xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-500 hover:shadow-lg transition-all"
+          tw-class="group relative aspect-square bg-gray-50 dark:bg-gray-800 rounded-2xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-500 hover:shadow-lg transition-all"
           :data-testid="`binary-object-grid-${idToRaw({ id: obj.id })}`"
         >
           <!-- Thumbnail -->
-          <div class="absolute inset-0 flex items-center justify-center p-4">
+          <div tw-class="absolute inset-0 flex items-center justify-center p-4">
             <img
               v-if="thumbnails.get(obj.id)"
               :src="thumbnails.get(obj.id)"
-              class="w-full h-full object-contain transition-transform group-hover:scale-110"
+              tw-class="w-full h-full object-contain transition-transform group-hover:scale-110"
               :data-testid="`binary-thumbnail-${idToRaw({ id: obj.id })}`"
             />
-            <div v-else class="flex flex-col items-center gap-2 opacity-40">
-              <EyeIcon v-if="obj.mimeType.startsWith('image/')" class="w-8 h-8 text-blue-500" />
-              <FileIcon v-else class="w-8 h-8 text-gray-400" />
-              <span class="text-[10px] font-bold truncate max-w-[80px] lowercase">{{ obj.mimeType.split('/')[1] }}</span>
+            <div v-else tw-class="flex flex-col items-center gap-2 opacity-40">
+              <EyeIcon v-if="obj.mimeType.startsWith('image/')" tw-class="w-8 h-8 text-blue-500" />
+              <FileIcon v-else tw-class="w-8 h-8 text-gray-400" />
+              <span tw-class="text-[10px] font-bold truncate max-w-[80px] lowercase">{{ obj.mimeType.split('/')[1] }}</span>
             </div>
           </div>
 
           <!-- Overlay Info -->
-          <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-            <p class="text-[10px] font-bold text-white truncate">{{ obj.name || lazyStrings.binaryObjects__unnamed() }}</p>
-            <p class="text-[9px] text-white/70">{{ formatSize({ bytes: obj.size }) }}</p>
+          <div tw-class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+            <p tw-class="text-[10px] font-bold text-white truncate">{{ obj.name || lazyStrings.binaryObjects__unnamed() }}</p>
+            <p tw-class="text-[9px] text-white/70">{{ formatSize({ bytes: obj.size }) }}</p>
           </div>
         </div>
       </div>
@@ -594,12 +591,12 @@ defineExpose({
       <!-- Infinite scroll sentinel -->
       <div
         ref="loadMoreSentinel"
-        class="h-12 w-full flex items-center justify-center border-t border-gray-50 dark:border-gray-800"
+        tw-class="h-12 w-full flex items-center justify-center border-t border-gray-50 dark:border-gray-800"
       >
         <button
           v-if="displayLimit < filteredObjects.length"
           @click="loadMore"
-          class="text-[10px] font-bold text-gray-400 hover:text-blue-500 transition-colors py-2 px-4 rounded-full hover:bg-gray-50 dark:hover:bg-white/5"
+          tw-class="text-[10px] font-bold text-gray-400 hover:text-blue-500 transition-colors py-2 px-4 rounded-full hover:bg-gray-50 dark:hover:bg-white/5"
           data-testid="load-more-button"
         >
           {{ lazyStrings.binaryObjects__loading_more() }}

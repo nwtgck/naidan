@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -130,4 +130,80 @@
   background-size: var(--grid-size) var(--grid-size);
   background-position: 0 0, 0 calc(var(--grid-size) / 2), calc(var(--grid-size) / 2) calc(var(--grid-size) / -2), calc(var(--grid-size) / -2) 0px;
   background-color: var(--bg-color);
+}
+/* Shared animation hooks used across lazy-loaded views. */
+@keyframes naidan-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes naidan-zoom-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes naidan-slide-in-from-bottom-2 {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes naidan-slide-in-from-bottom-full {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes naidan-slide-in-from-top-1 {
+  from { opacity: 0; transform: translateY(-0.25rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes naidan-slide-in-from-top-2 {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes naidan-slide-in-from-left-1 {
+  from { opacity: 0; transform: translateX(-0.25rem); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes naidan-slide-in-from-right-1 {
+  from { opacity: 0; transform: translateX(0.25rem); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-in {
+  animation-duration: 200ms;
+  animation-fill-mode: both;
+}
+
+.fade-in { animation-name: naidan-fade-in; }
+.zoom-in,
+.zoom-in-95 { animation-name: naidan-zoom-in; }
+.slide-in-from-bottom-2 { animation-name: naidan-slide-in-from-bottom-2; }
+.slide-in-from-bottom-full { animation-name: naidan-slide-in-from-bottom-full; }
+.slide-in-from-top-1 { animation-name: naidan-slide-in-from-top-1; }
+.slide-in-from-top-2 { animation-name: naidan-slide-in-from-top-2; }
+.slide-in-from-left-1 { animation-name: naidan-slide-in-from-left-1; }
+.slide-in-from-right-1 { animation-name: naidan-slide-in-from-right-1; }
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+.thin-scrollbar,
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(156 163 175 / 0.35) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.thin-scrollbar::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.thin-scrollbar::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(156 163 175 / 0.35);
+  border-radius: 9999px;
 }

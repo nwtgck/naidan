@@ -104,60 +104,56 @@ defineExpose({
 </script>
 
 <template>
-  <div class="mermaid-block relative group/mermaid my-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden" ref="containerRef">
+  <div class="mermaid-block" tw-class="relative group/mermaid my-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden" ref="containerRef">
     <!-- Toolbar -->
-    <div class="flex items-center justify-between p-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 backdrop-blur-sm">
-      <div class="flex items-center gap-1 bg-gray-200/50 dark:bg-gray-700/50 p-1 rounded-lg">
+    <div tw-class="flex items-center justify-between p-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 backdrop-blur-sm">
+      <div tw-class="flex items-center gap-1 bg-gray-200/50 dark:bg-gray-700/50 p-1 rounded-lg">
         <button
           @click="mode = 'preview'"
-          class="p-1.5 rounded-md transition-all"
-          :class="mode === 'preview' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+          :tw-class="['p-1.5 rounded-md transition-all', mode === 'preview' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300']"
           :title="lazyStrings.blockMarkdown__preview()"
         >
-          <LayoutIcon class="w-4 h-4" />
+          <LayoutIcon tw-class="w-4 h-4" />
         </button>
         <button
           @click="mode = 'code'"
-          class="p-1.5 rounded-md transition-all"
-          :class="mode === 'code' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+          :tw-class="['p-1.5 rounded-md transition-all', mode === 'code' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300']"
           :title="lazyStrings.blockMarkdown__code()"
         >
-          <CodeIcon class="w-4 h-4" />
+          <CodeIcon tw-class="w-4 h-4" />
         </button>
         <button
           @click="mode = 'both'"
-          class="p-1.5 rounded-md transition-all"
-          :class="mode === 'both' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
+          :tw-class="['p-1.5 rounded-md transition-all', mode === 'both' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300']"
           :title="lazyStrings.blockMarkdown__split_view()"
         >
-          <ColumnsIcon class="w-4 h-4" />
+          <ColumnsIcon tw-class="w-4 h-4" />
         </button>
       </div>
 
       <button
         @click="copyCode"
-        class="p-1.5 rounded-md transition-all text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        tw-class="p-1.5 rounded-md transition-all text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
         :title="copied ? lazyStrings.blockMarkdown__copied() : lazyStrings.blockMarkdown__copy_source()"
       >
-        <CheckIcon v-if="copied" class="w-4 h-4 text-green-500" />
-        <CopyIcon v-else class="w-4 h-4" />
+        <CheckIcon v-if="copied" tw-class="w-4 h-4 text-green-500" />
+        <CopyIcon v-else tw-class="w-4 h-4" />
       </button>
     </div>
 
-    <div class="relative">
+    <div tw-class="relative">
       <!-- Preview Area -->
       <div
         v-show="mode !== 'code'"
-        class="p-4 overflow-auto flex justify-center bg-white dark:bg-[#0d1117]"
-        :class="{ 'border-b border-gray-100 dark:border-gray-800': mode === 'both' }"
+        :tw-class="['p-4 overflow-auto flex justify-center bg-white dark:bg-[#0d1117]', { 'border-b border-gray-100 dark:border-gray-800': mode === 'both' }]"
       >
-        <div v-if="renderError" class="text-red-500 text-xs p-2">{{ lazyStrings.blockMarkdown__failed_to_render_mermaid_diagram() }}</div>
-        <div ref="renderRef" class="mermaid" :class="{ hidden: renderError }"></div>
+        <div v-if="renderError" tw-class="text-red-500 text-xs p-2">{{ lazyStrings.blockMarkdown__failed_to_render_mermaid_diagram() }}</div>
+        <div ref="renderRef" class="mermaid" :tw-class="{ hidden: renderError }"></div>
       </div>
 
       <!-- Code Area -->
-      <div v-show="mode !== 'preview'" class="bg-[#0d1117] p-4 overflow-auto max-h-[300px]">
-        <pre class="!m-0 !p-0 !bg-transparent text-xs font-mono text-gray-300 whitespace-pre"><code>{{ code }}</code></pre>
+      <div v-show="mode !== 'preview'" tw-class="bg-[#0d1117] p-4 overflow-auto max-h-[300px]">
+        <pre tw-class="!m-0 !p-0 !bg-transparent text-xs font-mono text-gray-300 whitespace-pre"><code>{{ code }}</code></pre>
       </div>
     </div>
   </div>

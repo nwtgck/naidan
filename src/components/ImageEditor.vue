@@ -757,53 +757,52 @@ defineExpose({
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[100] bg-black/95 flex flex-col p-2 sm:p-4 animate-in fade-in duration-200 text-white">
+  <div class="animate-in fade-in" tw-class="fixed inset-0 z-[100] bg-black/95 flex flex-col p-2 sm:p-4 duration-200 text-white">
     <!-- Header -->
-    <div class="w-full flex items-center justify-between mb-3 px-2">
-      <div class="flex items-center gap-3">
-        <div class="p-1.5 bg-blue-600 rounded-lg">
-          <CropIcon class="w-4 h-4 text-white" />
+    <div tw-class="w-full flex items-center justify-between mb-3 px-2">
+      <div tw-class="flex items-center gap-3">
+        <div tw-class="p-1.5 bg-blue-600 rounded-lg">
+          <CropIcon tw-class="w-4 h-4 text-white" />
         </div>
-        <div class="hidden sm:block">
-          <h2 class="font-bold text-sm">{{ lazyStrings.ImageEditor__image_editor() }}</h2>
-          <p class="text-gray-400 text-[10px] truncate max-w-[200px]">{{ fileName }}</p>
+        <div tw-class="hidden sm:block">
+          <h2 tw-class="font-bold text-sm">{{ lazyStrings.ImageEditor__image_editor() }}</h2>
+          <p tw-class="text-gray-400 text-[10px] truncate max-w-[200px]">{{ fileName }}</p>
         </div>
       </div>
 
       <!-- Center: Undo/Redo -->
-      <div class="flex items-center gap-1 bg-gray-800 p-1 rounded-xl border border-gray-700">
+      <div tw-class="flex items-center gap-1 bg-gray-800 p-1 rounded-xl border border-gray-700">
         <button
           @click="undo"
           :disabled="!canUndo"
-          class="p-2 disabled:opacity-30 hover:bg-gray-700 rounded-lg transition-colors"
+          tw-class="p-2 disabled:opacity-30 hover:bg-gray-700 rounded-lg transition-colors"
           :title="lazyStrings.ImageEditor__undo()"
         >
-          <Undo2Icon class="w-4 h-4" />
+          <Undo2Icon tw-class="w-4 h-4" />
         </button>
         <button
           @click="redo"
           :disabled="!canRedo"
-          class="p-2 disabled:opacity-30 hover:bg-gray-700 rounded-lg transition-colors"
+          tw-class="p-2 disabled:opacity-30 hover:bg-gray-700 rounded-lg transition-colors"
           :title="lazyStrings.ImageEditor__redo()"
         >
-          <Redo2Icon class="w-4 h-4" />
+          <Redo2Icon tw-class="w-4 h-4" />
         </button>
       </div>
 
       <!-- Right: Actions -->
-      <div class="flex items-center gap-2">
+      <div tw-class="flex items-center gap-2">
         <button
           @click="isSidebarOpen = !isSidebarOpen"
-          class="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
-          :class="{ 'text-blue-500 bg-blue-500/10': isSidebarOpen }"
+          :tw-class="['p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors', { 'text-blue-500 bg-blue-500/10': isSidebarOpen }]"
           :title="lazyStrings.ImageEditor__toggle_tools_sidebar()"
         >
-          <PanelRightIcon class="w-5 h-5" />
+          <PanelRightIcon tw-class="w-5 h-5" />
         </button>
-        <div class="w-px h-6 bg-gray-800 mx-1"></div>
+        <div tw-class="w-px h-6 bg-gray-800 mx-1"></div>
         <button
           @click="handleClose"
-          class="px-4 py-2 text-sm font-bold text-gray-400 hover:text-white transition-colors"
+          tw-class="px-4 py-2 text-sm font-bold text-gray-400 hover:text-white transition-colors"
         >
           {{ lazyStrings.ImageEditor__close() }}
         </button>
@@ -811,187 +810,177 @@ defineExpose({
           @click="performSave"
           :disabled="!hasChanges"
           data-testid="image-editor-finish-button"
-          class="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/30 flex items-center gap-2"
+          tw-class="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/30 flex items-center gap-2"
         >
-          <CheckIcon class="w-4 h-4" />
+          <CheckIcon tw-class="w-4 h-4" />
           <span>{{ lazyStrings.ImageEditor__finish() }}</span>
         </button>
       </div>
     </div>
 
     <!-- Main Content Area -->
-    <div class="flex-1 flex gap-0 overflow-hidden relative">
+    <div tw-class="flex-1 flex gap-0 overflow-hidden relative">
       <!-- Workspace -->
       <div
         ref="containerRef"
         data-testid="image-editor-container"
-        class="flex-1 relative bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center select-none transition-all duration-300"
-        :class="isPickingColor ? 'cursor-pointer' : 'cursor-crosshair'"
+        :tw-class="['flex-1 relative bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center select-none transition-all duration-300', isPickingColor ? 'cursor-pointer' : 'cursor-crosshair']"
         @mousedown="startNewSelection({ event: $event })"
         @wheel="handleWheel({ event: $event })"
       >
         <div
-          class="relative border border-white/10 bg-transparency-grid transition-transform duration-75 ease-out"
+          class="bg-transparency-grid" tw-class="relative border border-white/10 transition-transform duration-75 ease-out"
           :style="{
             width: canvasRef ? `${canvasRef.width * displayScale}px` : '0px',
             height: canvasRef ? `${canvasRef.height * displayScale}px` : '0px',
             transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
           }"
         >
-          <canvas ref="canvasRef" class="w-full h-full object-contain pointer-events-none"></canvas>
+          <canvas ref="canvasRef" tw-class="w-full h-full object-contain pointer-events-none"></canvas>
 
           <!-- Selection Rect -->
           <div
             v-if="selection.status === 'active'"
             data-testid="image-editor-selection"
-            class="absolute border-2 border-blue-500 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] cursor-move group"
-            :class="selection.shape === 'ellipse' ? 'rounded-full' : ''"
+            :tw-class="['absolute border-2 border-blue-500 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] cursor-move group', selection.shape === 'ellipse' ? 'rounded-full' : '']"
             :style="cropBoxStyle"
             @mousedown.stop="startDragging({ event: $event, handle: 'center' })"
           >
             <div
               v-if="selection.shape === 'rectangle'"
-              class="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30"
+              tw-class="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30"
             >
-              <div v-for="i in 9" :key="i" class="border-[0.5px] border-white/50"></div>
+              <div v-for="i in 9" :key="i" tw-class="border-[0.5px] border-white/50"></div>
             </div>
             <!-- Handles -->
-            <div class="absolute -top-1 -left-1 w-3 h-3 bg-blue-500 rounded-full cursor-nw-resize" @mousedown.stop="startDragging({ event: $event, handle: 'nw' })"></div>
-            <div class="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full cursor-ne-resize" @mousedown.stop="startDragging({ event: $event, handle: 'ne' })"></div>
-            <div class="absolute -bottom-1 -left-1 w-3 h-3 bg-blue-500 rounded-full cursor-sw-resize" @mousedown.stop="startDragging({ event: $event, handle: 'sw' })"></div>
-            <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-500 rounded-full cursor-se-resize" @mousedown.stop="startDragging({ event: $event, handle: 'se' })"></div>
-            <div class="absolute top-1/2 -left-1 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full cursor-w-resize" @mousedown.stop="startDragging({ event: $event, handle: 'w' })"></div>
-            <div class="absolute top-1/2 -right-1 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full cursor-e-resize" @mousedown.stop="startDragging({ event: $event, handle: 'e' })"></div>
-            <div class="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-blue-500 rounded-full cursor-n-resize" @mousedown.stop="startDragging({ event: $event, handle: 'n' })"></div>
-            <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-blue-500 rounded-full cursor-s-resize" @mousedown.stop="startDragging({ event: $event, handle: 's' })"></div>
+            <div tw-class="absolute -top-1 -left-1 w-3 h-3 bg-blue-500 rounded-full cursor-nw-resize" @mousedown.stop="startDragging({ event: $event, handle: 'nw' })"></div>
+            <div tw-class="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full cursor-ne-resize" @mousedown.stop="startDragging({ event: $event, handle: 'ne' })"></div>
+            <div tw-class="absolute -bottom-1 -left-1 w-3 h-3 bg-blue-500 rounded-full cursor-sw-resize" @mousedown.stop="startDragging({ event: $event, handle: 'sw' })"></div>
+            <div tw-class="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-500 rounded-full cursor-se-resize" @mousedown.stop="startDragging({ event: $event, handle: 'se' })"></div>
+            <div tw-class="absolute top-1/2 -left-1 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full cursor-w-resize" @mousedown.stop="startDragging({ event: $event, handle: 'w' })"></div>
+            <div tw-class="absolute top-1/2 -right-1 -translate-y-1/2 w-3 h-3 bg-blue-500 rounded-full cursor-e-resize" @mousedown.stop="startDragging({ event: $event, handle: 'e' })"></div>
+            <div tw-class="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-blue-500 rounded-full cursor-n-resize" @mousedown.stop="startDragging({ event: $event, handle: 'n' })"></div>
+            <div tw-class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-blue-500 rounded-full cursor-s-resize" @mousedown.stop="startDragging({ event: $event, handle: 's' })"></div>
           </div>
         </div>
       </div>
 
       <!-- Sidebar -->
       <div
-        class="flex flex-col gap-4 overflow-hidden transition-all duration-300 ease-in-out border-l border-gray-800 bg-black/20 backdrop-blur-sm"
-        :class="isSidebarOpen ? 'w-48 px-3' : 'w-0 px-0 opacity-0'"
+        :tw-class="['flex flex-col gap-4 overflow-hidden transition-all duration-300 ease-in-out border-l border-gray-800 bg-black/20 backdrop-blur-sm', isSidebarOpen ? 'w-48 px-3' : 'w-0 px-0 opacity-0']"
       >
-        <div class="flex items-center justify-between mt-2 px-1">
-          <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ImageEditor__tools() }}</span>
+        <div tw-class="flex items-center justify-between mt-2 px-1">
+          <span tw-class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ImageEditor__tools() }}</span>
         </div>
 
-        <div class="flex flex-col gap-5 flex-1 overflow-y-auto pr-1 scrollbar-thin">
+        <div tw-class="flex flex-col gap-5 flex-1 overflow-y-auto pr-1 scrollbar-thin">
           <!-- Selection Section -->
-          <div class="space-y-2">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__selection() }}</span>
-            <div class="bg-gray-800 p-2 rounded-xl border border-gray-700 space-y-3">
+          <div tw-class="space-y-2">
+            <span tw-class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__selection() }}</span>
+            <div tw-class="bg-gray-800 p-2 rounded-xl border border-gray-700 space-y-3">
               <!-- Shape -->
-              <div class="flex items-center gap-1 bg-gray-900/50 p-1 rounded-lg">
+              <div tw-class="flex items-center gap-1 bg-gray-900/50 p-1 rounded-lg">
                 <button
                   @click="selection.shape = 'rectangle'"
-                  class="flex-1 p-1.5 rounded-md transition-all flex items-center justify-center"
-                  :class="selection.shape === 'rectangle' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
+                  :tw-class="['flex-1 p-1.5 rounded-md transition-all flex items-center justify-center', selection.shape === 'rectangle' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300']"
                   :title="lazyStrings.ImageEditor__rectangular_selection()"
                 >
-                  <SquareIcon class="w-3.5 h-3.5" />
+                  <SquareIcon tw-class="w-3.5 h-3.5" />
                 </button>
                 <button
                   @click="selection.shape = 'ellipse'"
-                  class="flex-1 p-1.5 rounded-md transition-all flex items-center justify-center"
-                  :class="selection.shape === 'ellipse' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
+                  :tw-class="['flex-1 p-1.5 rounded-md transition-all flex items-center justify-center', selection.shape === 'ellipse' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300']"
                   :title="lazyStrings.ImageEditor__elliptical_selection()"
                 >
-                  <CircleIcon class="w-3.5 h-3.5" />
+                  <CircleIcon tw-class="w-3.5 h-3.5" />
                 </button>
               </div>
 
               <!-- Selection Actions -->
-              <div class="flex flex-col gap-1.5" :class="{ 'opacity-30 pointer-events-none': selection.status === 'none' }">
+              <div :tw-class="['flex flex-col gap-1.5', { 'opacity-30 pointer-events-none': selection.status === 'none' }]">
                 <button
                   @click="executeAction({ action: 'crop' })"
                   data-testid="image-editor-action-crop"
-                  class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
+                  tw-class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
                   :title="lazyStrings.ImageEditor__crop_to_selection()"
                 >
-                  <CropIcon class="w-3 h-3" />
+                  <CropIcon tw-class="w-3 h-3" />
                   <span>{{ lazyStrings.ImageEditor__crop() }}</span>
                 </button>
                 <button
                   @click="executeAction({ action: 'mask-outside' })"
                   data-testid="image-editor-action-mask-out"
-                  class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
+                  tw-class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
                   :title="lazyStrings.ImageEditor__fill_everything_outside_selection()"
                 >
-                  <SquareIcon class="w-3 h-3" />
+                  <SquareIcon tw-class="w-3 h-3" />
                   <span>{{ lazyStrings.ImageEditor__mask_out() }}</span>
                 </button>
                 <button
                   @click="executeAction({ action: 'mask-inside' })"
                   data-testid="image-editor-action-mask-in"
-                  class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
+                  tw-class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
                   :title="lazyStrings.ImageEditor__fill_selection_area()"
                 >
-                  <EraserIcon class="w-3 h-3" />
+                  <EraserIcon tw-class="w-3 h-3" />
                   <span>{{ lazyStrings.ImageEditor__mask_in() }}</span>
                 </button>
               </div>
 
               <!-- Fill Color -->
-              <div class="space-y-2">
-                <div class="flex items-center justify-between px-1">
-                  <div class="flex gap-1.5">
+              <div tw-class="space-y-2">
+                <div tw-class="flex items-center justify-between px-1">
+                  <div tw-class="flex gap-1.5">
                     <button
                       @click="selectedFill = TRANSPARENT"
-                      class="w-6 h-6 rounded-md border-2 transition-all flex items-center justify-center bg-gray-700"
-                      :class="selectedFill === TRANSPARENT ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
+                      :tw-class="['w-6 h-6 rounded-md border-2 transition-all flex items-center justify-center bg-gray-700', selectedFill === TRANSPARENT ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent']"
                       :title="lazyStrings.ImageEditor__transparent()"
                     >
-                      <div class="w-2.5 h-2.5 border border-red-500/50 rotate-45"></div>
+                      <div tw-class="w-2.5 h-2.5 border border-red-500/50 rotate-45"></div>
                     </button>
                     <button
                       @click="selectedFill = '#ffffff'"
-                      class="w-6 h-6 rounded-md border-2 transition-all bg-white"
-                      :class="selectedFill === '#ffffff' ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
+                      :tw-class="['w-6 h-6 rounded-md border-2 transition-all bg-white', selectedFill === '#ffffff' ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent']"
                       :title="lazyStrings.ImageEditor__white()"
                     ></button>
                     <button
                       @click="selectedFill = '#000000'"
-                      class="w-6 h-6 rounded-md border-2 transition-all bg-black"
-                      :class="selectedFill === '#000000' ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
+                      :tw-class="['w-6 h-6 rounded-md border-2 transition-all bg-black', selectedFill === '#000000' ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent']"
                       :title="lazyStrings.ImageEditor__black()"
                     ></button>
                   </div>
 
                   <button
                     @click="isPickingColor = !isPickingColor"
-                    class="p-1.5 rounded-lg transition-colors"
-                    :class="isPickingColor ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+                    :tw-class="['p-1.5 rounded-lg transition-colors', isPickingColor ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700']"
                     :title="lazyStrings.ImageEditor__pick_color_from_canvas()"
                   >
-                    <PipetteIcon class="w-3.5 h-3.5" />
+                    <PipetteIcon tw-class="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                <div class="flex items-center gap-2 px-1">
+                <div tw-class="flex items-center gap-2 px-1">
                   <input
                     type="color"
                     :value="typeof selectedFill === 'string' ? selectedFill : '#000000'"
                     @input="(e) => selectedFill = (e.target as HTMLInputElement).value"
-                    class="w-full h-8 bg-transparent cursor-pointer rounded border border-gray-700"
+                    tw-class="w-full h-8 bg-transparent cursor-pointer rounded border border-gray-700"
                   />
                 </div>
 
                 <!-- Color History -->
-                <div v-if="colorHistory.length > 0" class="px-1 pt-1">
-                  <span class="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1 block">{{ lazyStrings.ImageEditor__recent() }}</span>
-                  <div class="flex flex-wrap gap-1">
+                <div v-if="colorHistory.length > 0" tw-class="px-1 pt-1">
+                  <span tw-class="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1 block">{{ lazyStrings.ImageEditor__recent() }}</span>
+                  <div tw-class="flex flex-wrap gap-1">
                     <button
                       v-for="color in colorHistory"
                       :key="String(color)"
                       @click="selectedFill = color"
-                      class="w-4 h-4 rounded-sm border transition-all"
-                      :class="selectedFill === color ? 'border-blue-500 scale-110' : 'border-gray-700'"
+                      :tw-class="['w-4 h-4 rounded-sm border transition-all', selectedFill === color ? 'border-blue-500 scale-110' : 'border-gray-700']"
                       :style="{ backgroundColor: typeof color === 'string' ? color : 'transparent' }"
                       :title="String(color)"
                     >
-                      <div v-if="color === TRANSPARENT" class="w-full h-full border border-red-500/50 rotate-45"></div>
+                      <div v-if="color === TRANSPARENT" tw-class="w-full h-full border border-red-500/50 rotate-45"></div>
                     </button>
                   </div>
                 </div>
@@ -1000,57 +989,56 @@ defineExpose({
           </div>
 
           <!-- Transform Section -->
-          <div class="space-y-2">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__transform() }}</span>
-            <div class="bg-gray-800 p-2 rounded-xl border border-gray-700">
-              <div class="grid grid-cols-2 gap-1.5">
-                <button @click="applyTransform({ type: 'rotate-l' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__rotate_left()">
-                  <RotateCcwIcon class="w-3.5 h-3.5" />
+          <div tw-class="space-y-2">
+            <span tw-class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__transform() }}</span>
+            <div tw-class="bg-gray-800 p-2 rounded-xl border border-gray-700">
+              <div tw-class="grid grid-cols-2 gap-1.5">
+                <button @click="applyTransform({ type: 'rotate-l' })" tw-class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__rotate_left()">
+                  <RotateCcwIcon tw-class="w-3.5 h-3.5" />
                 </button>
-                <button @click="applyTransform({ type: 'rotate-r' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__rotate_right()">
-                  <RotateCwIcon class="w-3.5 h-3.5" />
+                <button @click="applyTransform({ type: 'rotate-r' })" tw-class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__rotate_right()">
+                  <RotateCwIcon tw-class="w-3.5 h-3.5" />
                 </button>
-                <button @click="applyTransform({ type: 'flip-h' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__flip_horizontal()">
-                  <FlipHorizontalIcon class="w-3.5 h-3.5" />
+                <button @click="applyTransform({ type: 'flip-h' })" tw-class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__flip_horizontal()">
+                  <FlipHorizontalIcon tw-class="w-3.5 h-3.5" />
                 </button>
-                <button @click="applyTransform({ type: 'flip-v' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__flip_vertical()">
-                  <FlipVerticalIcon class="w-3.5 h-3.5" />
+                <button @click="applyTransform({ type: 'flip-v' })" tw-class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" :title="lazyStrings.ImageEditor__flip_vertical()">
+                  <FlipVerticalIcon tw-class="w-3.5 h-3.5" />
                 </button>
               </div>
-              <button @click="initEditor" class="w-full mt-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors text-[9px] font-bold border border-red-900/30 flex items-center justify-center gap-2" :title="lazyStrings.ImageEditor__reset_image()">
-                <RefreshCcwIcon class="w-2.5 h-2.5" />
+              <button @click="initEditor" tw-class="w-full mt-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors text-[9px] font-bold border border-red-900/30 flex items-center justify-center gap-2" :title="lazyStrings.ImageEditor__reset_image()">
+                <RefreshCcwIcon tw-class="w-2.5 h-2.5" />
                 <span>{{ lazyStrings.ImageEditor__reset() }}</span>
               </button>
             </div>
           </div>
 
           <!-- Resize Section -->
-          <div class="space-y-2">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__resize_px() }}</span>
-            <div class="bg-gray-800 p-2 rounded-xl border border-gray-700 space-y-2">
-              <div class="flex items-center gap-1.5">
+          <div tw-class="space-y-2">
+            <span tw-class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__resize_px() }}</span>
+            <div tw-class="bg-gray-800 p-2 rounded-xl border border-gray-700 space-y-2">
+              <div tw-class="flex items-center gap-1.5">
                 <input
                   type="number"
                   v-model.number="resizeW"
-                  class="flex-1 w-0 bg-gray-900 border border-gray-700 rounded-lg px-1.5 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                  tw-class="flex-1 w-0 bg-gray-900 border border-gray-700 rounded-lg px-1.5 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                 />
                 <button
                   @click="resizeLock = resizeLock === 'locked' ? 'free' : 'locked'"
-                  class="p-1 rounded-lg transition-colors"
-                  :class="resizeLock === 'locked' ? 'text-blue-400 bg-gray-900' : 'text-gray-600'"
+                  :tw-class="['p-1 rounded-lg transition-colors', resizeLock === 'locked' ? 'text-blue-400 bg-gray-900' : 'text-gray-600']"
                   :title="resizeLock === 'locked' ? lazyStrings.ImageEditor__maintain_aspect_ratio() : lazyStrings.ImageEditor__free_resizing()"
                 >
-                  <component :is="resizeLock === 'locked' ? LinkIcon : Link2OffIcon" class="w-3 h-3" />
+                  <component :is="resizeLock === 'locked' ? LinkIcon : Link2OffIcon" tw-class="w-3 h-3" />
                 </button>
                 <input
                   type="number"
                   v-model.number="resizeH"
-                  class="flex-1 w-0 bg-gray-900 border border-gray-700 rounded-lg px-1.5 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                  tw-class="flex-1 w-0 bg-gray-900 border border-gray-700 rounded-lg px-1.5 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
                 />
               </div>
               <button
                 @click="applyResize"
-                class="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-[9px] font-bold rounded-lg transition-colors"
+                tw-class="w-full py-1.5 bg-gray-700 hover:bg-gray-600 text-[9px] font-bold rounded-lg transition-colors"
               >
                 {{ lazyStrings.ImageEditor__apply_resize() }}
               </button>
@@ -1058,36 +1046,35 @@ defineExpose({
           </div>
 
           <!-- Zoom Section -->
-          <div class="space-y-2">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__zoom() }}</span>
-            <div class="bg-gray-800 p-2 rounded-xl border border-gray-700">
-              <div class="flex items-center gap-1 bg-gray-900/50 p-1 rounded-lg">
-                <button @click="zoom = Math.max(0.1, zoom / 1.2)" class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" :title="lazyStrings.ImageEditor__zoom_out()">
-                  <ZoomOutIcon class="w-3.5 h-3.5" />
+          <div tw-class="space-y-2">
+            <span tw-class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__zoom() }}</span>
+            <div tw-class="bg-gray-800 p-2 rounded-xl border border-gray-700">
+              <div tw-class="flex items-center gap-1 bg-gray-900/50 p-1 rounded-lg">
+                <button @click="zoom = Math.max(0.1, zoom / 1.2)" tw-class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" :title="lazyStrings.ImageEditor__zoom_out()">
+                  <ZoomOutIcon tw-class="w-3.5 h-3.5" />
                 </button>
-                <button @click="zoom = 1; panOffset = { x: 0, y: 0 }" class="px-2 text-[10px] font-bold text-gray-400 hover:text-white transition-colors flex-[2] text-center" :title="lazyStrings.ImageEditor__reset_zoom()">
+                <button @click="zoom = 1; panOffset = { x: 0, y: 0 }" tw-class="px-2 text-[10px] font-bold text-gray-400 hover:text-white transition-colors flex-[2] text-center" :title="lazyStrings.ImageEditor__reset_zoom()">
                   {{ Math.round(zoom * 100) }}%
                 </button>
-                <button @click="zoom = Math.min(10, zoom * 1.2)" class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" :title="lazyStrings.ImageEditor__zoom_in()">
-                  <ZoomInIcon class="w-3.5 h-3.5" />
+                <button @click="zoom = Math.min(10, zoom * 1.2)" tw-class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" :title="lazyStrings.ImageEditor__zoom_in()">
+                  <ZoomInIcon tw-class="w-3.5 h-3.5" />
                 </button>
               </div>
-              <p class="text-[8px] text-gray-500 mt-2 text-center leading-tight">
+              <p tw-class="text-[8px] text-gray-500 mt-2 text-center leading-tight">
                 {{ lazyStrings.ImageEditor__wheel_to_zoom_middle_click_or_alt_plus_drag_to_pan() }}
               </p>
             </div>
           </div>
 
           <!-- Format Section -->
-          <div class="space-y-2 pb-4">
-            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__output_format() }}</span>
-            <div class="bg-gray-800 p-1 rounded-xl border border-gray-700 grid grid-cols-2 gap-1">
+          <div tw-class="space-y-2 pb-4">
+            <span tw-class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">{{ lazyStrings.ImageEditor__output_format() }}</span>
+            <div tw-class="bg-gray-800 p-1 rounded-xl border border-gray-700 grid grid-cols-2 gap-1">
               <button
                 v-for="format in ([{ label: lazyStrings.ImageEditor__original(), value: 'original' }, { label: 'PNG', value: 'image/png' }, { label: 'JPG', value: 'image/jpeg' }, { label: 'WebP', value: 'image/webp' }] as const)"
                 :key="format.value"
                 @click="selectedFormat = format.value"
-                class="py-1 rounded-lg text-[9px] font-bold transition-all text-center"
-                :class="selectedFormat === format.value ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'"
+                :tw-class="['py-1 rounded-lg text-[9px] font-bold transition-all text-center', selectedFormat === format.value ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700']"
               >
                 {{ format.label }}
               </button>

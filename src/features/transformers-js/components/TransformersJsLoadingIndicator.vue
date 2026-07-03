@@ -96,29 +96,28 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="status === 'loading' || status === 'error'" class="animate-in fade-in duration-500">
+  <div v-if="status === 'loading' || status === 'error'" class="animate-in fade-in" tw-class="duration-500">
     <!-- Full Mode (Integrated Chat Flow) -->
-    <div v-if="mode === 'full'" class="flex flex-col gap-4 p-5">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-xl flex items-center justify-center border border-blue-100 dark:border-blue-900/30 bg-blue-50/50 dark:bg-blue-900/20 shadow-sm">
-          <BrainCircuitIcon class="w-4 h-4 text-blue-500" />
+    <div v-if="mode === 'full'" tw-class="flex flex-col gap-4 p-5">
+      <div tw-class="flex items-center gap-3">
+        <div tw-class="w-8 h-8 rounded-xl flex items-center justify-center border border-blue-100 dark:border-blue-900/30 bg-blue-50/50 dark:bg-blue-900/20 shadow-sm">
+          <BrainCircuitIcon tw-class="w-4 h-4 text-blue-500" />
         </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex flex-col">
-              <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 tracking-wider">
+        <div tw-class="flex-1 min-w-0">
+          <div tw-class="flex items-center justify-between mb-2">
+            <div tw-class="flex flex-col">
+              <span tw-class="text-[10px] font-bold text-blue-600 dark:text-blue-400 tracking-wider">
                 {{ statusText }}
               </span>
-              <span class="text-[9px] text-gray-400 font-medium">
+              <span tw-class="text-[9px] text-gray-400 font-medium">
                 {{ explanationText }}
               </span>
             </div>
-            <span class="text-[10px] font-bold text-blue-500/70 tabular-nums self-start mt-0.5">{{ progress }}%</span>
+            <span tw-class="text-[10px] font-bold text-blue-500/70 tabular-nums self-start mt-0.5">{{ progress }}%</span>
           </div>
-          <div class="h-1 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+          <div tw-class="h-1 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
             <div
-              class="h-full transition-all duration-500 ease-out"
-              :class="status === 'error' ? 'bg-red-500' : 'bg-blue-500 dark:bg-blue-400'"
+              :tw-class="['h-full transition-all duration-500 ease-out', status === 'error' ? 'bg-red-500' : 'bg-blue-500 dark:bg-blue-400']"
               :style="{ width: progress + '%' }"
             ></div>
           </div>
@@ -126,23 +125,23 @@ defineExpose({
       </div>
 
       <!-- Feature Badges (Why we wait) -->
-      <div v-if="status !== 'error'" class="ml-11 flex flex-wrap gap-3">
-        <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 tracking-tight">
-          <ShieldCheckIcon class="w-3 h-3 text-green-500/70" />
+      <div v-if="status !== 'error'" tw-class="ml-11 flex flex-wrap gap-3">
+        <div tw-class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 tracking-tight">
+          <ShieldCheckIcon tw-class="w-3 h-3 text-green-500/70" />
           {{ lazyStrings.TransformersJsLoadingIndicator__on_device_execution() }}
         </div>
       </div>
 
-      <div v-if="status === 'error' && error" class="ml-11 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-[10px] text-red-600 dark:text-red-400 font-medium leading-relaxed flex items-start gap-2">
-        <AlertTriangleIcon class="w-3.5 h-3.5 shrink-0" />
+      <div v-if="status === 'error' && error" tw-class="ml-11 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-[10px] text-red-600 dark:text-red-400 font-medium leading-relaxed flex items-start gap-2">
+        <AlertTriangleIcon tw-class="w-3.5 h-3.5 shrink-0" />
         {{ error }}
       </div>
     </div>
 
     <!-- Compact Mode (Fallback) -->
-    <div v-else class="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-      <BrainCircuitIcon class="w-3 h-3 animate-pulse" />
-      <span class="text-[10px] font-bold">{{ progress }}%</span>
+    <div v-else tw-class="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+      <BrainCircuitIcon tw-class="w-3 h-3 animate-pulse" />
+      <span tw-class="text-[10px] font-bold">{{ progress }}%</span>
     </div>
   </div>
 </template>

@@ -720,8 +720,28 @@ function getReportMessageId({ node, params }) {
   return 'requireNamedArgs';
 }
 
+
+const TAILWIND_COMPILER_MACRO_NAMES = new Set([
+  'customClasses',
+  'tw',
+  'twClasses',
+  'twClassString',
+]);
+
+function isTailwindCompilerMacroDeclaration({ node, filePath }) {
+  if (node.type !== 'FunctionDeclaration' || !TAILWIND_COMPILER_MACRO_NAMES.has(node.id?.name)) {
+    return false;
+  }
+  const normalizedFilePath = filePath.replaceAll('\\', '/');
+  return normalizedFilePath.endsWith('/src/virtual-naidan-tailwind.d.ts');
+}
+
 function checkFunctionLike(node, context, state) {
   const sourceCode = context.sourceCode;
+
+  if (isTailwindCompilerMacroDeclaration({ node, filePath: state.filePath })) {
+    return;
+  }
 
   if (isInsideDefineEmitsType(node, sourceCode)) {
     return;

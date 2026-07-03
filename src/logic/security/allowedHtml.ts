@@ -1,4 +1,5 @@
 import createDOMPurify from 'dompurify';
+import { tw, twClassString, type TailwindClass } from 'virtual:naidan-tailwind';
 import type { ExternalImagePayload } from './markdownExternalImage';
 import { decodeExternalImagePayload, encodeExternalImagePayload } from './markdownExternalImage';
 
@@ -283,15 +284,15 @@ export function jsonToHighlightedHtml({
   }
 
   const highlighted = escaped.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
-    let cls = 'text-blue-500 dark:text-blue-400';
+    let cls: TailwindClass = twClassString('text-blue-500', 'dark:text-blue-400');
     if (/^"/.test(match)) {
       if (/:$/.test(match)) {
         switch (keyStyle) {
         case 'raw':
-          cls = 'text-red-500 dark:text-red-400 font-bold';
+          cls = twClassString('text-red-500', 'dark:text-red-400', 'font-bold');
           break;
         case 'tree':
-          cls = 'text-red-500 dark:text-red-400 opacity-80';
+          cls = twClassString('text-red-500', 'dark:text-red-400', 'opacity-80');
           break;
         default: {
           const _ex: never = keyStyle;
@@ -299,12 +300,12 @@ export function jsonToHighlightedHtml({
         }
         }
       } else {
-        cls = 'text-green-600 dark:text-green-400';
+        cls = twClassString('text-green-600', 'dark:text-green-400');
       }
     } else if (/true|false/.test(match)) {
-      cls = 'text-orange-500';
+      cls = tw('text-orange-500');
     } else if (/null/.test(match)) {
-      cls = 'text-magenta-500';
+      cls = tw('text-fuchsia-500');
     }
 
     return `<span class="${cls}">${match}</span>`;
@@ -344,9 +345,9 @@ export function highlightSearchTextAsHtml({
   const colorClasses = (() => {
     switch (color) {
     case 'blue':
-      return 'bg-blue-200 dark:bg-blue-900/50 text-blue-800 dark:text-blue-100';
+      return twClassString('bg-blue-200', 'dark:bg-blue-900/50', 'text-blue-800', 'dark:text-blue-100');
     case 'indigo':
-      return 'bg-indigo-200 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-100';
+      return twClassString('bg-indigo-200', 'dark:bg-indigo-900/50', 'text-indigo-800', 'dark:text-indigo-100');
     default: {
       const _ex: never = color;
       throw new Error(`Unhandled color: ${_ex}`);
@@ -354,11 +355,12 @@ export function highlightSearchTextAsHtml({
     }
   })();
 
+  const emphasisClasses = twClassString('font-bold', 'rounded', 'px-0.5');
   const highlighted = text.split(regex).map(part => {
     const isMatch = keywords.some(keyword => part.toLowerCase() === keyword);
     const escaped = String(escapeTextAsHtml({ text: part }));
     if (isMatch) {
-      return `<span class="${colorClasses} font-bold rounded px-0.5">${escaped}</span>`;
+      return `<span class="${colorClasses} ${emphasisClasses}">${escaped}</span>`;
     }
     return escaped;
   }).join('');

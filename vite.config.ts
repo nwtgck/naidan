@@ -19,6 +19,8 @@ import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/constants';
 import { createLicenseModulePlugins } from './build/license-module';
 import { omitBuildOutputFilesPlugin } from './build/omit-build-output-files';
 import { createBoundaryStringsPlugin } from './build/boundary-strings';
+import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core.mjs';
+import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin.mjs';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -275,8 +277,25 @@ export default defineConfig(({ mode }) => {
       VueRouter({
         /* options */
       }),
+      createTwClassVitePlugin({
+        projectRoot: __dirname,
+        sourceRoot: path.resolve(__dirname, 'src'),
+        entryModule: path.resolve(__dirname, 'src/main.ts'),
+        tailwindCssPath: path.resolve(__dirname, 'src/style.css'),
+        aliases: [{ find: '@', replacement: path.resolve(__dirname, 'src') }],
+        additionalLazyRootDirectories: [path.resolve(__dirname, 'src/pages')],
+        debugOutputDirectory: path.resolve(__dirname, '.generated/tailwind'),
+        splitCss: true,
+        cssPlanning: mode === 'test' ? 'disabled' : 'enabled',
+      }),
       VueDevTools(),
-      vue(),
+      vue({
+        template: {
+          compilerOptions: {
+            nodeTransforms: [createTwClassNodeTransform()],
+          },
+        },
+      }),
       isStandalone && legacy({
         targets: [...standaloneBrowserSupport.legacy],
         renderModernChunks: false,
