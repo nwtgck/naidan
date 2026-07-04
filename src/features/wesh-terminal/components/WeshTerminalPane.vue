@@ -6,6 +6,7 @@ import { createWeshTerminalHistory } from '@/features/wesh-terminal/composables/
 import { formatWeshTerminalPrompt } from '@/features/wesh-terminal/utils/terminalPrompt';
 import type { WeshTerminalCompletionCandidate, WeshTerminalCompletionResult } from '@/features/wesh-terminal/utils/terminalCompletion';
 import type { WeshTerminalSession, WeshTerminalLineKind, WeshTerminalSessionState } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
+import { tw, twClasses, twClassString, type TailwindClass } from 'virtual:naidan-tailwind';
 
 const props = defineProps<{
   sessions: WeshTerminalSession[],
@@ -206,13 +207,13 @@ async function handleKeyDown({ event }: { event: KeyboardEvent }) {
   }
 }
 
-function lineClass({ kind }: { kind: WeshTerminalLineKind }): string {
+function lineClass({ kind }: { kind: WeshTerminalLineKind }): TailwindClass {
   switch (kind) {
-  case 'command': return 'text-gray-100';
-  case 'stdout': return 'text-gray-300';
-  case 'stderr': return 'text-yellow-400';
-  case 'error': return 'text-red-400';
-  case 'system': return 'text-gray-600 italic';
+  case 'command': return tw('text-gray-100');
+  case 'stdout': return tw('text-gray-300');
+  case 'stderr': return tw('text-yellow-400');
+  case 'error': return tw('text-red-400');
+  case 'system': return twClassString('text-gray-600', 'italic');
   default: {
     const _ex: never = kind;
     return _ex;
@@ -220,12 +221,12 @@ function lineClass({ kind }: { kind: WeshTerminalLineKind }): string {
   }
 }
 
-function stateDotClass({ state }: { state: WeshTerminalSessionState }): string {
+function stateDotClass({ state }: { state: WeshTerminalSessionState }): TailwindClass {
   switch (state) {
-  case 'initializing': return 'bg-yellow-500 animate-pulse';
-  case 'ready': return 'bg-blue-500';
-  case 'running': return 'bg-blue-400 animate-pulse';
-  case 'error': return 'bg-red-500';
+  case 'initializing': return twClassString('bg-yellow-500', 'animate-pulse');
+  case 'ready': return tw('bg-blue-500');
+  case 'running': return twClassString('bg-blue-400', 'animate-pulse');
+  case 'error': return tw('bg-red-500');
   default: {
     const _ex: never = state;
     return _ex;
@@ -246,44 +247,42 @@ defineExpose({
 <template>
   <!-- Tab bar -->
   <div
-    class="flex items-center gap-1 px-2 py-1.5 bg-gray-900 border-b border-gray-700/60 shrink-0 overflow-x-auto no-scrollbar"
+    class="no-scrollbar" tw-class="flex items-center gap-1 px-2 py-1.5 bg-gray-900 border-b border-gray-700/60 shrink-0 overflow-x-auto"
   >
     <div
       v-for="session in sessions"
       :key="session.id"
-      class="group inline-flex items-center rounded-md text-xs font-mono font-medium whitespace-nowrap transition-colors"
-      :class="activeSessionId === session.id
+      :tw-class="['group inline-flex items-center rounded-md text-xs font-mono font-medium whitespace-nowrap transition-colors', activeSessionId === session.id
         ? 'bg-gray-700 text-gray-100'
-        : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'"
+        : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800']"
     >
       <button
-        class="inline-flex items-center gap-1.5 px-2.5 py-1"
+        tw-class="inline-flex items-center gap-1.5 px-2.5 py-1"
         @click="emit('update:activeSessionId', session.id)"
       >
         <span
-          class="w-1.5 h-1.5 rounded-full shrink-0"
-          :class="stateDotClass({ state: session.state })"
+          :tw-class="['w-1.5 h-1.5 rounded-full shrink-0', twClasses(stateDotClass({ state: session.state }))]"
         />
         {{ session.title }}
-        <span v-if="session.lastExitCode !== undefined && session.lastExitCode !== 0" class="text-red-300">
+        <span v-if="session.lastExitCode !== undefined && session.lastExitCode !== 0" tw-class="text-red-300">
           ✕{{ session.lastExitCode }}
         </span>
       </button>
       <button
-        class="pr-1.5 pl-0.5 py-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity"
+        tw-class="pr-1.5 pl-0.5 py-1 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity"
         :aria-label="lazyStrings.weshTerminal__close_session_aria()"
         @click.stop="emit('close-session', { sessionId: session.id })"
       >
-        <XIcon class="w-2.5 h-2.5" />
+        <XIcon tw-class="w-2.5 h-2.5" />
       </button>
     </div>
 
     <button
-      class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-mono text-gray-600 hover:text-gray-300 hover:bg-gray-800 whitespace-nowrap transition-colors shrink-0"
+      tw-class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-mono text-gray-600 hover:text-gray-300 hover:bg-gray-800 whitespace-nowrap transition-colors shrink-0"
       data-testid="new-session-button"
       @click="emit('create-session')"
     >
-      <PlusIcon class="w-3 h-3" />
+      <PlusIcon tw-class="w-3 h-3" />
       {{ lazyStrings.weshTerminal__new() }}
     </button>
   </div>
@@ -291,33 +290,31 @@ defineExpose({
   <!-- Output + inline input area -->
   <div
     ref="outputRef"
-    class="flex-1 min-h-0 overflow-y-auto bg-black px-4 py-3 font-mono text-sm leading-relaxed cursor-text"
+    tw-class="flex-1 min-h-0 overflow-y-auto bg-black px-4 py-3 font-mono text-sm leading-relaxed cursor-text"
     @click="focusInput()"
   >
     <template v-if="activeSession">
       <div
         v-for="line in activeSession.lines"
         :key="line.id"
-        class="whitespace-pre-wrap break-all"
-        :class="lineClass({ kind: line.kind })"
+        :tw-class="['whitespace-pre-wrap break-all', twClasses(lineClass({ kind: line.kind }))]"
       >
-        <span v-if="line.kind === 'command'" class="select-none text-blue-400 mr-2">$</span>{{ line.text }}
+        <span v-if="line.kind === 'command'" tw-class="select-none text-blue-400 mr-2">$</span>{{ line.text }}
       </div>
-      <div v-if="activeSession.state === 'initializing'" class="text-gray-700 italic animate-pulse mt-1">
+      <div v-if="activeSession.state === 'initializing'" tw-class="text-gray-700 italic animate-pulse mt-1">
         {{ lazyStrings.weshTerminal__initializing_worker() }}
       </div>
 
       <!-- Inline input prompt (ready: visible; running: textarea kept in DOM for Ctrl+C but invisible) -->
-      <div v-if="!isDisabled" class="mt-px">
-        <div class="flex items-start">
-          <span v-show="!isRunning" class="text-blue-400 select-none mr-2 shrink-0 leading-relaxed">{{ promptText }}</span>
+      <div v-if="!isDisabled" tw-class="mt-px">
+        <div tw-class="flex items-start">
+          <span v-show="!isRunning" tw-class="text-blue-400 select-none mr-2 shrink-0 leading-relaxed">{{ promptText }}</span>
           <textarea
             ref="inputRef"
             v-model="inputDraft"
             :readonly="isRunning"
             rows="1"
-            class="flex-1 bg-transparent outline-none resize-none leading-relaxed caret-gray-100"
-            :class="isRunning ? 'opacity-0' : 'text-gray-100 placeholder:text-gray-700'"
+            :tw-class="['flex-1 bg-transparent outline-none resize-none leading-relaxed caret-gray-100', isRunning ? 'opacity-0' : 'text-gray-100 placeholder:text-gray-700']"
             data-testid="terminal-input"
             @keydown="handleKeyDown({ event: $event })"
             @input="autoResize({ event: $event })"
@@ -325,7 +322,7 @@ defineExpose({
         </div>
         <div
           v-if="completionCandidates.length > 1"
-          class="ml-4 mt-1 grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-x-4 gap-y-0.5 text-xs text-gray-500"
+          tw-class="ml-4 mt-1 grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-x-4 gap-y-0.5 text-xs text-gray-500"
           data-testid="terminal-completion-candidates"
         >
           <span v-for="candidate in completionCandidates" :key="`${candidate.kind}:${candidate.value}`">
@@ -334,7 +331,7 @@ defineExpose({
         </div>
       </div>
     </template>
-    <div v-else class="text-gray-700 text-xs italic mt-2">
+    <div v-else tw-class="text-gray-700 text-xs italic mt-2">
       {{ lazyStrings.weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell() }}
     </div>
   </div>

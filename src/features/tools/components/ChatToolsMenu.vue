@@ -93,59 +93,58 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative" ref="triggerRef">
+  <div tw-class="relative" ref="triggerRef">
     <button
       @click="showMenu = !showMenu"
-      class="p-2 rounded-xl transition-colors"
-      :class="[
-        showMenu || isImageMode || isThinkActive || hasActiveTools ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
-        (isImageMode || isThinkActive || hasActiveTools) && !showMenu ? 'ring-2 ring-blue-500/20' : ''
+      :tw-class="['p-2 rounded-xl transition-colors',
+                  showMenu || isImageMode || isThinkActive || hasActiveTools ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
+                  (isImageMode || isThinkActive || hasActiveTools) && !showMenu ? 'ring-2 ring-blue-500/20' : ''
       ]"
       :title="lazyStrings.ChatToolsMenu__tools()"
       data-testid="chat-tools-button"
     >
-      <Settings2Icon class="w-5 h-5" />
+      <Settings2Icon tw-class="w-5 h-5" />
     </button>
 
     <Teleport :to="teleportTarget" v-if="teleportTarget">
       <Transition name="sheet">
         <div
           v-if="showMenu"
-          class="absolute inset-0 z-[10000] flex flex-col justify-end pointer-events-none"
+          tw-class="absolute inset-0 z-[10000] flex flex-col justify-end pointer-events-none"
         >
           <div
-            class="sheet-backdrop absolute inset-0 bg-black/10 dark:bg-black/40 pointer-events-auto"
+            class="sheet-backdrop" tw-class="absolute inset-0 bg-black/10 dark:bg-black/40 pointer-events-auto"
             data-testid="chat-tools-backdrop"
             @click="showMenu = false"
           ></div>
 
           <div
             ref="sheetRef"
-            class="relative w-full max-w-4xl mx-auto bg-white dark:bg-gray-800 border-t border-x border-gray-100 dark:border-gray-700 rounded-t-2xl shadow-[0_-8px_30px_rgb(0,0,0,0.1)] pointer-events-auto overflow-hidden flex flex-col max-h-[80vh]"
+            tw-class="relative w-full max-w-4xl mx-auto bg-white dark:bg-gray-800 border-t border-x border-gray-100 dark:border-gray-700 rounded-t-2xl shadow-[0_-8px_30px_rgb(0,0,0,0.1)] pointer-events-auto overflow-hidden flex flex-col max-h-[80vh]"
             data-testid="chat-tools-dropdown"
           >
-            <div class="flex flex-col items-center pt-2 pb-1 bg-white dark:bg-gray-800 shrink-0">
-              <div class="w-12 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mb-1"></div>
+            <div tw-class="flex flex-col items-center pt-2 pb-1 bg-white dark:bg-gray-800 shrink-0">
+              <div tw-class="w-12 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mb-1"></div>
             </div>
 
-            <div class="flex-1 overflow-y-auto custom-scrollbar bg-white dark:bg-gray-800">
-              <div class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.18em] border-b border-gray-100 dark:border-gray-700 mb-1">
+            <div class="custom-scrollbar" tw-class="flex-1 overflow-y-auto bg-white dark:bg-gray-800">
+              <div tw-class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.18em] border-b border-gray-100 dark:border-gray-700 mb-1">
                 {{ lazyStrings.ChatToolsMenu__options_tools() }}
               </div>
 
-              <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+              <div tw-class="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
                 <ReasoningSettings
                   :selected-effort="selectedReasoningEffort"
                   @update:effort="e => emit('update:reasoning-effort', e)"
-                  class="!p-0 !border-none"
+                  tw-class="!p-0 !border-none"
                 />
               </div>
 
-              <div class="px-3 py-3 border-b border-gray-100 dark:border-gray-700">
+              <div tw-class="px-3 py-3 border-b border-gray-100 dark:border-gray-700">
                 <LmToolsSettings />
               </div>
 
-              <div class="px-3 py-3">
+              <div tw-class="px-3 py-3">
                 <ImageGenerationSettings
                   :can-generate-image="canGenerateImage"
                   :is-processing="isProcessing"
@@ -165,7 +164,7 @@ defineExpose({
                   @update:seed="s => emit('update:seed', s)"
                   @update:persist-as="f => emit('update:persist-as', f)"
                   @update:model="m => emit('update:model', m)"
-                  class="!p-0 !border-none"
+                  tw-class="!p-0 !border-none"
                 />
               </div>
             </div>
@@ -173,11 +172,11 @@ defineExpose({
             <!-- Full-width Dismiss Footer -->
             <button
               @click="showMenu = false"
-              class="w-full py-4 bg-gray-50/50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all group active:bg-gray-200 dark:active:bg-gray-700/50"
+              tw-class="w-full py-4 bg-gray-50/50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all group active:bg-gray-200 dark:active:bg-gray-700/50"
               data-testid="chat-tools-footer-close"
             >
-              <span class="text-[11px] font-bold text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors uppercase tracking-wider">{{ lazyStrings.ChatToolsMenu__close_menu() }}</span>
-              <ChevronDownIcon class="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-y-0.5 transition-all" />
+              <span tw-class="text-[11px] font-bold text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors uppercase tracking-wider">{{ lazyStrings.ChatToolsMenu__close_menu() }}</span>
+              <ChevronDownIcon tw-class="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-y-0.5 transition-all" />
             </button>
           </div>
         </div>

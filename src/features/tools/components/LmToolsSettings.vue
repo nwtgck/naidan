@@ -117,21 +117,21 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div tw-class="space-y-3">
     <div
       v-if="settings.experimental?.toolConfigPersistence !== 'enabled'"
-      class="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2 text-blue-900 dark:border-blue-500/20 dark:bg-blue-500/5 dark:text-blue-200"
+      tw-class="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2 text-blue-900 dark:border-blue-500/20 dark:bg-blue-500/5 dark:text-blue-200"
       data-testid="chat-tool-runtime-note"
     >
-      <InfoIcon class="mt-0.5 h-3 w-3 shrink-0" />
-      <p class="text-[9px] leading-relaxed">
+      <InfoIcon tw-class="mt-0.5 h-3 w-3 shrink-0" />
+      <p tw-class="text-[9px] leading-relaxed">
         {{ lazyStrings.LmToolsSettings__changes_apply_to_this_browser_session_only_while_tool_config_persistence_is_disabled() }}
       </p>
     </div>
 
     <div
       v-if="saveError !== undefined"
-      class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[9px] font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+      tw-class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[9px] font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
       data-testid="chat-tool-save-error"
     >
       {{ saveError }}

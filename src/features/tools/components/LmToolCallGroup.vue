@@ -27,34 +27,33 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="toolCalls.length > 0" class="mb-3" data-testid="lm-tool-call-group">
+  <div v-if="toolCalls.length > 0" tw-class="mb-3" data-testid="lm-tool-call-group">
     <div
-      class="border rounded-xl transition-all duration-300 overflow-hidden"
-      :class="[
-        isExpanded
-          ? 'bg-gray-50/30 dark:bg-gray-800/20 border-gray-100 dark:border-gray-800/50'
-          : 'bg-white dark:bg-gray-800/50 border-gray-100/50 dark:border-gray-800/30 hover:border-gray-200 dark:hover:border-gray-700'
+      :tw-class="['border rounded-xl transition-all duration-300 overflow-hidden',
+                  isExpanded
+                    ? 'bg-gray-50/30 dark:bg-gray-800/20 border-gray-100 dark:border-gray-800/50'
+                    : 'bg-white dark:bg-gray-800/50 border-gray-100/50 dark:border-gray-800/30 hover:border-gray-200 dark:hover:border-gray-700'
       ]"
     >
       <!-- Header / Toggle -->
       <div
         @click="toggleExpand"
-        class="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group/tool-group"
+        tw-class="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group/tool-group"
       >
-        <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
-             :class="isExpanded ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 group-hover/tool-group:text-blue-600'"
+        <div
+          :tw-class="['flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-colors', isExpanded ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 group-hover/tool-group:text-blue-600']"
         >
-          <ShapesIcon class="w-3.5 h-3.5" :class="isExpanded ? 'text-blue-600 dark:text-blue-400' : ''" />
+          <ShapesIcon :tw-class="['w-3.5 h-3.5', isExpanded ? 'text-blue-600 dark:text-blue-400' : '']" />
           <span>{{ isExpanded ? lazyStrings.toolCall__tool_executions() : lazyStrings.toolCall__show_tools_count({ count: toolCalls.length }) }}</span>
-        </div>        <div class="p-0.5 text-gray-400 group-hover/tool-group:text-gray-600 dark:group-hover/tool-group:text-gray-300 transition-colors">
-          <ChevronUpIcon v-if="isExpanded" class="w-3.5 h-3.5" />
-          <ChevronDownIcon v-else class="w-3.5 h-3.5" />
+        </div>        <div tw-class="p-0.5 text-gray-400 group-hover/tool-group:text-gray-600 dark:group-hover/tool-group:text-gray-300 transition-colors">
+          <ChevronUpIcon v-if="isExpanded" tw-class="w-3.5 h-3.5" />
+          <ChevronDownIcon v-else tw-class="w-3.5 h-3.5" />
         </div>
       </div>
 
       <!-- Content -->
-      <div v-if="isExpanded" class="px-3 pb-3 border-t border-inherit pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
-        <div class="flex flex-col">
+      <div v-if="isExpanded" class="animate-in fade-in slide-in-from-top-1" tw-class="px-3 pb-3 border-t border-inherit pt-2 duration-200">
+        <div tw-class="flex flex-col">
           <LmToolCall
             v-for="tc in toolCalls"
             :key="idToRaw({ id: tc.id })"

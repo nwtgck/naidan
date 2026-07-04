@@ -173,35 +173,32 @@ export default {
 </script>
 
 <template>
-  <div class="relative group/node">
+  <div tw-class="relative group/node">
     <!-- Visual Guide Lines for Tree/Compact Mode -->
     <template v-if="!isRoot && mode !== 'active' && !hasLinearParent">
       <!-- Vertical line: top to bottom, bridges the margin gap -->
       <div
-        class="absolute left-[-24px] top-0 w-px bg-gray-200 dark:bg-gray-800 transition-colors"
-        :class="isLast ? 'h-4' : 'bottom-[-8px]'"
+        :tw-class="['absolute left-[-24px] top-0 w-px bg-gray-200 dark:bg-gray-800 transition-colors', isLast ? 'h-4' : 'bottom-[-8px]']"
       ></div>
       <!-- Horizontal L-arm: exactly 24px wide to reach the node -->
-      <div class="absolute left-[-24px] top-4 w-6 h-px bg-gray-200 dark:bg-gray-800 transition-colors"></div>
+      <div tw-class="absolute left-[-24px] top-4 w-6 h-px bg-gray-200 dark:bg-gray-800 transition-colors"></div>
     </template>
 
     <!-- 1. Compact View (Visual Map Mode) -->
     <div
       v-if="mode === 'compact'"
-      class="flex items-center gap-2 py-1 px-2 rounded-lg cursor-pointer mb-0.5 w-fit transition-colors"
-      :class="isActive ? 'bg-indigo-500/5' : 'hover:bg-gray-100 dark:hover:bg-white/5'"
+      :tw-class="['flex items-center gap-2 py-1 px-2 rounded-lg cursor-pointer mb-0.5 w-fit transition-colors', isActive ? 'bg-indigo-500/5' : 'hover:bg-gray-100 dark:hover:bg-white/5']"
       @click="emit('select-node', node)"
     >
       <span
-        class="font-black uppercase text-[7px] tracking-widest px-1 py-0.5 rounded-sm shrink-0 border border-gray-200 dark:border-white/10"
-        :class="[
-          node.role === 'user' ? 'text-blue-500' :
-          node.role === 'assistant' ? 'text-emerald-500' : 'text-gray-400'
+        :tw-class="['font-black uppercase text-[7px] tracking-widest px-1 py-0.5 rounded-sm shrink-0 border border-gray-200 dark:border-white/10',
+                    node.role === 'user' ? 'text-blue-500' :
+                    node.role === 'assistant' ? 'text-emerald-500' : 'text-gray-400'
         ]"
       >
         {{ node.role }}
       </span>
-      <span class="text-[9px] text-gray-500 dark:text-gray-400 truncate max-w-[300px] font-sans">
+      <span tw-class="text-[9px] text-gray-500 dark:text-gray-400 truncate max-w-[300px] font-sans">
         {{ cleanContentCompact }}
       </span>
     </div>
@@ -209,129 +206,127 @@ export default {
     <!-- 2. Unified Detailed Block (Active / Detail Mode) -->
     <div
       v-else
-      class="flex flex-col mb-4 bg-white dark:bg-gray-900/40 border border-gray-100 dark:border-white/5 rounded-2xl overflow-hidden transition-all duration-200"
-      :class="isActive ? 'opacity-100 ring-1 ring-indigo-500/10' : 'opacity-80'"
+      :tw-class="['flex flex-col mb-4 bg-white dark:bg-gray-900/40 border border-gray-100 dark:border-white/5 rounded-2xl overflow-hidden transition-all duration-200', isActive ? 'opacity-100 ring-1 ring-indigo-500/10' : 'opacity-80']"
     >
       <!-- Integrated Header -->
       <div
-        class="flex items-center justify-between px-4 py-2.5 bg-gray-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5 cursor-pointer"
+        tw-class="flex items-center justify-between px-4 py-2.5 bg-gray-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5 cursor-pointer"
         @click="isExpanded = !isExpanded"
       >
-        <div class="flex items-center gap-3 overflow-hidden">
-          <div class="w-3 flex justify-center shrink-0">
-            <component :is="isExpanded ? ChevronDownIcon : ChevronRightIcon" class="w-3 h-3 text-gray-400" />
+        <div tw-class="flex items-center gap-3 overflow-hidden">
+          <div tw-class="w-3 flex justify-center shrink-0">
+            <component :is="isExpanded ? ChevronDownIcon : ChevronRightIcon" tw-class="w-3 h-3 text-gray-400" />
           </div>
 
-          <span v-if="isoTimestamp" class="text-[8px] text-gray-400/60 font-mono whitespace-nowrap pr-2 border-r border-gray-200 dark:border-white/10 shrink-0">{{ isoTimestamp }}</span>
+          <span v-if="isoTimestamp" tw-class="text-[8px] text-gray-400/60 font-mono whitespace-nowrap pr-2 border-r border-gray-200 dark:border-white/10 shrink-0">{{ isoTimestamp }}</span>
 
           <span
-            class="font-black uppercase text-[8px] tracking-[0.15em] px-2 py-0.5 rounded-sm shrink-0 border"
-            :class="[
-              node.role === 'user' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20 text-blue-600' :
-              node.role === 'assistant' ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-500/20 text-emerald-600' :
-              'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-400'
+            :tw-class="['font-black uppercase text-[8px] tracking-[0.15em] px-2 py-0.5 rounded-sm shrink-0 border',
+                        node.role === 'user' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20 text-blue-600' :
+                        node.role === 'assistant' ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-500/20 text-emerald-600' :
+                        'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-400'
             ]"
           >
             {{ node.role }}
           </span>
-          <div class="flex items-center gap-2 overflow-hidden">
-            <span v-if="node.role === 'assistant' && node.modelId" class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-[8px] text-gray-400 font-bold border border-gray-200 dark:border-white/5 whitespace-nowrap">
-              <CpuIcon class="w-2.5 h-2.5" />
+          <div tw-class="flex items-center gap-2 overflow-hidden">
+            <span v-if="node.role === 'assistant' && node.modelId" tw-class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-[8px] text-gray-400 font-bold border border-gray-200 dark:border-white/5 whitespace-nowrap">
+              <CpuIcon tw-class="w-2.5 h-2.5" />
               {{ node.modelId }}
             </span>
           </div>
         </div>
-        <div class="flex items-center gap-4">
-          <div v-if="node.replies?.items?.length && mode === 'tree'" class="flex items-center gap-1.5 ml-2">
-            <span class="text-[8px] font-bold text-gray-300 dark:text-gray-600 uppercase tracking-tighter">{{ node.replies.items.length }} branches</span>
+        <div tw-class="flex items-center gap-4">
+          <div v-if="node.replies?.items?.length && mode === 'tree'" tw-class="flex items-center gap-1.5 ml-2">
+            <span tw-class="text-[8px] font-bold text-gray-300 dark:text-gray-600 uppercase tracking-tighter">{{ node.replies.items.length }} branches</span>
           </div>
           <button
             @click.stop="isLocallyCollapsed = !isLocallyCollapsed"
-            class="p-1 rounded-md text-gray-300 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
+            tw-class="p-1 rounded-md text-gray-300 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
             :title="finalIsCollapsed ? lazyStrings.ChatDebugTreeNode__show_content() : lazyStrings.ChatDebugTreeNode__collapse_content()"
           >
-            <component :is="finalIsCollapsed ? EyeOffIcon : EyeIcon" class="w-3.5 h-3.5" />
+            <component :is="finalIsCollapsed ? EyeOffIcon : EyeIcon" tw-class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
       <!-- Unified Body -->
-      <div v-if="isExpanded" class="flex flex-col">
+      <div v-if="isExpanded" tw-class="flex flex-col">
         <!-- Message Content & Attachments -->
-        <div class="p-4 bg-transparent space-y-3">
+        <div tw-class="p-4 bg-transparent space-y-3">
           <!-- Textual Content Group (Collapsible) -->
-          <div v-if="!finalIsCollapsed" class="space-y-3">
+          <div v-if="!finalIsCollapsed" tw-class="space-y-3">
             <!-- Error Display -->
-            <div v-if="node.error" class="p-3 bg-red-500/5 border border-red-500/20 rounded-xl text-[11px] text-red-600 dark:text-red-400 font-sans">
-              <div class="font-black uppercase text-[8px] mb-1 opacity-70">{{ lazyStrings.ChatDebugTreeNode__error() }}</div>
+            <div v-if="node.error" tw-class="p-3 bg-red-500/5 border border-red-500/20 rounded-xl text-[11px] text-red-600 dark:text-red-400 font-sans">
+              <div tw-class="font-black uppercase text-[8px] mb-1 opacity-70">{{ lazyStrings.ChatDebugTreeNode__error() }}</div>
               {{ node.error }}
             </div>
 
             <!-- Thinking Process -->
-            <div v-if="node.thinking" class="p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl text-[11px] text-amber-700 dark:text-amber-400/80 font-sans italic italic-custom">
-              <div class="font-black uppercase text-[8px] not-italic mb-1 opacity-70">{{ lazyStrings.ChatDebugTreeNode__thinking_process() }}</div>
+            <div v-if="node.thinking" tw-class="p-3 bg-amber-500/5 border border-amber-500/10 rounded-xl text-[11px] text-amber-700 dark:text-amber-400/80 font-sans italic">
+              <div tw-class="font-black uppercase text-[8px] not-italic mb-1 opacity-70">{{ lazyStrings.ChatDebugTreeNode__thinking_process() }}</div>
               {{ node.thinking }}
             </div>
 
             <!-- Text Content -->
-            <div v-if="node.content" class="text-[12px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed font-sans max-h-[600px] overflow-y-auto thin-scrollbar pr-2 relative group/content">
+            <div v-if="node.content" class="thin-scrollbar" tw-class="text-[12px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed font-sans max-h-[600px] overflow-y-auto pr-2 relative group/content">
               <button
                 @click.stop="copyContent"
                 data-testid="copy-content-btn"
-                class="absolute right-0 top-0 p-1.5 text-gray-400 hover:text-indigo-500 opacity-0 group-hover/content:opacity-100 transition-opacity bg-white/80 dark:bg-gray-800/80 rounded-md"
+                tw-class="absolute right-0 top-0 p-1.5 text-gray-400 hover:text-indigo-500 opacity-0 group-hover/content:opacity-100 transition-opacity bg-white/80 dark:bg-gray-800/80 rounded-md"
               >
-                <CheckIcon v-if="isCopied" class="w-3.5 h-3.5 text-green-500" />
-                <CopyIcon v-else class="w-3.5 h-3.5" />
+                <CheckIcon v-if="isCopied" tw-class="w-3.5 h-3.5 text-green-500" />
+                <CopyIcon v-else tw-class="w-3.5 h-3.5" />
               </button>
               {{ node.content }}
             </div>
           </div>
-          <div v-else-if="node.content || node.thinking || node.error" class="px-3 py-1.5 rounded-lg bg-gray-50/30 dark:bg-white/[0.01] border border-dashed border-gray-200 dark:border-white/5">
-            <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic opacity-60">{{ lazyStrings.ChatDebugTreeNode__text_content_hidden() }}</span>
+          <div v-else-if="node.content || node.thinking || node.error" tw-class="px-3 py-1.5 rounded-lg bg-gray-50/30 dark:bg-white/[0.01] border border-dashed border-gray-200 dark:border-white/5">
+            <span tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic opacity-60">{{ lazyStrings.ChatDebugTreeNode__text_content_hidden() }}</span>
           </div>
 
           <!-- Non-collapsible visual elements (Images/Attachments) -->
           <template v-if="inlineImages.length > 0 || (node.attachments && node.attachments.length)">
             <!-- Inline Generated Images -->
-            <div v-if="inlineImages.length > 0" class="mt-4 space-y-4">
-              <div v-for="img in inlineImages" :key="img.binaryObjectId" class="relative group/inline-img max-w-full overflow-hidden">
-                <div class="text-[8px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 flex items-center gap-2">
-                  <ImageIcon class="w-3 h-3" />
+            <div v-if="inlineImages.length > 0" tw-class="mt-4 space-y-4">
+              <div v-for="img in inlineImages" :key="img.binaryObjectId" tw-class="relative group/inline-img max-w-full overflow-hidden">
+                <div tw-class="text-[8px] font-black uppercase tracking-[0.2em] text-gray-400 mb-2 flex items-center gap-2">
+                  <ImageIcon tw-class="w-3 h-3" />
                   <span>{{ lazyStrings.ChatDebugTreeNode__generated_image_reference() }}</span>
                 </div>
                 <div
                   @click.stop="emit('preview-attachment', toBinaryObjectId({ raw: img.binaryObjectId }))"
-                  class="rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center w-fit max-w-full shadow-sm hover:shadow-md transition-shadow"
+                  tw-class="rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center w-fit max-w-full shadow-sm hover:shadow-md transition-shadow"
                 >
                   <img
                     v-if="thumbnailUrls[img.binaryObjectId]"
                     :src="thumbnailUrls[img.binaryObjectId]"
-                    class="max-h-[300px] object-contain block"
+                    tw-class="max-h-[300px] object-contain block"
                     :style="{ width: img.displayWidth + 'px', maxWidth: '100%' }"
                   />
-                  <div v-else class="p-8 flex flex-col items-center gap-2">
-                    <ImageIcon class="w-6 h-6 text-gray-300 animate-pulse" />
+                  <div v-else tw-class="p-8 flex flex-col items-center gap-2">
+                    <ImageIcon tw-class="w-6 h-6 text-gray-300 animate-pulse" />
                   </div>
                 </div>
-                <div v-if="img.prompt" class="mt-1.5 text-[10px] text-gray-500 dark:text-gray-400 italic px-3 border-l-2 border-indigo-500/30 font-sans">
+                <div v-if="img.prompt" tw-class="mt-1.5 text-[10px] text-gray-500 dark:text-gray-400 italic px-3 border-l-2 border-indigo-500/30 font-sans">
                   "{{ img.prompt }}"
                 </div>
               </div>
             </div>
 
-            <div v-if="node.attachments && node.attachments.length" class="mt-4 flex flex-wrap gap-2">
+            <div v-if="node.attachments && node.attachments.length" tw-class="mt-4 flex flex-wrap gap-2">
               <div
                 v-for="att in node.attachments"
                 :key="idToRaw({ id: att.id })"
                 @click.stop="emit('preview-attachment', att.binaryObjectId)"
-                class="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center group/att"
+                tw-class="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center group/att"
               >
-                <img v-if="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" :src="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" class="w-full h-full object-cover" />
-                <div v-else class="flex flex-col items-center justify-center gap-1">
-                  <ImageIcon v-if="att.mimeType.startsWith('image/')" class="w-4 h-4 text-gray-400" />
-                  <FileIcon v-else class="w-4 h-4 text-gray-400" />
+                <img v-if="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" :src="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" tw-class="w-full h-full object-cover" />
+                <div v-else tw-class="flex flex-col items-center justify-center gap-1">
+                  <ImageIcon v-if="att.mimeType.startsWith('image/')" tw-class="w-4 h-4 text-gray-400" />
+                  <FileIcon v-else tw-class="w-4 h-4 text-gray-400" />
                 </div>
-                <div class="absolute bottom-0 inset-x-0 bg-black/40 text-[7px] text-white px-1 py-0.5 truncate text-center font-bold backdrop-blur-sm">
+                <div tw-class="absolute bottom-0 inset-x-0 bg-black/40 text-[7px] text-white px-1 py-0.5 truncate text-center font-bold backdrop-blur-sm">
                   {{ att.mimeType.split('/')[1] }}
                 </div>
               </div>
@@ -340,11 +335,11 @@ export default {
         </div>
 
         <!-- Integrated JSON -->
-        <div class="p-4 bg-gray-50/20 dark:bg-black/10 border-t border-gray-100 dark:border-white/5">
+        <div tw-class="p-4 bg-gray-50/20 dark:bg-black/10 border-t border-gray-100 dark:border-white/5">
           <AllowedHtmlView
             as="pre"
             :html="jsonOutput"
-            class="text-[10px] overflow-x-auto text-gray-500 dark:text-gray-400 leading-tight font-mono max-h-48 thin-scrollbar"
+            class="thin-scrollbar" tw-class="text-[10px] overflow-x-auto text-gray-500 dark:text-gray-400 leading-tight font-mono max-h-48"
           />
         </div>
       </div>
@@ -353,8 +348,7 @@ export default {
     <!-- Recursive Children -->
     <div
       v-if="node.replies?.items?.length && isExpanded && mode === 'tree'"
-      class="mt-0 space-y-1"
-      :class="isLinear ? 'ml-0' : 'ml-6'"
+      :tw-class="['mt-0 space-y-1', isLinear ? 'ml-0' : 'ml-6']"
     >
       <ChatDebugTreeNode
         v-for="(child, index) in node.replies.items"
@@ -373,8 +367,7 @@ export default {
     <!-- Recursive Children (Compact) -->
     <div
       v-if="node.replies?.items?.length && mode === 'compact'"
-      class="mt-0"
-      :class="isLinear ? 'ml-0' : 'ml-6'"
+      :tw-class="['mt-0', isLinear ? 'ml-0' : 'ml-6']"
     >
       <ChatDebugTreeNode
         v-for="(child, index) in node.replies.items"

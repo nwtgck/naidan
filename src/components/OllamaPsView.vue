@@ -483,74 +483,70 @@ defineExpose({
 
 <template>
   <div
-    class="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50/50 shadow-sm dark:border-gray-800 dark:bg-gray-800/30"
+    tw-class="overflow-hidden rounded-3xl border border-gray-100 bg-gray-50/50 shadow-sm dark:border-gray-800 dark:bg-gray-800/30"
     data-testid="ollama-ps-view"
   >
-    <div class="flex items-center gap-2 bg-white/60 px-4 py-3.5 dark:bg-gray-900/25 sm:px-5">
+    <div tw-class="flex items-center gap-2 bg-white/60 px-4 py-3.5 dark:bg-gray-900/25 sm:px-5">
       <button
         type="button"
-        class="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+        tw-class="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
         :aria-expanded="isExpanded"
         aria-controls="ollama-running-models-content"
         data-testid="ollama-ps-toggle"
         @click="togglePanel"
       >
-        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-white text-blue-500 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <MemoryStickIcon class="h-4 w-4" />
+        <span tw-class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-white text-blue-500 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <MemoryStickIcon tw-class="h-4 w-4" />
         </span>
 
-        <span class="min-w-0 flex-1">
-          <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.OllamaPsView__running_models() }}</span>
+        <span tw-class="min-w-0 flex-1">
+          <span tw-class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span tw-class="text-sm font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.OllamaPsView__running_models() }}</span>
             <span
-              class="text-[10px] font-bold text-gray-400"
+              tw-class="text-[10px] font-bold text-gray-400"
               aria-live="polite"
               data-testid="ollama-ps-status"
             >
               {{ statusLabel }}
             </span>
           </span>
-          <span class="mt-0.5 block text-[11px] font-medium leading-4 text-gray-400">
+          <span tw-class="mt-0.5 block text-[11px] font-medium leading-4 text-gray-400">
             {{ lazyStrings.OllamaPsView__models_currently_using_system_or_video_memory() }}
           </span>
         </span>
 
         <ChevronDownIcon
-          class="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none"
-          :class="isExpanded ? 'rotate-180' : ''"
+          :tw-class="['h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 motion-reduce:transition-none', isExpanded ? 'rotate-180' : '']"
         />
       </button>
     </div>
 
     <div
       id="ollama-running-models-content"
-      class="grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
-      :class="isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+      :tw-class="['grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none', isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]']"
       role="region"
       :aria-label="lazyStrings.OllamaPsView__running_ollama_models()"
       :aria-hidden="!isExpanded"
       :inert="isExpanded ? undefined : true"
       data-testid="ollama-ps-content"
     >
-      <div class="overflow-hidden">
+      <div tw-class="overflow-hidden">
         <div
-          class="border-t border-gray-100 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:border-gray-800"
-          :class="isExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'"
+          :tw-class="['border-t border-gray-100 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:border-gray-800', isExpanded ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0']"
         >
-          <div v-if="hasEndpoint" class="flex flex-wrap items-center justify-between gap-3 bg-gray-50/60 px-4 py-2.5 dark:bg-gray-900/20 sm:px-5">
-            <p class="text-[10px] font-medium leading-4 text-gray-400">
+          <div v-if="hasEndpoint" tw-class="flex flex-wrap items-center justify-between gap-3 bg-gray-50/60 px-4 py-2.5 dark:bg-gray-900/20 sm:px-5">
+            <p tw-class="text-[10px] font-medium leading-4 text-gray-400">
               {{ lazyStrings.OllamaPsView__loaded_models_remain_available_until_their_keep_alive_period_expires() }}
             </p>
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-gray-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-blue-900 dark:hover:bg-blue-900/10 dark:hover:text-blue-400"
+              tw-class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-gray-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-blue-900 dark:hover:bg-blue-900/10 dark:hover:text-blue-400"
               :disabled="isRefreshing || isAnyModelUnloading"
               data-testid="ollama-ps-refresh"
               @click="loadRunningModels"
             >
               <RefreshCwIcon
-                class="h-3.5 w-3.5 motion-reduce:animate-none"
-                :class="isRefreshing ? 'animate-spin' : ''"
+                :tw-class="['h-3.5 w-3.5 motion-reduce:animate-none', isRefreshing ? 'animate-spin' : '']"
               />
               {{ isRefreshing ? lazyStrings.OllamaPsView__refreshing() : lazyStrings.OllamaPsView__refresh() }}
             </button>
@@ -558,46 +554,46 @@ defineExpose({
 
           <div
             v-if="!hasEndpoint"
-            class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
+            tw-class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
             data-testid="ollama-ps-no-endpoint"
           >
-            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__enter_an_ollama_endpoint_url_to_view_running_models() }}</p>
+            <p tw-class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__enter_an_ollama_endpoint_url_to_view_running_models() }}</p>
           </div>
 
           <div
             v-else-if="requestState.status === 'idle'"
-            class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
+            tw-class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
             data-testid="ollama-ps-idle"
           >
-            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__refresh_to_check_this_ollama_server() }}</p>
+            <p tw-class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__refresh_to_check_this_ollama_server() }}</p>
           </div>
 
           <div
             v-else-if="requestState.status === 'loading' && models.length === 0"
-            class="flex items-center justify-center gap-2 bg-white px-5 py-8 text-[11px] font-bold text-gray-400 dark:bg-gray-900/30"
+            tw-class="flex items-center justify-center gap-2 bg-white px-5 py-8 text-[11px] font-bold text-gray-400 dark:bg-gray-900/30"
             aria-busy="true"
             data-testid="ollama-ps-loading"
           >
-            <Loader2Icon class="h-4 w-4 animate-spin motion-reduce:animate-none" />
+            <Loader2Icon tw-class="h-4 w-4 animate-spin motion-reduce:animate-none" />
             {{ lazyStrings.OllamaPsView__loading_models() }}
           </div>
 
           <div
             v-else-if="requestState.status === 'error' && models.length === 0"
-            class="bg-white px-5 py-7 dark:bg-gray-900/30"
+            tw-class="bg-white px-5 py-7 dark:bg-gray-900/30"
             data-testid="ollama-ps-error"
           >
-            <div class="mx-auto flex max-w-lg items-start gap-3 rounded-2xl border border-red-100 bg-red-50/40 p-4 dark:border-red-900/30 dark:bg-red-900/10">
-              <AlertCircleIcon class="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-              <div class="min-w-0 flex-1">
-                <p class="text-xs font-bold text-red-600 dark:text-red-400">{{ lazyStrings.OllamaPsView__could_not_load_running_models() }}</p>
-                <p class="mt-1 break-words text-[10px] font-medium leading-relaxed text-red-500/80 dark:text-red-300/80">
+            <div tw-class="mx-auto flex max-w-lg items-start gap-3 rounded-2xl border border-red-100 bg-red-50/40 p-4 dark:border-red-900/30 dark:bg-red-900/10">
+              <AlertCircleIcon tw-class="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+              <div tw-class="min-w-0 flex-1">
+                <p tw-class="text-xs font-bold text-red-600 dark:text-red-400">{{ lazyStrings.OllamaPsView__could_not_load_running_models() }}</p>
+                <p tw-class="mt-1 break-words text-[10px] font-medium leading-relaxed text-red-500/80 dark:text-red-300/80">
                   {{ requestState.errorMessage }}
                 </p>
               </div>
               <button
                 type="button"
-                class="shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-bold text-red-600 transition-colors hover:bg-red-100/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 dark:text-red-400 dark:hover:bg-red-900/20"
+                tw-class="shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-bold text-red-600 transition-colors hover:bg-red-100/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 dark:text-red-400 dark:hover:bg-red-900/20"
                 data-testid="ollama-ps-retry"
                 @click="loadRunningModels"
               >
@@ -608,57 +604,56 @@ defineExpose({
 
           <div
             v-else-if="requestState.status === 'ready' && models.length === 0"
-            class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
+            tw-class="bg-white px-5 py-8 text-center dark:bg-gray-900/30"
             data-testid="ollama-ps-empty"
           >
-            <p class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__no_models_are_currently_loaded() }}</p>
-            <p class="mt-1 text-[10px] font-medium text-gray-400">{{ lazyStrings.OllamaPsView__models_appear_here_after_ollama_loads_them_for_a_request() }}</p>
+            <p tw-class="text-xs font-bold text-gray-700 dark:text-gray-200">{{ lazyStrings.OllamaPsView__no_models_are_currently_loaded() }}</p>
+            <p tw-class="mt-1 text-[10px] font-medium text-gray-400">{{ lazyStrings.OllamaPsView__models_appear_here_after_ollama_loads_them_for_a_request() }}</p>
           </div>
 
-          <div v-else class="bg-white dark:bg-gray-900/30" :aria-busy="isRefreshing">
+          <div v-else tw-class="bg-white dark:bg-gray-900/30" :aria-busy="isRefreshing">
             <div
               v-if="requestState.status === 'error'"
-              class="flex items-start gap-2 border-b border-red-100 bg-red-50/40 px-4 py-2.5 text-[10px] font-medium leading-relaxed text-red-500 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-300 sm:px-5"
+              tw-class="flex items-start gap-2 border-b border-red-100 bg-red-50/40 px-4 py-2.5 text-[10px] font-medium leading-relaxed text-red-500 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-300 sm:px-5"
               aria-live="polite"
               data-testid="ollama-ps-refresh-error"
             >
-              <AlertCircleIcon class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <AlertCircleIcon tw-class="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {{ requestState.errorMessage }}
             </div>
 
-            <TransitionGroup name="ollama-model-list" tag="ul" class="relative divide-y divide-gray-100 dark:divide-gray-800" data-testid="ollama-model-list">
+            <TransitionGroup name="ollama-model-list" tag="ul" tw-class="relative divide-y divide-gray-100 dark:divide-gray-800" data-testid="ollama-model-list">
               <li
                 v-for="(model, index) in models"
                 :key="`${model.name}:${model.digest ?? ''}`"
-                class="bg-white/70 px-4 py-4 transition-opacity duration-200 motion-reduce:transition-none dark:bg-gray-900/35 sm:px-5"
-                :class="getModelActionState({ modelName: model.name }) === 'unloading' ? 'opacity-60' : ''"
+                :tw-class="['bg-white/70 px-4 py-4 transition-opacity duration-200 motion-reduce:transition-none dark:bg-gray-900/35 sm:px-5', getModelActionState({ modelName: model.name }) === 'unloading' ? 'opacity-60' : '']"
                 :data-testid="`ollama-model-${index}`"
               >
-                <div class="grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-5">
-                  <div class="min-w-0">
-                    <div class="flex min-w-0 flex-wrap items-center gap-2">
-                      <span class="min-w-0 break-all font-mono text-xs font-bold text-gray-800 dark:text-gray-100">
+                <div tw-class="grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-5">
+                  <div tw-class="min-w-0">
+                    <div tw-class="flex min-w-0 flex-wrap items-center gap-2">
+                      <span tw-class="min-w-0 break-all font-mono text-xs font-bold text-gray-800 dark:text-gray-100">
                         {{ model.name }}
                       </span>
                       <span
                         v-if="model.details.parameterSize"
-                        class="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1 font-mono text-[9px] font-bold text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        tw-class="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1 font-mono text-[9px] font-bold text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         {{ model.details.parameterSize }}
                       </span>
                       <span
                         v-if="model.details.quantizationLevel"
-                        class="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1 font-mono text-[9px] font-bold text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        tw-class="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1 font-mono text-[9px] font-bold text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         {{ model.details.quantizationLevel }}
                       </span>
                     </div>
 
-                    <div class="mt-2 flex flex-wrap text-[10px] font-medium leading-4 text-gray-400">
+                    <div tw-class="mt-2 flex flex-wrap text-[10px] font-medium leading-4 text-gray-400">
                       <span
                         v-for="item in getModelMetadata({ model })"
                         :key="item"
-                        class="after:mx-2 after:text-gray-200 after:content-['•'] last:after:hidden dark:after:text-gray-700"
+                        tw-class="after:mx-2 after:text-gray-200 after:content-['•'] last:after:hidden dark:after:text-gray-700"
                       >
                         {{ item }}
                       </span>
@@ -667,7 +662,7 @@ defineExpose({
                     <button
                       v-if="getModelDetails({ model }).length > 0"
                       type="button"
-                      class="mt-2 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                      tw-class="mt-2 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-semibold text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                       :aria-expanded="isModelDetailsExpanded({ modelName: model.name })"
                       :aria-controls="`ollama-model-${index}-details`"
                       :data-testid="`ollama-model-${index}-details-toggle`"
@@ -675,28 +670,25 @@ defineExpose({
                     >
                       {{ lazyStrings.OllamaPsView__model_details() }}
                       <ChevronDownIcon
-                        class="h-3 w-3 transition-transform duration-200 motion-reduce:transition-none"
-                        :class="isModelDetailsExpanded({ modelName: model.name }) ? 'rotate-180' : ''"
+                        :tw-class="['h-3 w-3 transition-transform duration-200 motion-reduce:transition-none', isModelDetailsExpanded({ modelName: model.name }) ? 'rotate-180' : '']"
                       />
                     </button>
 
                     <div
                       :id="`ollama-model-${index}-details`"
-                      class="grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
-                      :class="isModelDetailsExpanded({ modelName: model.name }) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+                      :tw-class="['grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none', isModelDetailsExpanded({ modelName: model.name }) ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]']"
                       role="region"
                       :aria-hidden="!isModelDetailsExpanded({ modelName: model.name })"
                       :aria-label="lazyStrings.OllamaPsView__model_details_aria({ modelName: model.name })"
                       :data-testid="`ollama-model-${index}-details`"
                     >
-                      <div class="overflow-hidden">
+                      <div tw-class="overflow-hidden">
                         <dl
-                          class="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 rounded-xl border border-gray-100 bg-gray-50/70 p-3 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:border-gray-800 dark:bg-gray-950/30 sm:grid-cols-2"
-                          :class="isModelDetailsExpanded({ modelName: model.name }) ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'"
+                          :tw-class="['mt-2 grid grid-cols-1 gap-x-4 gap-y-2 rounded-xl border border-gray-100 bg-gray-50/70 p-3 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none dark:border-gray-800 dark:bg-gray-950/30 sm:grid-cols-2', isModelDetailsExpanded({ modelName: model.name }) ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0']"
                         >
-                          <div v-for="item in getModelDetails({ model })" :key="item.label" class="min-w-0">
-                            <dt class="text-[8px] font-bold uppercase tracking-widest text-gray-400">{{ item.label }}</dt>
-                            <dd class="mt-0.5 break-all font-mono text-[10px] font-semibold text-gray-600 dark:text-gray-300">{{ item.value }}</dd>
+                          <div v-for="item in getModelDetails({ model })" :key="item.label" tw-class="min-w-0">
+                            <dt tw-class="text-[8px] font-bold uppercase tracking-widest text-gray-400">{{ item.label }}</dt>
+                            <dd tw-class="mt-0.5 break-all font-mono text-[10px] font-semibold text-gray-600 dark:text-gray-300">{{ item.value }}</dd>
                           </div>
                         </dl>
                       </div>
@@ -704,41 +696,41 @@ defineExpose({
 
                     <p
                       v-if="modelActionNotices.get(model.name)"
-                      class="mt-2 flex items-start gap-1.5 text-[10px] font-medium leading-relaxed text-blue-500 dark:text-blue-400"
+                      tw-class="mt-2 flex items-start gap-1.5 text-[10px] font-medium leading-relaxed text-blue-500 dark:text-blue-400"
                       aria-live="polite"
                       :data-testid="`ollama-model-${index}-notice`"
                     >
-                      <Clock3Icon class="mt-0.5 h-3 w-3 shrink-0" />
+                      <Clock3Icon tw-class="mt-0.5 h-3 w-3 shrink-0" />
                       {{ modelActionNotices.get(model.name) }}
                     </p>
 
                     <p
                       v-if="modelActionErrors.get(model.name)"
-                      class="mt-2 flex items-start gap-1.5 text-[10px] font-medium leading-relaxed text-red-500 dark:text-red-400"
+                      tw-class="mt-2 flex items-start gap-1.5 text-[10px] font-medium leading-relaxed text-red-500 dark:text-red-400"
                       aria-live="polite"
                       :data-testid="`ollama-model-${index}-error`"
                     >
-                      <AlertCircleIcon class="mt-0.5 h-3 w-3 shrink-0" />
+                      <AlertCircleIcon tw-class="mt-0.5 h-3 w-3 shrink-0" />
                       {{ modelActionErrors.get(model.name) }}
                     </p>
                   </div>
 
                   <button
                     type="button"
-                    class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50/40 px-3 py-2 text-[10px] font-bold text-red-500 transition-[background-color,border-color,color,transform] hover:border-red-200 hover:bg-red-50 hover:text-red-600 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:transform-none dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400 dark:hover:border-red-800 dark:hover:bg-red-900/20 sm:w-auto"
+                    tw-class="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-red-100 bg-red-50/40 px-3 py-2 text-[10px] font-bold text-red-500 transition-[background-color,border-color,color,transform] hover:border-red-200 hover:bg-red-50 hover:text-red-600 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none motion-reduce:transform-none dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400 dark:hover:border-red-800 dark:hover:bg-red-900/20 sm:w-auto"
                     :disabled="isRefreshing || isAnyModelUnloading || getModelActionState({ modelName: model.name }) === 'requested'"
                     :data-testid="`ollama-model-${index}-unload`"
                     @click="unloadModel({ model })"
                   >
                     <Loader2Icon
                       v-if="getModelActionState({ modelName: model.name }) === 'unloading'"
-                      class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+                      tw-class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
                     />
                     <Clock3Icon
                       v-else-if="getModelActionState({ modelName: model.name }) === 'requested'"
-                      class="h-3.5 w-3.5"
+                      tw-class="h-3.5 w-3.5"
                     />
-                    <CircleStopIcon v-else class="h-3.5 w-3.5" />
+                    <CircleStopIcon v-else tw-class="h-3.5 w-3.5" />
                     {{ getUnloadButtonLabel({ modelName: model.name }) }}
                   </button>
                 </div>

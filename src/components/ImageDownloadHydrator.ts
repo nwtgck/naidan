@@ -7,6 +7,7 @@ import { sanitizeFilename } from '@/utils/string';
 import type { StorageService } from '@/00-storage/service';
 import { toBinaryObjectId } from '@/01-models/ids';
 import type { BinaryObjectId } from '@/01-models/ids';
+import { twClassString } from 'virtual:naidan-tailwind';
 
 /**
  * ImageDownloadHydrator handles the manual attachment of the Vue-based
@@ -71,7 +72,14 @@ export const ImageDownloadHydrator = {
     imgEl.height = parseInt(height || '512');
     // TODO(strings-localize): Localize this DOM attribute after createImageElement can receive a resolved alt value without becoming asynchronous.
     imgEl.alt = 'generated image';
-    imgEl.className = 'naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity';
+    imgEl.className = [
+      'naidan-clickable-img',
+      twClassString(
+        'rounded-xl', 'shadow-lg', 'border', 'border-gray-100', 'dark:border-gray-800',
+        'max-w-full', 'h-auto', '!m-0', 'block', 'cursor-pointer', 'hover:opacity-95',
+        'transition-opacity',
+      ),
+    ].join(' ');
     imgEl.onclick = (e) => {
       e.stopPropagation();
       onPreview();

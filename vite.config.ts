@@ -19,6 +19,8 @@ import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/constants';
 import { createLicenseModulePlugins } from './build/license-module';
 import { omitBuildOutputFilesPlugin } from './build/omit-build-output-files';
 import { createBoundaryStringsPlugin } from './build/boundary-strings';
+import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
+import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -275,8 +277,29 @@ export default defineConfig(({ mode }) => {
       VueRouter({
         /* options */
       }),
+      createTwClassVitePlugin({
+        projectRoot: __dirname,
+        sourceRoot: path.resolve(__dirname, 'src'),
+        entryModule: path.resolve(__dirname, 'src/main.ts'),
+        tailwindCssPath: path.resolve(__dirname, 'src/style.css'),
+        debugOutputDirectory: path.resolve(__dirname, 'dist/debug-tailwind'),
+        // Source modules import canonical runtime CSS fragment modules. Rolldown
+        // places private and shared fragments according to its actual chunk graph.
+        outputMode: 'split',
+        cssPlanning: mode === 'test' ? 'disabled' : 'enabled',
+        // Bound runtime fragment module count so static analysis does not make
+        // production builds disproportionately expensive. Smaller groups are
+        // promoted to the initial registry module, never discarded.
+        maxSplitCssGroups: 256,
+      }),
       VueDevTools(),
-      vue(),
+      vue({
+        template: {
+          compilerOptions: {
+            nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template', blockStart: undefined })],
+          },
+        },
+      }),
       isStandalone && legacy({
         targets: [...standaloneBrowserSupport.legacy],
         renderModernChunks: false,

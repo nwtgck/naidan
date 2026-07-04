@@ -126,25 +126,24 @@ defineExpose({
     <div
       v-if="isVisible"
       ref="menuRef"
-      class="fixed z-[500] min-w-[180px] py-1 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl backdrop-blur-md"
+      tw-class="fixed z-[500] min-w-[180px] py-1 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl backdrop-blur-md"
       :style="{ left: `${ctx.contextMenuState.x}px`, top: `${ctx.contextMenuState.y}px` }"
       data-testid="context-menu"
     >
       <template v-for="(item, i) in menuItems" :key="i">
-        <hr v-if="item.type === 'divider'" class="my-1 border-gray-100 dark:border-gray-700" />
+        <hr v-if="item.type === 'divider'" tw-class="my-1 border-gray-100 dark:border-gray-700" />
         <button
           v-else-if="item.type === 'action'"
-          class="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs font-medium transition-colors text-left"
-          :class="item.disabled
+          :tw-class="['flex items-center gap-2.5 w-full px-3 py-1.5 text-xs font-medium transition-colors text-left', item.disabled
             ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
             : item.danger
               ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800']"
           :disabled="item.disabled"
           :title="item.disabled && item.disabledReason ? item.disabledReason : undefined"
           @click="!item.disabled && ctx.executeContextAction({ action: item.action })"
         >
-          <component :is="item.icon" class="w-4 h-4 shrink-0 opacity-70" />
+          <component :is="item.icon" tw-class="w-4 h-4 shrink-0 opacity-70" />
           {{ item.label }}
         </button>
       </template>

@@ -1129,63 +1129,61 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
 <template>
   <div
     v-if="chat"
-    class="absolute bottom-0 left-0 right-0 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-3 sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform"
-    :class="visibility === 'submerged' ? 'translate-y-[calc(100%-32px-env(safe-area-inset-bottom))] sm:translate-y-[calc(100%-40px-env(safe-area-inset-bottom))]' : 'translate-y-0'"
+    :tw-class="['absolute bottom-0 left-0 right-0 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-3 sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform', visibility === 'submerged' ? 'translate-y-[calc(100%-32px-env(safe-area-inset-bottom))] sm:translate-y-[calc(100%-40px-env(safe-area-inset-bottom))]' : 'translate-y-0']"
   >
     <!-- Glass Zone behind the input card (Full width blur) -->
-    <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': visibility === 'submerged' }"></div>
+    <div class="glass-zone-mask" :tw-class="['absolute inset-0 -z-10', { 'opacity-0': visibility === 'submerged' }]"></div>
 
     <div
       v-if="props.aboveInputVisibility === 'visible'"
-      class="mx-auto mb-2 w-full max-w-4xl pointer-events-auto"
+      tw-class="mx-auto mb-2 w-full max-w-4xl pointer-events-auto"
       data-testid="chat-input-above-slot"
     >
       <slot name="above-input"></slot>
     </div>
 
     <div
-      class="max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col"
-      :class="[
-        isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
-        visibility === 'submerged' ? 'cursor-pointer' : ''
+      :tw-class="['max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col',
+                  isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
+                  visibility === 'submerged' ? 'cursor-pointer' : ''
       ]"
       @mouseenter="handleMouseEnter"
       @mouseleave="handleMouseLeave"
       @click="visibility === 'submerged' ? handleFocus() : null"
     >
       <!-- Hit area extension: expands the interaction zone around the card to prevent jittering during transitions -->
-      <div class="absolute -inset-x-4 -top-4 -bottom-16 pointer-events-auto -z-10" data-testid="hit-area-extension"></div>
+      <div tw-class="absolute -inset-x-4 -top-4 -bottom-16 pointer-events-auto -z-10" data-testid="hit-area-extension"></div>
 
       <!-- Active copy progress bars -->
-      <div v-if="activeCopies.length > 0" class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
+      <div v-if="activeCopies.length > 0" tw-class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
         <div
           v-for="copy in activeCopies"
           :key="idToRaw({ id: copy.id })"
-          class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
+          tw-class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
           data-testid="copy-progress"
         >
-          <div class="px-3 pt-3 pb-2.5">
-            <div class="flex items-center justify-between mb-2">
-              <span class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
-                <Loader2Icon class="w-3.5 h-3.5 animate-spin shrink-0" />
+          <div tw-class="px-3 pt-3 pb-2.5">
+            <div tw-class="flex items-center justify-between mb-2">
+              <span tw-class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
+                <Loader2Icon tw-class="w-3.5 h-3.5 animate-spin shrink-0" />
                 {{ lazyStrings.ChatInput__copying_name({ name: copy.name }) }}
               </span>
-              <div class="flex items-center gap-3">
-                <span v-if="copy.progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+              <div tw-class="flex items-center gap-3">
+                <span v-if="copy.progress" tw-class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
                   {{ copy.progress.processed }} / {{ copy.progress.total }}
                 </span>
                 <button
                   @click="copy.abort.abort()"
-                  class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  tw-class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                   data-testid="copy-cancel-btn"
                 >
                   {{ lazyStrings.ChatInput__cancel() }}
                 </button>
               </div>
             </div>
-            <div class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
+            <div tw-class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
               <div
-                class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
+                tw-class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
                 :style="{ width: `${copy.progress ? (copy.progress.processed / copy.progress.total) * 100 : 5}%` }"
               ></div>
             </div>
@@ -1194,7 +1192,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
       </div>
 
       <!-- Folder/File Mounts attached to this chat -->
-      <div v-if="chatMountList.length > 0" class="px-4 pt-4" data-testid="chat-mounts-preview">
+      <div v-if="chatMountList.length > 0" tw-class="px-4 pt-4" data-testid="chat-mounts-preview">
         <MountBadgeList
           :mounts="chatMountList"
           path-trim-prefix="/home/user/"
@@ -1206,28 +1204,28 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
       </div>
 
       <!-- Attachment Previews -->
-      <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
-        <div v-for="att in attachments" :key="idToRaw({ id: att.id })" class="relative group/att">
-          <div class="bg-transparency-grid rounded-lg overflow-hidden" style="--grid-size: 10px;">
+      <div v-if="attachments.length > 0" tw-class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
+        <div v-for="att in attachments" :key="idToRaw({ id: att.id })" tw-class="relative group/att">
+          <div class="bg-transparency-grid" tw-class="rounded-lg overflow-hidden" style="--grid-size: 10px;">
             <img
               :src="attachmentUrls.get(att.id)"
-              class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
+              tw-class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
             />
           </div>
-          <div class="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover/att:opacity-100 transition-opacity z-10">
+          <div tw-class="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover/att:opacity-100 transition-opacity z-10">
             <button
               @click="openImageEditor({ id: att.id })"
-              class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors touch-visible"
+              class="touch-visible" tw-class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors"
               :title="lazyStrings.ChatInput__edit_image()"
             >
-              <Edit2Icon class="w-3 h-3" />
+              <Edit2Icon tw-class="w-3 h-3" />
             </button>
             <button
               @click="removeAttachment({ id: att.id })"
-              class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors touch-visible"
+              class="touch-visible" tw-class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors"
               :title="lazyStrings.ChatInput__remove()"
             >
-              <XIcon class="w-3 h-3" />
+              <XIcon tw-class="w-3 h-3" />
             </button>
           </div>
         </div>
@@ -1245,47 +1243,47 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
         @keydown.enter.meta.prevent="handleSend"
         @keydown.esc.prevent="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
         :placeholder="lazyStrings.ChatInput__type_a_message()"
-        class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
+        tw-class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
         data-testid="chat-input"
       ></textarea>
 
       <!-- Control Buttons inside input area -->
-      <div class="absolute right-3 top-3 flex flex-col items-center gap-1.5 z-20">
+      <div tw-class="absolute right-3 top-3 flex flex-col items-center gap-1.5 z-20">
         <button
           v-if="isOverLimit || isMaximized"
           @click.stop="toggleMaximized"
-          class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+          tw-class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
           :title="isMaximized ? lazyStrings.ChatInput__minimize_input() : lazyStrings.ChatInput__maximize_input()"
           data-testid="maximize-button"
         >
-          <Minimize2Icon v-if="isMaximized" class="w-4 h-4" />
-          <Maximize2Icon v-else class="w-4 h-4" />
+          <Minimize2Icon v-if="isMaximized" tw-class="w-4 h-4" />
+          <Maximize2Icon v-else tw-class="w-4 h-4" />
         </button>
 
         <button
           @click.stop="toggleSubmerged"
-          class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+          tw-class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
           :title="visibility === 'submerged' ? lazyStrings.ChatInput__show_input() : lazyStrings.ChatInput__hide_input()"
           data-testid="submerge-button"
         >
-          <ChevronUpIcon v-if="visibility === 'submerged'" class="w-4 h-4" />
-          <ChevronDownIcon v-else class="w-4 h-4" />
+          <ChevronUpIcon v-if="visibility === 'submerged'" tw-class="w-4 h-4" />
+          <ChevronDownIcon v-else tw-class="w-4 h-4" />
         </button>
 
         <button
           @click.stop="openAdvancedEditor"
-          class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+          tw-class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
           :title="lazyStrings.ChatInput__open_advanced_editor()"
           data-testid="open-advanced-editor-button"
         >
-          <FileEditIcon class="w-4 h-4" />
+          <FileEditIcon tw-class="w-4 h-4" />
         </button>
       </div>
 
-      <div class="flex items-center justify-between px-4 pb-2" :class="{ 'pointer-events-none invisible': visibility === 'submerged' }">
-        <div class="flex items-center gap-2">
-          <div class="w-[100px] sm:w-[180px]">
+      <div :tw-class="['flex items-center justify-between px-4 pb-2', { 'pointer-events-none invisible': visibility === 'submerged' }]">
+        <div tw-class="flex items-center gap-2">
+          <div tw-class="w-[100px] sm:w-[180px]">
             <ModelSelector
               :model-value="chat.modelId"
               @update:model-value="val => chatMetadata.updateModel({ chatId: props.chatId, modelId: val! })"
@@ -1333,18 +1331,18 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
         <button
           @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
           :disabled="!isChatStreaming && !input.trim() && attachments.length === 0"
-          class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
+          tw-class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
           :title="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
           :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"
         >
           <template v-if="isChatStreaming">
-            <span class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
-            <SquareIcon class="w-4 h-4 fill-white text-white" />
+            <span tw-class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
+            <SquareIcon tw-class="w-4 h-4 fill-white text-white" />
           </template>
           <template v-else>
-            <span class="text-[10px] font-bold opacity-90 hidden sm:inline tracking-wider">{{ sendShortcutText }}</span>
-            <ImageIcon v-if="isImageMode" class="w-4 h-4 text-white" />
-            <SendIcon v-else class="w-4 h-4" />
+            <span tw-class="text-[10px] font-bold opacity-90 hidden sm:inline tracking-wider">{{ sendShortcutText }}</span>
+            <ImageIcon v-if="isImageMode" tw-class="w-4 h-4 text-white" />
+            <SendIcon v-else tw-class="w-4 h-4" />
           </template>
         </button>
       </div>
@@ -1360,8 +1358,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
         @cancel="closeImageEditor"
         @save="saveEditedImage"
       />
-      <div v-if="isAdvancedEditorOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 bg-black/50 backdrop-blur-sm">
-        <div class="w-full max-w-5xl h-full max-h-[90vh]">
+      <div v-if="isAdvancedEditorOpen" tw-class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 bg-black/50 backdrop-blur-sm">
+        <div tw-class="w-full max-w-5xl h-full max-h-[90vh]">
           <AdvancedTextEditor
             :initial-value="input"
             :title="undefined"

@@ -8,6 +8,7 @@ import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { MessageNode } from '@/01-models/types';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import MessageItem from './MessageItem.vue';
+import { tw, twClasses, twClassString } from 'virtual:naidan-tailwind';
 
 type OutlineVisibility = 'hidden' | 'visible';
 type OutlineRole = MessageNode['role'];
@@ -48,11 +49,11 @@ const outlineItems = computed(() => {
 });
 
 const outlineMaxHeightClass = computed(() => {
-  return peekMessageId.value === undefined ? 'max-h-[55vh]' : 'max-h-[80vh]';
+  return peekMessageId.value === undefined ? tw('max-h-[55vh]') : tw('max-h-[80vh]');
 });
 
 const outlineBodyMaxHeightClass = computed(() => {
-  return peekMessageId.value === undefined ? 'max-h-[calc(55vh-41px)]' : 'max-h-[calc(80vh-41px)]';
+  return peekMessageId.value === undefined ? tw('max-h-[calc(55vh-41px)]') : tw('max-h-[calc(80vh-41px)]');
 });
 
 function updateScrollHints() {
@@ -129,13 +130,13 @@ function formatRole({ role }: { role: OutlineRole }) {
 function roleClass({ role }: { role: OutlineRole }) {
   switch (role) {
   case 'user':
-    return 'text-blue-600 dark:text-blue-400';
+    return twClassString('text-blue-600', 'dark:text-blue-400');
   case 'assistant':
-    return 'text-emerald-600 dark:text-emerald-400';
+    return twClassString('text-emerald-600', 'dark:text-emerald-400');
   case 'system':
-    return 'text-purple-600 dark:text-purple-400';
+    return twClassString('text-purple-600', 'dark:text-purple-400');
   case 'tool':
-    return 'text-amber-600 dark:text-amber-400';
+    return twClassString('text-amber-600', 'dark:text-amber-400');
   default: {
     const _ex: never = role;
     return _ex;
@@ -156,86 +157,82 @@ defineExpose({
   <Transition name="dropdown">
     <div
       v-if="visibility === 'visible'"
-      class="absolute inset-0 z-40"
+      tw-class="absolute inset-0 z-40"
       data-testid="conversation-outline-overlay"
     >
       <div
-        class="absolute inset-0 bg-black/10 backdrop-blur-[1px] transition-opacity dark:bg-black/30"
+        tw-class="absolute inset-0 bg-black/10 backdrop-blur-[1px] transition-opacity dark:bg-black/30"
         aria-hidden="true"
         data-testid="conversation-outline-backdrop"
         @click="emit('close')"
       />
       <div
-        class="absolute left-3 right-3 top-3 overflow-hidden rounded-xl border border-gray-200/80 bg-white/95 shadow-2xl backdrop-blur-md transition-[max-height] duration-150 ease-out dark:border-gray-700 dark:bg-gray-900/95"
-        :class="outlineMaxHeightClass"
+        :tw-class="['absolute left-3 right-3 top-3 overflow-hidden rounded-xl border border-gray-200/80 bg-white/95 shadow-2xl backdrop-blur-md transition-[max-height] duration-150 ease-out dark:border-gray-700 dark:bg-gray-900/95', twClasses(outlineMaxHeightClass)]"
         data-testid="conversation-outline-panel"
         @click.stop
       >
-        <div class="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
-          <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            <ListIcon class="h-4 w-4" />
+        <div tw-class="flex items-center justify-between border-b border-gray-100 px-3 py-2 dark:border-gray-800">
+          <div tw-class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <ListIcon tw-class="h-4 w-4" />
             <span>{{ lazyStrings.ConversationOutlineOverlay__conversation_outline() }}</span>
           </div>
           <button
             @click="emit('close')"
-            class="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            tw-class="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             :title="lazyStrings.ConversationOutlineOverlay__close_conversation_outline()"
             data-testid="close-conversation-outline-button"
           >
-            <XIcon class="h-4 w-4" />
+            <XIcon tw-class="h-4 w-4" />
           </button>
         </div>
-        <div class="relative">
+        <div tw-class="relative">
           <div
             ref="outlineBody"
             @scroll="updateScrollHints()"
-            class="overflow-y-auto py-1 transition-[max-height] duration-150 ease-out"
-            :class="outlineBodyMaxHeightClass"
+            :tw-class="['overflow-y-auto py-1 transition-[max-height] duration-150 ease-out', twClasses(outlineBodyMaxHeightClass)]"
             data-testid="conversation-outline-body"
           >
             <div
               v-for="item in outlineItems"
               :key="idToRaw({ id: item.id })"
-              class="border-b border-gray-100 last:border-b-0 dark:border-gray-800"
+              tw-class="border-b border-gray-100 last:border-b-0 dark:border-gray-800"
               data-testid="conversation-outline-item"
               :data-outline-message-id="idToRaw({ id: item.id })"
             >
-              <div class="grid grid-cols-[2.25rem_2.5rem_minmax(0,1fr)_2rem] items-center gap-1.5 px-3 py-2 text-sm transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20">
+              <div tw-class="grid grid-cols-[2.25rem_2.5rem_minmax(0,1fr)_2rem] items-center gap-1.5 px-3 py-2 text-sm transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20">
                 <button
                   @click="emit('select-message', item.id)"
-                  class="contents text-left"
+                  tw-class="contents text-left"
                   data-testid="conversation-outline-jump-button"
                 >
-                  <span class="font-mono text-xs text-gray-400">{{ String(item.index).padStart(2, '0') }}</span>
+                  <span tw-class="font-mono text-xs text-gray-400">{{ String(item.index).padStart(2, '0') }}</span>
                   <span
-                    class="text-xs font-bold uppercase tracking-wider"
-                    :class="roleClass({ role: item.role })"
+                    :tw-class="['text-xs font-bold uppercase tracking-wider', twClasses(roleClass({ role: item.role }))]"
                   >
                     {{ formatRole({ role: item.role }) }}
                   </span>
-                  <span class="truncate text-gray-700 dark:text-gray-200">{{ item.preview }}</span>
+                  <span tw-class="truncate text-gray-700 dark:text-gray-200">{{ item.preview }}</span>
                 </button>
                 <button
                   @click="togglePeek({ messageId: item.id })"
-                  class="rounded-lg p-1 text-gray-400 transition-colors hover:bg-white hover:text-blue-600 dark:hover:bg-gray-800 dark:hover:text-blue-400"
-                  :class="peekMessageId === item.id ? 'text-blue-600 dark:text-blue-400' : ''"
+                  :tw-class="['rounded-lg p-1 text-gray-400 transition-colors hover:bg-white hover:text-blue-600 dark:hover:bg-gray-800 dark:hover:text-blue-400', peekMessageId === item.id ? 'text-blue-600 dark:text-blue-400' : '']"
                   :title="lazyStrings.ConversationOutlineOverlay__peek()"
                   data-testid="conversation-outline-peek-button"
                 >
-                  <EyeIcon class="h-4 w-4" />
+                  <EyeIcon tw-class="h-4 w-4" />
                 </button>
               </div>
               <Transition
-                enter-active-class="transition duration-150 ease-out"
-                enter-from-class="-translate-y-1 opacity-0"
-                enter-to-class="translate-y-0 opacity-100"
-                leave-active-class="transition duration-100 ease-in"
-                leave-from-class="translate-y-0 opacity-100"
-                leave-to-class="-translate-y-1 opacity-0"
+                tw-enter-active-class="transition duration-150 ease-out"
+                tw-enter-from-class="-translate-y-1 opacity-0"
+                tw-enter-to-class="translate-y-0 opacity-100"
+                tw-leave-active-class="transition duration-100 ease-in"
+                tw-leave-from-class="translate-y-0 opacity-100"
+                tw-leave-to-class="-translate-y-1 opacity-0"
               >
                 <div
                   v-if="peekMessageId === item.id"
-                  class="mx-3 mb-3 max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-950/60"
+                  tw-class="mx-3 mb-3 max-h-72 overflow-y-auto rounded-lg border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-950/60"
                   data-testid="conversation-outline-peek"
                 >
                   <MessageItem
@@ -264,12 +261,12 @@ defineExpose({
           </div>
           <div
             v-if="topScrollHintVisibility === 'visible'"
-            class="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-white/95 to-transparent dark:from-gray-900/95"
+            tw-class="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-white/95 to-transparent dark:from-gray-900/95"
             data-testid="conversation-outline-scroll-hint-top"
           ></div>
           <div
             v-if="bottomScrollHintVisibility === 'visible'"
-            class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white/95 to-transparent dark:from-gray-900/95"
+            tw-class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white/95 to-transparent dark:from-gray-900/95"
             data-testid="conversation-outline-scroll-hint-bottom"
           ></div>
         </div>

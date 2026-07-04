@@ -34,7 +34,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="h-full flex flex-col overflow-hidden bg-[#fcfcfd] dark:bg-gray-900 transition-colors">
+  <div tw-class="h-full flex flex-col overflow-hidden bg-[#fcfcfd] dark:bg-gray-900 transition-colors">
     <ChatGroupSettingsPanel />
   </div>
 </template>

@@ -528,58 +528,57 @@ defineExpose({
 
 <template>
   <Transition name="fade">
-    <div v-if="isSearchOpen" class="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4" @click.self="closeSearch">
+    <div v-if="isSearchOpen" tw-class="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4" @click.self="closeSearch">
       <!-- Backdrop (Added click handler for robust outside click closing) -->
-      <div class="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm transition-opacity" aria-hidden="true" @click="closeSearch" />
+      <div tw-class="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm transition-opacity" aria-hidden="true" @click="closeSearch" />
 
       <!-- Modal Container (Split View) -->
-      <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[82vh] overflow-hidden transform transition-all scale-100" @click.stop>
+      <div tw-class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[82vh] overflow-hidden transform transition-all scale-100" @click.stop>
 
         <!-- Search Header -->
-        <div class="flex items-center gap-3 p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
-          <SearchIcon class="w-5 h-5 text-gray-400" />
+        <div tw-class="flex items-center gap-3 p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
+          <SearchIcon tw-class="w-5 h-5 text-gray-400" />
           <input
             ref="searchInput"
             :value="query"
             @input="handleInput({ event: $event })"
             @keydown="handleKeydown({ event: $event })"
             type="text"
-            class="flex-1 bg-transparent border-none outline-none text-lg text-gray-900 dark:text-gray-100 placeholder-gray-400"
+            tw-class="flex-1 bg-transparent border-none outline-none text-lg text-gray-900 dark:text-gray-100 placeholder-gray-400"
             :placeholder="lazyStrings.GlobalSearchModal__search_chats_and_messages()"
             :aria-label="lazyStrings.GlobalSearchModal__search()"
             data-testid="search-input"
           />
-          <button @click="closeSearch" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-            <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-xs font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 mr-2">ESC</kbd>
-            <XIcon class="w-5 h-5 inline-block" />
+          <button @click="closeSearch" tw-class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+            <kbd tw-class="hidden sm:inline-block px-1.5 py-0.5 text-xs font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 mr-2">ESC</kbd>
+            <XIcon tw-class="w-5 h-5 inline-block" />
           </button>
         </div>
 
         <!-- Search Options -->
-        <div class="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 shrink-0 overflow-visible">
-          <div class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <div class="flex flex-wrap items-center gap-1.5 min-w-0">
-              <div class="flex flex-wrap items-center gap-1 shrink-0">
+        <div tw-class="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 shrink-0 overflow-visible">
+          <div tw-class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div tw-class="flex flex-wrap items-center gap-1.5 min-w-0">
+              <div tw-class="flex flex-wrap items-center gap-1 shrink-0">
                 <button
                   v-for="scope in (['all', 'current_thread', 'title_only'] as SearchScope[])"
                   :key="scope"
                   @click="handleSearchScopeChange({ scope })"
-                  class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
-                  :class="searchScope === scope ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                  :tw-class="['px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all', searchScope === scope ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800']"
                   :data-testid="'scope-button-' + scope"
                 >
                   {{ searchScopeLabel({ scope }) }}
                 </button>
               </div>
 
-              <div class="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1 shrink-0"></div>
+              <div tw-class="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1 shrink-0"></div>
 
-              <div v-if="shouldShowRoleFilter" class="flex items-center gap-1.5 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 px-2.5 py-1">
-                <span class="text-[8px] font-black uppercase tracking-[0.16em] text-gray-400">{{ lazyStrings.GlobalSearchModal__role() }}</span>
+              <div v-if="shouldShowRoleFilter" tw-class="flex items-center gap-1.5 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 px-2.5 py-1">
+                <span tw-class="text-[8px] font-black uppercase tracking-[0.16em] text-gray-400">{{ lazyStrings.GlobalSearchModal__role() }}</span>
                 <select
                   :value="searchRoleFilter"
                   @change="handleSearchRoleFilterChange({ event: $event })"
-                  class="w-[4.8rem] bg-transparent border-none outline-none text-[9px] font-black uppercase tracking-[0.12em] text-gray-600 dark:text-gray-300 cursor-pointer pr-1"
+                  tw-class="w-[4.8rem] bg-transparent border-none outline-none text-[9px] font-black uppercase tracking-[0.12em] text-gray-600 dark:text-gray-300 cursor-pointer pr-1"
                   data-testid="role-filter-select"
                 >
                   <option
@@ -592,90 +591,87 @@ defineExpose({
                 </select>
               </div>
 
-              <div v-if="shouldShowRoleFilter" class="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1 shrink-0"></div>
+              <div v-if="shouldShowRoleFilter" tw-class="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1 shrink-0"></div>
 
               <!-- Group Filter Popover -->
-              <div class="relative shrink-0">
+              <div tw-class="relative shrink-0">
                 <button
                   @click="showGroupSelector = !showGroupSelector"
-                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
-                  :class="chatGroupIds.length > 0 ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                  :tw-class="['flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all', chatGroupIds.length > 0 ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800']"
                   data-testid="group-filter-button"
                 >
-                  <FilterIcon class="w-3 h-3" />
+                  <FilterIcon tw-class="w-3 h-3" />
                   <span>{{ lazyStrings.GlobalSearchModal__groups() }}</span>
-                  <span v-if="chatGroupIds.length > 0" class="ml-1 px-1.5 py-0.5 bg-indigo-600 text-white rounded-full text-[8px]">{{ chatGroupIds.length }}</span>
+                  <span v-if="chatGroupIds.length > 0" tw-class="ml-1 px-1.5 py-0.5 bg-indigo-600 text-white rounded-full text-[8px]">{{ chatGroupIds.length }}</span>
                 </button>
 
                 <Transition name="dropdown">
                   <div
                     v-if="showGroupSelector"
-                    class="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden"
+                    tw-class="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden"
                     @click.stop
                     data-testid="group-selector-dropdown"
                   >
-                    <div class="px-3 py-2 border-b border-gray-50 dark:border-gray-700/50 text-[10px] font-black text-gray-400 uppercase tracking-widest">{{ lazyStrings.GlobalSearchModal__filter_by_group() }}</div>
-                    <div class="max-h-64 overflow-y-auto p-1">
+                    <div tw-class="px-3 py-2 border-b border-gray-50 dark:border-gray-700/50 text-[10px] font-black text-gray-400 uppercase tracking-widest">{{ lazyStrings.GlobalSearchModal__filter_by_group() }}</div>
+                    <div tw-class="max-h-64 overflow-y-auto p-1">
                       <button
                         v-for="group in chatGroups"
                         :key="idToRaw({ id: group.id })"
                         @click="toggleGroupFilter({ groupId: idToRaw({ id: group.id }) })"
-                        class="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors"
-                        :class="chatGroupIds.includes(idToRaw({ id: group.id })) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:indigo-text-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                        :tw-class="['w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors', chatGroupIds.includes(idToRaw({ id: group.id })) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700']"
                         :data-testid="'group-filter-item-' + idToRaw({ id: group.id })"
                       >
-                        <div class="flex items-center gap-2 overflow-hidden">
-                          <FolderIcon class="w-3.5 h-3.5 shrink-0 opacity-60" />
-                          <span class="truncate">{{ group.name }}</span>
+                        <div tw-class="flex items-center gap-2 overflow-hidden">
+                          <FolderIcon tw-class="w-3.5 h-3.5 shrink-0 opacity-60" />
+                          <span tw-class="truncate">{{ group.name }}</span>
                         </div>
-                        <CheckIcon v-if="chatGroupIds.includes(idToRaw({ id: group.id }))" class="w-3.5 h-3.5 shrink-0" />
+                        <CheckIcon v-if="chatGroupIds.includes(idToRaw({ id: group.id }))" tw-class="w-3.5 h-3.5 shrink-0" />
                       </button>
-                      <div v-if="chatGroups.length === 0" class="p-4 text-center text-[10px] text-gray-400 italic">{{ lazyStrings.GlobalSearchModal__no_groups_available() }}</div>
+                      <div v-if="chatGroups.length === 0" tw-class="p-4 text-center text-[10px] text-gray-400 italic">{{ lazyStrings.GlobalSearchModal__no_groups_available() }}</div>
                     </div>
-                    <div v-if="chatGroupIds.length > 0" class="p-1 border-t border-gray-50 dark:border-gray-700/50">
-                      <button @click="chatGroupIds = []" class="w-full px-3 py-2 text-[10px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest text-center transition-colors">{{ lazyStrings.GlobalSearchModal__clear_all_filters() }}</button>
+                    <div v-if="chatGroupIds.length > 0" tw-class="p-1 border-t border-gray-50 dark:border-gray-700/50">
+                      <button @click="chatGroupIds = []" tw-class="w-full px-3 py-2 text-[10px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest text-center transition-colors">{{ lazyStrings.GlobalSearchModal__clear_all_filters() }}</button>
                     </div>
                   </div>
                 </Transition>
               </div>
 
               <!-- Active Filters (Groups & Specific Chat) -->
-              <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+              <div tw-class="flex flex-wrap items-center gap-1.5 min-w-0">
                 <!-- Specific Chat Filter -->
                 <div
                   v-if="chatId"
-                  class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
+                  tw-class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
                 >
-                  <MessageSquareIcon class="w-2.5 h-2.5" />
+                  <MessageSquareIcon tw-class="w-2.5 h-2.5" />
                   <span>{{ targetChatTitle }}</span>
-                  <button @click="chatId = undefined" class="hover:text-indigo-800 dark:hover:text-indigo-300">
-                    <XIcon class="w-2.5 h-2.5" />
+                  <button @click="chatId = undefined" tw-class="hover:text-indigo-800 dark:hover:text-indigo-300">
+                    <XIcon tw-class="w-2.5 h-2.5" />
                   </button>
                 </div>
 
                 <div
                   v-for="group in selectedGroups"
                   :key="idToRaw({ id: group.id })"
-                  class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
+                  tw-class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
                 >
                   <span>{{ group.name }}</span>
-                  <button @click="toggleGroupFilter({ groupId: idToRaw({ id: group.id }) })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
-                    <XIcon class="w-2.5 h-2.5" />
+                  <button @click="toggleGroupFilter({ groupId: idToRaw({ id: group.id }) })" tw-class="hover:text-indigo-800 dark:hover:text-indigo-300">
+                    <XIcon tw-class="w-2.5 h-2.5" />
                   </button>
                 </div>
               </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-4 text-[10px] font-bold text-gray-400 xl:ml-4 xl:justify-end">
-              <div class="flex items-center gap-2">
+            <div tw-class="flex flex-wrap items-center gap-4 text-[10px] font-bold text-gray-400 xl:ml-4 xl:justify-end">
+              <div tw-class="flex items-center gap-2">
                 <span>{{ lazyStrings.GlobalSearchModal__preview() }}</span>
-                <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+                <div tw-class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
                   <button
                     v-for="mode in (['always', 'peek', 'disabled'] as const)"
                     :key="mode"
                     @click="setSearchPreviewMode({ mode })"
-                    class="px-2 py-1 rounded-md transition-all uppercase tracking-tighter"
-                    :class="searchPreviewMode === mode ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
+                    :tw-class="['px-2 py-1 rounded-md transition-all uppercase tracking-tighter', searchPreviewMode === mode ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-700']"
                     :data-testid="'search-preview-mode-' + mode"
                   >
                     {{ previewModeLabel({ mode }) }}
@@ -683,12 +679,12 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="isPreviewVisible" class="flex items-center gap-2">
+              <div v-if="isPreviewVisible" tw-class="flex items-center gap-2">
                 <span>{{ lazyStrings.GlobalSearchModal__context() }}</span>
                 <select
                   :value="resolvedSearchContextSize"
                   @change="handleSearchContextSizeChange({ event: $event })"
-                  class="bg-transparent border-none outline-none text-gray-600 dark:text-gray-300 font-black cursor-pointer"
+                  tw-class="bg-transparent border-none outline-none text-gray-600 dark:text-gray-300 font-black cursor-pointer"
                   data-testid="search-context-size-select"
                 >
                   <option v-if="isCustomSearchContextSize" :value="resolvedSearchContextSize">{{ resolvedSearchContextSize }}</option>
@@ -704,27 +700,26 @@ defineExpose({
         </div>
 
         <!-- Main Body (Split View) -->
-        <div class="flex-1 flex overflow-hidden min-h-0">
+        <div tw-class="flex-1 flex overflow-hidden min-h-0">
           <!-- Left: Results List -->
           <div
             ref="scrollContainer"
             @mouseenter="isHoveringResults = true"
             @mouseleave="isHoveringResults = false"
-            class="overflow-y-auto scrollbar-thin bg-white dark:bg-gray-900 transition-all duration-300 relative"
-            :class="[
-              isPreviewVisible
-                ? (isPreviewExpanded ? 'w-[15%] min-w-[200px]' : (searchPreviewMode === 'peek' ? 'w-full' : 'w-[75%] min-w-[320px]'))
-                : 'w-full',
-              activePane === 'results' ? 'ring-2 ring-inset ring-blue-500/10' : ''
+            :tw-class="['overflow-y-auto scrollbar-thin bg-white dark:bg-gray-900 transition-all duration-300 relative',
+                        isPreviewVisible
+                          ? (isPreviewExpanded ? 'w-[15%] min-w-[200px]' : (searchPreviewMode === 'peek' ? 'w-full' : 'w-[75%] min-w-[320px]'))
+                          : 'w-full',
+                        activePane === 'results' ? 'ring-2 ring-inset ring-blue-500/10' : ''
             ]"
           >
-            <div v-if="results.length === 0 && !isSearching" class="p-8 text-center text-gray-500 text-sm">
+            <div v-if="results.length === 0 && !isSearching" tw-class="p-8 text-center text-gray-500 text-sm">
               {{ lazyStrings.GlobalSearchModal__no_results_for({ query }) }}
             </div>
 
             <template v-else>
               <div
-                class="relative mx-2"
+                tw-class="relative mx-2"
                 :style="{ height: `${virtualResultsHeight}px` }"
                 data-testid="search-results-virtual-space"
               >
@@ -732,7 +727,7 @@ defineExpose({
                   v-for="visibleResult in visibleResults"
                   :key="visibleResult.key"
                   :ref="element => setResultElement({ key: visibleResult.key, element: element as Element | null })"
-                  class="absolute left-0 right-0"
+                  tw-class="absolute left-0 right-0"
                   :style="{ transform: `translateY(${visibleResult.top}px)` }"
                 >
                   <div
@@ -740,52 +735,51 @@ defineExpose({
                     :data-testid="'search-result-item-' + visibleResult.index"
                     @mouseenter="selectedIndex = visibleResult.index"
                     @click="selectItem({ index: visibleResult.index })"
-                    class="group flex flex-col p-2.5 rounded-xl cursor-pointer transition-[background-color,border-color,opacity] duration-200 border border-transparent"
-                    :class="selectedIndex === visibleResult.index
+                    :tw-class="['group flex flex-col p-2.5 rounded-xl cursor-pointer transition-[background-color,border-color,opacity] duration-200 border border-transparent', selectedIndex === visibleResult.index
                       ? (activePane === 'results' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800 shadow-sm' : 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-80')
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/50']"
                   >
                     <!-- Performance Note: CSS transitions are restricted to specific properties
                      to minimize layout recalculations during rapid list updates. -->
 
                     <!-- Chat Group Item -->
-                    <div v-if="visibleResult.entry.type === 'chat_group'" class="flex items-center justify-between gap-3">
-                      <div class="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
-                        <FolderIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <div v-if="visibleResult.entry.type === 'chat_group'" tw-class="flex items-center justify-between gap-3">
+                      <div tw-class="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
+                        <FolderIcon tw-class="w-4 h-4 text-blue-600 dark:text-blue-400" />
                       </div>
-                      <div class="flex flex-col flex-1 overflow-hidden">
-                        <div class="flex items-center justify-between gap-2">
+                      <div tw-class="flex flex-col flex-1 overflow-hidden">
+                        <div tw-class="flex items-center justify-between gap-2">
                           <AllowedHtmlView
                             v-if="isHighlightingEnabled"
                             as="span"
                             :html="highlight({ text: visibleResult.entry.item.name, query, color: 'blue' })"
-                            class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
+                            tw-class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
                           />
-                          <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ visibleResult.entry.item.name }}</span>
-                          <div class="flex items-center gap-1.5 shrink-0">
-                            <span class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ lazyStrings.GlobalSearchModal__chat_count({ count: visibleResult.entry.item.chatCount }) }}</span>
+                          <span tw-class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ visibleResult.entry.item.name }}</span>
+                          <div tw-class="flex items-center gap-1.5 shrink-0">
+                            <span tw-class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ lazyStrings.GlobalSearchModal__chat_count({ count: visibleResult.entry.item.chatCount }) }}</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     <!-- Chat Header Item -->
-                    <div v-else-if="visibleResult.entry.type === 'chat'" class="flex items-center justify-between gap-3">
-                      <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
-                        <MessageSquareIcon class="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <div v-else-if="visibleResult.entry.type === 'chat'" tw-class="flex items-center justify-between gap-3">
+                      <div tw-class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
+                        <MessageSquareIcon tw-class="w-4 h-4 text-gray-500 dark:text-gray-400" />
                       </div>
-                      <div class="flex flex-col flex-1 overflow-hidden">
-                        <div class="flex items-center justify-between gap-2">
-                          <div class="flex flex-col overflow-hidden">
+                      <div tw-class="flex flex-col flex-1 overflow-hidden">
+                        <div tw-class="flex items-center justify-between gap-2">
+                          <div tw-class="flex flex-col overflow-hidden">
                             <AllowedHtmlView
                               v-if="isHighlightingEnabled && visibleResult.entry.item.title"
                               as="span"
                               :html="highlight({ text: visibleResult.entry.item.title, query, color: 'indigo' })"
-                              class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
+                              tw-class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
                             />
-                            <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ visibleResult.entry.item.title || lazyStrings.SHARED__new_chat() }}</span>
-                            <span v-if="visibleResult.entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
-                              <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
+                            <span tw-class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ visibleResult.entry.item.title || lazyStrings.SHARED__new_chat() }}</span>
+                            <span v-if="visibleResult.entry.item.groupName" tw-class="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                              <FolderIcon tw-class="w-2.5 h-2.5 opacity-50 text-blue-500" />
                               <AllowedHtmlView
                                 v-if="isHighlightingEnabled"
                                 as="span"
@@ -794,34 +788,34 @@ defineExpose({
                               <span v-else>{{ visibleResult.entry.item.groupName }}</span>
                             </span>
                           </div>
-                          <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: visibleResult.entry.item.updatedAt }) }}</span>
+                          <span tw-class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: visibleResult.entry.item.updatedAt }) }}</span>
                         </div>
-                        <div class="flex items-center gap-1.5 mt-0.5">
-                          <ClockIcon class="w-3 h-3 text-gray-300" />
-                          <span class="text-[10px] text-gray-400">{{ lazyStrings.GlobalSearchModal__chat() }}</span>
+                        <div tw-class="flex items-center gap-1.5 mt-0.5">
+                          <ClockIcon tw-class="w-3 h-3 text-gray-300" />
+                          <span tw-class="text-[10px] text-gray-400">{{ lazyStrings.GlobalSearchModal__chat() }}</span>
                         </div>
                       </div>
                     </div>
 
                     <!-- Message Match Item -->
-                    <div v-else-if="visibleResult.entry.type === 'message'" class="flex items-start gap-3 pl-10 opacity-90 relative">
-                      <div class="absolute left-4 top-1 h-full w-0.5 bg-gray-100 dark:bg-gray-800"></div>
-                      <CornerDownRightIcon class="w-3 h-3 text-gray-300 mt-1 shrink-0" />
-                      <div class="flex flex-col overflow-hidden text-sm flex-1">
-                        <div class="flex items-center justify-between gap-2 mb-1">
-                          <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ visibleResult.entry.item.role }}</span>
-                          <span class="text-[9px] text-gray-400">{{ formatTime({ timestamp: visibleResult.entry.item.timestamp }) }}</span>
+                    <div v-else-if="visibleResult.entry.type === 'message'" tw-class="flex items-start gap-3 pl-10 opacity-90 relative">
+                      <div tw-class="absolute left-4 top-1 h-full w-0.5 bg-gray-100 dark:bg-gray-800"></div>
+                      <CornerDownRightIcon tw-class="w-3 h-3 text-gray-300 mt-1 shrink-0" />
+                      <div tw-class="flex flex-col overflow-hidden text-sm flex-1">
+                        <div tw-class="flex items-center justify-between gap-2 mb-1">
+                          <span tw-class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ visibleResult.entry.item.role }}</span>
+                          <span tw-class="text-[9px] text-gray-400">{{ formatTime({ timestamp: visibleResult.entry.item.timestamp }) }}</span>
                         </div>
                         <AllowedHtmlView
                           v-if="isHighlightingEnabled"
                           as="span"
                           :html="highlight({ text: visibleResult.entry.item.excerpt, query, color: 'indigo' })"
-                          class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed"
+                          tw-class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed"
                         />
-                        <span v-else class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed">{{ visibleResult.entry.item.excerpt }}</span>
+                        <span v-else tw-class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed">{{ visibleResult.entry.item.excerpt }}</span>
 
-                        <div v-if="!visibleResult.entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
-                          <GitBranchIcon class="w-2.5 h-2.5" />
+                        <div v-if="!visibleResult.entry.item.isCurrentThread" tw-class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
+                          <GitBranchIcon tw-class="w-2.5 h-2.5" />
                           <span>{{ lazyStrings.GlobalSearchModal__alt_branch() }}</span>
                         </div>
                       </div>
@@ -831,9 +825,9 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="isScanningContent" class="p-4 flex items-center justify-center text-gray-400 gap-2 border-t border-gray-50 dark:border-gray-800/50 mt-2">
-                <Loader2Icon class="w-4 h-4 animate-spin" />
-                <span class="text-[11px] font-bold">{{ lazyStrings.GlobalSearchModal__scanning_content() }}</span>
+              <div v-if="isScanningContent" tw-class="p-4 flex items-center justify-center text-gray-400 gap-2 border-t border-gray-50 dark:border-gray-800/50 mt-2">
+                <Loader2Icon tw-class="w-4 h-4 animate-spin" />
+                <span tw-class="text-[11px] font-bold">{{ lazyStrings.GlobalSearchModal__scanning_content() }}</span>
               </div>
             </template>
           </div>
@@ -844,10 +838,9 @@ defineExpose({
                @mouseleave="handlePreviewMouseLeave"
                @click.capture="!isPreviewExpanded ? (isExpandedByClick = true, $event.stopPropagation(), $event.preventDefault()) : null"
                data-testid="search-preview-container"
-               class="bg-white dark:bg-gray-900 overflow-hidden transition-all duration-300 border-l border-gray-100 dark:border-gray-800 cursor-pointer relative"
-               :class="[
-                 isPreviewExpanded ? 'w-[85%]' : 'w-[25%]',
-                 activePane === 'preview' ? 'ring-2 ring-inset ring-blue-500/20' : ''
+               :tw-class="['bg-white dark:bg-gray-900 overflow-hidden transition-all duration-300 border-l border-gray-100 dark:border-gray-800 cursor-pointer relative',
+                           isPreviewExpanded ? 'w-[85%]' : 'w-[25%]',
+                           activePane === 'preview' ? 'ring-2 ring-inset ring-blue-500/20' : ''
                ]">
             <template v-if="shouldLoadPreview">
               <template v-if="deferredSelectedItem?.type === 'chat_group'">
@@ -864,22 +857,22 @@ defineExpose({
                 />
               </template>
             </template>
-            <div v-else class="h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/20">
-              <div class="flex flex-col items-center gap-2 opacity-20">
-                <EyeIcon class="w-8 h-8 text-gray-400" />
-                <span class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">{{ lazyStrings.GlobalSearchModal__peek() }}</span>
+            <div v-else tw-class="h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/20">
+              <div tw-class="flex flex-col items-center gap-2 opacity-20">
+                <EyeIcon tw-class="w-8 h-8 text-gray-400" />
+                <span tw-class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">{{ lazyStrings.GlobalSearchModal__peek() }}</span>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Footer -->
-        <div class="p-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50 text-[10px] font-bold text-gray-400 flex justify-between px-6 shrink-0">
-          <div class="flex gap-6">
-            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↑↓</kbd> {{ lazyStrings.GlobalSearchModal__navigate() }}</span>
-            <span class="flex items-center gap-1.5"><kbd class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↵</kbd> {{ lazyStrings.GlobalSearchModal__select() }}</span>
+        <div tw-class="p-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50 text-[10px] font-bold text-gray-400 flex justify-between px-6 shrink-0">
+          <div tw-class="flex gap-6">
+            <span tw-class="flex items-center gap-1.5"><kbd tw-class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↑↓</kbd> {{ lazyStrings.GlobalSearchModal__navigate() }}</span>
+            <span tw-class="flex items-center gap-1.5"><kbd tw-class="px-1.5 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-600 dark:text-gray-400 font-sans">↵</kbd> {{ lazyStrings.GlobalSearchModal__select() }}</span>
           </div>
-          <div class="flex items-center gap-4">
+          <div tw-class="flex items-center gap-4">
             <span>{{ lazyStrings.GlobalSearchModal__chats_found({ count: results.length }) }}</span>
             <span v-if="totalItems > 0">{{ lazyStrings.GlobalSearchModal__total_matches({ count: totalItems }) }}</span>
           </div>

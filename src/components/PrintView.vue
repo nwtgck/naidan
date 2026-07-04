@@ -17,7 +17,7 @@ defineExpose({
 
 <template>
   <!-- Added theme background classes directly to the layer to ensure color inheritance -->
-  <div class="naidan-print-view-layer bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+  <div class="naidan-print-view-layer" tw-class="bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
     <div class="print-container">
       <slot></slot>
     </div>

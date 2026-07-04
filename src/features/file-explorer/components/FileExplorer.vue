@@ -58,7 +58,7 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="flex flex-col h-full bg-white dark:bg-gray-900 outline-none overflow-hidden"
+    tw-class="flex flex-col h-full bg-white dark:bg-gray-900 outline-none overflow-hidden"
     tabindex="0"
     data-testid="file-explorer"
     @keydown="handleKeyDown({ event: $event })"
@@ -67,19 +67,19 @@ onUnmounted(() => {
     <FileExplorerToolbar />
 
     <!-- Main content area -->
-    <div class="flex flex-1 overflow-hidden">
+    <div tw-class="flex flex-1 overflow-hidden">
       <!-- Loading overlay -->
       <div
         v-if="context.isLoading"
-        class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 z-10 pointer-events-none"
+        tw-class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 z-10 pointer-events-none"
       >
-        <Loader2Icon class="w-5 h-5 text-gray-400 animate-spin" />
+        <Loader2Icon tw-class="w-5 h-5 text-gray-400 animate-spin" />
       </div>
 
       <!-- Error banner -->
       <div
         v-if="context.loadError"
-        class="absolute top-0 left-0 right-0 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 z-20"
+        tw-class="absolute top-0 left-0 right-0 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 z-20"
       >
         {{ context.loadError }}
       </div>

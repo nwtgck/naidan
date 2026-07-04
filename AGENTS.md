@@ -17,6 +17,16 @@ beforeEach(async () => {
 
 Do not use this in global test setup or in tests for `lazyStrings`, `ensureStrings`, boundary loading, unresolved strings, or locale switching. In those tests, exercise and await the actual loading behavior.
 
+# Static Tailwind Classes
+
+Tailwind source scanning is disabled. Use `tw-class` / `:tw-class` in Vue templates and `tw()` / `twClassString()` from `virtual:naidan-tailwind` in TypeScript or JavaScript. Keep ordinary `class` for non-Tailwind classes.
+
+All Tailwind candidates must be statically enumerable. Do not construct class names at runtime, hide them in unrelated strings or comments, add manual feature CSS imports / `@source` entries, or bypass the compiler with type assertions. Use registered `tw-*` class props for Transition, Sortable, and similar integrations.
+
+When a valid case is unsupported, extend the compiler, diagnostics, and targeted tests instead of weakening static guarantees. Changes to the compiler, CSS ownership, virtual modules, runtime registry, or lazy styling must verify both dev and production behavior; `npm run build:standalone` is the minimum production check.
+
+See `build/static-tailwind/README.md` for supported syntax, architecture, invariants, debugging, and verification guidance.
+
 # Function Signatures & Named Arguments
 
 For **new** or **refactored** functions, use a single mandatory argument object (Swift-style) for clarity and extensibility. **This applies even if the function has only one argument.**

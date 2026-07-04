@@ -117,51 +117,50 @@ defineExpose({
 </script>
 
 <template>
-  <div class="h-full flex flex-col bg-gray-50/50 dark:bg-gray-900/50 border-l border-gray-100 dark:border-gray-800">
-    <div v-if="!match && !chat" class="flex-1 flex items-center justify-center text-gray-400 p-8 text-center">
-      <div class="flex flex-col items-center gap-4">
-        <div class="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl">
-          <MessageSquareIcon class="w-8 h-8 opacity-20" />
+  <div tw-class="h-full flex flex-col bg-gray-50/50 dark:bg-gray-900/50 border-l border-gray-100 dark:border-gray-800">
+    <div v-if="!match && !chat" tw-class="flex-1 flex items-center justify-center text-gray-400 p-8 text-center">
+      <div tw-class="flex flex-col items-center gap-4">
+        <div tw-class="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl">
+          <MessageSquareIcon tw-class="w-8 h-8 opacity-20" />
         </div>
-        <span class="text-sm font-bold uppercase tracking-widest opacity-50">{{ lazyStrings.SearchPreview__select_an_item_to_preview() }}</span>
+        <span tw-class="text-sm font-bold uppercase tracking-widest opacity-50">{{ lazyStrings.SearchPreview__select_an_item_to_preview() }}</span>
       </div>
     </div>
 
     <!-- Loading State -->
-    <div v-else-if="isLoading" class="flex-1 flex items-center justify-center text-gray-400">
-      <Loader2Icon class="w-6 h-6 animate-spin" />
+    <div v-else-if="isLoading" tw-class="flex-1 flex items-center justify-center text-gray-400">
+      <Loader2Icon tw-class="w-6 h-6 animate-spin" />
     </div>
 
     <!-- Message Preview (Both for Match and Chat) -->
-    <div v-else-if="match || chat" class="flex-1 flex flex-col overflow-hidden">
+    <div v-else-if="match || chat" tw-class="flex-1 flex flex-col overflow-hidden">
       <!-- Context Header -->
-      <div class="p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex justify-between items-center shrink-0">
-        <div class="flex flex-col gap-0.5 overflow-hidden">
-          <h3 v-if="chat" class="text-xs font-black text-gray-900 dark:text-gray-100 truncate">{{ chat.title || lazyStrings.SHARED__new_chat() }}</h3>
-          <div class="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+      <div tw-class="p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex justify-between items-center shrink-0">
+        <div tw-class="flex flex-col gap-0.5 overflow-hidden">
+          <h3 v-if="chat" tw-class="text-xs font-black text-gray-900 dark:text-gray-100 truncate">{{ chat.title || lazyStrings.SHARED__new_chat() }}</h3>
+          <div tw-class="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
             <span>{{ match ? lazyStrings.SearchPreview__conversation_match() : lazyStrings.SearchPreview__recent_history() }}</span>
-            <span class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[8px]">{{ lazyStrings.SearchPreview__message_count({ count: visibleMessages.length }) }}</span>
+            <span tw-class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[8px]">{{ lazyStrings.SearchPreview__message_count({ count: visibleMessages.length }) }}</span>
           </div>
         </div>
 
-        <div v-if="match && !match.isCurrentThread" class="flex items-center gap-1.5 text-[9px] font-bold bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded-full border border-amber-100 dark:border-amber-800/50">
-          <GitBranchIcon class="w-3 h-3" />
+        <div v-if="match && !match.isCurrentThread" tw-class="flex items-center gap-1.5 text-[9px] font-bold bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded-full border border-amber-100 dark:border-amber-800/50">
+          <GitBranchIcon tw-class="w-3 h-3" />
           <span>{{ lazyStrings.SearchPreview__alt_branch() }}</span>
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto bg-white dark:bg-gray-900/50">
-        <div v-if="hasPreviousMessages" class="p-4 text-center">
-          <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">{{ lazyStrings.SearchPreview__previous_messages() }}</span>
+      <div tw-class="flex-1 overflow-y-auto bg-white dark:bg-gray-900/50">
+        <div v-if="hasPreviousMessages" tw-class="p-4 text-center">
+          <span tw-class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">{{ lazyStrings.SearchPreview__previous_messages() }}</span>
         </div>
 
-        <div v-for="msg in visibleMessages" :key="idToRaw({ id: msg.id })" class="relative">
-          <div v-if="match && idToRaw({ id: msg.id }) === match.messageId" class="absolute inset-0 bg-yellow-50/30 dark:bg-yellow-900/5 border-y-2 border-yellow-200/50 dark:border-yellow-900/20 pointer-events-none z-0"></div>
+        <div v-for="msg in visibleMessages" :key="idToRaw({ id: msg.id })" tw-class="relative">
+          <div v-if="match && idToRaw({ id: msg.id }) === match.messageId" tw-class="absolute inset-0 bg-yellow-50/30 dark:bg-yellow-900/5 border-y-2 border-yellow-200/50 dark:border-yellow-900/20 pointer-events-none z-0"></div>
           <MessageItem
             :chat-id="previewChatId!"
             :message="msg"
-            class="relative z-10"
-            :class="{ 'opacity-50 grayscale-[0.5]': match && idToRaw({ id: msg.id }) !== match.messageId }"
+            :tw-class="['relative z-10', { 'opacity-50 grayscale-[0.5]': match && idToRaw({ id: msg.id }) !== match.messageId }]"
             @fork="handleDummy"
             @edit="handleDummy"
             @switch-version="handleDummy"
@@ -169,8 +168,8 @@ defineExpose({
           />
         </div>
 
-        <div v-if="hasFollowingMessages" class="p-4 text-center">
-          <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">{{ lazyStrings.SearchPreview__following_messages() }}</span>
+        <div v-if="hasFollowingMessages" tw-class="p-4 text-center">
+          <span tw-class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">{{ lazyStrings.SearchPreview__following_messages() }}</span>
         </div>
       </div>
     </div>

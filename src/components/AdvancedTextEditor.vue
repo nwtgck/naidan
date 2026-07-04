@@ -617,212 +617,207 @@ defineExpose({
 <template>
   <!-- Backdrop Container (Minimal blur and darkness) -->
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/5 backdrop-blur-[0.2px] p-4 md:p-8 transition-opacity"
+    tw-class="fixed inset-0 z-50 flex items-center justify-center bg-black/5 backdrop-blur-[0.2px] p-4 md:p-8 transition-opacity"
     @click="handleBackdropClick({ event: $event })"
     data-testid="editor-backdrop"
   >    <!-- Editor Container (Lighter Slate-900 background) -->
     <div
-      class="w-full h-full max-w-5xl flex bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] ring-1 ring-black/5 dark:ring-white/5"
+      tw-class="w-full h-full max-w-5xl flex bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] ring-1 ring-black/5 dark:ring-white/5"
       @click.stop
       data-testid="advanced-text-editor"
     >
       <!-- Sidebar -->
-      <div class="w-12 border-r border-gray-100 dark:border-white/10 flex flex-col items-center py-4 gap-4 bg-gray-50 dark:bg-slate-950/50 z-30 shrink-0">
+      <div tw-class="w-12 border-r border-gray-100 dark:border-white/10 flex flex-col items-center py-4 gap-4 bg-gray-50 dark:bg-slate-950/50 z-30 shrink-0">
         <button
           @click="handleClose"
-          class="p-2.5 bg-gray-200 dark:bg-white/10 hover:bg-gray-300 dark:hover:bg-white/20 rounded-xl transition-all shadow-sm text-gray-600 dark:text-gray-300 mb-2 group"
+          tw-class="p-2.5 bg-gray-200 dark:bg-white/10 hover:bg-gray-300 dark:hover:bg-white/20 rounded-xl transition-all shadow-sm text-gray-600 dark:text-gray-300 mb-2 group"
           :title="lazyStrings.advancedTextEditor__close_editor_esc()"
         >
-          <XIcon class="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
+          <XIcon tw-class="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
         </button>
 
-        <div class="h-px w-6 bg-gray-200 dark:bg-white/10"></div>
+        <div tw-class="h-px w-6 bg-gray-200 dark:bg-white/10"></div>
 
-        <div class="flex flex-col gap-1">
+        <div tw-class="flex flex-col gap-1">
           <button
             @click="handleUndo"
             :disabled="historyIndex <= 0"
-            class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl disabled:opacity-30 transition-all hover:shadow-sm group"
+            tw-class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl disabled:opacity-30 transition-all hover:shadow-sm group"
             :title="lazyStrings.advancedTextEditor__undo_with_shortcut({ shortcut: `${modKeyName}+Z` })"
           >
-            <Undo2Icon class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
+            <Undo2Icon tw-class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
           </button>
           <button
             @click="handleRedo"
             :disabled="historyIndex >= history.length - 1"
-            class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl disabled:opacity-30 transition-all hover:shadow-sm group"
+            tw-class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl disabled:opacity-30 transition-all hover:shadow-sm group"
             :title="lazyStrings.advancedTextEditor__redo_with_shortcut({ shortcut: `${modKeyName}+Shift+Z` })"
           >
-            <Redo2Icon class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
+            <Redo2Icon tw-class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
           </button>
         </div>
 
-        <div class="h-px w-6 bg-gray-200 dark:bg-white/10"></div>
+        <div tw-class="h-px w-6 bg-gray-200 dark:bg-white/10"></div>
 
-        <div class="flex flex-col gap-1">
+        <div tw-class="flex flex-col gap-1">
           <button
             @click="searchMode = searchMode === 'visible' ? 'hidden' : 'visible'"
-            class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
-            :class="searchMode === 'visible' ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
+            :tw-class="['p-2.5 rounded-xl transition-all hover:shadow-sm group', searchMode === 'visible' ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500']"
             :title="lazyStrings.advancedTextEditor__find_and_replace_with_shortcut({ shortcut: `${modKeyName}+F` })"
           >
-            <SearchIcon class="w-4.5 h-4.5" />
+            <SearchIcon tw-class="w-4.5 h-4.5" />
           </button>
           <button
             @click="showStats = !showStats"
-            class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
-            :class="showStats ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
+            :tw-class="['p-2.5 rounded-xl transition-all hover:shadow-sm group', showStats ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500']"
             :title="lazyStrings.advancedTextEditor__toggle_stats()"
           >
-            <BarChart2Icon class="w-4.5 h-4.5" />
+            <BarChart2Icon tw-class="w-4.5 h-4.5" />
           </button>
           <button
             @click="handleCmdD"
-            class="p-2.5 rounded-xl hover:bg-white dark:hover:bg-white/5 transition-all hover:shadow-sm group text-gray-500"
+            tw-class="p-2.5 rounded-xl hover:bg-white dark:hover:bg-white/5 transition-all hover:shadow-sm group text-gray-500"
             :title="lazyStrings.advancedTextEditor__multi_edit_occurrence_with_shortcut({ shortcut: `${modKeyName}+D` })"
           >
-            <LayersIcon class="w-4.5 h-4.5 group-hover:text-amber-500" />
+            <LayersIcon tw-class="w-4.5 h-4.5 group-hover:text-amber-500" />
           </button>
           <button
             @click="toggleWrap"
-            class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
-            :class="wrapMode === 'wrap-on' ? 'bg-indigo-500/20 text-indigo-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
+            :tw-class="['p-2.5 rounded-xl transition-all hover:shadow-sm group', wrapMode === 'wrap-on' ? 'bg-indigo-500/20 text-indigo-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500']"
             :title="lazyStrings.advancedTextEditor__toggle_word_wrap()"
           >
-            <WrapTextIcon class="w-4.5 h-4.5" />
+            <WrapTextIcon tw-class="w-4.5 h-4.5" />
           </button>
         </div>
 
-        <div class="mt-auto flex flex-col gap-1 mb-2">
+        <div tw-class="mt-auto flex flex-col gap-1 mb-2">
           <button
             @click="copyToClipboard"
-            class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl transition-all hover:shadow-sm text-gray-500 hover:text-blue-500"
+            tw-class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl transition-all hover:shadow-sm text-gray-500 hover:text-blue-500"
             :title="lazyStrings.advancedTextEditor__copy_all()"
           >
-            <CopyIcon class="w-4.5 h-4.5" />
+            <CopyIcon tw-class="w-4.5 h-4.5" />
           </button>
           <button
             @click="content = ''"
-            class="p-2.5 hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-500 rounded-xl transition-all"
+            tw-class="p-2.5 hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-500 rounded-xl transition-all"
             :title="lazyStrings.advancedTextEditor__clear_all()"
           >
-            <Trash2Icon class="w-4.5 h-4.5" />
+            <Trash2Icon tw-class="w-4.5 h-4.5" />
           </button>
         </div>
       </div>
 
       <!-- Main Content Area -->
-      <div class="flex-1 flex flex-col min-w-0 bg-transparent relative">
+      <div tw-class="flex-1 flex flex-col min-w-0 bg-transparent relative">
         <!-- Search Overlay -->
         <Transition
-          enter-active-class="transition duration-300 ease-out"
-          enter-from-class="opacity-0 -translate-y-2"
-          enter-to-class="opacity-100 translate-y-0"
-          leave-active-class="transition duration-200 ease-in"
-          leave-from-class="opacity-100 translate-y-0"
-          leave-to-class="opacity-0 -translate-y-2"
+          tw-enter-active-class="transition duration-300 ease-out"
+          tw-enter-from-class="opacity-0 -translate-y-2"
+          tw-enter-to-class="opacity-100 translate-y-0"
+          tw-leave-active-class="transition duration-200 ease-in"
+          tw-leave-from-class="opacity-100 translate-y-0"
+          tw-leave-to-class="opacity-0 -translate-y-2"
         >
-          <div v-if="searchMode === 'visible'" class="px-6 py-4 border-b border-gray-100 dark:border-white/10 bg-gray-50/90 dark:bg-slate-950/95 backdrop-blur-md flex flex-col gap-3 z-30">
-            <div class="flex items-center gap-3">
-              <div class="relative flex-1 group">
+          <div v-if="searchMode === 'visible'" tw-class="px-6 py-4 border-b border-gray-100 dark:border-white/10 bg-gray-50/90 dark:bg-slate-950/95 backdrop-blur-md flex flex-col gap-3 z-30">
+            <div tw-class="flex items-center gap-3">
+              <div tw-class="relative flex-1 group">
                 <input
                   v-model="findText"
                   @input="performSearch"
                   @keydown.enter="nextMatch"
                   :placeholder="lazyStrings.advancedTextEditor__search()"
-                  class="w-full pl-10 pr-32 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
+                  tw-class="w-full pl-10 pr-32 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
                   data-testid="find-input"
                 />
-                <SearchIcon class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-                <div v-if="findText" class="absolute right-2 top-1.5 flex items-center gap-2 bg-gray-50 dark:bg-white/10 px-2 py-1 rounded-lg border border-gray-200 dark:border-white/10">
-                  <span class="text-[10px] text-gray-400 font-mono font-bold">{{ searchMatches.length > 0 ? searchIndex + 1 : 0 }}/{{ searchMatches.length }}</span>
-                  <div class="h-3 w-px bg-gray-300 dark:bg-white/20"></div>
-                  <div class="flex items-center">
-                    <button @click="prevMatch" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowUpIcon class="w-3.5 h-3.5 text-gray-400" /></button>
-                    <button @click="nextMatch" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowDownIcon class="w-3.5 h-3.5 text-gray-400" /></button>
+                <SearchIcon tw-class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                <div v-if="findText" tw-class="absolute right-2 top-1.5 flex items-center gap-2 bg-gray-50 dark:bg-white/10 px-2 py-1 rounded-lg border border-gray-200 dark:border-white/10">
+                  <span tw-class="text-[10px] text-gray-400 font-mono font-bold">{{ searchMatches.length > 0 ? searchIndex + 1 : 0 }}/{{ searchMatches.length }}</span>
+                  <div tw-class="h-3 w-px bg-gray-300 dark:bg-white/20"></div>
+                  <div tw-class="flex items-center">
+                    <button @click="prevMatch" tw-class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowUpIcon tw-class="w-3.5 h-3.5 text-gray-400" /></button>
+                    <button @click="nextMatch" tw-class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowDownIcon tw-class="w-3.5 h-3.5 text-gray-400" /></button>
                   </div>
                 </div>
               </div>
-              <div class="flex items-center gap-1.5 bg-white dark:bg-black/20 p-1 border border-gray-200 dark:border-white/10 rounded-xl">
+              <div tw-class="flex items-center gap-1.5 bg-white dark:bg-black/20 p-1 border border-gray-200 dark:border-white/10 rounded-xl">
                 <button
                   @click="caseSensitive = caseSensitive === 'case-sensitive' ? 'case-insensitive' : 'case-sensitive'; performSearch()"
-                  class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
-                  :class="caseSensitive === 'case-sensitive' ? 'bg-blue-500/20 text-blue-400 shadow-inner' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10'"
+                  :tw-class="['px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all', caseSensitive === 'case-sensitive' ? 'bg-blue-500/20 text-blue-400 shadow-inner' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10']"
                   :title="lazyStrings.advancedTextEditor__match_case()"
                 >
                   {{ lazyStrings.advancedTextEditor__aa() }}
                 </button>
                 <button
                   @click="useRegex = useRegex === 'regex-on' ? 'regex-off' : 'regex-on'; performSearch()"
-                  class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
-                  :class="useRegex === 'regex-on' ? 'bg-blue-500/20 text-blue-400 shadow-inner' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10'"
+                  :tw-class="['px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all', useRegex === 'regex-on' ? 'bg-blue-500/20 text-blue-400 shadow-inner' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10']"
                   :title="lazyStrings.advancedTextEditor__use_regex()"
                 >
                   .*
                 </button>
               </div>
             </div>
-            <div class="flex items-center gap-3">
-              <div class="relative flex-1 group">
+            <div tw-class="flex items-center gap-3">
+              <div tw-class="relative flex-1 group">
                 <input
                   v-model="replaceText"
                   @keydown.enter="handleReplace({ mode: 'single' })"
                   :placeholder="lazyStrings.advancedTextEditor__replace_with()"
-                  class="w-full pl-10 pr-4 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
+                  tw-class="w-full pl-10 pr-4 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
                   data-testid="replace-input"
                 />
-                <ReplaceIcon class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                <ReplaceIcon tw-class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
               </div>
-              <div class="flex items-center gap-2">
+              <div tw-class="flex items-center gap-2">
                 <button
                   @click="handleReplace({ mode: 'single' })"
-                  class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-white dark:bg-white/10 hover:bg-gray-50 dark:hover:bg-white/20 text-gray-600 dark:text-gray-200 rounded-xl transition-all border border-gray-200 dark:border-white/10 shadow-sm"
+                  tw-class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-white dark:bg-white/10 hover:bg-gray-50 dark:hover:bg-white/20 text-gray-600 dark:text-gray-200 rounded-xl transition-all border border-gray-200 dark:border-white/10 shadow-sm"
                 >
                   {{ lazyStrings.advancedTextEditor__replace() }}
                 </button>
                 <button
                   @click="handleReplace({ mode: 'all' })"
-                  class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-lg shadow-blue-500/20"
+                  tw-class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-lg shadow-blue-500/20"
                 >
                   {{ lazyStrings.advancedTextEditor__replace_all() }}
                 </button>
-                <div class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
-                <button @click="searchMode = 'hidden'" class="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl text-gray-400 transition-colors">
-                  <XIcon class="w-4 h-4" />
+                <div tw-class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
+                <button @click="searchMode = 'hidden'" tw-class="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl text-gray-400 transition-colors">
+                  <XIcon tw-class="w-4 h-4" />
                 </button>
               </div>
             </div>
-            <div class="flex items-center justify-between mt-1 px-1">
-              <div class="text-[9px] text-gray-400 font-medium flex items-center gap-3">
-                <span class="flex items-center gap-1"><LayersIcon class="w-3 h-3" /> {{ lazyStrings.advancedTextEditor__multi_edit_occurrence_with_shortcut({ shortcut: `${modKeyName}+D` }) }}</span>
-                <span class="flex items-center gap-1"><CheckIcon class="w-3 h-3" /> {{ lazyStrings.advancedTextEditor__enter_to_find_next() }}</span>
+            <div tw-class="flex items-center justify-between mt-1 px-1">
+              <div tw-class="text-[9px] text-gray-400 font-medium flex items-center gap-3">
+                <span tw-class="flex items-center gap-1"><LayersIcon tw-class="w-3 h-3" /> {{ lazyStrings.advancedTextEditor__multi_edit_occurrence_with_shortcut({ shortcut: `${modKeyName}+D` }) }}</span>
+                <span tw-class="flex items-center gap-1"><CheckIcon tw-class="w-3 h-3" /> {{ lazyStrings.advancedTextEditor__enter_to_find_next() }}</span>
               </div>
             </div>
           </div>
         </Transition>
 
         <!-- Editor Canvas -->
-        <div class="flex-1 flex flex-col min-h-0 bg-transparent relative group/editor">
+        <div tw-class="flex-1 flex flex-col min-h-0 bg-transparent relative group/editor">
           <!-- Line Numbers Area (Synced with Slate-900 background) -->
           <div
-            class="absolute left-0 top-0 bottom-0 w-12 border-r border-gray-50 dark:border-white/10 overflow-hidden pointer-events-none select-none bg-gray-50 dark:bg-[#0f172a] z-20"
+            tw-class="absolute left-0 top-0 bottom-0 w-12 border-r border-gray-50 dark:border-white/10 overflow-hidden pointer-events-none select-none bg-gray-50 dark:bg-[#0f172a] z-20"
           >
             <!-- Inner container that moves with transform -->
-            <div ref="lineNumbersContentRef" class="flex flex-col items-center py-5 text-[10px] font-mono text-gray-300 dark:text-gray-500 will-change-transform">
+            <div ref="lineNumbersContentRef" tw-class="flex flex-col items-center py-5 text-[10px] font-mono text-gray-300 dark:text-gray-500 will-change-transform">
               <template v-if="wrapMode === 'wrap-on' && lineHeights.length > 0">
                 <div
                   v-for="(height, i) in lineHeights"
                   :key="i"
-                  class="flex-shrink-0 flex items-start justify-center"
+                  tw-class="flex-shrink-0 flex items-start justify-center"
                   :style="{ height: `${height}px` }"
                 >
-                  <span class="leading-[21px]">{{ i + 1 }}</span>
+                  <span tw-class="leading-[21px]">{{ i + 1 }}</span>
                 </div>
               </template>
               <template v-else>
-                <div v-for="n in stats.lineCount" :key="n" class="h-[21px] leading-[21px] flex-shrink-0">{{ n }}</div>
+                <div v-for="n in stats.lineCount" :key="n" tw-class="h-[21px] leading-[21px] flex-shrink-0">{{ n }}</div>
               </template>
-              <div style="height: 80vh" class="flex-shrink-0"></div>
+              <div style="height: 80vh" tw-class="flex-shrink-0"></div>
             </div>
           </div>
 
@@ -830,86 +825,85 @@ defineExpose({
             ref="textareaRef"
             v-model="content"
             @scroll="handleScroll"
-            class="w-full h-full pr-16 py-5 font-mono text-sm bg-transparent outline-none resize-none text-gray-800 dark:text-gray-200 leading-[21px] selection:bg-blue-500/45 selection:text-white overscroll-area z-10"
-            :class="wrapMode === 'wrap-off' ? 'pl-16 whitespace-pre overflow-x-auto' : 'pl-16 whitespace-pre-wrap overflow-x-hidden'"
+            :tw-class="['w-full overscroll-contain h-full pr-16 py-5 font-mono text-sm bg-transparent outline-none resize-none text-gray-800 dark:text-gray-200 leading-[21px] selection:bg-blue-500/45 selection:text-white z-10', wrapMode === 'wrap-off' ? 'pl-16 whitespace-pre overflow-x-auto' : 'pl-16 whitespace-pre-wrap overflow-x-hidden']"
             spellcheck="false"
             :wrap="wrapMode === 'wrap-on' ? 'soft' : 'off'"
             data-testid="advanced-textarea"
           ></textarea>
 
           <!-- Empty State Watermark -->
-          <div v-if="!content" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.02] dark:opacity-[0.03]">
-            <PencilLineIcon class="w-64 h-64" />
+          <div v-if="!content" tw-class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.02] dark:opacity-[0.03]">
+            <PencilLineIcon tw-class="w-64 h-64" />
           </div>
         </div>
 
         <!-- Multi-Edit Overlay -->
         <Transition
-          enter-active-class="transition duration-300 ease-out"
-          enter-from-class="opacity-0 translate-y-4 scale-95"
-          enter-to-class="opacity-100 translate-y-0 scale-100"
-          leave-active-class="transition duration-200 ease-in"
-          leave-from-class="opacity-100 translate-y-0 scale-100"
-          leave-to-class="opacity-0 translate-y-4 scale-95"
+          tw-enter-active-class="transition duration-300 ease-out"
+          tw-enter-from-class="opacity-0 translate-y-4 scale-95"
+          tw-enter-to-class="opacity-100 translate-y-0 scale-100"
+          tw-leave-active-class="transition duration-200 ease-in"
+          tw-leave-from-class="opacity-100 translate-y-0 scale-100"
+          tw-leave-to-class="opacity-0 translate-y-4 scale-95"
         >
-          <div v-if="isMultiEditMode" class="absolute bottom-12 left-1/2 -translate-x-1/2 w-96 z-50 bg-white dark:bg-slate-900 border border-amber-500/30 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-4 ring-1 ring-black/5">
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center gap-2">
-                <div class="p-1.5 bg-amber-500/10 rounded-lg text-amber-500">
-                  <LayersIcon class="w-3.5 h-3.5" />
+          <div v-if="isMultiEditMode" tw-class="absolute bottom-12 left-1/2 -translate-x-1/2 w-96 z-50 bg-white dark:bg-slate-900 border border-amber-500/30 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-4 ring-1 ring-black/5">
+            <div tw-class="flex items-center justify-between mb-2">
+              <div tw-class="flex items-center gap-2">
+                <div tw-class="p-1.5 bg-amber-500/10 rounded-lg text-amber-500">
+                  <LayersIcon tw-class="w-3.5 h-3.5" />
                 </div>
-                <div class="flex flex-col">
-                  <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.advancedTextEditor__multi_edit_mode() }}</span>
-                  <span class="text-[11px] text-amber-500/90 font-mono truncate max-w-[200px]" :title="multiEditInitialText">
+                <div tw-class="flex flex-col">
+                  <span tw-class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.advancedTextEditor__multi_edit_mode() }}</span>
+                  <span tw-class="text-[11px] text-amber-500/90 font-mono truncate max-w-[200px]" :title="multiEditInitialText">
                     {{ lazyStrings.advancedTextEditor__renaming_text({ text: multiEditInitialText }) }}
                   </span>
                 </div>
               </div>
-              <span class="text-[10px] font-bold text-amber-500/80 px-2 py-0.5 bg-amber-500/5 rounded-full border border-amber-500/20">
+              <span tw-class="text-[10px] font-bold text-amber-500/80 px-2 py-0.5 bg-amber-500/5 rounded-full border border-amber-500/20">
                 {{ lazyStrings.advancedTextEditor__instance_count({ count: multiEditMatches.length }) }}
               </span>
             </div>
 
-            <div class="relative group">
+            <div tw-class="relative group">
               <input
                 ref="multiEditInputRef"
                 v-model="multiEditReplacement"
                 @keydown.enter="applyMultiEdit"
                 @keydown.esc="exitMultiEdit"
                 :placeholder="lazyStrings.advancedTextEditor__type_to_replace_all()"
-                class="w-full px-4 py-2.5 bg-gray-50 dark:bg-black/40 border border-gray-100 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-mono placeholder:text-gray-500 text-white"
+                tw-class="w-full px-4 py-2.5 bg-gray-50 dark:bg-black/40 border border-gray-100 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-mono placeholder:text-gray-500 text-white"
               />
-              <div class="absolute right-3 top-2.5 flex items-center gap-1">
-                <button @click="applyMultiEdit" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-green-500 transition-colors" :title="lazyStrings.advancedTextEditor__confirm_enter()">
-                  <CheckIcon class="w-4 h-4" />
+              <div tw-class="absolute right-3 top-2.5 flex items-center gap-1">
+                <button @click="applyMultiEdit" tw-class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-green-500 transition-colors" :title="lazyStrings.advancedTextEditor__confirm_enter()">
+                  <CheckIcon tw-class="w-4 h-4" />
                 </button>
-                <button @click="exitMultiEdit" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-red-500 transition-colors" :title="lazyStrings.advancedTextEditor__cancel_esc()">
-                  <XIcon class="w-4 h-4" />
+                <button @click="exitMultiEdit" tw-class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-red-500 transition-colors" :title="lazyStrings.advancedTextEditor__cancel_esc()">
+                  <XIcon tw-class="w-4 h-4" />
                 </button>
               </div>
             </div>
-            <div class="mt-2 text-[9px] text-gray-400 text-center font-medium">
-              {{ lazyStrings.advancedTextEditor__type_to_rename_all() }} <span class="text-gray-500">{{ lazyStrings.advancedTextEditor__enter() }}</span> {{ lazyStrings.advancedTextEditor__to_apply() }} <span class="text-gray-500">{{ lazyStrings.advancedTextEditor__esc() }}</span> {{ lazyStrings.advancedTextEditor__to_cancel() }}
+            <div tw-class="mt-2 text-[9px] text-gray-400 text-center font-medium">
+              {{ lazyStrings.advancedTextEditor__type_to_rename_all() }} <span tw-class="text-gray-500">{{ lazyStrings.advancedTextEditor__enter() }}</span> {{ lazyStrings.advancedTextEditor__to_apply() }} <span tw-class="text-gray-500">{{ lazyStrings.advancedTextEditor__esc() }}</span> {{ lazyStrings.advancedTextEditor__to_cancel() }}
             </div>
           </div>
         </Transition>
 
         <!-- Footer Info Bar (Opaque Slate-900 background) -->
-        <div v-if="showStats" class="h-9 border-t border-gray-100 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#0f172a] text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 relative shrink-0">
-          <div class="flex items-center gap-6">
-            <span class="flex items-center gap-1.5"><TypeIcon class="w-3 h-3 text-blue-500/50" /> {{ stats.chars }} <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__chars() }}</span></span>
-            <span class="flex items-center gap-1.5"><PencilLineIcon class="w-3 h-3 text-amber-500/50" /> {{ stats.words }} <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__words() }}</span></span>
-            <span class="flex items-center gap-1.5"><HashIcon class="w-3 h-3 text-emerald-500/50" /> {{ stats.lines }} <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__lines() }}</span></span>
+        <div v-if="showStats" tw-class="h-9 border-t border-gray-100 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#0f172a] text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 relative shrink-0">
+          <div tw-class="flex items-center gap-6">
+            <span tw-class="flex items-center gap-1.5"><TypeIcon tw-class="w-3 h-3 text-blue-500/50" /> {{ stats.chars }} <span tw-class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__chars() }}</span></span>
+            <span tw-class="flex items-center gap-1.5"><PencilLineIcon tw-class="w-3 h-3 text-amber-500/50" /> {{ stats.words }} <span tw-class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__words() }}</span></span>
+            <span tw-class="flex items-center gap-1.5"><HashIcon tw-class="w-3 h-3 text-emerald-500/50" /> {{ stats.lines }} <span tw-class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__lines() }}</span></span>
           </div>
 
-          <div class="flex items-center gap-4">
-            <div class="flex items-center gap-1.5">
-              <MousePointer2Icon class="w-3 h-3 text-purple-500/50" />
-              <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__selection() }}</span>
+          <div tw-class="flex items-center gap-4">
+            <div tw-class="flex items-center gap-1.5">
+              <MousePointer2Icon tw-class="w-3 h-3 text-purple-500/50" />
+              <span tw-class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__selection() }}</span>
               <span>{{ textareaRef?.selectionEnd ? textareaRef.selectionEnd - textareaRef.selectionStart : 0 }}</span>
             </div>
-            <div class="h-3 w-px bg-gray-200 dark:border-white/10"></div>
-            <span class="text-blue-500/80">{{ historyIndex + 1 }}/{{ history.length }} <span class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__steps() }}</span></span>
+            <div tw-class="h-3 w-px bg-gray-200 dark:border-white/10"></div>
+            <span tw-class="text-blue-500/80">{{ historyIndex + 1 }}/{{ history.length }} <span tw-class="opacity-40 font-medium">{{ lazyStrings.advancedTextEditor__steps() }}</span></span>
           </div>
         </div>
       </div>

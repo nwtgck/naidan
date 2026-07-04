@@ -158,5 +158,5 @@ defineExpose({
 </script>
 
 <template>
-  <span class="hidden" aria-hidden="true" />
+  <span tw-class="hidden" aria-hidden="true" />
 </template>

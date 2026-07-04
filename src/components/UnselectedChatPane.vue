@@ -16,7 +16,7 @@ defineExpose({
 
 <template>
   <div
-    class="flex h-full items-center justify-center bg-[#fcfcfd] text-gray-400 transition-colors dark:bg-gray-900 dark:text-gray-500"
+    tw-class="flex h-full items-center justify-center bg-[#fcfcfd] text-gray-400 transition-colors dark:bg-gray-900 dark:text-gray-500"
     @click="setActiveFocusArea({ area: 'chat' })"
   >
     {{ lazyStrings.UnselectedChatPane__select_or_create_a_chat_to_start() }}

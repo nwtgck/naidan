@@ -45,10 +45,10 @@ defineExpose({
 
 <template>
   <!-- We add bg-inherit to ensure the background from PrintView (which has dark mode classes) is applied. -->
-  <div v-if="currentChat" class="chat-print-content bg-inherit text-inherit">
+  <div v-if="currentChat" class="chat-print-content" tw-class="bg-inherit text-inherit">
     <header class="chat-print-header">
-      <h1 class="text-3xl font-extrabold tracking-tight">{{ chatTitle }}</h1>
-      <p v-if="currentChat.id" class="text-xs opacity-40 mt-2 tracking-widest uppercase">{{ lazyStrings.ChatPrintContent__chat_id() }} {{ currentChat.id }}</p>
+      <h1 tw-class="text-3xl font-extrabold tracking-tight">{{ chatTitle }}</h1>
+      <p v-if="currentChat.id" tw-class="text-xs opacity-40 mt-2 tracking-widest uppercase">{{ lazyStrings.ChatPrintContent__chat_id() }} {{ currentChat.id }}</p>
     </header>
 
     <div class="chat-print-messages">

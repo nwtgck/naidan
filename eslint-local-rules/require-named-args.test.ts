@@ -144,6 +144,19 @@ describe('require-named-args rule', () => {
     )).resolves.toHaveLength(1);
   });
 
+  it('allows canonical static Tailwind compiler macro declarations', async () => {
+    const filePath = path.resolve(testFileDir, 'compatibility-fixture/src/utils/virtual-naidan-tailwind.d.ts');
+    await expect(lint(`declare function tw(className: string): string;`, { filePath })).resolves.toHaveLength(0);
+    await expect(lint(`declare function twClasses(value: unknown): string;`, { filePath })).resolves.toHaveLength(0);
+    await expect(lint(`declare function twClassString(...classNames: string[]): string;`, { filePath })).resolves.toHaveLength(0);
+    await expect(lint(`declare function customClasses(value: unknown): unknown;`, { filePath })).resolves.toHaveLength(0);
+  });
+
+  it('does not exempt ordinary functions that reuse compiler macro names', async () => {
+    await expect(lint(`function tw(className: string): string { return className; }`)).resolves.toHaveLength(1);
+    await expect(lint(`function twClasses(value: unknown): string { return String(value); }`)).resolves.toHaveLength(1);
+  });
+
   it('allows no-argument functions', async () => {
     await expect(lint(`function read() {}`)).resolves.toHaveLength(0);
   });

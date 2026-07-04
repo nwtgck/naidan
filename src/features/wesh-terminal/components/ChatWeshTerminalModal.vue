@@ -72,30 +72,30 @@ defineExpose({
   <Transition name="modal">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+      tw-class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
     >
       <div
-        class="w-full max-w-4xl h-[85vh] flex flex-col rounded-2xl overflow-hidden border border-gray-700 shadow-2xl bg-gray-950"
+        tw-class="w-full max-w-4xl h-[85vh] flex flex-col rounded-2xl overflow-hidden border border-gray-700 shadow-2xl bg-gray-950"
       >
         <!-- Header -->
-        <div class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-700/60 shrink-0">
-          <div class="flex items-center gap-2">
-            <TerminalIcon class="w-4 h-4 text-blue-500 shrink-0" />
-            <span class="font-mono text-sm font-bold text-gray-200">{{ lazyStrings.weshTerminal__wesh_terminal() }}</span>
+        <div tw-class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-700/60 shrink-0">
+          <div tw-class="flex items-center gap-2">
+            <TerminalIcon tw-class="w-4 h-4 text-blue-500 shrink-0" />
+            <span tw-class="font-mono text-sm font-bold text-gray-200">{{ lazyStrings.weshTerminal__wesh_terminal() }}</span>
           </div>
           <button
-            class="p-1 rounded-lg hover:bg-gray-800 transition-colors text-gray-500 hover:text-gray-300"
+            tw-class="p-1 rounded-lg hover:bg-gray-800 transition-colors text-gray-500 hover:text-gray-300"
             :aria-label="lazyStrings.weshTerminal__close_terminal()"
             @click="emit('close')"
           >
-            <XIcon class="w-4 h-4" />
+            <XIcon tw-class="w-4 h-4" />
           </button>
         </div>
 
         <!-- Terminal pane fills remaining space -->
         <WeshTerminalPane
           ref="paneRef"
-          class="flex-1 min-h-0 flex flex-col"
+          tw-class="flex-1 min-h-0 flex flex-col"
           :sessions="sessions"
           :active-session-id="activeSessionId"
           :complete-input="completeInput"
