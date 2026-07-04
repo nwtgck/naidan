@@ -173,7 +173,12 @@ Important invariants are:
 
 ## Debug output
 
-Production planning writes diagnostics under `dist/debug-tailwind`:
+Production planning writes diagnostics to the mode-specific directory configured by Vite:
+
+- standalone: `dist/debug-tailwind-standalone`;
+- hosted: `dist/debug-tailwind-hosted`.
+
+Each directory contains:
 
 - `source-analysis.json`: candidate occurrences and source ownership;
 - `ownership-plan.json`: groups, fragment orders, compression, and byte metrics;
@@ -183,7 +188,7 @@ Production planning writes diagnostics under `dist/debug-tailwind`:
 - `css-groups/group-<sha256>.css`: one final ownership group;
 - `css-groups/groups.json`: hash-to-owner mapping.
 
-Hashed filenames avoid filesystem name-length limits. The debug directory is disposable build output and is not a build input. Because it is recursively cleared before production planning, `debugOutputDirectory` is accepted only as a dedicated child below a top-level project `dist*` directory, such as `dist/debug-tailwind`; project roots, source directories, the `dist*` directory itself, and paths outside the project are rejected, and existing path components may not be symbolic links.
+Hashed filenames avoid filesystem name-length limits. Each debug directory is disposable build output and is not a build input. Because it is recursively cleared before production planning, `debugOutputDirectory` is accepted only as a dedicated child below a top-level project `dist*` directory, such as `dist/debug-tailwind-standalone`; project roots, source directories, the `dist*` directory itself, and paths outside the project are rejected, and existing path components may not be symbolic links. Separate directories keep the later hosted build from replacing the standalone diagnostics.
 
 ## Tests
 

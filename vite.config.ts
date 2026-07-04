@@ -208,6 +208,9 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone';
   const isHosted = mode === 'hosted';
+  const tailwindDebugOutputDirectory = isStandalone || isHosted
+    ? path.resolve(__dirname, `dist/debug-tailwind-${mode}`)
+    : undefined;
   // Use nested directories in dist/ to keep things organized
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted';
   const rollupInput: Record<string, string> = isStandalone
@@ -276,7 +279,7 @@ export default defineConfig(({ mode }) => {
         sourceRoot: path.resolve(__dirname, 'src'),
         entryModule: path.resolve(__dirname, 'src/main.ts'),
         tailwindCssPath: path.resolve(__dirname, 'src/style.css'),
-        debugOutputDirectory: path.resolve(__dirname, 'dist/debug-tailwind'),
+        debugOutputDirectory: tailwindDebugOutputDirectory,
         // Source modules import canonical runtime CSS fragment modules. Rolldown
         // places private and shared fragments according to its actual chunk graph.
         outputMode: 'split',
