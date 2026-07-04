@@ -5,6 +5,7 @@ import type { ResolvedConfig } from 'vite';
 import {
   assertSupportedFileProtocolSystemJsConfig,
   collectFileProtocolSystemJsOutputReferences,
+  createFileProtocolSystemJsRuntimeCssTemplate,
   fileProtocolSystemJs,
   validateFileProtocolSystemJsSourceMap,
 } from './file-protocol-systemjs';
@@ -29,6 +30,7 @@ function resolvedConfigFixture({
   return {
     base,
     build: {
+      cssCodeSplit: true,
       modulePreload,
       minify,
       ssr,
@@ -101,6 +103,11 @@ describe('fileProtocolSystemJs', () => {
     expect(() => assertSupportedFileProtocolSystemJsConfig({
       config: resolvedConfigFixture({ ...validArguments, modulePreload: {} }),
     })).toThrow('build.modulePreload must be false');
+    const noCssSplitConfig = resolvedConfigFixture(validArguments);
+    noCssSplitConfig.build.cssCodeSplit = false;
+    expect(() => assertSupportedFileProtocolSystemJsConfig({
+      config: noCssSplitConfig,
+    })).toThrow('build.cssCodeSplit must be true');
     expect(() => assertSupportedFileProtocolSystemJsConfig({
       config: resolvedConfigFixture({ ...validArguments, minify: 'terser' }),
     })).toThrow("build.minify must be false or 'oxc'");
@@ -165,10 +172,61 @@ describe('fileProtocolSystemJs', () => {
     })).toThrow('must embed sourcesContent for every source');
   });
 
+
+  it('rewrites only local CSS asset URLs against the owning SystemJS chunk', () => {
+    const template = createFileProtocolSystemJsRuntimeCssTemplate({
+      source: `\
+@font-face {
+  src:
+    url("../fonts/probe.woff2?#iefix") format("woff2"),
+    url(data:font/woff2;base64,AAAA) format("woff2");
+}
+.icon { mask-image: url("#local-mask"); }
+`,
+      cssFileName: 'assets/styles/chunk.css',
+      chunkFileName: 'assets/scripts/chunk-systemjs.js',
+    });
+
+    expect(template.runtimeUrls).toHaveLength(1);
+    expect(template.runtimeUrls[0]?.relativeUrl).toBe('../fonts/probe.woff2?#iefix');
+    expect(template.css).toContain(template.runtimeUrls[0]?.token);
+    expect(template.css).toContain('url(data:font/woff2;base64,AAAA)');
+    expect(template.css).toContain('url("#local-mask")');
+  });
+
+  it('rejects CSS URLs that cannot be resolved inside the file output', () => {
+    const createTemplate = (source: string) => createFileProtocolSystemJsRuntimeCssTemplate({
+      source,
+      cssFileName: 'assets/styles/chunk.css',
+      chunkFileName: 'assets/chunk-systemjs.js',
+    });
+    expect(() => createTemplate('.escape { background: url("../../../outside.svg"); }'))
+      .toThrow('escapes the output directory');
+    expect(() => createTemplate('.root { background: url("/outside.svg"); }'))
+      .toThrow('must be relative for file:// output');
+    expect(() => createTemplate('.remote { background: url("https://example.invalid/outside.svg"); }'))
+      .toThrow('uses unsupported scheme https');
+    expect(() => createTemplate('.encoded { background: url("..%2f..%2foutside.svg"); }'))
+      .toThrow('contains a path separator escape');
+    expect(() => createTemplate('.encoded-dot { background: url("%2e%2e/%2e%2e/%2e%2e/outside.svg"); }'))
+      .toThrow('escapes the output directory');
+    expect(() => createTemplate('.self-query { background: url("?cache-bust"); }'))
+      .toThrow('cannot target the removed CSS asset');
+    expect(() => createTemplate('.dynamic { background: url(var(--asset)); }'))
+      .toThrow('must contain one static URL');
+    expect(() => createTemplate('@import "./other.css";'))
+      .toThrow('must not contain @import');
+  });
+
   it('requires the caller to choose diagnostic emission explicitly', () => {
-    expect(fileProtocolSystemJs({ emitDiagnostics: false }).name)
-      .toBe('file-protocol-systemjs-transform');
-    expect(fileProtocolSystemJs({ emitDiagnostics: true }).name)
-      .toBe('file-protocol-systemjs-transform');
+    const withoutDiagnostics = fileProtocolSystemJs({ diagnostics: 'omit' });
+    const withDiagnostics = fileProtocolSystemJs({ diagnostics: 'emit' });
+    expect(withoutDiagnostics.name).toBe('file-protocol-systemjs-transform');
+    expect(withDiagnostics.name).toBe('file-protocol-systemjs-transform');
+    const generateBundle = withoutDiagnostics.generateBundle;
+    if (typeof generateBundle !== 'object' || generateBundle === null) {
+      throw new TypeError('Expected an ordered generateBundle hook.');
+    }
+    expect(generateBundle.order).toBe('post');
   });
 });

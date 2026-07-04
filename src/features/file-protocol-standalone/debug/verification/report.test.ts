@@ -138,7 +138,7 @@ function installValidGlobals(): void {
     startedAt: 0,
     updatedAt: 1,
     documentReadyState: 'complete' as const,
-    entryFileName: 'assets/index-legacy.js',
+    entryFileName: 'assets/index-systemjs.js',
     checkpointHistory: [{
       source: 'naidan-app' as const,
       name: 'app-ready' as const,

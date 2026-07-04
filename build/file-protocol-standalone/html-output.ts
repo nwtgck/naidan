@@ -47,6 +47,39 @@ function isPreservedPreRuntimeScript({ script }: {
     === FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE;
 }
 
+
+function hasLinkRelToken({ link, token }: {
+  link: HTMLLinkElement,
+  token: string,
+}): boolean {
+  return (link.getAttribute('rel') ?? '')
+    .split(/\s+/u)
+    .some((value) => value.toLowerCase() === token);
+}
+
+function assertNoFetchDependentLinks({ document, label }: {
+  document: Document,
+  label: string,
+}): void {
+  const links = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel]'));
+  const modulePreloads = links.filter((link) => hasLinkRelToken({ link, token: 'modulepreload' }));
+  if (modulePreloads.length > 0) {
+    throw new Error(
+      `[${pluginName}] Expected build.modulePreload=false to omit modulepreload links; found ${modulePreloads.length}.`,
+    );
+  }
+  const prohibitedLinks = links.filter((link) => (
+    hasLinkRelToken({ link, token: 'stylesheet' })
+    || hasLinkRelToken({ link, token: 'preload' })
+  ));
+  if (prohibitedLinks.length > 0) {
+    const details = prohibitedLinks.map((link) => `${link.getAttribute('rel') ?? ''}:${link.getAttribute('href') ?? ''}`);
+    throw new Error(
+      `[${pluginName}] ${label} must not contain fetch-dependent stylesheet or preload links: ${details.join(', ')}.`,
+    );
+  }
+}
+
 function assertValidPreservedPreRuntimeScript({ script }: {
   script: HTMLScriptElement,
 }): void {
@@ -135,16 +168,10 @@ export function replaceViteBootstrapWithFileProtocolStandaloneScripts({
     }
   }
 
-  const modulePreloads = Array.from(document.querySelectorAll('link[rel]')).filter((link) => (
-    (link.getAttribute('rel') ?? '')
-      .split(/\s+/)
-      .some((token) => token.toLowerCase() === 'modulepreload')
-  ));
-  if (modulePreloads.length > 0) {
-    throw new Error(
-      `[${pluginName}] Expected build.modulePreload=false to omit modulepreload links; found ${modulePreloads.length}.`,
-    );
-  }
+  assertNoFetchDependentLinks({
+    document,
+    label: 'Vite-generated standalone HTML',
+  });
 
   const executableScripts = Array.from(document.querySelectorAll('script'))
     .filter((script) => isExecutableScriptType({ type: script.getAttribute('type') }));
@@ -248,6 +275,10 @@ export function replaceViteBootstrapWithFileProtocolStandaloneScripts({
 
 export function assertValidFileProtocolStandaloneHtml({ html }: { html: string }): void {
   const dom = new JSDOM(html);
+  assertNoFetchDependentLinks({
+    document: dom.window.document,
+    label: 'Final standalone HTML',
+  });
   const executableScripts = Array.from(dom.window.document.querySelectorAll('script'))
     .filter((script) => isExecutableScriptType({ type: script.getAttribute('type') }));
   const preservedPreRuntimeScripts = executableScripts.filter((script) => (

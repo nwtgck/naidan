@@ -48,7 +48,7 @@ function executeEntryBootstrap({
   const consoleError = vi.fn();
   const consoleWarn = vi.fn();
   const source = createFileProtocolStandaloneEntryBootstrapSource({
-    entryFileName: 'assets/index-legacy.js',
+    entryFileName: 'assets/index-systemjs.js',
     debugSlowStartupNoticeDelayMs: slowStartupNoticeDelayMs,
   });
   const execute = new Function(
@@ -124,7 +124,7 @@ describe('standalone application entry bootstrap', () => {
       format: 'file-protocol-standalone-diagnostics-v2',
       startup: {
         checkpoint: 'importing-entry',
-        entryFileName: 'assets/index-legacy.js',
+        entryFileName: 'assets/index-systemjs.js',
       },
     });
     (snapshot.startup as { checkpoint: string }).checkpoint = 'mutated-from-devtools';
@@ -205,7 +205,7 @@ describe('standalone application entry bootstrap', () => {
       initialNamespace: Object.freeze({}),
     });
 
-    expect(systemImport).toHaveBeenCalledWith('./assets/index-legacy.js');
+    expect(systemImport).toHaveBeenCalledWith('./assets/index-systemjs.js');
     expect(harness.consoleWarn).toHaveBeenCalledWith(
       '[file-protocol-standalone] Failed to initialize debug diagnostics. Application entry import will continue.',
       expect.any(TypeError),

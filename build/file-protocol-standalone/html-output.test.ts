@@ -58,6 +58,30 @@ describe('file protocol standalone preserved pre-runtime scripts', () => {
     expect(() => assertValidFileProtocolStandaloneHtml({ html })).not.toThrow();
   });
 
+
+  it('rejects stylesheet and preload links after SystemJS CSS inlining', () => {
+    const stylesheetHtml = createViteHtml({ preservedScript: '' }).replace(
+      '</head>',
+      '<link rel="stylesheet" href="./assets/index.css"></head>',
+    );
+    expect(() => replaceViteBootstrapWithFileProtocolStandaloneScripts({
+      html: stylesheetHtml,
+      entryFileName: 'assets/index.js',
+      runtimeFileName: 'assets/system.js',
+      patchFileName: 'assets/file-patch.js',
+      retryFileName: 'assets/retry.js',
+      workers: [],
+    })).toThrow('must not contain fetch-dependent stylesheet or preload links');
+
+    const validHtml = transformStandaloneHtml({ preservedScript: '' });
+    const preloadHtml = validHtml.replace(
+      '</head>',
+      '<link rel="preload" href="./assets/index.js" as="script"></head>',
+    );
+    expect(() => assertValidFileProtocolStandaloneHtml({ html: preloadHtml }))
+      .toThrow('must not contain fetch-dependent stylesheet or preload links');
+  });
+
   it('rejects a marked external script because it could delay or reorder pre-runtime execution', () => {
     expect(() => transformStandaloneHtml({
       preservedScript: `<script id="initial-theme" ${FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE}="${FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE}" src="./theme.js"></script>`,

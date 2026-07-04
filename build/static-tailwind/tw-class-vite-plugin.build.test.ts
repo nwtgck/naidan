@@ -390,7 +390,7 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
       plugins: [
         createPlugin({ root, debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind') }),
         createVuePlugin(),
-        fileProtocolSystemJs({ emitDiagnostics: false }),
+        fileProtocolSystemJs({ diagnostics: 'omit' }),
         fileProtocolStandalone({
           debugBuildReportFile: undefined,
           workerTarget: 'chrome140',
@@ -407,17 +407,19 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
         outDir: outputDirectory,
         rollupOptions: {
           output: {
-            entryFileNames: 'assets/[name]-legacy-[hash].js',
-            chunkFileNames: 'assets/[name]-legacy-[hash].js',
+            entryFileNames: 'assets/[name]-systemjs-[hash].js',
+            chunkFileNames: 'assets/[name]-systemjs-[hash].js',
           },
         },
       },
     });
 
     const manifest = JSON.parse(fs.readFileSync(path.join(outputDirectory, '.vite', 'manifest.json'), 'utf8')) as Record<string, {
+      css?: string[],
       file: string,
       isEntry?: boolean,
     }>;
+    expect(Object.values(manifest).flatMap(({ css }) => css ?? [])).toEqual([]);
     const entry = Object.values(manifest).find(({ isEntry }) => isEntry === true);
     expect(entry).toBeDefined();
     if (entry === undefined) throw new TypeError('Expected one standalone entry chunk.');

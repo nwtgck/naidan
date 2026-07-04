@@ -73,7 +73,7 @@ async function buildFixtureWithOptions({
     define,
     resolve: { alias },
     plugins: [
-      fileProtocolSystemJs({ emitDiagnostics: false }),
+      fileProtocolSystemJs({ diagnostics: 'omit' }),
       ...pluginsBeforeStandalone,
       fileProtocolStandalone({
         debugBuildReportFile: 'dist/debug-file-protocol-standalone-build-report.json',
@@ -92,8 +92,8 @@ async function buildFixtureWithOptions({
       rolldownOptions: {
         input,
         output: {
-          entryFileNames: 'assets/[name]-legacy-[hash].js',
-          chunkFileNames: 'assets/[name]-legacy-[hash].js',
+          entryFileNames: 'assets/[name]-systemjs-[hash].js',
+          chunkFileNames: 'assets/[name]-systemjs-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]',
         },
       },
@@ -138,7 +138,7 @@ async function buildBasicFixtureWithPluginOptions({
     logLevel: 'silent',
     customLogger,
     plugins: [
-      fileProtocolSystemJs({ emitDiagnostics: false }),
+      fileProtocolSystemJs({ diagnostics: 'omit' }),
       fileProtocolStandalone({
         debugBuildReportFile,
         workerTarget,
@@ -156,8 +156,8 @@ async function buildBasicFixtureWithPluginOptions({
       rolldownOptions: {
         input: path.join(root, 'index.html'),
         output: {
-          entryFileNames: 'assets/[name]-legacy-[hash].js',
-          chunkFileNames: 'assets/[name]-legacy-[hash].js',
+          entryFileNames: 'assets/[name]-systemjs-[hash].js',
+          chunkFileNames: 'assets/[name]-systemjs-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]',
         },
       },

@@ -282,7 +282,7 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
       logLevel: 'silent',
       base: './',
       plugins: [
-        fileProtocolSystemJs({ emitDiagnostics: false }),
+        fileProtocolSystemJs({ diagnostics: 'omit' }),
         ...createLicenseModulePlugins({
           getAdditionalDependencies: () => additionalDependencies,
         }),
@@ -310,8 +310,8 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
         rolldownOptions: {
           input: path.join(root, 'index.html'),
           output: {
-            entryFileNames: 'assets/[name]-legacy-[hash].js',
-            chunkFileNames: 'assets/[name]-legacy-[hash].js',
+            entryFileNames: 'assets/[name]-systemjs-[hash].js',
+            chunkFileNames: 'assets/[name]-systemjs-[hash].js',
             assetFileNames: 'assets/[name]-[hash][extname]',
           },
         },

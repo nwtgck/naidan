@@ -294,7 +294,7 @@ export default defineConfig(({ mode }) => {
           },
         },
       }),
-      isStandalone && fileProtocolSystemJs({ emitDiagnostics: false }),
+      isStandalone && fileProtocolSystemJs({ diagnostics: 'omit' }),
       stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
       privacyFetchBrokerDevHeadersPlugin(),
       !isStandalone && viteStaticCopy({
@@ -388,22 +388,22 @@ export default defineConfig(({ mode }) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
-            // Vite's build-import-analysis injects CSS into JavaScript for
-            // legacy-named chunks. Standalone relies on that behavior so both
-            // initial and lazy CSS remain loadable from file:// without fetch().
-            // fileProtocolSystemJs rejects the build if external CSS survives.
+            // The semantic marker describes the emitted System.register format.
+            // fileProtocolSystemJs explicitly inlines finalized split CSS into
+            // each owning chunk, so this no longer relies on Vite's legacy-name
+            // compatibility branch.
             return isStandalone
-              ? 'assets/[name]-legacy-[hash].js'
+              ? 'assets/[name]-systemjs-[hash].js'
               : 'assets/[name]-[hash].js';
           },
           chunkFileNames: (chunkInfo) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
-            // Keep the same legacy marker on lazy chunks so their CSS is
-            // injected into the chunk under the file-protocol contract above.
+            // Keep the same SystemJS marker on lazy chunks so output format
+            // and CSS ownership remain explicit across every split boundary.
             return isStandalone
-              ? 'assets/[name]-legacy-[hash].js'
+              ? 'assets/[name]-systemjs-[hash].js'
               : 'assets/[name]-[hash].js';
           },
         },
