@@ -6,7 +6,6 @@ import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
 import {
   FAKE_LM_ENDPOINT_URL,
-  preloadFakeLmLanguagePacks,
   useFakeLmDebugMode,
   type FakeLmDebugModeStatus,
 } from '@/features/fake-lm';
@@ -187,7 +186,6 @@ const fakeLmFeatureCopy = computed(() => resolveFeatureRowCopy({
   toggleLabel: fakeLmToggleLabel(),
 }));
 
-preloadFakeLmLanguagePacks();
 
 async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool' }) {
   if (isFeatureEnabled({ feature })) {
@@ -304,9 +302,9 @@ defineExpose({
 </script>
 
 <template>
-  <div class="space-y-3" data-testid="feature-flags-settings">
+  <div tw-class="space-y-3" data-testid="feature-flags-settings">
     <div
-      class="overflow-hidden rounded-2xl border border-gray-200/80 bg-white/60 shadow-sm divide-y divide-gray-200/80 dark:border-gray-800 dark:bg-gray-900/30 dark:divide-gray-800"
+      tw-class="overflow-hidden rounded-2xl border border-gray-200/80 bg-white/60 shadow-sm divide-y divide-gray-200/80 dark:border-gray-800 dark:bg-gray-900/30 dark:divide-gray-800"
       data-testid="experimental-feature-list"
     >
       <ExperimentalFeatureRow
@@ -322,7 +320,7 @@ defineExpose({
         @toggle="handleFeatureToggle({ feature: 'volume' })"
       >
         <template #icon>
-          <FolderIcon class="h-4 w-4" />
+          <FolderIcon tw-class="h-4 w-4" />
         </template>
       </ExperimentalFeatureRow>
 
@@ -339,7 +337,7 @@ defineExpose({
         @toggle="handleFeatureToggle({ feature: 'wesh_tool' })"
       >
         <template #icon>
-          <TerminalIcon class="h-4 w-4" />
+          <TerminalIcon tw-class="h-4 w-4" />
         </template>
       </ExperimentalFeatureRow>
 
@@ -356,7 +354,7 @@ defineExpose({
         @toggle="handleSidebarSendMessageReorderToggle"
       >
         <template #icon>
-          <ListRestartIcon class="h-4 w-4" />
+          <ListRestartIcon tw-class="h-4 w-4" />
         </template>
       </ExperimentalFeatureRow>
 
@@ -373,7 +371,7 @@ defineExpose({
         @toggle="handleToolConfigPersistenceToggle"
       >
         <template #icon>
-          <FlaskConicalIcon class="h-4 w-4" />
+          <FlaskConicalIcon tw-class="h-4 w-4" />
         </template>
       </ExperimentalFeatureRow>
 
@@ -390,18 +388,18 @@ defineExpose({
         @toggle="handleFakeLmDebugModeToggle"
       >
         <template #icon>
-          <FlaskConicalIcon class="h-4 w-4" />
+          <FlaskConicalIcon tw-class="h-4 w-4" />
         </template>
       </ExperimentalFeatureRow>
     </div>
 
     <div
-      class="rounded-xl border border-gray-200/80 bg-gray-50/70 px-4 py-2.5 dark:border-gray-800 dark:bg-gray-900/30"
+      tw-class="rounded-xl border border-gray-200/80 bg-gray-50/70 px-4 py-2.5 dark:border-gray-800 dark:bg-gray-900/30"
       data-testid="experimental-feature-warning"
     >
-      <div class="flex items-start gap-2.5">
-        <AlertTriangleIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-        <p class="text-[11px] font-medium leading-relaxed text-gray-600 dark:text-gray-300">
+      <div tw-class="flex items-start gap-2.5">
+        <AlertTriangleIcon tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <p tw-class="text-[11px] font-medium leading-relaxed text-gray-600 dark:text-gray-300">
           {{ lazyStrings.FeatureFlagsSettings__features_may_change() }}
         </p>
       </div>

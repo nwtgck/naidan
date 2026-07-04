@@ -81,6 +81,11 @@ function createValidWorkerResult(): DebugFileProtocolStandaloneWorkerVerificatio
 }
 
 function appendExpectedScripts(): void {
+  const preRuntimeScript = document.createElement('script');
+  preRuntimeScript.id = 'naidan-initial-theme-bootstrap';
+  preRuntimeScript.setAttribute('data-file-protocol-standalone-script-phase', 'pre-runtime');
+  document.head.appendChild(preRuntimeScript);
+
   for (const id of [
     'file-protocol-standalone-systemjs-runtime',
     'file-protocol-standalone-systemjs-file-patch',
@@ -133,7 +138,7 @@ function installValidGlobals(): void {
     startedAt: 0,
     updatedAt: 1,
     documentReadyState: 'complete' as const,
-    entryFileName: 'assets/index-legacy.js',
+    entryFileName: 'assets/index-systemjs.js',
     checkpointHistory: [{
       source: 'naidan-app' as const,
       name: 'app-ready' as const,
@@ -304,6 +309,32 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
       duration: 4,
       initiatorType: 'script',
     }]);
+  });
+
+  it('rejects a pre-runtime script placed after generated executable scripts', async () => {
+    const preRuntimeScript = document.getElementById('naidan-initial-theme-bootstrap');
+    if (!(preRuntimeScript instanceof HTMLScriptElement)) {
+      throw new Error('Expected the pre-runtime fixture script.');
+    }
+    document.head.appendChild(preRuntimeScript);
+
+    const report = await debugRunFileProtocolStandaloneVerification(createBaseArguments());
+
+    expect(report.status).toBe('fail');
+    expect(report.checks.find((check) => check.id === 'output.classic-script-shape')?.error)
+      .toBe('A pre-runtime standalone script appears after generated executable scripts.');
+  });
+
+  it('rejects an untagged executable script while preserving pre-runtime scripts', async () => {
+    const unexpectedScript = document.createElement('script');
+    unexpectedScript.id = 'unexpected-executable-script';
+    document.head.appendChild(unexpectedScript);
+
+    const report = await debugRunFileProtocolStandaloneVerification(createBaseArguments());
+
+    expect(report.status).toBe('fail');
+    expect(report.checks.find((check) => check.id === 'output.classic-script-shape')?.error)
+      .toBe('Standalone executable scripts are missing or out of order.');
   });
 
   it('isolates failed checks and continues through the Worker probe', async () => {

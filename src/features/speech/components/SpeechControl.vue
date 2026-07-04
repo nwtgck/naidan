@@ -100,28 +100,28 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="isSupported && !isHidden" class="flex items-center gap-0.5">
+  <div v-if="isSupported && !isHidden" tw-class="flex items-center gap-0.5">
     <!-- Mini View (Header) -->
     <template v-if="!isSpeechActive || !showFullControls">
       <button
         @click.stop="handleToggleSpeech"
-        class="p-1 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100/50 dark:hover:bg-gray-800/50 transition-colors"
+        tw-class="p-1 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100/50 dark:hover:bg-gray-800/50 transition-colors"
         :title="isPaused ? lazyStrings.SpeechControl__resume() : lazyStrings.SpeechControl__read_aloud()"
         data-testid="speech-toggle-mini"
       >
 
-        <PauseIcon v-if="isPlaying" class="w-3.5 h-3.5" />
-        <Volume2Icon v-else class="w-3.5 h-3.5" />
+        <PauseIcon v-if="isPlaying" tw-class="w-3.5 h-3.5" />
+        <Volume2Icon v-else tw-class="w-3.5 h-3.5" />
       </button>
     </template>
 
     <!-- Full View (Footer) -->
     <template v-else>
-      <button @click="handleRestartSpeech" class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-md" :title="lazyStrings.SpeechControl__restart()"><RotateCcwIcon class="w-3.5 h-3.5" /></button>
-      <button @click="handleStopSpeech" class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-red-500 dark:hover:text-red-400 rounded-md" :title="lazyStrings.SpeechControl__stop()"><SquareIcon class="w-3.5 h-3.5" /></button>
-      <button @click="handleToggleSpeech" class="p-1.5 rounded-md transition-colors text-blue-600 dark:text-blue-400 hover:bg-blue-100/50 dark:hover:bg-blue-800/50" :title="isPaused ? lazyStrings.SpeechControl__resume() : lazyStrings.SpeechControl__pause()">
-        <PauseIcon v-if="isPlaying && webSpeechService.state.status !== 'waiting'" class="w-4 h-4" />
-        <Volume2Icon v-else class="w-4 h-4" />
+      <button @click="handleRestartSpeech" tw-class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-md" :title="lazyStrings.SpeechControl__restart()"><RotateCcwIcon tw-class="w-3.5 h-3.5" /></button>
+      <button @click="handleStopSpeech" tw-class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-red-500 dark:hover:text-red-400 rounded-md" :title="lazyStrings.SpeechControl__stop()"><SquareIcon tw-class="w-3.5 h-3.5" /></button>
+      <button @click="handleToggleSpeech" tw-class="p-1.5 rounded-md transition-colors text-blue-600 dark:text-blue-400 hover:bg-blue-100/50 dark:hover:bg-blue-800/50" :title="isPaused ? lazyStrings.SpeechControl__resume() : lazyStrings.SpeechControl__pause()">
+        <PauseIcon v-if="isPlaying && webSpeechService.state.status !== 'waiting'" tw-class="w-4 h-4" />
+        <Volume2Icon v-else tw-class="w-4 h-4" />
       </button>
     </template>
   </div>

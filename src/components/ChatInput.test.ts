@@ -120,7 +120,7 @@ vi.mock('../utils/opfs-detection', () => ({
   checkFileSystemAccessSupport: vi.fn(() => false),
 }));
 
-vi.mock('../composables/useChatWeshTerminalSessions', () => ({
+vi.mock('@/features/wesh/chat-worker-mounts', () => ({
   buildWorkerMountsForChat: vi.fn(async ({
     chatMounts,
     chatGroupMounts,

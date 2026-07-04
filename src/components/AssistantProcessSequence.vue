@@ -97,47 +97,46 @@ defineExpose({
 
 <template>
   <div
-    class="assistant-process-sequence flex flex-col transition-all duration-300 bg-gray-50/30 dark:bg-gray-800/20"
-    :class="[
-      (flow.position === 'standalone' || flow.position === 'start') ? 'border-t border-gray-100 dark:border-gray-800/50 pt-1.5' : 'pt-0',
-      (flow.position === 'standalone' || flow.position === 'end') ? 'border-b border-gray-100 dark:border-gray-800/50' : ''
+    class="assistant-process-sequence"
+    :tw-class="['flex flex-col transition-all duration-300 bg-gray-50/30 dark:bg-gray-800/20',
+                (flow.position === 'standalone' || flow.position === 'start') ? 'border-t border-gray-100 dark:border-gray-800/50 pt-1.5' : 'pt-0',
+                (flow.position === 'standalone' || flow.position === 'end') ? 'border-b border-gray-100 dark:border-gray-800/50' : ''
     ]"
   >
     <!-- Turn Header (Icon + Model ID) -->
-    <div v-if="isFirstInTurn" class="flex items-center gap-3 mb-1 px-5 pt-3">
-      <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <BirdIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+    <div v-if="isFirstInTurn" tw-class="flex items-center gap-3 mb-1 px-5 pt-3">
+      <div tw-class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <BirdIcon tw-class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
-      <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
+      <div tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
         <span>{{ modelId || lazyStrings.SHARED__assistant() }}</span>
       </div>
     </div>
 
     <!-- Compact Show/Less Toggle -->
-    <div ref="toggleRef" class="px-5 py-1" :class="isExpanded ? 'sticky top-0 z-10 bg-gray-50/80 dark:bg-gray-800/80 backdrop-blur-sm' : ''">
+    <div ref="toggleRef" :tw-class="['px-5 py-1', isExpanded ? 'sticky top-0 z-10 bg-gray-50/80 dark:bg-gray-800/80 backdrop-blur-sm' : '']">
       <div
         @click="toggle"
-        class="inline-flex items-center gap-2 px-2.5 py-1 transition-all duration-200 group/seq cursor-pointer rounded-lg border shadow-sm select-none"
-        :class="[
-          isExpanded
-            ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200/60 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
-            : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-600'
+        :tw-class="['inline-flex items-center gap-2 px-2.5 py-1 transition-all duration-200 group/seq cursor-pointer rounded-lg border shadow-sm select-none',
+                    isExpanded
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200/60 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
+                      : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:border-blue-300 dark:hover:border-blue-700 hover:text-blue-600'
         ]"
         data-testid="assistant-process-toggle"
       >
         <!-- Status/Action Icon -->
-        <div class="flex-shrink-0">
-          <Loader2Icon v-if="isProcessing && (stats.isCurrentlyThinking || stats.isCurrentlyToolRunning || stats.isWaiting)" class="w-3 h-3 animate-spin text-blue-500/70" data-testid="icon-loader" />
-          <component :is="isExpanded ? EyeOffIcon : EyeIcon" v-else class="w-3 h-3 transition-transform duration-300" :class="{ 'opacity-60': !isExpanded }" />
+        <div tw-class="flex-shrink-0">
+          <Loader2Icon v-if="isProcessing && (stats.isCurrentlyThinking || stats.isCurrentlyToolRunning || stats.isWaiting)" tw-class="w-3 h-3 animate-spin text-blue-500/70" data-testid="icon-loader" />
+          <component :is="isExpanded ? EyeOffIcon : EyeIcon" v-else :tw-class="['w-3 h-3 transition-transform duration-300', { 'opacity-60': !isExpanded }]" />
         </div>
 
         <!-- Summary Text -->
-        <div class="text-[10px] font-bold tracking-tight truncate max-w-[200px] sm:max-w-md">
+        <div tw-class="text-[10px] font-bold tracking-tight truncate max-w-[200px] sm:max-w-md">
           {{ displaySummary }}
         </div>
 
         <!-- Action Label -->
-        <div class="text-[8px] uppercase font-black tracking-tighter opacity-0 group-hover/seq:opacity-100 transition-opacity pl-1 border-l border-current/10 ml-0.5">
+        <div tw-class="text-[8px] uppercase font-black tracking-tighter opacity-0 group-hover/seq:opacity-100 transition-opacity pl-1 border-l border-current/10 ml-0.5">
           {{ isExpanded ? lazyStrings.AssistantProcessSequence__less() : lazyStrings.AssistantProcessSequence__show() }}
         </div>
       </div>
@@ -147,9 +146,9 @@ defineExpose({
     <!-- Peek Slot (During processing) -->
     <div
       v-if="!isExpanded && isProcessing && (stats.isCurrentlyThinking || stats.isWaiting)"
-      class="px-5 pb-2 pt-0.5 animate-in fade-in slide-in-from-top-1 duration-300"
+      class="animate-in fade-in slide-in-from-top-1" tw-class="px-5 pb-2 pt-0.5 duration-300"
     >
-      <div class="bg-white/40 dark:bg-gray-800/40 rounded-lg border border-blue-100/30 dark:border-blue-900/20 p-0.5">
+      <div tw-class="bg-white/40 dark:bg-gray-800/40 rounded-lg border border-blue-100/30 dark:border-blue-900/20 p-0.5">
         <slot name="peek" />
       </div>
       <slot name="cursor" />
@@ -157,13 +156,12 @@ defineExpose({
 
     <!-- Expanded Content -->
     <div
-      class="grid transition-[grid-template-rows] duration-500 ease-in-out"
-      :class="isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+      :tw-class="['grid transition-[grid-template-rows] duration-500 ease-in-out', isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]']"
     >
-      <div class="min-h-0 overflow-hidden">
-        <div class="pb-3 pt-1 animate-in fade-in duration-500">
+      <div tw-class="min-h-0 overflow-hidden">
+        <div class="animate-in fade-in" tw-class="pb-3 pt-1 duration-500">
           <slot :is-expanded="isExpanded" />
-          <div v-if="isExpanded && isProcessing" class="px-5 mt-1">
+          <div v-if="isExpanded && isProcessing" tw-class="px-5 mt-1">
             <slot name="cursor" />
           </div>
         </div>

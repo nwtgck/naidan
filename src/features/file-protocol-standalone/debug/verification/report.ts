@@ -1,4 +1,8 @@
-import { FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS } from '@/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
+import {
+  FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS,
+  FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE,
+  FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE,
+} from '@/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
 import type { DebugFileProtocolStandaloneWorkerVerificationResult } from './worker-probe';
 
 export const DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH = '/debug/standalone';
@@ -251,14 +255,17 @@ function debugValidateAndReadFileProtocolStandaloneOutputScripts(): readonly Rea
   type: string | undefined,
   src: string | undefined,
   crossorigin: string | undefined,
+  phase: string | undefined,
 }>[] {
   const scripts = Array.from(document.scripts).map((script) => ({
     id: script.id || undefined,
     type: script.getAttribute('type') || undefined,
     src: script.getAttribute('src') || undefined,
     crossorigin: script.getAttribute('crossorigin') || undefined,
+    phase: script.getAttribute(FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE) || undefined,
   }));
   const executableScripts = scripts.filter((script) => isExecutableScriptType({ type: script.type }));
+  const generatedExecutableScripts = executableScripts.filter((script) => script.phase !== FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE);
   const expectedExecutableIds = FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS;
 
   assertCondition({
@@ -269,8 +276,17 @@ function debugValidateAndReadFileProtocolStandaloneOutputScripts(): readonly Rea
     condition: executableScripts.every((script) => script.crossorigin === undefined),
     message: 'An executable standalone script still has crossorigin.',
   });
+  const firstGeneratedScriptIndex = executableScripts.findIndex((script) => (
+    script.phase !== FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE
+  ));
   assertCondition({
-    condition: JSON.stringify(executableScripts.map((script) => script.id)) === JSON.stringify(expectedExecutableIds),
+    condition: firstGeneratedScriptIndex === -1 || executableScripts
+      .slice(firstGeneratedScriptIndex)
+      .every((script) => script.phase !== FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE),
+    message: 'A pre-runtime standalone script appears after generated executable scripts.',
+  });
+  assertCondition({
+    condition: JSON.stringify(generatedExecutableScripts.map((script) => script.id)) === JSON.stringify(expectedExecutableIds),
     message: 'Standalone executable scripts are missing or out of order.',
   });
 

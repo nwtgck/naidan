@@ -3,7 +3,6 @@ import VueRouter from 'vue-router/vite';
 import { configDefaults, defineConfig } from 'vitest/config';
 import type { Alias } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import legacy from '@vitejs/plugin-legacy';
 import VueDevTools from 'vite-plugin-vue-devtools';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,10 +14,13 @@ import JSZip from 'jszip';
 import pkg from './package.json';
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
 import { fileProtocolStandalone } from './build/file-protocol-standalone/index.js';
+import { fileProtocolSystemJs } from './build/file-protocol-systemjs.js';
 import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/constants';
 import { createLicenseModulePlugins } from './build/license-module';
 import { omitBuildOutputFilesPlugin } from './build/omit-build-output-files';
 import { createBoundaryStringsPlugin } from './build/boundary-strings';
+import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
+import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -37,13 +39,7 @@ function setCrossOriginModuleHeaders({ res }: {
   res.setHeader('Access-Control-Allow-Origin', '*');
 }
 
-const standaloneBrowserSupport = {
-  // @vitejs/plugin-legacy consumes Browserslist queries, while the nested
-  // Worker build consumes Vite/esbuild targets. Keep both representations next
-  // to each other so one compatibility decision cannot silently drift.
-  legacy: ['Firefox >= 140', 'Chrome >= 140'],
-  worker: ['firefox140', 'chrome140'],
-} as const;
+const standaloneWorkerTarget = ['firefox140', 'chrome140'] as const;
 
 const standaloneBuildBudgets = {
   // The attached baseline report measured 631,232 entry bytes and 1,033,893
@@ -212,6 +208,9 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone';
   const isHosted = mode === 'hosted';
+  const tailwindDebugOutputDirectory = isStandalone || isHosted
+    ? path.resolve(__dirname, `dist/debug-tailwind-${mode}`)
+    : undefined;
   // Use nested directories in dist/ to keep things organized
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted';
   const rollupInput: Record<string, string> = isStandalone
@@ -275,16 +274,30 @@ export default defineConfig(({ mode }) => {
       VueRouter({
         /* options */
       }),
-      VueDevTools(),
-      vue(),
-      isStandalone && legacy({
-        targets: [...standaloneBrowserSupport.legacy],
-        renderModernChunks: false,
-        renderLegacyChunks: true,
-        externalSystemJS: true,
-        modernPolyfills: false,
-        polyfills: false,
+      createTwClassVitePlugin({
+        projectRoot: __dirname,
+        sourceRoot: path.resolve(__dirname, 'src'),
+        entryModule: path.resolve(__dirname, 'src/main.ts'),
+        tailwindCssPath: path.resolve(__dirname, 'src/style.css'),
+        debugOutputDirectory: tailwindDebugOutputDirectory,
+        // Source modules import canonical runtime CSS fragment modules. Rolldown
+        // places private and shared fragments according to its actual chunk graph.
+        outputMode: 'split',
+        cssPlanning: mode === 'test' ? 'disabled' : 'enabled',
+        // Bound runtime fragment module count so static analysis does not make
+        // production builds disproportionately expensive. Smaller groups are
+        // promoted to the initial registry module, never discarded.
+        maxSplitCssGroups: 256,
       }),
+      VueDevTools(),
+      vue({
+        template: {
+          compilerOptions: {
+            nodeTransforms: [createTwClassNodeTransform({ filename: 'Vue template', blockStart: undefined })],
+          },
+        },
+      }),
+      isStandalone && fileProtocolSystemJs({ diagnostics: 'omit' }),
       stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
       privacyFetchBrokerDevHeadersPlugin(),
       !isStandalone && viteStaticCopy({
@@ -304,7 +317,7 @@ export default defineConfig(({ mode }) => {
       }),
       !isStandalone && manualGzipWasmPlugin({ outDir }),
       isStandalone && fileProtocolStandalone({
-        workerTarget: [...standaloneBrowserSupport.worker],
+        workerTarget: [...standaloneWorkerTarget],
         debugBuildReportFile: 'dist/debug-file-protocol-standalone-build-report.json',
         workers: [{
           id: FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID,
@@ -365,12 +378,12 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir,
       emptyOutDir: true,
-      minify: true,
+      minify: isStandalone ? 'oxc' : true,
       sourcemap: isHosted,
       modulePreload: !isStandalone,
-      // The standalone legacy plugin emits System.register chunks so file:// can
-      // retain Vite's lazy boundaries without relying on native module loading.
-      // Hosted output continues to use Vite's normal ES-module pipeline.
+      // Standalone output keeps Vite's lazy boundaries but converts each final
+      // application chunk to System.register for direct file:// loading. Hosted
+      // output continues to use Vite's normal ES-module pipeline.
       rollupOptions: {
         input: rollupInput,
         output: {
@@ -378,13 +391,23 @@ export default defineConfig(({ mode }) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
-            return 'assets/[name]-[hash].js';
+            // The semantic marker describes the emitted System.register format.
+            // fileProtocolSystemJs explicitly inlines finalized split CSS into
+            // each owning chunk, so this no longer relies on Vite's legacy-name
+            // compatibility branch.
+            return isStandalone
+              ? 'assets/[name]-systemjs-[hash].js'
+              : 'assets/[name]-[hash].js';
           },
           chunkFileNames: (chunkInfo) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
-            return 'assets/[name]-[hash].js';
+            // Keep the same SystemJS marker on lazy chunks so output format
+            // and CSS ownership remain explicit across every split boundary.
+            return isStandalone
+              ? 'assets/[name]-systemjs-[hash].js'
+              : 'assets/[name]-[hash].js';
           },
         },
       },

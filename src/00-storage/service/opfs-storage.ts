@@ -42,6 +42,7 @@ import {
   BinaryShardIndexSchemaDto,
 } from '@/00-storage/00-dto/dto';
 import { toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
+import { promiseAllKeyed } from '@/utils/promise';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
@@ -505,10 +506,10 @@ export class OPFSStorageProvider extends IStorageProvider {
       const file = await (await dir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
       const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await file.text()));
 
-      const [hierarchy, allMetas] = await Promise.all([
-        this.loadHierarchy(),
-        this.listChatMetasRaw(),
-      ]);
+      const { hierarchy, allMetas } = await promiseAllKeyed({
+        hierarchy: this.loadHierarchy(),
+        allMetas: this.listChatMetasRaw(),
+      });
 
       const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
       const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
@@ -526,11 +527,11 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
-    const [rawHierarchy, rawMetas, rawGroups] = await Promise.all([
-      this.loadHierarchy(),
-      this.listChatMetasRaw(),
-      this.listChatGroupsRaw(),
-    ]);
+    const { rawHierarchy, rawMetas, rawGroups } = await promiseAllKeyed({
+      rawHierarchy: this.loadHierarchy(),
+      rawMetas: this.listChatMetasRaw(),
+      rawGroups: this.listChatGroupsRaw(),
+    });
 
     const hierarchy = hierarchyToDomain({ dto: rawHierarchy || { items: [] } });
     const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
@@ -711,12 +712,12 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async dump(): Promise<StorageSnapshot> {
     await this.ensureRoot();
-    const [settings, hierarchy, rawMetas, rawGroups] = await Promise.all([
-      this.loadSettings(),
-      this.loadHierarchy(),
-      this.listChatMetasRaw(),
-      this.listChatGroupsRaw(),
-    ]);
+    const { settings, hierarchy, rawMetas, rawGroups } = await promiseAllKeyed({
+      settings: this.loadSettings(),
+      hierarchy: this.loadHierarchy(),
+      rawMetas: this.listChatMetasRaw(),
+      rawGroups: this.listChatGroupsRaw(),
+    });
 
     const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
     const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy: h, chatMetas: [] }));

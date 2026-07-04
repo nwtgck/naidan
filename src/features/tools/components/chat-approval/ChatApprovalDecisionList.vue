@@ -71,22 +71,21 @@ defineExpose({
 </script>
 
 <template>
-  <div class="grid gap-1.5">
+  <div tw-class="grid gap-1.5">
     <button
       v-for="option in options"
       :key="option.decision"
       type="button"
-      class="flex min-h-9 items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-      :class="{
+      :tw-class="['flex min-h-9 items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700', {
         'hover:border-red-200 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-900/70 dark:hover:bg-red-950/30 dark:hover:text-red-300': option.decision === 'deny',
-      }"
+      }]"
       :data-testid="option.testId"
       @click="decide({ decision: option.decision })"
     >
-      <span class="shrink-0">{{ option.label }}</span>
+      <span tw-class="shrink-0">{{ option.label }}</span>
       <span
         v-if="option.targetLabel !== undefined"
-        class="min-w-0 truncate text-[11px] font-medium text-gray-400 dark:text-gray-500"
+        tw-class="min-w-0 truncate text-[11px] font-medium text-gray-400 dark:text-gray-500"
       >
         {{ option.targetLabel }}
       </span>

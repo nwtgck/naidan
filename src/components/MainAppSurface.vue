@@ -47,7 +47,7 @@ defineExpose({
     </template>
 
     <template #main>
-      <div class="flex-1 relative min-h-0">
+      <div tw-class="flex-1 relative min-h-0">
         <router-view v-slot="{ Component }">
           <component :is="Component" />
         </router-view>

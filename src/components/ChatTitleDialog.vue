@@ -147,73 +147,72 @@ defineExpose({
   <Transition name="modal">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 dark:bg-black/50 backdrop-blur-sm px-4"
+      tw-class="fixed inset-0 z-[100] flex items-center justify-center bg-black/30 dark:bg-black/50 backdrop-blur-sm px-4"
       data-testid="chat-title-dialog"
       @click.self="emit('close')"
     >
-      <div class="w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden">
-        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+      <div tw-class="w-full max-w-lg bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden">
+        <div tw-class="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <div>
-            <h3 class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ lazyStrings.ChatTitleDialog__chat_title() }}</h3>
-            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{{ lazyStrings.ChatTitleDialog__edit_the_title_directly_or_generate_a_new_one_from_the_conversation() }}</p>
+            <h3 tw-class="text-sm font-bold text-gray-900 dark:text-gray-100">{{ lazyStrings.ChatTitleDialog__chat_title() }}</h3>
+            <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{{ lazyStrings.ChatTitleDialog__edit_the_title_directly_or_generate_a_new_one_from_the_conversation() }}</p>
           </div>
           <button
             type="button"
-            class="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            tw-class="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             :title="lazyStrings.ChatTitleDialog__close()"
             data-testid="chat-title-dialog-close"
             @click="emit('close')"
           >
-            <XIcon class="w-4 h-4" />
+            <XIcon tw-class="w-4 h-4" />
           </button>
         </div>
 
-        <div class="p-5 space-y-5">
-          <div class="space-y-2">
-            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title() }}</label>
-            <div class="relative">
+        <div tw-class="p-5 space-y-5">
+          <div tw-class="space-y-2">
+            <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title() }}</label>
+            <div tw-class="relative">
               <input
                 v-model="titleInput"
                 type="text"
-                class="w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border text-sm text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                :class="generatingTitle
+                :tw-class="['w-full px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border text-sm text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all', generatingTitle
                   ? 'border-blue-300 dark:border-blue-700 shadow-lg shadow-blue-500/10'
-                  : 'border-gray-100 dark:border-gray-700'"
+                  : 'border-gray-100 dark:border-gray-700']"
                 :placeholder="lazyStrings.SHARED__new_chat()"
                 data-testid="chat-title-input"
               />
-              <div v-if="generatingTitle" class="title-scan-overlay pointer-events-none absolute inset-0 overflow-hidden rounded-xl" data-testid="title-magic-scan">
-                <span class="title-scan-beam absolute inset-y-0 w-1/3"></span>
+              <div v-if="generatingTitle" class="title-scan-overlay" tw-class="pointer-events-none absolute inset-0 overflow-hidden rounded-xl" data-testid="title-magic-scan">
+                <span class="title-scan-beam" tw-class="absolute inset-y-0 w-1/3"></span>
               </div>
             </div>
-            <div class="h-9 flex flex-wrap justify-end gap-2">
+            <div tw-class="h-9 flex flex-wrap justify-end gap-2">
               <button
                 v-if="generatingTitle"
                 type="button"
-                class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-950/50 transition-colors"
+                tw-class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-950/50 transition-colors"
                 data-testid="abort-title-generation-button"
                 @click="emit('abort-title')"
               >
-                <SquareIcon class="w-3.5 h-3.5" />
+                <SquareIcon tw-class="w-3.5 h-3.5" />
                 <span>{{ lazyStrings.ChatTitleDialog__stop() }}</span>
               </button>
               <button
                 v-else
                 type="button"
-                class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                tw-class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                 data-testid="generate-chat-title-button"
                 @click="emitGenerateTitle()"
               >
-                <SparklesIcon class="w-3.5 h-3.5" />
+                <SparklesIcon tw-class="w-3.5 h-3.5" />
                 <span>{{ lazyStrings.ChatTitleDialog__generate() }}</span>
               </button>
             </div>
           </div>
 
-          <div class="border-t border-gray-100 dark:border-gray-800 pt-3">
+          <div tw-class="border-t border-gray-100 dark:border-gray-800 pt-3">
             <button
               type="button"
-              class="w-full flex items-center justify-between px-1 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              tw-class="w-full flex items-center justify-between px-1 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
               data-testid="title-options-toggle"
               @click="toggleDetails()"
             >
@@ -221,17 +220,17 @@ defineExpose({
               <span>{{ detailVisibility === 'visible' ? lazyStrings.ChatTitleDialog__hide() : lazyStrings.ChatTitleDialog__show() }}</span>
             </button>
 
-            <div v-if="detailVisibility === 'visible'" class="mt-3 space-y-5">
-              <div class="space-y-3 p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30">
+            <div v-if="detailVisibility === 'visible'" tw-class="mt-3 space-y-5">
+              <div tw-class="space-y-3 p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30">
                 <div>
-                  <h4 class="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title_model() }}</h4>
-                  <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  <h4 tw-class="text-xs font-bold text-gray-900 dark:text-gray-100 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title_model() }}</h4>
+                  <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
                     {{ activeTitleModelSourceDescription() }}
                   </p>
                 </div>
 
-                <div class="space-y-2">
-                  <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title_model() }}</label>
+                <div tw-class="space-y-2">
+                  <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__title_model() }}</label>
                   <ModelSelector
                     v-model="selectedTitleModelDraft"
                     :models="availableModels"
@@ -245,23 +244,23 @@ defineExpose({
                 </div>
               </div>
 
-              <div class="space-y-2">
-                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__generated_in_this_dialog() }}</label>
-                <div class="h-36 space-y-2 overflow-y-auto pr-1">
+              <div tw-class="space-y-2">
+                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatTitleDialog__generated_in_this_dialog() }}</label>
+                <div tw-class="h-36 space-y-2 overflow-y-auto pr-1">
                   <div
                     v-if="generatedTitles.length === 0"
-                    class="h-full flex items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-700 text-[11px] text-gray-400 dark:text-gray-500"
+                    tw-class="h-full flex items-center justify-center rounded-xl border border-dashed border-gray-200 dark:border-gray-700 text-[11px] text-gray-400 dark:text-gray-500"
                   >
                     {{ lazyStrings.ChatTitleDialog__generated_titles_will_appear_here() }}
                   </div>
                   <div
                     v-for="titleOption in generatedTitles"
                     :key="titleOption"
-                    class="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
+                    tw-class="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700"
                   >
                     <button
                       type="button"
-                      class="min-w-0 flex-1 text-left text-xs text-gray-700 dark:text-gray-200 truncate"
+                      tw-class="min-w-0 flex-1 text-left text-xs text-gray-700 dark:text-gray-200 truncate"
                       data-testid="generated-title-option"
                       @click="selectGeneratedTitle({ title: titleOption })"
                     >
@@ -269,7 +268,7 @@ defineExpose({
                     </button>
                     <button
                       type="button"
-                      class="shrink-0 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                      tw-class="shrink-0 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
                       data-testid="use-generated-title-button"
                       @click="selectGeneratedTitle({ title: titleOption })"
                     >

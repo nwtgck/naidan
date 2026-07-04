@@ -37,7 +37,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed">
+  <div tw-class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed">
     <BlockMarkdownItem
       v-for="(token, index) in tokens"
       :key="index"

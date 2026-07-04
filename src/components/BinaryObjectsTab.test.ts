@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BinaryObjectsTab from './BinaryObjectsTab.vue';
@@ -46,10 +46,13 @@ vi.mock('../composables/useToast', () => ({
   })),
 }));
 
-// Mock URL.createObjectURL and URL.revokeObjectURL
-vi.stubGlobal('URL', {
-  createObjectURL: vi.fn(() => 'blob:mock-url'),
-  revokeObjectURL: vi.fn(),
+// Preserve the URL constructor because Vite needs it to resolve dynamic imports.
+const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+const revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+afterAll(() => {
+  createObjectUrlSpy.mockRestore();
+  revokeObjectUrlSpy.mockRestore();
 });
 
 // Mock requestIdleCallback

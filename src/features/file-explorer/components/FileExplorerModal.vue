@@ -56,24 +56,24 @@ defineExpose({
 <template>
   <Teleport to="body">
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      tw-class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       data-testid="file-explorer-modal"
       @click.self="closeFileExplorer()"
     >
-      <div class="flex flex-col w-full max-w-5xl h-[95vh] md:h-[90vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
-        <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ title }}</span>
+      <div tw-class="flex flex-col w-full max-w-5xl h-[95vh] md:h-[90vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
+        <div tw-class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <span tw-class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ title }}</span>
           <button
-            class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            tw-class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             :title="lazyStrings.fileExplorer__close()"
             data-testid="file-explorer-modal-close"
             @click="closeFileExplorer()"
           >
-            <XIcon class="w-4 h-4" />
+            <XIcon tw-class="w-4 h-4" />
           </button>
         </div>
 
-        <div class="flex-1 overflow-hidden">
+        <div tw-class="flex-1 overflow-hidden">
           <Suspense>
             <FileExplorer
               :root="root"
@@ -81,7 +81,7 @@ defineExpose({
               :initial-locked="initialLocked"
               initial-view-mode="list"
               initial-preview-visibility="visible"
-              class="h-full"
+              tw-class="h-full"
             />
           </Suspense>
         </div>

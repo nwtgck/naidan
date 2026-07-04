@@ -321,19 +321,19 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex-1 flex flex-col min-h-0">
-    <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-      <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
-        <div class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400">
+  <div tw-class="flex-1 flex flex-col min-h-0">
+    <div tw-class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+      <div tw-class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
+        <div class="animate-in fade-in slide-in-from-bottom-2" tw-class="space-y-10 duration-400">
 
           <!-- Quick Switcher (If profiles exist) -->
-          <div v-if="form.providerProfiles && form.providerProfiles.length > 0" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 p-5 rounded-2xl space-y-3 shadow-sm">
-            <label class="block text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__quick_profile_switcher() }}</label>
-            <div class="flex gap-2">
+          <div v-if="form.providerProfiles && form.providerProfiles.length > 0" tw-class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 p-5 rounded-2xl space-y-3 shadow-sm">
+            <label tw-class="block text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__quick_profile_switcher() }}</label>
+            <div tw-class="flex gap-2">
               <select
                 v-model="selectedProviderProfileId"
                 @change="handleQuickProviderProfileChange"
-                class="flex-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
+                tw-class="flex-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                 data-testid="setting-quick-provider-profile-select"
               >
@@ -343,30 +343,30 @@ defineExpose({
             </div>
           </div>
 
-          <section class="space-y-6">
-            <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-              <div class="flex items-center gap-2">
-                <GlobeIcon class="w-5 h-5 text-blue-500" />
-                <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__endpoint_configuration() }}</h2>
+          <section tw-class="space-y-6">
+            <div tw-class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div tw-class="flex items-center gap-2">
+                <GlobeIcon tw-class="w-5 h-5 text-blue-500" />
+                <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__endpoint_configuration() }}</h2>
               </div>
               <button
                 @click="copySetupUrl"
-                class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-all border border-blue-100/50 dark:border-blue-900/30"
+                tw-class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-all border border-blue-100/50 dark:border-blue-900/30"
                 :title="lazyStrings.ConnectionTab__copy_url_with_current_settings()"
                 data-testid="setting-copy-setup-url"
               >
-                <CheckIcon v-if="copied" class="w-3 h-3" />
-                <LinkIcon v-else class="w-3 h-3" />
+                <CheckIcon v-if="copied" tw-class="w-3 h-3" />
+                <LinkIcon v-else tw-class="w-3 h-3" />
                 <span>{{ copied ? lazyStrings.ConnectionTab__url_copied() : lazyStrings.ConnectionTab__copy_setup_url() }}</span>
               </button>
             </div>
 
-            <div class="grid grid-cols-1 gap-8">
-              <div class="space-y-2">
-                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__api_provider() }}</label>
+            <div tw-class="grid grid-cols-1 gap-8">
+              <div tw-class="space-y-2">
+                <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__api_provider() }}</label>
                 <select
                   v-model="endpointType"
-                  class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
+                  tw-class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                   style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                   data-testid="setting-provider-select"
                 >
@@ -379,116 +379,114 @@ defineExpose({
               </div>
 
               <!-- Endpoint URL -->
-              <div class="space-y-4" v-if="endpointType !== 'transformers_js'">
-                <div class="flex items-center justify-between ml-1">
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
-                  <div class="flex flex-wrap gap-1.5">
+              <div tw-class="space-y-4" v-if="endpointType !== 'transformers_js'">
+                <div tw-class="flex items-center justify-between ml-1">
+                  <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
+                  <div tw-class="flex flex-wrap gap-1.5">
                     <button
                       v-for="preset in ENDPOINT_PRESETS"
                       :key="preset.name"
                       @click="applyPreset({ preset })"
                       type="button"
-                      class="px-3 py-1 text-[10px] font-bold rounded-lg border transition-all"
-                      :class="endpointUrl === preset.url && endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
+                      :tw-class="['px-3 py-1 text-[10px] font-bold rounded-lg border transition-all', endpointUrl === preset.url && endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600']"
                       :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`"
                     >
                       {{ preset.name }}
                     </button>
                   </div>
                 </div>
-                <div class="flex gap-2">
+                <div tw-class="flex gap-2">
                   <input
                     v-model="endpointUrl"
                     type="text"
-                    class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                    tw-class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                     placeholder="http://localhost:11434"
                     data-testid="setting-url-input"
                   />
                   <button
                     @click="fetchModels"
-                    class="px-6 py-2 rounded-xl transition-all flex items-center justify-center gap-2 min-w-[180px] disabled:opacity-70 shadow-sm"
-                    :class="[
-                      connectionSuccess
-                        ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800'
-                        : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
+                    :tw-class="['px-6 py-2 rounded-xl transition-all flex items-center justify-center gap-2 min-w-[180px] disabled:opacity-70 shadow-sm',
+                                connectionSuccess
+                                  ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800'
+                                  : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
                     ]"
                     :title="lazyStrings.ConnectionTab__check_connection()"
                     :disabled="isFetchingModels"
                     data-testid="setting-check-connection"
                   >
-                    <span class="relative w-4 h-4 flex items-center justify-center">
-                      <Loader2Icon v-if="isFetchingModels" class="w-4 h-4 animate-spin absolute" />
-                      <CheckIcon v-else-if="connectionSuccess" class="w-4 h-4 text-green-600 dark:text-green-400 animate-in zoom-in duration-300" />
-                      <ActivityIcon v-else class="w-4 h-4" />
+                    <span tw-class="relative w-4 h-4 flex items-center justify-center">
+                      <Loader2Icon v-if="isFetchingModels" tw-class="w-4 h-4 animate-spin absolute" />
+                      <CheckIcon v-else-if="connectionSuccess" class="animate-in zoom-in" tw-class="w-4 h-4 text-green-600 dark:text-green-400 duration-300" />
+                      <ActivityIcon v-else tw-class="w-4 h-4" />
                     </span>
-                    <span class="text-xs font-bold">{{ connectionSuccess ? lazyStrings.ConnectionTab__connected() : lazyStrings.ConnectionTab__check_connection() }}</span>
+                    <span tw-class="text-xs font-bold">{{ connectionSuccess ? lazyStrings.ConnectionTab__connected() : lazyStrings.ConnectionTab__check_connection() }}</span>
                   </button>
                 </div>
                 <!-- Info message about auto-connection check -->
-                <div class="flex items-start gap-3 p-4 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700/80 dark:text-blue-300/80 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/20 ml-1">
-                  <GlobeIcon class="w-4 h-4 shrink-0 mt-0.5" />
+                <div tw-class="flex items-start gap-3 p-4 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700/80 dark:text-blue-300/80 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/20 ml-1">
+                  <GlobeIcon tw-class="w-4 h-4 shrink-0 mt-0.5" />
                   <p>{{ lazyStrings.ConnectionTab__connection_check_for_localhost_only() }}</p>
                 </div>
                 <!-- Error message container -->
-                <div v-if="error" class="mt-2">
-                  <p class="text-xs text-red-500 font-bold ml-1 animate-in fade-in slide-in-from-top-1 duration-200 leading-relaxed">{{ error }}</p>
+                <div v-if="error" tw-class="mt-2">
+                  <p class="animate-in fade-in slide-in-from-top-1" tw-class="text-xs text-red-500 font-bold ml-1 duration-200 leading-relaxed">{{ error }}</p>
                 </div>
               </div>
 
               <!-- Custom HTTP Headers -->
-              <div v-if="isHttpEndpoint(form.endpoint)" class="space-y-4">
-                <div class="flex items-center justify-between ml-1">
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__custom_http_headers() }}</label>
+              <div v-if="isHttpEndpoint(form.endpoint)" tw-class="space-y-4">
+                <div tw-class="flex items-center justify-between ml-1">
+                  <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__custom_http_headers() }}</label>
                   <button
                     @click="addHeader"
                     type="button"
-                    class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
+                    tw-class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
                   >
-                    <PlusIcon class="w-3 h-3" />
+                    <PlusIcon tw-class="w-3 h-3" />
                     {{ lazyStrings.ConnectionTab__add_header() }}
                   </button>
                 </div>
 
-                <div v-if="endpointHttpHeaders && endpointHttpHeaders.length > 0" class="space-y-2">
+                <div v-if="endpointHttpHeaders && endpointHttpHeaders.length > 0" tw-class="space-y-2">
                   <div
                     v-for="(header, index) in endpointHttpHeaders"
                     :key="index"
-                    class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
+                    class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
                   >
                     <input
                       v-model="header[0]"
                       type="text"
-                      class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                      tw-class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                       :placeholder="lazyStrings.ConnectionTab__header_name_example()"
                     />
                     <input
                       v-model="header[1]"
                       type="text"
-                      class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                      tw-class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                       :placeholder="lazyStrings.ConnectionTab__value()"
                     />
                     <button
                       @click="removeHeader({ index })"
-                      class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                      tw-class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                     >
-                      <Trash2Icon class="w-4 h-4" />
+                      <Trash2Icon tw-class="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                <div v-else class="text-[11px] text-gray-400 italic ml-1">{{ lazyStrings.ConnectionTab__no_custom_headers() }}</div>
+                <div v-else tw-class="text-[11px] text-gray-400 italic ml-1">{{ lazyStrings.ConnectionTab__no_custom_headers() }}</div>
               </div>
             </div>
 
             <Transition
-              enter-active-class="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
-              enter-from-class="grid-rows-[0fr] opacity-0"
-              enter-to-class="grid-rows-[1fr] opacity-100"
-              leave-active-class="grid transition-[grid-template-rows,opacity] duration-150 ease-in motion-reduce:transition-none"
-              leave-from-class="grid-rows-[1fr] opacity-100"
-              leave-to-class="grid-rows-[0fr] opacity-0"
+              tw-enter-active-class="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
+              tw-enter-from-class="grid-rows-[0fr] opacity-0"
+              tw-enter-to-class="grid-rows-[1fr] opacity-100"
+              tw-leave-active-class="grid transition-[grid-template-rows,opacity] duration-150 ease-in motion-reduce:transition-none"
+              tw-leave-from-class="grid-rows-[1fr] opacity-100"
+              tw-leave-to-class="grid-rows-[0fr] opacity-0"
             >
-              <div v-if="endpointType === 'ollama'" class="grid" data-testid="ollama-management-transition">
-                <div class="overflow-hidden">
+              <div v-if="endpointType === 'ollama'" tw-class="grid" data-testid="ollama-management-transition">
+                <div tw-class="overflow-hidden">
                   <OllamaManagementView
                     :endpoint-url="endpointUrl"
                     :endpoint-http-headers="endpointHttpHeaders"
@@ -499,15 +497,15 @@ defineExpose({
             </Transition>
           </section>
 
-          <section data-testid="connection-model-selection" class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
-            <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-              <BotIcon class="w-5 h-5 text-blue-500" />
-              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__model_selection() }}</h2>
+          <section data-testid="connection-model-selection" tw-class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+            <div tw-class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
+              <BotIcon tw-class="w-5 h-5 text-blue-500" />
+              <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__model_selection() }}</h2>
             </div>
 
-            <div class="space-y-8">
-              <div class="space-y-2">
-                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__default_model() }}</label>
+            <div tw-class="space-y-8">
+              <div tw-class="space-y-2">
+                <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__default_model() }}</label>
                 <ModelSelector
                   v-model="form.defaultModelId"
                   :models="sortedModels"
@@ -519,30 +517,30 @@ defineExpose({
                   data-testid="setting-model-select"
                 />
                 <TransformersJsUpsell :show="endpointType === 'transformers_js'" />
-                <p class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.ConnectionTab__used_for_new_conversations() }}</p>
+                <p tw-class="text-[11px] font-medium text-gray-400 ml-1">{{ lazyStrings.ConnectionTab__used_for_new_conversations() }}</p>
               </div>
 
-              <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 space-y-5 shadow-sm">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-                      <TypeIcon class="w-4 h-4 text-blue-500" />
+              <div tw-class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 space-y-5 shadow-sm">
+                <div tw-class="flex items-center justify-between">
+                  <div tw-class="flex items-center gap-3">
+                    <div tw-class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+                      <TypeIcon tw-class="w-4 h-4 text-blue-500" />
                     </div>
-                    <span class="text-sm font-bold text-gray-700 dark:text-gray-300">{{ lazyStrings.ConnectionTab__auto_title_generation() }}</span>
+                    <span tw-class="text-sm font-bold text-gray-700 dark:text-gray-300">{{ lazyStrings.ConnectionTab__auto_title_generation() }}</span>
                   </div>
-                  <label class="relative inline-flex items-center cursor-pointer">
+                  <label tw-class="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       v-model="form.autoTitleEnabled"
-                      class="sr-only peer"
+                      tw-class="sr-only peer"
                       data-testid="setting-auto-title-checkbox"
                     >
-                    <div class="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    <div tw-class="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                   </label>
                 </div>
 
-                <div class="space-y-2 opacity-50 transition-all duration-300" :class="{ 'opacity-100': form.autoTitleEnabled }">
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_generation_model() }}</label>
+                <div :tw-class="['space-y-2 opacity-50 transition-all duration-300', { 'opacity-100': form.autoTitleEnabled }]">
+                  <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_generation_model() }}</label>
                   <ModelSelector
                     v-model="form.titleModelId"
                     :models="sortedModels"
@@ -559,28 +557,28 @@ defineExpose({
             </div>
           </section>
 
-          <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
-            <div class="flex items-center gap-2 pb-3">
-              <MessageSquareQuoteIcon class="w-5 h-5 text-blue-500" />
-              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__global_context_and_parameters() }}</h2>
+          <section tw-class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+            <div tw-class="flex items-center gap-2 pb-3">
+              <MessageSquareQuoteIcon tw-class="w-5 h-5 text-blue-500" />
+              <h2 tw-class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ConnectionTab__global_context_and_parameters() }}</h2>
             </div>
 
-            <div class="space-y-8">
+            <div tw-class="space-y-8">
               <!-- System Prompt -->
-              <div class="space-y-2">
-                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__global_system_prompt() }}</label>
+              <div tw-class="space-y-2">
+                <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__global_system_prompt() }}</label>
                 <textarea
                   v-model="form.systemPrompt"
                   rows="4"
-                  class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
+                  tw-class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
                   :placeholder="lazyStrings.ConnectionTab__helpful_ai_assistant_placeholder()"
                   data-testid="setting-system-prompt-textarea"
                 ></textarea>
-                <p class="text-[10px] font-medium text-gray-400 ml-1 leading-relaxed">{{ lazyStrings.ConnectionTab__applied_to_all_new_chats() }}</p>
+                <p tw-class="text-[10px] font-medium text-gray-400 ml-1 leading-relaxed">{{ lazyStrings.ConnectionTab__applied_to_all_new_chats() }}</p>
               </div>
 
               <!-- LM Parameters -->
-              <div class="bg-gray-50/30 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800">
+              <div tw-class="bg-gray-50/30 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800">
                 <LmParametersEditor v-model="form.lmParameters" />
               </div>
             </div>
@@ -590,24 +588,24 @@ defineExpose({
     </div>
 
     <!-- Footer Actions -->
-    <div class="p-4 md:p-8 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-end gap-3 md:gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm shrink-0">
+    <div tw-class="p-4 md:p-8 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-end gap-3 md:gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm shrink-0">
       <button
         @click="handleCreateProviderProfile"
-        class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all shadow-sm active:scale-95"
+        tw-class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all shadow-sm active:scale-95"
         data-testid="setting-save-provider-profile-button"
       >
-        <BookmarkPlusIcon class="w-4 h-4" />
+        <BookmarkPlusIcon tw-class="w-4 h-4" />
         <span>{{ lazyStrings.ConnectionTab__save_as_new_profile() }}</span>
       </button>
 
       <button
         @click="handleSave"
         :disabled="!hasUnsavedChanges"
-        class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-bold rounded-xl md:rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
+        tw-class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-bold rounded-xl md:rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
         data-testid="setting-save-button"
       >
-        <CheckCircle2Icon v-if="saveSuccess" class="w-4 h-4" />
-        <SaveIcon v-else class="w-4 h-4" />
+        <CheckCircle2Icon v-if="saveSuccess" tw-class="w-4 h-4" />
+        <SaveIcon v-else tw-class="w-4 h-4" />
         <span>{{ saveSuccess ? lazyStrings.ConnectionTab__settings_saved() : lazyStrings.ConnectionTab__save_changes() }}</span>
       </button>
     </div>

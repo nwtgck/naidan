@@ -136,22 +136,22 @@ defineExpose({
 </script>
 
 <template>
-  <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-1.5 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
-    <div class="flex items-center gap-3 overflow-hidden min-h-[34px]">
-      <div class="flex flex-col overflow-hidden">
+  <div tw-class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-1.5 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
+    <div tw-class="flex items-center gap-3 overflow-hidden min-h-[34px]">
+      <div tw-class="flex flex-col overflow-hidden">
         <template v-if="chat">
-          <div class="flex items-center gap-2">
+          <div tw-class="flex items-center gap-2">
             <button
               v-if="chat.originChatId"
               @click="emit('jump-origin')"
-              class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
+              tw-class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
               :title="lazyStrings.ChatPaneHeader__jump_to_original_chat()"
               data-testid="jump-to-origin-button"
             >
-              <ArrowUpIcon class="w-4 h-4" />
+              <ArrowUpIcon tw-class="w-4 h-4" />
             </button>
             <h2
-              class="relative text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate"
+              tw-class="relative text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate"
               :class="{ 'title-header-generating': generatingTitle }"
               :data-title="chat.title || lazyStrings.SHARED__new_chat()"
               data-testid="chat-header-title"
@@ -169,44 +169,43 @@ defineExpose({
             </h2>
             <button
               @click="emit('edit-title')"
-              class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
+              tw-class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
               :title="lazyStrings.ChatPaneHeader__edit_chat_title()"
               data-testid="edit-title-button"
             >
-              <PencilIcon class="w-3.5 h-3.5" />
+              <PencilIcon tw-class="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div class="flex items-center gap-1.5 min-w-0">
+          <div tw-class="flex items-center gap-1.5 min-w-0">
             <div
               v-if="chatGroupBadge"
-              class="min-w-0 max-w-[120px] sm:max-w-[180px] px-1.5 py-0.5 rounded-md text-[9px] font-bold transition-colors flex items-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/70 border border-gray-100 dark:border-gray-800"
+              tw-class="min-w-0 max-w-[120px] sm:max-w-[180px] px-1.5 py-0.5 rounded-md text-[9px] font-bold transition-colors flex items-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/70 border border-gray-100 dark:border-gray-800"
               :title="lazyStrings.ChatPaneHeader__group_name({ groupName: chatGroupBadge.name })"
               data-testid="chat-group-badge"
             >
-              <span class="truncate">{{ chatGroupBadge.name }}</span>
+              <span tw-class="truncate">{{ chatGroupBadge.name }}</span>
             </div>
 
             <button
               @click="emit('update:show-chat-settings', !showChatSettings)"
-              class="flex items-center gap-1.5 min-w-0 w-fit group"
+              tw-class="flex items-center gap-1.5 min-w-0 w-fit group"
               :title="lazyStrings.ChatPaneHeader__chat_settings_and_model_override()"
               data-testid="model-trigger"
             >
               <div
-                class="px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5 min-w-0"
-                :class="showChatSettings
+                :tw-class="['px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5 min-w-0', showChatSettings
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200']"
               >
-                <span class="truncate max-w-[120px] sm:max-w-[200px]">
+                <span tw-class="truncate max-w-[120px] sm:max-w-[200px]">
                   {{ modelLabel }}
                 </span>
-                <Settings2Icon class="w-3 h-3 shrink-0" :class="{ 'animate-pulse': showChatSettings }" />
+                <Settings2Icon :tw-class="['w-3 h-3 shrink-0', { 'animate-pulse': showChatSettings }]" />
               </div>
               <div
                 v-if="hasOverrides"
-                class="w-1 h-1 rounded-full bg-blue-500 animate-pulse shrink-0"
+                tw-class="w-1 h-1 rounded-full bg-blue-500 animate-pulse shrink-0"
                 :title="lazyStrings.ChatPaneHeader__custom_overrides_active()"
                 data-testid="custom-overrides-indicator"
               ></div>
@@ -216,62 +215,59 @@ defineExpose({
       </div>
     </div>
 
-    <div ref="actionsMenuRoot" class="flex items-center gap-0.5 relative">
-      <div v-if="chat" class="flex items-center gap-0.5">
+    <div ref="actionsMenuRoot" tw-class="flex items-center gap-0.5 relative">
+      <div v-if="chat" tw-class="flex items-center gap-0.5">
         <button
           v-if="activeMessageCount > 0"
           @click="emit('fork-last-message')"
-          class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+          tw-class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
           :title="lazyStrings.ChatPaneHeader__fork_chat_from_last_message()"
           data-testid="fork-chat-button"
         >
-          <GitForkIcon class="w-4.5 h-4.5" />
+          <GitForkIcon tw-class="w-4.5 h-4.5" />
         </button>
 
-        <div class="relative">
+        <div tw-class="relative">
           <button
             @click="showMoveMenu = !showMoveMenu"
-            class="p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
-            :class="showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
+            :tw-class="['p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800', showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400']"
             :title="lazyStrings.ChatPaneHeader__move_to_group()"
             data-testid="move-to-group-button"
           >
-            <FolderInputIcon class="w-4.5 h-4.5" />
+            <FolderInputIcon tw-class="w-4.5 h-4.5" />
           </button>
 
           <Transition name="dropdown">
             <div
               v-if="showMoveMenu"
-              class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-top-right"
+              tw-class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-top-right"
             >
-              <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
+              <div tw-class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
                 {{ lazyStrings.ChatPaneHeader__move_to_group() }}
               </div>
-              <div class="max-h-64 overflow-y-auto">
+              <div tw-class="max-h-64 overflow-y-auto">
                 <button
                   @click="emitMoveToGroup({ groupId: null })"
-                  class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
-                  :class="!chat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  :tw-class="['w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors', !chat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700']"
                 >
-                  <div class="flex items-center gap-2">
-                    <XIcon class="w-4 h-4 opacity-50" />
+                  <div tw-class="flex items-center gap-2">
+                    <XIcon tw-class="w-4 h-4 opacity-50" />
                     <span>{{ lazyStrings.ChatPaneHeader__top_level() }}</span>
                   </div>
-                  <ChevronRightIcon v-if="!chat.groupId" class="w-4 h-4" />
+                  <ChevronRightIcon v-if="!chat.groupId" tw-class="w-4 h-4" />
                 </button>
 
                 <button
                   v-for="group in chatGroups"
                   :key="idToRaw({ id: group.id })"
                   @click="emitMoveToGroup({ groupId: group.id })"
-                  class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
-                  :class="chat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  :tw-class="['w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors', chat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700']"
                 >
-                  <div class="flex items-center gap-2 overflow-hidden">
-                    <FolderIcon class="w-4 h-4 opacity-50 shrink-0" />
-                    <span class="truncate">{{ group.name }}</span>
+                  <div tw-class="flex items-center gap-2 overflow-hidden">
+                    <FolderIcon tw-class="w-4 h-4 opacity-50 shrink-0" />
+                    <span tw-class="truncate">{{ group.name }}</span>
                   </div>
-                  <ChevronRightIcon v-if="chat.groupId === group.id" class="w-4 h-4" />
+                  <ChevronRightIcon v-if="chat.groupId === group.id" tw-class="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -281,53 +277,52 @@ defineExpose({
         <button
           v-if="activeMessageCount > 0"
           @click="emit('toggle-outline')"
-          class="p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
-          :class="outlineVisibility === 'visible' ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
+          :tw-class="['p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800', outlineVisibility === 'visible' ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400']"
           :title="lazyStrings.ChatPaneHeader__conversation_outline()"
           data-testid="conversation-outline-button"
         >
-          <ListIcon class="w-4.5 h-4.5" />
+          <ListIcon tw-class="w-4.5 h-4.5" />
         </button>
 
         <button
           @click="showMoreMenu = !showMoreMenu"
-          class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          tw-class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           :title="lazyStrings.ChatPaneHeader__more_actions()"
           data-testid="more-actions-button"
         >
-          <MoreVerticalIcon class="w-4.5 h-4.5" />
+          <MoreVerticalIcon tw-class="w-4.5 h-4.5" />
         </button>
       </div>
 
       <Transition name="dropdown">
         <div
           v-if="showMoreMenu"
-          class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
+          tw-class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
         >
           <button
             @click="emitMoreAction({ action: 'print' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-green-600 dark:hover:text-green-400"
+            tw-class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-green-600 dark:hover:text-green-400"
             :title="lazyStrings.ChatPaneHeader__open_print_dialog()"
             data-testid="print-chat-button"
           >
-            <PrinterIcon class="w-4 h-4" />
+            <PrinterIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__print() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'search_chat' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
+            tw-class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
             data-testid="search-in-chat-button"
           >
-            <SearchIcon class="w-4 h-4" />
+            <SearchIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__search_in_chat() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'open_history' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-orange-500 dark:hover:text-orange-400"
+            tw-class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-orange-500 dark:hover:text-orange-400"
             :title="lazyStrings.ChatPaneHeader__super_edit_full_history()"
             data-testid="super-edit-button"
           >
-            <HammerIcon class="w-4 h-4" />
+            <HammerIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__super_edit() }}</span>
           </button>
           <ContextCompactMenuItem
@@ -335,64 +330,58 @@ defineExpose({
           />
           <button
             @click="emitMoreAction({ action: 'export_chat' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+            tw-class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
             :title="lazyStrings.ChatPaneHeader__export_as_markdown()"
             data-testid="export-markdown-button"
           >
-            <DownloadIcon class="w-4 h-4" />
+            <DownloadIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__export_markdown() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'toggle_media_shelf' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-            :class="mediaShelfVisibility === 'visible'
+            :tw-class="['w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors', mediaShelfVisibility === 'visible'
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
-            "
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600']"
             data-testid="toggle-media-gallery-button"
           >
-            <ImageIcon class="w-4 h-4" />
+            <ImageIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__media_gallery() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'share_url' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+            tw-class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
             :title="lazyStrings.ChatPaneHeader__copy_shareable_chat_url()"
             data-testid="export-url-button"
           >
-            <LinkIcon class="w-4 h-4" />
+            <LinkIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__export_as_url() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'open_file_explorer' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+            tw-class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
             data-testid="open-chat-file-explorer-button"
           >
-            <FolderIcon class="w-4 h-4" />
+            <FolderIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__file_explorer() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'toggle_wesh_terminal' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-            :class="isChatWeshTerminalOpen
+            :tw-class="['w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors', isChatWeshTerminalOpen
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
-            "
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600']"
             data-testid="open-chat-wesh-terminal-button"
           >
-            <TerminalIcon class="w-4 h-4" />
+            <TerminalIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__wesh_terminal() }}</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'toggle_debug' })"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-            :class="chat?.debugEnabled
+            :tw-class="['w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors', chat?.debugEnabled
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
-            "
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600']"
             data-testid="toggle-debug-button"
           >
-            <BugIcon class="w-4 h-4" />
+            <BugIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__debug_mode() }}</span>
           </button>
         </div>

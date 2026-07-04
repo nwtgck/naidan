@@ -1,13 +1,21 @@
 import * as Comlink from 'comlink';
 
-import { createHighlightWorker } from './impl';
+import { createModuleLoader } from '@/utils/module-loader';
 import {
   highlightResponseSchema,
   type HighlightWorkerClient,
   type IHighlightWorker,
 } from './types';
 
-function createMainThreadFallbackClient(): HighlightWorkerClient {
+const highlightWorkerImplementationModuleLoader = createModuleLoader({
+  importModule: () => import('./impl'),
+  onPrefetchError: ({ error }) => {
+    console.error('Failed to prefetch highlight worker fallback:', error);
+  },
+});
+
+async function createMainThreadFallbackClient(): Promise<HighlightWorkerClient> {
+  const { createHighlightWorker } = await highlightWorkerImplementationModuleLoader.load();
   const worker = createHighlightWorker();
 
   return {
@@ -21,7 +29,7 @@ function createMainThreadFallbackClient(): HighlightWorkerClient {
 
 export async function createHighlightWorkerClient(): Promise<HighlightWorkerClient> {
   if (typeof Worker === 'undefined') {
-    return createMainThreadFallbackClient();
+    return await createMainThreadFallbackClient();
   }
 
   const worker = new Worker(

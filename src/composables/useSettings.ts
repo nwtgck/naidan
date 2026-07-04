@@ -1,4 +1,4 @@
-import { ref, readonly, computed, type ComputedRef, type Ref } from 'vue';
+import { ref, readonly, computed, watch, type ComputedRef, type Ref } from 'vue';
 import {
   ensureStrings,
   prepareLocale,
@@ -17,9 +17,11 @@ import {
 import { storageService } from '@/00-storage/service';
 import { checkOPFSSupport } from '@/utils/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
-import { createLmProvider } from '@/features/lm/providerFactory';
-import { preloadFakeLmLanguagePacks, type FakeLmDebugModeStatus } from '@/features/fake-lm';
+import { loadLmProvider, prefetchLmProvider } from '@/features/lm/providerFactory';
+import type { FakeLmDebugModeStatus } from '@/features/fake-lm';
+import { prefetchFakeLmRuntime } from '@/features/lm/fetchFactory';
 import { transformersJsService } from '@/features/transformers-js';
+import { scheduleIdleTask, type ScheduledIdleTask } from '@/utils/idle-task';
 import {
   parseBootstrapStorageTypeOverride,
   readStoredBootstrapStorageType,
@@ -104,6 +106,7 @@ interface UseSettingsApi {
 
 let initPromise: Promise<void> | null = null;
 let localeChangeQueue: Promise<void> = Promise.resolve();
+let scheduledFakeLmRuntimePrefetch: ScheduledIdleTask | undefined;
 
 // --- Synchronization ---
 
@@ -113,7 +116,7 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
       const fresh = await storageService.loadSettings();
       if (fresh) {
         _settings.value = fresh;
-        preloadFakeLmIfEnabled({ status: fresh.experimental?.fakeLm ?? 'disabled' });
+        scheduleFakeLmRuntimePrefetch({ status: fresh.experimental?.fakeLm ?? 'disabled' });
         await setStringLocale({
           locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
         });
@@ -124,36 +127,82 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
   }
 } });
 
-transformersJsService.subscribeModelList({ listener: async () => {
-  const type = _settings.value.endpoint.type;
-  switch (type) {
-  case 'transformers_js': {
-    const { fetchModels } = useSettings();
-    try {
-      await fetchModels({});
-    } catch {
-      // fetchModels records the relevant error. Subscription callbacks must not
-      // create unhandled promise rejections when a background refresh fails.
+// Performance-only watcher: this does not maintain application correctness.
+// It only prefetches the selected provider during idle time to reduce the
+// latency of the first request.
+watch(
+  () => ({
+    initialized: _initialized.value,
+    endpointType: _settings.value.endpoint.type,
+  }),
+  ({ initialized, endpointType }, _previous, onCleanup) => {
+    if (!initialized) {
+      return;
     }
-    break;
-  }
-  case 'openai':
-  case 'ollama':
-    break;
-  default: {
-    const _ex: never = type;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
-  }
-  }
-} });
 
-function preloadFakeLmIfEnabled({ status }: {
+    const scheduled = scheduleIdleTask({
+      task: async () => {
+        await prefetchLmProvider({ endpointType });
+      },
+      timeoutMs: 2_000,
+      fallbackDelayMs: 500,
+    });
+
+    onCleanup(() => {
+      scheduled.cancel();
+    });
+  },
+  { immediate: true },
+);
+
+watch(
+  () => _settings.value.endpoint.type,
+  (endpointType, _previousType, onCleanup) => {
+    switch (endpointType) {
+    case 'openai':
+    case 'ollama':
+      return;
+    case 'transformers_js':
+      break;
+    default: {
+      const _ex: never = endpointType;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
+
+    const unsubscribe = transformersJsService.subscribeModelList({ listener: async () => {
+      const { fetchModels } = useSettings();
+      try {
+        await fetchModels({});
+      } catch {
+        // fetchModels records the relevant error. Subscription callbacks must not
+        // create unhandled promise rejections when a background refresh fails.
+      }
+    } });
+    onCleanup(() => {
+      unsubscribe();
+    });
+  },
+  { immediate: true },
+);
+
+function scheduleFakeLmRuntimePrefetch({ status }: {
   status: FakeLmDebugModeStatus,
 }): void {
+  scheduledFakeLmRuntimePrefetch?.cancel();
+  scheduledFakeLmRuntimePrefetch = undefined;
+
   switch (status) {
-  case 'enabled':
-    preloadFakeLmLanguagePacks();
+  case 'enabled': {
+    scheduledFakeLmRuntimePrefetch = scheduleIdleTask({
+      task: async () => {
+        await prefetchFakeLmRuntime({ status });
+      },
+      timeoutMs: 2_000,
+      fallbackDelayMs: 500,
+    });
     break;
+  }
   case 'disabled':
     break;
   default: {
@@ -297,16 +346,20 @@ export function useSettings(): UseSettingsApi {
         const s = await storageService.loadSettings();
         if (s) {
           _settings.value = s;
-          preloadFakeLmIfEnabled({ status: s.experimental?.fakeLm ?? 'disabled' });
+          scheduleFakeLmRuntimePrefetch({ status: s.experimental?.fakeLm ?? 'disabled' });
           await setStringLocale({
             locale: s.experimental?.locale ?? resolveBrowserLocale(),
           });
           if (s.endpoint.type === 'transformers_js' || s.endpoint.url !== '') {
             // Initial model refresh is non-blocking, but its rejection must be
             // observed because initialization intentionally does not await it.
-            void fetchModels({}).catch(() => {
-              // fetchModels records the relevant error details.
-            });
+            (async () => {
+              try {
+                await fetchModels({});
+              } catch {
+                // fetchModels records the relevant error details.
+              }
+            })();
           }
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
@@ -339,7 +392,7 @@ export function useSettings(): UseSettingsApi {
         return [];
       }
 
-      const provider = createLmProvider({
+      const provider = await loadLmProvider({
         endpoint,
         fakeLmDebugModeStatus: _settings.value.experimental?.fakeLm ?? 'disabled',
       });
@@ -405,9 +458,13 @@ export function useSettings(): UseSettingsApi {
         // URL-provided connection settings must become usable before a network
         // model-list request completes. Waiting here would put endpoint latency
         // back on the onboarding critical path that this startup refactor removes.
-        void fetchModels({}).catch(() => {
-          // fetchModels already records the user-visible/global error details.
-        });
+        (async () => {
+          try {
+            await fetchModels({});
+          } catch {
+            // fetchModels already records the user-visible/global error details.
+          }
+        })();
         break;
       default: {
         const _ex: never = modelRefresh;
@@ -513,7 +570,7 @@ export function useSettings(): UseSettingsApi {
       };
     } });
 
-    preloadFakeLmIfEnabled({ status });
+    scheduleFakeLmRuntimePrefetch({ status });
   }
 
   async function setLocale({ locale }: {
@@ -596,6 +653,8 @@ export function useSettings(): UseSettingsApi {
   }
 
   function __testOnlyReset() {
+    scheduledFakeLmRuntimePrefetch?.cancel();
+    scheduledFakeLmRuntimePrefetch = undefined;
     _initialized.value = false;
     _isOnboardingDismissed.value = false;
     _onboardingDraft.value = null;

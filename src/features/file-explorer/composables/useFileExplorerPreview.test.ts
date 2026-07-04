@@ -6,17 +6,18 @@ import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/t
 import type { FileExplorerReadPreviewResponse } from '@/features/file-explorer/worker/types';
 import type { HighlightRequest } from '@/features/highlight/worker/types';
 
-const highlightMock = vi.fn(async ({ request }: { request: HighlightRequest }) => ({
-  html: request.language ? `<span>${request.language}</span>` : '<span>auto</span>',
-  resolvedLanguage: request.language ?? 'plaintext',
+const {
+  acquireSharedHighlightWorkerClientLeaseMock,
+  highlightMock,
+  releaseHighlightWorkerClientLeaseMock,
+} = vi.hoisted(() => ({
+  acquireSharedHighlightWorkerClientLeaseMock: vi.fn(),
+  highlightMock: vi.fn(),
+  releaseHighlightWorkerClientLeaseMock: vi.fn(),
 }));
 
 vi.mock('@/features/highlight/worker/client-shared', () => ({
-  acquireSharedHighlightWorkerClient: vi.fn(async () => ({
-    highlight: highlightMock,
-    dispose: vi.fn(async () => undefined),
-  })),
-  releaseSharedHighlightWorkerClient: vi.fn(async () => undefined),
+  acquireSharedHighlightWorkerClientLease: acquireSharedHighlightWorkerClientLeaseMock,
 }));
 
 function makeEntry(overrides: Partial<FileExplorerEntry> & { name: string }): FileExplorerEntry {
@@ -41,6 +42,18 @@ describe('useFileExplorerPreview', () => {
   let client: FileExplorerWorkerClient;
 
   beforeEach(() => {
+    highlightMock.mockImplementation(async ({ request }: { request: HighlightRequest }) => ({
+      html: request.language ? `<span>${request.language}</span>` : '<span>auto</span>',
+      resolvedLanguage: request.language ?? 'plaintext',
+    }));
+    releaseHighlightWorkerClientLeaseMock.mockResolvedValue(undefined);
+    acquireSharedHighlightWorkerClientLeaseMock.mockImplementation(async () => ({
+      client: {
+        highlight: highlightMock,
+        dispose: vi.fn(async () => undefined),
+      },
+      release: releaseHighlightWorkerClientLeaseMock,
+    }));
     createObjectURLSpy.mockClear();
     revokeObjectURLSpy.mockClear();
     highlightMock.mockClear();
@@ -117,6 +130,57 @@ describe('useFileExplorerPreview', () => {
     };
   });
 
+
+  it('does not acquire the highlight worker until text highlighting is needed', async () => {
+    const controller = useFileExplorerPreview({ client });
+    expect(acquireSharedHighlightWorkerClientLeaseMock).not.toHaveBeenCalled();
+
+    await controller.loadPreview({
+      entry: makeEntry({ name: 'photo.png', extension: '.png', mimeCategory: 'image' }),
+    });
+    expect(acquireSharedHighlightWorkerClientLeaseMock).not.toHaveBeenCalled();
+
+    await controller.loadPreview({
+      entry: makeEntry({ name: 'index.ts', extension: '.ts', mimeCategory: 'text' }),
+    });
+    expect(acquireSharedHighlightWorkerClientLeaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases a pending highlight worker lease when disposed', async () => {
+    let resolveLease: ((lease: {
+      client: {
+        highlight: typeof highlightMock,
+        dispose: ReturnType<typeof vi.fn>,
+      },
+      release: typeof releaseHighlightWorkerClientLeaseMock,
+    }) => void) | undefined;
+    acquireSharedHighlightWorkerClientLeaseMock.mockReturnValue(new Promise(resolve => {
+      resolveLease = resolve;
+    }));
+
+    const controller = useFileExplorerPreview({ client });
+    const loadPromise = controller.loadPreview({
+      entry: makeEntry({ name: 'index.ts', extension: '.ts', mimeCategory: 'text' }),
+    });
+    await vi.waitFor(() => {
+      expect(acquireSharedHighlightWorkerClientLeaseMock).toHaveBeenCalledTimes(1);
+    });
+
+    controller.dispose();
+    resolveLease?.({
+      client: {
+        highlight: highlightMock,
+        dispose: vi.fn(async () => undefined),
+      },
+      release: releaseHighlightWorkerClientLeaseMock,
+    });
+
+    await loadPromise;
+    await vi.waitFor(() => {
+      expect(releaseHighlightWorkerClientLeaseMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('starts in idle loading state with no entry', () => {
     const { previewState } = useFileExplorerPreview({ client });
     expect(previewState.value.loadingState).toBe('idle');
@@ -148,6 +212,60 @@ describe('useFileExplorerPreview', () => {
     expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
     clearPreview();
     expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:fake-url');
+  });
+
+
+  it('ignores a stale media response after a newer preview is loaded', async () => {
+    let resolveFirstPreview: ((response: FileExplorerReadPreviewResponse) => void) | undefined;
+    const firstPreviewPromise = new Promise<FileExplorerReadPreviewResponse>((resolve) => {
+      resolveFirstPreview = resolve;
+    });
+    vi.mocked(client.readPreview)
+      .mockReturnValueOnce(firstPreviewPromise)
+      .mockResolvedValueOnce({ kind: 'binary', oversized: false });
+
+    const controller = useFileExplorerPreview({ client });
+    const firstLoadPromise = controller.loadPreview({
+      entry: makeEntry({ name: 'photo.png', extension: '.png', mimeCategory: 'image' }),
+    });
+    const secondEntry = makeEntry({ name: 'data.bin', extension: '.bin', mimeCategory: 'binary' });
+    await controller.loadPreview({ entry: secondEntry });
+
+    resolveFirstPreview?.({
+      kind: 'media',
+      mediaKind: 'image',
+      blob: new Blob(['stale']),
+      mimeType: 'image/png',
+      oversized: false,
+    });
+    await firstLoadPromise;
+
+    expect(controller.previewState.value.entry).toEqual(secondEntry);
+    expect(controller.previewState.value.objectUrl).toBeUndefined();
+    expect(createObjectURLSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not materialize a pending media response after disposal', async () => {
+    let resolvePreview: ((response: FileExplorerReadPreviewResponse) => void) | undefined;
+    vi.mocked(client.readPreview).mockReturnValueOnce(new Promise((resolve) => {
+      resolvePreview = resolve;
+    }));
+
+    const controller = useFileExplorerPreview({ client });
+    const loadPromise = controller.loadPreview({
+      entry: makeEntry({ name: 'photo.png', extension: '.png', mimeCategory: 'image' }),
+    });
+    controller.dispose();
+    resolvePreview?.({
+      kind: 'media',
+      mediaKind: 'image',
+      blob: new Blob(['disposed']),
+      mimeType: 'image/png',
+      oversized: false,
+    });
+    await loadPromise;
+
+    expect(createObjectURLSpy).not.toHaveBeenCalled();
   });
 
   it('loadPreview for a directory sets entry and loaded state without loading content', async () => {

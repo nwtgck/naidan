@@ -10,13 +10,29 @@ import {
   type StringBoundaryModule,
 } from '@/strings/runtime';
 
-const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmLanguagePacks } = vi.hoisted(() => ({
+const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmRuntime, mockScheduledIdleTasks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
   mockListModels: vi.fn().mockResolvedValue(['model-1', 'model-2']),
   mockShowConfirm: vi.fn(),
   mockImportFromBase64: vi.fn().mockResolvedValue(undefined),
-  mockPreloadFakeLmLanguagePacks: vi.fn(),
+  mockPreloadFakeLmRuntime: vi.fn(),
+  mockScheduledIdleTasks: [] as (() => Promise<void>)[],
 }));
+
+
+vi.mock('../utils/idle-task', () => ({
+  scheduleIdleTask: ({ task }: { task: () => Promise<void> }) => {
+    mockScheduledIdleTasks.push(task);
+    return { cancel: vi.fn() };
+  },
+}));
+
+async function runScheduledIdleTasks(): Promise<void> {
+  const tasks = mockScheduledIdleTasks.splice(0);
+  for (const task of tasks) {
+    await task();
+  }
+}
 
 vi.mock('../features/import-export/url-logic', () => ({
   urlImportExportLogic: {
@@ -26,7 +42,7 @@ vi.mock('../features/import-export/url-logic', () => ({
 
 vi.mock('@/features/fake-lm', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/features/fake-lm')>()),
-  preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
+  preloadFakeLmRuntime: mockPreloadFakeLmRuntime,
 }));
 
 vi.mock('./useGlobalEvents', () => ({
@@ -83,6 +99,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockScheduledIdleTasks.length = 0;
     mockListModels.mockReset();
     mockListModels.mockResolvedValue(['model-1', 'model-2']);
     localStorage.clear();
@@ -93,6 +110,16 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('does not schedule provider prefetch before settings initialization completes', async () => {
+    expect(mockScheduledIdleTasks).toHaveLength(0);
+
+    const { init } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    await flushPromises();
+
+    expect(mockScheduledIdleTasks).toHaveLength(1);
   });
 
   it('uses the browser locale without persisting it during initialization', async () => {
@@ -358,7 +385,8 @@ describe('useSettings Initialization and Bootstrap', () => {
         fakeLm: 'enabled',
       },
     }));
-    expect(mockPreloadFakeLmLanguagePacks).toHaveBeenCalledOnce();
+    await runScheduledIdleTasks();
+    expect(mockPreloadFakeLmRuntime).toHaveBeenCalledOnce();
   });
 
   it('preloads fake LM language data when persisted mode is enabled during initialization', async () => {
@@ -375,7 +403,8 @@ describe('useSettings Initialization and Bootstrap', () => {
     const { init } = useSettings();
     await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
 
-    expect(mockPreloadFakeLmLanguagePacks).toHaveBeenCalledOnce();
+    await runScheduledIdleTasks();
+    expect(mockPreloadFakeLmRuntime).toHaveBeenCalledOnce();
   });
 
   it('should report error and fallback if invalid storage type is in localStorage', async () => {
@@ -581,6 +610,9 @@ describe('useSettings Initialization and Bootstrap', () => {
 
       const { init, fetchModels } = useSettings();
       await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+      await vi.waitFor(() => {
+        expect(mockListModels).toHaveBeenCalledOnce();
+      });
       mockListModels.mockClear();
 
       await fetchModels({ overrides: {

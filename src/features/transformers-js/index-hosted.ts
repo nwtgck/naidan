@@ -234,29 +234,59 @@ function notifyModelListChange() {
 }
 
 // Worker management
-let client: TransformersJsWorkerClient;
+let client: TransformersJsWorkerClient | undefined;
+let restartPromise: Promise<TransformersJsWorkerClient> | undefined;
+
+async function getClient(): Promise<TransformersJsWorkerClient> {
+  if (restartPromise !== undefined) {
+    return await restartPromise;
+  }
+  client ??= createTransformersJsWorkerClient();
+  return client;
+}
 
 /**
- * Initializes or re-initializes the Web Worker.
- *
- * WHY RESTART?
- * Transformers.js (ONNX Runtime) runs in WebAssembly. When a fatal error occurs
- * (like an Out-of-Memory or an incompatible kernel operation), the Wasm runtime
- * calls abort(). This puts the Wasm instance into a permanently "broken" state
- * that cannot be recovered from within the same execution context.
- * Re-creating the Worker is the only way to provide a clean slate and a
- * fresh Wasm instance without requiring the user to reload the entire page.
+ * Re-creates the Worker after a fatal Wasm failure. Pending creation and
+ * disposal are serialized so two worker instances cannot remain active.
  */
-function initWorker() {
-  if (client) {
-    void client.dispose();
+async function restartWorker(): Promise<TransformersJsWorkerClient> {
+  if (restartPromise !== undefined) {
+    return await restartPromise;
+  }
+
+  const currentRestartPromise = restartWorkerOnce();
+  restartPromise = currentRestartPromise;
+  try {
+    return await currentRestartPromise;
+  } finally {
+    if (restartPromise === currentRestartPromise) {
+      restartPromise = undefined;
+    }
+  }
+}
+
+async function restartWorkerOnce(): Promise<TransformersJsWorkerClient> {
+  const previousClient = client;
+  client = undefined;
+
+  if (previousClient !== undefined) {
+    try {
+      await previousClient.dispose();
+    } catch (error) {
+      console.warn('[transformersJsService] Failed to dispose worker during restart:', error);
+    }
   }
 
   client = createTransformersJsWorkerClient();
+  return client;
 }
 
-// Initial setup
-initWorker();
+async function getExistingClient(): Promise<TransformersJsWorkerClient | undefined> {
+  if (restartPromise !== undefined) {
+    return await restartPromise;
+  }
+  return client;
+}
 
 /**
  * Checks if an error message indicates a fatal state that requires a worker restart.
@@ -377,7 +407,7 @@ export const transformersJsService = {
    * Hard reset of the underlying engine worker.
    */
   async restart() {
-    initWorker();
+    await restartWorker();
     activeModelId = undefined;
     loadingStatus = 'idle';
     loadingProgress = 0;
@@ -653,7 +683,7 @@ export const transformersJsService = {
 
     try {
       const loadStartedAt = performance.now();
-      if (!client) throw new Error('Worker not initialized');
+      const remote = await getClient();
       // 1. Check cache FIRST before changing status to avoid UI flicker
       const cached = await this.listCachedModels();
       const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
@@ -704,7 +734,7 @@ export const transformersJsService = {
         details: { modelId, isLoadingFromCache },
       });
       if (!isLoadingFromCache) {
-        await preDownloadModel({ modelId, remote: client, progress_callback });
+        await preDownloadModel({ modelId, remote, progress_callback });
       } else {
         debugLog({
           event: 'preDownload skipped',
@@ -722,7 +752,7 @@ export const transformersJsService = {
         },
       });
 
-      const result = await client.loadModel({ modelId, progressCallback: progress_callback });
+      const result = await remote.loadModel({ modelId, progressCallback: progress_callback });
       debugLog({
         event: 'worker loadModel complete',
         details: {
@@ -745,7 +775,7 @@ export const transformersJsService = {
       // If the error is fatal, the worker is likely dead/poisoned and needs to be restarted
       if (isFatalError({ msg: errorMsg })) {
         console.warn(`[transformersJsService] Fatal error detected. Re-initializing worker...`);
-        initWorker();
+        await restartWorker();
       }
 
       loadingStatus = 'error';
@@ -772,7 +802,7 @@ export const transformersJsService = {
     }
 
     try {
-      if (!client) throw new Error('Worker not initialized');
+      const remote = await getClient();
       // No longer deleting partial models to allow resume support.
       // Transformers.js handles missing files gracefully.
 
@@ -798,7 +828,7 @@ export const transformersJsService = {
       };
 
       // 1. Pre-download using scanner/prefetcher
-      const { discoveredFileCount } = await preDownloadModel({ modelId, remote: client, progress_callback });
+      const { discoveredFileCount } = await preDownloadModel({ modelId, remote, progress_callback });
       if (discoveredFileCount === 0) {
         throw new Error(
           'Pre-download did not discover any model files. The download would be incomplete, so it was aborted.',
@@ -806,7 +836,7 @@ export const transformersJsService = {
       }
 
       // 2. Finalize with standard downloadModel (to ensure tokenizer and any missed files are handled)
-      await client.downloadModel({ modelId, progressCallback: progress_callback });
+      await remote.downloadModel({ modelId, progressCallback: progress_callback });
 
       loadingStatus = 'idle';
       loadingProgress = 0;
@@ -819,7 +849,7 @@ export const transformersJsService = {
 
       if (isFatalError({ msg: errorMsg })) {
         console.warn('[transformersJsService] Fatal error detected during download. Re-initializing worker...');
-        initWorker();
+        await restartWorker();
       }
 
       loadingStatus = 'error';
@@ -832,8 +862,9 @@ export const transformersJsService = {
 
   async unloadModel() {
     try {
-      if (client) {
-        await client.unloadModel();
+      const remote = await getExistingClient();
+      if (remote !== undefined) {
+        await remote.unloadModel();
       }
       activeModelId = undefined;
       loadingStatus = 'idle';
@@ -849,7 +880,7 @@ export const transformersJsService = {
     } catch (e) {
       console.error('[transformersJsService] Failed to unload model:', e);
       // If unload fails, it's likely the worker is dead anyway
-      initWorker();
+      await restartWorker();
       activeModelId = undefined;
       loadingStatus = 'idle';
       notify();
@@ -857,14 +888,16 @@ export const transformersJsService = {
   },
 
   async interrupt() {
-    if (client) {
-      await client.interrupt();
+    const remote = await getExistingClient();
+    if (remote !== undefined) {
+      await remote.interrupt();
     }
   },
 
   async resetCache() {
-    if (client) {
-      await client.resetCache();
+    const remote = await getExistingClient();
+    if (remote !== undefined) {
+      await remote.resetCache();
     }
   },
 
@@ -892,16 +925,31 @@ export const transformersJsService = {
     }
     }
 
-    if (!client) throw new Error('Worker not initialized');
-
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        this.interrupt().catch(console.error);
-      });
+    let interruptPromise: Promise<void> | undefined;
+    const onAbort = () => {
+      if (interruptPromise !== undefined) {
+        return;
+      }
+      interruptPromise = (async () => {
+        try {
+          await this.interrupt();
+        } catch (error) {
+          console.error('Failed to interrupt Transformers.js generation:', error);
+        }
+      })();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted === true) {
+      onAbort();
     }
 
     try {
-      await client.generateText({
+      const remote = await getClient();
+      if (signal?.aborted === true) {
+        await interruptPromise;
+        return;
+      }
+      await remote.generateText({
         messages: cloneChatMessages({ messages }),
         onChunk,
         onToolCalls,
@@ -912,12 +960,17 @@ export const transformersJsService = {
       const errorMsg = e instanceof Error ? e.message : String(e);
       if (isFatalError({ msg: errorMsg })) {
         console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
-        initWorker();
+        await restartWorker();
         activeModelId = undefined;
         loadingStatus = 'idle';
         notify();
       }
       throw e;
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+      if (interruptPromise !== undefined) {
+        await interruptPromise;
+      }
     }
   },
 };

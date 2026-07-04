@@ -75,8 +75,7 @@ defineExpose({
       <div
         v-if="isOpen"
         ref="dropdownRef"
-        class="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl py-1 overflow-hidden"
-        :class="isOpeningUp ? 'origin-bottom-right' : 'origin-top-right'"
+        :tw-class="['bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl py-1 overflow-hidden', isOpeningUp ? 'origin-bottom-right' : 'origin-top-right']"
         :style="floatingStyle"
       >
         <slot></slot>

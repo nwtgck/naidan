@@ -2,6 +2,7 @@
 
 *   **Zod**: Must be used for all data persistence and API communication to ensure safe serialization. All API responses MUST be validated to protect the application from unreliable external data structures. Persisted data must maintain backward compatibility.
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
+*   **Keyed Promise Aggregation**: Use `promiseAllKeyed` from `@/utils/promise` instead of `Promise.all` for a fixed set of concurrent operations that produce values. Use `Promise.all` only for fixed operations that produce no values or for dynamic collections.
 *   **LM Terminology**: Use `LM` rather than `LLM` for generative language-model domain terminology, regardless of model size. In identifiers, use `Lm` or `lm` (for example, `LmProvider` and `lmParameters`). User-facing prose may intentionally use `LLM` when it is clearer to a general audience; explain ambiguous cases to the user before changing them.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
@@ -15,6 +16,16 @@ beforeEach(async () => {
 ```
 
 Do not use this in global test setup or in tests for `lazyStrings`, `ensureStrings`, boundary loading, unresolved strings, or locale switching. In those tests, exercise and await the actual loading behavior.
+
+# Static Tailwind Classes
+
+Tailwind source scanning is disabled. Use `tw-class` / `:tw-class` in Vue templates and `tw()` / `twClassString()` from `virtual:naidan-tailwind` in TypeScript or JavaScript. Keep ordinary `class` for non-Tailwind classes.
+
+All Tailwind candidates must be statically enumerable. Do not construct class names at runtime, hide them in unrelated strings or comments, add manual feature CSS imports / `@source` entries, or bypass the compiler with type assertions. Use registered `tw-*` class props for Transition, Sortable, and similar integrations.
+
+When a valid case is unsupported, extend the compiler, diagnostics, and targeted tests instead of weakening static guarantees. Changes to the compiler, CSS ownership, virtual modules, runtime registry, or lazy styling must verify both dev and production behavior; `npm run build:standalone` is the minimum production check.
+
+See `build/static-tailwind/README.md` for supported syntax, architecture, invariants, debugging, and verification guidance.
 
 # Function Signatures & Named Arguments
 

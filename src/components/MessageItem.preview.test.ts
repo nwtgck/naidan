@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
@@ -42,12 +42,6 @@ vi.mock('../composables/useImagePreview', () => ({
   MESSAGE_CONTEXTUAL_PREVIEW_KEY: Symbol('MessageContextualPreview'),
 }));
 
-// Mock URL.createObjectURL
-vi.stubGlobal('URL', {
-  createObjectURL: vi.fn(() => 'blob:mock-url'),
-  revokeObjectURL: vi.fn(),
-});
-
 // --- Test Data ---
 
 const mockMessage: MessageNode = {
@@ -72,6 +66,12 @@ const mockMessage: MessageNode = {
 describe('MessageItem.vue Preview Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock-url');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('triggers preview when an attachment image is clicked', async () => {

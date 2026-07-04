@@ -30,11 +30,11 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex flex-1 overflow-hidden">
+  <div tw-class="flex flex-1 overflow-hidden">
     <!-- Column panes -->
     <div
       ref="scrollContainerRef"
-      class="flex flex-1 overflow-x-auto overscroll-contain"
+      tw-class="flex flex-1 overflow-x-auto overscroll-contain"
     >
       <FileExplorerColumnPane
         v-for="(pane, i) in ctx.columnPanes"

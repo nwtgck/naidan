@@ -113,54 +113,51 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative inline-flex items-center">
+  <div tw-class="relative inline-flex items-center">
     <button
       @click.stop="showMenu = !showMenu"
-      class="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-[9px] font-bold transition-colors"
-      :class="[
-        isMini
-          ? 'text-gray-500 hover:text-blue-600'
-          : 'bg-white/50 dark:bg-gray-800/50 text-blue-600/70 hover:text-blue-600'
+      :tw-class="['flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-[9px] font-bold transition-colors',
+                  isMini
+                    ? 'text-gray-500 hover:text-blue-600'
+                    : 'bg-white/50 dark:bg-gray-800/50 text-blue-600/70 hover:text-blue-600'
       ]"
     >
-      <LanguagesIcon class="w-3 h-3" />
+      <LanguagesIcon tw-class="w-3 h-3" />
       <span>{{ getDisplayLabel() }}</span>
-      <ChevronDownIcon class="w-2.5 h-2.5 opacity-50" />
+      <ChevronDownIcon tw-class="w-2.5 h-2.5 opacity-50" />
     </button>
 
-    <div v-if="showMenu" class="fixed inset-0 z-40" @click.stop="showMenu = false"></div>
+    <div v-if="showMenu" tw-class="fixed inset-0 z-40" @click.stop="showMenu = false"></div>
 
     <Transition name="zoom">
       <div
         v-if="showMenu"
-        class="absolute w-40 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden animate-in zoom-in-95 duration-200"
-        :class="[
-          align === 'down' ? 'top-full left-0 mt-1 origin-top-left' : 'bottom-full left-0 mb-1 origin-bottom-left'
+        class="animate-in zoom-in-95"
+        :tw-class="['absolute w-40 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden duration-200',
+                    align === 'down' ? 'top-full left-0 mt-1 origin-top-left' : 'bottom-full left-0 mb-1 origin-bottom-left'
         ]"
       >
-        <div class="px-3 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">{{ lazyStrings.SpeechLanguageSelector__language() }}</div>
-        <div class="max-h-48 overflow-y-auto custom-scrollbar">
+        <div tw-class="px-3 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">{{ lazyStrings.SpeechLanguageSelector__language() }}</div>
+        <div class="custom-scrollbar" tw-class="max-h-48 overflow-y-auto">
           <div
             v-for="l in languages"
             :key="l.value"
-            class="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
-            :class="selectedLang === l.value ? 'text-blue-600 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+            :tw-class="['w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors', selectedLang === l.value ? 'text-blue-600 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700']"
           >
-            <button @click.stop="setLanguage({ lang: l.value })" class="flex-1 text-left">
+            <button @click.stop="setLanguage({ lang: l.value })" tw-class="flex-1 text-left">
               {{ getFullLabel({ langObj: l }) }}
             </button>
 
-            <div class="flex items-center gap-2">
+            <div tw-class="flex items-center gap-2">
               <button
                 v-if="l.value === 'auto'"
                 @click.stop="handleRedetect"
-                class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-gray-400 hover:text-blue-600 transition-all"
-                :class="{ 'animate-spin text-blue-600': isRedetecting }"
+                :tw-class="['p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 text-gray-400 hover:text-blue-600 transition-all', { 'animate-spin text-blue-600': isRedetecting }]"
                 :title="lazyStrings.SpeechLanguageSelector__redetect_language()"
               >
-                <RefreshCwIcon class="w-2.5 h-2.5" />
+                <RefreshCwIcon tw-class="w-2.5 h-2.5" />
               </button>
-              <CheckIcon v-if="selectedLang === l.value" class="w-3 h-3" />
+              <CheckIcon v-if="selectedLang === l.value" tw-class="w-3 h-3" />
             </div>
           </div>
         </div>

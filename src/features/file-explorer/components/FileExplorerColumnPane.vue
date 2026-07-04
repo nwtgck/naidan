@@ -85,12 +85,12 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex flex-col w-52 shrink-0 border-r border-gray-100 dark:border-gray-800 overflow-y-auto overscroll-contain">
-    <div v-if="pane.isLoading" class="flex items-center justify-center py-8">
-      <Loader2Icon class="w-4 h-4 text-gray-400 animate-spin" />
+  <div tw-class="flex flex-col w-52 shrink-0 border-r border-gray-100 dark:border-gray-800 overflow-y-auto overscroll-contain">
+    <div v-if="pane.isLoading" tw-class="flex items-center justify-center py-8">
+      <Loader2Icon tw-class="w-4 h-4 text-gray-400 animate-spin" />
     </div>
-    <div v-else class="p-1 space-y-0.5">
-      <p v-if="pane.entries.length === 0" class="text-[10px] text-gray-400 text-center py-6 uppercase tracking-widest font-bold">
+    <div v-else tw-class="p-1 space-y-0.5">
+      <p v-if="pane.entries.length === 0" tw-class="text-[10px] text-gray-400 text-center py-6 uppercase tracking-widest font-bold">
         {{ lazyStrings.fileExplorer__empty() }}
       </p>
       <FileExplorerEntryItem

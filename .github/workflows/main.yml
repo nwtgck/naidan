@@ -95,11 +95,38 @@ jobs:
           cd naidan-server
           go run build.go
 
+      - name: Verify individual artifact inputs
+        run: |
+          test -f dist/naidan-standalone.zip
+          test -f dist/debug-file-protocol-standalone-build-report.json
+          test -d dist/debug-tailwind-standalone
+          test -f dist/naidan-hosted.zip
+          test -d dist/debug-tailwind-hosted
+
       - name: Upload full dist build artifact
         uses: actions/upload-artifact@v7
         with:
           name: full-dist-build
           path: dist/
+
+      - name: Upload standalone artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: naidan-standalone
+          path: |
+            dist/naidan-standalone.zip
+            dist/debug-file-protocol-standalone-build-report.json
+            dist/debug-tailwind-standalone/
+          if-no-files-found: error
+
+      - name: Upload hosted artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: naidan-hosted
+          path: |
+            dist/naidan-hosted.zip
+            dist/debug-tailwind-hosted/
+          if-no-files-found: error
 
       - name: Upload naidan-server binary artifact
         uses: actions/upload-artifact@v7

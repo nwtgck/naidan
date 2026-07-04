@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
@@ -76,14 +76,18 @@ describe('useFileExplorerDirectoryDownload', () => {
     vi.useFakeTimers();
     mockAddToast.mockReset();
     await ensureAllStringsForTest({ locale: 'en' });
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:directory-archive'),
-      revokeObjectURL: vi.fn(),
-    });
+    // Preserve the URL constructor because Vite needs it to resolve dynamic imports.
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:directory-archive');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     clickedDownloadNames.length = 0;
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       clickedDownloadNames.push(this.download);
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('loads hierarchical exclusion suggestions, applies one, and adds it explicitly', async () => {

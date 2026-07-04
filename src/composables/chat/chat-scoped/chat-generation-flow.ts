@@ -5,7 +5,7 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import type { LmProvider } from '@/01-models/lm';
 import type { Tool } from '@/01-models/tool';
-import { createLmProvider } from '@/features/lm/providerFactory';
+import { loadLmProvider } from '@/features/lm/providerFactory';
 import { storageService } from '@/00-storage/service';
 import { getEnabledTools } from '@/features/tools/factory';
 import { markExecutingToolResultsAsInterrupted } from '@/features/tools/interruption';
@@ -446,9 +446,11 @@ export async function generateResponseForAssistant({
       return;
     }
 
-    const provider = createGenerationProvider({
+    controller.signal.throwIfAborted();
+    const provider = await loadGenerationProvider({
       endpoint: resolved.endpoint,
     });
+    controller.signal.throwIfAborted();
     const finalMessages = await buildGenerationMessages({
       chat: mutableChat,
       assistantId,
@@ -457,7 +459,9 @@ export async function generateResponseForAssistant({
 
     let lastSave = 0;
     let isSaving = false;
+    controller.signal.throwIfAborted();
     const enabledTools = await getEnabledToolsForChat({ chat: mutableChat });
+    controller.signal.throwIfAborted();
     const generationState = {
       currentAssistantNode: assistantNode,
       currentLeafNode: assistantNode as MessageNode,
@@ -977,17 +981,17 @@ function showOnboardingDraft({
   settings.setIsOnboardingDismissed?.({ dismissed: false });
 }
 
-function createGenerationProvider({
+async function loadGenerationProvider({
   endpoint,
 }: {
   endpoint: Endpoint,
-}): LmProvider {
+}): Promise<LmProvider> {
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     throw new Error(`${endpoint.type} generation requires an endpoint URL`);
   }
 
   const { settings } = useSettings();
-  return createLmProvider({
+  return await loadLmProvider({
     endpoint,
     fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });

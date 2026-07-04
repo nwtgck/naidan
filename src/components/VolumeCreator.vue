@@ -364,50 +364,50 @@ defineExpose({
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div tw-class="space-y-3">
     <!-- Drag-over overlay -->
     <Teleport v-if="dragOverlayTarget && isDragOver" :to="dragOverlayTarget ?? 'body'">
       <div
         data-testid="drag-overlay"
-        class="pointer-events-none absolute inset-0 z-[200] bg-blue-500/10 dark:bg-blue-400/10 backdrop-blur-[2px] flex items-center justify-center"
+        tw-class="pointer-events-none absolute inset-0 z-[200] bg-blue-500/10 dark:bg-blue-400/10 backdrop-blur-[2px] flex items-center justify-center"
       >
-        <div class="flex flex-col items-center gap-4 border-2 border-dashed border-blue-400 dark:border-blue-400 rounded-3xl px-16 py-14 bg-white/80 dark:bg-gray-900/80 shadow-2xl text-blue-600 dark:text-blue-300">
-          <FolderDownIcon class="w-14 h-14" />
-          <div class="text-center">
-            <p class="text-xl font-bold">{{ lazyStrings.volumes__drop_to_copy_to_browser() }}</p>
-            <p class="text-sm font-medium text-blue-500/80 dark:text-blue-400/70 mt-1">{{ lazyStrings.volumes__folder_or_file() }}</p>
+        <div tw-class="flex flex-col items-center gap-4 border-2 border-dashed border-blue-400 dark:border-blue-400 rounded-3xl px-16 py-14 bg-white/80 dark:bg-gray-900/80 shadow-2xl text-blue-600 dark:text-blue-300">
+          <FolderDownIcon tw-class="w-14 h-14" />
+          <div tw-class="text-center">
+            <p tw-class="text-xl font-bold">{{ lazyStrings.volumes__drop_to_copy_to_browser() }}</p>
+            <p tw-class="text-sm font-medium text-blue-500/80 dark:text-blue-400/70 mt-1">{{ lazyStrings.volumes__folder_or_file() }}</p>
           </div>
         </div>
       </div>
     </Teleport>
 
-    <input type="file" ref="fileInput" webkitdirectory directory multiple class="hidden" @change="handleFileSelect({ event: $event })" />
-    <input type="file" ref="fileInputSingle" class="hidden" @change="handleSingleFileSelect({ event: $event })" />
+    <input type="file" ref="fileInput" webkitdirectory directory multiple tw-class="hidden" @change="handleFileSelect({ event: $event })" />
+    <input type="file" ref="fileInputSingle" tw-class="hidden" @change="handleSingleFileSelect({ event: $event })" />
 
     <!-- Upload Progress -->
-    <div v-if="isCreating" data-testid="copy-progress" class="rounded-2xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden">
-      <div class="px-4 pt-4 pb-3">
-        <div class="flex items-center justify-between mb-3">
-          <span class="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300">
-            <FolderDownIcon class="w-3.5 h-3.5 animate-pulse shrink-0" />
+    <div v-if="isCreating" data-testid="copy-progress" tw-class="rounded-2xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden">
+      <div tw-class="px-4 pt-4 pb-3">
+        <div tw-class="flex items-center justify-between mb-3">
+          <span tw-class="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300">
+            <FolderDownIcon tw-class="w-3.5 h-3.5 animate-pulse shrink-0" />
             {{ copyingLabel }}
           </span>
-          <div class="flex items-center gap-3">
-            <span v-if="progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+          <div tw-class="flex items-center gap-3">
+            <span v-if="progress" tw-class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
               {{ lazyStrings.volumes__file_progress({ processed: progress.processed, total: progress.total }) }}
             </span>
             <button
               data-testid="copy-cancel-btn"
               @click="copyAbortController?.abort()"
-              class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              tw-class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
             >
               {{ lazyStrings.volumes__cancel() }}
             </button>
           </div>
         </div>
-        <div class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
+        <div tw-class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
           <div
-            class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
+            tw-class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
             :style="{ width: `${progress ? (progress.processed / progress.total) * 100 : 5}%` }"
           ></div>
         </div>
@@ -415,129 +415,124 @@ defineExpose({
     </div>
 
     <!-- Buttons row -->
-    <div v-if="!isFullyUnsupported" class="flex gap-2 flex-wrap">
+    <div v-if="!isFullyUnsupported" tw-class="flex gap-2 flex-wrap">
       <!-- Add Folder button -->
-      <div class="relative" ref="addFolderInfoRef">
+      <div tw-class="relative" ref="addFolderInfoRef">
         <button
           v-if="isDetecting || hasFileSystemAccess"
           data-testid="add-folder-btn"
           @click="createVolume({ type: 'host' })"
           :disabled="isCreating || !hasFileSystemAccess || isDetecting"
-          class="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl transition-all"
-          :class="hasFileSystemAccess && !isDetecting
+          :tw-class="['flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl transition-all', hasFileSystemAccess && !isDetecting
             ? (isAddFolderModeOpen ? 'bg-blue-700 text-white shadow-lg shadow-blue-500/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20')
-            : 'bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed border border-gray-200 dark:border-gray-700'"
+            : 'bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed border border-gray-200 dark:border-gray-700']"
         >
-          <FolderPlusIcon class="w-4 h-4" />
+          <FolderPlusIcon tw-class="w-4 h-4" />
           {{ lazyStrings.volumes__add_folder() }}
         </button>
         <div
           v-else
-          class="flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-hidden"
+          tw-class="flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-hidden"
         >
-          <button disabled class="flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-300 dark:text-gray-600 cursor-not-allowed border-r border-gray-200 dark:border-gray-700">
-            <FolderPlusIcon class="w-4 h-4" />
+          <button disabled tw-class="flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-300 dark:text-gray-600 cursor-not-allowed border-r border-gray-200 dark:border-gray-700">
+            <FolderPlusIcon tw-class="w-4 h-4" />
             {{ lazyStrings.volumes__add_folder() }}
           </button>
           <button
             @click="toggleAddFolderInfo()"
-            class="flex items-center px-2 transition-colors"
-            :class="isAddFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'"
+            :tw-class="['flex items-center px-2 transition-colors', isAddFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400']"
             :title="lazyStrings.volumes__why_add_folder_disabled()"
           >
-            <InfoIcon class="w-3.5 h-3.5" />
+            <InfoIcon tw-class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Mode selector popover -->
         <div
           v-if="isAddFolderModeOpen"
           data-testid="add-folder-mode-panel"
-          class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden"
+          tw-class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden"
         >
-          <p class="px-3 pt-3 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ lazyStrings.volumes__choose_access_level() }}</p>
-          <p class="px-3 pb-1.5 text-[10px] text-gray-400 dark:text-gray-500">{{ lazyStrings.volumes__change_access_later() }}</p>
+          <p tw-class="px-3 pt-3 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ lazyStrings.volumes__choose_access_level() }}</p>
+          <p tw-class="px-3 pb-1.5 text-[10px] text-gray-400 dark:text-gray-500">{{ lazyStrings.volumes__change_access_later() }}</p>
           <button
             data-testid="add-folder-read-only-btn"
             @click="pickHostVolume({ mode: 'read' })"
-            class="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
+            tw-class="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
           >
-            <LockIcon class="w-4 h-4 mt-0.5 shrink-0 text-green-500" />
+            <LockIcon tw-class="w-4 h-4 mt-0.5 shrink-0 text-green-500" />
             <div>
-              <p class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.volumes__read_only() }}</p>
-              <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{{ lazyStrings.volumes__ai_can_read_not_write() }}</p>
+              <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.volumes__read_only() }}</p>
+              <p tw-class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{{ lazyStrings.volumes__ai_can_read_not_write() }}</p>
             </div>
           </button>
           <button
             data-testid="add-folder-readwrite-btn"
             @click="pickHostVolume({ mode: 'readwrite' })"
-            class="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left border-t border-gray-100 dark:border-gray-800"
+            tw-class="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left border-t border-gray-100 dark:border-gray-800"
           >
-            <PencilIcon class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
+            <PencilIcon tw-class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
             <div>
-              <p class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.volumes__read_write() }}</p>
-              <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{{ lazyStrings.volumes__ai_can_read_and_modify_files() }}</p>
+              <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.volumes__read_write() }}</p>
+              <p tw-class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{{ lazyStrings.volumes__ai_can_read_and_modify_files() }}</p>
             </div>
           </button>
         </div>
         <!-- Info popover (when unavailable) -->
         <div
           v-if="isAddFolderInfoOpen"
-          class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
+          tw-class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
         >
-          <p class="text-[11px] font-bold text-blue-600 dark:text-blue-400">{{ lazyStrings.volumes__add_folder_requires_chromium() }}</p>
-          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+          <p tw-class="text-[11px] font-bold text-blue-600 dark:text-blue-400">{{ lazyStrings.volumes__add_folder_requires_chromium() }}</p>
+          <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
             {{ lazyStrings.volumes__chromium_browser_over_https() }}
           </p>
         </div>
       </div>
 
       <!-- Copy Folder button -->
-      <div class="relative" ref="copyFolderInfoRef">
+      <div tw-class="relative" ref="copyFolderInfoRef">
         <div
-          class="flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all"
-          :class="hasOPFS && !isDetecting ? 'bg-white dark:bg-gray-800 shadow-sm' : 'bg-gray-100 dark:bg-gray-800'"
+          :tw-class="['flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all', hasOPFS && !isDetecting ? 'bg-white dark:bg-gray-800 shadow-sm' : 'bg-gray-100 dark:bg-gray-800']"
         >
           <button
             @click="createVolume({ type: 'opfs' })"
             :disabled="isCreating || !hasOPFS || isDetecting"
-            class="flex items-center gap-2 px-3 py-2 text-xs font-bold transition-all border-r border-gray-200 dark:border-gray-700"
-            :class="hasOPFS && !isDetecting
+            :tw-class="['flex items-center gap-2 px-3 py-2 text-xs font-bold transition-all border-r border-gray-200 dark:border-gray-700', hasOPFS && !isDetecting
               ? 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
-              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'"
+              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed']"
           >
-            <FolderDownIcon class="w-4 h-4" />
+            <FolderDownIcon tw-class="w-4 h-4" />
             {{ lazyStrings.volumes__copy_folder() }}
           </button>
           <button
             @click="toggleCopyFolderInfo()"
-            class="flex items-center px-2 transition-colors"
-            :class="isCopyFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'"
+            :tw-class="['flex items-center px-2 transition-colors', isCopyFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400']"
             :title="lazyStrings.volumes__what_is_copy_folder()"
           >
-            <InfoIcon class="w-3.5 h-3.5" />
+            <InfoIcon tw-class="w-3.5 h-3.5" />
           </button>
         </div>
         <div
           v-if="isCopyFolderInfoOpen"
-          class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
+          tw-class="absolute left-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
         >
-          <p class="text-[11px] font-bold text-blue-600 dark:text-blue-400">{{ lazyStrings.volumes__original_folder_is_never_touched() }}</p>
-          <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+          <p tw-class="text-[11px] font-bold text-blue-600 dark:text-blue-400">{{ lazyStrings.volumes__original_folder_is_never_touched() }}</p>
+          <p tw-class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
             {{ lazyStrings.volumes__copy_does_not_change_disk_files() }}
           </p>
-          <p class="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed pt-1 border-t border-gray-100 dark:border-gray-700">
+          <p tw-class="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed pt-1 border-t border-gray-100 dark:border-gray-700">
             {{ lazyStrings.volumes__copy_is_stored_in_browser_opfs() }}
           </p>
-          <div v-if="hasOPFS && !isDetecting" class="pt-1 border-t border-gray-100 dark:border-gray-700">
+          <div v-if="hasOPFS && !isDetecting" tw-class="pt-1 border-t border-gray-100 dark:border-gray-700">
             <button
               @click="fileInputSingle?.click(); toggleCopyFolderInfo(false)"
-              class="flex items-center gap-1.5 text-[11px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+              tw-class="flex items-center gap-1.5 text-[11px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
             >
-              <FileDownIcon class="w-3 h-3" />
+              <FileDownIcon tw-class="w-3 h-3" />
               {{ lazyStrings.volumes__copy_single_file_instead() }}
             </button>
           </div>
-          <p v-if="!hasOPFS && !isDetecting" class="text-[11px] text-amber-600 dark:text-amber-400 font-medium pt-1">
+          <p v-if="!hasOPFS && !isDetecting" tw-class="text-[11px] text-amber-600 dark:text-amber-400 font-medium pt-1">
             {{ lazyStrings.volumes__not_supported_in_browser_or_context() }}
           </p>
         </div>

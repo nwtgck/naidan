@@ -23,6 +23,10 @@ import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 
+vi.mock('@/utils/idle-task', () => ({
+  scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })),
+}));
+
 const {
   mockEnsureChatTmpDirectory,
   mockOpenFileExplorer,
@@ -550,7 +554,7 @@ vi.mock('../composables/chat/useChatImageGeneration', () => ({
   }),
 }));
 
-vi.mock('../composables/useChatWeshTerminalSessions', () => ({
+vi.mock('@/features/wesh/chat-worker-mounts', () => ({
   buildWorkerMountsForChat: vi.fn(async ({
     chatMounts,
     chatGroupMounts,
@@ -609,6 +613,9 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
 
     return mounts;
   }),
+}));
+
+vi.mock('../composables/useChatWeshTerminalSessions', () => ({
   useChatWeshTerminalSessions: vi.fn(() => ({
     createChatWorkerSession: vi.fn(),
     ensureActiveSession: vi.fn(),

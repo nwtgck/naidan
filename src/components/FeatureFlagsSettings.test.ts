@@ -7,11 +7,9 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const {
   mockFakeLmDebugModeAvailability,
-  mockPreloadFakeLmLanguagePacks,
   mockSetFakeLmDebugModeStatus,
 } = vi.hoisted(() => ({
   mockFakeLmDebugModeAvailability: { value: 'available' },
-  mockPreloadFakeLmLanguagePacks: vi.fn(),
   mockSetFakeLmDebugModeStatus: vi.fn(),
 }));
 const mockShowConfirm = vi.fn();
@@ -49,7 +47,6 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('@/features/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
-  preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
   useFakeLmDebugMode: () => ({
     fakeLmDebugModeAvailability: mockFakeLmDebugModeAvailability,
   }),
@@ -70,7 +67,6 @@ describe('FeatureFlagsSettings.vue', () => {
     mockShowConfirm.mockReset();
     mockSaveSettings.mockReset();
     mockSetFakeLmDebugModeStatus.mockReset();
-    mockPreloadFakeLmLanguagePacks.mockReset();
     mockFakeLmDebugModeAvailability.value = 'available';
     mockSettings.value.experimental = undefined;
     const { TEST_ONLY } = useFeatureFlags();
@@ -213,12 +209,6 @@ describe('FeatureFlagsSettings.vue', () => {
     await wrapper.find('[data-testid="feature-fake-lm-toggle"]').trigger('click');
 
     expect(mockSetFakeLmDebugModeStatus).toHaveBeenCalledWith({ status: 'enabled' });
-  });
-
-  it('preloads fake LM language packs when the settings list is created', () => {
-    mount(FeatureFlagsSettings);
-
-    expect(mockPreloadFakeLmLanguagePacks).toHaveBeenCalledTimes(1);
   });
 
   it('disables fake LM in standalone builds and explains why', async () => {

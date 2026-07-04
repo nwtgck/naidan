@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
-import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/features/highlight/worker/client-shared';
+import { acquireSharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
+import type { SharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
 import type { FileExplorerEntry, PreviewState } from '@/features/file-explorer/logic/types';
 import { EXTENSION_LANGUAGE_MAP } from '@/features/file-explorer/logic/constants';
 import { sanitizeHighlightHtml } from '@/logic/security/allowedHtml';
@@ -25,11 +26,36 @@ export function useFileExplorerPreview({
   });
   let latestPreviewRequestId = 0;
   let latestHighlightRequestId = 0;
-  const highlightWorkerClientPromise = acquireSharedHighlightWorkerClient();
+  let highlightWorkerClientLeasePromise: Promise<SharedHighlightWorkerClientLease> | undefined;
+  let disposed = false;
 
   function revokeObjectUrl(): void {
     if (previewState.value.objectUrl) {
       URL.revokeObjectURL(previewState.value.objectUrl);
+    }
+  }
+
+  async function getHighlightWorkerClientLease(): Promise<SharedHighlightWorkerClientLease | undefined> {
+    if (disposed) {
+      return undefined;
+    }
+
+    const leasePromise = highlightWorkerClientLeasePromise
+      ?? acquireSharedHighlightWorkerClientLease();
+    highlightWorkerClientLeasePromise = leasePromise;
+
+    try {
+      const lease = await leasePromise;
+      if (!disposed) {
+        return lease;
+      }
+
+      return undefined;
+    } catch {
+      if (highlightWorkerClientLeasePromise === leasePromise) {
+        highlightWorkerClientLeasePromise = undefined;
+      }
+      return undefined;
     }
   }
 
@@ -40,10 +66,14 @@ export function useFileExplorerPreview({
     entry: FileExplorerEntry,
     displayText: string,
   }): Promise<AllowedHtml | undefined> {
+    const lease = await getHighlightWorkerClientLease();
+    if (!lease) {
+      return undefined;
+    }
+
     try {
       const language = EXTENSION_LANGUAGE_MAP[entry.extension];
-      const client = await highlightWorkerClientPromise;
-      const response = await client.highlight({
+      const response = await lease.client.highlight({
         request: {
           code: displayText,
           language,
@@ -56,6 +86,10 @@ export function useFileExplorerPreview({
     }
   }
 
+  function isCurrentPreviewRequest({ requestId }: { requestId: number }): boolean {
+    return !disposed && requestId === latestPreviewRequestId;
+  }
+
   async function loadPreviewWithMode({
     entry,
     mode,
@@ -64,6 +98,7 @@ export function useFileExplorerPreview({
     mode: 'bounded' | 'force',
   }): Promise<void> {
     const requestId = ++latestPreviewRequestId;
+    latestHighlightRequestId += 1;
     revokeObjectUrl();
     previewState.value = {
       ...previewState.value,
@@ -79,6 +114,10 @@ export function useFileExplorerPreview({
 
     try {
       const response = await client.readPreview({ path: entry.path, mode });
+      if (!isCurrentPreviewRequest({ requestId })) {
+        return;
+      }
+
       switch (response.kind) {
       case 'directory':
         previewState.value = {
@@ -100,7 +139,7 @@ export function useFileExplorerPreview({
           entry,
           displayText: response.displayText,
         });
-        if (requestId !== latestPreviewRequestId) {
+        if (!isCurrentPreviewRequest({ requestId })) {
           return;
         }
         previewState.value = {
@@ -143,6 +182,10 @@ export function useFileExplorerPreview({
       }
       }
     } catch (error) {
+      if (!isCurrentPreviewRequest({ requestId })) {
+        return;
+      }
+
       previewState.value = {
         ...previewState.value,
         loadingState: 'error',
@@ -165,6 +208,7 @@ export function useFileExplorerPreview({
       return;
     }
 
+    const entry = state.entry;
     let nextMode: 'formatted' | 'raw';
     let nextText: string;
 
@@ -195,15 +239,20 @@ export function useFileExplorerPreview({
     };
 
     const requestId = ++latestHighlightRequestId;
-    void highlightText({ entry: state.entry, displayText: nextText }).then(highlightedHtml => {
-      if (requestId !== latestHighlightRequestId) {
-        return;
+    (async () => {
+      try {
+        const highlightedHtml = await highlightText({ entry, displayText: nextText });
+        if (requestId !== latestHighlightRequestId) {
+          return;
+        }
+        previewState.value = {
+          ...previewState.value,
+          highlightedHtml,
+        };
+      } catch (error) {
+        console.error('Failed to update the file preview highlight:', error);
       }
-      previewState.value = {
-        ...previewState.value,
-        highlightedHtml,
-      };
-    });
+    })();
   }
 
   function clearPreview(): void {
@@ -249,8 +298,29 @@ export function useFileExplorerPreview({
     clearPreview,
     togglePreviewVisibility,
     toggleJsonFormat,
-    dispose() {
-      void releaseSharedHighlightWorkerClient();
+    dispose(): void {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      latestPreviewRequestId += 1;
+      latestHighlightRequestId += 1;
+      revokeObjectUrl();
+
+      const leasePromise = highlightWorkerClientLeasePromise;
+      highlightWorkerClientLeasePromise = undefined;
+      if (!leasePromise) {
+        return;
+      }
+
+      (async () => {
+        try {
+          const lease = await leasePromise;
+          await lease.release();
+        } catch (error) {
+          console.error('Failed to release the file preview highlight worker:', error);
+        }
+      })();
     },
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {

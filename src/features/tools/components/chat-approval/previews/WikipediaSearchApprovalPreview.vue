@@ -15,8 +15,8 @@ defineExpose({
 </script>
 
 <template>
-  <div class="min-w-0 truncate text-xs text-gray-600 dark:text-gray-300">
-    <span class="font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.chatApproval__keyword_label() }}</span>
-    <span class="ml-1 text-gray-900 dark:text-gray-100">{{ props.keyword }}</span>
+  <div tw-class="min-w-0 truncate text-xs text-gray-600 dark:text-gray-300">
+    <span tw-class="font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.chatApproval__keyword_label() }}</span>
+    <span tw-class="ml-1 text-gray-900 dark:text-gray-100">{{ props.keyword }}</span>
   </div>
 </template>

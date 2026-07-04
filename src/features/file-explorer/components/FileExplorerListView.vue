@@ -9,11 +9,12 @@ import type { FileExplorerEntry, SortField } from '@/features/file-explorer/logi
 import { LIST_ROW_HEIGHT, VIRTUAL_SCROLL_OVERSCAN } from '@/features/file-explorer/logic/constants';
 import { useVirtualizedFileExplorerList } from '@/features/file-explorer/composables/useVirtualizedFileExplorerList';
 import { useFileExplorerLongPress } from '@/features/file-explorer/composables/useFileExplorerLongPress';
+import { twClasses, twClassString, type TailwindClass } from 'virtual:naidan-tailwind';
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
 const scrollContainerRef = ref<HTMLElement | undefined>(undefined);
 
-type FileExplorerColumn = { readonly label: string, readonly field: SortField, readonly class: string };
+type FileExplorerColumn = { readonly label: string, readonly field: SortField, readonly class: TailwindClass };
 
 const columns = computed<FileExplorerColumn[]>(() => {
   const name = lazyStrings.fileExplorer__name();
@@ -23,10 +24,10 @@ const columns = computed<FileExplorerColumn[]>(() => {
   if (name === undefined || size === undefined || modified === undefined || type === undefined) return [];
 
   return [
-    { label: name, field: 'name', class: 'flex-1 min-w-0' },
-    { label: size, field: 'size', class: 'w-16 text-right shrink-0' },
-    { label: modified, field: 'dateModified', class: 'w-28 text-right shrink-0 hidden md:block' },
-    { label: type, field: 'type', class: 'w-16 text-right shrink-0 hidden lg:block' },
+    { label: name, field: 'name', class: twClassString('flex-1', 'min-w-0') },
+    { label: size, field: 'size', class: twClassString('w-16', 'text-right', 'shrink-0') },
+    { label: modified, field: 'dateModified', class: twClassString('w-28', 'text-right', 'shrink-0', 'hidden', 'md:block') },
+    { label: type, field: 'type', class: twClassString('w-16', 'text-right', 'shrink-0', 'hidden', 'lg:block') },
   ];
 });
 
@@ -172,28 +173,27 @@ defineExpose({
 
 <template>
   <div
-    class="flex flex-col flex-1 overflow-hidden"
+    tw-class="flex flex-col flex-1 overflow-hidden"
     data-testid="list-view"
     @pointerdown.self="backgroundLongPress.onPointerDown({ event: $event })"
     @contextmenu.self="onBackgroundNativeContextMenu({ event: $event })"
     @click="onBackgroundClick({ event: $event })"
   >
     <!-- Column Headers -->
-    <div class="flex items-center gap-3 px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80 flex-shrink-0">
-      <div class="w-4 shrink-0" />
+    <div tw-class="flex items-center gap-3 px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80 flex-shrink-0">
+      <div tw-class="w-4 shrink-0" />
       <div
         v-for="col in columns"
         :key="col.field"
-        :class="col.class"
-        class="flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+        :tw-class="['flex items-center gap-1 cursor-pointer hover:text-gray-900 dark:hover:text-gray-100 transition-colors', twClasses(col.class)]"
         @click="ctx.toggleSortField({ field: col.field })"
       >
-        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+        <span tw-class="text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
           {{ col.label }}
         </span>
         <template v-if="ctx.sortConfig.field === col.field">
-          <ChevronUpIcon v-if="ctx.sortConfig.direction === 'ascending'" class="w-3 h-3 text-blue-500" />
-          <ChevronDownIcon v-else class="w-3 h-3 text-blue-500" />
+          <ChevronUpIcon v-if="ctx.sortConfig.direction === 'ascending'" tw-class="w-3 h-3 text-blue-500" />
+          <ChevronDownIcon v-else tw-class="w-3 h-3 text-blue-500" />
         </template>
       </div>
     </div>
@@ -201,8 +201,7 @@ defineExpose({
     <!-- Entries -->
     <div
       ref="scrollContainerRef"
-      class="flex-1 overflow-y-auto overscroll-contain p-1 transition-colors"
-      :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
+      :tw-class="['flex-1 overflow-y-auto overscroll-contain p-1 transition-colors', isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : '']"
       data-list-background="true"
       data-testid="list-scroll-container"
       @pointerdown.self="backgroundLongPress.onPointerDown({ event: $event })"

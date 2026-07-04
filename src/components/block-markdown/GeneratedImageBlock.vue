@@ -139,7 +139,7 @@ defineExpose({
 <template>
   <div
     v-if="parsed"
-    class="naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-visible"
+    class="naidan-generated-image" tw-class="my-4 relative group/gen-img w-fit rounded-xl overflow-visible"
     :data-id="parsed.binaryObjectId"
   >
     <!-- Image -->
@@ -149,33 +149,33 @@ defineExpose({
       @click="handlePreview"
       :width="displayDims.width"
       :height="displayDims.height"
-      class="naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity"
+      class="naidan-clickable-img" tw-class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity"
       :alt="lazyStrings.SHARED__generated_image()"
     />
 
     <!-- Loading Skeleton -->
     <div
       v-else-if="loading"
-      class="naidan-image-skeleton flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0 rounded-xl"
+      class="naidan-image-skeleton" tw-class="flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0 rounded-xl"
       :style="{ width: `${displayDims.width}px`, maxWidth: '100%', aspectRatio: `${displayDims.width} / ${displayDims.height}` }"
     >
-      <ImageIcon class="w-8 h-8 text-gray-400" />
+      <ImageIcon tw-class="w-8 h-8 text-gray-400" />
     </div>
 
     <!-- Error -->
     <div
       v-else-if="error"
-      class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs flex flex-col items-center justify-center"
+      tw-class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs flex flex-col items-center justify-center"
       :style="{ width: `${displayDims.width}px`, maxWidth: '100%', aspectRatio: `${displayDims.width} / ${displayDims.height}` }"
     >
-      <AlertTriangleIcon class="w-6 h-6 mb-2" />
+      <AlertTriangleIcon tw-class="w-6 h-6 mb-2" />
       <span>{{ error }}</span>
     </div>
 
     <!-- Overlays (only if loaded) -->
     <template v-if="imageUrl">
       <!-- Info Badge (Top Left) -->
-      <div class="absolute top-2 left-2 z-30 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all overflow-visible">
+      <div class="touch-visible" tw-class="absolute top-2 left-2 z-30 opacity-0 group-hover/gen-img:opacity-100 transition-all overflow-visible">
         <ImageInfoDisplay
           :prompt="parsed.prompt || ''"
           :steps="parsed.steps"
@@ -187,7 +187,7 @@ defineExpose({
       </div>
 
       <!-- Download Button (Top Right) -->
-      <div class="absolute top-2 right-2 z-30 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all overflow-visible">
+      <div class="touch-visible" tw-class="absolute top-2 right-2 z-30 opacity-0 group-hover/gen-img:opacity-100 transition-all overflow-visible">
         <ImageDownloadButton
           :is-supported="isSupported"
           align="right"
@@ -198,7 +198,7 @@ defineExpose({
   </div>
 
   <!-- Fallback for invalid JSON -->
-  <div v-else class="p-4 border border-red-200 bg-red-50 rounded text-red-500 text-xs">
+  <div v-else tw-class="p-4 border border-red-200 bg-red-50 rounded text-red-500 text-xs">
     {{ lazyStrings.blockMarkdown__invalid_image_block_data() }}
   </div>
 </template>

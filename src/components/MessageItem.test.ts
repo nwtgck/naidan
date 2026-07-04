@@ -1,6 +1,6 @@
 import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { flushPromises, mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';
@@ -77,10 +77,12 @@ print("hello")
     await flushPromises();
     await nextTick();
 
-    const html = wrapper.html();
-    // BlockMarkdownRenderer uses hljs for highlighting and shows the language label
-    expect(html).toContain('hljs');
-    expect(html).toContain('python');
+    await vi.waitFor(() => {
+      const html = wrapper.html();
+      // BlockMarkdownRenderer uses hljs for highlighting and shows the language label.
+      expect(html).toContain('hljs');
+      expect(html).toContain('python');
+    });
   });
 
   it('sanitizes dangerous HTML', () => {
@@ -537,10 +539,12 @@ describe('MessageItem Attachment Rendering', () => {
   } as UserMessageNode);
 
   beforeEach(() => {
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn().mockReturnValue('mock-url'),
-      revokeObjectURL: vi.fn(),
-    });
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('mock-url');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('renders memory attachments using local blobs', async () => {
@@ -873,10 +877,8 @@ describe('MessageItem Touch Support', () => {
       replies: { items: [] },
     };
 
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn().mockReturnValue('mock-url'),
-      revokeObjectURL: vi.fn(),
-    });
+    const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('mock-url');
+    const revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 
     const wrapper = mount(MessageItem, { props: { message } });
     await nextTick();
@@ -884,6 +886,9 @@ describe('MessageItem Touch Support', () => {
 
     const downloadBtn = wrapper.find('[data-testid="download-attachment"]');
     expect(downloadBtn.classes()).toContain('touch-visible');
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
   });
 });
 

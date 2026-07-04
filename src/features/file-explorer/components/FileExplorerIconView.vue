@@ -117,8 +117,7 @@ defineExpose({
 
 <template>
   <div
-    class="flex-1 overflow-y-auto overscroll-contain p-3 transition-colors"
-    :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
+    :tw-class="['flex-1 overflow-y-auto overscroll-contain p-3 transition-colors', isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : '']"
     data-testid="icon-view"
     @pointerdown.self="backgroundLongPress.onPointerDown({ event: $event })"
     @contextmenu.self="onBackgroundNativeContextMenu({ event: $event })"
@@ -131,7 +130,7 @@ defineExpose({
       v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading"
     />
 
-    <div class="flex flex-wrap gap-2 content-start">
+    <div tw-class="flex flex-wrap gap-2 content-start">
       <FileExplorerEntryItem
         v-for="entry in ctx.sortedFilteredEntries"
         :key="entry.path"

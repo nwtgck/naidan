@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { FakeLmLanguage } from '@/features/fake-lm/core/markdownTypes';
 import type { TextPattern } from '@/features/fake-lm/core/textPattern';
 import type { WeightedValue } from '@/features/fake-lm/core/weighted';
+import { promiseAllKeyed } from '@/utils/promise';
 
 const WeightedTextSchema = z.object({
   value: z.string(),
@@ -120,16 +121,10 @@ const fakeLmLanguageJsonLoaders = {
 
 const languagePackCache = new Map<FakeLmLanguage, Promise<LoadedLexicons>>();
 
-export function preloadFakeLmLanguagePacks(): void {
-  scheduleIdleTask({
-    task: () => {
-      void Promise.all([
-        loadLanguageLexicons({ language: 'ja' }),
-        loadLanguageLexicons({ language: 'en' }),
-      ]).catch((error: unknown) => {
-        console.warn('Failed to preload fake LM language packs.', error);
-      });
-    },
+export async function preloadFakeLmLanguagePacks(): Promise<void> {
+  await promiseAllKeyed({
+    ja: loadLanguageLexicons({ language: 'ja' }),
+    en: loadLanguageLexicons({ language: 'en' }),
   });
 }
 
@@ -141,12 +136,16 @@ export async function loadLanguageLexicons({ language }: {
     return cached;
   }
 
-  const promise = loadAndParseLanguageLexicons({ language }).catch((error: unknown) => {
-    languagePackCache.delete(language);
-    throw error;
-  });
+  const promise = loadAndParseLanguageLexicons({ language });
   languagePackCache.set(language, promise);
-  return promise;
+  try {
+    return await promise;
+  } catch (error) {
+    if (languagePackCache.get(language) === promise) {
+      languagePackCache.delete(language);
+    }
+    throw error;
+  }
 }
 
 async function loadAndParseLanguageLexicons({ language }: {
@@ -180,22 +179,6 @@ function toLoadedLexicons({ languageJson }: {
     thinkingSentencePatterns: languageJson.patterns.thinkingSentences.items,
     closingPatterns: languageJson.patterns.closings.items,
   };
-}
-
-function scheduleIdleTask({ task }: {
-  task: () => void,
-}): void {
-  const requestIdleCallback = globalThis.requestIdleCallback;
-
-  if (requestIdleCallback !== undefined) {
-    const idleCallback: Parameters<typeof requestIdleCallback>[0] = () => {
-      task();
-    };
-    requestIdleCallback(idleCallback);
-    return;
-  }
-
-  globalThis.setTimeout(task, 0);
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

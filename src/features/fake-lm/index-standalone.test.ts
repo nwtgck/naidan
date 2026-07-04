@@ -9,11 +9,11 @@ describe('fake LM standalone facade', () => {
     expect(fakeLmDebugModeAvailability.value).toBe('unavailable_in_standalone');
   });
 
-  it('does not provide a fake LM fetcher in standalone even when the persisted setting is enabled', () => {
-    expect(createFakeLmFetchForEndpoint({
+  it('does not provide a fake LM fetcher in standalone even when the persisted setting is enabled', async () => {
+    await expect(createFakeLmFetchForEndpoint({
       endpointUrl: FAKE_LM_ENDPOINT_URL,
       fakeLmDebugModeStatus: 'enabled',
-    })).toBeUndefined();
+    })).resolves.toBeUndefined();
   });
 
   it('still exposes the fake LM endpoint URL helper for disabled UI copy', () => {

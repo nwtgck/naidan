@@ -213,36 +213,35 @@ defineExpose({
   <Transition name="modal">
     <div
       v-if="show"
-      class="fixed inset-0 z-[100] flex items-center justify-center p-2 bg-black/60 backdrop-blur-sm focus:outline-none"
+      tw-class="fixed inset-0 z-[100] flex items-center justify-center p-2 bg-black/60 backdrop-blur-sm focus:outline-none"
       @click.self="handleClose"
       @keydown.esc="handleClose"
       tabindex="-1"
       data-testid="chat-inspector"
     >
-      <div class="bg-white dark:bg-gray-900 rounded-[24px] shadow-2xl max-w-7xl w-full h-[98vh] flex flex-col overflow-hidden border border-gray-100 dark:border-white/5 modal-content-zoom font-mono text-xs">
+      <div class="modal-content-zoom" tw-class="bg-white dark:bg-gray-900 rounded-[24px] shadow-2xl max-w-7xl w-full h-[98vh] flex flex-col overflow-hidden border border-gray-100 dark:border-white/5 font-mono text-xs">
         <!-- Header -->
-        <div class="px-6 py-4 flex justify-between items-center bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5 shrink-0">
-          <div class="flex items-center gap-3">
-            <div class="p-2 bg-indigo-500/10 rounded-xl">
-              <BugIcon class="w-5 h-5 text-indigo-500" />
+        <div tw-class="px-6 py-4 flex justify-between items-center bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5 shrink-0">
+          <div tw-class="flex items-center gap-3">
+            <div tw-class="p-2 bg-indigo-500/10 rounded-xl">
+              <BugIcon tw-class="w-5 h-5 text-indigo-500" />
             </div>
             <div>
-              <h3 class="text-base font-black text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ChatDebugInspector__chat_inspector() }}</h3>
-              <p class="text-[9px] text-gray-400 uppercase tracking-widest font-black">{{ lazyStrings.ChatDebugInspector__data_explorer() }}</p>
+              <h3 tw-class="text-base font-black text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.ChatDebugInspector__chat_inspector() }}</h3>
+              <p tw-class="text-[9px] text-gray-400 uppercase tracking-widest font-black">{{ lazyStrings.ChatDebugInspector__data_explorer() }}</p>
             </div>
           </div>
 
-          <div class="flex items-center gap-4">
+          <div tw-class="flex items-center gap-4">
             <!-- Mode Switcher -->
-            <div class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner">
+            <div tw-class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner">
               <button
                 v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: lazyStrings.ChatDebugInspector__active()}, {id: 'tree', icon: NetworkIcon, label: lazyStrings.ChatDebugInspector__tree()}, {id: 'raw', icon: FileCodeIcon, label: lazyStrings.ChatDebugInspector__full_json()}] as const)"
                 :key="m.id"
                 @click="mode = m.id"
-                class="px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider"
-                :class="mode === m.id ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'"
+                :tw-class="['px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider', mode === m.id ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200']"
               >
-                <component :is="m.icon" class="w-3 h-3" />
+                <component :is="m.icon" tw-class="w-3 h-3" />
                 <span>{{ m.label }}</span>
               </button>
             </div>
@@ -250,53 +249,50 @@ defineExpose({
             <!-- Fake LM Shortcut -->
             <button
               @click="handleEnableFakeLm"
-              class="px-3 py-2 rounded-xl border transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider"
-              :class="canEnableFakeLmForChat ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:scale-105 active:scale-95' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-300 dark:text-gray-600 cursor-not-allowed'"
+              :tw-class="['px-3 py-2 rounded-xl border transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider', canEnableFakeLmForChat ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:scale-105 active:scale-95' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-300 dark:text-gray-600 cursor-not-allowed']"
               :disabled="!canEnableFakeLmForChat"
               :title="fakeLmButtonTitle"
               data-testid="chat-inspector-enable-fake-lm"
             >
-              <BugIcon class="w-4 h-4" />
+              <BugIcon tw-class="w-4 h-4" />
               <span>{{ lazyStrings.ChatDebugInspector__fake_lm() }}</span>
               <span
                 v-if="fakeLmDebugModeStatus === 'enabled'"
-                class="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8px]"
+                tw-class="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8px]"
               >{{ lazyStrings.ChatDebugInspector__on() }}</span>
             </button>
 
             <!-- Global Highlighting Toggle -->
             <button
               @click="isHighlightEnabled = !isHighlightEnabled"
-              class="p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
-              :class="isHighlightEnabled ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
+              :tw-class="['p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95', isHighlightEnabled ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400']"
               :title="lazyStrings.ChatDebugInspector__toggle_highlighting()"
             >
-              <component :is="isHighlightEnabled ? HighlighterIcon : ZapOffIcon" class="w-4 h-4" />
+              <component :is="isHighlightEnabled ? HighlighterIcon : ZapOffIcon" tw-class="w-4 h-4" />
             </button>
 
             <!-- Content Collapse Toggle -->
             <button
               @click="isContentCollapsed = !isContentCollapsed"
-              class="p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
-              :class="isContentCollapsed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
+              :tw-class="['p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95', isContentCollapsed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400']"
               :title="lazyStrings.ChatDebugInspector__toggle_content_collapse()"
             >
-              <component :is="isContentCollapsed ? EyeOffIcon : EyeIcon" class="w-4 h-4" />
+              <component :is="isContentCollapsed ? EyeOffIcon : EyeIcon" tw-class="w-4 h-4" />
             </button>
 
-            <div class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
+            <div tw-class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
 
-            <button @click="handleClose" class="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-90">
-              <XIcon class="w-6 h-6" />
+            <button @click="handleClose" tw-class="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-90">
+              <XIcon tw-class="w-6 h-6" />
             </button>
           </div>
         </div>
 
         <!-- Content Area (Lazy) -->
-        <div class="flex-1 overflow-hidden bg-white dark:bg-gray-950 flex">
+        <div tw-class="flex-1 overflow-hidden bg-white dark:bg-gray-950 flex">
 
           <!-- Tab 1: Active Thread (Direct List) -->
-          <div v-if="mode === 'active'" class="flex-1 overflow-y-auto p-6 space-y-2 max-w-4xl mx-auto thin-scrollbar">
+          <div v-if="mode === 'active'" class="thin-scrollbar" tw-class="flex-1 overflow-y-auto p-6 space-y-2 max-w-4xl mx-auto">
             <ChatDebugTreeNode
               v-for="m in activeMessages"
               :key="idToRaw({ id: m.id })"
@@ -311,22 +307,22 @@ defineExpose({
           </div>
 
           <!-- Tab 2: Tree Structure (Split View) -->
-          <div v-else-if="mode === 'tree'" class="flex-1 flex overflow-hidden">
+          <div v-else-if="mode === 'tree'" tw-class="flex-1 flex overflow-hidden">
             <!-- Left: Visual Map -->
             <div
-              class="relative overflow-y-auto border-r border-gray-100 dark:border-white/5 thin-scrollbar bg-gray-50/10 dark:bg-white/[0.005] transition-all duration-300 ease-in-out"
-              :class="isTreeMapCollapsed ? 'w-12 p-2 overflow-x-hidden' : 'w-[45%] p-8'"
+              class="thin-scrollbar"
+              :tw-class="['relative overflow-y-auto border-r border-gray-100 dark:border-white/5 bg-gray-50/10 dark:bg-white/[0.005] transition-all duration-300 ease-in-out', isTreeMapCollapsed ? 'w-12 p-2 overflow-x-hidden' : 'w-[45%] p-8']"
             >
               <!-- Collapse Toggle -->
               <button
                 @click="isTreeMapCollapsed = !isTreeMapCollapsed"
-                class="absolute right-2 top-2 p-1.5 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-white dark:hover:bg-gray-800 transition-all z-20"
+                tw-class="absolute right-2 top-2 p-1.5 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-white dark:hover:bg-gray-800 transition-all z-20"
                 :title="isTreeMapCollapsed ? lazyStrings.ChatDebugInspector__expand_tree() : lazyStrings.ChatDebugInspector__collapse_tree()"
               >
-                <component :is="isTreeMapCollapsed ? ChevronRightIcon : ChevronLeftIcon" class="w-4 h-4" />
+                <component :is="isTreeMapCollapsed ? ChevronRightIcon : ChevronLeftIcon" tw-class="w-4 h-4" />
               </button>
 
-              <div v-if="!isTreeMapCollapsed && chat?.root?.items" class="relative" :class="chat.root.items.length > 1 ? 'ml-6' : ''">
+              <div v-if="!isTreeMapCollapsed && chat?.root?.items" :tw-class="['relative', chat.root.items.length > 1 ? 'ml-6' : '']">
                 <ChatDebugTreeNode
                   v-for="(node, index) in chat.root.items"
                   :key="idToRaw({ id: node.id })"
@@ -341,21 +337,21 @@ defineExpose({
                   @select-node="handleSelectNode({ node: $event })"
                 />
               </div>
-              <div v-else class="h-full flex flex-col items-center pt-12 text-gray-300">
-                <NetworkIcon class="w-4 h-4 opacity-30" />
+              <div v-else tw-class="h-full flex flex-col items-center pt-12 text-gray-300">
+                <NetworkIcon tw-class="w-4 h-4 opacity-30" />
               </div>
             </div>
 
             <!-- Right: Detail Panel -->
-            <div class="flex-1 overflow-y-auto p-8 thin-scrollbar">
-              <div v-if="selectedPath.length > 0" class="space-y-4">
-                <div v-if="selectedPath.length > 1" class="mb-8 border-b border-gray-100 dark:border-white/5 pb-4 flex justify-between items-end">
-                  <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">{{ lazyStrings.ChatDebugInspector__context_path() }}</span>
+            <div class="thin-scrollbar" tw-class="flex-1 overflow-y-auto p-8">
+              <div v-if="selectedPath.length > 0" tw-class="space-y-4">
+                <div v-if="selectedPath.length > 1" tw-class="mb-8 border-b border-gray-100 dark:border-white/5 pb-4 flex justify-between items-end">
+                  <span tw-class="text-[9px] font-black uppercase tracking-widest text-gray-400">{{ lazyStrings.ChatDebugInspector__context_path() }}</span>
                   <button
                     @click="handleOpenMessage({ messageId: selectedNode!.id })"
-                    class="flex items-center gap-2 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+                    tw-class="flex items-center gap-2 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
                   >
-                    <CornerUpRightIcon class="w-3 h-3" />
+                    <CornerUpRightIcon tw-class="w-3 h-3" />
                     <span>{{ lazyStrings.ChatDebugInspector__open_at_this_message() }}</span>
                   </button>
                 </div>
@@ -371,19 +367,19 @@ defineExpose({
                   @preview-attachment="handlePreviewAttachment({ binaryObjectId: $event })"
                 />
               </div>
-              <div v-else class="h-full flex flex-col items-center justify-center text-gray-400 opacity-30">
-                <NetworkIcon class="w-16 h-16 mb-4 stroke-[0.5px]" />
-                <p class="text-[10px] font-black uppercase tracking-[0.2em]">{{ lazyStrings.ChatDebugInspector__select_a_node_to_inspect() }}</p>
+              <div v-else tw-class="h-full flex flex-col items-center justify-center text-gray-400 opacity-30">
+                <NetworkIcon tw-class="w-16 h-16 mb-4 stroke-[0.5px]" />
+                <p tw-class="text-[10px] font-black uppercase tracking-[0.2em]">{{ lazyStrings.ChatDebugInspector__select_a_node_to_inspect() }}</p>
               </div>
             </div>
           </div>
 
           <!-- Tab 3: Full JSON -->
-          <div v-else-if="mode === 'raw'" class="flex-1 p-6 overflow-hidden">
+          <div v-else-if="mode === 'raw'" tw-class="flex-1 p-6 overflow-hidden">
             <AllowedHtmlView
               as="pre"
               :html="rawJsonOutput"
-              class="bg-gray-50/50 dark:bg-black/40 p-6 rounded-2xl border border-gray-100 dark:border-white/5 text-[11px] overflow-auto h-full text-gray-700 dark:text-gray-300 leading-relaxed font-mono thin-scrollbar"
+              class="thin-scrollbar" tw-class="bg-gray-50/50 dark:bg-black/40 p-6 rounded-2xl border border-gray-100 dark:border-white/5 text-[11px] overflow-auto h-full text-gray-700 dark:text-gray-300 leading-relaxed font-mono"
             />
           </div>
 

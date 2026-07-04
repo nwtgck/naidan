@@ -192,14 +192,14 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400" data-settings-main>
+  <div class="animate-in fade-in slide-in-from-bottom-2" tw-class="relative space-y-6 duration-400" data-settings-main>
     <!-- Header -->
-    <div class="pb-3 border-b border-gray-100 dark:border-gray-800 space-y-3">
-      <div class="flex items-center gap-2">
-        <FolderIcon class="w-5 h-5 text-blue-500" />
+    <div tw-class="pb-3 border-b border-gray-100 dark:border-gray-800 space-y-3">
+      <div tw-class="flex items-center gap-2">
+        <FolderIcon tw-class="w-5 h-5 text-blue-500" />
         <div>
-          <h2 class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">{{ lazyStrings.volumes__folders() }}</h2>
-          <p class="text-[10px] text-gray-400 dark:text-gray-500 font-medium leading-tight">{{ lazyStrings.volumes__give_ai_access_to_files_in_your_folders() }}</p>
+          <h2 tw-class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">{{ lazyStrings.volumes__folders() }}</h2>
+          <p tw-class="text-[10px] text-gray-400 dark:text-gray-500 font-medium leading-tight">{{ lazyStrings.volumes__give_ai_access_to_files_in_your_folders() }}</p>
         </div>
       </div>
       <!-- Add Folder / Copy Folder buttons + progress bar + drag-drop -->
@@ -211,14 +211,14 @@ defineExpose({
       />
     </div>
 
-    <div v-if="isLoading && volumes.length === 0" class="flex justify-center p-12">
-      <Loader2Icon class="w-6 h-6 animate-spin text-gray-400" />
+    <div v-if="isLoading && volumes.length === 0" tw-class="flex justify-center p-12">
+      <Loader2Icon tw-class="w-6 h-6 animate-spin text-gray-400" />
     </div>
 
-    <div v-else-if="volumes.length === 0" class="text-center p-16 bg-gray-50/50 dark:bg-gray-800/30 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
-      <FolderInputIcon class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-      <p class="text-sm font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.volumes__no_folders_configured() }}</p>
-      <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 max-w-[240px] mx-auto">
+    <div v-else-if="volumes.length === 0" tw-class="text-center p-16 bg-gray-50/50 dark:bg-gray-800/30 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
+      <FolderInputIcon tw-class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+      <p tw-class="text-sm font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.volumes__no_folders_configured() }}</p>
+      <p tw-class="text-xs text-gray-400 dark:text-gray-500 mt-1 max-w-[240px] mx-auto">
         {{ lazyStrings.volumes__add_or_copy_folder_into_browser_storage() }}
       </p>
     </div>
