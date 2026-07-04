@@ -1,4 +1,15 @@
-const tailwindClassAttributeDefinitions = Object.freeze([
+export type TailwindClassAttributeKind =
+  | 'sortable-class'
+  | 'vue-class'
+  | 'vue-transition-class';
+
+export type TailwindClassAttributeDefinition = Readonly<{
+  source: string;
+  target: string;
+  kind: TailwindClassAttributeKind;
+}>;
+
+const tailwindClassAttributeDefinitions: readonly TailwindClassAttributeDefinition[] = Object.freeze([
   Object.freeze({ source: 'tw-class', target: 'class', kind: 'vue-class' }),
   Object.freeze({ source: 'tw-enter-from-class', target: 'enter-from-class', kind: 'vue-transition-class' }),
   Object.freeze({ source: 'tw-enter-active-class', target: 'enter-active-class', kind: 'vue-transition-class' }),
@@ -15,6 +26,6 @@ const tailwindClassAttributeDefinitions = Object.freeze([
   Object.freeze({ source: 'tw-fallback-class', target: 'fallback-class', kind: 'sortable-class' }),
 ]);
 
-export const tailwindClassAttributeBySource = new Map(
+export const tailwindClassAttributeBySource = new Map<string, TailwindClassAttributeDefinition>(
   tailwindClassAttributeDefinitions.map((definition) => [definition.source, definition]),
 );

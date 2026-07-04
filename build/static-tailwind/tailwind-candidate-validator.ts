@@ -1,32 +1,71 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { createRequire } from 'node:module';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
 import { __unstable__loadDesignSystem, compile } from 'tailwindcss';
-import { isTailwindMarkerCandidate } from './marker-candidates.mjs';
-import { postprocessStaticTailwindCss } from './css-postprocessor.mjs';
+
+import { postprocessStaticTailwindCss } from './css-postprocessor';
+import { isTailwindMarkerCandidate } from './marker-candidates';
+import type { TailwindCandidateOccurrence } from './tw-class-core';
 
 const require = createRequire(import.meta.url);
 
-function resolveDependency({ id, base, stylesheet }) {
+type TailwindCompileOptions = NonNullable<Parameters<typeof compile>[1]>;
+type LoadedModule = Awaited<ReturnType<NonNullable<TailwindCompileOptions['loadModule']>>>;
+type LoadedStylesheet = Awaited<ReturnType<NonNullable<TailwindCompileOptions['loadStylesheet']>>>;
+
+export type TailwindCandidateClassification = {
+  candidates: string[];
+  validCandidates: string[];
+  generatedCandidates: string[];
+  markerCandidates: string[];
+  invalidCandidates: string[];
+  generatedCss: (string | null)[];
+};
+
+export type TailwindCandidateValidator = {
+  tailwindVersion: string;
+  cssEntryPath: string;
+  classify(options: { candidates: string[] }): TailwindCandidateClassification;
+  getClassOrder(options: { candidates: string[] }): Map<string, bigint | null>;
+  validate(options: { occurrences: TailwindCandidateOccurrence[] }): {
+    candidates: string[];
+    invalidCandidates: string[];
+    generatedCssCount: number;
+    markerCandidateCount: number;
+  };
+};
+
+function resolveDependency({ id, base, stylesheet }: {
+  id: string;
+  base: string;
+  stylesheet: boolean;
+}): string {
   if (path.isAbsolute(id)) return id;
   if (id.startsWith('.')) return path.resolve(base, id);
   const request = stylesheet && id === 'tailwindcss' ? 'tailwindcss/index.css' : id;
   return require.resolve(request, { paths: [base] });
 }
 
-async function loadModule({ id, base }) {
+async function loadModule({ id, base }: {
+  id: string;
+  base: string;
+}): Promise<LoadedModule> {
   const resolvedPath = resolveDependency({ id, base, stylesheet: false });
   const modifiedAt = fs.statSync(resolvedPath).mtimeMs;
-  const namespace = await import(`${pathToFileURL(resolvedPath).href}?mtime=${modifiedAt}`);
+  const namespace: Record<string, unknown> = await import(`${pathToFileURL(resolvedPath).href}?mtime=${modifiedAt}`);
   return {
     path: resolvedPath,
     base: path.dirname(resolvedPath),
-    module: namespace.default ?? namespace,
+    module: (namespace.default ?? namespace) as LoadedModule['module'],
   };
 }
 
-function loadStylesheet({ id, base }) {
+function loadStylesheet({ id, base }: {
+  id: string;
+  base: string;
+}): LoadedStylesheet {
   const resolvedPath = resolveDependency({ id, base, stylesheet: true });
   return {
     path: resolvedPath,
@@ -35,12 +74,23 @@ function loadStylesheet({ id, base }) {
   };
 }
 
-function readTailwindVersion() {
+function readTailwindVersion(): string {
   const packageJsonPath = require.resolve('tailwindcss/package.json');
-  return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')).version;
+  const packageJson: unknown = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  if (
+    typeof packageJson !== 'object'
+    || packageJson === null
+    || !('version' in packageJson)
+    || typeof packageJson.version !== 'string'
+  ) {
+    throw new Error('[tw-class] Tailwind package.json has no string version.');
+  }
+  return packageJson.version;
 }
 
-function assertTailwindVersion({ expectedTailwindVersion }) {
+function assertTailwindVersion({ expectedTailwindVersion }: {
+  expectedTailwindVersion: string | undefined;
+}): string {
   const installedTailwindVersion = readTailwindVersion();
   if (expectedTailwindVersion !== undefined && installedTailwindVersion !== expectedTailwindVersion) {
     throw new Error(
@@ -51,7 +101,9 @@ function assertTailwindVersion({ expectedTailwindVersion }) {
   return installedTailwindVersion;
 }
 
-function compileOptions({ absoluteCssEntryPath }) {
+function compileOptions({ absoluteCssEntryPath }: {
+  absoluteCssEntryPath: string;
+}): TailwindCompileOptions {
   return {
     base: path.dirname(absoluteCssEntryPath),
     from: absoluteCssEntryPath,
@@ -64,7 +116,11 @@ export async function compileTailwindCss({
   cssEntryPath,
   candidates,
   expectedTailwindVersion,
-}) {
+}: {
+  cssEntryPath: string;
+  candidates: string[];
+  expectedTailwindVersion: string | undefined;
+}): Promise<{ css: string; tailwindVersion: string }> {
   const installedTailwindVersion = assertTailwindVersion({ expectedTailwindVersion });
   if (typeof compile !== 'function') throw new Error('[tw-class] Tailwind compile() is unavailable.');
   const absoluteCssEntryPath = path.resolve(cssEntryPath);
@@ -82,7 +138,11 @@ export async function createTailwindCandidateValidator({
   projectRoot,
   cssEntryPath,
   expectedTailwindVersion,
-}) {
+}: {
+  projectRoot: string;
+  cssEntryPath: string;
+  expectedTailwindVersion: string | undefined;
+}): Promise<TailwindCandidateValidator> {
   const absoluteProjectRoot = path.resolve(projectRoot);
   if (!fs.existsSync(absoluteProjectRoot)) {
     throw new Error(`[tw-class] Project root does not exist: ${absoluteProjectRoot}`);
@@ -92,7 +152,6 @@ export async function createTailwindCandidateValidator({
   if (typeof __unstable__loadDesignSystem !== 'function') {
     throw new Error('[tw-class] Tailwind __unstable__loadDesignSystem() is unavailable.');
   }
-
   const absoluteCssEntryPath = path.resolve(cssEntryPath);
   const css = fs.readFileSync(absoluteCssEntryPath, 'utf8');
   const designSystem = await __unstable__loadDesignSystem(
@@ -100,12 +159,14 @@ export async function createTailwindCandidateValidator({
     compileOptions({ absoluteCssEntryPath }),
   );
 
-  function classify({ candidates }) {
+  function classify({ candidates }: {
+    candidates: string[];
+  }): TailwindCandidateClassification {
     const uniqueCandidates = [...new Set(candidates)].sort();
-    const generatedCss = designSystem.candidatesToCss(uniqueCandidates).map((css) => (
-      css === null ? null : postprocessStaticTailwindCss({ css })
+    const generatedCss = designSystem.candidatesToCss(uniqueCandidates).map((candidateCss) => (
+      candidateCss === null ? null : postprocessStaticTailwindCss({ css: candidateCss })
     ));
-    const generatedCandidates = uniqueCandidates.filter((candidate, index) => generatedCss[index] !== null);
+    const generatedCandidates = uniqueCandidates.filter((_candidate, index) => generatedCss[index] !== null);
     const markerCandidates = uniqueCandidates.filter((candidate, index) => (
       generatedCss[index] === null && isTailwindMarkerCandidate({ candidate })
     ));

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { compile } from '@vue/compiler-dom';
 import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import {
   collectTwCandidateOccurrencesFromVueSource,
@@ -8,8 +9,9 @@ import {
   parseStaticTwClassExpression,
   transformTwCallsInModule,
   transformTwCallsInVueSource,
-} from './tw-class-core.mjs';
-import { createTailwindCandidateValidator } from './tailwind-candidate-validator.mjs';
+} from './tw-class-core';
+import { createTailwindCandidateValidator } from './tailwind-candidate-validator';
+import { scriptKindForFilename } from './typescript-ast-utils';
 
 function compileTemplate(template: string): string {
   return compile(template, {
@@ -186,6 +188,10 @@ describe('Vue candidate collection', () => {
 });
 
 describe('tw macro', () => {
+  it('keeps .mjs files on the JavaScript parser after the TypeScript migration', () => {
+    expect(scriptKindForFilename({ filename: 'fixture.mjs' })).toBe(ts.ScriptKind.JS);
+  });
+
   it('replaces a literal call and removes all compile-time macro imports', () => {
     const result = transformTwCallsInModule({
       source: `\

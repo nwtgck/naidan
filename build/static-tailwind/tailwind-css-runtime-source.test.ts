@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createTailwindCssRegistrationModuleSource,
   createTailwindCssRegistry,
-} from './tailwind-css-runtime-source.mjs';
+} from './tailwind-css-runtime-source';
 
 function createFixture() {
   const dom = new JSDOM('<!doctype html><html><head><style data-component-style>.component { color: red; }</style></head><body></body></html>');

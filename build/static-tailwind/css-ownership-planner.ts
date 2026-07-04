@@ -3,22 +3,135 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
-import postcss from 'postcss';
-import { assertStaticTailwindCssHasNoRelativeUrls } from './css-postprocessor.mjs';
+import postcss, {
+  type AtRule,
+  type ChildNode,
+  type Container,
+  type Node,
+  type Rule,
+} from 'postcss';
+import { assertStaticTailwindCssHasNoRelativeUrls } from './css-postprocessor';
 import {
   compileTailwindCss,
   createTailwindCandidateValidator,
-} from './tailwind-candidate-validator.mjs';
+} from './tailwind-candidate-validator';
 
-export function createCssOwnerKey({ owners }) {
+export type CandidateGroup = {
+  id: string;
+  filename: string;
+  line: number;
+  column: number;
+  sourceKind: string;
+  sourceAttributes?: string[];
+  candidates: string[];
+};
+
+export type CssOwnershipAnalysis = {
+  candidateGroups: CandidateGroup[];
+  candidateOwners: Map<string, Set<string>>;
+};
+
+export type CssOwnershipCompression = {
+  originalLazyGroupCount: number;
+  retainedLazyGroupCount: number;
+  promotedCandidateCount?: number;
+  promotedAtomCount?: number;
+  retainedOwnerKeys: string[];
+};
+
+export type CssByteMetrics = {
+  raw: number;
+  gzip: number;
+};
+
+export type CssOwnershipMetrics = {
+  baseline: CssByteMetrics;
+  uniqueDelta: CssByteMetrics;
+  ordering: {
+    runtimeFragmentCount: number;
+    runtimeMetadataRaw: number;
+    runtimeMetadataGzip: number;
+  };
+  placement: {
+    globalAtomCount: number;
+    sourceOwnedAtomCount: number;
+    initialSupportAtomCount: number;
+  };
+  emitted: {
+    groupCount: number;
+    raw: number;
+    gzip: number;
+    duplicateAtomCount: number;
+    duplicateRaw: number;
+    duplicateRatio: number;
+    structuralOverheadRaw: number;
+  };
+};
+
+export type CssRuntimeFragment = {
+  order: number;
+  css: string;
+};
+
+export type CssOwnershipPlan = {
+  outputMode: 'single' | 'split';
+  candidates: string[];
+  candidateOwners: Map<string, Set<string>>;
+  ownerCandidateGroups: Map<string, string[]>;
+  baselineCss: string;
+  entryCss: string;
+  globalCss: string;
+  globalDelta: string;
+  cssGroups: Map<string, string>;
+  runtimeFragmentsByOwner: Map<string, CssRuntimeFragment[]>;
+  conflicts: unknown[];
+  compression: {
+    maxSplitCssGroups: number | undefined;
+    candidates: CssOwnershipCompression;
+    atoms: CssOwnershipCompression;
+  };
+  metrics: CssOwnershipMetrics;
+  tailwindVersion: string;
+};
+
+type CssWrapper =
+  | { type: 'atrule'; name: string; params: string }
+  | { type: 'rule'; selector: string };
+
+type CssAtom = {
+  fingerprint: string;
+  css: string;
+  nodeCss: string;
+  wrappers: CssWrapper[];
+  wrapperKey: string;
+};
+
+type CanonicalCssAtom = CssAtom & {
+  canonicalOrder: number;
+};
+
+type CssAtomRun = {
+  wrapperKey: string;
+  wrappers: CssWrapper[];
+  nodes: string[];
+};
+
+type LazyGroup = {
+  key: string;
+  bytes: number;
+  itemCount: number;
+};
+
+
+export function createCssOwnerKey({ owners }: { owners: string[] }): string {
   const normalized = owners.includes('initial') ? ['initial'] : [...new Set(owners)].sort();
   return normalized.length === 1 ? normalized[0] : JSON.stringify(normalized);
 }
 
-export function parseCssOwnerKey({ key }) {
+export function parseCssOwnerKey({ key }: { key: string }): string[] {
   if (key === '') return [];
   if (!key.startsWith('[')) return [key];
-  let owners;
+  let owners: unknown;
   try {
     owners = JSON.parse(key);
   } catch (error) {
@@ -30,17 +143,27 @@ export function parseCssOwnerKey({ key }) {
   return owners;
 }
 
-function nodeHeader({ node }) {
-  if (node.type === 'rule') return `rule:${node.selector}`;
-  if (node.type === 'atrule') return `atrule:${node.name}:${node.params}`;
-  if (node.type === 'decl') return `decl:${node.prop}:${node.value}:${node.important}`;
-  if (node.type === 'comment') return `comment:${node.text}`;
-  return `${node.type}:${node.toString()}`;
+function nodeHeader({ node }: { node: ChildNode }): string {
+  switch (node.type) {
+  case 'rule':
+    return `rule:${node.selector}`;
+  case 'atrule':
+    return `atrule:${node.name}:${node.params}`;
+  case 'decl':
+    return `decl:${node.prop}:${node.value}:${node.important}`;
+  case 'comment':
+    return `comment:${node.text}`;
+  default: {
+    const exhaustive: never = node;
+    const unexpectedNode = exhaustive as Node;
+    return `${unexpectedNode.type}:${unexpectedNode.toString()}`;
+  }
+  }
 }
 
-function subtractContainer({ target, baseline }) {
+function subtractContainer({ target, baseline }: { target: Container; baseline: Container }): void {
   const baselineNodes = baseline.nodes ?? [];
-  const used = new Set();
+  const used = new Set<number>();
   for (const node of [...(target.nodes ?? [])]) {
     const header = nodeHeader({ node });
     let matchIndex = -1;
@@ -63,31 +186,55 @@ function subtractContainer({ target, baseline }) {
   }
 }
 
-function subtractCss({ css, baselineCss }) {
+function subtractCss({ css, baselineCss }: { css: string; baselineCss: string }): string {
   const target = postcss.parse(css);
   const baseline = postcss.parse(baselineCss);
   subtractContainer({ target, baseline });
   return target.toString();
 }
 
-function wrapAtom({ wrappers, nodeCss }) {
+function wrapAtom({ wrappers, nodeCss }: { wrappers: CssWrapper[]; nodeCss: string }): string {
   let result = nodeCss;
   for (const wrapper of [...wrappers].reverse()) {
-    if (wrapper.type === 'atrule') result = `@${wrapper.name} ${wrapper.params} {\n${result}\n}`;
-    else result = `${wrapper.selector} {\n${result}\n}`;
+    switch (wrapper.type) {
+    case 'atrule':
+      result = `@${wrapper.name} ${wrapper.params} {\n${result}\n}`;
+      break;
+    case 'rule':
+      result = `${wrapper.selector} {\n${result}\n}`;
+      break;
+    default: {
+      const _ex: never = wrapper;
+      throw new Error(`Unhandled CSS wrapper: ${String(_ex)}`);
+    }
+    }
   }
   return result;
 }
 
-function flattenCssAtoms({ css }) {
+function flattenCssAtoms({ css }: { css: string }): CssAtom[] {
   const root = postcss.parse(css);
-  const atoms = [];
-  function append({ wrappers, node }) {
-    const nodeCss = node.type === 'atrule' && !Array.isArray(node.nodes)
-      ? `@${node.name}${node.params === '' ? '' : ` ${node.params}`};`
-      : node.type === 'decl'
-        ? `${node.toString()};`
+  const atoms: CssAtom[] = [];
+  function append({ wrappers, node }: { wrappers: CssWrapper[]; node: ChildNode }): void {
+    let nodeCss: string;
+    switch (node.type) {
+    case 'atrule':
+      nodeCss = !Array.isArray(node.nodes)
+        ? `@${node.name}${node.params === '' ? '' : ` ${node.params}`};`
         : node.toString();
+      break;
+    case 'decl':
+      nodeCss = `${node.toString()};`;
+      break;
+    case 'comment':
+    case 'rule':
+      nodeCss = node.toString();
+      break;
+    default: {
+      const _ex: never = node;
+      throw new Error(`Unhandled CSS node: ${String(_ex)}`);
+    }
+    }
     const cssText = wrapAtom({ wrappers, nodeCss });
     atoms.push({
       fingerprint: cssText,
@@ -99,7 +246,7 @@ function flattenCssAtoms({ css }) {
   }
   for (const node of root.nodes ?? []) {
     if (node.type === 'atrule' && node.name === 'layer' && Array.isArray(node.nodes)) {
-      const layerWrapper = [{ type: 'atrule', name: 'layer', params: node.params }];
+      const layerWrapper: CssWrapper[] = [{ type: 'atrule', name: 'layer', params: node.params }];
       for (const child of node.nodes) {
         if (node.params === 'theme' && child.type === 'rule' && Array.isArray(child.nodes)) {
           for (const declaration of child.nodes) {
@@ -114,10 +261,10 @@ function flattenCssAtoms({ css }) {
   return atoms;
 }
 
-function serializeCssAtoms({ atoms }) {
-  const output = [];
-  let current;
-  function flush() {
+function serializeCssAtoms({ atoms }: { atoms: CssAtom[] }): string {
+  const output: string[] = [];
+  let current: CssAtomRun | undefined;
+  function flush(): void {
     if (current === undefined) return;
     output.push(wrapAtom({ wrappers: current.wrappers, nodeCss: current.nodes.join('\n') }));
     current = undefined;
@@ -132,16 +279,24 @@ function serializeCssAtoms({ atoms }) {
   return output.length === 0 ? '' : `${output.join('\n')}\n`;
 }
 
-function cssOwnershipKeys({ css }) {
-  if (css === null || css.trim() === '') return new Set();
-  const keys = new Set();
+function isAtRuleNode(node: Node): node is AtRule {
+  return node.type === 'atrule';
+}
+
+function isRuleNode(node: Node): node is Rule {
+  return node.type === 'rule';
+}
+
+function cssOwnershipKeys({ css }: { css: string | null | undefined }): Set<string> {
+  if (css === null || css === undefined || css.trim() === '') return new Set();
+  const keys = new Set<string>();
   const root = postcss.parse(css);
   root.walkRules((rule) => {
-    const selectorPath = [];
-    let current = rule;
+    const selectorPath: string[] = [];
+    let current: Node | undefined = rule;
     while (current !== undefined && current.type !== 'root') {
-      if (current.type === 'atrule' && current.name === 'keyframes') return;
-      if (current.type === 'rule') selectorPath.unshift(current.selector);
+      if (isAtRuleNode(current) && current.name === 'keyframes') return;
+      if (isRuleNode(current)) selectorPath.unshift(current.selector);
       current = current.parent;
     }
     keys.add(`selector-path:${selectorPath.join('\0')}`);
@@ -152,13 +307,13 @@ function cssOwnershipKeys({ css }) {
   return keys;
 }
 
-function createOwnershipHints({ candidates, candidateCss, candidateOwners }) {
-  const hints = new Map();
+function createOwnershipHints({ candidates, candidateCss, candidateOwners }: { candidates: string[]; candidateCss: Map<string, string | null>; candidateOwners: Map<string, Set<string>> }): Map<string, Set<string>> {
+  const hints = new Map<string, Set<string>>();
   for (const candidate of candidates) {
     const owners = candidateOwners.get(candidate);
     if (owners === undefined) continue;
     for (const key of cssOwnershipKeys({ css: candidateCss.get(candidate) })) {
-      const values = hints.get(key) ?? new Set();
+      const values = hints.get(key) ?? new Set<string>();
       owners.forEach((owner) => values.add(owner));
       hints.set(key, values);
     }
@@ -166,8 +321,8 @@ function createOwnershipHints({ candidates, candidateCss, candidateOwners }) {
   return hints;
 }
 
-function atomOwners({ atom, ownershipHints }) {
-  const owners = new Set();
+function atomOwners({ atom, ownershipHints }: { atom: CanonicalCssAtom; ownershipHints: Map<string, Set<string>> }): { owners: Set<string>; sourceOwned: boolean } {
+  const owners = new Set<string>();
   for (const key of cssOwnershipKeys({ css: atom.nodeCss })) {
     ownershipHints.get(key)?.forEach((owner) => owners.add(owner));
   }
@@ -176,20 +331,20 @@ function atomOwners({ atom, ownershipHints }) {
     : { owners, sourceOwned: true };
 }
 
-function annotateCanonicalAtoms({ atoms }) {
+function annotateCanonicalAtoms({ atoms }: { atoms: CssAtom[] }): CanonicalCssAtom[] {
   return atoms.map((atom, canonicalOrder) => ({
     ...atom,
     canonicalOrder,
   }));
 }
 
-function fingerprintCounts({ atoms }) {
-  const counts = new Map();
+function fingerprintCounts({ atoms }: { atoms: CssAtom[] }): Map<string, number> {
+  const counts = new Map<string, number>();
   for (const atom of atoms) counts.set(atom.fingerprint, (counts.get(atom.fingerprint) ?? 0) + 1);
   return counts;
 }
 
-function consumeFingerprint({ counts, fingerprint }) {
+function consumeFingerprint({ counts, fingerprint }: { counts: Map<string, number>; fingerprint: string }): boolean {
   const count = counts.get(fingerprint) ?? 0;
   if (count === 0) return false;
   if (count === 1) counts.delete(fingerprint);
@@ -197,12 +352,13 @@ function consumeFingerprint({ counts, fingerprint }) {
   return true;
 }
 
-function createOrderedFragments({ atoms }) {
+function createOrderedFragments({ atoms }: { atoms: CanonicalCssAtom[] }): CssRuntimeFragment[] {
   const ordered = [...atoms].sort((left, right) => left.canonicalOrder - right.canonicalOrder);
-  const runs = [];
+  const runs: { order: number; atoms: CanonicalCssAtom[] }[] = [];
   for (const atom of ordered) {
     const previous = runs.at(-1);
-    if (previous === undefined || previous.atoms.at(-1)?.canonicalOrder + 1 !== atom.canonicalOrder) {
+    const previousOrder = previous?.atoms.at(-1)?.canonicalOrder;
+    if (previous === undefined || previousOrder === undefined || previousOrder + 1 !== atom.canonicalOrder) {
       runs.push({ order: atom.canonicalOrder, atoms: [atom] });
     } else previous.atoms.push(atom);
   }
@@ -212,7 +368,7 @@ function createOrderedFragments({ atoms }) {
   }));
 }
 
-function assertOrderedFragmentsReconstructGlobalCss({ globalAtoms, fragmentsByOwner }) {
+function assertOrderedFragmentsReconstructGlobalCss({ globalAtoms, fragmentsByOwner }: { globalAtoms: CanonicalCssAtom[]; fragmentsByOwner: Map<string, CssRuntimeFragment[]> }): void {
   const fragments = [...fragmentsByOwner.values()]
     .flat()
     .sort((left, right) => left.order - right.order);
@@ -230,11 +386,11 @@ function assertOrderedFragmentsReconstructGlobalCss({ globalAtoms, fragmentsByOw
   }
 }
 
-function bytes({ css }) {
+function bytes({ css }: { css: string }): CssByteMetrics {
   return { raw: Buffer.byteLength(css), gzip: gzipSync(css).length };
 }
 
-function assertAnalysisIntegrity({ analysis }) {
+function assertAnalysisIntegrity({ analysis }: { analysis: CssOwnershipAnalysis }): void {
   const occurrenceCandidates = new Set(
     analysis.candidateGroups.flatMap((group) => group.candidates),
   );
@@ -268,8 +424,8 @@ function assertAnalysisIntegrity({ analysis }) {
   throw new Error(`[tw-class] Invalid source ownership analysis: ${details.join('; ')}`);
 }
 
-function groupCandidatesByOwner({ candidateOwners }) {
-  const result = new Map();
+function groupCandidatesByOwner({ candidateOwners }: { candidateOwners: Map<string, Set<string>> }): Map<string, string[]> {
+  const result = new Map<string, string[]>();
   for (const [candidate, owners] of candidateOwners) {
     const key = createCssOwnerKey({ owners: [...owners] });
     const candidates = result.get(key) ?? [];
@@ -280,7 +436,7 @@ function groupCandidatesByOwner({ candidateOwners }) {
   return result;
 }
 
-function lazyGroupPriority({ left, right }) {
+function lazyGroupPriority({ left, right }: { left: LazyGroup; right: LazyGroup }): number {
   if (left.bytes !== right.bytes) return right.bytes - left.bytes;
   if (left.itemCount !== right.itemCount) return right.itemCount - left.itemCount;
   const leftSingleOwner = parseCssOwnerKey({ key: left.key }).length === 1;
@@ -289,7 +445,7 @@ function lazyGroupPriority({ left, right }) {
   return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
 }
 
-function compressAtomGroups({ atomGroups, maxSplitCssGroups }) {
+function compressAtomGroups({ atomGroups, maxSplitCssGroups }: { atomGroups: Map<string, CanonicalCssAtom[]>; maxSplitCssGroups: number }): CssOwnershipCompression {
   const lazyGroups = [...atomGroups]
     .filter(([key]) => key !== 'initial')
     .map(([key, atoms]) => ({
@@ -324,7 +480,14 @@ export async function createCssOwnershipPlan({
   analysis,
   outputMode,
   maxSplitCssGroups,
-}) {
+}: {
+  projectRoot: string;
+  cssEntryPath: string;
+  expectedTailwindVersion: string | undefined;
+  analysis: CssOwnershipAnalysis;
+  outputMode: 'single' | 'split';
+  maxSplitCssGroups: number | undefined;
+}): Promise<CssOwnershipPlan> {
   if (outputMode !== 'single' && outputMode !== 'split') {
     throw new Error(`[tw-class] Unknown CSS output mode: ${String(outputMode)}`);
   }
@@ -351,7 +514,8 @@ export async function createCssOwnershipPlan({
     ));
     throw new Error(`[tw-class] ${details.join('\n[tw-class] ')}`);
   }
-  if (outputMode === 'single') {
+  switch (outputMode) {
+  case 'single': {
     const sourceOwnerGroups = groupCandidatesByOwner({ candidateOwners: analysis.candidateOwners });
     const originalLazyOwnerKeys = [...sourceOwnerGroups.keys()]
       .filter((key) => key !== 'initial')
@@ -426,9 +590,16 @@ export async function createCssOwnershipPlan({
       tailwindVersion: validator.tailwindVersion,
     };
   }
+  case 'split':
+    break;
+  default: {
+    const _ex: never = outputMode;
+    throw new Error(`Unhandled CSS output mode: ${_ex}`);
+  }
+  }
   const candidateCss = new Map(candidates.map((candidate, index) => [candidate, classification.generatedCss[index]]));
   const candidateOwners = new Map([...analysis.candidateOwners].map(([candidate, owners]) => [candidate, new Set(owners)]));
-  const conflicts = [];
+  const conflicts: unknown[] = [];
   const candidateOwnerKeysBeforeCompression = [...groupCandidatesByOwner({ candidateOwners }).keys()]
     .filter((key) => key !== 'initial')
     .sort();
@@ -447,7 +618,7 @@ export async function createCssOwnershipPlan({
   const globalAtoms = annotateCanonicalAtoms({ atoms: flattenCssAtoms({ css: globalCss }) });
   const baselineFingerprints = fingerprintCounts({ atoms: flattenCssAtoms({ css: baseline.css }) });
   const ownershipHints = createOwnershipHints({ candidates, candidateCss, candidateOwners });
-  const atomGroups = new Map();
+  const atomGroups = new Map<string, CanonicalCssAtom[]>();
   let sourceOwnedAtomCount = 0;
   let initialSupportAtomCount = 0;
   for (const atom of globalAtoms) {
@@ -476,8 +647,8 @@ export async function createCssOwnershipPlan({
       retainedOwnerKeys: atomOwnerKeysBeforeCompression,
     }
     : compressAtomGroups({ atomGroups, maxSplitCssGroups });
-  const runtimeFragmentsByOwner = new Map();
-  const cssGroups = new Map();
+  const runtimeFragmentsByOwner = new Map<string, CssRuntimeFragment[]>();
+  const cssGroups = new Map<string, string>();
   for (const [key, atoms] of atomGroups) {
     const fragments = createOrderedFragments({ atoms });
     runtimeFragmentsByOwner.set(key, fragments);
@@ -495,7 +666,7 @@ export async function createCssOwnershipPlan({
     fragments.map(({ order }) => order),
   ]));
   const structuralOverheadRaw = Math.max(0, emittedRaw - Buffer.byteLength(serializedGlobalCss));
-  const metrics = {
+  const metrics: CssOwnershipMetrics = {
     baseline: bytes({ css: baseline.css }),
     uniqueDelta,
     ordering: {
@@ -542,7 +713,7 @@ export async function createCssOwnershipPlan({
 
 }
 
-export function serializeCssOwnershipPlan({ plan }) {
+export function serializeCssOwnershipPlan({ plan }: { plan: CssOwnershipPlan }): unknown {
   return {
     outputMode: plan.outputMode,
     tailwindVersion: plan.tailwindVersion,
@@ -563,12 +734,12 @@ export function serializeCssOwnershipPlan({ plan }) {
   };
 }
 
-export function writeCssOwnershipDebugFiles({ directory, plan }) {
+export function writeCssOwnershipDebugFiles({ directory, plan }: { directory: string; plan: CssOwnershipPlan }): void {
   fs.mkdirSync(directory, { recursive: true });
   fs.writeFileSync(path.join(directory, 'base.css'), plan.baselineCss);
   fs.writeFileSync(path.join(directory, 'single-global.css'), plan.globalCss);
   fs.writeFileSync(path.join(directory, 'all-utilities.css'), plan.globalDelta);
-  const groups = {};
+  const groups: Record<string, { filename: string; ownerKey: string; owners: string[]; bytes: number; fragmentCount: number; fragmentOrders: number[] }> = {};
   for (const [ownerKeyValue, css] of plan.cssGroups) {
     const hash = crypto.createHash('sha256').update(ownerKeyValue).digest('hex');
     const filename = `group-${hash}.css`;

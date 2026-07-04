@@ -56,7 +56,7 @@ Registered class-string props use their `tw-*` form. These props currently accep
 />
 ```
 
-The registry is defined in `tailwind-class-attributes.mjs`. Add parser, compiler, and test coverage when introducing another class-string prop; do not invent an unsupported `tw-*` attribute at a call site.
+The registry is defined in `tailwind-class-attributes.ts`. Add parser, compiler, and test coverage when introducing another class-string prop; do not invent an unsupported `tw-*` attribute at a call site.
 
 ### TypeScript and JavaScript
 
@@ -95,7 +95,7 @@ twClassString('flex gap-2');
 
 ### 1. Source analysis
 
-`source-module-analyzer.mjs` scans production source files under `src` using:
+`source-module-analyzer.ts` scans production source files under `src` using:
 
 - `@vue/compiler-sfc` for Vue single-file components;
 - `@vue/compiler-dom` for templates;
@@ -105,13 +105,13 @@ It records every candidate occurrence and assigns source-module ownership. Tests
 
 ### 2. Validation and compilation
 
-`tailwind-candidate-validator.mjs` loads the Tailwind design system and rejects unknown candidates with source locations. Tailwind and its PostCSS integration are pinned because this implementation uses compiler APIs whose output is version-sensitive. Since split fragments bypass Vite's CSS-asset pipeline, compiler output and per-candidate ownership hints are explicitly passed through Autoprefixer with the same options exported to `postcss.config.js`; otherwise runtime CSS would silently lose vendor declarations that ordinary CSS assets receive. The split planner also rejects relative `url()` references because Vite cannot rebase or emit those assets after the CSS has become a JavaScript runtime string. Use data URLs, fragment URLs, root-relative URLs, or absolute URLs instead.
+`tailwind-candidate-validator.ts` loads the Tailwind design system and rejects unknown candidates with source locations. Tailwind and its PostCSS integration are pinned because this implementation uses compiler APIs whose output is version-sensitive. Since split fragments bypass Vite's CSS-asset pipeline, compiler output and per-candidate ownership hints are explicitly passed through Autoprefixer with the same options exported to `postcss.config.ts`; otherwise runtime CSS would silently lose vendor declarations that ordinary CSS assets receive. The split planner also rejects relative `url()` references because Vite cannot rebase or emit those assets after the CSS has become a JavaScript runtime string. Use data URLs, fragment URLs, root-relative URLs, or absolute URLs instead.
 
 The planner compiles the complete candidate set once. It also compiles the empty candidate set to identify base, theme, license, property, and other support CSS that must be available initially.
 
 ### 3. CSS atom ownership
 
-`css-ownership-planner.mjs` parses the compiled CSS with PostCSS and preserves its canonical atom sequence.
+`css-ownership-planner.ts` parses the compiled CSS with PostCSS and preserves its canonical atom sequence.
 
 Candidate-specific selectors and keyframes are mapped back to the source modules that declared those candidates. CSS that cannot be attributed safely is assigned to `initial`; it is never silently discarded.
 
@@ -121,7 +121,7 @@ Before compiling, the planner verifies that candidate occurrences and the `candi
 
 ### 4. Virtual registration modules
 
-`tw-class-vite-plugin.mjs` injects side-effect imports into the owning source modules. Each canonical ownership set has one virtual JavaScript registration module. Every non-initial registration also imports the initial registration, so a secondary HTML entry or isolated lazy graph cannot load utility rules without the theme, properties, and other support CSS they depend on. Vite / Rolldown, rather than a second import-graph implementation, decides whether those modules belong to initial, shared, or lazy chunks.
+`tw-class-vite-plugin.ts` injects side-effect imports into the owning source modules. Each canonical ownership set has one virtual JavaScript registration module. Every non-initial registration also imports the initial registration, so a secondary HTML entry or isolated lazy graph cannot load utility rules without the theme, properties, and other support CSS they depend on. Vite / Rolldown, rather than a second import-graph implementation, decides whether those modules belong to initial, shared, or lazy chunks.
 
 The Tailwind stylesheet entry itself is empty in split mode. Tailwind CSS is carried by the registration modules, including for standalone builds where CSS is embedded in JavaScript. During the post-order `generateBundle` check, the plugin verifies that every registration required by an emitted owner survives exactly once and is in the owner's static load graph or the initial graph of every HTML entry that can load that owner. A registration that is merely present in an unrelated lazy chunk or another HTML entry fails the build.
 
@@ -129,7 +129,7 @@ A completely unreachable owner and its registration can be removed by production
 
 ### 5. Runtime ordering
 
-`tailwind-css-runtime-source.mjs` maintains one `<style data-naidan-tailwind-runtime>` element. Registration modules provide `[canonicalOrder, css]` fragments. The registry batches synchronous registrations, sorts all loaded fragments by canonical order, and rewrites the style element only when its text changes. During an HMR ownership transition, the most recently registered fragment wins for a temporarily duplicated canonical order until the retired module is removed.
+`tailwind-css-runtime-source.ts` maintains one `<style data-naidan-tailwind-runtime>` element. Registration modules provide `[canonicalOrder, css]` fragments. The registry batches synchronous registrations, sorts all loaded fragments by canonical order, and rewrites the style element only when its text changes. During an HMR ownership transition, the most recently registered fragment wins for a temporarily duplicated canonical order until the retired module is removed.
 
 The style element is prepended to `<head>` so component and scoped styles retain their expected ability to override global Tailwind utilities. Loading lazy features in different orders must produce the same final CSS sequence.
 

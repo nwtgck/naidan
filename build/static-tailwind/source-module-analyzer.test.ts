@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { analyzeSourceModules, createSourceModuleAnalysisCache } from './source-module-analyzer.mjs';
+import { analyzeSourceModules, createSourceModuleAnalysisCache } from './source-module-analyzer';
 
 describe('static Tailwind source module analysis', () => {
   it('assigns every candidate to initial CSS without building a module graph in single CSS mode', () => {

@@ -7,7 +7,7 @@ import {
   createCssOwnershipPlan,
   parseCssOwnerKey,
   writeCssOwnershipDebugFiles,
-} from './css-ownership-planner.mjs';
+} from './css-ownership-planner';
 
 function createAnalysis({ candidateOwners, candidates }: {
   candidateOwners: Record<string, string[]>,

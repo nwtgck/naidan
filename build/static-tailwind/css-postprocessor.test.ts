@@ -3,7 +3,7 @@ import {
   assertStaticTailwindCssHasNoRelativeUrls,
   naidanAutoprefixerOptions,
   postprocessStaticTailwindCss,
-} from './css-postprocessor.mjs';
+} from './css-postprocessor';
 
 describe('static Tailwind CSS postprocessor', () => {
   it('adds the same browser compatibility declarations used by ordinary CSS assets', () => {

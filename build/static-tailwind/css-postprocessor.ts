@@ -2,30 +2,42 @@ import autoprefixer from 'autoprefixer';
 import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
 
-export const naidanAutoprefixerOptions = Object.freeze({});
+type ValueParserNode = Parameters<Parameters<ReturnType<typeof valueParser>['walk']>[0]>[0];
+type ValueParserFunctionNode = Extract<ValueParserNode, { type: 'function' }>;
+
+export const naidanAutoprefixerOptions: Readonly<Record<string, never>> = Object.freeze({});
 
 const processor = postcss([
   autoprefixer(naidanAutoprefixerOptions),
 ]);
 
-export function postprocessStaticTailwindCss({ css }) {
+export function postprocessStaticTailwindCss({ css }: {
+  css: string;
+}): string {
   return processor.process(css, { from: undefined }).css;
 }
 
-function parsedUrlValue({ node }) {
+function parsedUrlValue({ node }: {
+  node: ValueParserFunctionNode;
+}): string {
   if (node.nodes.length === 1 && node.nodes[0]?.type === 'string') {
     return node.nodes[0].value.trim();
   }
   return valueParser.stringify(node.nodes).trim();
 }
 
-function isRuntimeSafeUrl({ value }) {
+function isRuntimeSafeUrl({ value }: {
+  value: string;
+}): boolean {
   return value.startsWith('/')
     || value.startsWith('#')
     || /^[A-Za-z][A-Za-z\d+.-]*:/u.test(value);
 }
 
-function assertValueHasNoRelativeUrls({ value, context }) {
+function assertValueHasNoRelativeUrls({ value, context }: {
+  value: string;
+  context: string;
+}): void {
   valueParser(value).walk((node) => {
     if (node.type !== 'function' || node.value.toLowerCase() !== 'url') return;
     const urlValue = parsedUrlValue({ node });
@@ -38,7 +50,9 @@ function assertValueHasNoRelativeUrls({ value, context }) {
   });
 }
 
-export function assertStaticTailwindCssHasNoRelativeUrls({ css }) {
+export function assertStaticTailwindCssHasNoRelativeUrls({ css }: {
+  css: string;
+}): void {
   const root = postcss.parse(css);
   root.walkDecls((declaration) => {
     assertValueHasNoRelativeUrls({

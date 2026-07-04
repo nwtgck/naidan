@@ -1,28 +1,84 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import type { Plugin, ResolvedConfig } from 'vite';
 import {
   collectTwCandidateOccurrencesFromVueSource,
   transformTwCallsInModule,
   transformTwCallsInVueSource,
-} from './tw-class-core.mjs';
+} from './tw-class-core';
 import {
   analyzeSourceModules,
   createSourceModuleAnalysisCache,
   isStaticTailwindSourceFile,
   serializeSourceAnalysis,
-} from './source-module-analyzer.mjs';
+  type SourceModuleAnalysis,
+} from './source-module-analyzer';
 import {
   createCssOwnerKey,
   createCssOwnershipPlan,
   parseCssOwnerKey,
   serializeCssOwnershipPlan,
   writeCssOwnershipDebugFiles,
-} from './css-ownership-planner.mjs';
+  type CssOwnershipPlan,
+  type CssRuntimeFragment,
+} from './css-ownership-planner';
 import {
   createTailwindCssRegistrationModuleSource,
   createTailwindCssRuntimeModuleSource,
-} from './tailwind-css-runtime-source.mjs';
+} from './tailwind-css-runtime-source';
+
+
+export interface TwClassVitePlugin extends Plugin {
+  api: {
+    getAnalysis(): SourceModuleAnalysis | undefined;
+    getPlan(): CssOwnershipPlan | undefined;
+    getImportsByModule(): Map<string, string[]>;
+    getOwnerRootByName(): Map<string, string>;
+  };
+}
+
+type BundleOutputLike = {
+  type: string;
+  fileName?: string;
+  imports?: string[];
+  dynamicImports?: string[];
+  isEntry?: boolean;
+  isImplicitEntry?: boolean;
+  modules?: Record<string, unknown>;
+};
+
+type BundleLike = Record<string, BundleOutputLike>;
+
+type BundleChunkLike = BundleOutputLike & {
+  type: 'chunk';
+};
+
+type VirtualState = {
+  nextModuleSourceByResolvedId: Map<string, string>;
+  nextRegistrationDependenciesByResolvedId: Map<string, string[]>;
+  nextImportsByModule: Map<string, string[]>;
+  nextOwnerRootByName: Map<string, string>;
+};
+
+type RefreshResult = {
+  baseCssChanged: boolean;
+  changedCssIds: Set<string>;
+  removedCssIds: Set<string>;
+  changedOwnerModules: Set<string>;
+};
+
+type CssRegistration = {
+  fragments: CssRuntimeFragment[];
+  owners: string[];
+  publicId: string;
+  resolvedId: string;
+};
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
 
 const virtualMacroModuleId = 'virtual:naidan-tailwind';
 const resolvedVirtualMacroModuleId = '\0virtual:naidan-tailwind';
@@ -33,21 +89,33 @@ const virtualHmrClientModuleId = 'virtual:naidan-tailwind-hmr-client';
 const resolvedVirtualHmrClientModuleId = '\0virtual:naidan-tailwind-hmr-client';
 const supportedModuleExtensions = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
 
-function assertExistingPath({ label, filename, expectedType }) {
-  let stats;
+function assertExistingPath({ label, filename, expectedType }: { label: string; filename: string; expectedType: 'directory' | 'file' }): void {
+  let stats: fs.Stats;
   try {
     stats = fs.statSync(filename);
   } catch (error) {
-    if (error?.code === 'ENOENT') {
+    if (isErrnoException(error) && error.code === 'ENOENT') {
       throw new Error(`[tw-class] ${label} does not exist: ${filename}`, { cause: error });
     }
     throw error;
   }
-  const matches = expectedType === 'directory' ? stats.isDirectory() : stats.isFile();
+  let matches: boolean;
+  switch (expectedType) {
+  case 'directory':
+    matches = stats.isDirectory();
+    break;
+  case 'file':
+    matches = stats.isFile();
+    break;
+  default: {
+    const _ex: never = expectedType;
+    throw new Error(`Unhandled expected path type: ${_ex}`);
+  }
+  }
   if (!matches) throw new Error(`[tw-class] ${label} must be a ${expectedType}: ${filename}`);
 }
 
-function readExpectedTailwindVersion({ projectRoot }) {
+function readExpectedTailwindVersion({ projectRoot }: { projectRoot: string }): string {
   const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
   const version = packageJson.devDependencies?.tailwindcss ?? packageJson.dependencies?.tailwindcss;
   if (version === undefined || !/^\d+\.\d+\.\d+$/u.test(version)) {
@@ -56,35 +124,35 @@ function readExpectedTailwindVersion({ projectRoot }) {
   return version;
 }
 
-function groupHash({ ownerKey }) {
+function groupHash({ ownerKey }: { ownerKey: string }): string {
   return crypto.createHash('sha256').update(ownerKey).digest('hex');
 }
 
-function fileContentFingerprint({ filename }) {
+function fileContentFingerprint({ filename }: { filename: string }): string {
   try {
     return crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex');
   } catch (error) {
-    if (error?.code === 'ENOENT') return 'missing';
+    if (isErrnoException(error) && error.code === 'ENOENT') return 'missing';
     throw error;
   }
 }
 
-function isPathInside({ directory, candidate }) {
+function isPathInside({ directory, candidate }: { directory: string; candidate: string }): boolean {
   const relativePath = path.relative(path.resolve(directory), path.resolve(candidate));
   return relativePath === ''
     || (!path.isAbsolute(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
 }
 
-function assertPathDoesNotTraverseSymlinks({ root, target, label }) {
+function assertPathDoesNotTraverseSymlinks({ root, target, label }: { root: string; target: string; label: string }): void {
   const relativeParts = path.relative(root, target).split(path.sep).filter(Boolean);
   let current = root;
   for (const part of relativeParts) {
     current = path.join(current, part);
-    let stats;
+    let stats: fs.Stats;
     try {
       stats = fs.lstatSync(current);
     } catch (error) {
-      if (error?.code === 'ENOENT') return;
+      if (isErrnoException(error) && error.code === 'ENOENT') return;
       throw error;
     }
     if (stats.isSymbolicLink()) {
@@ -93,11 +161,11 @@ function assertPathDoesNotTraverseSymlinks({ root, target, label }) {
   }
 }
 
-function cleanModuleId({ id }) {
-  return id.split('?', 1)[0];
+function cleanModuleId({ id }: { id: string }): string {
+  return id.split('?', 1)[0] ?? id;
 }
 
-function bundleModuleMatchesFile({ moduleId, filename, projectRoot }) {
+function bundleModuleMatchesFile({ moduleId, filename, projectRoot }: { moduleId: string; filename: string; projectRoot: string }): boolean {
   const cleanId = cleanModuleId({ id: moduleId });
   if (cleanId.startsWith('\0')) return false;
   const absoluteFilename = path.resolve(filename);
@@ -107,7 +175,7 @@ function bundleModuleMatchesFile({ moduleId, filename, projectRoot }) {
   return cleanId.endsWith(projectRelativeId);
 }
 
-function canonicalVirtualModuleId({ moduleId }) {
+function canonicalVirtualModuleId({ moduleId }: { moduleId: string }): string | undefined {
   const cleanId = cleanModuleId({ id: moduleId });
   if (cleanId.startsWith('\0virtual:naidan-tailwind-')) return cleanId;
   if (cleanId.startsWith('virtual:naidan-tailwind-')) return `\0${cleanId}`;
@@ -120,7 +188,13 @@ export function assertCssRegistrationBundleIntegrity({
   importsByModule,
   moduleSourceByResolvedId,
   registrationDependenciesByResolvedId,
-}) {
+}: {
+  bundle: BundleLike;
+  projectRoot: string;
+  importsByModule: Map<string, string[]>;
+  moduleSourceByResolvedId: Map<string, string>;
+  registrationDependenciesByResolvedId: Map<string, string[]>;
+}): void {
   const chunks = Object.entries(bundle)
     .filter(([, output]) => output.type === 'chunk')
     .map(([bundleName, chunk]) => ({
@@ -128,19 +202,19 @@ export function assertCssRegistrationBundleIntegrity({
       fileName: chunk.fileName ?? bundleName,
     }));
   const chunkByFileName = new Map(chunks.map(({ fileName, chunk }) => [fileName, chunk]));
-  const emittedModuleCounts = new Map();
-  const chunkNamesByModuleId = new Map();
+  const emittedModuleCounts = new Map<string, number>();
+  const chunkNamesByModuleId = new Map<string, Set<string>>();
   for (const { fileName, chunk } of chunks) {
     for (const moduleId of Object.keys(chunk.modules ?? {})) {
       const canonicalId = canonicalVirtualModuleId({ moduleId }) ?? moduleId;
       emittedModuleCounts.set(canonicalId, (emittedModuleCounts.get(canonicalId) ?? 0) + 1);
-      const chunkNames = chunkNamesByModuleId.get(canonicalId) ?? new Set();
+      const chunkNames = chunkNamesByModuleId.get(canonicalId) ?? new Set<string>();
       chunkNames.add(fileName);
       chunkNamesByModuleId.set(canonicalId, chunkNames);
     }
   }
 
-  function resolveImportedChunkName({ importerFileName, importedFileName }) {
+  function resolveImportedChunkName({ importerFileName, importedFileName }: { importerFileName: string; importedFileName: string }): string | undefined {
     if (chunkByFileName.has(importedFileName)) return importedFileName;
     const relativeName = path.posix.normalize(path.posix.join(
       path.posix.dirname(importerFileName),
@@ -149,8 +223,8 @@ export function assertCssRegistrationBundleIntegrity({
     return chunkByFileName.has(relativeName) ? relativeName : undefined;
   }
 
-  function reachableChunkNames({ roots, includeDynamicImports }) {
-    const reachable = new Set();
+  function reachableChunkNames({ roots, includeDynamicImports }: { roots: string[]; includeDynamicImports: boolean }): Set<string> {
+    const reachable = new Set<string>();
     const queue = [...roots];
     while (queue.length > 0) {
       const fileName = queue.shift();
@@ -180,8 +254,8 @@ export function assertCssRegistrationBundleIntegrity({
     entryChunkName,
     reachableChunkNames({ roots: [entryChunkName], includeDynamicImports: true }),
   ]));
-  const staticallyReachableByChunkName = new Map();
-  function registrationLoadsWithChunk({ ownerChunkName, registrationChunkName }) {
+  const staticallyReachableByChunkName = new Map<string, Set<string>>();
+  function registrationLoadsWithChunk({ ownerChunkName, registrationChunkName }: { ownerChunkName: string; registrationChunkName: string }): boolean {
     let staticallyReachable = staticallyReachableByChunkName.get(ownerChunkName);
     if (staticallyReachable === undefined) {
       staticallyReachable = reachableChunkNames({ roots: [ownerChunkName], includeDynamicImports: false });
@@ -197,8 +271,8 @@ export function assertCssRegistrationBundleIntegrity({
     ));
   }
 
-  const directExpectedResolvedIds = new Set();
-  const ownerChunkNamesByRegistrationId = new Map();
+  const directExpectedResolvedIds = new Set<string>();
+  const ownerChunkNamesByRegistrationId = new Map<string, Set<string>>();
   for (const [filename, publicIds] of importsByModule) {
     const ownerChunkNames = chunks
       .filter(({ chunk }) => Object.keys(chunk.modules ?? {}).some((moduleId) => bundleModuleMatchesFile({
@@ -212,18 +286,18 @@ export function assertCssRegistrationBundleIntegrity({
       if (!publicId.startsWith(virtualCssPrefix)) continue;
       const resolvedId = `\0${publicId}`;
       directExpectedResolvedIds.add(resolvedId);
-      const values = ownerChunkNamesByRegistrationId.get(resolvedId) ?? new Set();
+      const values = ownerChunkNamesByRegistrationId.get(resolvedId) ?? new Set<string>();
       for (const ownerChunkName of ownerChunkNames) values.add(ownerChunkName);
       ownerChunkNamesByRegistrationId.set(resolvedId, values);
     }
   }
 
-  const expectedResolvedIds = new Set();
+  const expectedResolvedIds = new Set<string>();
   const pendingRegistrations = [...directExpectedResolvedIds].flatMap((registrationId) => (
     [...(ownerChunkNamesByRegistrationId.get(registrationId) ?? [])]
       .map((ownerChunkName) => ({ registrationId, ownerChunkName }))
   ));
-  const visitedRegistrationOwners = new Set();
+  const visitedRegistrationOwners = new Set<string>();
   for (let index = 0; index < pendingRegistrations.length; index += 1) {
     const pending = pendingRegistrations[index];
     if (pending === undefined) continue;
@@ -231,7 +305,7 @@ export function assertCssRegistrationBundleIntegrity({
     if (visitedRegistrationOwners.has(pairKey)) continue;
     visitedRegistrationOwners.add(pairKey);
     expectedResolvedIds.add(pending.registrationId);
-    const values = ownerChunkNamesByRegistrationId.get(pending.registrationId) ?? new Set();
+    const values = ownerChunkNamesByRegistrationId.get(pending.registrationId) ?? new Set<string>();
     values.add(pending.ownerChunkName);
     ownerChunkNamesByRegistrationId.set(pending.registrationId, values);
     for (const dependencyId of registrationDependenciesByResolvedId.get(pending.registrationId) ?? []) {
@@ -248,7 +322,7 @@ export function assertCssRegistrationBundleIntegrity({
   const duplicate = [...expectedResolvedIds].filter((moduleId) => (emittedModuleCounts.get(moduleId) ?? 0) > 1);
   const unexpected = emittedRegistrationIds.filter((moduleId) => !expectedResolvedIds.has(moduleId));
   const unknownPlannedIds = [...expectedResolvedIds].filter((moduleId) => !moduleSourceByResolvedId.has(moduleId));
-  const misplaced = [];
+  const misplaced: string[] = [];
   for (const [registrationId, ownerChunkNames] of ownerChunkNamesByRegistrationId) {
     const registrationChunkNames = chunkNamesByModuleId.get(registrationId) ?? new Set();
     if (registrationChunkNames.size !== 1) continue;
@@ -307,7 +381,16 @@ export function createTwClassVitePlugin({
   outputMode,
   cssPlanning,
   maxSplitCssGroups,
-}) {
+}: {
+  projectRoot: string;
+  sourceRoot: string;
+  entryModule: string;
+  tailwindCssPath: string;
+  debugOutputDirectory: string | undefined;
+  outputMode: 'single' | 'split';
+  cssPlanning: 'enabled' | 'disabled';
+  maxSplitCssGroups: number | undefined;
+}): TwClassVitePlugin {
   if (outputMode !== 'single' && outputMode !== 'split') {
     throw new Error(`[tw-class] Unknown CSS output mode: ${String(outputMode)}`);
   }
@@ -354,36 +437,36 @@ export function createTwClassVitePlugin({
     });
   }
   const expectedTailwindVersion = readExpectedTailwindVersion({ projectRoot: absoluteProjectRoot });
-  let command = 'build';
+  let command: ResolvedConfig['command'] = 'build';
   let environmentName = 'client';
   const sourceAnalysisCache = createSourceModuleAnalysisCache();
-  let analysis;
-  let plan;
+  let analysis: SourceModuleAnalysis | undefined;
+  let plan: CssOwnershipPlan | undefined;
   let entryCss = '';
-  let moduleSourceByResolvedId = new Map();
-  let registrationDependenciesByResolvedId = new Map();
-  let importsByModule = new Map();
-  let ownerRootByName = new Map();
-  const retiredCssModuleIds = new Set();
-  let refreshQueue = Promise.resolve();
-  const refreshPromisesByKey = new Map();
+  let moduleSourceByResolvedId = new Map<string, string>();
+  let registrationDependenciesByResolvedId = new Map<string, string[]>();
+  let importsByModule = new Map<string, string[]>();
+  let ownerRootByName = new Map<string, string>();
+  const retiredCssModuleIds = new Set<string>();
+  let refreshQueue: Promise<void> = Promise.resolve();
+  const refreshPromisesByKey = new Map<string, Promise<RefreshResult>>();
 
-  function buildVirtualState({ nextAnalysis, nextPlan }) {
+  function buildVirtualState({ nextAnalysis, nextPlan }: { nextAnalysis: SourceModuleAnalysis; nextPlan: CssOwnershipPlan }): VirtualState {
     if (!splitCss) {
       return {
-        nextModuleSourceByResolvedId: new Map(),
-        nextRegistrationDependenciesByResolvedId: new Map(),
-        nextImportsByModule: new Map(),
-        nextOwnerRootByName: new Map([['initial', absoluteEntryModule]]),
+        nextModuleSourceByResolvedId: new Map<string, string>(),
+        nextRegistrationDependenciesByResolvedId: new Map<string, string[]>(),
+        nextImportsByModule: new Map<string, string[]>(),
+        nextOwnerRootByName: new Map<string, string>([['initial', absoluteEntryModule]]),
       };
     }
-    const nextModuleSourceByResolvedId = new Map();
-    const nextRegistrationDependenciesByResolvedId = new Map();
-    const nextImportsByModule = new Map();
-    const nextOwnerRootByName = new Map([['initial', absoluteEntryModule]]);
+    const nextModuleSourceByResolvedId = new Map<string, string>();
+    const nextRegistrationDependenciesByResolvedId = new Map<string, string[]>();
+    const nextImportsByModule = new Map<string, Set<string>>();
+    const nextOwnerRootByName = new Map<string, string>([['initial', absoluteEntryModule]]);
     for (const owner of nextAnalysis.cssOwners) nextOwnerRootByName.set(owner.name, owner.root);
 
-    const registrations = [];
+    const registrations: CssRegistration[] = [];
     for (const [ownerKey, fragments] of nextPlan.runtimeFragmentsByOwner) {
       if (fragments.length === 0) continue;
       const normalizedOwners = parseCssOwnerKey({ key: ownerKey });
@@ -399,7 +482,7 @@ export function createTwClassVitePlugin({
       for (const owner of owners) {
         const root = nextOwnerRootByName.get(owner);
         if (root === undefined) throw new Error(`[tw-class] CSS owner has no module root: ${owner}`);
-        const values = nextImportsByModule.get(root) ?? new Set();
+        const values = nextImportsByModule.get(root) ?? new Set<string>();
         values.add(publicId);
         nextImportsByModule.set(root, values);
       }
@@ -430,10 +513,19 @@ export function createTwClassVitePlugin({
           : [initialRegistrationResolvedId],
       );
     }
-    if (command === 'serve') {
-      const entryImports = nextImportsByModule.get(absoluteEntryModule) ?? new Set();
+    switch (command) {
+    case 'serve': {
+      const entryImports = nextImportsByModule.get(absoluteEntryModule) ?? new Set<string>();
       entryImports.add(virtualHmrClientModuleId);
       nextImportsByModule.set(absoluteEntryModule, entryImports);
+      break;
+    }
+    case 'build':
+      break;
+    default: {
+      const _ex: never = command;
+      throw new Error(`Unhandled Vite command: ${_ex}`);
+    }
     }
     return {
       nextModuleSourceByResolvedId,
@@ -443,7 +535,7 @@ export function createTwClassVitePlugin({
     };
   }
 
-  async function refreshPlan() {
+  async function refreshPlan(): Promise<RefreshResult> {
     const nextAnalysis = analyzeSourceModules({
       projectRoot: absoluteProjectRoot,
       sourceRoot: absoluteSourceRoot,
@@ -488,7 +580,7 @@ export function createTwClassVitePlugin({
     };
   }
 
-  function scheduleRefresh({ key }) {
+  function scheduleRefresh({ key }: { key: string }): Promise<RefreshResult> {
     const existing = refreshPromisesByKey.get(key);
     if (existing !== undefined) return existing;
     const promise = refreshQueue.then(
@@ -511,12 +603,12 @@ export function createTwClassVitePlugin({
     return promise;
   }
 
-  function clearDebugOutput() {
+  function clearDebugOutput(): void {
     if (absoluteDebugOutputDirectory === undefined) return;
     fs.rmSync(absoluteDebugOutputDirectory, { recursive: true, force: true });
   }
 
-  function writeDebugOutput() {
+  function writeDebugOutput(): void {
     if (absoluteDebugOutputDirectory === undefined || analysis === undefined || plan === undefined) return;
     fs.mkdirSync(absoluteDebugOutputDirectory, { recursive: true });
     fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'source-analysis.json'), `${JSON.stringify(serializeSourceAnalysis({ analysis }), null, 2)}\n`);
@@ -524,7 +616,7 @@ export function createTwClassVitePlugin({
     writeCssOwnershipDebugFiles({ directory: path.join(absoluteDebugOutputDirectory, 'css-groups'), plan });
   }
 
-  return {
+  const plugin: TwClassVitePlugin = {
     name: 'naidan-tailwind-static-virtual-css',
     enforce: 'pre',
     configResolved(config) {
@@ -532,17 +624,58 @@ export function createTwClassVitePlugin({
       environmentName = 'client';
     },
     async buildStart() {
-      if (cssPlanning === 'disabled') return;
-      if (command === 'build') clearDebugOutput();
+      switch (cssPlanning) {
+      case 'disabled':
+        return;
+      case 'enabled':
+        break;
+      default: {
+        const _ex: never = cssPlanning;
+        throw new Error(`Unhandled CSS planning mode: ${_ex}`);
+      }
+      }
+      switch (command) {
+      case 'build':
+        clearDebugOutput();
+        break;
+      case 'serve':
+        break;
+      default: {
+        const _ex: never = command;
+        throw new Error(`Unhandled Vite command: ${_ex}`);
+      }
+      }
       await refreshPlan();
+      const activePlan = plan;
+      if (activePlan === undefined) throw new Error('[tw-class] CSS plan was not initialized.');
       this.info(splitCss
-        ? `[tw-class] planned ${plan.candidates.length} candidates into ${plan.cssGroups.size} virtual CSS ownership groups.`
-        : `[tw-class] planned ${plan.candidates.length} candidates into one global CSS asset.`);
+        ? `[tw-class] planned ${activePlan.candidates.length} candidates into ${activePlan.cssGroups.size} virtual CSS ownership groups.`
+        : `[tw-class] planned ${activePlan.candidates.length} candidates into one global CSS asset.`);
     },
     generateBundle: {
       order: 'post',
       handler(_options, bundle) {
-        if (cssPlanning !== 'enabled' || command !== 'build' || !splitCss) return;
+        switch (cssPlanning) {
+        case 'disabled':
+          return;
+        case 'enabled':
+          break;
+        default: {
+          const _ex: never = cssPlanning;
+          throw new Error(`Unhandled CSS planning mode: ${_ex}`);
+        }
+        }
+        switch (command) {
+        case 'serve':
+          return;
+        case 'build':
+          break;
+        default: {
+          const _ex: never = command;
+          throw new Error(`Unhandled Vite command: ${_ex}`);
+        }
+        }
+        if (!splitCss) return;
         assertCssRegistrationBundleIntegrity({
           bundle,
           projectRoot: absoluteProjectRoot,
@@ -602,7 +735,7 @@ if (import.meta.hot) {
         }
       }
       if (imports.length === 0 && !referencesMacroModule) return null;
-      const assertCoveredMacroTransform = ({ changed }) => {
+      const assertCoveredMacroTransform = ({ changed }: { changed: boolean }): void => {
         if (
           cssPlanning === 'enabled'
           && referencesMacroModule
@@ -635,7 +768,16 @@ if (import.meta.hot) {
     hotUpdate: {
       order: 'pre',
       async handler(options) {
-        if (cssPlanning === 'disabled') return options.modules;
+        switch (cssPlanning) {
+        case 'disabled':
+          return options.modules;
+        case 'enabled':
+          break;
+        default: {
+          const _ex: never = cssPlanning;
+          throw new Error(`Unhandled CSS planning mode: ${_ex}`);
+        }
+        }
         const absoluteFile = path.resolve(options.file);
         if (!isPathInside({ directory: absoluteSourceRoot, candidate: absoluteFile }) && absoluteFile !== absoluteTailwindCssPath) return options.modules;
         const refreshKey = `${options.timestamp}\0${absoluteFile}\0${fileContentFingerprint({ filename: absoluteFile })}`;
@@ -673,4 +815,5 @@ if (import.meta.hot) {
       getOwnerRootByName: () => ownerRootByName,
     },
   };
+  return plugin;
 }

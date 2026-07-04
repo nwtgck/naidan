@@ -1,4 +1,4 @@
-import { naidanAutoprefixerOptions } from './build/static-tailwind/css-postprocessor.mjs';
+import { naidanAutoprefixerOptions } from './build/static-tailwind/css-postprocessor';
 
 export default {
   plugins: {

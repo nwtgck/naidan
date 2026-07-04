@@ -1,24 +1,85 @@
 import fs from 'node:fs';
 import path from 'node:path';
+
 import { compile as compileTemplate, parse as parseTemplate } from '@vue/compiler-dom';
-import { parse as parseSfc } from '@vue/compiler-sfc';
+import type { CompilerError } from '@vue/compiler-core';
+import { parse as parseSfc, type SFCBlock, type SFCDescriptor } from '@vue/compiler-sfc';
+
 import {
   collectTwCandidateOccurrencesFromTemplateAst,
   createTwClassNodeTransform,
   sourceTypeForVueScriptBlock,
   transformTwCallsInModule,
-} from './tw-class-core.mjs';
+  type SourcePosition,
+  type TailwindCandidateOccurrence,
+  type TwModuleSourceType,
+} from './tw-class-core';
 
 const moduleExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
 
-function walkFiles({ directory }) {
+export type SourceCandidateGroupBase = {
+  id: string;
+  filename: string;
+  sourceKind: string;
+  sourceAttributes?: string[];
+  candidates: string[];
+  line: number;
+  column: number;
+};
+
+export type SourceCandidateGroup = SourceCandidateGroupBase & {
+  owners: string[];
+};
+
+export type SourceCssOwner = {
+  name: string;
+  root: string;
+};
+
+export type SourceModuleAnalysisCache = Map<string, {
+  source: string;
+  groups: SourceCandidateGroupBase[];
+}>;
+
+export type SourceModuleAnalysis = {
+  projectRoot: string;
+  sourceRoot: string;
+  files: string[];
+  cssOwners: SourceCssOwner[];
+  candidateGroups: SourceCandidateGroup[];
+  candidateOwners: Map<string, Set<string>>;
+};
+
+export type SerializedSourceModuleAnalysis = {
+  projectRoot: string;
+  sourceRoot: string;
+  files: string[];
+  cssOwners: SourceCssOwner[];
+  candidateOwners: Record<string, string[]>;
+  candidateGroups: SourceCandidateGroup[];
+};
+
+type VueScriptBlock = {
+  source: string;
+  sourceType: TwModuleSourceType;
+  blockStart: SourcePosition;
+  groupIdPrefix: 'script' | 'script-setup';
+};
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
+function walkFiles({ directory }: {
+  directory: string;
+}): string[] {
   if (!fs.existsSync(directory)) return [];
-  let entries;
+  let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(directory, { withFileTypes: true })
       .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
   } catch (error) {
-    if (error?.code === 'ENOENT') return [];
+    if (isErrnoException(error) && error.code === 'ENOENT') return [];
     throw error;
   }
   return entries.flatMap((entry) => {
@@ -27,7 +88,10 @@ function walkFiles({ directory }) {
   });
 }
 
-export function isStaticTailwindSourceFile({ filename, sourceRoot }) {
+export function isStaticTailwindSourceFile({ filename, sourceRoot }: {
+  filename: string;
+  sourceRoot: string;
+}): boolean {
   const absoluteSourceRoot = path.resolve(sourceRoot);
   const absoluteFilename = path.resolve(filename);
   const relativePath = path.relative(absoluteSourceRoot, absoluteFilename).replaceAll(path.sep, '/');
@@ -40,27 +104,43 @@ export function isStaticTailwindSourceFile({ filename, sourceRoot }) {
     && !relativePath.startsWith('lint-rule-tmp/');
 }
 
-function parseVueDescriptor({ source, filename }) {
+function parseVueDescriptor({ source, filename }: {
+  source: string;
+  filename: string;
+}): SFCDescriptor {
   const { descriptor, errors } = parseSfc(source, { filename });
   if (errors.length > 0) throw new Error(`${filename}: ${errors.map(String).join('; ')}`);
   return descriptor;
 }
 
-function scriptBlocksFromDescriptor({ descriptor, filename }) {
-  return [
-    { block: descriptor.script, kind: 'script' },
-    { block: descriptor.scriptSetup, kind: 'script-setup' },
-  ]
-    .filter(({ block }) => block !== null)
-    .map(({ block, kind }) => ({
-      source: block.content,
-      sourceType: sourceTypeForVueScriptBlock({ lang: block.lang, filename }),
-      blockStart: block.loc.start,
-      groupIdPrefix: kind,
-    }));
+function createVueScriptBlock({ block, filename, kind }: {
+  block: SFCBlock | null;
+  filename: string;
+  kind: VueScriptBlock['groupIdPrefix'];
+}): VueScriptBlock | undefined {
+  if (block === null) return undefined;
+  return {
+    source: block.content,
+    sourceType: sourceTypeForVueScriptBlock({ lang: block.lang, filename }),
+    blockStart: block.loc.start,
+    groupIdPrefix: kind,
+  };
 }
 
-function absoluteTemplatePosition({ relative, blockStart }) {
+function scriptBlocksFromDescriptor({ descriptor, filename }: {
+  descriptor: SFCDescriptor;
+  filename: string;
+}): VueScriptBlock[] {
+  return [
+    createVueScriptBlock({ block: descriptor.script, filename, kind: 'script' }),
+    createVueScriptBlock({ block: descriptor.scriptSetup, filename, kind: 'script-setup' }),
+  ].filter((block): block is VueScriptBlock => block !== undefined);
+}
+
+function absoluteTemplatePosition({ relative, blockStart }: {
+  relative: SourcePosition;
+  blockStart: SourcePosition;
+}): SourcePosition {
   return {
     line: blockStart.line + relative.line - 1,
     column: relative.line === 1
@@ -69,9 +149,13 @@ function absoluteTemplatePosition({ relative, blockStart }) {
   };
 }
 
-function candidateGroupsFromOccurrences({ occurrences, filename, groupIdPrefix }) {
-  const groups = [];
-  const groupByLocation = new Map();
+function candidateGroupsFromOccurrences({ occurrences, filename, groupIdPrefix }: {
+  occurrences: TailwindCandidateOccurrence[];
+  filename: string;
+  groupIdPrefix: string;
+}): SourceCandidateGroupBase[] {
+  const groups: SourceCandidateGroupBase[] = [];
+  const groupByLocation = new Map<string, SourceCandidateGroupBase>();
   for (const occurrence of occurrences) {
     const key = `${occurrence.sourceKind}\0${occurrence.line}\0${occurrence.column}`;
     let group = groupByLocation.get(key);
@@ -92,7 +176,10 @@ function candidateGroupsFromOccurrences({ occurrences, filename, groupIdPrefix }
   return groups;
 }
 
-function collectVueTemplateGroups({ descriptor, filename }) {
+function collectVueTemplateGroups({ descriptor, filename }: {
+  descriptor: SFCDescriptor;
+  filename: string;
+}): SourceCandidateGroupBase[] {
   if (descriptor.template === null) return [];
   if (descriptor.template.src !== undefined) {
     throw new Error(`${filename}: External Vue template src files are not supported by static Tailwind analysis.`);
@@ -101,8 +188,8 @@ function collectVueTemplateGroups({ descriptor, filename }) {
     throw new Error(`${filename}: Unsupported Vue template language ${JSON.stringify(descriptor.template.lang)} for static Tailwind analysis.`);
   }
   const blockStart = descriptor.template.loc.start;
-  const onError = (error) => {
-    const position = absoluteTemplatePosition({ relative: error.loc.start, blockStart });
+  const onError = (error: CompilerError): never => {
+    const position = absoluteTemplatePosition({ relative: error.loc?.start ?? { line: 1, column: 1 }, blockStart });
     throw new Error(`${filename}:${position.line}:${position.column} ${error.message}`);
   };
   const ast = parseTemplate(descriptor.template.content, {
@@ -129,7 +216,13 @@ function collectMacroGroupsFromSource({
   sourceType,
   blockStart,
   groupIdPrefix,
-}) {
+}: {
+  source: string;
+  filename: string;
+  sourceType: TwModuleSourceType;
+  blockStart: SourcePosition;
+  groupIdPrefix: string;
+}): SourceCandidateGroupBase[] {
   if (!source.includes('virtual:naidan-tailwind')) return [];
   const result = transformTwCallsInModule({
     source,
@@ -145,19 +238,25 @@ function collectMacroGroupsFromSource({
   });
 }
 
-function collectCandidateGroups({ source, filename }) {
+function sourceTypeForModule({ filename }: {
+  filename: string;
+}): TwModuleSourceType {
+  const extension = path.extname(filename);
+  if (extension === '.jsx') return 'jsx';
+  if (extension === '.tsx') return 'tsx';
+  if (['.js', '.mjs', '.cjs'].includes(extension)) return 'javascript';
+  return 'typescript';
+}
+
+function collectCandidateGroups({ source, filename }: {
+  source: string;
+  filename: string;
+}): SourceCandidateGroupBase[] {
   if (!filename.endsWith('.vue')) {
-    const extension = path.extname(filename);
     return collectMacroGroupsFromSource({
       source,
       filename,
-      sourceType: extension === '.jsx'
-        ? 'jsx'
-        : extension === '.tsx'
-          ? 'tsx'
-          : ['.js', '.mjs', '.cjs'].includes(extension)
-            ? 'javascript'
-            : 'typescript',
+      sourceType: sourceTypeForModule({ filename }),
       blockStart: { line: 1, column: 1 },
       groupIdPrefix: 'module',
     });
@@ -176,42 +275,48 @@ function collectCandidateGroups({ source, filename }) {
   return result;
 }
 
-function cloneCandidateGroups({ groups }) {
+function cloneCandidateGroups({ groups }: {
+  groups: SourceCandidateGroupBase[];
+}): SourceCandidateGroupBase[] {
   return groups.map((group) => ({
     ...group,
     sourceAttributes: group.sourceAttributes === undefined ? undefined : [...group.sourceAttributes],
     candidates: [...group.candidates],
-    owners: group.owners === undefined ? undefined : [...group.owners],
   }));
 }
 
-export function createSourceModuleAnalysisCache() {
+export function createSourceModuleAnalysisCache(): SourceModuleAnalysisCache {
   return new Map();
 }
 
-function sourceModuleOwnerName({ projectRoot, moduleId }) {
+function sourceModuleOwnerName({ projectRoot, moduleId }: {
+  projectRoot: string;
+  moduleId: string;
+}): string {
   return `module:${path.relative(projectRoot, moduleId).replaceAll(path.sep, '/')}`;
 }
 
-export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, cache }) {
-  if (ownershipMode !== 'single-css' && ownershipMode !== 'source-module') {
-    throw new Error(`[tw-class] Unknown source ownership mode: ${String(ownershipMode)}`);
-  }
+export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, cache }: {
+  projectRoot: string;
+  sourceRoot: string;
+  ownershipMode: 'single-css' | 'source-module';
+  cache: SourceModuleAnalysisCache;
+}): SourceModuleAnalysis {
   const absoluteProjectRoot = path.resolve(projectRoot);
   const absoluteSourceRoot = path.resolve(sourceRoot);
   const files = walkFiles({ directory: absoluteSourceRoot })
     .filter((file) => isStaticTailwindSourceFile({ filename: file, sourceRoot: absoluteSourceRoot }));
-  const candidateGroups = [];
+  const baseCandidateGroups: SourceCandidateGroupBase[] = [];
   const presentFiles = new Set(files);
   for (const cachedFile of cache.keys()) {
     if (!presentFiles.has(cachedFile)) cache.delete(cachedFile);
   }
   for (const file of files) {
-    let source;
+    let source: string;
     try {
       source = fs.readFileSync(file, 'utf8');
     } catch (error) {
-      if (error?.code === 'ENOENT') {
+      if (isErrnoException(error) && error.code === 'ENOENT') {
         cache.delete(file);
         continue;
       }
@@ -219,18 +324,22 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
     }
     const cached = cache.get(file);
     if (cached?.source === source) {
-      candidateGroups.push(...cloneCandidateGroups({ groups: cached.groups }));
+      baseCandidateGroups.push(...cloneCandidateGroups({ groups: cached.groups }));
       continue;
     }
     const groups = collectCandidateGroups({ source, filename: file });
     cache.set(file, { source, groups: cloneCandidateGroups({ groups }) });
-    candidateGroups.push(...groups);
+    baseCandidateGroups.push(...groups);
   }
 
-  const candidateOwners = new Map();
-  if (ownershipMode === 'single-css') {
+  const candidateOwners = new Map<string, Set<string>>();
+  switch (ownershipMode) {
+  case 'single-css': {
+    const candidateGroups = baseCandidateGroups.map<SourceCandidateGroup>((group) => ({
+      ...group,
+      owners: ['initial'],
+    }));
     for (const group of candidateGroups) {
-      group.owners = ['initial'];
       for (const candidate of group.candidates) candidateOwners.set(candidate, new Set(['initial']));
     }
     return {
@@ -242,21 +351,31 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
       candidateOwners,
     };
   }
+  case 'source-module':
+    break;
+  default: {
+    const _ex: never = ownershipMode;
+    throw new Error(`Unhandled ownership mode: ${_ex}`);
+  }
+  }
 
-  const ownerByFile = new Map();
-  for (const group of candidateGroups) {
+  const ownerByFile = new Map<string, SourceCssOwner>();
+  const candidateGroups = baseCandidateGroups.map<SourceCandidateGroup>((group) => {
     const owner = ownerByFile.get(group.filename) ?? {
       name: sourceModuleOwnerName({ projectRoot: absoluteProjectRoot, moduleId: group.filename }),
       root: group.filename,
     };
     ownerByFile.set(group.filename, owner);
-    group.owners = [owner.name];
     for (const candidate of group.candidates) {
-      const current = candidateOwners.get(candidate) ?? new Set();
+      const current = candidateOwners.get(candidate) ?? new Set<string>();
       current.add(owner.name);
       candidateOwners.set(candidate, current);
     }
-  }
+    return {
+      ...group,
+      owners: [owner.name],
+    };
+  });
   return {
     projectRoot: absoluteProjectRoot,
     sourceRoot: absoluteSourceRoot,
@@ -267,14 +386,23 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
   };
 }
 
-export function serializeSourceAnalysis({ analysis }) {
-  const relative = (file) => path.relative(analysis.projectRoot, file).replaceAll(path.sep, '/');
+export function serializeSourceAnalysis({ analysis }: {
+  analysis: SourceModuleAnalysis;
+}): SerializedSourceModuleAnalysis {
+  const relative = (file: string): string => path.relative(analysis.projectRoot, file).replaceAll(path.sep, '/');
   return {
     projectRoot: analysis.projectRoot,
     sourceRoot: analysis.sourceRoot,
     files: analysis.files.map(relative),
     cssOwners: analysis.cssOwners.map(({ name, root }) => ({ name, root: relative(root) })),
-    candidateOwners: Object.fromEntries([...analysis.candidateOwners].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)).map(([candidate, owners]) => [candidate, [...owners].sort()])),
-    candidateGroups: analysis.candidateGroups.map((group) => ({ ...group, filename: relative(group.filename) })),
+    candidateOwners: Object.fromEntries(
+      [...analysis.candidateOwners]
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([candidate, owners]) => [candidate, [...owners].sort()]),
+    ),
+    candidateGroups: analysis.candidateGroups.map((group) => ({
+      ...group,
+      filename: relative(group.filename),
+    })),
   };
 }

@@ -6,9 +6,9 @@ import vue from '@vitejs/plugin-vue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from 'vite';
 import { fileProtocolStandalone } from '../file-protocol-standalone';
-import { serializeCssOwnershipPlan } from './css-ownership-planner.mjs';
-import { createTwClassNodeTransform } from './tw-class-core.mjs';
-import { createTwClassVitePlugin } from './tw-class-vite-plugin.mjs';
+import { serializeCssOwnershipPlan } from './css-ownership-planner';
+import { createTwClassNodeTransform } from './tw-class-core';
+import { createTwClassVitePlugin } from './tw-class-vite-plugin';
 
 const temporaryDirectories: string[] = [];
 

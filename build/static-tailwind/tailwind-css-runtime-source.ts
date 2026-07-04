@@ -1,16 +1,44 @@
-export function createTailwindCssRegistry({ document, scheduleFlush }) {
-  const modules = new Map();
+export type TailwindCssRuntimeFragment = readonly [order: number, css: string];
+
+export type TailwindCssRegistry = {
+  register(options: {
+    moduleId: string;
+    fragments: readonly TailwindCssRuntimeFragment[];
+  }): void;
+  unregister(options: { moduleId: string }): void;
+  flush(): void;
+};
+
+type RegisteredModule = {
+  fragments: TailwindCssRuntimeFragment[];
+  version: number;
+};
+
+type VisibleFragment = {
+  moduleId: string;
+  order: number;
+  css: string;
+  version: number;
+};
+
+export function createTailwindCssRegistry({ document, scheduleFlush }: {
+  document: Document;
+  scheduleFlush(options: { callback: () => void }): void;
+}): TailwindCssRegistry {
+  const modules = new Map<string, RegisteredModule>();
   let registrationVersion = 0;
   let scheduled = false;
-  let styleElement;
+  let styleElement: HTMLStyleElement | undefined;
 
-  function placeStyleFirst({ style }) {
+  function placeStyleFirst({ style }: {
+    style: HTMLStyleElement;
+  }): HTMLStyleElement {
     if (document.head.firstElementChild !== style) document.head.prepend(style);
     return style;
   }
 
-  function ensureStyleElement() {
-    const existingStyles = [...document.head.querySelectorAll('style[data-naidan-tailwind-runtime]')];
+  function ensureStyleElement(): HTMLStyleElement {
+    const existingStyles = [...document.head.querySelectorAll<HTMLStyleElement>('style[data-naidan-tailwind-runtime]')];
     const selected = styleElement?.isConnected === true
       ? styleElement
       : existingStyles[0];
@@ -27,9 +55,9 @@ export function createTailwindCssRegistry({ document, scheduleFlush }) {
     return placeStyleFirst({ style: styleElement });
   }
 
-  function flush() {
+  function flush(): void {
     scheduled = false;
-    const fragmentByOrder = new Map();
+    const fragmentByOrder = new Map<number, VisibleFragment>();
     for (const [moduleId, { fragments, version }] of modules) {
       for (const [order, css] of fragments) {
         const current = fragmentByOrder.get(order);
@@ -47,7 +75,7 @@ export function createTailwindCssRegistry({ document, scheduleFlush }) {
     if (style.textContent !== css) style.textContent = css;
   }
 
-  function requestFlush() {
+  function requestFlush(): void {
     if (scheduled) return;
     scheduled = true;
     scheduleFlush({ callback: flush });
@@ -55,8 +83,8 @@ export function createTailwindCssRegistry({ document, scheduleFlush }) {
 
   return {
     register({ moduleId, fragments }) {
-      const normalized = fragments.map(([order, css]) => [order, css]);
-      const orders = new Set();
+      const normalized: TailwindCssRuntimeFragment[] = fragments.map(([order, css]) => [order, css]);
+      const orders = new Set<number>();
       for (const [order, css] of normalized) {
         if (!Number.isInteger(order) || order < 0 || typeof css !== 'string') {
           throw new TypeError(`Invalid static Tailwind CSS fragment in ${moduleId}.`);
@@ -96,7 +124,7 @@ export function createTailwindCssRegistry({ document, scheduleFlush }) {
   };
 }
 
-export function createTailwindCssRuntimeModuleSource() {
+export function createTailwindCssRuntimeModuleSource(): string {
   return `const createTailwindCssRegistry = ${createTailwindCssRegistry.toString()};
 const globalKey = '__NAIDAN_STATIC_TAILWIND_CSS_RUNTIME_V1__';
 function createRegistry() {
@@ -129,7 +157,12 @@ export function createTailwindCssRegistrationModuleSource({
   fragments,
   runtimeModuleId,
   dependencyModuleIds,
-}) {
+}: {
+  moduleId: string;
+  fragments: readonly TailwindCssRuntimeFragment[];
+  runtimeModuleId: string;
+  dependencyModuleIds: readonly string[];
+}): string {
   const dependencyImports = dependencyModuleIds
     .map((dependencyModuleId) => `import ${JSON.stringify(dependencyModuleId)};`)
     .join('\n');
