@@ -110,7 +110,7 @@ export function parseRelativeOutputFileName({ value, attribute }: {
   return fileName;
 }
 
-export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
+export function replaceViteBootstrapWithFileProtocolStandaloneScripts({
   html,
   entryFileName,
   runtimeFileName,
@@ -142,7 +142,7 @@ export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
   ));
   if (modulePreloads.length > 0) {
     throw new Error(
-      `[${pluginName}] Expected @vitejs/plugin-legacy to remove modulepreload links; found ${modulePreloads.length}.`,
+      `[${pluginName}] Expected build.modulePreload=false to omit modulepreload links; found ${modulePreloads.length}.`,
     );
   }
 
@@ -160,45 +160,36 @@ export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
   for (const script of preservedPreRuntimeScripts) {
     assertValidPreservedPreRuntimeScript({ script });
   }
-  const legacyEntries = executableScripts.filter((script) => script.id === 'vite-legacy-entry');
-  if (legacyEntries.length !== 1) {
-    throw new Error(`[${pluginName}] Expected exactly one @vitejs/plugin-legacy entry script; found ${legacyEntries.length}.`);
-  }
-  const legacyPolyfills = executableScripts.filter((script) => script.id === 'vite-legacy-polyfill');
-  if (legacyPolyfills.length > 0) {
-    throw new Error(`[${pluginName}] Legacy polyfill scripts are unsupported when externalSystemJS and polyfills are disabled.`);
-  }
 
-  const legacyEntry = legacyEntries[0];
-  if (legacyEntry.hasAttribute('src')) {
-    throw new Error(`[${pluginName}] The @vitejs/plugin-legacy entry must be an inline bootstrap script.`);
-  }
-  const dataSrc = legacyEntry.getAttribute('data-src');
-  if (dataSrc === null) {
-    throw new Error(`[${pluginName}] The @vitejs/plugin-legacy entry is missing data-src.`);
-  }
-  const legacyEntryFileName = parseRelativeOutputFileName({ value: dataSrc, attribute: 'legacy entry data-src' });
-  if (legacyEntryFileName !== entryFileName) {
-    throw new Error(
-      `[${pluginName}] Legacy entry data-src does not match the generated entry chunk: ${legacyEntryFileName} !== ${entryFileName}.`,
-    );
-  }
-
-  const unexpectedScripts = executableScripts.filter((script) => (
-    script !== legacyEntry
-    && !isPreservedPreRuntimeScript({ script })
+  const applicationEntries = executableScripts.filter((script) => (
+    !isPreservedPreRuntimeScript({ script })
   ));
-  if (unexpectedScripts.length > 0) {
-    const descriptions = unexpectedScripts.map((script) => {
-      const id = script.id === '' ? '(no id)' : script.id;
-      const src = script.getAttribute('src') ?? '(inline)';
-      return `${id}:${src}`;
-    });
+  if (applicationEntries.length !== 1) {
+    throw new Error(`[${pluginName}] Expected exactly one Vite module entry script; found ${applicationEntries.length}.`);
+  }
+  const applicationEntry = applicationEntries[0];
+  const entryType = applicationEntry.getAttribute('type')?.trim().toLowerCase();
+  if (entryType !== 'module') {
+    throw new Error(`[${pluginName}] The Vite application entry must be a module script.`);
+  }
+  const entrySource = applicationEntry.getAttribute('src');
+  if (entrySource === null) {
+    throw new Error(`[${pluginName}] The Vite application entry is missing src.`);
+  }
+  if ((applicationEntry.textContent ?? '').trim() !== '') {
+    throw new Error(`[${pluginName}] The Vite application entry must not contain inline source.`);
+  }
+  const entrySourceFileName = parseRelativeOutputFileName({
+    value: entrySource,
+    attribute: 'Vite application entry src',
+  });
+  if (entrySourceFileName !== entryFileName) {
     throw new Error(
-      `[${pluginName}] Unexpected executable script(s) in index.html; refusing to remove them: ${descriptions.join(', ')}.`,
+      `[${pluginName}] Vite application entry src does not match the generated entry chunk: `
+      + `${entrySourceFileName} !== ${entryFileName}.`,
     );
   }
-  legacyEntry.remove();
+  applicationEntry.remove();
 
   const appendClassicScript = ({ id, src, source }: {
     id: string,

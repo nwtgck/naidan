@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import legacy from '@vitejs/plugin-legacy';
 import vue from '@vitejs/plugin-vue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from 'vite';
 import { fileProtocolStandalone } from '../file-protocol-standalone';
+import { fileProtocolSystemJs } from '../file-protocol-systemjs';
 import { serializeCssOwnershipPlan } from './css-ownership-planner';
 import { createTwClassNodeTransform } from './tw-class-core';
 import { createTwClassVitePlugin } from './tw-class-vite-plugin';
@@ -390,14 +390,7 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
       plugins: [
         createPlugin({ root, debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind') }),
         createVuePlugin(),
-        legacy({
-          targets: ['Chrome >= 140'],
-          renderModernChunks: false,
-          renderLegacyChunks: true,
-          externalSystemJS: true,
-          modernPolyfills: false,
-          polyfills: false,
-        }),
+        fileProtocolSystemJs({ emitDiagnostics: false }),
         fileProtocolStandalone({
           debugBuildReportFile: undefined,
           workerTarget: 'chrome140',
@@ -409,8 +402,15 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
       build: {
         cssCodeSplit: true,
         manifest: true,
+        minify: 'oxc',
         modulePreload: false,
         outDir: outputDirectory,
+        rollupOptions: {
+          output: {
+            entryFileNames: 'assets/[name]-legacy-[hash].js',
+            chunkFileNames: 'assets/[name]-legacy-[hash].js',
+          },
+        },
       },
     });
 

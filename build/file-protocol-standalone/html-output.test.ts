@@ -7,10 +7,10 @@ import {
 } from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
 import {
   assertValidFileProtocolStandaloneHtml,
-  replaceLegacyBootstrapWithFileProtocolStandaloneScripts,
+  replaceViteBootstrapWithFileProtocolStandaloneScripts,
 } from './html-output';
 
-function createLegacyHtml({ preservedScript }: {
+function createViteHtml({ preservedScript }: {
   preservedScript: string,
 }): string {
   return `\
@@ -21,7 +21,7 @@ function createLegacyHtml({ preservedScript }: {
   </head>
   <body>
     <div id="app"></div>
-    <script nomodule id="vite-legacy-entry" data-src="assets/index.js">System.import('./assets/index.js')</script>
+    <script type="module" crossorigin src="./assets/index.js"></script>
   </body>
 </html>
 `;
@@ -30,8 +30,8 @@ function createLegacyHtml({ preservedScript }: {
 function transformStandaloneHtml({ preservedScript }: {
   preservedScript: string,
 }): string {
-  return replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
-    html: createLegacyHtml({ preservedScript }),
+  return replaceViteBootstrapWithFileProtocolStandaloneScripts({
+    html: createViteHtml({ preservedScript }),
     entryFileName: 'assets/index.js',
     runtimeFileName: 'assets/system.js',
     patchFileName: 'assets/file-patch.js',
@@ -66,12 +66,12 @@ describe('file protocol standalone preserved pre-runtime scripts', () => {
 
   it('rejects a marked body script because it would no longer protect the first paint', () => {
     const preservedScript = `<script id="initial-theme" ${FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE}="${FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE}">globalThis.initialThemeApplied = true</script>`;
-    const html = createLegacyHtml({ preservedScript: '' }).replace(
+    const html = createViteHtml({ preservedScript: '' }).replace(
       '<div id="app"></div>',
       `<div id="app"></div>${preservedScript}`,
     );
 
-    expect(() => replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
+    expect(() => replaceViteBootstrapWithFileProtocolStandaloneScripts({
       html,
       entryFileName: 'assets/index.js',
       runtimeFileName: 'assets/system.js',

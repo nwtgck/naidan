@@ -23,7 +23,7 @@ import {
 import type { BuiltFileProtocolStandaloneWorkerArtifact } from './worker';
 import {
   assertValidFileProtocolStandaloneHtml,
-  replaceLegacyBootstrapWithFileProtocolStandaloneScripts,
+  replaceViteBootstrapWithFileProtocolStandaloneScripts,
 } from './html-output';
 import {
   collectFileProtocolStandaloneBuildBudgetFailures,
@@ -77,7 +77,7 @@ function readErrorMessage({ error }: { error: unknown }): string {
  * 2. build each registered Worker as one classic IIFE artifact;
  * 3. emit SystemJS, the file-script patch, physical-load recovery, and Worker
  *    Blob registration scripts;
- * 4. validate application chunks and replace plugin-legacy's bootstrap;
+ * 4. validate application chunks and replace Vite's module bootstrap;
  * 5. measure written Core artifacts and enforce build budgets.
  *
  * The optional Debug build report is a sidecar assembled from the same
@@ -230,81 +230,84 @@ export function fileProtocolStandalone({
         }));
       }
     },
-    generateBundle(_options, bundle) {
-      if (resolvedConfig === undefined) {
-        throw new Error(`[${pluginName}] Vite config was not resolved.`);
-      }
-      const runtimeFileName = this.getFileName(runtimeReferenceId);
-      const sourceMapFileName = this.getFileName(sourceMapReferenceId);
-      const patchFileName = this.getFileName(patchReferenceId);
-      const retryFileName = this.getFileName(retryReferenceId);
-      finalizedWorkers = workerBuilds.map((worker) => {
-        const referenceId = registryReferenceIds.get(worker.id);
-        if (referenceId === undefined) {
-          throw new Error(`[${pluginName}] Missing registry reference for worker: ${worker.id}`);
+    generateBundle: {
+      order: 'post',
+      handler(_options, bundle) {
+        if (resolvedConfig === undefined) {
+          throw new Error(`[${pluginName}] Vite config was not resolved.`);
         }
-        return { ...worker, registryFileName: this.getFileName(referenceId) };
-      });
-
-      const chunks = Object.values(bundle).filter((item): item is OutputChunk => item.type === 'chunk');
-      const entryChunks = chunks.filter((chunk) => chunk.isEntry);
-      if (entryChunks.length !== 1) {
-        throw new Error(`[${pluginName}] Expected exactly one application entry chunk; found ${entryChunks.length}.`);
-      }
-      const entry = entryChunks[0];
-      for (const chunk of chunks) {
-        const validation = assertFileProtocolStandaloneClassicScript({
-          source: chunk.code,
-          label: chunk.fileName,
-          mode: 'application-chunk',
+        const runtimeFileName = this.getFileName(runtimeReferenceId);
+        const sourceMapFileName = this.getFileName(sourceMapReferenceId);
+        const patchFileName = this.getFileName(patchReferenceId);
+        const retryFileName = this.getFileName(retryReferenceId);
+        finalizedWorkers = workerBuilds.map((worker) => {
+          const referenceId = registryReferenceIds.get(worker.id);
+          if (referenceId === undefined) {
+            throw new Error(`[${pluginName}] Missing registry reference for worker: ${worker.id}`);
+          }
+          return { ...worker, registryFileName: this.getFileName(referenceId) };
         });
-        if (validation.hostedWorkerUrlCount > 0) {
-          throw new Error(`[${pluginName}] Hosted-style Worker URL remains in ${chunk.fileName}.`);
+
+        const chunks = Object.values(bundle).filter((item): item is OutputChunk => item.type === 'chunk');
+        const entryChunks = chunks.filter((chunk) => chunk.isEntry);
+        if (entryChunks.length !== 1) {
+          throw new Error(`[${pluginName}] Expected exactly one application entry chunk; found ${entryChunks.length}.`);
         }
-      }
-
-      const htmlAssets = Object.values(bundle).filter((item): item is OutputAsset => item.type === 'asset' && item.fileName.endsWith('.html'));
-      if (htmlAssets.length !== 1 || htmlAssets[0].fileName !== 'index.html') {
-        throw new Error(`[${pluginName}] Expected only index.html in standalone output.`);
-      }
-      const htmlAsset = htmlAssets[0];
-      const html = typeof htmlAsset.source === 'string' ? htmlAsset.source : Buffer.from(htmlAsset.source).toString('utf8');
-      htmlAsset.source = replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
-        html,
-        entryFileName: entry.fileName,
-        runtimeFileName,
-        patchFileName,
-        retryFileName,
-        workers: finalizedWorkers,
-      });
-      assertValidFileProtocolStandaloneHtml({ html: String(htmlAsset.source) });
-
-      buildMetricsPlan = createFileProtocolStandaloneBuildMetricsPlan({
-        bundle,
-        entryFileName: entry.fileName,
-        runtimeFileName,
-        patchFileName,
-        retryFileName,
-      });
-      if (debugBuildReportFile !== undefined) {
-        try {
-          debugBuildReport = debugCreateFileProtocolStandaloneBuildReport({
-            root: resolvedConfig.root,
-            bundle,
-            workers: finalizedWorkers,
-            metricsPlan: buildMetricsPlan,
-            runtimeFileName,
-            sourceMapFileName,
-            patchFileName,
-            retryFileName,
-            systemJsVersion: systemJsPackage.version,
-            budgets,
+        const entry = entryChunks[0];
+        for (const chunk of chunks) {
+          const validation = assertFileProtocolStandaloneClassicScript({
+            source: chunk.code,
+            label: chunk.fileName,
+            mode: 'application-chunk',
           });
-        } catch (error) {
-          debugBuildReport = undefined;
-          this.warn(`[${pluginName}] Debug build report generation failed: ${readErrorMessage({ error })}`);
+          if (validation.hostedWorkerUrlCount > 0) {
+            throw new Error(`[${pluginName}] Hosted-style Worker URL remains in ${chunk.fileName}.`);
+          }
         }
-      }
+
+        const htmlAssets = Object.values(bundle).filter((item): item is OutputAsset => item.type === 'asset' && item.fileName.endsWith('.html'));
+        if (htmlAssets.length !== 1 || htmlAssets[0].fileName !== 'index.html') {
+          throw new Error(`[${pluginName}] Expected only index.html in standalone output.`);
+        }
+        const htmlAsset = htmlAssets[0];
+        const html = typeof htmlAsset.source === 'string' ? htmlAsset.source : Buffer.from(htmlAsset.source).toString('utf8');
+        htmlAsset.source = replaceViteBootstrapWithFileProtocolStandaloneScripts({
+          html,
+          entryFileName: entry.fileName,
+          runtimeFileName,
+          patchFileName,
+          retryFileName,
+          workers: finalizedWorkers,
+        });
+        assertValidFileProtocolStandaloneHtml({ html: String(htmlAsset.source) });
+
+        buildMetricsPlan = createFileProtocolStandaloneBuildMetricsPlan({
+          bundle,
+          entryFileName: entry.fileName,
+          runtimeFileName,
+          patchFileName,
+          retryFileName,
+        });
+        if (debugBuildReportFile !== undefined) {
+          try {
+            debugBuildReport = debugCreateFileProtocolStandaloneBuildReport({
+              root: resolvedConfig.root,
+              bundle,
+              workers: finalizedWorkers,
+              metricsPlan: buildMetricsPlan,
+              runtimeFileName,
+              sourceMapFileName,
+              patchFileName,
+              retryFileName,
+              systemJsVersion: systemJsPackage.version,
+              budgets,
+            });
+          } catch (error) {
+            debugBuildReport = undefined;
+            this.warn(`[${pluginName}] Debug build report generation failed: ${readErrorMessage({ error })}`);
+          }
+        }
+      },
     },
     async writeBundle() {
       if (resolvedConfig === undefined || buildMetricsPlan === undefined) {
