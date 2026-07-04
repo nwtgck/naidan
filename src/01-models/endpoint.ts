@@ -1,4 +1,21 @@
-import type { Endpoint, HttpEndpoint } from '@/01-models/types';
+import type { Endpoint, EndpointType, HttpEndpoint, SupportedEndpoint } from '@/01-models/types';
+
+const clonePersistedExperimental = ({ value }: { value: unknown }): unknown => (
+  value === undefined ? undefined : structuredClone(value)
+);
+
+const arePersistedExperimentalValuesEqual = ({
+  left,
+  right,
+}: {
+  left: unknown,
+  right: unknown,
+}): boolean => {
+  if (Object.is(left, right)) return true;
+
+  // Persisted experimental values originate from JSON-compatible DTO data.
+  return JSON.stringify(left) === JSON.stringify(right);
+};
 
 export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
   switch (endpoint.type) {
@@ -6,6 +23,49 @@ export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
   case 'ollama':
     return true;
   case 'transformers_js':
+  case 'prompt_api':
+  case 'unsupported_experimental_endpoint':
+    return false;
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+  }
+  }
+}
+
+export function isSupportedEndpoint(endpoint: Endpoint): endpoint is SupportedEndpoint {
+  switch (endpoint.type) {
+  case 'openai':
+  case 'ollama':
+  case 'transformers_js':
+  case 'prompt_api':
+    return true;
+  case 'unsupported_experimental_endpoint':
+    return false;
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+  }
+  }
+}
+
+export function getSupportedEndpointType({
+  endpoint,
+}: {
+  endpoint: Endpoint,
+}): EndpointType | undefined {
+  return isSupportedEndpoint(endpoint) ? endpoint.type : undefined;
+}
+
+export function isConfiguredEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
+  switch (endpoint.type) {
+  case 'openai':
+  case 'ollama':
+    return endpoint.url !== '';
+  case 'transformers_js':
+  case 'prompt_api':
+    return true;
+  case 'unsupported_experimental_endpoint':
     return false;
   default: {
     const _ex: never = endpoint;
@@ -37,6 +97,16 @@ export function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
+  case 'prompt_api':
+    return { type: 'prompt_api' };
+  case 'unsupported_experimental_endpoint':
+    return {
+      type: 'unsupported_experimental_endpoint',
+      persistedType: endpoint.persistedType,
+      persistedExperimental: clonePersistedExperimental({
+        value: endpoint.persistedExperimental,
+      }),
+    };
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
@@ -84,6 +154,17 @@ export function areEndpointsEqual({
   }
   case 'transformers_js':
     return right.type === 'transformers_js';
+  case 'prompt_api':
+    return right.type === 'prompt_api';
+  case 'unsupported_experimental_endpoint':
+    return (
+      right.type === 'unsupported_experimental_endpoint'
+      && Object.is(left.persistedType, right.persistedType)
+      && arePersistedExperimentalValuesEqual({
+        left: left.persistedExperimental,
+        right: right.persistedExperimental,
+      })
+    );
   default: {
     const _ex: never = left;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);

@@ -24,6 +24,9 @@ import { transformersJsService } from '@/features/transformers-js';
 import { PlayIcon, ArrowLeftIcon, CheckCircle2Icon, ActivityIcon, SettingsIcon, XIcon, PlusIcon, Trash2Icon, FlaskConicalIcon } from 'lucide-vue-next';
 import { naturalSort } from '@/utils/string';
 import { detectOllama } from '@/utils/ollama-detection';
+import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
+import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
+import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
 const { setActiveFocusArea } = useLayout();
@@ -115,6 +118,7 @@ const isTransformersJs = computed(() => {
     return true;
   case 'openai':
   case 'ollama':
+  case 'prompt_api':
     return false;
   default: {
     const _ex: never = type;
@@ -122,6 +126,13 @@ const isTransformersJs = computed(() => {
   }
   }
 });
+
+const isPromptApi = computed(() => effectiveType.value === 'prompt_api');
+const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
+const isHttpEndpointType = computed(() => (
+  effectiveType.value === 'openai'
+  || effectiveType.value === 'ollama'
+));
 
 // Reactive sync with transformersJsService
 let unsubscribe: (() => void) | null = null;
@@ -156,6 +167,7 @@ watch(
     switch (newType) {
     case 'openai':
     case 'ollama':
+    case 'prompt_api':
       return;
     case 'transformers_js':
       break;
@@ -239,9 +251,7 @@ function handleModelLoaded({ modelId }: { modelId: string }) {
   }
 }
 
-const isValidUrl = computed(() => {
-  return isTransformersJs.value || !!getNormalizedUrl();
-});
+const isValidUrl = computed(() => !isHttpEndpointType.value || !!getNormalizedUrl());
 
 function getNormalizedUrl() {
   let url = customUrl.value.trim();
@@ -279,6 +289,7 @@ function createEndpoint({
       httpHeaders: httpHeaders.length > 0 ? httpHeaders : undefined,
     };
   case 'transformers_js':
+  case 'prompt_api':
     return { type };
   default: {
     const _ex: never = type;
@@ -312,6 +323,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
       return true;
     case 'openai':
     case 'ollama':
+    case 'prompt_api':
       // Never auto-fetch for server endpoints to prevent surprising UI transitions (jumping to Step 2).
       // The user must click "Check Connection" manually.
       return false;
@@ -345,8 +357,12 @@ async function handleCancelConnect(): Promise<void> {
 async function handleConnect() {
   const url = getNormalizedUrl();
 
-  if (!url && !isTransformersJs.value) {
+  if (!url && isHttpEndpointType.value) {
     error.value = await ensureStrings.OnboardingModal__enter_valid_url();
+    return;
+  }
+
+  if (isPromptApi.value && promptApiRuntimeState.value.status !== 'ready') {
     return;
   }
 
@@ -417,7 +433,7 @@ async function handleFinish() {
   const url = getNormalizedUrl();
   const type = effectiveType.value;
 
-  if (!url && !isTransformersJs.value) {
+  if (!url && isHttpEndpointType.value) {
     error.value = await ensureStrings.OnboardingModal__enter_valid_url();
     return;
   }
@@ -441,6 +457,7 @@ async function handleFinish() {
             return undefined;
           case 'openai':
           case 'ollama':
+          case 'prompt_api':
             return selectedModel.value || undefined;
           default: {
             const _ex: never = type;
@@ -516,7 +533,7 @@ defineExpose({
 
           <!-- Left Column: Configuration (Primary) -->
 
-          <div :tw-class="['p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs ? 'w-full' : 'w-full lg:w-[62%]']">
+          <div :tw-class="['p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs || isPromptApi ? 'w-full' : 'w-full lg:w-[62%]']">
 
             <template v-if="isTransformersJs">
               <!-- Transformers.js Integrated View -->
@@ -546,6 +563,12 @@ defineExpose({
                       @click="selectedType = 'transformers_js'; availableModels = []"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
+                    <button
+                      @click="selectedType = 'prompt_api'; availableModels = []"
+                      :disabled="!isPromptApiSupported"
+                      data-testid="onboarding-prompt-api-button"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'prompt_api' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
+                    >{{ lazyStrings.SHARED__prompt_api_experimental() }}</button>
                   </div>
                 </div>
 
@@ -607,11 +630,18 @@ defineExpose({
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5" />
                       {{ lazyStrings.OnboardingModal__transformers_js() }}
                     </button>
+                    <button
+                      @click="selectedType = 'prompt_api'; availableModels = []"
+                      :disabled="!isPromptApiSupported"
+                      data-testid="onboarding-prompt-api-button"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'prompt_api' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
+                    >{{ lazyStrings.SHARED__prompt_api_experimental() }}</button>
                   </div>
 
                 </div>
+                <PromptApiStatus v-if="isPromptApi" />
                 <input
-                  v-if="!isTransformersJs"
+                  v-if="isHttpEndpointType"
                   v-model="customUrl"
                   type="text"
                   placeholder="http://localhost:11434"
@@ -620,7 +650,7 @@ defineExpose({
                 />
 
                 <!-- Custom HTTP Headers -->
-                <div tw-class="space-y-3" v-if="!isTransformersJs">
+                <div tw-class="space-y-3" v-if="isHttpEndpointType">
                   <div tw-class="flex items-center justify-between ml-1">
                     <label tw-class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">{{ lazyStrings.OnboardingModal__custom_http_headers() }}</label>
                     <button
@@ -670,7 +700,7 @@ defineExpose({
                 <div tw-class="flex gap-2">
                   <button
                     @click="handleConnect"
-                    :disabled="!isValidUrl || isTesting"
+                    :disabled="!isValidUrl || isTesting || (isPromptApi && promptApiRuntimeState.status !== 'ready')"
                     tw-class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                     data-testid="onboarding-connect-button"
                   >
@@ -756,7 +786,7 @@ defineExpose({
           </div>
 
           <!-- Right Column: Setup Guide (Secondary/Auxiliary) -->
-          <div v-if="!isTransformersJs" tw-class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
+          <div v-if="isHttpEndpointType" tw-class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
             <div tw-class="flex items-center gap-2 mb-4">
               <span tw-class="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-widest">{{ lazyStrings.OnboardingModal__help_and_guide() }}</span>
             </div>

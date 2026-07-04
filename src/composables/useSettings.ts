@@ -28,7 +28,7 @@ import {
 } from '@/00-storage/service/bootstrap-storage-type';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useConfirm } from './useConfirm';
-import { areEndpointsEqual, cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
+import { areEndpointsEqual, cloneEndpoint, isConfiguredEndpoint, isHttpEndpoint, isSupportedEndpoint } from '@/01-models/endpoint';
 
 const _settings = ref<Settings>({
   ...DEFAULT_SETTINGS,
@@ -133,16 +133,16 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
 watch(
   () => ({
     initialized: _initialized.value,
-    endpointType: _settings.value.endpoint.type,
+    endpoint: _settings.value.endpoint,
   }),
-  ({ initialized, endpointType }, _previous, onCleanup) => {
-    if (!initialized) {
+  ({ initialized, endpoint }, _previous, onCleanup) => {
+    if (!initialized || !isSupportedEndpoint(endpoint)) {
       return;
     }
 
     const scheduled = scheduleIdleTask({
       task: async () => {
-        await prefetchLmProvider({ endpointType });
+        await prefetchLmProvider({ endpointType: endpoint.type });
       },
       timeoutMs: 2_000,
       fallbackDelayMs: 500,
@@ -164,6 +164,9 @@ watch(
       return;
     case 'transformers_js':
       break;
+    case 'prompt_api':
+    case 'unsupported_experimental_endpoint':
+      return;
     default: {
       const _ex: never = endpointType;
       throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -217,7 +220,7 @@ export function useSettings(): UseSettingsApi {
 
   const isOnboardingDismissed = computed(() => {
     const endpoint = _settings.value.endpoint;
-    const hasEndpoint = endpoint.type === 'transformers_js' || endpoint.url !== '';
+    const hasEndpoint = isConfiguredEndpoint({ endpoint });
     const hasModel = !!_settings.value.defaultModelId;
     return _isOnboardingDismissed.value || (hasEndpoint && hasModel);
   });
@@ -350,7 +353,7 @@ export function useSettings(): UseSettingsApi {
           await setStringLocale({
             locale: s.experimental?.locale ?? resolveBrowserLocale(),
           });
-          if (s.endpoint.type === 'transformers_js' || s.endpoint.url !== '') {
+          if (isConfiguredEndpoint({ endpoint: s.endpoint })) {
             // Initial model refresh is non-blocking, but its rejection must be
             // observed because initialization intentionally does not await it.
             (async () => {

@@ -469,8 +469,9 @@ describe('ChatInput Integration', () => {
     mockChatStore.fetchAvailableModels.mockResolvedValue([]);
   });
 
-  const getWrapper = ({ autoSendPrompt }: {
+  const getWrapper = ({ autoSendPrompt, isSubmissionEnabled }: {
     autoSendPrompt?: string,
+    isSubmissionEnabled?: boolean,
   } = {}) => mount(ChatInput, {
     props: {
       chatId: toChatId({ raw: 'chat-1' }),
@@ -482,6 +483,7 @@ describe('ChatInput Integration', () => {
       visibility: 'active',
       aboveInputVisibility: 'hidden',
       isStreaming: false,
+      isSubmissionEnabled,
       canGenerateImage: true,
       hasImageModel: true,
       availableImageModels: [],
@@ -804,6 +806,20 @@ describe('ChatInput Integration', () => {
     expect(mockSendMessageForChat).toHaveBeenCalled();
     expect(wrapper.vm.input).toBe('');
     expect(wrapper.vm.TEST_ONLY.attachments.value.length).toBe(0);
+  });
+
+  it('disables submission while the selected endpoint is not ready', async () => {
+    const wrapper = getWrapper({ isSubmissionEnabled: false });
+    wrapper.vm.input = 'test message';
+    await nextTick();
+
+    const sendButton = wrapper.get('button[data-testid="send-button"]');
+    expect(sendButton.attributes('disabled')).toBeDefined();
+
+    await sendButton.trigger('click');
+    await flushPromises();
+
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
   });
 
   it('should call setPreferredEditorMode when AdvancedTextEditor emits update:mode', async () => {

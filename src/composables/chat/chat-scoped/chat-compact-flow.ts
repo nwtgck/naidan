@@ -1,3 +1,4 @@
+import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import { ensureStrings } from '@/strings';
 import type { ChatGroup, SidebarItem } from '@/01-models/types';
 import {
@@ -116,8 +117,9 @@ export async function runCompactCurrentBranchForChat({
     });
     const resolvedModel = mutableChat.modelId || resolved.modelId;
 
-    const hasReachableEndpoint = resolved.endpoint.type === 'transformers_js'
-      || resolved.endpoint.url !== '';
+    const hasReachableEndpoint = isConfiguredEndpoint({
+      endpoint: resolved.endpoint,
+    });
     if (!resolvedModel || !hasReachableEndpoint) {
       const message = await ensureStrings.contextCompact__requires_a_configured_model_and_endpoint();
       addErrorEvent({

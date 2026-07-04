@@ -114,6 +114,18 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.text()).toContain('Ollama');
   });
 
+  it('keeps Prompt API visible but disabled when LanguageModel is unavailable', () => {
+    vi.stubGlobal('LanguageModel', undefined);
+    const wrapper = mount(OnboardingModal);
+
+    const promptApiButton = wrapper.get('[data-testid="onboarding-prompt-api-button"]');
+    expect(promptApiButton.text()).toContain('Prompt API');
+    expect((promptApiButton.element as HTMLButtonElement).disabled).toBe(true);
+
+    wrapper.unmount();
+    vi.unstubAllGlobals();
+  });
+
   it('disables the connection button when URL is empty', () => {
     const wrapper = mount(OnboardingModal);
     const connectBtn = wrapper.find('[data-testid="onboarding-connect-button"]');

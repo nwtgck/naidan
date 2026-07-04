@@ -466,6 +466,47 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
+  case 'experimental_type': {
+    const experimentalType = dto.experimental?.type;
+    switch (experimentalType) {
+    case 'prompt_api':
+      return { type: 'prompt_api' };
+    case undefined: {
+      const unreadable = dto.experimental?.unreadable;
+      let persistedExperimental: unknown;
+
+      if (unreadable !== undefined && Object.hasOwn(unreadable, '_root')) {
+        persistedExperimental = unreadable._root;
+      } else if (dto.experimental === undefined) {
+        persistedExperimental = undefined;
+      } else {
+        persistedExperimental = {
+          ...dto.experimental,
+          ...unreadable,
+        };
+      }
+
+      const persistedType = (
+        typeof persistedExperimental === 'object'
+        && persistedExperimental !== null
+        && !Array.isArray(persistedExperimental)
+        && 'type' in persistedExperimental
+      )
+        ? persistedExperimental.type
+        : persistedExperimental;
+
+      return {
+        type: 'unsupported_experimental_endpoint',
+        persistedType,
+        persistedExperimental,
+      };
+    }
+    default: {
+      const _ex: never = experimentalType;
+      throw new Error(`Unhandled experimental endpoint type: ${String(_ex)}`);
+    }
+    }
+  }
   default: {
     const _ex: never = dto;
     throw new Error(`Unhandled endpoint DTO: ${String(_ex)}`);
@@ -484,6 +525,19 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
+  case 'prompt_api':
+    return {
+      type: 'experimental_type',
+      experimental: { type: 'prompt_api' },
+    };
+  case 'unsupported_experimental_endpoint':
+    // The current reader intentionally cannot type this payload. Preserve the
+    // original JSON-compatible value so saving an unrelated setting does not
+    // erase or reject an endpoint written by a newer Naidan version.
+    return {
+      type: 'experimental_type',
+      experimental: endpoint.persistedExperimental,
+    } as EndpointDto;
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);

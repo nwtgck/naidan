@@ -15,6 +15,8 @@ import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp }
 import { SHARED__mount } from '@/strings/messages/SHARED__mount/en';
 import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/en';
 import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/en';
+import { SHARED__prompt_api_experimental } from '@/strings/messages/SHARED__prompt_api_experimental/en';
+import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/en';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/en';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/en';
 
@@ -800,6 +802,16 @@ import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingM
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/en';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/en';
 import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/en';
+import { PromptApiStatus__browser_provided_model_is_not_available_on_this_device } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_not_available_on_this_device/en';
+import { PromptApiStatus__browser_provided_model_is_ready } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_ready/en';
+import { PromptApiStatus__checking_prompt_api_availability } from '@/strings/messages/PromptApiStatus__checking_prompt_api_availability/en';
+import { PromptApiStatus__downloading_browser_provided_model } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model/en';
+import { PromptApiStatus__downloading_browser_provided_model_progress } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model_progress/en';
+import { PromptApiStatus__language_model_api_is_not_available_in_this_browser } from '@/strings/messages/PromptApiStatus__language_model_api_is_not_available_in_this_browser/en';
+import { PromptApiStatus__model_preparation_failed } from '@/strings/messages/PromptApiStatus__model_preparation_failed/en';
+import { PromptApiStatus__prepare_browser_provided_model } from '@/strings/messages/PromptApiStatus__prepare_browser_provided_model/en';
+import { PromptApiStatus__preparing_browser_provided_model } from '@/strings/messages/PromptApiStatus__preparing_browser_provided_model/en';
+import { PromptApiStatus__try_again } from '@/strings/messages/PromptApiStatus__try_again/en';
 import { ProviderProfilePreview__configuration_preview } from '@/strings/messages/ProviderProfilePreview__configuration_preview/en';
 import { ProviderProfilePreview__endpoint_url } from '@/strings/messages/ProviderProfilePreview__endpoint_url/en';
 import { ProviderProfilePreview__headers } from '@/strings/messages/ProviderProfilePreview__headers/en';
@@ -1488,6 +1500,8 @@ export const en = {
   SHARED__mount,
   SHARED__new_chat,
   SHARED__no_models_found_at_this_endpoint,
+  SHARED__prompt_api_experimental,
+  SHARED__unsupported_experimental_endpoint,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
 
@@ -2273,6 +2287,16 @@ export const en = {
   OnboardingModal__value,
   PWAManager__app_ready_to_work_offline,
   PWAUpdateNotification__reload_to_update,
+  PromptApiStatus__browser_provided_model_is_not_available_on_this_device,
+  PromptApiStatus__browser_provided_model_is_ready,
+  PromptApiStatus__checking_prompt_api_availability,
+  PromptApiStatus__downloading_browser_provided_model,
+  PromptApiStatus__downloading_browser_provided_model_progress,
+  PromptApiStatus__language_model_api_is_not_available_in_this_browser,
+  PromptApiStatus__model_preparation_failed,
+  PromptApiStatus__prepare_browser_provided_model,
+  PromptApiStatus__preparing_browser_provided_model,
+  PromptApiStatus__try_again,
   ProviderProfilePreview__configuration_preview,
   ProviderProfilePreview__endpoint_url,
   ProviderProfilePreview__headers,

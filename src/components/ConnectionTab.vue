@@ -3,7 +3,7 @@ import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import type { EndpointType, ProviderProfile, Settings } from '@/01-models/types';
+import type { Endpoint, ProviderProfile, Settings } from '@/01-models/types';
 import { cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
 import { capitalize, naturalSort } from '@/utils/string';
 import {
@@ -30,6 +30,8 @@ import { ENDPOINT_PRESETS } from '@/constants';
 import { idToRaw } from '@/01-models/ids';
 import type { ProviderProfileId } from '@/01-models/ids';
 import { lazyStrings, ensureStrings } from '@/strings';
+import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
+import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
 
 const props = defineProps<{
   modelValue: Settings,
@@ -59,7 +61,7 @@ const form = computed({
   set: (val) => emit('update:modelValue', val),
 });
 
-const endpointType = computed<EndpointType>({
+const endpointType = computed<Endpoint['type']>({
   get: () => form.value.endpoint.type,
   set: (type) => {
     switch (type) {
@@ -76,7 +78,10 @@ const endpointType = computed<EndpointType>({
       return;
     }
     case 'transformers_js':
+    case 'prompt_api':
       form.value.endpoint = { type };
+      return;
+    case 'unsupported_experimental_endpoint':
       return;
     default: {
       const _ex: never = type;
@@ -113,6 +118,7 @@ const endpointHttpHeaders = computed<[string, string][] | undefined>({
 });
 
 const connectionSuccess = ref(false);
+const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 
 const error = ref<string | null>(null);
 
@@ -142,6 +148,10 @@ async function copySetupUrl(): Promise<void> {
     break;
   case 'transformers_js':
     // transformers_js doesn't use global-endpoint parameters in this implementation
+    break;
+  case 'prompt_api':
+  case 'unsupported_experimental_endpoint':
+    // Experimental endpoint DTOs are intentionally not encoded in setup URLs.
     break;
   default: {
     const _ex: never = type;
@@ -305,7 +315,11 @@ function removeHeader({ index }: { index: number }) {
 
 // Auto-fetch for localhost or transformers_js
 watch([endpointUrl, endpointType], ([url, type]) => {
-  if (type === 'transformers_js' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
+  if (
+    type === 'transformers_js'
+    || type === 'prompt_api'
+    || (url && (url.includes('localhost') || url.includes('127.0.0.1')))
+  ) {
     fetchModels();
   }
 });
@@ -375,11 +389,20 @@ defineExpose({
                   <option :disabled="isStandalone" value="transformers_js">
                     {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ isStandalone ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
                   </option>
+                  <option value="prompt_api" :disabled="!isPromptApiSupported">
+                    {{ lazyStrings.SHARED__prompt_api_experimental() }}
+                  </option>
+                  <option
+                    v-if="endpointType === 'unsupported_experimental_endpoint'"
+                    value="unsupported_experimental_endpoint"
+                    disabled
+                  >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                 </select>
+                <PromptApiStatus v-if="endpointType === 'prompt_api'" tw-class="mt-3" />
               </div>
 
               <!-- Endpoint URL -->
-              <div tw-class="space-y-4" v-if="endpointType !== 'transformers_js'">
+              <div tw-class="space-y-4" v-if="isHttpEndpoint(form.endpoint)">
                 <div tw-class="flex items-center justify-between ml-1">
                   <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
                   <div tw-class="flex flex-wrap gap-1.5">
@@ -578,9 +601,12 @@ defineExpose({
               </div>
 
               <!-- LM Parameters -->
-              <div tw-class="bg-gray-50/30 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800">
+              <fieldset
+                :disabled="endpointType === 'prompt_api'"
+                :tw-class="['bg-gray-50/30 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800', { 'opacity-50': endpointType === 'prompt_api' }]"
+              >
                 <LmParametersEditor v-model="form.lmParameters" />
-              </div>
+              </fieldset>
             </div>
           </section>
         </div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ExperimentalExperimentalTypeEndpointSchemaDto,
   ExperimentalSettingsSchemaDto,
   optionalExperimentalFieldSchemaDto,
 } from './experimental.dto';
@@ -148,5 +149,23 @@ describe('optionalExperimentalFieldSchemaDto', () => {
         previewContextSize: 7,
       },
     });
+  });
+});
+
+
+describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
+  const schema = optionalExperimentalFieldSchemaDto({
+    schema: ExperimentalExperimentalTypeEndpointSchemaDto,
+  });
+
+  it('keeps prompt_api strongly typed', () => {
+    expect(schema.parse({ type: 'prompt_api' })).toEqual({ type: 'prompt_api' });
+  });
+
+  it('isolates an unknown endpoint identifier as an unreadable field', () => {
+    const parsed = schema.parse({ type: 'future_browser_ai' });
+
+    expect(parsed).toEqual({ type: undefined });
+    expect(parsed?.unreadable).toEqual({ type: 'future_browser_ai' });
   });
 });

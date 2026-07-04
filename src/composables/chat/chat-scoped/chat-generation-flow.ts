@@ -2,10 +2,11 @@ import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
 import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, Endpoint, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
-import { isHttpEndpoint } from '@/01-models/endpoint';
+import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { LmProvider } from '@/01-models/lm';
 import type { Tool } from '@/01-models/tool';
 import { loadLmProvider } from '@/features/lm/providerFactory';
+import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 import { storageService } from '@/00-storage/service';
 import { getEnabledTools } from '@/features/tools/factory';
 import { markExecutingToolResultsAsInterrupted } from '@/features/tools/interruption';
@@ -89,6 +90,22 @@ type ResolvedGenerationSettings = {
   autoTitleEnabled: boolean,
 };
 
+function isPromptApiEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
+  switch (endpoint.type) {
+  case 'prompt_api':
+    return true;
+  case 'openai':
+  case 'ollama':
+  case 'transformers_js':
+  case 'unsupported_experimental_endpoint':
+    return false;
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+  }
+  }
+}
+
 export async function sendMessageForChat({
   chatId,
   content,
@@ -163,7 +180,11 @@ export async function sendMessageToTargetChat({
       chat: mutableChat,
     });
     const endpoint = resolved.endpoint;
-    const { hasReachableEndpoint, url, type } = (() => {
+    const { hasReachableEndpoint, url, type }: {
+      hasReachableEndpoint: boolean,
+      url: string | undefined,
+      type: EndpointType | undefined,
+    } = (() => {
       switch (endpoint.type) {
       case 'openai':
       case 'ollama':
@@ -173,10 +194,17 @@ export async function sendMessageToTargetChat({
           type: endpoint.type,
         };
       case 'transformers_js':
+      case 'prompt_api':
         return {
           hasReachableEndpoint: true,
           url: undefined,
           type: endpoint.type,
+        };
+      case 'unsupported_experimental_endpoint':
+        return {
+          hasReachableEndpoint: false,
+          url: undefined,
+          type: undefined,
         };
       default: {
         const _ex: never = endpoint;
@@ -202,16 +230,27 @@ export async function sendMessageToTargetChat({
     }
 
     if (!hasReachableEndpoint || !resolvedModel) {
-      showOnboardingDraft({
-        url,
-        type,
-        models: await fetchAvailableModelsForChat({
-          chatId: mutableChat.id,
-          errorSource: 'chat-generation-flow:show-onboarding',
-        }),
-      });
+      if (type !== undefined) {
+        showOnboardingDraft({
+          url,
+          type,
+          models: await fetchAvailableModelsForChat({
+            chatId: mutableChat.id,
+            errorSource: 'chat-generation-flow:show-onboarding',
+          }),
+        });
+      }
       return false;
     }
+
+    const usesPromptApi = isPromptApiEndpoint({ endpoint });
+    if (usesPromptApi && promptApiRuntimeState.value.status !== 'ready') {
+      return false;
+    }
+
+    const effectiveLmParameters = usesPromptApi
+      ? undefined
+      : lmParameters;
 
     const processedAttachments: Attachment[] = [];
     if (normalizedAttachments.length > 0 && !storageService.canPersistBinary) {
@@ -266,7 +305,7 @@ export async function sendMessageToTargetChat({
       thinking: undefined,
       error: undefined,
       modelId: undefined,
-      lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
+      lmParameters: effectiveLmParameters || EMPTY_LM_PARAMETERS,
       toolCalls: undefined,
       results: undefined,
     };
@@ -283,7 +322,7 @@ export async function sendMessageToTargetChat({
       attachments: undefined,
       thinking: undefined,
       error: undefined,
-      lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
+      lmParameters: effectiveLmParameters || EMPTY_LM_PARAMETERS,
       toolCalls: undefined,
       results: undefined,
     };
@@ -337,7 +376,7 @@ export async function sendMessageToTargetChat({
     generateResponseForAssistant({
       chat: mutableChat,
       assistantId: assistantMessage.id,
-      lmParameters,
+      lmParameters: effectiveLmParameters,
       onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;
@@ -404,7 +443,10 @@ export async function generateResponseForAssistant({
 
   const resolved = resolveGenerationSettings({ chat: mutableChat });
   const resolvedModel = assistantNode.modelId || resolved.modelId;
-  const finalLmParameters = lmParameters || resolved.lmParameters;
+  const usesPromptApi = isPromptApiEndpoint({ endpoint: resolved.endpoint });
+  const finalLmParameters = usesPromptApi
+    ? undefined
+    : (lmParameters || resolved.lmParameters);
 
   assistantNode.lmParameters = finalLmParameters;
   assistantNode.modelId = resolvedModel;
@@ -986,8 +1028,8 @@ async function loadGenerationProvider({
 }: {
   endpoint: Endpoint,
 }): Promise<LmProvider> {
-  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
-    throw new Error(`${endpoint.type} generation requires an endpoint URL`);
+  if (!isConfiguredEndpoint({ endpoint })) {
+    throw new Error('Generation requires a supported configured endpoint.');
   }
 
   const { settings } = useSettings();

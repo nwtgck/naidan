@@ -25,6 +25,13 @@ const transformersJsProviderModuleLoader = createModuleLoader({
   },
 });
 
+const promptApiProviderModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/prompt-api/provider'),
+  onPrefetchError: ({ error }) => {
+    console.error('Failed to prefetch Prompt API provider:', error);
+  },
+});
+
 export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
   endpoint: Endpoint,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
@@ -50,6 +57,12 @@ export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
     const { TransformersJsProvider } = await transformersJsProviderModuleLoader.load();
     return new TransformersJsProvider();
   }
+  case 'prompt_api': {
+    const { PromptApiProvider } = await promptApiProviderModuleLoader.load();
+    return new PromptApiProvider();
+  }
+  case 'unsupported_experimental_endpoint':
+    throw new Error(`Unsupported experimental endpoint: ${String(endpoint.persistedType)}`);
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
@@ -69,6 +82,9 @@ export async function prefetchLmProvider({ endpointType }: {
     break;
   case 'transformers_js':
     await transformersJsProviderModuleLoader.prefetch();
+    break;
+  case 'prompt_api':
+    await promptApiProviderModuleLoader.prefetch();
     break;
   default: {
     const _ex: never = endpointType;

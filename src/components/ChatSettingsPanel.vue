@@ -48,6 +48,8 @@ import {
   createChangedLmParameterSettingChanges,
   createSystemPromptSettingChange,
 } from '@/logic/scoped-setting-changes';
+import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
+import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
 
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
@@ -129,6 +131,7 @@ const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
   openai: true,
   ollama: true,
   transformers_js: true,
+  prompt_api: true,
 };
 
 function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType | undefined {
@@ -137,7 +140,7 @@ function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType
   throw new Error(`Unhandled endpoint type value: ${value}`);
 }
 
-function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string | undefined {
+function endpointTypeLabel({ endpointType }: { endpointType: Endpoint['type'] }): string | undefined {
   switch (endpointType) {
   case 'openai':
     return 'OpenAI';
@@ -145,6 +148,10 @@ function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): st
     return lazyStrings.ChatSettingsPanel__ollama();
   case 'transformers_js':
     return lazyStrings.ChatSettingsPanel__transformers_js();
+  case 'prompt_api':
+    return lazyStrings.SHARED__prompt_api_experimental();
+  case 'unsupported_experimental_endpoint':
+    return lazyStrings.SHARED__unsupported_experimental_endpoint();
   default: {
     const _ex: never = endpointType;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -273,6 +280,7 @@ let nextSaveRevision = 0;
 const hasActiveOverrides = computed(() => hasChatOverrides({ chat: localSettings.value }));
 const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? inheritedSettings.value?.endpoint);
 const effectiveEndpointType = computed(() => effectiveEndpoint.value?.type);
+const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 
 const localEndpointUrl = computed({
   get: () => {
@@ -551,7 +559,7 @@ onMounted(() => {
     const endpoint = currentChat.value.endpoint ?? settings.value.endpoint;
     const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
     const type = endpoint.type;
-    if (type === 'transformers_js' || isLocalhost({ url })) void fetchModels();
+    if (type === 'transformers_js' || type === 'prompt_api' || isLocalhost({ url })) void fetchModels();
   }
 });
 
@@ -621,6 +629,7 @@ async function updateEndpointType({
     localSettings.value.endpoint = undefined;
     break;
   case 'transformers_js':
+  case 'prompt_api':
     localSettings.value.endpoint = { type: endpointType };
     break;
   case 'openai':
@@ -703,7 +712,7 @@ async function fetchModels() {
 
 watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || (url && isLocalhost({ url }))) void fetchModels();
+  if (type === 'transformers_js' || type === 'prompt_api' || (url && isLocalhost({ url }))) void fetchModels();
 });
 
 async function updateSystemPromptBehavior({
@@ -851,10 +860,18 @@ defineExpose({
                 <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                 <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
                 <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
+                <option value="prompt_api" :disabled="!isPromptApiSupported">{{ lazyStrings.SHARED__prompt_api_experimental() }}</option>
+                <option
+                  v-if="localSettings.endpoint?.type === 'unsupported_experimental_endpoint'"
+                  value="unsupported_experimental_endpoint"
+                  disabled
+                >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
               </select>
             </div>
 
-            <div tw-class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
+            <PromptApiStatus v-if="effectiveEndpointType === 'prompt_api'" />
+
+            <div tw-class="space-y-2" v-if="effectiveEndpoint && isHttpEndpoint(effectiveEndpoint)">
               <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</label>
               <input
                 v-model="localEndpointUrl"
@@ -871,7 +888,7 @@ defineExpose({
               </div>
             </div>
 
-            <div tw-class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
+            <div tw-class="space-y-2" v-if="effectiveEndpoint && isHttpEndpoint(effectiveEndpoint)">
               <div tw-class="flex items-center justify-between ml-1">
                 <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__custom_http_headers() }}</label>
                 <button
@@ -930,7 +947,10 @@ defineExpose({
                 />
               </div>
 
-              <div tw-class="p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl">
+              <fieldset
+                :disabled="effectiveEndpointType === 'prompt_api'"
+                :tw-class="['p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl', { 'opacity-50': effectiveEndpointType === 'prompt_api' }]"
+              >
                 <ReasoningSettings
                   :selected-effort="localSettings.lmParameters?.reasoning?.effort"
                   @update:effort="effort => {
@@ -939,7 +959,7 @@ defineExpose({
                     saveChangesFromUi();
                   }"
                 />
-              </div>
+              </fieldset>
               <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
             </div>
           </div>

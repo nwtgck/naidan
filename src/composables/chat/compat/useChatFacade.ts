@@ -350,6 +350,7 @@ export function useChat() {
               : undefined,
           };
         case 'transformers_js':
+        case 'prompt_api':
           return { type: customEndpoint.type };
         default: {
           const _ex: never = customEndpoint.type;
@@ -441,6 +442,8 @@ export function useChat() {
         return resolved.endpoint;
       case 'openai':
       case 'transformers_js':
+      case 'prompt_api':
+      case 'unsupported_experimental_endpoint':
         throw new Error('Image generation requires an Ollama endpoint');
       default: {
         const _ex: never = resolved.endpoint;
