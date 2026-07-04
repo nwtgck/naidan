@@ -269,7 +269,7 @@ export async function debugRefreshFileProtocolStandaloneBuildReportFromDisk({
   outputDirectory: string,
   metrics: FileProtocolStandaloneBuildMetrics,
 }): Promise<DebugFileProtocolStandaloneBuildReport> {
-  // Later Vite/legacy output hooks may still rewrite chunk text after this
+  // Later Vite output hooks may still rewrite chunk text after this
   // plugin's generateBundle hook. Read the written files so budgets and report
   // bytes describe the artifact users actually receive, not an earlier hook's
   // transient code string.

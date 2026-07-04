@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import legacy from '@vitejs/plugin-legacy';
 import vue from '@vitejs/plugin-vue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from 'vite';
 import { fileProtocolStandalone } from '../file-protocol-standalone';
+import { fileProtocolSystemJs } from '../file-protocol-systemjs';
 import { serializeCssOwnershipPlan } from './css-ownership-planner';
 import { createTwClassNodeTransform } from './tw-class-core';
 import { createTwClassVitePlugin } from './tw-class-vite-plugin';
@@ -390,14 +390,7 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
       plugins: [
         createPlugin({ root, debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind') }),
         createVuePlugin(),
-        legacy({
-          targets: ['Chrome >= 140'],
-          renderModernChunks: false,
-          renderLegacyChunks: true,
-          externalSystemJS: true,
-          modernPolyfills: false,
-          polyfills: false,
-        }),
+        fileProtocolSystemJs({ diagnostics: 'omit' }),
         fileProtocolStandalone({
           debugBuildReportFile: undefined,
           workerTarget: 'chrome140',
@@ -409,15 +402,24 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
       build: {
         cssCodeSplit: true,
         manifest: true,
+        minify: 'oxc',
         modulePreload: false,
         outDir: outputDirectory,
+        rollupOptions: {
+          output: {
+            entryFileNames: 'assets/[name]-systemjs-[hash].js',
+            chunkFileNames: 'assets/[name]-systemjs-[hash].js',
+          },
+        },
       },
     });
 
     const manifest = JSON.parse(fs.readFileSync(path.join(outputDirectory, '.vite', 'manifest.json'), 'utf8')) as Record<string, {
+      css?: string[],
       file: string,
       isEntry?: boolean,
     }>;
+    expect(Object.values(manifest).flatMap(({ css }) => css ?? [])).toEqual([]);
     const entry = Object.values(manifest).find(({ isEntry }) => isEntry === true);
     expect(entry).toBeDefined();
     if (entry === undefined) throw new TypeError('Expected one standalone entry chunk.');

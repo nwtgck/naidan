@@ -1,4 +1,3 @@
-import legacy from '@vitejs/plugin-legacy';
 import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { JSDOM } from 'jsdom';
@@ -7,6 +6,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { build as viteBuild, createLogger } from 'vite';
 import type { Logger, Plugin, ResolvedConfig } from 'vite';
+import { fileProtocolSystemJs } from './file-protocol-systemjs';
 import {
   fileProtocolStandalone,
   type FileProtocolStandaloneOptions,
@@ -73,14 +73,7 @@ async function buildFixtureWithOptions({
     define,
     resolve: { alias },
     plugins: [
-      legacy({
-        targets: ['Firefox >= 140', 'Chrome >= 140'],
-        renderModernChunks: false,
-        renderLegacyChunks: true,
-        externalSystemJS: true,
-        modernPolyfills: false,
-        polyfills: false,
-      }),
+      fileProtocolSystemJs({ diagnostics: 'omit' }),
       ...pluginsBeforeStandalone,
       fileProtocolStandalone({
         debugBuildReportFile: 'dist/debug-file-protocol-standalone-build-report.json',
@@ -93,10 +86,17 @@ async function buildFixtureWithOptions({
     build: {
       outDir: path.join(root, 'dist/standalone'),
       emptyOutDir: true,
-      minify: true,
+      minify: 'oxc',
       modulePreload: false,
       sourcemap: false,
-      rolldownOptions: { input },
+      rolldownOptions: {
+        input,
+        output: {
+          entryFileNames: 'assets/[name]-systemjs-[hash].js',
+          chunkFileNames: 'assets/[name]-systemjs-[hash].js',
+          assetFileNames: 'assets/[name]-[hash][extname]',
+        },
+      },
     },
   });
 }
@@ -138,14 +138,7 @@ async function buildBasicFixtureWithPluginOptions({
     logLevel: 'silent',
     customLogger,
     plugins: [
-      legacy({
-        targets: ['Firefox >= 140', 'Chrome >= 140'],
-        renderModernChunks: false,
-        renderLegacyChunks: true,
-        externalSystemJS: true,
-        modernPolyfills: false,
-        polyfills: false,
-      }),
+      fileProtocolSystemJs({ diagnostics: 'omit' }),
       fileProtocolStandalone({
         debugBuildReportFile,
         workerTarget,
@@ -157,10 +150,17 @@ async function buildBasicFixtureWithPluginOptions({
     build: {
       outDir: path.join(root, 'dist/standalone'),
       emptyOutDir: true,
-      minify: true,
+      minify: 'oxc',
       modulePreload: false,
       sourcemap: false,
-      rolldownOptions: { input: path.join(root, 'index.html') },
+      rolldownOptions: {
+        input: path.join(root, 'index.html'),
+        output: {
+          entryFileNames: 'assets/[name]-systemjs-[hash].js',
+          chunkFileNames: 'assets/[name]-systemjs-[hash].js',
+          assetFileNames: 'assets/[name]-[hash][extname]',
+        },
+      },
     },
   });
 }
@@ -170,7 +170,7 @@ function basicFixtureFiles(): Readonly<Record<string, string>> {
     'index.html': `\
 <!doctype html>
 <html>
-  <head><meta charset="UTF-8"><title>fixture</title><link rel="modulepreload" href="/src/lazy.ts"></head>
+  <head><meta charset="UTF-8"><title>fixture</title></head>
   <body><div id="app"></div><script id="fixture-data" type="application/json">{"preserved":true}</script><script type="module" src="/src/main.ts"></script></body>
 </html>
 `,
@@ -304,7 +304,7 @@ describe('fileProtocolStandalone', () => {
       }>,
     };
     expect(report.format).toBe('file-protocol-standalone-build-report-v5');
-    expect(report.startup.entryFileName).toContain('-legacy-');
+    expect(report.startup.entryFileName).toMatch(/^assets\/index-[A-Za-z0-9_-]+\.js$/u);
     expect(report.startup.staticChunkClosure).toContain(report.startup.entryFileName);
     expect(report.chunks.some((chunk) => chunk.phase === 'lazy')).toBe(true);
     expect(report.chunks.some((chunk) => chunk.dynamicImports.length > 0)).toBe(true);
@@ -764,13 +764,13 @@ globalThis.customClassicLoaded = true
     };
     const root = await createFixture({ files });
 
-    await expect(buildFixture({ root, budgets: undefined })).rejects.toThrow('Unexpected executable script(s) in index.html');
+    await expect(buildFixture({ root, budgets: undefined })).rejects.toThrow('Expected exactly one Vite module entry script; found 2');
   });
 
-  it('rejects a modulepreload link injected after plugin-legacy processing', async () => {
+  it('rejects a modulepreload link injected after Vite processing', async () => {
     const root = await createFixture({ files: basicFixtureFiles() });
     const injectModulePreload: Plugin = {
-      name: 'inject-modulepreload-after-legacy',
+      name: 'inject-modulepreload-after-vite',
       enforce: 'post',
       transformIndexHtml() {
         return [{
@@ -790,10 +790,10 @@ globalThis.customClassicLoaded = true
       define: undefined,
       alias: undefined,
       onAdditionalLicenseDependencies: undefined,
-    })).rejects.toThrow('Expected @vitejs/plugin-legacy to remove modulepreload links');
+    })).rejects.toThrow('Expected build.modulePreload=false to omit modulepreload links');
   });
 
-  it('rejects a user script that collides with the plugin-legacy entry id', async () => {
+  it('rejects an additional executable script beside the Vite entry', async () => {
     const root = await createFixture({
       files: {
         ...basicFixtureFiles(),
@@ -803,7 +803,7 @@ globalThis.customClassicLoaded = true
   <head><meta charset="UTF-8"><title>fixture</title></head>
   <body>
     <div id="app"></div>
-    <script id="vite-legacy-entry">globalThis.userScript = true</script>
+    <script id="unexpected-entry">globalThis.userScript = true</script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
@@ -812,7 +812,7 @@ globalThis.customClassicLoaded = true
     });
 
     await expect(buildFixture({ root, budgets: undefined }))
-      .rejects.toThrow('Expected exactly one @vitejs/plugin-legacy entry script; found 2');
+      .rejects.toThrow('Expected exactly one Vite module entry script; found 2');
   });
 
   it('rejects an existing element that uses a reserved standalone runtime id', async () => {
@@ -837,16 +837,16 @@ globalThis.customClassicLoaded = true
       .rejects.toThrow('index.html already contains reserved standalone element id "file-protocol-standalone-worker-manifest"');
   });
 
-  it('rejects a plugin-legacy data-src that does not match the generated entry', async () => {
+  it('rejects a Vite entry src that does not match the generated entry', async () => {
     const root = await createFixture({ files: basicFixtureFiles() });
     const mutateLegacyDataSource: Plugin = {
-      name: 'mutate-legacy-entry-data-src',
+      name: 'mutate-vite-entry-src',
       enforce: 'post',
       transformIndexHtml(html) {
         const dom = new JSDOM(html);
-        const entry = dom.window.document.getElementById('vite-legacy-entry');
-        if (entry === null) throw new Error('Expected plugin-legacy entry in fixture.');
-        entry.setAttribute('data-src', './assets/not-the-generated-entry.js');
+        const entry = dom.window.document.querySelector('script[type="module"]');
+        if (entry === null) throw new Error('Expected Vite module entry in fixture.');
+        entry.setAttribute('src', './assets/not-the-generated-entry.js');
         return dom.serialize();
       },
     };
@@ -860,20 +860,20 @@ globalThis.customClassicLoaded = true
       define: undefined,
       alias: undefined,
       onAdditionalLicenseDependencies: undefined,
-    })).rejects.toThrow('Legacy entry data-src does not match the generated entry chunk');
+    })).rejects.toThrow('Vite application entry src does not match the generated entry chunk');
   });
 
 
   it('rejects an encoded POSIX path separator in a generated output URL', async () => {
     const root = await createFixture({ files: basicFixtureFiles() });
     const mutateLegacyDataSource: Plugin = {
-      name: 'mutate-legacy-entry-to-encoded-posix-separator',
+      name: 'mutate-vite-entry-to-encoded-posix-separator',
       enforce: 'post',
       transformIndexHtml(html) {
         const dom = new JSDOM(html);
-        const entry = dom.window.document.getElementById('vite-legacy-entry');
-        if (entry === null) throw new Error('Expected plugin-legacy entry in fixture.');
-        entry.setAttribute('data-src', './assets%2Fentry.js');
+        const entry = dom.window.document.querySelector('script[type="module"]');
+        if (entry === null) throw new Error('Expected Vite module entry in fixture.');
+        entry.setAttribute('src', './assets%2Fentry.js');
         return dom.serialize();
       },
     };
@@ -893,13 +893,13 @@ globalThis.customClassicLoaded = true
   it('rejects an encoded Windows path separator in a generated output URL', async () => {
     const root = await createFixture({ files: basicFixtureFiles() });
     const mutateLegacyDataSource: Plugin = {
-      name: 'mutate-legacy-entry-to-encoded-windows-traversal',
+      name: 'mutate-vite-entry-to-encoded-windows-traversal',
       enforce: 'post',
       transformIndexHtml(html) {
         const dom = new JSDOM(html);
-        const entry = dom.window.document.getElementById('vite-legacy-entry');
-        if (entry === null) throw new Error('Expected plugin-legacy entry in fixture.');
-        entry.setAttribute('data-src', './..%5csecret.js');
+        const entry = dom.window.document.querySelector('script[type="module"]');
+        if (entry === null) throw new Error('Expected Vite module entry in fixture.');
+        entry.setAttribute('src', './..%5csecret.js');
         return dom.serialize();
       },
     };
@@ -916,16 +916,16 @@ globalThis.customClassicLoaded = true
     })).rejects.toThrow('must not contain an encoded path separator');
   });
 
-  it('rejects a legacy polyfill bootstrap that contradicts the standalone configuration', async () => {
+  it('rejects an additional executable bootstrap script', async () => {
     const root = await createFixture({ files: basicFixtureFiles() });
-    const injectLegacyPolyfill: Plugin = {
-      name: 'inject-unexpected-legacy-polyfill',
+    const injectUnexpectedBootstrap: Plugin = {
+      name: 'inject-unexpected-bootstrap',
       enforce: 'post',
       transformIndexHtml() {
         return [{
           tag: 'script',
-          attrs: { id: 'vite-legacy-polyfill' },
-          children: 'globalThis.unexpectedLegacyPolyfill = true',
+          attrs: { id: 'unexpected-bootstrap' },
+          children: 'globalThis.unexpectedBootstrap = true',
           injectTo: 'body',
         }];
       },
@@ -935,12 +935,12 @@ globalThis.customClassicLoaded = true
       root,
       budgets: undefined,
       workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
-      pluginsBeforeStandalone: [injectLegacyPolyfill],
+      pluginsBeforeStandalone: [injectUnexpectedBootstrap],
       input: path.join(root, 'index.html'),
       define: undefined,
       alias: undefined,
       onAdditionalLicenseDependencies: undefined,
-    })).rejects.toThrow('Legacy polyfill scripts are unsupported');
+    })).rejects.toThrow('Expected exactly one Vite module entry script; found 2');
   });
 
   it.each([
@@ -979,10 +979,10 @@ globalThis.customClassicLoaded = true
       },
     },
     {
-      name: 'inline script that only imitates a Vite legacy id prefix',
+      name: 'inline script with an unrelated Vite-like id',
       tag: {
         tag: 'script',
-        attrs: { id: 'vite-legacy-unexpected' },
+        attrs: { id: 'vite-unexpected' },
         children: 'globalThis.unexpectedLegacyPrefixExecuted = true',
         injectTo: 'body' as const,
       },
@@ -1006,7 +1006,7 @@ globalThis.customClassicLoaded = true
       define: undefined,
       alias: undefined,
       onAdditionalLicenseDependencies: undefined,
-    })).rejects.toThrow('Unexpected executable script(s) in index.html');
+    })).rejects.toThrow('Expected exactly one Vite module entry script; found 2');
   });
 
   it('rejects an external stylesheet instead of creating a network-dependent standalone build', async () => {

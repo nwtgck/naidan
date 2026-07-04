@@ -1,4 +1,3 @@
-import legacy from '@vitejs/plugin-legacy';
 import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -8,6 +7,7 @@ import { build as viteBuild, createServer as createViteServer } from 'vite';
 import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown';
 
 import { fileProtocolStandalone } from './file-protocol-standalone';
+import { fileProtocolSystemJs } from './file-protocol-systemjs';
 import type { BuildLicenseDependency } from './license-dependencies';
 import {
   createLicenseModulePlugins,
@@ -282,14 +282,7 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
       logLevel: 'silent',
       base: './',
       plugins: [
-        legacy({
-          targets: ['Firefox >= 140', 'Chrome >= 140'],
-          renderModernChunks: false,
-          renderLegacyChunks: true,
-          externalSystemJS: true,
-          modernPolyfills: false,
-          polyfills: false,
-        }),
+        fileProtocolSystemJs({ diagnostics: 'omit' }),
         ...createLicenseModulePlugins({
           getAdditionalDependencies: () => additionalDependencies,
         }),
@@ -312,10 +305,15 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
         outDir,
         emptyOutDir: true,
         modulePreload: false,
-        minify: true,
+        minify: 'oxc',
         sourcemap: false,
         rolldownOptions: {
           input: path.join(root, 'index.html'),
+          output: {
+            entryFileNames: 'assets/[name]-systemjs-[hash].js',
+            chunkFileNames: 'assets/[name]-systemjs-[hash].js',
+            assetFileNames: 'assets/[name]-[hash][extname]',
+          },
         },
       },
     });
