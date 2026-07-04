@@ -105,7 +105,7 @@ It records every candidate occurrence and assigns source-module ownership. Tests
 
 ### 2. Validation and compilation
 
-`tailwind-candidate-validator.mjs` loads the Tailwind design system and rejects unknown candidates with source locations. Tailwind and its PostCSS integration are pinned because this implementation uses compiler APIs whose output is version-sensitive. Since split fragments bypass Vite's CSS-asset pipeline, compiler output and per-candidate ownership hints are explicitly passed through Autoprefixer with the same options exported to `postcss.config.js`; otherwise runtime CSS would silently lose vendor declarations that ordinary CSS assets receive.
+`tailwind-candidate-validator.mjs` loads the Tailwind design system and rejects unknown candidates with source locations. Tailwind and its PostCSS integration are pinned because this implementation uses compiler APIs whose output is version-sensitive. Since split fragments bypass Vite's CSS-asset pipeline, compiler output and per-candidate ownership hints are explicitly passed through Autoprefixer with the same options exported to `postcss.config.js`; otherwise runtime CSS would silently lose vendor declarations that ordinary CSS assets receive. The split planner also rejects relative `url()` references because Vite cannot rebase or emit those assets after the CSS has become a JavaScript runtime string. Use data URLs, fragment URLs, root-relative URLs, or absolute URLs instead.
 
 The planner compiles the complete candidate set once. It also compiles the empty candidate set to identify base, theme, license, property, and other support CSS that must be available initially.
 
@@ -121,7 +121,7 @@ Before compiling, the planner verifies that candidate occurrences and the `candi
 
 ### 4. Virtual registration modules
 
-`tw-class-vite-plugin.mjs` injects side-effect imports into the owning source modules. Each canonical ownership set has one virtual JavaScript registration module. Vite / Rolldown, rather than a second import-graph implementation, decides whether that module belongs to an initial, shared, or lazy chunk.
+`tw-class-vite-plugin.mjs` injects side-effect imports into the owning source modules. Each canonical ownership set has one virtual JavaScript registration module. Every non-initial registration also imports the initial registration, so a secondary HTML entry or isolated lazy graph cannot load utility rules without the theme, properties, and other support CSS they depend on. Vite / Rolldown, rather than a second import-graph implementation, decides whether those modules belong to initial, shared, or lazy chunks.
 
 The Tailwind stylesheet entry itself is empty in split mode. Tailwind CSS is carried by the registration modules, including for standalone builds where CSS is embedded in JavaScript. During the post-order `generateBundle` check, the plugin verifies that every registration required by an emitted owner survives exactly once and is in the owner's static load graph or the initial graph of every HTML entry that can load that owner. A registration that is merely present in an unrelated lazy chunk or another HTML entry fails the build.
 
@@ -135,7 +135,7 @@ The style element is prepended to `<head>` so component and scoped styles retain
 
 ### 6. HMR
 
-In dev mode, source changes rebuild the candidate plan. Refreshes are serialized so a slower older analysis cannot overwrite a newer plan. Duplicate events are keyed by timestamp, absolute filename, and file-content fingerprint, allowing different files or changed content with the same timestamp to refresh independently. Changed registration modules and owner modules are reloaded. CSS modules whose ownership sets disappear are explicitly retired from the browser registry.
+In dev mode, source changes rebuild the candidate plan. Refreshes are serialized so a slower older analysis cannot overwrite a newer plan. Duplicate events are keyed by timestamp, absolute filename, and file-content fingerprint only while the same refresh is still running. Completed results are never replayed because their retired-module set may be stale after later ownership changes. Changed registration modules and owner modules are reloaded. CSS modules whose ownership sets disappear are explicitly retired from the browser registry.
 
 HMR is an additional path, not the production proof. Production also applies Rolldown tree-shaking and final chunk placement.
 
@@ -146,7 +146,7 @@ HMR is an additional path, not the production proof. Production also applies Rol
 
 Both modes use the same static candidate syntax and validation. The difference is CSS placement, not candidate discovery.
 
-Split mode reconstructs CSS inside a runtime `<style>` element, so it does not provide a browser-consumable CSS asset source map. Use the debug fragments and source analysis output when diagnosing ownership or ordering.
+Split mode reconstructs CSS inside a runtime `<style>` element, so it does not provide a browser-consumable CSS asset source map and cannot use Vite's relative asset URL rewriting. Relative `url()` references fail the build. Use the debug fragments and source analysis output when diagnosing ownership or ordering.
 
 ## Dev and production parity
 
@@ -164,10 +164,12 @@ Important invariants are:
 2. unattributed support CSS falls back to `initial`;
 3. the complete fragment set reconstructs the canonical global CSS exactly;
 4. each required virtual registration module survives production tree-shaking exactly once;
-5. each registration is loaded with every emitted owner, either through its static chunk graph or the initial graph;
-6. one runtime style element is used;
-7. loading the same lazy features in different orders produces identical CSS;
-8. HMR retirement cannot leave stale fragments behind.
+5. every non-initial registration statically depends on the initial support registration;
+6. each registration is loaded with every emitted owner, either through its static chunk graph or the initial graph;
+7. split runtime CSS contains no unresolved relative asset URL;
+8. one runtime style element is used;
+9. loading the same lazy features in different orders produces identical CSS;
+10. HMR retirement cannot leave stale fragments behind.
 
 ## Debug output
 

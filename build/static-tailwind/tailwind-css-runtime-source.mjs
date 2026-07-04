@@ -124,8 +124,16 @@ export function unregisterTailwindCssModules({ moduleIds }) {
 `;
 }
 
-export function createTailwindCssRegistrationModuleSource({ moduleId, fragments, runtimeModuleId }) {
-  return `import { registerTailwindCssModule, unregisterTailwindCssModule } from ${JSON.stringify(runtimeModuleId)};
+export function createTailwindCssRegistrationModuleSource({
+  moduleId,
+  fragments,
+  runtimeModuleId,
+  dependencyModuleIds,
+}) {
+  const dependencyImports = dependencyModuleIds
+    .map((dependencyModuleId) => `import ${JSON.stringify(dependencyModuleId)};`)
+    .join('\n');
+  return `${dependencyImports === '' ? '' : `${dependencyImports}\n`}import { registerTailwindCssModule, unregisterTailwindCssModule } from ${JSON.stringify(runtimeModuleId)};
 const moduleId = ${JSON.stringify(moduleId)};
 registerTailwindCssModule({ moduleId, fragments: ${JSON.stringify(fragments)} });
 if (import.meta.hot) {

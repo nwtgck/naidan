@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import postcss from 'postcss';
+import { assertStaticTailwindCssHasNoRelativeUrls } from './css-postprocessor.mjs';
 import {
   compileTailwindCss,
   createTailwindCandidateValidator,
@@ -441,6 +442,7 @@ export async function createCssOwnershipPlan({
   const ownerCandidateGroups = groupCandidatesByOwner({ candidateOwners });
   const globalCompilation = await compileTailwindCss({ cssEntryPath, candidates, expectedTailwindVersion });
   const globalCss = globalCompilation.css;
+  assertStaticTailwindCssHasNoRelativeUrls({ css: globalCss });
   const globalDelta = subtractCss({ css: globalCss, baselineCss: baseline.css });
   const globalAtoms = annotateCanonicalAtoms({ atoms: flattenCssAtoms({ css: globalCss }) });
   const baselineFingerprints = fingerprintCounts({ atoms: flattenCssAtoms({ css: baseline.css }) });

@@ -1,6 +1,9 @@
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
-import { createTailwindCssRegistry } from './tailwind-css-runtime-source.mjs';
+import {
+  createTailwindCssRegistrationModuleSource,
+  createTailwindCssRegistry,
+} from './tailwind-css-runtime-source.mjs';
 
 function createFixture() {
   const dom = new JSDOM('<!doctype html><html><head><style data-component-style>.component { color: red; }</style></head><body></body></html>');
@@ -18,6 +21,19 @@ function createFixture() {
 }
 
 describe('static Tailwind runtime CSS registry', () => {
+  it('loads required CSS registration dependencies before registering a fragment group', () => {
+    const source = createTailwindCssRegistrationModuleSource({
+      moduleId: '\0virtual:naidan-tailwind-css-module/lazy.js',
+      fragments: [[1, '.lazy {}']],
+      runtimeModuleId: 'virtual:naidan-tailwind-css-runtime',
+      dependencyModuleIds: ['virtual:naidan-tailwind-css-module/initial.js'],
+    });
+
+    expect(source.indexOf('import "virtual:naidan-tailwind-css-module/initial.js";')).toBeLessThan(
+      source.indexOf('registerTailwindCssModule'),
+    );
+  });
+
   it('reconstructs canonical CSS order independently of module registration order', () => {
     const { dom, registry, flushScheduled } = createFixture();
     registry.register({

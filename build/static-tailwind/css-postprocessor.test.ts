@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertStaticTailwindCssHasNoRelativeUrls,
   naidanAutoprefixerOptions,
   postprocessStaticTailwindCss,
 } from './css-postprocessor.mjs';
@@ -24,5 +25,30 @@ describe('static Tailwind CSS postprocessor', () => {
     const twice = postprocessStaticTailwindCss({ css: once });
 
     expect(twice).toBe(once);
+  });
+
+  it('accepts URL forms whose meaning is independent of the runtime style location', () => {
+    expect(() => assertStaticTailwindCssHasNoRelativeUrls({
+      css: `\
+.fixture {
+  background-image:
+    url("data:image/svg+xml,%3Csvg/%3E"),
+    url("https://example.com/asset.svg"),
+    url("//cdn.example.com/asset.svg"),
+    url("/assets/asset.svg"),
+    url("#local-fragment");
+}
+`,
+    })).not.toThrow();
+  });
+
+  it.each([
+    './asset.svg',
+    '../asset.svg',
+    'asset.svg',
+  ])('rejects relative runtime CSS asset URL %s', (url) => {
+    expect(() => assertStaticTailwindCssHasNoRelativeUrls({
+      css: `.fixture { background-image: url(${JSON.stringify(url)}); }`,
+    })).toThrow(/Split runtime CSS cannot preserve relative asset URLs/u);
   });
 });

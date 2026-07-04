@@ -517,6 +517,73 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     });
   });
 
+  it('does not replay a completed duplicate HMR result after the same registration becomes active again', async () => {
+    const root = createFixture();
+    const sourceRoot = path.join(root, 'src');
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const featureB = path.join(sourceRoot, 'FeatureB.vue');
+    fs.writeFileSync(featureB, '<template><div tw-class="p-2">B</div></template>\n');
+    const plugin = createTwClassVitePlugin({
+      projectRoot: root,
+      sourceRoot,
+      entryModule: path.join(sourceRoot, 'main.ts'),
+      tailwindCssPath: path.join(sourceRoot, 'style.css'),
+      debugOutputDirectory: undefined,
+      outputMode: 'split',
+      cssPlanning: 'enabled',
+      maxSplitCssGroups: undefined,
+    });
+    const configResolved = getHookHandler<[unknown], unknown | Promise<unknown>>({
+      hook: plugin.configResolved,
+      name: 'configResolved',
+    });
+    await configResolved.call({} as never, { command: 'serve' });
+    const buildStart = getHookHandler<[unknown], unknown | Promise<unknown>>({
+      hook: plugin.buildStart,
+      name: 'buildStart',
+    });
+    await buildStart.call({ info() {} } as never, {});
+    const hotUpdate = getHookHandler<[unknown], unknown | Promise<unknown>>({
+      hook: plugin.hotUpdate,
+      name: 'hotUpdate',
+    });
+    const customMessages: { data?: { moduleIds?: string[] } }[] = [];
+    const context = {
+      environment: {
+        name: 'client',
+        moduleGraph: {
+          getModuleById() {
+            return undefined;
+          },
+          getModulesByFile() {
+            return undefined;
+          },
+        },
+        async reloadModule() {},
+        hot: { send(message: { data?: { moduleIds?: string[] } }) {
+          customMessages.push(message);
+        } },
+      },
+    };
+
+    fs.writeFileSync(featureA, '<template><div tw-class="p-4">A</div></template>\n');
+    await hotUpdate.call(context as never, { file: featureA, timestamp: 5000, modules: [] });
+    fs.writeFileSync(featureB, '<template><div tw-class="p-4">B</div></template>\n');
+    await hotUpdate.call(context as never, { file: featureB, timestamp: 5001, modules: [] });
+
+    const activeSharedId = (plugin.api.getImportsByModule().get(featureA) ?? []).find((id) => (
+      id.startsWith('virtual:naidan-tailwind-css-module/')
+      && (plugin.api.getImportsByModule().get(featureB) ?? []).includes(id)
+    ));
+    expect(activeSharedId).toBeDefined();
+    if (activeSharedId === undefined) throw new TypeError('Expected a reactivated shared registration.');
+
+    customMessages.length = 0;
+    await hotUpdate.call(context as never, { file: featureA, timestamp: 5000, modules: [] });
+
+    expect(customMessages.flatMap(({ data }) => data?.moduleIds ?? [])).not.toContain(`\0${activeSharedId}`);
+  });
+
   it('replans different files even when Vite reports the same HMR timestamp', async () => {
     const root = createFixture();
     const sourceRoot = path.join(root, 'src');
@@ -752,8 +819,10 @@ describe('static Tailwind production bundle integrity', () => {
   const lazyModule = '/fixture/src/Lazy.vue';
   const registrationPublicId = 'virtual:naidan-tailwind-css-module/group.js';
   const registrationResolvedId = `\0${registrationPublicId}`;
+  const initialRegistrationResolvedId = '\0virtual:naidan-tailwind-css-module/initial.js';
   const runtimeResolvedId = '\0virtual:naidan-tailwind-css-runtime';
   const moduleSourceByResolvedId = new Map([[registrationResolvedId, 'registration source']]);
+  const registrationDependenciesByResolvedId = new Map<string, string[]>();
 
   function bundleWith({
     includeRegistration,
@@ -823,6 +892,36 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
+    })).not.toThrow();
+  });
+
+  it('treats a registration dependency as required by the same emitted owner graph', () => {
+    expect(() => assertCssRegistrationBundleIntegrity({
+      bundle: {
+        'broker.js': {
+          type: 'chunk',
+          fileName: 'broker.js',
+          imports: [],
+          isEntry: true,
+          modules: {
+            [lazyModule]: {},
+            [registrationResolvedId]: {},
+            [initialRegistrationResolvedId]: {},
+            [runtimeResolvedId]: {},
+          },
+        },
+      },
+      projectRoot,
+      importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
+      moduleSourceByResolvedId: new Map([
+        [registrationResolvedId, 'registration source'],
+        [initialRegistrationResolvedId, 'initial source'],
+      ]),
+      registrationDependenciesByResolvedId: new Map([
+        [registrationResolvedId, [initialRegistrationResolvedId]],
+        [initialRegistrationResolvedId, []],
+      ]),
     })).not.toThrow();
   });
 
@@ -852,6 +951,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).not.toThrow();
   });
 
@@ -885,6 +985,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).not.toThrow();
   });
 
@@ -919,6 +1020,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).toThrow(/not loaded with their owners/u);
   });
 
@@ -932,6 +1034,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).toThrow(/not loaded with their owners/u);
   });
 
@@ -960,6 +1063,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).toThrow(/unexpected registrations/u);
   });
 
@@ -971,6 +1075,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).not.toThrow();
   });
 
@@ -980,6 +1085,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId: new Map(),
+      registrationDependenciesByResolvedId,
     })).toThrow(/missing from the active plan/u);
 
     const bundle = bundleWith({ includeRegistration: true, includeRuntime: false });
@@ -994,6 +1100,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).toThrow(/virtual:naidan-tailwind-css-runtime.*not loaded with lazy\.js/u);
   });
 
@@ -1011,6 +1118,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map(),
       moduleSourceByResolvedId: new Map(),
+      registrationDependenciesByResolvedId,
     })).toThrow(/runtime module emission count was 1, expected 0/u);
   });
 
@@ -1020,6 +1128,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).toThrow(/missing registrations/u);
 
     expect(() => assertCssRegistrationBundleIntegrity({
@@ -1027,6 +1136,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).toThrow(/not emitted exactly once/u);
 
     expect(() => assertCssRegistrationBundleIntegrity({
@@ -1034,6 +1144,7 @@ describe('static Tailwind production bundle integrity', () => {
       projectRoot,
       importsByModule: new Map([[lazyModule, [registrationPublicId]]]),
       moduleSourceByResolvedId,
+      registrationDependenciesByResolvedId,
     })).toThrow(/runtime module emission count/u);
   });
 });

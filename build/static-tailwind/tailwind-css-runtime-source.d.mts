@@ -20,4 +20,5 @@ export function createTailwindCssRegistrationModuleSource(options: {
   moduleId: string,
   fragments: readonly TailwindCssRuntimeFragment[],
   runtimeModuleId: string,
+  dependencyModuleIds: readonly string[],
 }): string;

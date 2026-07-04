@@ -244,6 +244,141 @@ describe('static Tailwind Vite plugin production CSS splitting', () => {
     expect(allJavaScript).not.toContain('@layer utilities.naidan-');
   });
 
+  it('loads initial support CSS in every HTML entry that uses a split utility registration', async () => {
+    const root = createFixture();
+    const outputDirectory = path.join(root, 'dist-multi-entry');
+    writeFile({
+      root,
+      relativePath: 'broker.html',
+      content: '<div id="broker"></div><script type="module" src="/src/broker-entry.ts"></script>\n',
+    });
+    writeFile({
+      root,
+      relativePath: 'src/broker-entry.ts',
+      content: `\
+import { tw } from 'virtual:naidan-tailwind';
+document.querySelector('#broker')?.classList.add(tw('text-sm'));
+`,
+    });
+    await build({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [
+        createPlugin({ root, debugOutputDirectory: undefined }),
+        createVuePlugin(),
+      ],
+      build: {
+        cssCodeSplit: true,
+        manifest: true,
+        outDir: outputDirectory,
+        rollupOptions: {
+          input: {
+            app: path.join(root, 'index.html'),
+            broker: path.join(root, 'broker.html'),
+          },
+        },
+      },
+    });
+
+    const manifest = JSON.parse(fs.readFileSync(
+      path.join(outputDirectory, '.vite', 'manifest.json'),
+      'utf8',
+    )) as Record<string, {
+      file: string,
+      imports?: string[],
+      isEntry?: boolean,
+    }>;
+    const brokerEntryKey = Object.entries(manifest).find(([key, value]) => (
+      key.endsWith('broker.html') && value.isEntry === true
+    ))?.[0];
+    expect(brokerEntryKey).toBeDefined();
+    if (brokerEntryKey === undefined) throw new TypeError('Expected the broker HTML entry in the manifest.');
+
+    const reachableKeys = new Set<string>();
+    const pendingKeys = [brokerEntryKey];
+    while (pendingKeys.length > 0) {
+      const key = pendingKeys.shift();
+      if (key === undefined || reachableKeys.has(key)) continue;
+      reachableKeys.add(key);
+      for (const importedKey of manifest[key]?.imports ?? []) pendingKeys.push(importedKey);
+    }
+    const brokerJavaScript = [...reachableKeys]
+      .map((key) => manifest[key])
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined)
+      .map(({ file }) => fs.readFileSync(path.join(outputDirectory, file), 'utf8'))
+      .join('\n');
+    expect(brokerJavaScript).toContain('.text-sm');
+    expect(brokerJavaScript).toContain('--text-sm:');
+  });
+
+  it('keeps initial support CSS when a secondary HTML entry is built without the configured main entry', async () => {
+    const root = createFixture();
+    const outputDirectory = path.join(root, 'dist-secondary-only');
+    writeFile({
+      root,
+      relativePath: 'broker.html',
+      content: '<div id="broker"></div><script type="module" src="/src/broker-entry.ts"></script>\n',
+    });
+    writeFile({
+      root,
+      relativePath: 'src/broker-entry.ts',
+      content: `\
+import { tw } from 'virtual:naidan-tailwind';
+document.querySelector('#broker')?.classList.add(tw('text-sm'));
+`,
+    });
+    await build({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [
+        createPlugin({ root, debugOutputDirectory: undefined }),
+        createVuePlugin(),
+      ],
+      build: {
+        cssCodeSplit: true,
+        outDir: outputDirectory,
+        rollupOptions: { input: path.join(root, 'broker.html') },
+      },
+    });
+
+    const javascript = readJavaScriptAssets({ outputDirectory })
+      .map(({ source }) => source)
+      .join('\n');
+    expect(javascript).toContain('.text-sm');
+    expect(javascript).toContain('--text-sm:');
+  });
+
+  it('fails split builds before emitting unresolved relative CSS assets', async () => {
+    const root = createFixture();
+    const outputDirectory = path.join(root, 'dist-relative-url');
+    writeFile({
+      root,
+      relativePath: 'src/style.css',
+      content: `\
+@import "tailwindcss" source(none);
+.asset { background-image: url("./asset.svg"); }
+`,
+    });
+    writeFile({ root, relativePath: 'src/asset.svg', content: '<svg xmlns="http://www.w3.org/2000/svg" />\n' });
+
+    await expect(build({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [
+        createPlugin({ root, debugOutputDirectory: undefined }),
+        createVuePlugin(),
+      ],
+      build: {
+        cssCodeSplit: true,
+        outDir: outputDirectory,
+      },
+    })).rejects.toThrow(/Split runtime CSS cannot preserve relative asset URLs/u);
+    expect(fs.existsSync(path.join(outputDirectory, 'assets', 'asset.svg'))).toBe(false);
+  });
+
   it('preserves lazy CSS splitting in the file-protocol standalone output', async () => {
     const root = createFixture();
     const outputDirectory = path.join(root, 'dist-standalone');

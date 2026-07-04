@@ -119,6 +119,7 @@ export function assertCssRegistrationBundleIntegrity({
   projectRoot,
   importsByModule,
   moduleSourceByResolvedId,
+  registrationDependenciesByResolvedId,
 }) {
   const chunks = Object.entries(bundle)
     .filter(([, output]) => output.type === 'chunk')
@@ -196,7 +197,7 @@ export function assertCssRegistrationBundleIntegrity({
     ));
   }
 
-  const expectedResolvedIds = new Set();
+  const directExpectedResolvedIds = new Set();
   const ownerChunkNamesByRegistrationId = new Map();
   for (const [filename, publicIds] of importsByModule) {
     const ownerChunkNames = chunks
@@ -210,10 +211,34 @@ export function assertCssRegistrationBundleIntegrity({
     for (const publicId of publicIds) {
       if (!publicId.startsWith(virtualCssPrefix)) continue;
       const resolvedId = `\0${publicId}`;
-      expectedResolvedIds.add(resolvedId);
+      directExpectedResolvedIds.add(resolvedId);
       const values = ownerChunkNamesByRegistrationId.get(resolvedId) ?? new Set();
       for (const ownerChunkName of ownerChunkNames) values.add(ownerChunkName);
       ownerChunkNamesByRegistrationId.set(resolvedId, values);
+    }
+  }
+
+  const expectedResolvedIds = new Set();
+  const pendingRegistrations = [...directExpectedResolvedIds].flatMap((registrationId) => (
+    [...(ownerChunkNamesByRegistrationId.get(registrationId) ?? [])]
+      .map((ownerChunkName) => ({ registrationId, ownerChunkName }))
+  ));
+  const visitedRegistrationOwners = new Set();
+  for (let index = 0; index < pendingRegistrations.length; index += 1) {
+    const pending = pendingRegistrations[index];
+    if (pending === undefined) continue;
+    const pairKey = `${pending.registrationId}\0${pending.ownerChunkName}`;
+    if (visitedRegistrationOwners.has(pairKey)) continue;
+    visitedRegistrationOwners.add(pairKey);
+    expectedResolvedIds.add(pending.registrationId);
+    const values = ownerChunkNamesByRegistrationId.get(pending.registrationId) ?? new Set();
+    values.add(pending.ownerChunkName);
+    ownerChunkNamesByRegistrationId.set(pending.registrationId, values);
+    for (const dependencyId of registrationDependenciesByResolvedId.get(pending.registrationId) ?? []) {
+      pendingRegistrations.push({
+        registrationId: dependencyId,
+        ownerChunkName: pending.ownerChunkName,
+      });
     }
   }
 
@@ -336,36 +361,41 @@ export function createTwClassVitePlugin({
   let plan;
   let entryCss = '';
   let moduleSourceByResolvedId = new Map();
+  let registrationDependenciesByResolvedId = new Map();
   let importsByModule = new Map();
   let ownerRootByName = new Map();
   const retiredCssModuleIds = new Set();
   let refreshQueue = Promise.resolve();
-  const refreshRecordsByKey = new Map();
+  const refreshPromisesByKey = new Map();
 
   function buildVirtualState({ nextAnalysis, nextPlan }) {
     if (!splitCss) {
       return {
         nextModuleSourceByResolvedId: new Map(),
+        nextRegistrationDependenciesByResolvedId: new Map(),
         nextImportsByModule: new Map(),
         nextOwnerRootByName: new Map([['initial', absoluteEntryModule]]),
       };
     }
     const nextModuleSourceByResolvedId = new Map();
+    const nextRegistrationDependenciesByResolvedId = new Map();
     const nextImportsByModule = new Map();
     const nextOwnerRootByName = new Map([['initial', absoluteEntryModule]]);
     for (const owner of nextAnalysis.cssOwners) nextOwnerRootByName.set(owner.name, owner.root);
 
+    const registrations = [];
     for (const [ownerKey, fragments] of nextPlan.runtimeFragmentsByOwner) {
       if (fragments.length === 0) continue;
       const normalizedOwners = parseCssOwnerKey({ key: ownerKey });
       const owners = normalizedOwners.length === 0 ? ['initial'] : normalizedOwners;
       const publicId = `${virtualCssPrefix}${groupHash({ ownerKey: createCssOwnerKey({ owners }) })}.js`;
       const resolvedId = `\0${publicId}`;
-      nextModuleSourceByResolvedId.set(resolvedId, createTailwindCssRegistrationModuleSource({
-        moduleId: resolvedId,
-        fragments: fragments.map(({ order, css }) => [order, css]),
-        runtimeModuleId: virtualCssRuntimeModuleId,
-      }));
+      registrations.push({
+        fragments,
+        owners,
+        publicId,
+        resolvedId,
+      });
       for (const owner of owners) {
         const root = nextOwnerRootByName.get(owner);
         if (root === undefined) throw new Error(`[tw-class] CSS owner has no module root: ${owner}`);
@@ -374,6 +404,32 @@ export function createTwClassVitePlugin({
         nextImportsByModule.set(root, values);
       }
     }
+    const initialRegistrationPublicId = registrations.find(({ owners }) => (
+      owners.length === 1 && owners[0] === 'initial'
+    ))?.publicId;
+    for (const registration of registrations) {
+      const isInitial = registration.owners.length === 1 && registration.owners[0] === 'initial';
+      nextModuleSourceByResolvedId.set(
+        registration.resolvedId,
+        createTailwindCssRegistrationModuleSource({
+          moduleId: registration.resolvedId,
+          fragments: registration.fragments.map(({ order, css }) => [order, css]),
+          runtimeModuleId: virtualCssRuntimeModuleId,
+          dependencyModuleIds: isInitial || initialRegistrationPublicId === undefined
+            ? []
+            : [initialRegistrationPublicId],
+        }),
+      );
+      const initialRegistrationResolvedId = initialRegistrationPublicId === undefined
+        ? undefined
+        : `\0${initialRegistrationPublicId}`;
+      nextRegistrationDependenciesByResolvedId.set(
+        registration.resolvedId,
+        isInitial || initialRegistrationResolvedId === undefined
+          ? []
+          : [initialRegistrationResolvedId],
+      );
+    }
     if (command === 'serve') {
       const entryImports = nextImportsByModule.get(absoluteEntryModule) ?? new Set();
       entryImports.add(virtualHmrClientModuleId);
@@ -381,6 +437,7 @@ export function createTwClassVitePlugin({
     }
     return {
       nextModuleSourceByResolvedId,
+      nextRegistrationDependenciesByResolvedId,
       nextImportsByModule: new Map([...nextImportsByModule].map(([file, values]) => [file, [...values].sort()])),
       nextOwnerRootByName,
     };
@@ -414,6 +471,7 @@ export function createTwClassVitePlugin({
     }
     for (const id of state.nextModuleSourceByResolvedId.keys()) retiredCssModuleIds.delete(id);
     moduleSourceByResolvedId = state.nextModuleSourceByResolvedId;
+    registrationDependenciesByResolvedId = state.nextRegistrationDependenciesByResolvedId;
     importsByModule = state.nextImportsByModule;
     ownerRootByName = state.nextOwnerRootByName;
 
@@ -430,39 +488,26 @@ export function createTwClassVitePlugin({
     };
   }
 
-  function trimRefreshRecords() {
-    if (refreshRecordsByKey.size <= 32) return;
-    for (const [key, record] of refreshRecordsByKey) {
-      if (!record.settled) continue;
-      refreshRecordsByKey.delete(key);
-      if (refreshRecordsByKey.size <= 32) return;
-    }
-  }
-
   function scheduleRefresh({ key }) {
-    const existing = refreshRecordsByKey.get(key);
-    if (existing !== undefined) return existing.promise;
+    const existing = refreshPromisesByKey.get(key);
+    if (existing !== undefined) return existing;
     const promise = refreshQueue.then(
       () => refreshPlan(),
       () => refreshPlan(),
     );
-    const record = { promise, settled: false };
-    refreshRecordsByKey.set(key, record);
+    refreshPromisesByKey.set(key, promise);
     refreshQueue = promise.then(
       () => undefined,
       () => undefined,
     );
     promise.then(
       () => {
-        record.settled = true;
-        trimRefreshRecords();
+        if (refreshPromisesByKey.get(key) === promise) refreshPromisesByKey.delete(key);
       },
       () => {
-        record.settled = true;
-        trimRefreshRecords();
+        if (refreshPromisesByKey.get(key) === promise) refreshPromisesByKey.delete(key);
       },
     );
-    trimRefreshRecords();
     return promise;
   }
 
@@ -503,6 +548,7 @@ export function createTwClassVitePlugin({
           projectRoot: absoluteProjectRoot,
           importsByModule,
           moduleSourceByResolvedId,
+          registrationDependenciesByResolvedId,
         });
       },
     },

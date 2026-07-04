@@ -24,6 +24,7 @@ export function assertCssRegistrationBundleIntegrity(options: {
   projectRoot: string,
   importsByModule: Map<string, string[]>,
   moduleSourceByResolvedId: Map<string, string>,
+  registrationDependenciesByResolvedId: Map<string, string[]>,
 }): void;
 
 export function createTwClassVitePlugin(options: {
