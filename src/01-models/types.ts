@@ -74,8 +74,7 @@ export type PromptApiEndpoint = {
 
 export type UnsupportedExperimentalEndpoint = {
   type: 'unsupported_experimental_endpoint',
-  persistedType: unknown,
-  persistedExperimental: unknown,
+  persistedType: string | undefined,
 };
 
 export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | PromptApiEndpoint;

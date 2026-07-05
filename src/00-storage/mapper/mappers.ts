@@ -472,33 +472,12 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     case 'prompt_api':
       return { type: 'prompt_api' };
     case undefined: {
-      const unreadable = dto.experimental?.unreadable;
-      let persistedExperimental: unknown;
-
-      if (unreadable !== undefined && Object.hasOwn(unreadable, '_root')) {
-        persistedExperimental = unreadable._root;
-      } else if (dto.experimental === undefined) {
-        persistedExperimental = undefined;
-      } else {
-        persistedExperimental = {
-          ...dto.experimental,
-          ...unreadable,
-        };
-      }
-
-      const persistedType = (
-        typeof persistedExperimental === 'object'
-        && persistedExperimental !== null
-        && !Array.isArray(persistedExperimental)
-        && 'type' in persistedExperimental
-      )
-        ? persistedExperimental.type
-        : persistedExperimental;
-
+      const unreadableType = dto.experimental?.unreadable?.type;
       return {
         type: 'unsupported_experimental_endpoint',
-        persistedType,
-        persistedExperimental,
+        persistedType: typeof unreadableType === 'string'
+          ? unreadableType
+          : undefined,
       };
     }
     default: {
@@ -531,13 +510,10 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       experimental: { type: 'prompt_api' },
     };
   case 'unsupported_experimental_endpoint':
-    // The current reader intentionally cannot type this payload. Preserve the
-    // original JSON-compatible value so saving an unrelated setting does not
-    // erase or reject an endpoint written by a newer Naidan version.
     return {
       type: 'experimental_type',
-      experimental: endpoint.persistedExperimental,
-    } as EndpointDto;
+      experimental: undefined,
+    };
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);

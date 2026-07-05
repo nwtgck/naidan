@@ -39,6 +39,7 @@ import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 import { ensureStrings, lazyStrings } from '@/strings';
+import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 
 const currentChatState = useCurrentChatState();
 const chatLifecycle = useChatLifecycle();
@@ -1297,9 +1298,10 @@ defineExpose({
           </label>
         </div>
         <ModelSelector
-          :model-value="settings.defaultModelId || ''"
+          :model-value="settings.endpoint.type === 'prompt_api' ? PROMPT_API_MODEL_ID : (settings.defaultModelId || '')"
           :models="sortedModels"
           :loading="isFetchingModels"
+          :disabled="settings.endpoint.type === 'prompt_api'"
           @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
           :placeholder="lazyStrings.Sidebar__select_default_model()"
         />

@@ -6,6 +6,7 @@ import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { LmProvider } from '@/01-models/lm';
 import type { Tool } from '@/01-models/tool';
 import { loadLmProvider } from '@/features/lm/providerFactory';
+import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 import { storageService } from '@/00-storage/service';
 import { getEnabledTools } from '@/features/tools/factory';
@@ -104,6 +105,20 @@ function isPromptApiEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
   }
   }
+}
+
+function resolveGenerationModel({
+  endpoint,
+  assistantModelId,
+  resolvedModelId,
+}: {
+  endpoint: Endpoint,
+  assistantModelId: string | undefined,
+  resolvedModelId: string,
+}): string {
+  return isPromptApiEndpoint({ endpoint })
+    ? PROMPT_API_MODEL_ID
+    : (assistantModelId || resolvedModelId);
 }
 
 export async function sendMessageForChat({
@@ -212,9 +227,14 @@ export async function sendMessageToTargetChat({
       }
       }
     })();
-    let resolvedModel = mutableChat.modelId || resolved.modelId;
+    const usesPromptApi = isPromptApiEndpoint({ endpoint });
+    let resolvedModel = resolveGenerationModel({
+      endpoint,
+      assistantModelId: mutableChat.modelId,
+      resolvedModelId: resolved.modelId,
+    });
 
-    if (hasReachableEndpoint) {
+    if (hasReachableEndpoint && !usesPromptApi) {
       const models = await fetchAvailableModelsForChat({
         chatId: mutableChat.id,
         errorSource: 'chat-generation-flow:resolve-models',
@@ -243,7 +263,6 @@ export async function sendMessageToTargetChat({
       return false;
     }
 
-    const usesPromptApi = isPromptApiEndpoint({ endpoint });
     if (usesPromptApi && promptApiRuntimeState.value.status !== 'ready') {
       return false;
     }
@@ -442,8 +461,12 @@ export async function generateResponseForAssistant({
   registerLiveInstance({ chat: mutableChat });
 
   const resolved = resolveGenerationSettings({ chat: mutableChat });
-  const resolvedModel = assistantNode.modelId || resolved.modelId;
   const usesPromptApi = isPromptApiEndpoint({ endpoint: resolved.endpoint });
+  const resolvedModel = resolveGenerationModel({
+    endpoint: resolved.endpoint,
+    assistantModelId: assistantNode.modelId,
+    resolvedModelId: resolved.modelId,
+  });
   const finalLmParameters = usesPromptApi
     ? undefined
     : (lmParameters || resolved.lmParameters);
@@ -1328,4 +1351,4 @@ async function showGenerationFailedToast({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = { resolveGenerationModel };

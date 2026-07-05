@@ -12,6 +12,10 @@ import * as ollamaModule from '@/features/lm/ollama';
 import { TransformersJsProvider } from '@/features/transformers-js/provider';
 import { type EndpointType } from '@/01-models/types';
 import { detectOllama } from '@/utils/ollama-detection';
+import {
+  TEST_ONLY as promptApiRuntimeTestOnly,
+} from '@/features/prompt-api/runtime';
+import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 
 // Mock the services.
 vi.mock('../features/lm/openai', () => {
@@ -54,6 +58,8 @@ describe('OnboardingModal.vue', () => {
     value: {
       endpoint: { type: 'openai' as const, url: '' },
       autoTitleEnabled: true,
+      defaultModelId: 'existing-default-model',
+      titleModelId: 'existing-title-model',
     },
   };
   const mockIsOnboardingDismissed = ref(false);
@@ -62,6 +68,11 @@ describe('OnboardingModal.vue', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    promptApiRuntimeTestOnly.reset();
+    mockSettings.value.endpoint = { type: 'openai', url: '' };
+    mockSettings.value.defaultModelId = 'existing-default-model';
+    mockSettings.value.titleModelId = 'existing-title-model';
     mockIsOnboardingDismissed.value = false;
     mockOnboardingDraft.value = null;
     document.cookie = 'reverse_proxy_path=; Max-Age=0'; // Clear the cookie
@@ -124,6 +135,35 @@ describe('OnboardingModal.vue', () => {
 
     wrapper.unmount();
     vi.unstubAllGlobals();
+  });
+
+  it('preserves saved server model IDs when Prompt API is selected', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    mockOnboardingDraft.value = {
+      url: '',
+      type: 'prompt_api',
+      headers: [],
+      models: [PROMPT_API_MODEL_ID],
+      selectedModel: PROMPT_API_MODEL_ID,
+    };
+    const wrapper = mount(OnboardingModal);
+
+    await wrapper.get('[data-testid="onboarding-finish-button"]').trigger('click');
+    await flushPromises();
+
+    expect(mockSave).toHaveBeenCalledWith({
+      patch: expect.objectContaining({
+        endpoint: { type: 'prompt_api' },
+        defaultModelId: 'existing-default-model',
+        titleModelId: 'existing-title-model',
+      }),
+      modelRefresh: 'await',
+    });
+
+    wrapper.unmount();
   });
 
   it('disables the connection button when URL is empty', () => {

@@ -50,6 +50,7 @@ import {
 } from '@/logic/scoped-setting-changes';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
 import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
+import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
@@ -278,7 +279,7 @@ const saveError = ref<string | null>(null);
 let nextSaveRevision = 0;
 
 const hasActiveOverrides = computed(() => hasChatOverrides({ chat: localSettings.value }));
-const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? inheritedSettings.value?.endpoint);
+const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? inheritedSettings.value?.endpoint ?? settings.value.endpoint);
 const effectiveEndpointType = computed(() => effectiveEndpoint.value?.type);
 const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 
@@ -629,6 +630,8 @@ async function updateEndpointType({
     localSettings.value.endpoint = undefined;
     break;
   case 'transformers_js':
+    localSettings.value.endpoint = { type: endpointType };
+    break;
   case 'prompt_api':
     localSettings.value.endpoint = { type: endpointType };
     break;
@@ -936,10 +939,11 @@ defineExpose({
               <div tw-class="space-y-2">
                 <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__model_override() }}</label>
                 <ModelSelector
-                  :model-value="localSettings.modelId"
+                  :model-value="effectiveEndpointType === 'prompt_api' ? PROMPT_API_MODEL_ID : localSettings.modelId"
                   @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
                   :models="sortedAvailableModels"
                   :loading="isFetchingModels"
+                  :disabled="effectiveEndpointType === 'prompt_api'"
                   :placeholder="formatSettingsSourceLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"

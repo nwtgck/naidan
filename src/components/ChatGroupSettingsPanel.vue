@@ -61,6 +61,7 @@ import {
 import type { WeshMount } from '@/features/wesh/types';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
 import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
+import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/recipes/components/RecipeExportModal.vue') });
@@ -702,6 +703,8 @@ async function updateEndpointType({
     localSettings.value.endpoint = undefined;
     break;
   case 'transformers_js':
+    localSettings.value.endpoint = { type: endpointType };
+    break;
   case 'prompt_api':
     localSettings.value.endpoint = { type: endpointType };
     break;
@@ -1093,10 +1096,11 @@ defineExpose({
                 </button>
               </div>
               <ModelSelector
-                :model-value="localSettings.modelId"
+                :model-value="effectiveEndpointType === 'prompt_api' ? PROMPT_API_MODEL_ID : localSettings.modelId"
                 @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
                 :loading="isFetchingModels"
                 :models="sortedGroupModels"
+                :disabled="effectiveEndpointType === 'prompt_api'"
                 :placeholder="globalModelLabel({ modelId: settings.defaultModelId })"
                 :allow-clear="true"
                 @refresh="fetchModels"

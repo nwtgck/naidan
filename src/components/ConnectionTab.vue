@@ -32,6 +32,7 @@ import type { ProviderProfileId } from '@/01-models/ids';
 import { lazyStrings, ensureStrings } from '@/strings';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
 import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
+import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 
 const props = defineProps<{
   modelValue: Settings,
@@ -200,13 +201,30 @@ async function fetchModels() {
     // Validate current selection against new models
     const updatedForm = { ...form.value };
     let changed = false;
-    if (updatedForm.defaultModelId && !models.includes(updatedForm.defaultModelId)) {
-      updatedForm.defaultModelId = '';
-      changed = true;
-    }
-    if (updatedForm.titleModelId && !models.includes(updatedForm.titleModelId)) {
-      updatedForm.titleModelId = '';
-      changed = true;
+    const shouldValidateModelSelection = (() => {
+      switch (updatedForm.endpoint.type) {
+      case 'openai':
+      case 'ollama':
+      case 'transformers_js':
+        return true;
+      case 'prompt_api':
+      case 'unsupported_experimental_endpoint':
+        return false;
+      default: {
+        const _ex: never = updatedForm.endpoint;
+        throw new Error(`Unhandled endpoint: ${((_ex satisfies never) as { readonly type: string }).type}`);
+      }
+      }
+    })();
+    if (shouldValidateModelSelection) {
+      if (updatedForm.defaultModelId && !models.includes(updatedForm.defaultModelId)) {
+        updatedForm.defaultModelId = '';
+        changed = true;
+      }
+      if (updatedForm.titleModelId && !models.includes(updatedForm.titleModelId)) {
+        updatedForm.titleModelId = '';
+        changed = true;
+      }
     }
     if (changed) {
       form.value = updatedForm;
@@ -530,9 +548,11 @@ defineExpose({
               <div tw-class="space-y-2">
                 <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__default_model() }}</label>
                 <ModelSelector
-                  v-model="form.defaultModelId"
+                  :model-value="endpointType === 'prompt_api' ? PROMPT_API_MODEL_ID : form.defaultModelId"
+                  @update:model-value="value => { form.defaultModelId = value; }"
                   :models="sortedModels"
                   :loading="isFetchingModels"
+                  :disabled="endpointType === 'prompt_api'"
                   :placeholder="lazyStrings.ConnectionTab__none()"
                   allow-clear
                   :clear-label="lazyStrings.ConnectionTab__none()"
@@ -565,10 +585,11 @@ defineExpose({
                 <div :tw-class="['space-y-2 opacity-50 transition-all duration-300', { 'opacity-100': form.autoTitleEnabled }]">
                   <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_generation_model() }}</label>
                   <ModelSelector
-                    v-model="form.titleModelId"
+                    :model-value="endpointType === 'prompt_api' ? PROMPT_API_MODEL_ID : form.titleModelId"
+                    @update:model-value="value => { form.titleModelId = value; }"
                     :models="sortedModels"
                     :loading="isFetchingModels"
-                    :disabled="!form.autoTitleEnabled"
+                    :disabled="!form.autoTitleEnabled || endpointType === 'prompt_api'"
                     :placeholder="lazyStrings.ConnectionTab__use_current_chat_model()"
                     allow-clear
                     :clear-label="lazyStrings.ConnectionTab__use_current_chat_model()"

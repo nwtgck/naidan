@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PROMPT_API_MODEL_ID } from './constants';
 import { PromptApiProvider } from './provider';
+import { TEST_ONLY as RUNTIME_TEST_ONLY } from './runtime';
 
 function createTextStream({ chunks }: { chunks: string[] }): ReadableStream<string> {
   return new ReadableStream<string>({
@@ -13,6 +14,7 @@ function createTextStream({ chunks }: { chunks: string[] }): ReadableStream<stri
 }
 
 afterEach(() => {
+  RUNTIME_TEST_ONLY.reset();
   vi.unstubAllGlobals();
 });
 
@@ -43,6 +45,8 @@ describe('PromptApiProvider', () => {
     });
 
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      expectedInputs: [{ type: 'text' }],
+      expectedOutputs: [{ type: 'text' }],
       initialPrompts: [
         { role: 'system', content: 'Be helpful.' },
         { role: 'user', content: 'Previous question' },

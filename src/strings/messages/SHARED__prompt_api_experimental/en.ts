@@ -1,1 +1,1 @@
-export const SHARED__prompt_api_experimental = (): string => 'Prompt API (experimental)';
+export const SHARED__prompt_api_experimental = (): string => 'Prompt API';

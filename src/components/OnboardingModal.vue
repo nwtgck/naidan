@@ -324,8 +324,8 @@ watch([selectedType, customUrl], async ([_type, url]) => {
     case 'openai':
     case 'ollama':
     case 'prompt_api':
-      // Never auto-fetch for server endpoints to prevent surprising UI transitions (jumping to Step 2).
-      // The user must click "Check Connection" manually.
+      // Keep preparation and connection checks user initiated so the UI does
+      // not jump to Step 2 or start a browser model download unexpectedly.
       return false;
     default: {
       const _ex: never = currentEffectiveType;
@@ -440,6 +440,30 @@ async function handleFinish() {
 
   try {
     const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
+    const modelSettings = (() => {
+      switch (type) {
+      case 'openai':
+      case 'ollama':
+        return {
+          defaultModelId: selectedModel.value || undefined,
+          titleModelId: selectedModel.value || undefined,
+        };
+      case 'transformers_js':
+        return {
+          defaultModelId: selectedModel.value || undefined,
+          titleModelId: undefined,
+        };
+      case 'prompt_api':
+        return {
+          defaultModelId: baseSettings.defaultModelId,
+          titleModelId: baseSettings.titleModelId,
+        };
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unhandled endpoint type: ${_ex}`);
+      }
+      }
+    })();
     await save({
       patch: {
         ...baseSettings,
@@ -448,23 +472,7 @@ async function handleFinish() {
           url,
           httpHeaders: customHeaders.value,
         }),
-        defaultModelId: selectedModel.value || undefined,
-        // Transformers.js currently supports only one active model at a time.
-        // We set titleModelId to undefined to prevent the main model from being unloaded during title generation.
-        titleModelId: (() => {
-          switch (type) {
-          case 'transformers_js':
-            return undefined;
-          case 'openai':
-          case 'ollama':
-          case 'prompt_api':
-            return selectedModel.value || undefined;
-          default: {
-            const _ex: never = type;
-            return _ex;
-          }
-          }
-        })(),
+        ...modelSettings,
       },
       modelRefresh: 'await',
     });
@@ -567,8 +575,11 @@ defineExpose({
                       @click="selectedType = 'prompt_api'; availableModels = []"
                       :disabled="!isPromptApiSupported"
                       data-testid="onboarding-prompt-api-button"
-                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'prompt_api' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
-                    >{{ lazyStrings.SHARED__prompt_api_experimental() }}</button>
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'prompt_api' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
+                    >
+                      <FlaskConicalIcon tw-class="w-2.5 h-2.5" aria-hidden="true" />
+                      {{ lazyStrings.SHARED__prompt_api_experimental() }}
+                    </button>
                   </div>
                 </div>
 
@@ -635,7 +646,10 @@ defineExpose({
                       :disabled="!isPromptApiSupported"
                       data-testid="onboarding-prompt-api-button"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'prompt_api' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
-                    >{{ lazyStrings.SHARED__prompt_api_experimental() }}</button>
+                    >
+                      <FlaskConicalIcon tw-class="w-2.5 h-2.5" aria-hidden="true" />
+                      {{ lazyStrings.SHARED__prompt_api_experimental() }}
+                    </button>
                   </div>
 
                 </div>
@@ -750,6 +764,7 @@ defineExpose({
                     v-model="selectedModel"
                     :models="sortedModels"
                     :loading="isTesting"
+                    :disabled="isPromptApi"
                     @refresh="handleConnect"
                     :placeholder="lazyStrings.OnboardingModal__select_a_model()"
                   />

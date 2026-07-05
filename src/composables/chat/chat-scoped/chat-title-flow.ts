@@ -1,8 +1,9 @@
 import type { Chat, ChatMessage, Endpoint } from '@/01-models/types';
-import { isHttpEndpoint } from '@/01-models/endpoint';
+import { isConfiguredEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import type { LmProvider } from '@/01-models/lm';
 import { loadLmProvider } from '@/features/lm/providerFactory';
+import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
@@ -38,6 +39,32 @@ export function abortTitleGenerationForChat({
 
   chatRuntimeStore.getActiveTitleGeneration({ chatId })?.abort();
   chatRuntimeStore.deleteActiveTitleGeneration({ chatId });
+}
+
+function resolveTitleModelId({
+  endpoint,
+  titleModelIdOverride,
+  resolvedTitleModelId,
+  resolvedModelId,
+}: {
+  endpoint: Endpoint,
+  titleModelIdOverride: string | undefined,
+  resolvedTitleModelId: string,
+  resolvedModelId: string,
+}): string {
+  switch (endpoint.type) {
+  case 'prompt_api':
+    return PROMPT_API_MODEL_ID;
+  case 'openai':
+  case 'ollama':
+  case 'transformers_js':
+  case 'unsupported_experimental_endpoint':
+    return titleModelIdOverride || resolvedTitleModelId || resolvedModelId;
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${((_ex satisfies never) as { readonly type: string }).type}`);
+  }
+  }
 }
 
 export async function generateChatTitleForChat({
@@ -85,7 +112,12 @@ export async function generateChatTitleForChat({
       return undefined;
     }
 
-    const titleModelId = titleModelIdOverride || resolved.titleModelId || resolved.modelId;
+    const titleModelId = resolveTitleModelId({
+      endpoint: resolved.endpoint,
+      titleModelIdOverride,
+      resolvedTitleModelId: resolved.titleModelId,
+      resolvedModelId: resolved.modelId,
+    });
     if (!titleModelId) {
       return undefined;
     }
@@ -170,8 +202,7 @@ function resolveTitleSettings({
     endpoint: resolved.endpoint,
     modelId: resolved.modelId,
     titleModelId: resolved.titleModelId,
-    hasReachableEndpoint: !isHttpEndpoint(resolved.endpoint)
-      || resolved.endpoint.url !== '',
+    hasReachableEndpoint: isConfiguredEndpoint({ endpoint: resolved.endpoint }),
   };
 }
 

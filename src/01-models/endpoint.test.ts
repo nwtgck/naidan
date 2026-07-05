@@ -15,24 +15,24 @@ describe('endpoint helpers', () => {
     expect(isHttpEndpoint(endpoint)).toBe(false);
     expect(isSupportedEndpoint(endpoint)).toBe(true);
     expect(isConfiguredEndpoint({ endpoint })).toBe(true);
-    expect(cloneEndpoint({ endpoint })).toEqual(endpoint);
-    expect(areEndpointsEqual({ left: endpoint, right: endpoint })).toBe(true);
+    const clone = cloneEndpoint({ endpoint });
+    expect(clone).toEqual(endpoint);
+    expect(clone).not.toBe(endpoint);
+    expect(areEndpointsEqual({ left: endpoint, right: clone })).toBe(true);
   });
 
   it('keeps an unsupported experimental endpoint non-configured', () => {
     const endpoint = {
       type: 'unsupported_experimental_endpoint',
       persistedType: 'future_browser_ai',
-      persistedExperimental: {
-        type: 'future_browser_ai',
-        mode: 'future',
-      },
     } as const;
 
     expect(isHttpEndpoint(endpoint)).toBe(false);
     expect(isSupportedEndpoint(endpoint)).toBe(false);
     expect(isConfiguredEndpoint({ endpoint })).toBe(false);
-    expect(cloneEndpoint({ endpoint })).toEqual(endpoint);
-    expect(cloneEndpoint({ endpoint })).not.toBe(endpoint);
+    const clone = cloneEndpoint({ endpoint });
+    expect(clone).toEqual(endpoint);
+    expect(clone).not.toBe(endpoint);
+    expect(areEndpointsEqual({ left: endpoint, right: clone })).toBe(true);
   });
 });

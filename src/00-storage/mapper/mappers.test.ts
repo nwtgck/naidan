@@ -237,17 +237,42 @@ describe('Settings Mapping', () => {
     expect(domain.endpoint).toEqual({
       type: 'unsupported_experimental_endpoint',
       persistedType: 'future_browser_ai',
-      persistedExperimental: {
-        type: 'future_browser_ai',
-        futureMode: 'local_only',
-      },
     });
     expect(domain.defaultModelId).toBe('future-model');
     expect(domain.systemPrompt).toBe('Keep the rest of settings readable.');
     expect(domain.storageType).toBe('local');
+  });
 
-    const saved = settingsToDto({ domain });
-    expect(saved.endpoint).toEqual(dto.endpoint);
+  it('keeps a non-string experimental endpoint identifier local to that endpoint', () => {
+    const dto = {
+      endpoint: {
+        type: 'experimental_type',
+        experimental: {
+          type: 42,
+          futureMode: 'local_only',
+        },
+      },
+      defaultModelId: 'future-model',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: false,
+      systemPrompt: 'Keep the rest of settings readable.',
+      lmParameters: undefined,
+      experimental: undefined,
+    };
+
+    const parsed = SettingsSchemaDto.parse(dto);
+    const domain = settingsToDomain({ dto: parsed });
+
+    expect(domain.endpoint).toEqual({
+      type: 'unsupported_experimental_endpoint',
+      persistedType: undefined,
+    });
+    expect(domain.defaultModelId).toBe('future-model');
+    expect(domain.systemPrompt).toBe('Keep the rest of settings readable.');
   });
 
   it('maps the Prompt API domain endpoint through the experimental DTO envelope', () => {
@@ -269,6 +294,34 @@ describe('Settings Mapping', () => {
     expect(remapped.endpoint).toEqual(domain.endpoint);
     expect(remapped.defaultModelId).toBe(domain.defaultModelId);
     expect(remapped.storageType).toBe(domain.storageType);
+  });
+
+  it('keeps Prompt API readable when future experimental fields are present', () => {
+    const dto = {
+      endpoint: {
+        type: 'experimental_type',
+        experimental: {
+          type: 'prompt_api',
+          futureSessionMode: 'persistent',
+        },
+      },
+      defaultModelId: 'browser-provided-language-model',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: false,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      experimental: undefined,
+    };
+
+    const parsed = SettingsSchemaDto.parse(dto);
+    const domain = settingsToDomain({ dto: parsed });
+
+    expect(domain.endpoint).toEqual({ type: 'prompt_api' });
+    expect(domain.defaultModelId).toBe('browser-provided-language-model');
   });
 
   it('preserves an empty HTTP URL through settings mapping', () => {

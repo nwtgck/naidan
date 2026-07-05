@@ -1,12 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import type { EndpointType, Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 
+const { mockFetchModels } = vi.hoisted(() => ({
+  mockFetchModels: vi.fn(),
+}));
+
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
     save: vi.fn(),
-    fetchModels: vi.fn().mockResolvedValue([]),
+    fetchModels: mockFetchModels,
     updateProviderProfiles: vi.fn(),
   }),
 }));
@@ -27,13 +31,24 @@ function createSettings({ endpointType }: {
   endpointType: EndpointType,
 }): Settings {
   return {
-    endpoint: endpointType === 'transformers_js'
-      ? { type: endpointType }
-      : {
-        type: endpointType,
-        url: 'https://ollama.example',
-        httpHeaders: [['X-Test', 'value']],
-      },
+    endpoint: (() => {
+      switch (endpointType) {
+      case 'transformers_js':
+      case 'prompt_api':
+        return { type: endpointType };
+      case 'openai':
+      case 'ollama':
+        return {
+          type: endpointType,
+          url: 'https://ollama.example',
+          httpHeaders: [['X-Test', 'value']],
+        };
+      default: {
+        const _ex: never = endpointType;
+        throw new Error(`Unhandled endpoint type: ${_ex}`);
+      }
+      }
+    })(),
     defaultModelId: '',
     titleModelId: '',
     autoTitleEnabled: true,
@@ -45,7 +60,11 @@ function createSettings({ endpointType }: {
 }
 
 const globalStubs = {
-  ModelSelector: { template: '<div data-testid="model-selector-stub" />' },
+  ModelSelector: {
+    name: 'ModelSelector',
+    props: ['modelValue', 'disabled'],
+    template: '<div data-testid="model-selector-stub" />',
+  },
   LmParametersEditor: { template: '<div />' },
   ProviderProfilePreview: { template: '<div />' },
   TransformersJsUpsell: { template: '<div />' },
@@ -55,6 +74,16 @@ const globalStubs = {
     template: '<div data-testid="ollama-management-stub">Ollama management</div>',
   },
 };
+
+
+beforeEach(() => {
+  mockFetchModels.mockReset();
+  mockFetchModels.mockResolvedValue([]);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('ConnectionTab Ollama management integration', () => {
   it('shows Ollama management between endpoint configuration and model selection', async () => {
@@ -90,4 +119,32 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(wrapper.find('[data-testid="ollama-management-stub"]').exists()).toBe(false);
   });
+
+  it('shows the browser-managed model without overwriting the saved model', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    mockFetchModels.mockResolvedValue(['browser-provided-language-model']);
+    const settings = createSettings({ endpointType: 'prompt_api' });
+    settings.defaultModelId = 'saved-provider-model';
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: ['browser-provided-language-model'],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    const selectors = wrapper.findAllComponents({ name: 'ModelSelector' });
+    expect(selectors[0]?.props('modelValue')).toBe('browser-provided-language-model');
+    expect(selectors[0]?.props('disabled')).toBe(true);
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    wrapper.unmount();
+  });
+
 });

@@ -221,7 +221,10 @@ export function useSettings(): UseSettingsApi {
   const isOnboardingDismissed = computed(() => {
     const endpoint = _settings.value.endpoint;
     const hasEndpoint = isConfiguredEndpoint({ endpoint });
-    const hasModel = !!_settings.value.defaultModelId;
+    const hasModel = (
+      endpoint.type === 'prompt_api'
+      || !!_settings.value.defaultModelId
+    );
     return _isOnboardingDismissed.value || (hasEndpoint && hasModel);
   });
 

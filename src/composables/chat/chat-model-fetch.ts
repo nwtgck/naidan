@@ -2,7 +2,7 @@ import { toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
 import type { ChatGroup, Endpoint } from '@/01-models/types';
 import type { LmProvider } from '@/01-models/lm';
-import { isHttpEndpoint } from '@/01-models/endpoint';
+import { isHttpEndpoint, isSupportedEndpoint } from '@/01-models/endpoint';
 import { loadLmProvider } from '@/features/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
@@ -49,7 +49,12 @@ export async function fetchModelsForChat({
       availableModels.value = models;
     }
 
-    if (mutableChat.modelId && !models.includes(mutableChat.modelId)) {
+    if (
+      isSupportedEndpoint(endpoint)
+      && endpoint.type !== 'prompt_api'
+      && mutableChat.modelId
+      && !models.includes(mutableChat.modelId)
+    ) {
       mutableChat.modelId = '';
       mutableChat.updatedAt = Date.now();
       triggerCurrentChat({ chatId: mutableChat.id });
@@ -90,6 +95,7 @@ export async function fetchModelsForEndpoint({
   endpoint: Endpoint,
   errorSource: string,
 }): Promise<string[]> {
+  if (!isSupportedEndpoint(endpoint)) return [];
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     return [];
   }

@@ -3,10 +3,10 @@ import { z } from 'zod';
 import type { LmProvider } from '@/01-models/lm';
 import type { LmParameters } from '@/01-models/types';
 
-import { createPromptApiSession, getPromptApiAvailability } from './api';
 import { PROMPT_API_MODEL_ID } from './constants';
 import { PromptApiError, normalizePromptApiError } from './errors';
 import { mapChatMessagesToPromptApi } from './message-mapper';
+import { acquirePromptApiGenerationSession } from './runtime';
 
 const PromptApiChunkSchema = z.string();
 
@@ -57,35 +57,14 @@ export class PromptApiProvider implements LmProvider {
       });
     }
 
-    const availability = await getPromptApiAvailability();
-    switch (availability) {
-    case 'available':
-      break;
-    case 'downloadable':
-    case 'downloading':
-      throw new PromptApiError({
-        code: 'preparation_required',
-        message: 'Prompt API model preparation is required.',
-      });
-    case 'unavailable':
-      throw new PromptApiError({
-        code: 'model_unavailable',
-        message: 'Prompt API model is unavailable.',
-      });
-    default: {
-      const _ex: never = availability;
-      throw new Error(`Unhandled Prompt API availability: ${_ex}`);
-    }
-    }
-
     const { initialPrompts, prompt } = mapChatMessagesToPromptApi({ messages });
-    const session = await createPromptApiSession({
+    const lease = await acquirePromptApiGenerationSession({
       initialPrompts,
       signal,
-      onDownloadProgress: undefined,
     });
 
     try {
+      const { session } = lease;
       signal?.throwIfAborted();
       onAssistantMessageStart?.();
       const stream = session.promptStreaming(prompt, { signal });
@@ -102,7 +81,7 @@ export class PromptApiProvider implements LmProvider {
     } catch (error) {
       throw normalizePromptApiError({ error });
     } finally {
-      session.destroy();
+      lease.release();
     }
   }
 

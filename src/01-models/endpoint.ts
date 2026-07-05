@@ -1,22 +1,5 @@
 import type { Endpoint, EndpointType, HttpEndpoint, SupportedEndpoint } from '@/01-models/types';
 
-const clonePersistedExperimental = ({ value }: { value: unknown }): unknown => (
-  value === undefined ? undefined : structuredClone(value)
-);
-
-const arePersistedExperimentalValuesEqual = ({
-  left,
-  right,
-}: {
-  left: unknown,
-  right: unknown,
-}): boolean => {
-  if (Object.is(left, right)) return true;
-
-  // Persisted experimental values originate from JSON-compatible DTO data.
-  return JSON.stringify(left) === JSON.stringify(right);
-};
-
 export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
   switch (endpoint.type) {
   case 'openai':
@@ -103,9 +86,6 @@ export function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
     return {
       type: 'unsupported_experimental_endpoint',
       persistedType: endpoint.persistedType,
-      persistedExperimental: clonePersistedExperimental({
-        value: endpoint.persistedExperimental,
-      }),
     };
   default: {
     const _ex: never = endpoint;
@@ -159,11 +139,7 @@ export function areEndpointsEqual({
   case 'unsupported_experimental_endpoint':
     return (
       right.type === 'unsupported_experimental_endpoint'
-      && Object.is(left.persistedType, right.persistedType)
-      && arePersistedExperimentalValuesEqual({
-        left: left.persistedExperimental,
-        right: right.persistedExperimental,
-      })
+      && left.persistedType === right.persistedType
     );
   default: {
     const _ex: never = left;
