@@ -36,8 +36,8 @@ const WARM_KEEPER_RECREATE_DELAY_MS = 1_500;
 const mutableState = shallowRef<PromptApiRuntimeState>({ status: 'unchecked' });
 export const promptApiRuntimeState: DeepReadonly<Ref<PromptApiRuntimeState>> = readonly(mutableState);
 
-let preparationPromise: Promise<void> | undefined;
-let preparationRevision = 0;
+let downloadProgressPromise: Promise<void> | undefined;
+let downloadProgressRevision = 0;
 let availabilityRefreshRevision = 0;
 let monitoringReferences = 0;
 let pollingTimer: ReturnType<typeof setInterval> | undefined;
@@ -81,7 +81,7 @@ function invalidateAvailabilityRefreshes(): void {
 function isCurrentAvailabilityRefresh({ revision }: { revision: number }): boolean {
   return (
     revision === availabilityRefreshRevision
-    && preparationPromise === undefined
+    && downloadProgressPromise === undefined
   );
 }
 
@@ -97,13 +97,15 @@ function destroyWarmKeeper(): void {
   session?.destroy();
 }
 
-function canCreateWarmKeeper(): boolean {
+function canCreateWarmKeeper({ downloadProgressOverlap }: {
+  downloadProgressOverlap: 'allow' | 'disallow',
+}): boolean {
   return (
     hasActivatedPromptApi
     && warmKeeper === undefined
     && warmKeeperCreationPromise === undefined
     && warmKeeperRecreationTimer === undefined
-    && preparationPromise === undefined
+    && (downloadProgressOverlap === 'allow' || downloadProgressPromise === undefined)
     && pendingGenerationSessionCount === 0
     && activeGenerationSessions.size === 0
   );
@@ -125,7 +127,6 @@ function setAvailabilityState({ availability }: {
   case 'downloading':
   {
     cancelWarmKeeperRecreation();
-    destroyWarmKeeper();
     const currentState = mutableState.value;
     const progress = (() => {
       switch (currentState.status) {
@@ -198,27 +199,41 @@ function handleBackgroundWarmKeeperError({ error }: { error: unknown }): void {
   }
 }
 
-async function createWarmKeeper(): Promise<void> {
-  if (!canCreateWarmKeeper()) return;
+async function createWarmKeeper({ availabilityCheck, downloadProgressOverlap }: {
+  availabilityCheck: 'required' | 'skip',
+  downloadProgressOverlap: 'allow' | 'disallow',
+}): Promise<void> {
+  if (!canCreateWarmKeeper({ downloadProgressOverlap })) return;
 
   const lifecycleRevision = runtimeLifecycleRevision;
   let shouldReevaluateAfterFinalization = false;
   const run = async (): Promise<void> => {
     try {
-      const availability = await getPromptApiAvailability({ inputMode: 'text' });
-      if (lifecycleRevision !== runtimeLifecycleRevision) return;
+      switch (availabilityCheck) {
+      case 'required': {
+        const availability = await getPromptApiAvailability({ inputMode: 'text' });
+        if (lifecycleRevision !== runtimeLifecycleRevision) return;
 
-      switch (availability) {
-      case 'available':
+        switch (availability) {
+        case 'available':
+          break;
+        case 'downloadable':
+        case 'downloading':
+        case 'unavailable':
+          setAvailabilityState({ availability });
+          return;
+        default: {
+          const _ex: never = availability;
+          throw new Error(`Unhandled Prompt API availability: ${_ex}`);
+        }
+        }
         break;
-      case 'downloadable':
-      case 'downloading':
-      case 'unavailable':
-        setAvailabilityState({ availability });
-        return;
+      }
+      case 'skip':
+        break;
       default: {
-        const _ex: never = availability;
-        throw new Error(`Unhandled Prompt API availability: ${_ex}`);
+        const _ex: never = availabilityCheck;
+        throw new Error(`Unhandled warm keeper availability check: ${_ex}`);
       }
       }
 
@@ -232,7 +247,7 @@ async function createWarmKeeper(): Promise<void> {
       if (
         lifecycleRevision !== runtimeLifecycleRevision
         || !hasActivatedPromptApi
-        || preparationPromise !== undefined
+        || (downloadProgressOverlap === 'disallow' && downloadProgressPromise !== undefined)
         || pendingGenerationSessionCount > 0
         || activeGenerationSessions.size > 0
         || warmKeeper !== undefined
@@ -268,11 +283,14 @@ async function createWarmKeeper(): Promise<void> {
 }
 
 function scheduleWarmKeeperRecreation(): void {
-  if (!canCreateWarmKeeper()) return;
+  if (!canCreateWarmKeeper({ downloadProgressOverlap: 'disallow' })) return;
 
   warmKeeperRecreationTimer = setTimeout(() => {
     warmKeeperRecreationTimer = undefined;
-    void createWarmKeeper();
+    void createWarmKeeper({
+      availabilityCheck: 'required',
+      downloadProgressOverlap: 'disallow',
+    });
   }, WARM_KEEPER_RECREATE_DELAY_MS);
 }
 
@@ -367,9 +385,9 @@ export async function refreshPromptApiAvailability({
 }: {
   showCheckingState: 'yes' | 'no',
 }): Promise<void> {
-  // Preparation owns runtime state while create() is downloading or loading a
-  // model. A focus event or polling tick must not replace its progress state.
-  if (preparationPromise !== undefined) return;
+  // Download progress tracking owns runtime state while create() is downloading
+  // or loading a model. A focus event or polling tick must not replace it.
+  if (downloadProgressPromise !== undefined) return;
 
   const refreshRevision = availabilityRefreshRevision + 1;
   availabilityRefreshRevision = refreshRevision;
@@ -433,27 +451,30 @@ export async function preparePromptApi({ signal }: {
 }): Promise<void> {
   signal?.throwIfAborted();
 
-  if (warmKeeper !== undefined) {
+  if (
+    warmKeeper !== undefined
+    && mutableState.value.status !== 'downloading'
+  ) {
     setState({ state: { status: 'ready' } });
     return;
   }
-  if (preparationPromise !== undefined) return preparationPromise;
+  if (downloadProgressPromise !== undefined) return downloadProgressPromise;
 
   cancelWarmKeeperRecreation();
-  const currentPreparationRevision = preparationRevision + 1;
-  preparationRevision = currentPreparationRevision;
+  const currentDownloadProgressRevision = downloadProgressRevision + 1;
+  downloadProgressRevision = currentDownloadProgressRevision;
   const lifecycleRevision = runtimeLifecycleRevision;
   invalidateAvailabilityRefreshes();
   let refreshAfterAbort = false;
 
-  const isCurrentPreparation = (): boolean => (
-    currentPreparationRevision === preparationRevision
+  const isCurrentDownloadProgress = (): boolean => (
+    currentDownloadProgressRevision === downloadProgressRevision
     && lifecycleRevision === runtimeLifecycleRevision
   );
 
   const run = async (): Promise<void> => {
     if (getPromptApiLanguageModel() === undefined) {
-      if (isCurrentPreparation()) {
+      if (isCurrentDownloadProgress()) {
         setState({ state: { status: 'api_unavailable' } });
       }
       throw new PromptApiError({
@@ -462,18 +483,39 @@ export async function preparePromptApi({ signal }: {
       });
     }
 
-    if (isCurrentPreparation()) {
-      setState({ state: { status: 'preparing' } });
+    if (isCurrentDownloadProgress()) {
+      const currentState = mutableState.value;
+      switch (currentState.status) {
+      case 'downloadable':
+        setState({ state: { status: 'downloading', progress: undefined } });
+        break;
+      case 'downloading':
+        setState({ state: currentState });
+        break;
+      case 'unchecked':
+      case 'checking':
+      case 'api_unavailable':
+      case 'model_unavailable':
+      case 'preparing':
+      case 'ready':
+      case 'error':
+        setState({ state: { status: 'preparing' } });
+        break;
+      default: {
+        const _ex: never = currentState;
+        throw new Error(`Unhandled Prompt API runtime state: ${String(_ex)}`);
+      }
+      }
     }
 
-    let session: PromptApiSession | undefined;
+    let downloadProgressSession: PromptApiSession | undefined;
     try {
-      session = await createPromptApiSession({
+      downloadProgressSession = await createPromptApiSession({
         initialPrompts: [],
         signal,
         inputMode: 'text',
         onDownloadProgress: ({ progress }) => {
-          if (!isCurrentPreparation()) return;
+          if (!isCurrentDownloadProgress()) return;
           setState({
             state: progress >= 1
               ? { status: 'preparing' }
@@ -482,29 +524,19 @@ export async function preparePromptApi({ signal }: {
         },
       });
 
-      if (!isCurrentPreparation()) {
-        session.destroy();
-        session = undefined;
-        return;
-      }
+      if (!isCurrentDownloadProgress()) return;
 
       hasActivatedPromptApi = true;
-      if (
-        pendingGenerationSessionCount === 0
-        && activeGenerationSessions.size === 0
-        && warmKeeper === undefined
-      ) {
-        warmKeeper = session;
-        session = undefined;
+      await createWarmKeeper({
+        availabilityCheck: 'skip',
+        downloadProgressOverlap: 'allow',
+      });
+      if (isCurrentDownloadProgress()) {
+        setState({ state: { status: 'ready' } });
       }
-
-      session?.destroy();
-      session = undefined;
-      setState({ state: { status: 'ready' } });
     } catch (error) {
-      session?.destroy();
       const normalized = normalizePromptApiError({ error });
-      if (isCurrentPreparation()) {
+      if (isCurrentDownloadProgress()) {
         switch (normalized.code) {
         case 'aborted':
           refreshAfterAbort = true;
@@ -523,19 +555,21 @@ export async function preparePromptApi({ signal }: {
         }
       }
       throw normalized;
+    } finally {
+      downloadProgressSession?.destroy();
     }
   };
 
   const running = run();
   const finalized = running.finally(async () => {
-    if (preparationPromise === finalized) {
-      preparationPromise = undefined;
+    if (downloadProgressPromise === finalized) {
+      downloadProgressPromise = undefined;
     }
-    if (refreshAfterAbort && isCurrentPreparation()) {
+    if (refreshAfterAbort && isCurrentDownloadProgress()) {
       await refreshPromptApiAvailability({ showCheckingState: 'no' });
     }
   });
-  preparationPromise = finalized;
+  downloadProgressPromise = finalized;
   return finalized;
 }
 
@@ -665,9 +699,9 @@ export function acquirePromptApiRuntimeMonitoring(): () => void {
 
 function disposePromptApiSessionResources(): void {
   runtimeLifecycleRevision += 1;
-  preparationRevision += 1;
+  downloadProgressRevision += 1;
   invalidateAvailabilityRefreshes();
-  preparationPromise = undefined;
+  downloadProgressPromise = undefined;
   warmKeeperCreationPromise = undefined;
   hasActivatedPromptApi = false;
   pendingGenerationSessionCount = 0;

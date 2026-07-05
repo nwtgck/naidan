@@ -113,12 +113,13 @@ describe('Prompt API runtime', () => {
     });
   });
 
-  it('keeps the preparation session alive as the warm keeper', async () => {
+  it('destroys the download progress session and keeps a separate warm keeper', async () => {
     let downloadProgressListener: ((event: ProgressEvent) => void) | undefined;
-    let resolveSession: ((session: unknown) => void) | undefined;
+    let resolveDownloadSession: ((session: unknown) => void) | undefined;
+    const downloadSession = createSessionMock();
     const keeper = createSessionMock();
-    const createPromise = new Promise<unknown>(resolve => {
-      resolveSession = resolve;
+    const downloadSessionPromise = new Promise<unknown>(resolve => {
+      resolveDownloadSession = resolve;
     });
     const create = vi.fn((options: {
       monitor?: (value: {
@@ -128,15 +129,18 @@ describe('Prompt API runtime', () => {
         ) => void,
       }) => void,
     }) => {
-      options.monitor?.({
-        addEventListener: (_type, listener) => {
-          downloadProgressListener = listener;
-        },
-      });
-      return createPromise;
+      if (create.mock.calls.length === 1) {
+        options.monitor?.({
+          addEventListener: (_type, listener) => {
+            downloadProgressListener = listener;
+          },
+        });
+        return downloadSessionPromise;
+      }
+      return Promise.resolve(keeper.session);
     });
     vi.stubGlobal('LanguageModel', {
-      availability: vi.fn().mockResolvedValue('downloadable'),
+      availability: vi.fn().mockResolvedValue('available'),
       create,
     });
 
@@ -149,10 +153,12 @@ describe('Prompt API runtime', () => {
     downloadProgressListener?.({ loaded: 1 } as ProgressEvent);
     expect(promptApiRuntimeState.value).toEqual({ status: 'preparing' });
 
-    resolveSession?.(keeper.session);
+    resolveDownloadSession?.(downloadSession.session);
     await preparation;
 
     expect(promptApiRuntimeState.value).toEqual({ status: 'ready' });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(downloadSession.destroy).toHaveBeenCalledTimes(1);
     expect(keeper.destroy).not.toHaveBeenCalled();
     expect(TEST_ONLY.getSessionState()).toMatchObject({
       hasActivatedPromptApi: true,
@@ -163,12 +169,15 @@ describe('Prompt API runtime', () => {
   it('does not let a stale availability result overwrite active preparation', async () => {
     let resolveAvailability!: (availability: string) => void;
     let resolveSession!: (session: unknown) => void;
+    const keeper = createSessionMock();
     const availability = vi.fn(() => new Promise<string>(resolve => {
       resolveAvailability = resolve;
     }));
-    const create = vi.fn(() => new Promise<unknown>(resolve => {
-      resolveSession = resolve;
-    }));
+    const create = vi.fn()
+      .mockImplementationOnce(() => new Promise<unknown>(resolve => {
+        resolveSession = resolve;
+      }))
+      .mockResolvedValueOnce(keeper.session);
     vi.stubGlobal('LanguageModel', {
       availability,
       create,
@@ -192,12 +201,15 @@ describe('Prompt API runtime', () => {
 
   it('ignores availability refresh requests while preparation is active', async () => {
     let resolveSession!: (session: unknown) => void;
+    const keeper = createSessionMock();
     const availability = vi.fn().mockResolvedValue('downloadable');
     vi.stubGlobal('LanguageModel', {
       availability,
-      create: vi.fn(() => new Promise<unknown>(resolve => {
-        resolveSession = resolve;
-      })),
+      create: vi.fn()
+        .mockImplementationOnce(() => new Promise<unknown>(resolve => {
+          resolveSession = resolve;
+        }))
+        .mockResolvedValueOnce(keeper.session),
     });
 
     const preparation = preparePromptApi({ signal: undefined });
@@ -211,8 +223,11 @@ describe('Prompt API runtime', () => {
   });
 
   it('reuses the existing warm keeper on repeated preparation', async () => {
+    const downloadSession = createSessionMock();
     const keeper = createSessionMock();
-    const create = vi.fn().mockResolvedValue(keeper.session);
+    const create = vi.fn()
+      .mockResolvedValueOnce(downloadSession.session)
+      .mockResolvedValueOnce(keeper.session);
     vi.stubGlobal('LanguageModel', {
       availability: vi.fn().mockResolvedValue('available'),
       create,
@@ -221,16 +236,82 @@ describe('Prompt API runtime', () => {
     await preparePromptApi({ signal: undefined });
     await preparePromptApi({ signal: undefined });
 
-    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(downloadSession.destroy).toHaveBeenCalledTimes(1);
+    expect(keeper.destroy).not.toHaveBeenCalled();
+    expect(TEST_ONLY.getSessionState().hasWarmKeeper).toBe(true);
+  });
+
+  it('keeps the warm keeper while a separate session tracks an existing download', async () => {
+    let downloadProgressListener: ((event: ProgressEvent) => void) | undefined;
+    let resolveTrackingSession!: (session: unknown) => void;
+    const initialDownloadSession = createSessionMock();
+    const keeper = createSessionMock();
+    const trackingSession = createSessionMock();
+    const create = vi.fn((options: {
+      monitor?: (value: {
+        addEventListener: (
+          type: 'downloadprogress',
+          listener: (event: ProgressEvent) => void,
+        ) => void,
+      }) => void,
+    }) => {
+      switch (create.mock.calls.length) {
+      case 1:
+        return Promise.resolve(initialDownloadSession.session);
+      case 2:
+        return Promise.resolve(keeper.session);
+      case 3:
+        options.monitor?.({
+          addEventListener: (_type, listener) => {
+            downloadProgressListener = listener;
+          },
+        });
+        return new Promise<unknown>(resolve => {
+          resolveTrackingSession = resolve;
+        });
+      default:
+        throw new Error('Unexpected LanguageModel.create() call.');
+      }
+    });
+    vi.stubGlobal('LanguageModel', {
+      availability: vi.fn().mockResolvedValue('downloading'),
+      create,
+    });
+
+    await preparePromptApi({ signal: undefined });
+    await refreshPromptApiAvailability({ showCheckingState: 'no' });
+
+    expect(promptApiRuntimeState.value).toEqual({
+      status: 'downloading',
+      progress: undefined,
+    });
+    expect(keeper.destroy).not.toHaveBeenCalled();
+
+    const tracking = preparePromptApi({ signal: undefined });
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(keeper.destroy).not.toHaveBeenCalled();
+
+    downloadProgressListener?.({ loaded: 0.6 } as ProgressEvent);
+    expect(promptApiRuntimeState.value).toEqual({ status: 'downloading', progress: 0.6 });
+
+    resolveTrackingSession(trackingSession.session);
+    await tracking;
+
+    expect(trackingSession.destroy).toHaveBeenCalledTimes(1);
     expect(keeper.destroy).not.toHaveBeenCalled();
     expect(TEST_ONLY.getSessionState().hasWarmKeeper).toBe(true);
   });
 
   it('deduplicates concurrent preparation requests', async () => {
     let resolveSession: ((session: unknown) => void) | undefined;
-    const create = vi.fn(() => new Promise<unknown>(resolve => {
-      resolveSession = resolve;
-    }));
+    const downloadSession = createSessionMock();
+    const keeper = createSessionMock();
+    const create = vi.fn()
+      .mockImplementationOnce(() => new Promise<unknown>(resolve => {
+        resolveSession = resolve;
+      }))
+      .mockResolvedValueOnce(keeper.session);
     vi.stubGlobal('LanguageModel', {
       availability: vi.fn().mockResolvedValue('downloadable'),
       create,
@@ -240,16 +321,22 @@ describe('Prompt API runtime', () => {
     const second = preparePromptApi({ signal: undefined });
     expect(create).toHaveBeenCalledTimes(1);
 
-    resolveSession?.(createSessionMock().session);
+    resolveSession?.(downloadSession.session);
     await Promise.all([first, second]);
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(downloadSession.destroy).toHaveBeenCalledTimes(1);
+    expect(keeper.destroy).not.toHaveBeenCalled();
   });
 
   it('hands the live model from the warm keeper to a generation session', async () => {
     vi.useFakeTimers();
+    const downloadSession = createSessionMock();
     const keeper = createSessionMock();
     const generation = createSessionMock();
     const replacementKeeper = createSessionMock();
     const create = vi.fn()
+      .mockResolvedValueOnce(downloadSession.session)
       .mockResolvedValueOnce(keeper.session)
       .mockResolvedValueOnce(generation.session)
       .mockResolvedValueOnce(replacementKeeper.session);
@@ -278,7 +365,7 @@ describe('Prompt API runtime', () => {
 
     await vi.advanceTimersByTimeAsync(TEST_ONLY.WARM_KEEPER_RECREATE_DELAY_MS);
 
-    expect(create).toHaveBeenCalledTimes(3);
+    expect(create).toHaveBeenCalledTimes(4);
     expect(replacementKeeper.destroy).not.toHaveBeenCalled();
     expect(TEST_ONLY.getSessionState()).toMatchObject({
       activeGenerationSessionCount: 0,
@@ -287,13 +374,16 @@ describe('Prompt API runtime', () => {
   });
 
   it('keeps text runtime ready when image input is unavailable', async () => {
+    const downloadSession = createSessionMock();
     const keeper = createSessionMock();
     const availability = vi.fn(async (options: {
       expectedInputs?: Array<{ type: string }>,
     }) => options.expectedInputs?.some(input => input.type === 'image')
       ? 'unavailable'
       : 'available');
-    const create = vi.fn().mockResolvedValue(keeper.session);
+    const create = vi.fn()
+      .mockResolvedValueOnce(downloadSession.session)
+      .mockResolvedValueOnce(keeper.session);
     vi.stubGlobal('LanguageModel', { availability, create });
 
     await preparePromptApi({ signal: undefined });
@@ -309,14 +399,17 @@ describe('Prompt API runtime', () => {
       expectedOutputs: [{ type: 'text' }],
     });
     expect(promptApiRuntimeState.value).toEqual({ status: 'ready' });
+    expect(downloadSession.destroy).toHaveBeenCalledTimes(1);
     expect(keeper.destroy).not.toHaveBeenCalled();
-    expect(create).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(2);
     expect(TEST_ONLY.getSessionState().hasWarmKeeper).toBe(true);
   });
 
   it('keeps the warm keeper when generation session creation fails', async () => {
+    const downloadSession = createSessionMock();
     const keeper = createSessionMock();
     const create = vi.fn()
+      .mockResolvedValueOnce(downloadSession.session)
       .mockResolvedValueOnce(keeper.session)
       .mockRejectedValueOnce(new Error('generation create failed'));
     vi.stubGlobal('LanguageModel', {
@@ -338,10 +431,12 @@ describe('Prompt API runtime', () => {
 
   it('cancels scheduled keeper recreation when another generation starts', async () => {
     vi.useFakeTimers();
+    const downloadSession = createSessionMock();
     const keeper = createSessionMock();
     const firstGeneration = createSessionMock();
     const secondGeneration = createSessionMock();
     const create = vi.fn()
+      .mockResolvedValueOnce(downloadSession.session)
       .mockResolvedValueOnce(keeper.session)
       .mockResolvedValueOnce(firstGeneration.session)
       .mockResolvedValueOnce(secondGeneration.session);
@@ -365,7 +460,7 @@ describe('Prompt API runtime', () => {
     });
     await vi.advanceTimersByTimeAsync(TEST_ONLY.WARM_KEEPER_RECREATE_DELAY_MS);
 
-    expect(create).toHaveBeenCalledTimes(3);
+    expect(create).toHaveBeenCalledTimes(4);
     expect(TEST_ONLY.getSessionState()).toMatchObject({
       activeGenerationSessionCount: 1,
       hasWarmKeeper: false,
@@ -407,12 +502,14 @@ describe('Prompt API runtime', () => {
 
   it('destroys an in-flight background keeper if a generation becomes active', async () => {
     vi.useFakeTimers();
+    const downloadSession = createSessionMock();
     const initialKeeper = createSessionMock();
     const firstGeneration = createSessionMock();
     const lateKeeper = createSessionMock();
     const secondGeneration = createSessionMock();
     let resolveLateKeeper!: (session: unknown) => void;
     const create = vi.fn()
+      .mockResolvedValueOnce(downloadSession.session)
       .mockResolvedValueOnce(initialKeeper.session)
       .mockResolvedValueOnce(firstGeneration.session)
       .mockImplementationOnce(() => new Promise<unknown>(resolve => {
@@ -549,9 +646,11 @@ describe('Prompt API runtime', () => {
 
   it('destroys warm and active sessions when the runtime is reset', async () => {
     vi.useFakeTimers();
+    const downloadSession = createSessionMock();
     const keeper = createSessionMock();
     const generation = createSessionMock();
     const create = vi.fn()
+      .mockResolvedValueOnce(downloadSession.session)
       .mockResolvedValueOnce(keeper.session)
       .mockResolvedValueOnce(generation.session);
     vi.stubGlobal('LanguageModel', {
