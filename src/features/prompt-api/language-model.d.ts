@@ -6,14 +6,37 @@ export type PromptApiAvailability =
   | 'downloading'
   | 'unavailable';
 
+export type PromptApiInputMode = 'text' | 'image';
+
 export type PromptApiMessageRole = 'system' | 'user' | 'assistant';
+
+export type PromptApiTextMessageContent = {
+  type: 'text',
+  value: string,
+};
+
+export type PromptApiImageMessageContent = {
+  type: 'image',
+  value: Blob,
+};
+
+export type PromptApiMessageContent =
+  | PromptApiTextMessageContent
+  | PromptApiImageMessageContent;
 
 export type PromptApiMessage = {
   role: PromptApiMessageRole,
-  content: string,
+  content: string | PromptApiMessageContent[],
 };
 
-export type PromptApiExpected = {
+export type PromptApiPrompt = string | PromptApiMessage[];
+
+export type PromptApiExpectedInput = {
+  type: 'text' | 'image',
+  languages?: string[],
+};
+
+export type PromptApiExpectedOutput = {
   type: 'text',
   languages?: string[],
 };
@@ -26,8 +49,8 @@ export interface PromptApiCreateMonitor extends EventTarget {
 }
 
 export type PromptApiCreateCoreOptions = {
-  expectedInputs?: PromptApiExpected[],
-  expectedOutputs?: PromptApiExpected[],
+  expectedInputs?: PromptApiExpectedInput[],
+  expectedOutputs?: PromptApiExpectedOutput[],
 };
 
 export type PromptApiCreateOptions = PromptApiCreateCoreOptions & {
@@ -42,7 +65,7 @@ export type PromptApiPromptOptions = {
 
 export interface PromptApiSession {
   promptStreaming(
-    input: string | PromptApiMessage[],
+    input: PromptApiPrompt,
     options?: PromptApiPromptOptions,
   ): ReadableStream<string>,
   destroy(): void,

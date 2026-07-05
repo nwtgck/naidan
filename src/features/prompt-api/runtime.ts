@@ -2,7 +2,7 @@ import { readonly, shallowRef, type DeepReadonly, type Ref } from 'vue';
 
 import { createPromptApiSession, getPromptApiAvailability, getPromptApiLanguageModel } from './api';
 import { PromptApiError, normalizePromptApiError } from './errors';
-import type { PromptApiMessage, PromptApiSession } from './language-model';
+import type { PromptApiInputMode, PromptApiMessage, PromptApiSession } from './language-model';
 
 export type PromptApiRuntimeState =
   | { status: 'unchecked' }
@@ -203,7 +203,7 @@ async function createWarmKeeper(): Promise<void> {
   let shouldReevaluateAfterFinalization = false;
   const run = async (): Promise<void> => {
     try {
-      const availability = await getPromptApiAvailability();
+      const availability = await getPromptApiAvailability({ inputMode: 'text' });
       if (lifecycleRevision !== runtimeLifecycleRevision) return;
 
       switch (availability) {
@@ -224,6 +224,7 @@ async function createWarmKeeper(): Promise<void> {
         initialPrompts: [],
         signal: undefined,
         onDownloadProgress: undefined,
+        inputMode: 'text',
       });
 
       if (
@@ -273,10 +274,12 @@ function scheduleWarmKeeperRecreation(): void {
   }, WARM_KEEPER_RECREATE_DELAY_MS);
 }
 
-async function requireAvailablePromptApi(): Promise<void> {
+async function requireAvailablePromptApi({ inputMode }: {
+  inputMode: PromptApiInputMode,
+}): Promise<void> {
   let availability: Awaited<ReturnType<typeof getPromptApiAvailability>>;
   try {
-    availability = await getPromptApiAvailability();
+    availability = await getPromptApiAvailability({ inputMode });
   } catch (error) {
     const normalized = normalizePromptApiError({ error });
     switch (normalized.code) {
@@ -301,21 +304,51 @@ async function requireAvailablePromptApi(): Promise<void> {
 
   switch (availability) {
   case 'available':
-    setState({ state: { status: 'ready' } });
-    return;
+    switch (inputMode) {
+    case 'text':
+      setState({ state: { status: 'ready' } });
+      return;
+    case 'image':
+      return;
+    default: {
+      const _ex: never = inputMode;
+      throw new Error(`Unhandled Prompt API input mode: ${_ex}`);
+    }
+    }
   case 'downloadable':
   case 'downloading':
-    setAvailabilityState({ availability });
-    throw new PromptApiError({
-      code: 'preparation_required',
-      message: 'Prompt API model preparation is required.',
-    });
+    switch (inputMode) {
+    case 'text':
+      setAvailabilityState({ availability });
+      throw new PromptApiError({
+        code: 'preparation_required',
+        message: 'Prompt API model preparation is required.',
+      });
+    case 'image':
+      return;
+    default: {
+      const _ex: never = inputMode;
+      throw new Error(`Unhandled Prompt API input mode: ${_ex}`);
+    }
+    }
   case 'unavailable':
-    setAvailabilityState({ availability });
-    throw new PromptApiError({
-      code: 'model_unavailable',
-      message: 'Prompt API model is unavailable.',
-    });
+    switch (inputMode) {
+    case 'text':
+      setAvailabilityState({ availability });
+      throw new PromptApiError({
+        code: 'model_unavailable',
+        message: 'Prompt API model is unavailable.',
+      });
+    case 'image':
+      throw new PromptApiError({
+        code: 'unsupported_input',
+        message: 'Prompt API image input is unavailable.',
+      });
+    default: {
+      const _ex: never = inputMode;
+      throw new Error(`Unhandled Prompt API input mode: ${_ex}`);
+    }
+    }
   default: {
     const _ex: never = availability;
     throw new Error(`Unhandled Prompt API availability: ${_ex}`);
@@ -357,7 +390,7 @@ export async function refreshPromptApiAvailability({
   }
 
   try {
-    const availability = await getPromptApiAvailability();
+    const availability = await getPromptApiAvailability({ inputMode: 'text' });
     if (!isCurrentAvailabilityRefresh({ revision: refreshRevision })) return;
     setAvailabilityState({ availability });
   } catch (error) {
@@ -428,6 +461,7 @@ export async function preparePromptApi({ signal }: {
       session = await createPromptApiSession({
         initialPrompts: [],
         signal,
+        inputMode: 'text',
         onDownloadProgress: ({ progress }) => {
           if (!isCurrentPreparation()) return;
           setState({
@@ -498,9 +532,11 @@ export async function preparePromptApi({ signal }: {
 export async function acquirePromptApiGenerationSession({
   initialPrompts,
   signal,
+  inputMode,
 }: {
   initialPrompts: PromptApiMessage[],
   signal: AbortSignal | undefined,
+  inputMode: PromptApiInputMode,
 }): Promise<PromptApiGenerationSessionLease> {
   signal?.throwIfAborted();
   cancelWarmKeeperRecreation();
@@ -518,11 +554,12 @@ export async function acquirePromptApiGenerationSession({
   };
 
   try {
-    await requireAvailablePromptApi();
+    await requireAvailablePromptApi({ inputMode });
     const session = await createPromptApiSession({
       initialPrompts,
       signal,
       onDownloadProgress: undefined,
+      inputMode,
     });
 
     releasePendingRegistration();

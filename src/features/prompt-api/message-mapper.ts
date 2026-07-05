@@ -1,11 +1,17 @@
-import type { ChatMessage } from '@/01-models/types';
+import type { ChatMessage, MultimodalContent } from '@/01-models/types';
 
 import { PromptApiError } from './errors';
-import type { PromptApiMessage } from './language-model';
+import type {
+  PromptApiInputMode,
+  PromptApiMessage,
+  PromptApiMessageContent,
+  PromptApiPrompt,
+} from './language-model';
 
 export type PromptApiMappedConversation = {
   initialPrompts: PromptApiMessage[],
-  prompt: string,
+  prompt: PromptApiPrompt,
+  inputMode: PromptApiInputMode,
 };
 
 function unsupported({ message }: { message: string }): never {
@@ -13,6 +19,90 @@ function unsupported({ message }: { message: string }): never {
     code: 'unsupported_input',
     message,
   });
+}
+
+function imageDataUrlToBlob({ url }: { url: string }): Blob {
+  if (!url.startsWith('data:')) {
+    return unsupported({
+      message: 'Prompt API image input requires an embedded data URL.',
+    });
+  }
+
+  const separatorIndex = url.indexOf(',');
+  if (separatorIndex < 0) {
+    return unsupported({ message: 'Prompt API image data URL is invalid.' });
+  }
+
+  const metadata = url.slice('data:'.length, separatorIndex).split(';');
+  const mimeType = metadata[0] ?? '';
+  if (!mimeType.startsWith('image/')) {
+    return unsupported({
+      message: `Prompt API image input requires an image MIME type: ${mimeType || '(missing)'}`,
+    });
+  }
+  if (!metadata.includes('base64')) {
+    return unsupported({
+      message: 'Prompt API image input requires a base64-encoded data URL.',
+    });
+  }
+
+  let binary: string;
+  try {
+    binary = atob(url.slice(separatorIndex + 1));
+  } catch (error) {
+    throw new PromptApiError({
+      code: 'unsupported_input',
+      message: 'Prompt API image data URL contains invalid base64 data.',
+      cause: error,
+    });
+  }
+
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+function mapUserContent({ content }: {
+  content: string | MultimodalContent[],
+}): {
+  content: string | PromptApiMessageContent[],
+  inputMode: PromptApiInputMode,
+} {
+  if (typeof content === 'string') {
+    return {
+      content,
+      inputMode: 'text',
+    };
+  }
+
+  const mapped: PromptApiMessageContent[] = [];
+  let inputMode: PromptApiInputMode = 'text';
+
+  for (const part of content) {
+    switch (part.type) {
+    case 'text':
+      mapped.push({ type: 'text', value: part.text });
+      break;
+    case 'image_url':
+      mapped.push({
+        type: 'image',
+        value: imageDataUrlToBlob({ url: part.image_url.url }),
+      });
+      inputMode = 'image';
+      break;
+    default: {
+      const _ex: never = part;
+      throw new Error(`Unhandled multimodal content type: ${String(_ex)}`);
+    }
+    }
+  }
+
+  return {
+    content: mapped,
+    inputMode,
+  };
 }
 
 export function mapChatMessagesToPromptApi({
@@ -27,11 +117,9 @@ export function mapChatMessagesToPromptApi({
   const systemContents: string[] = [];
   const conversation: PromptApiMessage[] = [];
   let encounteredConversationMessage = false;
+  let inputMode: PromptApiInputMode = 'text';
 
   for (const message of messages) {
-    if (typeof message.content !== 'string') {
-      return unsupported({ message: 'Prompt API multimodal input is not supported yet.' });
-    }
     if ((message.tool_calls?.length ?? 0) > 0 || message.tool_call_id !== undefined) {
       return unsupported({ message: 'Prompt API tool history is not supported yet.' });
     }
@@ -41,13 +129,38 @@ export function mapChatMessagesToPromptApi({
       if (encounteredConversationMessage) {
         return unsupported({ message: 'Prompt API system messages must precede the conversation.' });
       }
+      if (typeof message.content !== 'string') {
+        return unsupported({ message: 'Prompt API system messages must contain text only.' });
+      }
       systemContents.push(message.content);
       break;
-    case 'user':
+    case 'user': {
+      encounteredConversationMessage = true;
+      const mapped = mapUserContent({ content: message.content });
+      conversation.push({
+        role: 'user',
+        content: mapped.content,
+      });
+      switch (mapped.inputMode) {
+      case 'text':
+        break;
+      case 'image':
+        inputMode = 'image';
+        break;
+      default: {
+        const _ex: never = mapped.inputMode;
+        throw new Error(`Unhandled Prompt API input mode: ${_ex}`);
+      }
+      }
+      break;
+    }
     case 'assistant':
       encounteredConversationMessage = true;
+      if (typeof message.content !== 'string') {
+        return unsupported({ message: 'Prompt API assistant messages must contain text only.' });
+      }
       conversation.push({
-        role: message.role,
+        role: 'assistant',
         content: message.content,
       });
       break;
@@ -86,7 +199,10 @@ export function mapChatMessagesToPromptApi({
 
   return {
     initialPrompts,
-    prompt: finalMessage.content,
+    prompt: typeof finalMessage.content === 'string'
+      ? finalMessage.content
+      : [finalMessage],
+    inputMode,
   };
 }
 

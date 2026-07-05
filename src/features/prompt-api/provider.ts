@@ -57,10 +57,11 @@ export class PromptApiProvider implements LmProvider {
       });
     }
 
-    const { initialPrompts, prompt } = mapChatMessagesToPromptApi({ messages });
+    const { initialPrompts, prompt, inputMode } = mapChatMessagesToPromptApi({ messages });
     const lease = await acquirePromptApiGenerationSession({
       initialPrompts,
       signal,
+      inputMode,
     });
 
     try {

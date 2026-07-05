@@ -221,6 +221,7 @@ describe('Prompt API runtime', () => {
     const lease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
 
     expect(keeper.destroy).toHaveBeenCalledTimes(1);
@@ -244,6 +245,34 @@ describe('Prompt API runtime', () => {
     });
   });
 
+  it('keeps text runtime ready when image input is unavailable', async () => {
+    const keeper = createSessionMock();
+    const availability = vi.fn(async (options: {
+      expectedInputs?: Array<{ type: string }>,
+    }) => options.expectedInputs?.some(input => input.type === 'image')
+      ? 'unavailable'
+      : 'available');
+    const create = vi.fn().mockResolvedValue(keeper.session);
+    vi.stubGlobal('LanguageModel', { availability, create });
+
+    await preparePromptApi({ signal: undefined });
+
+    await expect(acquirePromptApiGenerationSession({
+      initialPrompts: [],
+      signal: undefined,
+      inputMode: 'image',
+    })).rejects.toMatchObject({ code: 'unsupported_input' });
+
+    expect(availability).toHaveBeenLastCalledWith({
+      expectedInputs: [{ type: 'image' }],
+      expectedOutputs: [{ type: 'text' }],
+    });
+    expect(promptApiRuntimeState.value).toEqual({ status: 'ready' });
+    expect(keeper.destroy).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(TEST_ONLY.getSessionState().hasWarmKeeper).toBe(true);
+  });
+
   it('keeps the warm keeper when generation session creation fails', async () => {
     const keeper = createSessionMock();
     const create = vi.fn()
@@ -259,6 +288,7 @@ describe('Prompt API runtime', () => {
     await expect(acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     })).rejects.toThrow('generation create failed');
 
     expect(keeper.destroy).not.toHaveBeenCalled();
@@ -283,12 +313,14 @@ describe('Prompt API runtime', () => {
     const firstLease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
     firstLease.release();
 
     const secondLease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
     await vi.advanceTimersByTimeAsync(TEST_ONLY.WARM_KEEPER_RECREATE_DELAY_MS);
 
@@ -317,8 +349,8 @@ describe('Prompt API runtime', () => {
     });
 
     const [firstLease, secondLease] = await Promise.all([
-      acquirePromptApiGenerationSession({ initialPrompts: [], signal: undefined }),
-      acquirePromptApiGenerationSession({ initialPrompts: [], signal: undefined }),
+      acquirePromptApiGenerationSession({ initialPrompts: [], signal: undefined, inputMode: 'text' }),
+      acquirePromptApiGenerationSession({ initialPrompts: [], signal: undefined, inputMode: 'text' }),
     ]);
 
     firstLease.release();
@@ -355,6 +387,7 @@ describe('Prompt API runtime', () => {
     const firstLease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
     firstLease.release();
     await vi.advanceTimersByTimeAsync(TEST_ONLY.WARM_KEEPER_RECREATE_DELAY_MS);
@@ -363,6 +396,7 @@ describe('Prompt API runtime', () => {
     const secondLease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
     resolveLateKeeper(lateKeeper.session);
     await Promise.resolve();
@@ -396,6 +430,7 @@ describe('Prompt API runtime', () => {
     const firstLease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
     firstLease.release();
     await vi.advanceTimersByTimeAsync(TEST_ONLY.WARM_KEEPER_RECREATE_DELAY_MS);
@@ -403,6 +438,7 @@ describe('Prompt API runtime', () => {
     const secondLease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
     displacedKeeper.destroy.mockImplementation(() => {
       secondLease.release();
@@ -431,6 +467,7 @@ describe('Prompt API runtime', () => {
     const lease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
     lease.release();
     lease.release();
@@ -456,6 +493,7 @@ describe('Prompt API runtime', () => {
     const lease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
     lease.release();
     await vi.advanceTimersByTimeAsync(TEST_ONLY.WARM_KEEPER_RECREATE_DELAY_MS);
@@ -484,6 +522,7 @@ describe('Prompt API runtime', () => {
     const lease = await acquirePromptApiGenerationSession({
       initialPrompts: [],
       signal: undefined,
+      inputMode: 'text',
     });
 
     TEST_ONLY.reset();

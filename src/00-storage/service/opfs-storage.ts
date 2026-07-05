@@ -579,14 +579,23 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
       const dir = await this.getShardDir({ shard: shard });
-      const fileName = `${idToRaw({ id: binaryObjectId })}.bin`;
+      const rawId = idToRaw({ id: binaryObjectId });
+      const fileName = `${rawId}.bin`;
       const markerName = `.${fileName}.complete`;
 
       // Verify completion marker
       await dir.getFileHandle(markerName);
 
       const fileHandle = await dir.getFileHandle(fileName);
-      return await fileHandle.getFile();
+      const { file, index } = await promiseAllKeyed({
+        file: fileHandle.getFile(),
+        index: this.loadShardIndex({ shard: shard }),
+      });
+      const mimeType = index.objects[rawId]?.mimeType;
+
+      return mimeType === undefined || mimeType === file.type
+        ? file
+        : file.slice(0, file.size, mimeType);
     } catch (e) {
       console.error('Failed to get file from OPFS storage:', e);
       return null;

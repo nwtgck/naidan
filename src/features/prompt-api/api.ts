@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
-import { PROMPT_API_CORE_OPTIONS } from './constants';
+import { getPromptApiCoreOptions } from './constants';
 import { PromptApiError, normalizePromptApiError } from './errors';
 import type {
   PromptApiAvailability,
+  PromptApiInputMode,
   PromptApiLanguageModelStatic,
   PromptApiMessage,
   PromptApiSession,
@@ -45,7 +46,9 @@ export function getPromptApiLanguageModel(): PromptApiLanguageModelStatic | unde
     : undefined;
 }
 
-export async function getPromptApiAvailability(): Promise<PromptApiAvailability> {
+export async function getPromptApiAvailability({ inputMode }: {
+  inputMode: PromptApiInputMode,
+}): Promise<PromptApiAvailability> {
   const languageModel = getPromptApiLanguageModel();
   if (languageModel === undefined) {
     throw new PromptApiError({
@@ -56,7 +59,7 @@ export async function getPromptApiAvailability(): Promise<PromptApiAvailability>
 
   try {
     return PromptApiAvailabilitySchema.parse(
-      await languageModel.availability(PROMPT_API_CORE_OPTIONS),
+      await languageModel.availability(getPromptApiCoreOptions({ inputMode })),
     );
   } catch (error) {
     throw normalizePromptApiError({ error });
@@ -67,10 +70,12 @@ export async function createPromptApiSession({
   initialPrompts,
   signal,
   onDownloadProgress,
+  inputMode,
 }: {
   initialPrompts: PromptApiMessage[],
   signal: AbortSignal | undefined,
   onDownloadProgress: (({ progress }: { progress: number }) => void) | undefined,
+  inputMode: PromptApiInputMode,
 }): Promise<PromptApiSession> {
   const languageModel = getPromptApiLanguageModel();
   if (languageModel === undefined) {
@@ -84,7 +89,7 @@ export async function createPromptApiSession({
     // Call create() synchronously before awaiting its promise so a caller invoked
     // from a click handler does not lose transient user activation.
     const sessionPromise = languageModel.create({
-      ...PROMPT_API_CORE_OPTIONS,
+      ...getPromptApiCoreOptions({ inputMode }),
       initialPrompts,
       signal,
       ...(onDownloadProgress === undefined

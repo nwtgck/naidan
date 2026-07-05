@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BROWSER_PROVIDED_LM_MODEL_ID } from './constants';
+import type { PromptApiPrompt, PromptApiPromptOptions } from './language-model';
 import { PromptApiProvider } from './provider';
 import { TEST_ONLY as RUNTIME_TEST_ONLY } from './runtime';
 
@@ -57,6 +58,88 @@ describe('PromptApiProvider', () => {
     expect(onAssistantMessageStart).toHaveBeenCalledTimes(1);
     expect(chunks).toEqual(['hello', ' world']);
     expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates an image session for downloadable image input and passes image Blobs', async () => {
+    const destroy = vi.fn();
+    let receivedPrompt: PromptApiPrompt | undefined;
+    const promptStreaming = vi.fn((input: PromptApiPrompt, _options?: PromptApiPromptOptions) => {
+      receivedPrompt = input;
+      return createTextStream({ chunks: ['image response'] });
+    });
+    const availability = vi.fn().mockResolvedValue('downloadable');
+    const create = vi.fn(async () => ({ promptStreaming, destroy }));
+    vi.stubGlobal('LanguageModel', { availability, create });
+
+    const provider = new PromptApiProvider();
+    await provider.chat({
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Describe this image.' },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,aGVsbG8=' },
+          },
+        ],
+      }],
+      model: BROWSER_PROVIDED_LM_MODEL_ID,
+      onChunk: vi.fn(),
+    });
+
+    expect(availability).toHaveBeenCalledWith({
+      expectedInputs: [{ type: 'image' }],
+      expectedOutputs: [{ type: 'text' }],
+    });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      expectedInputs: [{ type: 'image' }],
+      expectedOutputs: [{ type: 'text' }],
+      initialPrompts: [],
+    }));
+
+    const prompt = receivedPrompt;
+    expect(prompt).toMatchObject([{
+      role: 'user',
+      content: [
+        { type: 'text', value: 'Describe this image.' },
+        { type: 'image' },
+      ],
+    }]);
+    if (!Array.isArray(prompt)) throw new Error('Expected a multimodal prompt.');
+    const message = prompt[0];
+    if (message === undefined || typeof message.content === 'string') {
+      throw new Error('Expected multimodal message content.');
+    }
+    const image = message.content.find(part => part.type === 'image');
+    if (image === undefined || image.type !== 'image') {
+      throw new Error('Expected image content.');
+    }
+    expect(image.value).toBeInstanceOf(Blob);
+    expect(image.value.type).toBe('image/png');
+    await expect(image.value.text()).resolves.toBe('hello');
+    expect(destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects unavailable image input without disabling text generation', async () => {
+    const create = vi.fn();
+    const availability = vi.fn().mockResolvedValue('unavailable');
+    vi.stubGlobal('LanguageModel', { availability, create });
+
+    const provider = new PromptApiProvider();
+    await expect(provider.chat({
+      messages: [{
+        role: 'user',
+        content: [{
+          type: 'image_url',
+          image_url: { url: 'data:image/png;base64,aGVsbG8=' },
+        }],
+      }],
+      model: BROWSER_PROVIDED_LM_MODEL_ID,
+      onChunk: vi.fn(),
+    })).rejects.toMatchObject({ code: 'unsupported_input' });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(RUNTIME_TEST_ONLY.getSessionState().hasWarmKeeper).toBe(false);
   });
 
   it('destroys the session when streaming fails', async () => {
