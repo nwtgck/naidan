@@ -34,6 +34,26 @@ describe('PromptApiStatus', () => {
     wrapper.unmount();
   });
 
+  it('shows an indeterminate progress bar when numeric download progress is unavailable', async () => {
+    vi.stubGlobal('LanguageModel', {
+      availability: vi.fn().mockResolvedValue('downloading'),
+      create: vi.fn(),
+    });
+
+    const wrapper = mount(PromptApiStatus);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Downloading browser-provided model');
+    expect(wrapper.get('[data-testid="prompt-api-download-progress-track"]')
+      .attributes('aria-valuenow')).toBeUndefined();
+    expect(wrapper.find('[data-testid="prompt-api-download-progress-indeterminate"]')
+      .exists()).toBe(true);
+    expect(wrapper.find('[data-testid="prompt-api-download-progress-determinate"]')
+      .exists()).toBe(false);
+
+    wrapper.unmount();
+  });
+
   it('shows download progress and hides after preparation completes', async () => {
     let resolveSession!: (session: {
       promptStreaming: () => ReadableStream<string>,
@@ -71,6 +91,12 @@ describe('PromptApiStatus', () => {
     await wrapper.get('[data-testid="prompt-api-prepare-button"]').trigger('click');
     await nextTick();
     expect(wrapper.text()).toContain('40%');
+    expect(wrapper.get('[data-testid="prompt-api-download-progress-track"]')
+      .attributes('aria-valuenow')).toBe('40');
+    expect(wrapper.get('[data-testid="prompt-api-download-progress-determinate"]')
+      .attributes('style')).toContain('width: 40%');
+    expect(wrapper.find('[data-testid="prompt-api-download-progress-indeterminate"]')
+      .exists()).toBe(false);
 
     resolveSession({
       promptStreaming: () => new ReadableStream<string>(),

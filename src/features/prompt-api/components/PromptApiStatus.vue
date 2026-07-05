@@ -38,6 +38,12 @@ const progressPercent = computed(() => {
     : undefined;
 });
 
+const downloadProgressLabel = computed(() => progressPercent.value === undefined
+  ? lazyStrings.PromptApiStatus__downloading_browser_provided_model()
+  : lazyStrings.PromptApiStatus__downloading_browser_provided_model_progress({
+    progress: progressPercent.value,
+  }));
+
 const unavailableState = computed<Extract<
   PromptApiRuntimeState,
   { status: 'api_unavailable' | 'model_unavailable' | 'error' }
@@ -153,14 +159,51 @@ defineExpose({
       </div>
 
       <div
-        v-if="promptApiRuntimeState.status === 'downloading' && progressPercent !== undefined"
+        v-if="promptApiRuntimeState.status === 'downloading'"
+        data-testid="prompt-api-download-progress-track"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="progressPercent"
+        :aria-label="downloadProgressLabel"
         tw-class="mt-3 h-1.5 overflow-hidden rounded-full bg-blue-100 dark:bg-blue-900/50"
       >
         <div
-          tw-class="h-full bg-blue-600 transition-all"
+          v-if="progressPercent !== undefined"
+          data-testid="prompt-api-download-progress-determinate"
+          tw-class="h-full rounded-full bg-blue-600 transition-all duration-300 ease-out dark:bg-blue-400"
           :style="{ width: `${progressPercent}%` }"
+        />
+        <div
+          v-else
+          class="prompt-api-download-progress-indeterminate"
+          data-testid="prompt-api-download-progress-indeterminate"
+          tw-class="h-full w-2/5 rounded-full bg-blue-600 dark:bg-blue-400"
         />
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+@keyframes prompt-api-download-progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+.prompt-api-download-progress-indeterminate {
+  animation: prompt-api-download-progress-slide 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-api-download-progress-indeterminate {
+    animation: none;
+    transform: translateX(75%);
+  }
+}
+</style>
