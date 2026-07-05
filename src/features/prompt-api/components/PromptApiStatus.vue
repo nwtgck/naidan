@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue';
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue';
 import {
   CheckCircle2Icon,
   DownloadIcon,
@@ -79,6 +79,15 @@ async function prepare(): Promise<void> {
 async function retry(): Promise<void> {
   await refreshPromptApiAvailability({ showCheckingState: 'yes' });
 }
+
+watch(
+  () => promptApiRuntimeState.value,
+  state => {
+    if (state.status !== 'downloading' || state.progress !== undefined) return;
+    void prepare();
+  },
+  { immediate: true },
+);
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
