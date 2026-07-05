@@ -513,6 +513,20 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
   });
 
+  it('requires a persisted model ID for a browser-provided endpoint', async () => {
+    mocks.loadSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      storageType: 'local',
+      endpoint: { type: 'browser_provided_lm' },
+      defaultModelId: undefined,
+    });
+
+    const { init, isOnboardingDismissed } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+
+    expect(isOnboardingDismissed.value).toBe(false);
+  });
+
   it('should NOT set isOnboardingDismissed to true if endpointUrl is present but defaultModelId is missing', async () => {
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,

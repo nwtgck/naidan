@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PROMPT_API_MODEL_ID } from './constants';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from './constants';
 import { PromptApiProvider } from './provider';
 import { TEST_ONLY as RUNTIME_TEST_ONLY } from './runtime';
 
@@ -39,7 +39,7 @@ describe('PromptApiProvider', () => {
         { role: 'assistant', content: 'Previous answer' },
         { role: 'user', content: 'Current question' },
       ],
-      model: PROMPT_API_MODEL_ID,
+      model: BROWSER_PROVIDED_LM_MODEL_ID,
       onChunk: ({ chunk }) => chunks.push(chunk),
       onAssistantMessageStart,
     });
@@ -74,7 +74,7 @@ describe('PromptApiProvider', () => {
     const provider = new PromptApiProvider();
     await expect(provider.chat({
       messages: [{ role: 'user', content: 'hello' }],
-      model: PROMPT_API_MODEL_ID,
+      model: BROWSER_PROVIDED_LM_MODEL_ID,
       onChunk: vi.fn(),
     })).rejects.toThrow('stream failed');
 
@@ -91,7 +91,7 @@ describe('PromptApiProvider', () => {
     const provider = new PromptApiProvider();
     await expect(provider.chat({
       messages: [{ role: 'user', content: 'hello' }],
-      model: PROMPT_API_MODEL_ID,
+      model: BROWSER_PROVIDED_LM_MODEL_ID,
       onChunk: vi.fn(),
     })).rejects.toMatchObject({ code: 'preparation_required' });
 
@@ -103,7 +103,7 @@ describe('PromptApiProvider', () => {
 
     await expect(provider.chat({
       messages: [{ role: 'user', content: 'hello' }],
-      model: PROMPT_API_MODEL_ID,
+      model: BROWSER_PROVIDED_LM_MODEL_ID,
       onChunk: vi.fn(),
       tools: [{
         name: 'example',
@@ -115,7 +115,7 @@ describe('PromptApiProvider', () => {
 
     await expect(provider.chat({
       messages: [{ role: 'user', content: 'hello' }],
-      model: PROMPT_API_MODEL_ID,
+      model: BROWSER_PROVIDED_LM_MODEL_ID,
       onChunk: vi.fn(),
       parameters: {
         temperature: 0.5,
@@ -132,7 +132,7 @@ describe('PromptApiProvider', () => {
   it('returns one stable logical model ID without checking availability', async () => {
     const provider = new PromptApiProvider();
     await expect(provider.listModels({ signal: undefined })).resolves.toEqual([
-      PROMPT_API_MODEL_ID,
+      BROWSER_PROVIDED_LM_MODEL_ID,
     ]);
   });
 });

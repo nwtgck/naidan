@@ -68,8 +68,8 @@ export type TransformersJsEndpoint = {
   type: 'transformers_js',
 };
 
-export type PromptApiEndpoint = {
-  type: 'prompt_api',
+export type BrowserProvidedLmEndpoint = {
+  type: 'browser_provided_lm',
 };
 
 export type UnsupportedExperimentalEndpoint = {
@@ -77,7 +77,7 @@ export type UnsupportedExperimentalEndpoint = {
   persistedType: string | undefined,
 };
 
-export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | PromptApiEndpoint;
+export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint;
 export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
 export type EndpointType = SupportedEndpoint['type'];
 

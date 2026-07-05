@@ -15,7 +15,7 @@ import { detectOllama } from '@/utils/ollama-detection';
 import {
   TEST_ONLY as promptApiRuntimeTestOnly,
 } from '@/features/prompt-api/runtime';
-import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 // Mock the services.
 vi.mock('../features/lm/openai', () => {
@@ -125,29 +125,80 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.text()).toContain('Ollama');
   });
 
-  it('keeps Prompt API visible but disabled when LanguageModel is unavailable', () => {
+  it('keeps the browser-provided option visible but disabled when LanguageModel is unavailable', () => {
     vi.stubGlobal('LanguageModel', undefined);
     const wrapper = mount(OnboardingModal);
 
-    const promptApiButton = wrapper.get('[data-testid="onboarding-prompt-api-button"]');
-    expect(promptApiButton.text()).toContain('Prompt API');
-    expect((promptApiButton.element as HTMLButtonElement).disabled).toBe(true);
+    const browserProvidedButton = wrapper.get('[data-testid="onboarding-browser-provided-lm-button"]');
+    expect(browserProvidedButton.text()).toContain('Browser-provided');
+    expect((browserProvidedButton.element as HTMLButtonElement).disabled).toBe(true);
 
     wrapper.unmount();
     vi.unstubAllGlobals();
   });
 
-  it('preserves saved server model IDs when Prompt API is selected', async () => {
+  it('clears the browser-provided model choice when switching to another endpoint', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
     }));
     mockOnboardingDraft.value = {
       url: '',
-      type: 'prompt_api',
+      type: 'browser_provided_lm',
       headers: [],
-      models: [PROMPT_API_MODEL_ID],
-      selectedModel: PROMPT_API_MODEL_ID,
+      models: [BROWSER_PROVIDED_LM_MODEL_ID],
+      selectedModel: BROWSER_PROVIDED_LM_MODEL_ID,
+    };
+    const wrapper = mount(OnboardingModal);
+
+    const backButton = wrapper.findAll('button').find(button => button.text() === 'Back');
+    await backButton?.trigger('click');
+    await nextTick();
+
+    const openAiButton = wrapper.findAll('button').find(button => button.text() === 'OpenAI-compatible');
+    await openAiButton?.trigger('click');
+    await nextTick();
+
+    expect((wrapper.get('[data-testid="onboarding-connect-button"]').element as HTMLButtonElement).disabled).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('keeps the browser-provided model selected when an earlier connection finishes late', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    let resolveOldModels: ((models: string[]) => void) | undefined;
+    listModelsMock.mockReturnValueOnce(new Promise<string[]>((resolve) => {
+      resolveOldModels = resolve;
+    }));
+    const wrapper = mount(OnboardingModal);
+
+    await wrapper.find('input').setValue('https://old.example/v1');
+    await wrapper.get('[data-testid="onboarding-connect-button"]').trigger('click');
+    await wrapper.get('[data-testid="onboarding-browser-provided-lm-button"]').trigger('click');
+    await nextTick();
+
+    resolveOldModels?.(['old-http-model']);
+    await flushPromises();
+
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    expect(selector.props('modelValue')).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(selector.props('disabled')).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('persists the browser-provided model IDs when that endpoint is selected', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    mockOnboardingDraft.value = {
+      url: '',
+      type: 'browser_provided_lm',
+      headers: [],
+      models: [BROWSER_PROVIDED_LM_MODEL_ID],
+      selectedModel: BROWSER_PROVIDED_LM_MODEL_ID,
     };
     const wrapper = mount(OnboardingModal);
 
@@ -156,9 +207,9 @@ describe('OnboardingModal.vue', () => {
 
     expect(mockSave).toHaveBeenCalledWith({
       patch: expect.objectContaining({
-        endpoint: { type: 'prompt_api' },
-        defaultModelId: 'existing-default-model',
-        titleModelId: 'existing-title-model',
+        endpoint: { type: 'browser_provided_lm' },
+        defaultModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+        titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
       }),
       modelRefresh: 'await',
     });

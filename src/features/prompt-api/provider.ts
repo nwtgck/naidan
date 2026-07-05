@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { LmProvider } from '@/01-models/lm';
 import type { LmParameters } from '@/01-models/types';
 
-import { PROMPT_API_MODEL_ID } from './constants';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from './constants';
 import { PromptApiError, normalizePromptApiError } from './errors';
 import { mapChatMessagesToPromptApi } from './message-mapper';
 import { acquirePromptApiGenerationSession } from './runtime';
@@ -38,7 +38,7 @@ export class PromptApiProvider implements LmProvider {
 
     signal?.throwIfAborted();
 
-    if (model !== PROMPT_API_MODEL_ID) {
+    if (model !== BROWSER_PROVIDED_LM_MODEL_ID) {
       throw new PromptApiError({
         code: 'unsupported_input',
         message: `Unsupported Prompt API model ID: ${model}`,
@@ -87,7 +87,7 @@ export class PromptApiProvider implements LmProvider {
 
   async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
     signal?.throwIfAborted();
-    return [PROMPT_API_MODEL_ID];
+    return [BROWSER_PROVIDED_LM_MODEL_ID];
   }
 }
 

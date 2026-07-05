@@ -6,7 +6,6 @@ import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { LmProvider } from '@/01-models/lm';
 import type { Tool } from '@/01-models/tool';
 import { loadLmProvider } from '@/features/lm/providerFactory';
-import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 import { storageService } from '@/00-storage/service';
 import { getEnabledTools } from '@/features/tools/factory';
@@ -91,9 +90,9 @@ type ResolvedGenerationSettings = {
   autoTitleEnabled: boolean,
 };
 
-function isPromptApiEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
+function isBrowserProvidedLmEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
   switch (endpoint.type) {
-  case 'prompt_api':
+  case 'browser_provided_lm':
     return true;
   case 'openai':
   case 'ollama':
@@ -108,17 +107,18 @@ function isPromptApiEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
 }
 
 function resolveGenerationModel({
-  endpoint,
   assistantModelId,
   resolvedModelId,
+  availableModels,
 }: {
-  endpoint: Endpoint,
   assistantModelId: string | undefined,
   resolvedModelId: string,
+  availableModels: readonly string[],
 }): string {
-  return isPromptApiEndpoint({ endpoint })
-    ? PROMPT_API_MODEL_ID
-    : (assistantModelId || resolvedModelId);
+  const preferredModel = assistantModelId || resolvedModelId;
+  if (!preferredModel || availableModels.length === 0) return preferredModel;
+  if (availableModels.includes(preferredModel)) return preferredModel;
+  return availableModels[0] ?? '';
 }
 
 export async function sendMessageForChat({
@@ -209,7 +209,7 @@ export async function sendMessageToTargetChat({
           type: endpoint.type,
         };
       case 'transformers_js':
-      case 'prompt_api':
+      case 'browser_provided_lm':
         return {
           hasReachableEndpoint: true,
           url: undefined,
@@ -227,27 +227,18 @@ export async function sendMessageToTargetChat({
       }
       }
     })();
-    const usesPromptApi = isPromptApiEndpoint({ endpoint });
-    let resolvedModel = resolveGenerationModel({
-      endpoint,
-      assistantModelId: mutableChat.modelId,
-      resolvedModelId: resolved.modelId,
-    });
-
-    if (hasReachableEndpoint && !usesPromptApi) {
-      const models = await fetchAvailableModelsForChat({
+    const usesBrowserProvidedLm = isBrowserProvidedLmEndpoint({ endpoint });
+    const models = hasReachableEndpoint
+      ? await fetchAvailableModelsForChat({
         chatId: mutableChat.id,
         errorSource: 'chat-generation-flow:resolve-models',
-      });
-      if (models.length > 0) {
-        const preferredModel = mutableChat.modelId || resolved.modelId;
-        if (preferredModel && models.includes(preferredModel)) {
-          resolvedModel = preferredModel;
-        } else if (preferredModel) {
-          resolvedModel = models[0] || '';
-        }
-      }
-    }
+      })
+      : [];
+    const resolvedModel = resolveGenerationModel({
+      assistantModelId: mutableChat.modelId,
+      resolvedModelId: resolved.modelId,
+      availableModels: models,
+    });
 
     if (!hasReachableEndpoint || !resolvedModel) {
       if (type !== undefined) {
@@ -263,11 +254,11 @@ export async function sendMessageToTargetChat({
       return false;
     }
 
-    if (usesPromptApi && promptApiRuntimeState.value.status !== 'ready') {
+    if (usesBrowserProvidedLm && promptApiRuntimeState.value.status !== 'ready') {
       return false;
     }
 
-    const effectiveLmParameters = usesPromptApi
+    const effectiveLmParameters = usesBrowserProvidedLm
       ? undefined
       : lmParameters;
 
@@ -461,13 +452,17 @@ export async function generateResponseForAssistant({
   registerLiveInstance({ chat: mutableChat });
 
   const resolved = resolveGenerationSettings({ chat: mutableChat });
-  const usesPromptApi = isPromptApiEndpoint({ endpoint: resolved.endpoint });
+  const usesBrowserProvidedLm = isBrowserProvidedLmEndpoint({ endpoint: resolved.endpoint });
+  const availableGenerationModels = await fetchAvailableModelsForChat({
+    chatId: mutableChat.id,
+    errorSource: 'chat-generation-flow:resolve-regeneration-model',
+  });
   const resolvedModel = resolveGenerationModel({
-    endpoint: resolved.endpoint,
     assistantModelId: assistantNode.modelId,
     resolvedModelId: resolved.modelId,
+    availableModels: availableGenerationModels,
   });
-  const finalLmParameters = usesPromptApi
+  const finalLmParameters = usesBrowserProvidedLm
     ? undefined
     : (lmParameters || resolved.lmParameters);
 

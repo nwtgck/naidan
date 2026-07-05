@@ -57,7 +57,7 @@ export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
     const { TransformersJsProvider } = await transformersJsProviderModuleLoader.load();
     return new TransformersJsProvider();
   }
-  case 'prompt_api': {
+  case 'browser_provided_lm': {
     const { PromptApiProvider } = await promptApiProviderModuleLoader.load();
     return new PromptApiProvider();
   }
@@ -83,7 +83,7 @@ export async function prefetchLmProvider({ endpointType }: {
   case 'transformers_js':
     await transformersJsProviderModuleLoader.prefetch();
     break;
-  case 'prompt_api':
+  case 'browser_provided_lm':
     await promptApiProviderModuleLoader.prefetch();
     break;
   default: {

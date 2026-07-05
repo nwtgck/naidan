@@ -275,10 +275,11 @@ describe('Settings Mapping', () => {
     expect(domain.systemPrompt).toBe('Keep the rest of settings readable.');
   });
 
-  it('maps the Prompt API domain endpoint through the experimental DTO envelope', () => {
+  it('maps the browser-provided LM domain endpoint through the experimental DTO envelope', () => {
     const domain: Settings = {
-      endpoint: { type: 'prompt_api' },
+      endpoint: { type: 'browser_provided_lm' },
       defaultModelId: 'browser-provided-language-model',
+      titleModelId: 'browser-provided-language-model',
       autoTitleEnabled: true,
       storageType: 'local',
       providerProfiles: [],
@@ -288,20 +289,21 @@ describe('Settings Mapping', () => {
     const dto = settingsToDto({ domain });
     expect(dto.endpoint).toEqual({
       type: 'experimental_type',
-      experimental: { type: 'prompt_api' },
+      experimental: { type: 'browser_provided_lm' },
     });
     const remapped = settingsToDomain({ dto });
     expect(remapped.endpoint).toEqual(domain.endpoint);
     expect(remapped.defaultModelId).toBe(domain.defaultModelId);
+    expect(remapped.titleModelId).toBe(domain.titleModelId);
     expect(remapped.storageType).toBe(domain.storageType);
   });
 
-  it('keeps Prompt API readable when future experimental fields are present', () => {
+  it('keeps the browser-provided LM readable when future experimental fields are present', () => {
     const dto = {
       endpoint: {
         type: 'experimental_type',
         experimental: {
-          type: 'prompt_api',
+          type: 'browser_provided_lm',
           futureSessionMode: 'persistent',
         },
       },
@@ -320,7 +322,7 @@ describe('Settings Mapping', () => {
     const parsed = SettingsSchemaDto.parse(dto);
     const domain = settingsToDomain({ dto: parsed });
 
-    expect(domain.endpoint).toEqual({ type: 'prompt_api' });
+    expect(domain.endpoint).toEqual({ type: 'browser_provided_lm' });
     expect(domain.defaultModelId).toBe('browser-provided-language-model');
   });
 

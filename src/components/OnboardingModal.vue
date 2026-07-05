@@ -27,6 +27,7 @@ import { detectOllama } from '@/utils/ollama-detection';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
 import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
 import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
 const { setActiveFocusArea } = useLayout();
@@ -118,7 +119,7 @@ const isTransformersJs = computed(() => {
     return true;
   case 'openai':
   case 'ollama':
-  case 'prompt_api':
+  case 'browser_provided_lm':
     return false;
   default: {
     const _ex: never = type;
@@ -127,7 +128,7 @@ const isTransformersJs = computed(() => {
   }
 });
 
-const isPromptApi = computed(() => effectiveType.value === 'prompt_api');
+const isBrowserProvidedLm = computed(() => effectiveType.value === 'browser_provided_lm');
 const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 const isHttpEndpointType = computed(() => (
   effectiveType.value === 'openai'
@@ -167,7 +168,7 @@ watch(
     switch (newType) {
     case 'openai':
     case 'ollama':
-    case 'prompt_api':
+    case 'browser_provided_lm':
       return;
     case 'transformers_js':
       break;
@@ -251,6 +252,22 @@ function handleModelLoaded({ modelId }: { modelId: string }) {
   }
 }
 
+function selectEndpointType({ type }: { type: EndpointType }): void {
+  abortController?.abort();
+  abortController = null;
+  isTesting.value = false;
+  selectedType.value = type;
+  availableModels.value = [];
+  selectedModel.value = '';
+  error.value = null;
+}
+
+function selectBrowserProvidedLm(): void {
+  selectEndpointType({ type: 'browser_provided_lm' });
+  availableModels.value = [BROWSER_PROVIDED_LM_MODEL_ID];
+  selectedModel.value = BROWSER_PROVIDED_LM_MODEL_ID;
+}
+
 const isValidUrl = computed(() => !isHttpEndpointType.value || !!getNormalizedUrl());
 
 function getNormalizedUrl() {
@@ -289,7 +306,7 @@ function createEndpoint({
       httpHeaders: httpHeaders.length > 0 ? httpHeaders : undefined,
     };
   case 'transformers_js':
-  case 'prompt_api':
+  case 'browser_provided_lm':
     return { type };
   default: {
     const _ex: never = type;
@@ -323,7 +340,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
       return true;
     case 'openai':
     case 'ollama':
-    case 'prompt_api':
+    case 'browser_provided_lm':
       // Keep preparation and connection checks user initiated so the UI does
       // not jump to Step 2 or start a browser model download unexpectedly.
       return false;
@@ -339,10 +356,8 @@ watch([selectedType, customUrl], async ([_type, url]) => {
   }
 });
 function selectPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
-  selectedType.value = preset.type;
+  selectEndpointType({ type: preset.type });
   customUrl.value = preset.url;
-  // Reset models if user changes preset/url
-  availableModels.value = [];
 }
 
 async function handleCancelConnect(): Promise<void> {
@@ -362,7 +377,7 @@ async function handleConnect() {
     return;
   }
 
-  if (isPromptApi.value && promptApiRuntimeState.value.status !== 'ready') {
+  if (isBrowserProvidedLm.value && promptApiRuntimeState.value.status !== 'ready') {
     return;
   }
 
@@ -453,10 +468,10 @@ async function handleFinish() {
           defaultModelId: selectedModel.value || undefined,
           titleModelId: undefined,
         };
-      case 'prompt_api':
+      case 'browser_provided_lm':
         return {
-          defaultModelId: baseSettings.defaultModelId,
-          titleModelId: baseSettings.titleModelId,
+          defaultModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+          titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
         };
       default: {
         const _ex: never = type;
@@ -541,7 +556,7 @@ defineExpose({
 
           <!-- Left Column: Configuration (Primary) -->
 
-          <div :tw-class="['p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs || isPromptApi ? 'w-full' : 'w-full lg:w-[62%]']">
+          <div :tw-class="['p-6 md:p-10 space-y-6 md:space-y-8', isTransformersJs || isBrowserProvidedLm ? 'w-full' : 'w-full lg:w-[62%]']">
 
             <template v-if="isTransformersJs">
               <!-- Transformers.js Integrated View -->
@@ -558,27 +573,27 @@ defineExpose({
                   </div>
                   <div tw-class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit shrink-0">
                     <button
-                      @click="selectedType = 'openai'; availableModels = []"
+                      @click="selectEndpointType({ type: 'openai' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400', effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : '']"
                     >{{ lazyStrings.OnboardingModal__openai_compatible() }}</button>
 
                     <button
-                      @click="selectedType = 'ollama'; availableModels = []"
+                      @click="selectEndpointType({ type: 'ollama' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400', effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : '']"
                     >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
                     <button
-                      @click="selectedType = 'transformers_js'; availableModels = []"
+                      @click="selectEndpointType({ type: 'transformers_js' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
                     <button
-                      @click="selectedType = 'prompt_api'; availableModels = []"
+                      @click="selectBrowserProvidedLm"
                       :disabled="!isPromptApiSupported"
-                      data-testid="onboarding-prompt-api-button"
-                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'prompt_api' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
+                      data-testid="onboarding-browser-provided-lm-button"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'browser_provided_lm' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
                     >
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5" aria-hidden="true" />
-                      {{ lazyStrings.SHARED__prompt_api_experimental() }}
+                      {{ lazyStrings.SHARED__browser_provided() }}
                     </button>
                   </div>
                 </div>
@@ -625,35 +640,35 @@ defineExpose({
                   <label tw-class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ lazyStrings.OnboardingModal__endpoint_configuration() }}</label>
                   <div tw-class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
                     <button
-                      @click="selectedType = 'openai'; availableModels = []"
+                      @click="selectEndpointType({ type: 'openai' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap', effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__openai_compatible() }}</button>
 
                     <button
-                      @click="selectedType = 'ollama'; availableModels = []"
+                      @click="selectEndpointType({ type: 'ollama' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors', effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400']"
                     >{{ lazyStrings.OnboardingModal__ollama() }}</button>
 
                     <button
-                      @click="selectedType = 'transformers_js'; availableModels = []"
+                      @click="selectEndpointType({ type: 'transformers_js' })"
                       :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1', effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                     >
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5" />
                       {{ lazyStrings.OnboardingModal__transformers_js() }}
                     </button>
                     <button
-                      @click="selectedType = 'prompt_api'; availableModels = []"
+                      @click="selectBrowserProvidedLm"
                       :disabled="!isPromptApiSupported"
-                      data-testid="onboarding-prompt-api-button"
-                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'prompt_api' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
+                      data-testid="onboarding-browser-provided-lm-button"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'browser_provided_lm' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
                     >
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5" aria-hidden="true" />
-                      {{ lazyStrings.SHARED__prompt_api_experimental() }}
+                      {{ lazyStrings.SHARED__browser_provided() }}
                     </button>
                   </div>
 
                 </div>
-                <PromptApiStatus v-if="isPromptApi" />
+                <PromptApiStatus v-if="isBrowserProvidedLm" show-ready />
                 <input
                   v-if="isHttpEndpointType"
                   v-model="customUrl"
@@ -714,7 +729,7 @@ defineExpose({
                 <div tw-class="flex gap-2">
                   <button
                     @click="handleConnect"
-                    :disabled="!isValidUrl || isTesting || (isPromptApi && promptApiRuntimeState.status !== 'ready')"
+                    :disabled="!isValidUrl || isTesting || (isBrowserProvidedLm && promptApiRuntimeState.status !== 'ready')"
                     tw-class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                     data-testid="onboarding-connect-button"
                   >
@@ -764,7 +779,7 @@ defineExpose({
                     v-model="selectedModel"
                     :models="sortedModels"
                     :loading="isTesting"
-                    :disabled="isPromptApi"
+                    :disabled="isBrowserProvidedLm"
                     @refresh="handleConnect"
                     :placeholder="lazyStrings.OnboardingModal__select_a_model()"
                   />

@@ -66,7 +66,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
           case undefined:
           case 'openai':
           case 'ollama':
-          case 'prompt_api':
+          case 'browser_provided_lm':
           case 'unsupported_experimental_endpoint':
             return;
           case 'transformers_js':

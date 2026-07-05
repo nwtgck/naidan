@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import type { EndpointType, Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 const { mockFetchModels } = vi.hoisted(() => ({
   mockFetchModels: vi.fn(),
@@ -34,7 +35,7 @@ function createSettings({ endpointType }: {
     endpoint: (() => {
       switch (endpointType) {
       case 'transformers_js':
-      case 'prompt_api':
+      case 'browser_provided_lm':
         return { type: endpointType };
       case 'openai':
       case 'ollama':
@@ -120,14 +121,106 @@ describe('ConnectionTab Ollama management integration', () => {
     expect(wrapper.find('[data-testid="ollama-management-stub"]').exists()).toBe(false);
   });
 
-  it('shows the browser-managed model without overwriting the saved model', async () => {
+  it('persists both browser-provided model IDs when the endpoint is selected', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    mockFetchModels.mockResolvedValue([BROWSER_PROVIDED_LM_MODEL_ID]);
+    const settings = createSettings({ endpointType: 'openai' });
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: [BROWSER_PROVIDED_LM_MODEL_ID],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    await wrapper.get('[data-testid="setting-provider-select"]').setValue('browser_provided_lm');
+    await flushPromises();
+
+    expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
+    expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(settings.titleModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    wrapper.unmount();
+  });
+
+  it('does not clear browser-provided model IDs when an earlier endpoint fetch finishes late', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    let resolveOldModels: ((models: string[]) => void) | undefined;
+    mockFetchModels
+      .mockReturnValueOnce(new Promise<string[]>((resolve) => {
+        resolveOldModels = resolve;
+      }))
+      .mockResolvedValue([BROWSER_PROVIDED_LM_MODEL_ID]);
+    const settings = createSettings({ endpointType: 'openai' });
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: [],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    await wrapper.get('[data-testid="setting-check-connection"]').trigger('click');
+    await wrapper.get('[data-testid="setting-provider-select"]').setValue('browser_provided_lm');
+    await flushPromises();
+
+    resolveOldModels?.(['old-http-model']);
+    await flushPromises();
+
+    expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
+    expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(settings.titleModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    wrapper.unmount();
+  });
+
+  it('clears browser-provided model IDs when switching to an HTTP endpoint', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    const settings = createSettings({ endpointType: 'browser_provided_lm' });
+    settings.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+    settings.titleModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: [BROWSER_PROVIDED_LM_MODEL_ID],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    await wrapper.get('[data-testid="setting-provider-select"]').setValue('ollama');
+    await flushPromises();
+
+    expect(settings.endpoint).toEqual({ type: 'ollama', url: '' });
+    expect(settings.defaultModelId).toBe('');
+    expect(settings.titleModelId).toBe('');
+    wrapper.unmount();
+  });
+
+  it('shows the persisted browser-provided model IDs', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
     }));
     mockFetchModels.mockResolvedValue(['browser-provided-language-model']);
-    const settings = createSettings({ endpointType: 'prompt_api' });
-    settings.defaultModelId = 'saved-provider-model';
+    const settings = createSettings({ endpointType: 'browser_provided_lm' });
+    settings.defaultModelId = 'browser-provided-language-model';
+    settings.titleModelId = 'browser-provided-language-model';
 
     const wrapper = mount(ConnectionTab, {
       props: {
@@ -143,7 +236,8 @@ describe('ConnectionTab Ollama management integration', () => {
     const selectors = wrapper.findAllComponents({ name: 'ModelSelector' });
     expect(selectors[0]?.props('modelValue')).toBe('browser-provided-language-model');
     expect(selectors[0]?.props('disabled')).toBe(true);
-    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    expect(selectors[1]?.props('modelValue')).toBe('browser-provided-language-model');
+    expect(selectors[1]?.props('disabled')).toBe(true);
     wrapper.unmount();
   });
 

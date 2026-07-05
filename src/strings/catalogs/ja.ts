@@ -2,6 +2,7 @@
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/ja';
 import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/ja';
+import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/ja';
 import { SHARED__cancel } from '@/strings/messages/SHARED__cancel/ja';
 import { SHARED__choose_which_chats_are_visible_to_the_shell } from '@/strings/messages/SHARED__choose_which_chats_are_visible_to_the_shell/ja';
 import { SHARED__configure_browser_based_shell_access } from '@/strings/messages/SHARED__configure_browser_based_shell_access/ja';
@@ -15,8 +16,8 @@ import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp }
 import { SHARED__mount } from '@/strings/messages/SHARED__mount/ja';
 import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/ja';
 import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/ja';
-import { SHARED__prompt_api_experimental } from '@/strings/messages/SHARED__prompt_api_experimental/ja';
 import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/ja';
+import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/ja';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/ja';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/ja';
 
@@ -802,12 +803,12 @@ import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingM
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/ja';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/ja';
 import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/ja';
+import { PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser } from '@/strings/messages/PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser/ja';
 import { PromptApiStatus__browser_provided_model_is_not_available_on_this_device } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_not_available_on_this_device/ja';
 import { PromptApiStatus__browser_provided_model_is_ready } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_ready/ja';
-import { PromptApiStatus__checking_prompt_api_availability } from '@/strings/messages/PromptApiStatus__checking_prompt_api_availability/ja';
+import { PromptApiStatus__checking_browser_provided_language_model_availability } from '@/strings/messages/PromptApiStatus__checking_browser_provided_language_model_availability/ja';
 import { PromptApiStatus__downloading_browser_provided_model } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model/ja';
 import { PromptApiStatus__downloading_browser_provided_model_progress } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model_progress/ja';
-import { PromptApiStatus__language_model_api_is_not_available_in_this_browser } from '@/strings/messages/PromptApiStatus__language_model_api_is_not_available_in_this_browser/ja';
 import { PromptApiStatus__model_preparation_failed } from '@/strings/messages/PromptApiStatus__model_preparation_failed/ja';
 import { PromptApiStatus__prepare_browser_provided_model } from '@/strings/messages/PromptApiStatus__prepare_browser_provided_model/ja';
 import { PromptApiStatus__preparing_browser_provided_model } from '@/strings/messages/PromptApiStatus__preparing_browser_provided_model/ja';
@@ -1484,6 +1485,7 @@ import type { Strings } from './en';
 export const ja = {
   SHARED__all_chats,
   SHARED__assistant,
+  SHARED__browser_provided,
   SHARED__cancel,
   SHARED__choose_which_chats_are_visible_to_the_shell,
   SHARED__configure_browser_based_shell_access,
@@ -1497,8 +1499,8 @@ export const ja = {
   SHARED__mount,
   SHARED__new_chat,
   SHARED__no_models_found_at_this_endpoint,
-  SHARED__prompt_api_experimental,
   SHARED__unsupported_experimental_endpoint,
+  SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
 
@@ -2284,12 +2286,12 @@ export const ja = {
   OnboardingModal__value,
   PWAManager__app_ready_to_work_offline,
   PWAUpdateNotification__reload_to_update,
+  PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser,
   PromptApiStatus__browser_provided_model_is_not_available_on_this_device,
   PromptApiStatus__browser_provided_model_is_ready,
-  PromptApiStatus__checking_prompt_api_availability,
+  PromptApiStatus__checking_browser_provided_language_model_availability,
   PromptApiStatus__downloading_browser_provided_model,
   PromptApiStatus__downloading_browser_provided_model_progress,
-  PromptApiStatus__language_model_api_is_not_available_in_this_browser,
   PromptApiStatus__model_preparation_failed,
   PromptApiStatus__prepare_browser_provided_model,
   PromptApiStatus__preparing_browser_provided_model,

@@ -16,7 +16,6 @@ import { getChatBranchIterator } from '@/logic/chat-tree';
 import { generateId } from '@/01-models/id';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
-import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 import { useChatWeshPreferences } from '@/features/tools/composables/useChatWeshPreferences';
 import type { ChatId, MessageId } from '@/01-models/ids';
 import {
@@ -55,27 +54,13 @@ export type CompactCurrentBranchResult =
     };
 
 function resolveCompactModelId({
-  endpoint,
   chatModelId,
   resolvedModelId,
 }: {
-  endpoint: Endpoint,
   chatModelId: string | undefined,
   resolvedModelId: string,
 }): string | undefined {
-  switch (endpoint.type) {
-  case 'prompt_api':
-    return PROMPT_API_MODEL_ID;
-  case 'openai':
-  case 'ollama':
-  case 'transformers_js':
-  case 'unsupported_experimental_endpoint':
-    return chatModelId || resolvedModelId;
-  default: {
-    const _ex: never = endpoint;
-    throw new Error(`Unhandled endpoint: ${((_ex satisfies never) as { readonly type: string }).type}`);
-  }
-  }
+  return chatModelId || resolvedModelId;
 }
 
 function resolveCompactLmParameters({
@@ -86,7 +71,7 @@ function resolveCompactLmParameters({
   parameters: LmParameters | undefined,
 }): LmParameters | undefined {
   switch (endpoint.type) {
-  case 'prompt_api':
+  case 'browser_provided_lm':
   case 'unsupported_experimental_endpoint':
     return undefined;
   case 'openai':
@@ -163,7 +148,6 @@ export async function runCompactCurrentBranchForChat({
       globalSettings: settings.value,
     });
     const resolvedModel = resolveCompactModelId({
-      endpoint: resolved.endpoint,
       chatModelId: mutableChat.modelId,
       resolvedModelId: resolved.modelId,
     });

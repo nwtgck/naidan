@@ -25,7 +25,7 @@ describe('PromptApiStatus', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="prompt-api-status"]').text()).toContain(
-      'The LanguageModel API is not available in this browser.',
+      'Browser-provided language models are not available in this browser.',
     );
 
     wrapper.unmount();

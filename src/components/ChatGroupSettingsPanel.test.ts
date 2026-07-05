@@ -11,6 +11,7 @@ import { useSettings } from '@/composables/useSettings';
 import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/01-models/ids';
 import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -379,6 +380,28 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(true);
   });
 
+  it('persists browser-provided model IDs with a group endpoint override', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    mockFetchAvailableModels.mockResolvedValue([BROWSER_PROVIDED_LM_MODEL_ID]);
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-endpoint-type-select"]').setValue('browser_provided_lm');
+    await flushPromises();
+
+    expect(mockGroup).toMatchObject({
+      endpoint: { type: 'browser_provided_lm' },
+      modelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+    });
+    wrapper.unmount();
+    vi.unstubAllGlobals();
+  });
+
   it('uses the global HTTP endpoint when switching from transformers_js to HTTP', async () => {
     mockSettings.endpoint = {
       type: 'openai',
@@ -402,6 +425,51 @@ describe('ChatGroupSettingsPanel.vue', () => {
           httpHeaders: [['X-Global', 'value']],
         },
       },
+    });
+  });
+
+  it('clears browser-provided model IDs when applying an HTTP preset', async () => {
+    Object.assign(mockGroup, {
+      endpoint: { type: 'browser_provided_lm' },
+      modelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+    });
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const ollamaButton = wrapper.findAll('button').find(button => button.text() === 'Ollama (local)');
+    await ollamaButton?.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup).toMatchObject({
+      endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+      modelId: undefined,
+      titleModelId: undefined,
+    });
+  });
+
+  it('applies both model IDs from a browser-provided provider profile', async () => {
+    mockSettings.providerProfiles = [{
+      id: toProviderProfileId({ raw: 'p-browser' }),
+      name: 'Browser-provided Profile',
+      endpoint: { type: 'browser_provided_lm' },
+      defaultModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+    }];
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const profileSelect = wrapper.find('select');
+    await profileSelect.setValue('p-browser');
+    await profileSelect.trigger('change');
+    await flushPromises();
+
+    expect(mockGroup).toMatchObject({
+      endpoint: { type: 'browser_provided_lm' },
+      modelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
     });
   });
 

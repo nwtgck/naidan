@@ -728,7 +728,7 @@ const canGenerateImage = computed(() => {
       return true;
     case 'openai':
     case 'transformers_js':
-    case 'prompt_api':
+    case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return false;
     default: {
@@ -757,7 +757,7 @@ const isChatSubmissionEnabled = computed(() => {
   case 'ollama':
   case 'transformers_js':
     return true;
-  case 'prompt_api':
+  case 'browser_provided_lm':
     return promptApiRuntimeState.value.status === 'ready';
   case 'unsupported_experimental_endpoint':
     return false;
@@ -1548,7 +1548,7 @@ watch(
       @jump-to-message="(id) => jumpToMessage({ messageId: id })"
     />
     <PromptApiStatus
-      v-if="resolvedSettings?.endpoint.type === 'prompt_api'"
+      v-if="resolvedSettings?.endpoint.type === 'browser_provided_lm'"
       tw-class="mx-4 mb-2"
     />
     <ChatInput

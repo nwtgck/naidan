@@ -1,4 +1,4 @@
-export { PROMPT_API_MODEL_ID } from './constants';
+export { BROWSER_PROVIDED_LM_MODEL_ID } from './constants';
 export {
   acquirePromptApiRuntimeMonitoring,
   preparePromptApi,

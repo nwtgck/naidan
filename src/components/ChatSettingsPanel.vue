@@ -16,6 +16,7 @@ import type {
 } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
+  areEndpointsEqual,
   areOptionalEndpointsEqual,
   cloneEndpoint,
   cloneOptionalEndpoint,
@@ -49,8 +50,9 @@ import {
   createSystemPromptSettingChange,
 } from '@/logic/scoped-setting-changes';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
+import { endpointTypeLabel } from './endpoint-type-label';
 import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
-import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
@@ -132,32 +134,13 @@ const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
   openai: true,
   ollama: true,
   transformers_js: true,
-  prompt_api: true,
+  browser_provided_lm: true,
 };
 
 function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType | undefined {
   if (value === 'global') return undefined;
   if (Object.hasOwn(endpointTypeSelectValueRecord, value)) return value as EndpointType;
   throw new Error(`Unhandled endpoint type value: ${value}`);
-}
-
-function endpointTypeLabel({ endpointType }: { endpointType: Endpoint['type'] }): string | undefined {
-  switch (endpointType) {
-  case 'openai':
-    return 'OpenAI';
-  case 'ollama':
-    return lazyStrings.ChatSettingsPanel__ollama();
-  case 'transformers_js':
-    return lazyStrings.ChatSettingsPanel__transformers_js();
-  case 'prompt_api':
-    return lazyStrings.SHARED__prompt_api_experimental();
-  case 'unsupported_experimental_endpoint':
-    return lazyStrings.SHARED__unsupported_experimental_endpoint();
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
-  }
-  }
 }
 
 function inheritedEndpointTypeLabel(): string | undefined {
@@ -560,7 +543,7 @@ onMounted(() => {
     const endpoint = currentChat.value.endpoint ?? settings.value.endpoint;
     const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
     const type = endpoint.type;
-    if (type === 'transformers_js' || type === 'prompt_api' || isLocalhost({ url })) void fetchModels();
+    if (type === 'transformers_js' || type === 'browser_provided_lm' || isLocalhost({ url })) void fetchModels();
   }
 });
 
@@ -620,6 +603,15 @@ function isLocalhost({ url }: { url: string | undefined }) {
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
+function clearBrowserProvidedLmModelOverrides(): void {
+  if (localSettings.value.modelId === BROWSER_PROVIDED_LM_MODEL_ID) {
+    localSettings.value.modelId = undefined;
+  }
+  if (localSettings.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
+    localSettings.value.titleModelId = undefined;
+  }
+}
+
 async function updateEndpointType({
   endpointType,
 }: {
@@ -628,12 +620,16 @@ async function updateEndpointType({
   switch (endpointType) {
   case undefined:
     localSettings.value.endpoint = undefined;
+    clearBrowserProvidedLmModelOverrides();
     break;
   case 'transformers_js':
     localSettings.value.endpoint = { type: endpointType };
+    clearBrowserProvidedLmModelOverrides();
     break;
-  case 'prompt_api':
+  case 'browser_provided_lm':
     localSettings.value.endpoint = { type: endpointType };
+    localSettings.value.modelId = BROWSER_PROVIDED_LM_MODEL_ID;
+    localSettings.value.titleModelId = BROWSER_PROVIDED_LM_MODEL_ID;
     break;
   case 'openai':
   case 'ollama': {
@@ -646,6 +642,7 @@ async function updateEndpointType({
       url: seed?.url ?? '',
       httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
     };
+    clearBrowserProvidedLmModelOverrides();
     break;
   }
   default: {
@@ -659,6 +656,7 @@ async function updateEndpointType({
 
 async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   localSettings.value.endpoint = { type: preset.type, url: preset.url };
+  clearBrowserProvidedLmModelOverrides();
   error.value = null;
   await saveChangesFromUi();
 }
@@ -668,6 +666,7 @@ async function handleQuickProviderProfileChange() {
   if (providerProfile) {
     localSettings.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     localSettings.value.modelId = providerProfile.defaultModelId;
+    localSettings.value.titleModelId = providerProfile.titleModelId;
     localSettings.value.systemPrompt = providerProfile.systemPrompt
       ? { content: providerProfile.systemPrompt, behavior: 'override' }
       : undefined;
@@ -698,12 +697,25 @@ async function removeHeader({ index }: { index: number }) {
 async function fetchModels() {
   const chatId = currentChatId.value;
   if (!chatId) return;
+  const requestedEndpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
   error.value = null;
   try {
     const models = await chatModels.fetchForChat({ chatId });
+    if (
+      currentChatId.value !== chatId
+      || !areEndpointsEqual({ left: requestedEndpoint, right: effectiveEndpoint.value })
+    ) return;
     if (models.length === 0) error.value = await ensureStrings.SHARED__no_models_found_at_this_endpoint();
+    let changed = false;
     if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
       localSettings.value.modelId = undefined;
+      changed = true;
+    }
+    if (localSettings.value.titleModelId && !models.includes(localSettings.value.titleModelId)) {
+      localSettings.value.titleModelId = undefined;
+      changed = true;
+    }
+    if (changed) {
       await saveChangesFromUi();
     }
   } catch (caught) {
@@ -715,7 +727,7 @@ async function fetchModels() {
 
 watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || type === 'prompt_api' || (url && isLocalhost({ url }))) void fetchModels();
+  if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchModels();
 });
 
 async function updateSystemPromptBehavior({
@@ -863,7 +875,7 @@ defineExpose({
                 <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                 <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
                 <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
-                <option value="prompt_api" :disabled="!isPromptApiSupported">{{ lazyStrings.SHARED__prompt_api_experimental() }}</option>
+                <option value="browser_provided_lm" :disabled="!isPromptApiSupported">{{ lazyStrings.SHARED__browser_provided() }}</option>
                 <option
                   v-if="localSettings.endpoint?.type === 'unsupported_experimental_endpoint'"
                   value="unsupported_experimental_endpoint"
@@ -872,7 +884,7 @@ defineExpose({
               </select>
             </div>
 
-            <PromptApiStatus v-if="effectiveEndpointType === 'prompt_api'" />
+            <PromptApiStatus v-if="effectiveEndpointType === 'browser_provided_lm'" show-ready />
 
             <div tw-class="space-y-2" v-if="effectiveEndpoint && isHttpEndpoint(effectiveEndpoint)">
               <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</label>
@@ -939,11 +951,11 @@ defineExpose({
               <div tw-class="space-y-2">
                 <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__model_override() }}</label>
                 <ModelSelector
-                  :model-value="effectiveEndpointType === 'prompt_api' ? PROMPT_API_MODEL_ID : localSettings.modelId"
+                  :model-value="localSettings.modelId"
                   @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
                   :models="sortedAvailableModels"
                   :loading="isFetchingModels"
-                  :disabled="effectiveEndpointType === 'prompt_api'"
+                  :disabled="effectiveEndpointType === 'browser_provided_lm'"
                   :placeholder="formatSettingsSourceLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"
@@ -952,8 +964,8 @@ defineExpose({
               </div>
 
               <fieldset
-                :disabled="effectiveEndpointType === 'prompt_api'"
-                :tw-class="['p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl', { 'opacity-50': effectiveEndpointType === 'prompt_api' }]"
+                :disabled="effectiveEndpointType === 'browser_provided_lm'"
+                :tw-class="['p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl', { 'opacity-50': effectiveEndpointType === 'browser_provided_lm' }]"
               >
                 <ReasoningSettings
                   :selected-effort="localSettings.lmParameters?.reasoning?.effort"
@@ -1012,6 +1024,7 @@ defineExpose({
                   :loading="isFetchingModels"
                   :placeholder="formatSettingsSourceLabel({ value: resolvedSettings?.titleModelId, source: resolvedSettings?.sources.titleModelId })"
                   :allow-clear="true"
+                  :disabled="effectiveEndpointType === 'browser_provided_lm'"
                   @refresh="fetchModels"
                   data-testid="chat-setting-title-model-select"
                 />

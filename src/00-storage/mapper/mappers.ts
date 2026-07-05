@@ -469,8 +469,8 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
   case 'experimental_type': {
     const experimentalType = dto.experimental?.type;
     switch (experimentalType) {
-    case 'prompt_api':
-      return { type: 'prompt_api' };
+    case 'browser_provided_lm':
+      return { type: 'browser_provided_lm' };
     case undefined: {
       const unreadableType = dto.experimental?.unreadable?.type;
       return {
@@ -504,10 +504,10 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
-  case 'prompt_api':
+  case 'browser_provided_lm':
     return {
       type: 'experimental_type',
-      experimental: { type: 'prompt_api' },
+      experimental: { type: 'browser_provided_lm' },
     };
   case 'unsupported_experimental_endpoint':
     return {

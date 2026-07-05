@@ -158,8 +158,8 @@ describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
     schema: ExperimentalExperimentalTypeEndpointSchemaDto,
   });
 
-  it('keeps prompt_api strongly typed', () => {
-    expect(schema.parse({ type: 'prompt_api' })).toEqual({ type: 'prompt_api' });
+  it('keeps browser_provided_lm strongly typed', () => {
+    expect(schema.parse({ type: 'browser_provided_lm' })).toEqual({ type: 'browser_provided_lm' });
   });
 
   it('isolates an unknown endpoint identifier as an unreadable field', () => {

@@ -3,7 +3,6 @@ import { isConfiguredEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import type { LmProvider } from '@/01-models/lm';
 import { loadLmProvider } from '@/features/lm/providerFactory';
-import { PROMPT_API_MODEL_ID } from '@/features/prompt-api';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
@@ -42,29 +41,15 @@ export function abortTitleGenerationForChat({
 }
 
 function resolveTitleModelId({
-  endpoint,
   titleModelIdOverride,
   resolvedTitleModelId,
   resolvedModelId,
 }: {
-  endpoint: Endpoint,
   titleModelIdOverride: string | undefined,
   resolvedTitleModelId: string,
   resolvedModelId: string,
 }): string {
-  switch (endpoint.type) {
-  case 'prompt_api':
-    return PROMPT_API_MODEL_ID;
-  case 'openai':
-  case 'ollama':
-  case 'transformers_js':
-  case 'unsupported_experimental_endpoint':
-    return titleModelIdOverride || resolvedTitleModelId || resolvedModelId;
-  default: {
-    const _ex: never = endpoint;
-    throw new Error(`Unhandled endpoint: ${((_ex satisfies never) as { readonly type: string }).type}`);
-  }
-  }
+  return titleModelIdOverride || resolvedTitleModelId || resolvedModelId;
 }
 
 export async function generateChatTitleForChat({
@@ -113,7 +98,6 @@ export async function generateChatTitleForChat({
     }
 
     const titleModelId = resolveTitleModelId({
-      endpoint: resolved.endpoint,
       titleModelIdOverride,
       resolvedTitleModelId: resolved.titleModelId,
       resolvedModelId: resolved.modelId,

@@ -6,7 +6,7 @@ export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
   case 'ollama':
     return true;
   case 'transformers_js':
-  case 'prompt_api':
+  case 'browser_provided_lm':
   case 'unsupported_experimental_endpoint':
     return false;
   default: {
@@ -21,7 +21,7 @@ export function isSupportedEndpoint(endpoint: Endpoint): endpoint is SupportedEn
   case 'openai':
   case 'ollama':
   case 'transformers_js':
-  case 'prompt_api':
+  case 'browser_provided_lm':
     return true;
   case 'unsupported_experimental_endpoint':
     return false;
@@ -46,7 +46,7 @@ export function isConfiguredEndpoint({ endpoint }: { endpoint: Endpoint }): bool
   case 'ollama':
     return endpoint.url !== '';
   case 'transformers_js':
-  case 'prompt_api':
+  case 'browser_provided_lm':
     return true;
   case 'unsupported_experimental_endpoint':
     return false;
@@ -80,8 +80,8 @@ export function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
-  case 'prompt_api':
-    return { type: 'prompt_api' };
+  case 'browser_provided_lm':
+    return { type: 'browser_provided_lm' };
   case 'unsupported_experimental_endpoint':
     return {
       type: 'unsupported_experimental_endpoint',
@@ -134,8 +134,8 @@ export function areEndpointsEqual({
   }
   case 'transformers_js':
     return right.type === 'transformers_js';
-  case 'prompt_api':
-    return right.type === 'prompt_api';
+  case 'browser_provided_lm':
+    return right.type === 'browser_provided_lm';
   case 'unsupported_experimental_endpoint':
     return (
       right.type === 'unsupported_experimental_endpoint'

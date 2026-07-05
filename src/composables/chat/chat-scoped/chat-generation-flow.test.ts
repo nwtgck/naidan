@@ -5,19 +5,27 @@ import { TEST_ONLY } from './chat-generation-flow';
 const { resolveGenerationModel } = TEST_ONLY;
 
 describe('chat generation model resolution', () => {
-  it('uses the browser-managed Prompt API model when regenerating an older node', () => {
+  it('replaces a stale assistant model with the available browser-provided model', () => {
     expect(resolveGenerationModel({
-      endpoint: { type: 'prompt_api' },
       assistantModelId: 'previous-provider-model',
       resolvedModelId: 'another-stale-model',
+      availableModels: ['browser-provided-language-model'],
     })).toBe('browser-provided-language-model');
   });
 
-  it('preserves normal endpoint model precedence', () => {
+  it('does not synthesize a model when no persisted or resolved model exists', () => {
     expect(resolveGenerationModel({
-      endpoint: { type: 'openai', url: 'https://example.test' },
+      assistantModelId: undefined,
+      resolvedModelId: '',
+      availableModels: ['browser-provided-language-model'],
+    })).toBe('');
+  });
+
+  it('preserves the preferred model when it remains available', () => {
+    expect(resolveGenerationModel({
       assistantModelId: 'assistant-model',
       resolvedModelId: 'resolved-model',
+      availableModels: ['assistant-model', 'resolved-model'],
     })).toBe('assistant-model');
   });
 });

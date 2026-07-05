@@ -164,7 +164,7 @@ watch(
       return;
     case 'transformers_js':
       break;
-    case 'prompt_api':
+    case 'browser_provided_lm':
     case 'unsupported_experimental_endpoint':
       return;
     default: {
@@ -221,10 +221,7 @@ export function useSettings(): UseSettingsApi {
   const isOnboardingDismissed = computed(() => {
     const endpoint = _settings.value.endpoint;
     const hasEndpoint = isConfiguredEndpoint({ endpoint });
-    const hasModel = (
-      endpoint.type === 'prompt_api'
-      || !!_settings.value.defaultModelId
-    );
+    const hasModel = !!_settings.value.defaultModelId;
     return _isOnboardingDismissed.value || (hasEndpoint && hasModel);
   });
 

@@ -64,6 +64,9 @@ defineExpose({
     data-testid="prompt-api-status"
     tw-class="rounded-2xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 px-4 py-3"
   >
+    <p tw-class="mb-2 text-[11px] text-gray-600 dark:text-gray-300">
+      {{ lazyStrings.SHARED__uses_a_language_model_provided_and_managed_by_the_browser() }}
+    </p>
     <div tw-class="flex flex-wrap items-center gap-3">
       <Loader2Icon
         v-if="promptApiRuntimeState.status === 'unchecked' || promptApiRuntimeState.status === 'checking' || promptApiRuntimeState.status === 'preparing'"
@@ -86,11 +89,11 @@ defineExpose({
         <p
           v-if="promptApiRuntimeState.status === 'unchecked' || promptApiRuntimeState.status === 'checking'"
           tw-class="text-xs font-semibold text-gray-700 dark:text-gray-200"
-        >{{ lazyStrings.PromptApiStatus__checking_prompt_api_availability() }}</p>
+        >{{ lazyStrings.PromptApiStatus__checking_browser_provided_language_model_availability() }}</p>
         <p
           v-else-if="promptApiRuntimeState.status === 'api_unavailable'"
           tw-class="text-xs font-semibold text-gray-700 dark:text-gray-200"
-        >{{ lazyStrings.PromptApiStatus__language_model_api_is_not_available_in_this_browser() }}</p>
+        >{{ lazyStrings.PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser() }}</p>
         <p
           v-else-if="promptApiRuntimeState.status === 'model_unavailable'"
           tw-class="text-xs font-semibold text-gray-700 dark:text-gray-200"

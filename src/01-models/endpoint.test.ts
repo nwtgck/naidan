@@ -9,8 +9,8 @@ import {
 } from '@/01-models/endpoint';
 
 describe('endpoint helpers', () => {
-  it('treats Prompt API as a configured non-HTTP endpoint', () => {
-    const endpoint = { type: 'prompt_api' } as const;
+  it('treats the browser-provided LM as a configured non-HTTP endpoint', () => {
+    const endpoint = { type: 'browser_provided_lm' } as const;
 
     expect(isHttpEndpoint(endpoint)).toBe(false);
     expect(isSupportedEndpoint(endpoint)).toBe(true);
