@@ -7,6 +7,7 @@ import {
   type ChatGroupDto,
   type HierarchyDto,
   type MigrationChunkDto,
+  type MessageNodeDto,
   ChatMetaSchemaDto,
   ChatGroupSchemaDto,
   SettingsSchemaDto,
@@ -165,35 +166,34 @@ export class OPFSStorageProvider extends IStorageProvider {
           if (entry.name.endsWith('.json')) {
             try {
               const file = await (entry as FileSystemFileHandle).getFile();
-              const content = JSON.parse(await file.text());
+              const content = ChatContentSchemaDto.parse(JSON.parse(await file.text()));
 
               let modified = false;
-              const processNodes = ({ nodes }: { nodes: unknown[] }) => {
+              const processNodes = ({ nodes }: { nodes: MessageNodeDto[] }): void => {
                 for (const node of nodes) {
-                  const nodeObj = node as Record<string, unknown>;
-                  const attachments = nodeObj.attachments as Record<string, unknown>[] | undefined;
-                  if (attachments) {
-                    for (const att of attachments) {
-                      // If it's a V1 attachment (no binaryObjectId), look up in map
-                      if (!att.binaryObjectId && typeof att.id === 'string' && idMap.has(att.id)) {
-                        att.binaryObjectId = idMap.get(att.id);
-                        att.name = att.name || att.originalName;
-                        modified = true;
-                      }
+                  if (node.attachments) {
+                    for (const attachment of node.attachments) {
+                      if ('binaryObjectId' in attachment) continue;
+
+                      const binaryObjectId = idMap.get(attachment.id);
+                      if (binaryObjectId === undefined) continue;
+
+                      Object.assign(attachment, {
+                        binaryObjectId,
+                        name: attachment.originalName,
+                      });
+                      modified = true;
                     }
                   }
-                  const replies = nodeObj.replies as Record<string, unknown> | undefined;
-                  if (replies?.items) processNodes({ nodes: replies.items as unknown[] });
+                  processNodes({ nodes: node.replies.items });
                 }
               };
 
-              if (content.root?.items) {
-                processNodes({ nodes: content.root.items });
-                if (modified) {
-                  const writable = await (entry as unknown as FileSystemFileHandleWithWritable).createWritable();
-                  await writable.write(JSON.stringify(content));
-                  await writable.close();
-                }
+              processNodes({ nodes: content.root.items });
+              if (modified) {
+                const writable = await (entry as unknown as FileSystemFileHandleWithWritable).createWritable();
+                await writable.write(JSON.stringify(content));
+                await writable.close();
               }
             } catch (jsonErr) {
               console.warn(`[OPFSStorageProvider] Skipping corrupted chat content file: ${entry.name}`, jsonErr);
@@ -331,7 +331,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         case 'file': {
           if (entry.name.endsWith('.json')) {
             const file = await (entry as FileSystemFileHandle).getFile();
-            dtos.push(JSON.parse(await file.text()));
+            dtos.push(ChatMetaSchemaDto.parse(JSON.parse(await file.text())));
           }
           break;
         }
@@ -359,7 +359,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         case 'file': {
           if (entry.name.endsWith('.json')) {
             const file = await (entry as FileSystemFileHandle).getFile();
-            dtos.push(JSON.parse(await file.text()));
+            dtos.push(ChatGroupSchemaDto.parse(JSON.parse(await file.text())));
           }
           break;
         }

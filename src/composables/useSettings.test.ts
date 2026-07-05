@@ -527,6 +527,23 @@ describe('useSettings Initialization and Bootstrap', () => {
     expect(isOnboardingDismissed.value).toBe(false);
   });
 
+  it('should not show onboarding for a persisted unsupported experimental endpoint', async () => {
+    mocks.loadSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      storageType: 'local',
+      endpoint: {
+        type: 'unsupported_experimental_endpoint',
+        persistedType: 'prompt_api',
+      },
+      defaultModelId: undefined,
+    });
+
+    const { init, isOnboardingDismissed } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+
+    expect(isOnboardingDismissed.value).toBe(true);
+  });
+
   it('should NOT set isOnboardingDismissed to true if endpointUrl is present but defaultModelId is missing', async () => {
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,

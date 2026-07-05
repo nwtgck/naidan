@@ -253,6 +253,31 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     expect(chat!.root.items[0]!.attachments![0]!.binaryObjectId).toBeDefined();
   });
 
+  it('should skip schema-invalid chat content files and continue migrating valid ones', async () => {
+    const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage', { create: true });
+    await setupLegacyFile(naidanDir, VALID_UUID_1, 'img.png', 'DATA');
+    await setupLegacyChat(naidanDir, CHAT_ID_1, [{
+      id: VALID_UUID_1,
+      originalName: 'img.png',
+      status: 'persisted',
+      mimeType: 'image/png',
+      size: 4,
+      uploadedAt: 0,
+    }]);
+
+    const contentDir = await naidanDir.getDirectoryHandle('chat-contents', { create: true });
+    const invalid = await contentDir.getFileHandle('schema-invalid.json', { create: true });
+    const writer = await invalid.createWritable();
+    await writer.write(JSON.stringify({ root: { items: [{ role: 'user' }] } }));
+    await writer.close();
+
+    const provider = new OPFSStorageProvider();
+    await provider.init();
+
+    const chat = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
+    expect(chat?.root.items[0]?.attachments?.[0]?.binaryObjectId).toBeDefined();
+  });
+
   it('should remain idempotent and not modify data on repeated initializations', async () => {
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage', { create: true });
     await setupLegacyFile(naidanDir, VALID_UUID_1, 'img.png', 'DATA');

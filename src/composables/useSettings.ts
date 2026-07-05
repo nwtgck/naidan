@@ -220,9 +220,12 @@ export function useSettings(): UseSettingsApi {
 
   const isOnboardingDismissed = computed(() => {
     const endpoint = _settings.value.endpoint;
+    const hasPersistedUnsupportedEndpoint = endpoint.type === 'unsupported_experimental_endpoint';
     const hasEndpoint = isConfiguredEndpoint({ endpoint });
     const hasModel = !!_settings.value.defaultModelId;
-    return _isOnboardingDismissed.value || (hasEndpoint && hasModel);
+    return _isOnboardingDismissed.value
+      || hasPersistedUnsupportedEndpoint
+      || (hasEndpoint && hasModel);
   });
 
   async function init({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) {
