@@ -1,12 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import type { EndpointType, Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+
+const { mockFetchModels } = vi.hoisted(() => ({
+  mockFetchModels: vi.fn(),
+}));
 
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
     save: vi.fn(),
-    fetchModels: vi.fn().mockResolvedValue([]),
+    fetchModels: mockFetchModels,
     updateProviderProfiles: vi.fn(),
   }),
 }));
@@ -27,13 +32,24 @@ function createSettings({ endpointType }: {
   endpointType: EndpointType,
 }): Settings {
   return {
-    endpoint: endpointType === 'transformers_js'
-      ? { type: endpointType }
-      : {
-        type: endpointType,
-        url: 'https://ollama.example',
-        httpHeaders: [['X-Test', 'value']],
-      },
+    endpoint: (() => {
+      switch (endpointType) {
+      case 'transformers_js':
+      case 'browser_provided_lm':
+        return { type: endpointType };
+      case 'openai':
+      case 'ollama':
+        return {
+          type: endpointType,
+          url: 'https://ollama.example',
+          httpHeaders: [['X-Test', 'value']],
+        };
+      default: {
+        const _ex: never = endpointType;
+        throw new Error(`Unhandled endpoint type: ${_ex}`);
+      }
+      }
+    })(),
     defaultModelId: '',
     titleModelId: '',
     autoTitleEnabled: true,
@@ -45,7 +61,11 @@ function createSettings({ endpointType }: {
 }
 
 const globalStubs = {
-  ModelSelector: { template: '<div data-testid="model-selector-stub" />' },
+  ModelSelector: {
+    name: 'ModelSelector',
+    props: ['modelValue', 'disabled'],
+    template: '<div data-testid="model-selector-stub" />',
+  },
   LmParametersEditor: { template: '<div />' },
   ProviderProfilePreview: { template: '<div />' },
   TransformersJsUpsell: { template: '<div />' },
@@ -55,6 +75,16 @@ const globalStubs = {
     template: '<div data-testid="ollama-management-stub">Ollama management</div>',
   },
 };
+
+
+beforeEach(() => {
+  mockFetchModels.mockReset();
+  mockFetchModels.mockResolvedValue([]);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('ConnectionTab Ollama management integration', () => {
   it('shows Ollama management between endpoint configuration and model selection', async () => {
@@ -90,4 +120,144 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(wrapper.find('[data-testid="ollama-management-stub"]').exists()).toBe(false);
   });
+
+  it('keeps the browser-provided endpoint option enabled when the API is unavailable', () => {
+    vi.stubGlobal('LanguageModel', undefined);
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: createSettings({ endpointType: 'openai' }),
+        availableModels: [],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    const option = wrapper.get('option[value="browser_provided_lm"]');
+    expect((option.element as HTMLOptionElement).disabled).toBe(false);
+
+    wrapper.unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it('persists both browser-provided model IDs when the endpoint is selected', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    mockFetchModels.mockResolvedValue([BROWSER_PROVIDED_LM_MODEL_ID]);
+    const settings = createSettings({ endpointType: 'openai' });
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: [BROWSER_PROVIDED_LM_MODEL_ID],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    await wrapper.get('[data-testid="setting-provider-select"]').setValue('browser_provided_lm');
+    await flushPromises();
+
+    expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
+    expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(settings.titleModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    wrapper.unmount();
+  });
+
+  it('does not clear browser-provided model IDs when an earlier endpoint fetch finishes late', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    let resolveOldModels: ((models: string[]) => void) | undefined;
+    mockFetchModels
+      .mockReturnValueOnce(new Promise<string[]>((resolve) => {
+        resolveOldModels = resolve;
+      }))
+      .mockResolvedValue([BROWSER_PROVIDED_LM_MODEL_ID]);
+    const settings = createSettings({ endpointType: 'openai' });
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: [],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    await wrapper.get('[data-testid="setting-check-connection"]').trigger('click');
+    await wrapper.get('[data-testid="setting-provider-select"]').setValue('browser_provided_lm');
+    await flushPromises();
+
+    resolveOldModels?.(['old-http-model']);
+    await flushPromises();
+
+    expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
+    expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(settings.titleModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    wrapper.unmount();
+  });
+
+  it('clears browser-provided model IDs when switching to an HTTP endpoint', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    const settings = createSettings({ endpointType: 'browser_provided_lm' });
+    settings.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+    settings.titleModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: [BROWSER_PROVIDED_LM_MODEL_ID],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    await wrapper.get('[data-testid="setting-provider-select"]').setValue('ollama');
+    await flushPromises();
+
+    expect(settings.endpoint).toEqual({ type: 'ollama', url: '' });
+    expect(settings.defaultModelId).toBe('');
+    expect(settings.titleModelId).toBe('');
+    wrapper.unmount();
+  });
+
+  it('shows the persisted browser-provided model IDs', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    mockFetchModels.mockResolvedValue(['browser-provided-language-model']);
+    const settings = createSettings({ endpointType: 'browser_provided_lm' });
+    settings.defaultModelId = 'browser-provided-language-model';
+    settings.titleModelId = 'browser-provided-language-model';
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: ['browser-provided-language-model'],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    const selectors = wrapper.findAllComponents({ name: 'ModelSelector' });
+    expect(selectors[0]?.props('modelValue')).toBe('browser-provided-language-model');
+    expect(selectors[0]?.props('disabled')).toBe(true);
+    expect(selectors[1]?.props('modelValue')).toBe('browser-provided-language-model');
+    expect(selectors[1]?.props('disabled')).toBe(true);
+    wrapper.unmount();
+  });
+
 });

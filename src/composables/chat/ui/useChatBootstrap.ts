@@ -66,6 +66,8 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
           case undefined:
           case 'openai':
           case 'ollama':
+          case 'browser_provided_lm':
+          case 'unsupported_experimental_endpoint':
             return;
           case 'transformers_js':
             break;
@@ -120,4 +122,5 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

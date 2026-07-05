@@ -1,0 +1,1 @@
+export const PromptApiStatus__less_than_required_free_space_on_browser_profile_volume = ({ browser, gigabytes }: { browser: string; gigabytes: number }): string => `Less than ${gigabytes} GB of free space on the volume containing your ${browser} profile.`;

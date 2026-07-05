@@ -100,18 +100,27 @@ describe('require-test-only-for-module-export rule', () => {
 
   it('accepts the required module export with the guard rule enabled', async () => {
     const result = await lintWithDefaultConfig({
-      code: 'export const TEST_ONLY = {};\n',
+      code: `\
+export const TEST_ONLY = {
+};
+`,
       filePath: 'src/example.ts',
     });
     expect(result.messages).toHaveLength(0);
   });
 
-  it('accepts an empty top-level TEST_ONLY object export', async () => {
-    const result = await lint({ code: 'export const TEST_ONLY = {};\n', fix: false });
+  it('accepts an empty final multiline TEST_ONLY object export', async () => {
+    const result = await lint({
+      code: `\
+export const TEST_ONLY = {
+};
+`,
+      fix: false,
+    });
     expect(result.messages).toHaveLength(0);
   });
 
-  it('accepts a populated and explicitly typed TEST_ONLY object export without requiring comments', async () => {
+  it('accepts a populated and explicitly typed final TEST_ONLY object export without requiring comments', async () => {
     const result = await lint({ code: `\
 function reset() {}
 
@@ -126,27 +135,30 @@ export const TEST_ONLY: Readonly<{
 
   it('accepts references to the valid module export from nested scopes', async () => {
     const result = await lint({ code: `\
-export const TEST_ONLY = {};
-
 function readTestOnly() {
   return TEST_ONLY;
 }
+
+export const TEST_ONLY = {
+  readTestOnly,
+};
 `, fix: false });
     expect(result.messages).toHaveLength(0);
   });
 
-  it('accepts an imported TEST_ONLY alias alongside the module export', async () => {
+  it('accepts an imported TEST_ONLY alias alongside the final module export', async () => {
     const result = await lint({ code: `\
 import { TEST_ONLY as runtimeTestOnly } from './runtime';
 
 void runtimeTestOnly;
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};
 `, fix: false });
     expect(result.messages).toHaveLength(0);
   });
 
-  it('adds a commented TEST_ONLY export at the end of a module', async () => {
+  it('adds a commented multiline TEST_ONLY export at the end of a module', async () => {
     const result = await lint({
       code: 'export const value = 1;\n',
       fix: true,
@@ -157,11 +169,12 @@ export const value = 1;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};
 `);
   });
 
-  it('adds the module export when TEST_ONLY is imported under an alias', async () => {
+  it('adds the multiline export when TEST_ONLY is imported under an alias', async () => {
     const result = await lint({
       code: `\
 import { TEST_ONLY as runtimeTestOnly } from './runtime';
@@ -175,27 +188,30 @@ void runtimeTestOnly;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};
 `);
   });
 
-  it('adds the export to an empty file', async () => {
+  it('adds the multiline export to an empty file', async () => {
     const result = await lint({ code: '', fix: true });
     expect(result.output).toBe(`\
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};
 `);
   });
 
-  it('preserves CRLF line endings while adding the export', async () => {
+  it('preserves CRLF line endings while adding the multiline export', async () => {
     const result = await lint({ code: 'export const value = 1;\r\n', fix: true });
     expect(result.output).toBe([
       'export const value = 1;',
       '',
       '// Export internal state and logic used only for testing here. Do not reference these in production logic.',
       '// ESLint-required for TypeScript modules.',
-      'export const TEST_ONLY = {};',
+      'export const TEST_ONLY = {',
+      '};',
       '',
     ].join('\r\n'));
   });
@@ -212,6 +228,116 @@ export const value = 1;
 // Keep this final comment.
 
 // Export internal state and logic used only for testing here.`);
+  });
+
+  it('autofixes an empty single-line TEST_ONLY object export', async () => {
+    const result = await lint({
+      code: 'export const TEST_ONLY = {};\n',
+      fix: true,
+    });
+    expect(result.messages).toHaveLength(0);
+    expect(result.output).toBe(`\
+export const TEST_ONLY = {
+};
+`);
+  });
+
+  it('autofixes a populated single-line TEST_ONLY object export with one entry per line', async () => {
+    const result = await lint({
+      code: `\
+const hoge = 1;
+const foo = 2;
+
+export const TEST_ONLY = { hoge, foo };
+`,
+      fix: true,
+    });
+    expect(result.messages).toHaveLength(0);
+    expect(result.output).toBe(`\
+const hoge = 1;
+const foo = 2;
+
+export const TEST_ONLY = {
+  hoge,
+  foo,
+};
+`);
+  });
+
+  it('autofixes TEST_ONLY entries that share a line inside multiline braces', async () => {
+    const result = await lint({
+      code: `\
+const hoge = 1;
+const foo = 2;
+
+export const TEST_ONLY = {
+  hoge, foo,
+};
+`,
+      fix: true,
+    });
+    expect(result.messages).toHaveLength(0);
+    expect(result.output).toBe(`\
+const hoge = 1;
+const foo = 2;
+
+export const TEST_ONLY = {
+  hoge,
+  foo,
+};
+`);
+  });
+
+  it('preserves CRLF line endings while expanding a single-line TEST_ONLY object', async () => {
+    const result = await lint({
+      code: 'export const TEST_ONLY = {};\r\n',
+      fix: true,
+    });
+    expect(result.messages).toHaveLength(0);
+    expect(result.output).toBe([
+      'export const TEST_ONLY = {',
+      '};',
+      '',
+    ].join('\r\n'));
+  });
+
+  it('reports a single-line TEST_ONLY object containing comments without unsafe autofix', async () => {
+    const result = await lint({
+      code: 'export const TEST_ONLY = { /* keep */ value };\n',
+      fix: true,
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('singleLine');
+    expect(result.output).toBeUndefined();
+  });
+
+  it('reports TEST_ONLY when it is not the final statement without moving it', async () => {
+    const result = await lint({
+      code: `\
+export const TEST_ONLY = {
+};
+
+export const value = 1;
+`,
+      fix: true,
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('notLast');
+    expect(result.output).toBeUndefined();
+  });
+
+  it('reports a trailing comment after TEST_ONLY without moving or deleting it', async () => {
+    const result = await lint({
+      code: `\
+export const TEST_ONLY = {
+};
+// Keep this comment.
+`,
+      fix: true,
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('notLast');
+    expect(result.output).toBeUndefined();
   });
 
   it('is idempotent after autofix', async () => {
@@ -246,7 +372,8 @@ export const value = 1;
   it('reports duplicate top-level TEST_ONLY declarations without autofixing them', async () => {
     const result = await lint({
       code: `\
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};
 const TEST_ONLY = {};
 `,
       fix: true,
@@ -259,12 +386,13 @@ const TEST_ONLY = {};
   it('reports a nested TEST_ONLY shadow alongside the valid export', async () => {
     const result = await lint({
       code: `\
-export const TEST_ONLY = {};
-
 function read() {
   const TEST_ONLY = {};
   return TEST_ONLY;
 }
+
+export const TEST_ONLY = {
+};
 `,
       fix: true,
     });

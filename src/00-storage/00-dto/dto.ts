@@ -19,6 +19,7 @@ import {
   ExperimentalChatMetaIndexSchemaDto,
   ExperimentalChatMetaSchemaDto,
   ExperimentalCompletedMigrationSchemaDto,
+  ExperimentalExperimentalTypeEndpointSchemaDto,
   ExperimentalHierarchyChatGroupNodeSchemaDto,
   ExperimentalHierarchyChatNodeSchemaDto,
   ExperimentalHierarchySchemaDto,
@@ -71,9 +72,24 @@ export const TransformersJsEndpointSchemaDto = z.object({
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTransformersJsEndpointSchemaDto }),
 });
 
+/**
+ * Stable persisted envelope for endpoint implementations whose identity and
+ * settings are still experimental. The concrete endpoint identifier belongs
+ * to `experimental.type` and is translated by the mapper into a domain
+ * endpoint. This prevents every experimental endpoint rename or addition from
+ * becoming a new top-level persisted discriminator.
+ */
+export const ExperimentalTypeEndpointSchemaDto = z.object({
+  type: z.literal('experimental_type'),
+  experimental: optionalExperimentalFieldSchemaDto({
+    schema: ExperimentalExperimentalTypeEndpointSchemaDto,
+  }),
+});
+
 export const EndpointSchemaDto = resolveMissingAsUndefined(z.discriminatedUnion('type', [
   HttpEndpointSchemaDto,
   TransformersJsEndpointSchemaDto,
+  ExperimentalTypeEndpointSchemaDto,
 ]));
 
 export type EndpointDto = z.infer<typeof EndpointSchemaDto>;
@@ -539,4 +555,5 @@ export type MigrationStateDto = z.infer<typeof MigrationStateSchemaDto>;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

@@ -54,6 +54,7 @@ import { execCommandDefinition } from './exec/index.ts';
 import { readCommandDefinition } from './read/index.ts';
 import { lnCommandDefinition } from './ln/index.ts';
 import { readlinkCommandDefinition } from './readlink/index.ts';
+import { statCommandDefinition } from './stat/index.ts';
 import { leftBracketCommandDefinition, testCommandDefinition } from './test/index.ts';
 import { awkCommandDefinition } from './awk/index.ts';
 import { jqCommandDefinition } from './jq/index.ts';
@@ -70,6 +71,7 @@ import { mktempCommandDefinition } from './mktemp/index.ts';
 import { psCommandDefinition } from './ps/index.ts';
 import { foldCommandDefinition } from './fold/index.ts';
 import { base64CommandDefinition } from './base64/index.ts';
+import { diffCommandDefinition } from './diff/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -127,6 +129,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   readCommandDefinition,
   lnCommandDefinition,
   readlinkCommandDefinition,
+  statCommandDefinition,
   awkCommandDefinition,
   xmlCommandDefinition,
   zipCommandDefinition,
@@ -142,10 +145,12 @@ export const builtinCommands: WeshCommandDefinition[] = [
   psCommandDefinition,
   foldCommandDefinition,
   base64CommandDefinition,
+  diffCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

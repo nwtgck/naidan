@@ -1,5 +1,5 @@
 import type { Chat, ChatMessage, Endpoint } from '@/01-models/types';
-import { isHttpEndpoint } from '@/01-models/endpoint';
+import { isConfiguredEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import type { LmProvider } from '@/01-models/lm';
 import { loadLmProvider } from '@/features/lm/providerFactory';
@@ -38,6 +38,18 @@ export function abortTitleGenerationForChat({
 
   chatRuntimeStore.getActiveTitleGeneration({ chatId })?.abort();
   chatRuntimeStore.deleteActiveTitleGeneration({ chatId });
+}
+
+function resolveTitleModelId({
+  titleModelIdOverride,
+  resolvedTitleModelId,
+  resolvedModelId,
+}: {
+  titleModelIdOverride: string | undefined,
+  resolvedTitleModelId: string,
+  resolvedModelId: string,
+}): string {
+  return titleModelIdOverride || resolvedTitleModelId || resolvedModelId;
 }
 
 export async function generateChatTitleForChat({
@@ -85,7 +97,11 @@ export async function generateChatTitleForChat({
       return undefined;
     }
 
-    const titleModelId = titleModelIdOverride || resolved.titleModelId || resolved.modelId;
+    const titleModelId = resolveTitleModelId({
+      titleModelIdOverride,
+      resolvedTitleModelId: resolved.titleModelId,
+      resolvedModelId: resolved.modelId,
+    });
     if (!titleModelId) {
       return undefined;
     }
@@ -170,8 +186,7 @@ function resolveTitleSettings({
     endpoint: resolved.endpoint,
     modelId: resolved.modelId,
     titleModelId: resolved.titleModelId,
-    hasReachableEndpoint: !isHttpEndpoint(resolved.endpoint)
-      || resolved.endpoint.url !== '',
+    hasReachableEndpoint: isConfiguredEndpoint({ endpoint: resolved.endpoint }),
   };
 }
 
@@ -236,4 +251,5 @@ async function loadTitleProvider({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

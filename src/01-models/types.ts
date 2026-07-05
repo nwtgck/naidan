@@ -68,8 +68,18 @@ export type TransformersJsEndpoint = {
   type: 'transformers_js',
 };
 
-export type Endpoint = HttpEndpoint | TransformersJsEndpoint;
-export type EndpointType = Endpoint['type'];
+export type BrowserProvidedLmEndpoint = {
+  type: 'browser_provided_lm',
+};
+
+export type UnsupportedExperimentalEndpoint = {
+  type: 'unsupported_experimental_endpoint',
+  persistedType: string | undefined,
+};
+
+export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint;
+export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
+export type EndpointType = SupportedEndpoint['type'];
 
 export type MultimodalContent =
   | { type: 'text', text: string }
@@ -400,4 +410,5 @@ export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

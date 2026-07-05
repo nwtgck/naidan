@@ -25,6 +25,13 @@ const transformersJsProviderModuleLoader = createModuleLoader({
   },
 });
 
+const promptApiProviderModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/prompt-api/provider'),
+  onPrefetchError: ({ error }) => {
+    console.error('Failed to prefetch Prompt API provider:', error);
+  },
+});
+
 export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
   endpoint: Endpoint,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
@@ -50,6 +57,12 @@ export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
     const { TransformersJsProvider } = await transformersJsProviderModuleLoader.load();
     return new TransformersJsProvider();
   }
+  case 'browser_provided_lm': {
+    const { PromptApiProvider } = await promptApiProviderModuleLoader.load();
+    return new PromptApiProvider();
+  }
+  case 'unsupported_experimental_endpoint':
+    throw new Error(`Unsupported experimental endpoint: ${String(endpoint.persistedType)}`);
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
@@ -70,6 +83,9 @@ export async function prefetchLmProvider({ endpointType }: {
   case 'transformers_js':
     await transformersJsProviderModuleLoader.prefetch();
     break;
+  case 'browser_provided_lm':
+    await promptApiProviderModuleLoader.prefetch();
+    break;
   default: {
     const _ex: never = endpointType;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -87,4 +103,5 @@ export function cloneEndpointHttpHeaders({ headers }: {
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

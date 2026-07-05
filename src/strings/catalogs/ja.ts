@@ -2,6 +2,7 @@
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/ja';
 import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/ja';
+import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/ja';
 import { SHARED__cancel } from '@/strings/messages/SHARED__cancel/ja';
 import { SHARED__choose_which_chats_are_visible_to_the_shell } from '@/strings/messages/SHARED__choose_which_chats_are_visible_to_the_shell/ja';
 import { SHARED__configure_browser_based_shell_access } from '@/strings/messages/SHARED__configure_browser_based_shell_access/ja';
@@ -15,6 +16,8 @@ import { SHARED__local_and_memory_storage_expose_wesh_as_read_only_without_tmp }
 import { SHARED__mount } from '@/strings/messages/SHARED__mount/ja';
 import { SHARED__new_chat } from '@/strings/messages/SHARED__new_chat/ja';
 import { SHARED__no_models_found_at_this_endpoint } from '@/strings/messages/SHARED__no_models_found_at_this_endpoint/ja';
+import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SHARED__unsupported_experimental_endpoint/ja';
+import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/ja';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/ja';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/ja';
 
@@ -800,6 +803,40 @@ import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingM
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/ja';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/ja';
 import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/ja';
+import { PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser } from '@/strings/messages/PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser/ja';
+import { PromptApiStatus__browser_provided_model_is_not_available_on_this_device } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_not_available_on_this_device/ja';
+import { PromptApiStatus__browser_provided_model_is_ready } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_ready/ja';
+import { PromptApiStatus__browser_reported_model_unavailable } from '@/strings/messages/PromptApiStatus__browser_reported_model_unavailable/ja';
+import { PromptApiStatus__browser_returned_an_error_while_checking_availability } from '@/strings/messages/PromptApiStatus__browser_returned_an_error_while_checking_availability/ja';
+import { PromptApiStatus__browser_returned_an_error_while_preparing_model } from '@/strings/messages/PromptApiStatus__browser_returned_an_error_while_preparing_model/ja';
+import { PromptApiStatus__checking_browser_provided_language_model_availability } from '@/strings/messages/PromptApiStatus__checking_browser_provided_language_model_availability/ja';
+import { PromptApiStatus__chrome_148_or_later_desktop } from '@/strings/messages/PromptApiStatus__chrome_148_or_later_desktop/ja';
+import { PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less } from '@/strings/messages/PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less/ja';
+import { PromptApiStatus__common_reasons_include } from '@/strings/messages/PromptApiStatus__common_reasons_include/ja';
+import { PromptApiStatus__could_not_check_browser_provided_model_availability } from '@/strings/messages/PromptApiStatus__could_not_check_browser_provided_model_availability/ja';
+import { PromptApiStatus__downloading_browser_provided_model } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model/ja';
+import { PromptApiStatus__downloading_browser_provided_model_progress } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model_progress/ja';
+import { PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag } from '@/strings/messages/PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag/ja';
+import { PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini } from '@/strings/messages/PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini/ja';
+import { PromptApiStatus__if_unavailable_in_a_supported_browser } from '@/strings/messages/PromptApiStatus__if_unavailable_in_a_supported_browser/ja';
+import { PromptApiStatus__language_model_api_was_not_detected } from '@/strings/messages/PromptApiStatus__language_model_api_was_not_detected/ja';
+import { PromptApiStatus__less_than_16_gb_ram_or_fewer_than_4_cpu_cores_for_cpu_inference } from '@/strings/messages/PromptApiStatus__less_than_16_gb_ram_or_fewer_than_4_cpu_cores_for_cpu_inference/ja';
+import { PromptApiStatus__less_than_required_free_space_on_browser_profile_volume } from '@/strings/messages/PromptApiStatus__less_than_required_free_space_on_browser_profile_volume/ja';
+import { PromptApiStatus__metered_or_unavailable_network_during_initial_download } from '@/strings/messages/PromptApiStatus__metered_or_unavailable_network_during_initial_download/ja';
+import { PromptApiStatus__model_download_may_require_an_unmetered_network } from '@/strings/messages/PromptApiStatus__model_download_may_require_an_unmetered_network/ja';
+import { PromptApiStatus__model_download_may_require_more_free_space } from '@/strings/messages/PromptApiStatus__model_download_may_require_more_free_space/ja';
+import { PromptApiStatus__model_preparation_failed } from '@/strings/messages/PromptApiStatus__model_preparation_failed/ja';
+import { PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met } from '@/strings/messages/PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met/ja';
+import { PromptApiStatus__prepare_browser_provided_model } from '@/strings/messages/PromptApiStatus__prepare_browser_provided_model/ja';
+import { PromptApiStatus__preparing_browser_provided_model } from '@/strings/messages/PromptApiStatus__preparing_browser_provided_model/ja';
+import { PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy } from '@/strings/messages/PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy/ja';
+import { PromptApiStatus__required_edge_experimental_flags_are_not_enabled } from '@/strings/messages/PromptApiStatus__required_edge_experimental_flags_are_not_enabled/ja';
+import { PromptApiStatus__supported_browsers } from '@/strings/messages/PromptApiStatus__supported_browsers/ja';
+import { PromptApiStatus__supported_browsers_and_requirements } from '@/strings/messages/PromptApiStatus__supported_browsers_and_requirements/ja';
+import { PromptApiStatus__technical_details } from '@/strings/messages/PromptApiStatus__technical_details/ja';
+import { PromptApiStatus__try_again } from '@/strings/messages/PromptApiStatus__try_again/ja';
+import { PromptApiStatus__unsupported_operating_system_or_device } from '@/strings/messages/PromptApiStatus__unsupported_operating_system_or_device/ja';
+import { PromptApiStatus__unsupported_operating_system_or_device_performance_class } from '@/strings/messages/PromptApiStatus__unsupported_operating_system_or_device_performance_class/ja';
 import { ProviderProfilePreview__configuration_preview } from '@/strings/messages/ProviderProfilePreview__configuration_preview/ja';
 import { ProviderProfilePreview__endpoint_url } from '@/strings/messages/ProviderProfilePreview__endpoint_url/ja';
 import { ProviderProfilePreview__headers } from '@/strings/messages/ProviderProfilePreview__headers/ja';
@@ -1472,6 +1509,7 @@ import type { Strings } from './en';
 export const ja = {
   SHARED__all_chats,
   SHARED__assistant,
+  SHARED__browser_provided,
   SHARED__cancel,
   SHARED__choose_which_chats_are_visible_to_the_shell,
   SHARED__configure_browser_based_shell_access,
@@ -1485,6 +1523,8 @@ export const ja = {
   SHARED__mount,
   SHARED__new_chat,
   SHARED__no_models_found_at_this_endpoint,
+  SHARED__unsupported_experimental_endpoint,
+  SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
 
@@ -2270,6 +2310,40 @@ export const ja = {
   OnboardingModal__value,
   PWAManager__app_ready_to_work_offline,
   PWAUpdateNotification__reload_to_update,
+  PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser,
+  PromptApiStatus__browser_provided_model_is_not_available_on_this_device,
+  PromptApiStatus__browser_provided_model_is_ready,
+  PromptApiStatus__browser_reported_model_unavailable,
+  PromptApiStatus__browser_returned_an_error_while_checking_availability,
+  PromptApiStatus__browser_returned_an_error_while_preparing_model,
+  PromptApiStatus__checking_browser_provided_language_model_availability,
+  PromptApiStatus__chrome_148_or_later_desktop,
+  PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less,
+  PromptApiStatus__common_reasons_include,
+  PromptApiStatus__could_not_check_browser_provided_model_availability,
+  PromptApiStatus__downloading_browser_provided_model,
+  PromptApiStatus__downloading_browser_provided_model_progress,
+  PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag,
+  PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini,
+  PromptApiStatus__if_unavailable_in_a_supported_browser,
+  PromptApiStatus__language_model_api_was_not_detected,
+  PromptApiStatus__less_than_16_gb_ram_or_fewer_than_4_cpu_cores_for_cpu_inference,
+  PromptApiStatus__less_than_required_free_space_on_browser_profile_volume,
+  PromptApiStatus__metered_or_unavailable_network_during_initial_download,
+  PromptApiStatus__model_download_may_require_an_unmetered_network,
+  PromptApiStatus__model_download_may_require_more_free_space,
+  PromptApiStatus__model_preparation_failed,
+  PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met,
+  PromptApiStatus__prepare_browser_provided_model,
+  PromptApiStatus__preparing_browser_provided_model,
+  PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy,
+  PromptApiStatus__required_edge_experimental_flags_are_not_enabled,
+  PromptApiStatus__supported_browsers,
+  PromptApiStatus__supported_browsers_and_requirements,
+  PromptApiStatus__technical_details,
+  PromptApiStatus__try_again,
+  PromptApiStatus__unsupported_operating_system_or_device,
+  PromptApiStatus__unsupported_operating_system_or_device_performance_class,
   ProviderProfilePreview__configuration_preview,
   ProviderProfilePreview__endpoint_url,
   ProviderProfilePreview__headers,

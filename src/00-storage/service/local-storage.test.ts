@@ -6,6 +6,7 @@ import { STORAGE_KEY_PREFIX } from '@/constants';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 const KEY_META_PREFIX = `${STORAGE_KEY_PREFIX}lsp:chat_meta:`;
+const KEY_GROUP_PREFIX = `${STORAGE_KEY_PREFIX}lsp:chat_group:`;
 
 describe('LocalStorageProvider', () => {
   let provider: LocalStorageProvider;
@@ -111,6 +112,48 @@ describe('LocalStorageProvider', () => {
     const list = await provider.listChats();
     expect(list).toHaveLength(1);
     expect(list[0]?.id).toBe(mockChat.id);
+  });
+
+  it('should validate persisted sidebar DTOs before mapping experimental endpoints', async () => {
+    const chatId = '123e4567-e89b-12d3-a456-426614174000';
+    const groupId = '123e4567-e89b-12d3-a456-426614174001';
+    const legacyEndpoint = {
+      type: 'experimental_type',
+      experimental: { type: 'prompt_api' },
+    };
+
+    localStorage.setItem(`${KEY_META_PREFIX}${chatId}`, JSON.stringify({
+      id: chatId,
+      title: 'Legacy chat',
+      createdAt: 1,
+      updatedAt: 2,
+      debugEnabled: false,
+      endpoint: legacyEndpoint,
+    }));
+    localStorage.setItem(`${KEY_GROUP_PREFIX}${groupId}`, JSON.stringify({
+      id: groupId,
+      name: 'Legacy group',
+      updatedAt: 2,
+      isCollapsed: false,
+      endpoint: legacyEndpoint,
+    }));
+    await provider.saveHierarchy({ hierarchy: {
+      items: [
+        { type: 'chat', id: chatId },
+        { type: 'chat_group', id: groupId, chat_ids: [] },
+      ],
+    } });
+
+    const snapshot = await provider.dump();
+
+    expect(snapshot.structure.chatMetas[0]?.endpoint).toEqual({
+      type: 'unsupported_experimental_endpoint',
+      persistedType: 'prompt_api',
+    });
+    expect(snapshot.structure.chatGroups[0]?.endpoint).toEqual({
+      type: 'unsupported_experimental_endpoint',
+      persistedType: 'prompt_api',
+    });
   });
 
   it('should delete a chat', async () => {

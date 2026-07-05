@@ -919,7 +919,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         expect.objectContaining({
           title: 'Create New Profile',
           message: 'Give this configuration a name:',
-          defaultValue: 'Openai - gpt-4', // Based on mockSettings
+          defaultValue: 'OpenAI - gpt-4', // Based on mockSettings
           confirmButtonText: 'Create',
           bodyComponent: expect.anything(),
         }),

@@ -64,6 +64,7 @@ const props = defineProps<{
   visibility: 'submerged' | 'peeking' | 'active',
   aboveInputVisibility: 'visible' | 'hidden',
   isStreaming: boolean,
+  isSubmissionEnabled?: boolean,
   canGenerateImage: boolean,
   hasImageModel: boolean,
   availableImageModels: string[],
@@ -868,7 +869,11 @@ async function handleGenerateImage() {
 }
 
 async function handleSend() {
-  if ((!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
+  if (
+    props.isSubmissionEnabled === false
+    || (!input.value.trim() && attachments.value.length === 0)
+    || props.isStreaming
+  ) return;
 
   if (isImageMode.value) {
     await handleGenerateImage();
@@ -1330,7 +1335,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, processFi
 
         <button
           @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
-          :disabled="!isChatStreaming && !input.trim() && attachments.length === 0"
+          :disabled="!isChatStreaming && (isSubmissionEnabled === false || (!input.trim() && attachments.length === 0))"
           tw-class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
           :title="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
           :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"

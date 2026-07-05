@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { capitalize } from '@/utils/string';
 import type { Settings } from '@/01-models/types';
 import { isHttpEndpoint } from '@/01-models/endpoint';
 import { lazyStrings } from '@/strings';
+import { endpointTypeLabel } from './endpoint-type-label';
 
 defineProps<{
   form: Settings,
@@ -29,7 +29,7 @@ defineExpose({
       <div tw-class="flex items-center justify-between text-[11px]">
         <span tw-class="text-gray-400 font-medium">{{ lazyStrings.ProviderProfilePreview__provider_and_model() }}</span>
         <span tw-class="font-bold text-gray-500 dark:text-gray-400">
-          {{ capitalize({ value: form.endpoint.type }) }} / {{ form.defaultModelId || lazyStrings.ProviderProfilePreview__none() }}
+          {{ endpointTypeLabel({ endpointType: form.endpoint.type }) }} / {{ form.defaultModelId || lazyStrings.ProviderProfilePreview__none() }}
         </span>
       </div>
 

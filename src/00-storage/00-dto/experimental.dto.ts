@@ -59,6 +59,28 @@ export const ExperimentalToolConfigsSchemaDto = z.array(ExperimentalToolConfigSc
 export type ExperimentalToolConfigsDto = z.infer<typeof ExperimentalToolConfigsSchemaDto>;
 
 
+/**
+ * Experimental payload owned by ExperimentalTypeEndpointSchemaDto.
+ *
+ * `experimental_type` is a stable DTO-only envelope. Its concrete endpoint
+ * identity is stored in this payload and mapped to a normal domain endpoint;
+ * `experimental_type` itself must not appear in the domain model.
+ *
+ * The endpoint identifier is intentionally strongly typed to the experimental
+ * endpoint implementations understood by this version. Parsing is performed
+ * by optionalExperimentalFieldSchemaDto one field at a time, so a newer or
+ * otherwise unreadable identifier only makes this `type` field undefined and
+ * records its original value in `unreadable.type`. It does not invalidate the
+ * containing endpoint, settings object, or other readable experimental fields.
+ *
+ * Add new identifiers only after their DTO-to-domain mapper and unsupported
+ * state handling have been implemented.
+ */
+export const ExperimentalExperimentalTypeEndpointSchemaDto =
+  resolveMissingAsUndefined(z.object({
+    type: missingAsUndefined(z.literal('browser_provided_lm')),
+  }));
+
 export const ExperimentalHttpEndpointSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalTransformersJsEndpointSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalReasoningSchemaDto = EmptyExperimentalSchemaDto;
@@ -208,4 +230,5 @@ export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>(
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

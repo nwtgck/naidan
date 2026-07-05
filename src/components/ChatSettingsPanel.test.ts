@@ -8,6 +8,7 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 import type { Chat, Endpoint } from '@/01-models/types';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 // --- Mocks ---
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
@@ -57,6 +58,7 @@ describe('ChatSettingsPanel.vue', () => {
         name: string,
         endpoint: Endpoint,
         defaultModelId?: string,
+        titleModelId?: string,
       }[],
     },
   }>({
@@ -69,6 +71,7 @@ describe('ChatSettingsPanel.vue', () => {
           name: 'My Ollama',
           endpoint: { type: 'ollama', url: 'http://ollama:11434' },
           defaultModelId: 'llama3',
+          titleModelId: 'llama3-title',
         },
       ],
     },
@@ -112,6 +115,7 @@ describe('ChatSettingsPanel.vue', () => {
           name: 'My Ollama',
           endpoint: { type: 'ollama', url: 'http://ollama:11434' },
           defaultModelId: 'llama3',
+          titleModelId: 'llama3-title',
         },
       ],
     };
@@ -121,6 +125,7 @@ describe('ChatSettingsPanel.vue', () => {
       id: 'chat-1',
       endpoint: undefined,
       modelId: undefined,
+      titleModelId: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     });
@@ -269,6 +274,46 @@ describe('ChatSettingsPanel.vue', () => {
         endpoint: { type: 'transformers_js' },
       }),
     });
+  });
+
+  it('keeps the browser-provided endpoint option enabled when the API is unavailable', () => {
+    vi.stubGlobal('LanguageModel', undefined);
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+
+    const option = wrapper.get('option[value="browser_provided_lm"]');
+    expect((option.element as HTMLOptionElement).disabled).toBe(false);
+
+    wrapper.unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it('persists browser-provided model IDs with a chat endpoint override', async () => {
+    vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
+    }));
+    mockFetchAvailableModels.mockResolvedValue([BROWSER_PROVIDED_LM_MODEL_ID]);
+    mockAvailableModelsRef.value = [BROWSER_PROVIDED_LM_MODEL_ID];
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    await wrapper.get('[data-testid="chat-setting-endpoint-type-select"]').setValue('browser_provided_lm');
+    await flushPromises();
+
+    expect(mockCurrentChat.value).toMatchObject({
+      endpoint: { type: 'browser_provided_lm' },
+      modelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+    });
+    wrapper.unmount();
+    vi.unstubAllGlobals();
   });
 
   it('uses the inherited HTTP endpoint when switching from transformers_js to HTTP', async () => {
@@ -452,7 +497,12 @@ describe('ChatSettingsPanel.vue', () => {
       }) });
     });
 
-    it('triggers updateChatSettings when a preset is applied', async () => {
+    it('triggers updateChatSettings and clears browser-provided model IDs when a preset is applied', async () => {
+      Object.assign(mockCurrentChat.value, {
+        endpoint: { type: 'browser_provided_lm' },
+        modelId: BROWSER_PROVIDED_LM_MODEL_ID,
+        titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      });
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
@@ -464,6 +514,8 @@ describe('ChatSettingsPanel.vue', () => {
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+        modelId: undefined,
+        titleModelId: undefined,
       }) });
     });
 
@@ -497,9 +549,13 @@ describe('ChatSettingsPanel.vue', () => {
       await select.trigger('change');
       await nextTick();
 
-      expect(mockCurrentChat.value!.endpoint).toEqual({
-        type: 'ollama',
-        url: 'http://ollama:11434',
+      expect(mockCurrentChat.value).toMatchObject({
+        endpoint: {
+          type: 'ollama',
+          url: 'http://ollama:11434',
+        },
+        modelId: 'llama3',
+        titleModelId: 'llama3-title',
       });
 
       // Should reset selection after apply

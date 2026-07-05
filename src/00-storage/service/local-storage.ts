@@ -96,7 +96,7 @@ export class LocalStorageProvider extends IStorageProvider {
       const key = localStorage.key(i);
       if (key?.startsWith(KEY_META_PREFIX)) {
         const raw = localStorage.getItem(key);
-        if (raw) metas.push(JSON.parse(raw));
+        if (raw) metas.push(ChatMetaSchemaDto.parse(JSON.parse(raw)));
       }
     }
     return metas;
@@ -108,7 +108,7 @@ export class LocalStorageProvider extends IStorageProvider {
       const key = localStorage.key(i);
       if (key?.startsWith(KEY_GROUP_PREFIX)) {
         const raw = localStorage.getItem(key);
-        if (raw) groups.push(JSON.parse(raw));
+        if (raw) groups.push(ChatGroupSchemaDto.parse(JSON.parse(raw)));
       }
     }
     return groups;
@@ -434,4 +434,5 @@ export class LocalStorageProvider extends IStorageProvider {
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

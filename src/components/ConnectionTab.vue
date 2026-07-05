@@ -3,9 +3,9 @@ import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import type { EndpointType, ProviderProfile, Settings } from '@/01-models/types';
-import { cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
-import { capitalize, naturalSort } from '@/utils/string';
+import type { Endpoint, ProviderProfile, Settings } from '@/01-models/types';
+import { areEndpointsEqual, cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
+import { naturalSort } from '@/utils/string';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
   CheckCircle2Icon, BookmarkPlusIcon,
@@ -15,6 +15,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ModelSelector is a core part of the connection setup UI and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import { endpointTypeLabel } from './endpoint-type-label';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
@@ -30,6 +31,9 @@ import { ENDPOINT_PRESETS } from '@/constants';
 import { idToRaw } from '@/01-models/ids';
 import type { ProviderProfileId } from '@/01-models/ids';
 import { lazyStrings, ensureStrings } from '@/strings';
+import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
+import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 const props = defineProps<{
   modelValue: Settings,
@@ -59,12 +63,22 @@ const form = computed({
   set: (val) => emit('update:modelValue', val),
 });
 
-const endpointType = computed<EndpointType>({
+const endpointType = computed<Endpoint['type']>({
   get: () => form.value.endpoint.type,
   set: (type) => {
+    const clearBrowserProvidedLmModelIds = (): void => {
+      if (form.value.defaultModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
+        form.value.defaultModelId = '';
+      }
+      if (form.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
+        form.value.titleModelId = '';
+      }
+    };
+
     switch (type) {
     case 'openai':
     case 'ollama': {
+      clearBrowserProvidedLmModelIds();
       const current = form.value.endpoint;
       form.value.endpoint = {
         type,
@@ -76,7 +90,15 @@ const endpointType = computed<EndpointType>({
       return;
     }
     case 'transformers_js':
+      clearBrowserProvidedLmModelIds();
       form.value.endpoint = { type };
+      return;
+    case 'browser_provided_lm':
+      form.value.endpoint = { type };
+      form.value.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+      form.value.titleModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+      return;
+    case 'unsupported_experimental_endpoint':
       return;
     default: {
       const _ex: never = type;
@@ -113,6 +135,7 @@ const endpointHttpHeaders = computed<[string, string][] | undefined>({
 });
 
 const connectionSuccess = ref(false);
+const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 
 const error = ref<string | null>(null);
 
@@ -143,13 +166,21 @@ async function copySetupUrl(): Promise<void> {
   case 'transformers_js':
     // transformers_js doesn't use global-endpoint parameters in this implementation
     break;
+  case 'browser_provided_lm':
+  case 'unsupported_experimental_endpoint':
+    // Experimental endpoint DTOs are intentionally not encoded in setup URLs.
+    break;
   default: {
     const _ex: never = type;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
   }
   }
 
-  if (form.value.defaultModelId) {
+  if (
+    form.value.defaultModelId
+    && endpoint.type !== 'browser_provided_lm'
+    && endpoint.type !== 'unsupported_experimental_endpoint'
+  ) {
     params.set('global-model', form.value.defaultModelId);
   }
 
@@ -167,21 +198,32 @@ async function copySetupUrl(): Promise<void> {
 function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   form.value = {
     ...form.value,
-    endpoint: { type: preset.type, url: preset.url },
+    endpoint: {
+      type: preset.type,
+      url: preset.url,
+    },
+    defaultModelId:
+      form.value.defaultModelId === BROWSER_PROVIDED_LM_MODEL_ID
+        ? ''
+        : form.value.defaultModelId,
+    titleModelId:
+      form.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID
+        ? ''
+        : form.value.titleModelId,
   };
 }
 
 async function fetchModels() {
-  if (isHttpEndpoint(form.value.endpoint) && form.value.endpoint.url === '') {
+  const requestedEndpoint = cloneEndpoint({ endpoint: form.value.endpoint });
+  if (isHttpEndpoint(requestedEndpoint) && requestedEndpoint.url === '') {
     return;
   }
 
   error.value = null;
   try {
     // Trigger global fetch with current form values (may be unsaved)
-    const models = await fetchModelsGlobal({
-      overrides: cloneEndpoint({ endpoint: form.value.endpoint }),
-    });
+    const models = await fetchModelsGlobal({ overrides: requestedEndpoint });
+    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) return;
 
     if (models.length === 0 && form.value.endpoint.type !== 'transformers_js') {
       throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
@@ -190,13 +232,30 @@ async function fetchModels() {
     // Validate current selection against new models
     const updatedForm = { ...form.value };
     let changed = false;
-    if (updatedForm.defaultModelId && !models.includes(updatedForm.defaultModelId)) {
-      updatedForm.defaultModelId = '';
-      changed = true;
-    }
-    if (updatedForm.titleModelId && !models.includes(updatedForm.titleModelId)) {
-      updatedForm.titleModelId = '';
-      changed = true;
+    const shouldValidateModelSelection = (() => {
+      switch (updatedForm.endpoint.type) {
+      case 'openai':
+      case 'ollama':
+      case 'transformers_js':
+      case 'browser_provided_lm':
+        return true;
+      case 'unsupported_experimental_endpoint':
+        return false;
+      default: {
+        const _ex: never = updatedForm.endpoint;
+        throw new Error(`Unhandled endpoint: ${((_ex satisfies never) as { readonly type: string }).type}`);
+      }
+      }
+    })();
+    if (shouldValidateModelSelection) {
+      if (updatedForm.defaultModelId && !models.includes(updatedForm.defaultModelId)) {
+        updatedForm.defaultModelId = '';
+        changed = true;
+      }
+      if (updatedForm.titleModelId && !models.includes(updatedForm.titleModelId)) {
+        updatedForm.titleModelId = '';
+        changed = true;
+      }
     }
     if (changed) {
       form.value = updatedForm;
@@ -208,6 +267,7 @@ async function fetchModels() {
       connectionSuccess.value = false;
     }, 3000);
   } catch (err) {
+    if (!areEndpointsEqual({ left: requestedEndpoint, right: form.value.endpoint })) return;
     console.error(err);
     error.value = err instanceof Error ? err.message : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
     connectionSuccess.value = false;
@@ -247,7 +307,7 @@ async function handleCreateProviderProfile() {
   const name = await showPrompt({
     title: await ensureStrings.ConnectionTab__create_new_profile(),
     message: await ensureStrings.ConnectionTab__give_configuration_a_name(),
-    defaultValue: `${capitalize({ value: form.value.endpoint.type })} - ${form.value.defaultModelId || await ensureStrings.ConnectionTab__default()}`,
+    defaultValue: `${endpointTypeLabel({ endpointType: form.value.endpoint.type })} - ${form.value.defaultModelId || await ensureStrings.ConnectionTab__default()}`,
     confirmButtonText: await ensureStrings.ConnectionTab__create(),
     bodyComponent: h(ProviderProfilePreview, { form: form.value }),
   });
@@ -305,7 +365,11 @@ function removeHeader({ index }: { index: number }) {
 
 // Auto-fetch for localhost or transformers_js
 watch([endpointUrl, endpointType], ([url, type]) => {
-  if (type === 'transformers_js' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
+  if (
+    type === 'transformers_js'
+    || type === 'browser_provided_lm'
+    || (url && (url.includes('localhost') || url.includes('127.0.0.1')))
+  ) {
     fetchModels();
   }
 });
@@ -338,7 +402,7 @@ defineExpose({
                 data-testid="setting-quick-provider-profile-select"
               >
                 <option value="" disabled>{{ lazyStrings.ConnectionTab__load_saved_profile() }}</option>
-                <option v-for="p in form.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ capitalize({ value: p.endpoint.type }) }})</option>
+                <option v-for="p in form.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpoint.type }) }})</option>
               </select>
             </div>
           </div>
@@ -375,11 +439,20 @@ defineExpose({
                   <option :disabled="isStandalone" value="transformers_js">
                     {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ isStandalone ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
                   </option>
+                  <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">
+                    {{ lazyStrings.SHARED__browser_provided() }}
+                  </option>
+                  <option
+                    v-if="endpointType === 'unsupported_experimental_endpoint'"
+                    value="unsupported_experimental_endpoint"
+                    disabled
+                  >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                 </select>
+                <PromptApiStatus v-if="endpointType === 'browser_provided_lm'" show-ready tw-class="mt-3" />
               </div>
 
               <!-- Endpoint URL -->
-              <div tw-class="space-y-4" v-if="endpointType !== 'transformers_js'">
+              <div tw-class="space-y-4" v-if="isHttpEndpoint(form.endpoint)">
                 <div tw-class="flex items-center justify-between ml-1">
                   <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
                   <div tw-class="flex flex-wrap gap-1.5">
@@ -507,9 +580,11 @@ defineExpose({
               <div tw-class="space-y-2">
                 <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__default_model() }}</label>
                 <ModelSelector
-                  v-model="form.defaultModelId"
+                  :model-value="form.defaultModelId"
+                  @update:model-value="value => { form.defaultModelId = value; }"
                   :models="sortedModels"
                   :loading="isFetchingModels"
+                  :disabled="endpointType === 'browser_provided_lm'"
                   :placeholder="lazyStrings.ConnectionTab__none()"
                   allow-clear
                   :clear-label="lazyStrings.ConnectionTab__none()"
@@ -542,10 +617,11 @@ defineExpose({
                 <div :tw-class="['space-y-2 opacity-50 transition-all duration-300', { 'opacity-100': form.autoTitleEnabled }]">
                   <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_generation_model() }}</label>
                   <ModelSelector
-                    v-model="form.titleModelId"
+                    :model-value="form.titleModelId"
+                    @update:model-value="value => { form.titleModelId = value; }"
                     :models="sortedModels"
                     :loading="isFetchingModels"
-                    :disabled="!form.autoTitleEnabled"
+                    :disabled="!form.autoTitleEnabled || endpointType === 'browser_provided_lm'"
                     :placeholder="lazyStrings.ConnectionTab__use_current_chat_model()"
                     allow-clear
                     :clear-label="lazyStrings.ConnectionTab__use_current_chat_model()"
@@ -578,9 +654,12 @@ defineExpose({
               </div>
 
               <!-- LM Parameters -->
-              <div tw-class="bg-gray-50/30 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800">
+              <fieldset
+                :disabled="endpointType === 'browser_provided_lm'"
+                :tw-class="['bg-gray-50/30 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800', { 'opacity-50': endpointType === 'browser_provided_lm' }]"
+              >
                 <LmParametersEditor v-model="form.lmParameters" />
-              </div>
+              </fieldset>
             </div>
           </section>
         </div>

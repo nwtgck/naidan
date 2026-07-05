@@ -1,5 +1,6 @@
+import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import { ensureStrings } from '@/strings';
-import type { ChatGroup, SidebarItem } from '@/01-models/types';
+import type { ChatGroup, Endpoint, LmParameters, SidebarItem } from '@/01-models/types';
 import {
   buildCompactRequestMessages,
   createCompactBranchFromResponse,
@@ -51,6 +52,38 @@ export type CompactCurrentBranchResult =
   | {
       status: 'aborted',
     };
+
+function resolveCompactModelId({
+  chatModelId,
+  resolvedModelId,
+}: {
+  chatModelId: string | undefined,
+  resolvedModelId: string,
+}): string | undefined {
+  return chatModelId || resolvedModelId;
+}
+
+function resolveCompactLmParameters({
+  endpoint,
+  parameters,
+}: {
+  endpoint: Endpoint,
+  parameters: LmParameters | undefined,
+}): LmParameters | undefined {
+  switch (endpoint.type) {
+  case 'browser_provided_lm':
+  case 'unsupported_experimental_endpoint':
+    return undefined;
+  case 'openai':
+  case 'ollama':
+  case 'transformers_js':
+    return parameters;
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${((_ex satisfies never) as { readonly type: string }).type}`);
+  }
+  }
+}
 
 export async function runCompactCurrentBranchForChat({
   chatId,
@@ -114,10 +147,14 @@ export async function runCompactCurrentBranchForChat({
       groups: collectChatGroups({ items: rootItems.value }),
       globalSettings: settings.value,
     });
-    const resolvedModel = mutableChat.modelId || resolved.modelId;
+    const resolvedModel = resolveCompactModelId({
+      chatModelId: mutableChat.modelId,
+      resolvedModelId: resolved.modelId,
+    });
 
-    const hasReachableEndpoint = resolved.endpoint.type === 'transformers_js'
-      || resolved.endpoint.url !== '';
+    const hasReachableEndpoint = isConfiguredEndpoint({
+      endpoint: resolved.endpoint,
+    });
     if (!resolvedModel || !hasReachableEndpoint) {
       const message = await ensureStrings.contextCompact__requires_a_configured_model_and_endpoint();
       addErrorEvent({
@@ -191,7 +228,10 @@ export async function runCompactCurrentBranchForChat({
           },
         });
       },
-      parameters: resolved.lmParameters,
+      parameters: resolveCompactLmParameters({
+        endpoint: resolved.endpoint,
+        parameters: resolved.lmParameters,
+      }),
       signal: controller.signal,
     });
 
@@ -353,4 +393,5 @@ function collectChatGroups({
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};
