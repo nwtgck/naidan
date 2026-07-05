@@ -466,6 +466,26 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
+  case 'experimental_type': {
+    const experimentalType = dto.experimental?.type;
+    switch (experimentalType) {
+    case 'browser_provided_lm':
+      return { type: 'browser_provided_lm' };
+    case undefined: {
+      const unreadableType = dto.experimental?.unreadable?.type;
+      return {
+        type: 'unsupported_experimental_endpoint',
+        persistedType: typeof unreadableType === 'string'
+          ? unreadableType
+          : undefined,
+      };
+    }
+    default: {
+      const _ex: never = experimentalType;
+      throw new Error(`Unhandled experimental endpoint type: ${String(_ex)}`);
+    }
+    }
+  }
   default: {
     const _ex: never = dto;
     throw new Error(`Unhandled endpoint DTO: ${String(_ex)}`);
@@ -484,6 +504,16 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
+  case 'browser_provided_lm':
+    return {
+      type: 'experimental_type',
+      experimental: { type: 'browser_provided_lm' },
+    };
+  case 'unsupported_experimental_endpoint':
+    return {
+      type: 'experimental_type',
+      experimental: undefined,
+    };
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);

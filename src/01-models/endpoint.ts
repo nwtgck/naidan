@@ -1,4 +1,4 @@
-import type { Endpoint, HttpEndpoint } from '@/01-models/types';
+import type { Endpoint, EndpointType, HttpEndpoint, SupportedEndpoint } from '@/01-models/types';
 
 export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
   switch (endpoint.type) {
@@ -6,6 +6,49 @@ export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
   case 'ollama':
     return true;
   case 'transformers_js':
+  case 'browser_provided_lm':
+  case 'unsupported_experimental_endpoint':
+    return false;
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+  }
+  }
+}
+
+export function isSupportedEndpoint(endpoint: Endpoint): endpoint is SupportedEndpoint {
+  switch (endpoint.type) {
+  case 'openai':
+  case 'ollama':
+  case 'transformers_js':
+  case 'browser_provided_lm':
+    return true;
+  case 'unsupported_experimental_endpoint':
+    return false;
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+  }
+  }
+}
+
+export function getSupportedEndpointType({
+  endpoint,
+}: {
+  endpoint: Endpoint,
+}): EndpointType | undefined {
+  return isSupportedEndpoint(endpoint) ? endpoint.type : undefined;
+}
+
+export function isConfiguredEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
+  switch (endpoint.type) {
+  case 'openai':
+  case 'ollama':
+    return endpoint.url !== '';
+  case 'transformers_js':
+  case 'browser_provided_lm':
+    return true;
+  case 'unsupported_experimental_endpoint':
     return false;
   default: {
     const _ex: never = endpoint;
@@ -37,6 +80,13 @@ export function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
     };
   case 'transformers_js':
     return { type: 'transformers_js' };
+  case 'browser_provided_lm':
+    return { type: 'browser_provided_lm' };
+  case 'unsupported_experimental_endpoint':
+    return {
+      type: 'unsupported_experimental_endpoint',
+      persistedType: endpoint.persistedType,
+    };
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
@@ -84,6 +134,13 @@ export function areEndpointsEqual({
   }
   case 'transformers_js':
     return right.type === 'transformers_js';
+  case 'browser_provided_lm':
+    return right.type === 'browser_provided_lm';
+  case 'unsupported_experimental_endpoint':
+    return (
+      right.type === 'unsupported_experimental_endpoint'
+      && left.persistedType === right.persistedType
+    );
   default: {
     const _ex: never = left;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);

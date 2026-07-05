@@ -2,7 +2,7 @@ import { toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
 import type { ChatGroup, Endpoint } from '@/01-models/types';
 import type { LmProvider } from '@/01-models/lm';
-import { isHttpEndpoint } from '@/01-models/endpoint';
+import { areEndpointsEqual, isHttpEndpoint, isSupportedEndpoint } from '@/01-models/endpoint';
 import { loadLmProvider } from '@/features/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
@@ -44,12 +44,27 @@ export async function fetchModelsForChat({
       endpoint,
       errorSource,
     });
+    const currentEndpoint = resolveChatEndpointForChat({
+      chat: mutableChat,
+      chatGroups: collectChatGroups({ items: rootItems.value }),
+      settings: settings.value,
+    });
+    const endpointIsCurrent = areEndpointsEqual({ left: endpoint, right: currentEndpoint });
 
-    if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === mutableChat.id) {
+    if (
+      endpointIsCurrent
+      && currentChatRef.value !== null
+      && toRaw(currentChatRef.value).id === mutableChat.id
+    ) {
       availableModels.value = models;
     }
 
-    if (mutableChat.modelId && !models.includes(mutableChat.modelId)) {
+    if (
+      endpointIsCurrent
+      && isSupportedEndpoint(endpoint)
+      && mutableChat.modelId
+      && !models.includes(mutableChat.modelId)
+    ) {
       mutableChat.modelId = '';
       mutableChat.updatedAt = Date.now();
       triggerCurrentChat({ chatId: mutableChat.id });
@@ -76,7 +91,12 @@ export async function fetchModelsForGlobalEndpoint({
       endpoint,
       errorSource,
     });
-    availableModels.value = models;
+    const currentEndpoint = resolveGlobalEndpoint({
+      settings: settings.value,
+    });
+    if (areEndpointsEqual({ left: endpoint, right: currentEndpoint })) {
+      availableModels.value = models;
+    }
     return models;
   } finally {
     chatRuntimeStore.finishTask({ key: { kind: 'fetch', chatId: undefined } });
@@ -90,6 +110,7 @@ export async function fetchModelsForEndpoint({
   endpoint: Endpoint,
   errorSource: string,
 }): Promise<string[]> {
+  if (!isSupportedEndpoint(endpoint)) return [];
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     return [];
   }

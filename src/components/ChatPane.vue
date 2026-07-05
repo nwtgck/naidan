@@ -46,6 +46,8 @@ import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
 import TransformersJsLoadingIndicator from '@/features/transformers-js/components/TransformersJsLoadingIndicator.vue';
+import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
+import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 // Lazily load the outline overlay, prefetch on mounted.
@@ -53,6 +55,7 @@ const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/01-models/types';
+import { getSupportedEndpointType, isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import { idToRaw, toMessageId } from '@/01-models/ids';
 import type { ChatGroupId, MessageId } from '@/01-models/ids';
@@ -725,6 +728,8 @@ const canGenerateImage = computed(() => {
       return true;
     case 'openai':
     case 'transformers_js':
+    case 'browser_provided_lm':
+    case 'unsupported_experimental_endpoint':
       return false;
     default: {
       const _ex: never = type;
@@ -737,6 +742,31 @@ const canGenerateImage = computed(() => {
   return availableImageModels.value.length > 0;
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
+
+const resolvedEndpointType = computed(() => {
+  const endpoint = resolvedSettings.value?.endpoint;
+  return endpoint === undefined ? undefined : getSupportedEndpointType({ endpoint });
+});
+
+const isChatSubmissionEnabled = computed(() => {
+  const endpoint = resolvedSettings.value?.endpoint;
+  if (endpoint === undefined || !isConfiguredEndpoint({ endpoint })) return false;
+
+  switch (endpoint.type) {
+  case 'openai':
+  case 'ollama':
+  case 'transformers_js':
+    return true;
+  case 'browser_provided_lm':
+    return promptApiRuntimeState.value.status === 'ready';
+  case 'unsupported_experimental_endpoint':
+    return false;
+  default: {
+    const _ex: never = endpoint;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+  }
+  }
+});
 
 const enabledToolNames = computed(() => {
   const chatValue = chat.value;
@@ -776,7 +806,7 @@ const shouldPrepareWeshMountRuntime = computed(() => {
 // idle time to reduce the latency of the first related action.
 watch(
   () => ({
-    endpointType: resolvedSettings.value?.endpoint.type,
+    endpointType: resolvedEndpointType.value,
     enabledToolNames: enabledToolNames.value,
     canGenerateImage: canGenerateImage.value,
     shouldPrepareWeshMountRuntime: shouldPrepareWeshMountRuntime.value,
@@ -1411,7 +1441,7 @@ watch(
                       :is-processing="isChatStreaming"
                       :is-generating="isChatStreaming && subItem.node.id === chat?.currentLeafId"
                       :available-image-models="availableImageModels"
-                      :endpoint-type="resolvedSettings?.endpoint.type"
+                      :endpoint-type="resolvedEndpointType"
                       :flow="subItem.flow"
                       :mode="subItem.mode"
                       :part-content="subItem.partContent"
@@ -1445,7 +1475,7 @@ watch(
                 :is-processing="isChatStreaming"
                 :is-generating="isChatStreaming && flowItem.node.id === chat?.currentLeafId"
                 :available-image-models="availableImageModels"
-                :endpoint-type="resolvedSettings?.endpoint.type"
+                :endpoint-type="resolvedEndpointType"
                 :flow="flowItem.flow"
                 :mode="flowItem.mode"
                 :part-content="flowItem.partContent"
@@ -1517,6 +1547,10 @@ watch(
       @close="setMediaShelfVisibility({ visibility: 'hidden' })"
       @jump-to-message="(id) => jumpToMessage({ messageId: id })"
     />
+    <PromptApiStatus
+      v-if="resolvedSettings?.endpoint.type === 'browser_provided_lm'"
+      tw-class="mx-4 mb-2"
+    />
     <ChatInput
       v-if="chat"
       ref="chatInputRef"
@@ -1530,6 +1564,7 @@ watch(
       v-model:is-animating-height="isAnimatingHeight"
       :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
+      :is-submission-enabled="isChatSubmissionEnabled"
       :can-generate-image="canGenerateImage"
       :has-image-model="hasImageModel"
       :available-image-models="availableImageModels"

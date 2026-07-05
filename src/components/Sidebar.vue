@@ -5,6 +5,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
 import { useSettings } from '@/composables/useSettings';
+import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
 import Logo from './Logo.vue';
@@ -1288,7 +1289,7 @@ defineExpose({
     <!-- Footer -->
     <div :tw-class="['border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20', isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]']">
       <!-- Global Model Selector -->
-      <div v-if="isSidebarOpen && (settings.endpoint.type === 'transformers_js' || settings.endpoint.url !== '')" class="animate-in fade-in" tw-class="px-1 space-y-2 duration-300">
+      <div v-if="isSidebarOpen && (isConfiguredEndpoint({ endpoint: settings.endpoint }))" class="animate-in fade-in" tw-class="px-1 space-y-2 duration-300">
         <div tw-class="flex items-center justify-between px-1">
           <label tw-class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
             <BotIcon tw-class="w-3 h-3" />
@@ -1299,6 +1300,7 @@ defineExpose({
           :model-value="settings.defaultModelId || ''"
           :models="sortedModels"
           :loading="isFetchingModels"
+          :disabled="settings.endpoint.type === 'browser_provided_lm'"
           @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
           :placeholder="lazyStrings.Sidebar__select_default_model()"
         />

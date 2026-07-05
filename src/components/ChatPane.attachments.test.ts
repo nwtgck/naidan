@@ -17,7 +17,7 @@ const mockCurrentChat = ref({
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>({
-  endpoint: { type: 'openai', url: '' },
+  endpoint: { type: 'openai', url: 'http://localhost:1234' },
   modelId: 'm1',
   sources: { modelId: 'global' },
 });

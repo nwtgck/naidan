@@ -68,8 +68,18 @@ export type TransformersJsEndpoint = {
   type: 'transformers_js',
 };
 
-export type Endpoint = HttpEndpoint | TransformersJsEndpoint;
-export type EndpointType = Endpoint['type'];
+export type BrowserProvidedLmEndpoint = {
+  type: 'browser_provided_lm',
+};
+
+export type UnsupportedExperimentalEndpoint = {
+  type: 'unsupported_experimental_endpoint',
+  persistedType: string | undefined,
+};
+
+export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint;
+export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
+export type EndpointType = SupportedEndpoint['type'];
 
 export type MultimodalContent =
   | { type: 'text', text: string }

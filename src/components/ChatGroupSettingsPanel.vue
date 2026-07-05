@@ -30,6 +30,7 @@ import type {
 } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
+  areEndpointsEqual,
   areOptionalEndpointsEqual,
   cloneEndpoint,
   cloneOptionalEndpoint,
@@ -59,6 +60,10 @@ import {
   createSystemPromptSettingChange,
 } from '@/logic/scoped-setting-changes';
 import type { WeshMount } from '@/features/wesh/types';
+import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
+import { endpointTypeLabel } from './endpoint-type-label';
+import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
+import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/recipes/components/RecipeExportModal.vue') });
@@ -215,27 +220,13 @@ const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
   openai: true,
   ollama: true,
   transformers_js: true,
+  browser_provided_lm: true,
 };
 
 function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType | undefined {
   if (value === 'global') return undefined;
   if (Object.hasOwn(endpointTypeSelectValueRecord, value)) return value as EndpointType;
   throw new Error(`Unhandled endpoint type value: ${value}`);
-}
-
-function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string | undefined {
-  switch (endpointType) {
-  case 'openai':
-    return 'OpenAI';
-  case 'ollama':
-    return lazyStrings.ChatGroupSettingsPanel__ollama();
-  case 'transformers_js':
-    return lazyStrings.ChatGroupSettingsPanel__transformers_js();
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
-  }
-  }
 }
 
 function globalEndpointTypeLabel(): string | undefined {
@@ -344,6 +335,7 @@ let nextSaveRevision = 0;
 
 const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? settings.value.endpoint);
 const effectiveEndpointType = computed(() => effectiveEndpoint.value.type);
+const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 
 const localEndpointUrl = computed({
   get: () => {
@@ -637,7 +629,7 @@ onMounted(() => {
     const endpoint = effectiveEndpoint.value;
     const url = isHttpEndpoint(endpoint) ? endpoint.url : undefined;
     const type = endpoint.type;
-    if (type === 'transformers_js' || isLocalhost({ url })) void fetchModels();
+    if (type === 'transformers_js' || type === 'browser_provided_lm' || isLocalhost({ url })) void fetchModels();
   }
   setActiveFocusArea({ area: 'chat-settings' });
 });
@@ -684,6 +676,15 @@ function isLocalhost({ url }: { url: string | undefined }) {
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
+function clearBrowserProvidedLmModelOverrides(): void {
+  if (localSettings.value.modelId === BROWSER_PROVIDED_LM_MODEL_ID) {
+    localSettings.value.modelId = undefined;
+  }
+  if (localSettings.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
+    localSettings.value.titleModelId = undefined;
+  }
+}
+
 async function updateEndpointType({
   endpointType,
 }: {
@@ -692,9 +693,16 @@ async function updateEndpointType({
   switch (endpointType) {
   case undefined:
     localSettings.value.endpoint = undefined;
+    clearBrowserProvidedLmModelOverrides();
     break;
   case 'transformers_js':
     localSettings.value.endpoint = { type: endpointType };
+    clearBrowserProvidedLmModelOverrides();
+    break;
+  case 'browser_provided_lm':
+    localSettings.value.endpoint = { type: endpointType };
+    localSettings.value.modelId = BROWSER_PROVIDED_LM_MODEL_ID;
+    localSettings.value.titleModelId = BROWSER_PROVIDED_LM_MODEL_ID;
     break;
   case 'openai':
   case 'ollama': {
@@ -707,6 +715,7 @@ async function updateEndpointType({
       url: seed?.url ?? '',
       httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
     };
+    clearBrowserProvidedLmModelOverrides();
     break;
   }
   default: {
@@ -720,6 +729,7 @@ async function updateEndpointType({
 
 async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   localSettings.value.endpoint = { type: preset.type, url: preset.url };
+  clearBrowserProvidedLmModelOverrides();
   error.value = null;
   await saveChangesFromUi();
 }
@@ -729,6 +739,7 @@ async function handleQuickProviderProfileChange() {
   if (providerProfile) {
     localSettings.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     localSettings.value.modelId = providerProfile.defaultModelId;
+    localSettings.value.titleModelId = providerProfile.titleModelId;
     localSettings.value.systemPrompt = providerProfile.systemPrompt
       ? { content: providerProfile.systemPrompt, behavior: 'override' }
       : undefined;
@@ -757,22 +768,33 @@ async function removeHeader({ index }: { index: number }) {
 }
 
 async function fetchModels() {
-  if (!currentChatGroup.value) return;
+  const chatGroupId = currentChatGroup.value?.id;
+  if (!chatGroupId) return;
   error.value = null;
-  const endpoint = effectiveEndpoint.value;
+  const endpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
   if (isHttpEndpoint(endpoint) && endpoint.url === '') {
     groupModels.value = [];
     return;
   }
 
   try {
-    const models = await chatModels.fetchForEndpoint({
-      endpoint: cloneEndpoint({ endpoint }),
-    });
+    const models = await chatModels.fetchForEndpoint({ endpoint });
+    if (
+      currentChatGroup.value?.id !== chatGroupId
+      || !areEndpointsEqual({ left: endpoint, right: effectiveEndpoint.value })
+    ) return;
     groupModels.value = models;
     if (models.length === 0) error.value = await ensureStrings.SHARED__no_models_found_at_this_endpoint();
+    let changed = false;
     if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
       localSettings.value.modelId = undefined;
+      changed = true;
+    }
+    if (localSettings.value.titleModelId && !models.includes(localSettings.value.titleModelId)) {
+      localSettings.value.titleModelId = undefined;
+      changed = true;
+    }
+    if (changed) {
       await saveChangesFromUi();
     }
   } catch (caught) {
@@ -784,7 +806,7 @@ async function fetchModels() {
 
 watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || (url && isLocalhost({ url }))) void fetchModels();
+  if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchModels();
 });
 
 async function updateSystemPromptBehavior({
@@ -997,10 +1019,18 @@ defineExpose({
               <option value="openai">{{ lazyStrings.ChatGroupSettingsPanel__openai_compatible() }}</option>
               <option value="ollama">{{ lazyStrings.ChatGroupSettingsPanel__ollama() }}</option>
               <option value="transformers_js">{{ lazyStrings.ChatGroupSettingsPanel__transformers_js_experimental() }}</option>
+              <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
+              <option
+                v-if="localSettings.endpoint?.type === 'unsupported_experimental_endpoint'"
+                value="unsupported_experimental_endpoint"
+                disabled
+              >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
             </select>
           </div>
 
-          <div tw-class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
+          <PromptApiStatus v-if="effectiveEndpointType === 'browser_provided_lm'" show-ready />
+
+          <div tw-class="space-y-2" v-if="isHttpEndpoint(effectiveEndpoint)">
             <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatGroupSettingsPanel__endpoint_url() }}</label>
             <input
               v-if="localSettings.endpoint"
@@ -1017,7 +1047,7 @@ defineExpose({
             </div>
           </div>
 
-          <div tw-class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
+          <div tw-class="space-y-2" v-if="isHttpEndpoint(effectiveEndpoint)">
             <div tw-class="flex items-center justify-between ml-1">
               <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatGroupSettingsPanel__custom_http_headers() }}</label>
               <button
@@ -1080,6 +1110,7 @@ defineExpose({
                 @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
                 :loading="isFetchingModels"
                 :models="sortedGroupModels"
+                :disabled="effectiveEndpointType === 'browser_provided_lm'"
                 :placeholder="globalModelLabel({ modelId: settings.defaultModelId })"
                 :allow-clear="true"
                 @refresh="fetchModels"
@@ -1087,7 +1118,10 @@ defineExpose({
               />
             </div>
 
-            <div tw-class="p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl">
+            <fieldset
+              :disabled="effectiveEndpointType === 'browser_provided_lm'"
+              :tw-class="['p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl', { 'opacity-50': effectiveEndpointType === 'browser_provided_lm' }]"
+            >
               <ReasoningSettings
                 :selected-effort="localSettings.lmParameters?.reasoning?.effort"
                 @update:effort="effort => {
@@ -1096,7 +1130,7 @@ defineExpose({
                   saveChangesFromUi();
                 }"
               />
-            </div>
+            </fieldset>
             <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
           </div>
         </div>
@@ -1145,6 +1179,7 @@ defineExpose({
                 :loading="isFetchingModels"
                 :placeholder="globalModelLabel({ modelId: settings.titleModelId })"
                 :allow-clear="true"
+                :disabled="effectiveEndpointType === 'browser_provided_lm'"
                 @refresh="fetchModels"
                 data-testid="group-setting-title-model-select"
               />

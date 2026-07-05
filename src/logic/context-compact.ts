@@ -226,6 +226,10 @@ export async function createProviderForCompact({
     });
   case 'transformers_js':
     return new (await import('@/features/transformers-js/provider')).TransformersJsProvider();
+  case 'browser_provided_lm':
+    return new (await import('@/features/prompt-api/provider')).PromptApiProvider();
+  case 'unsupported_experimental_endpoint':
+    throw new Error(`Unsupported experimental endpoint: ${String(endpoint.persistedType)}`);
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unsupported endpoint type: ${_ex}`);

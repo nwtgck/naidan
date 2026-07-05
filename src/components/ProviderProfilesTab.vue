@@ -9,8 +9,8 @@ import { isHttpEndpoint } from '@/01-models/endpoint';
 import {
   BookmarkPlusIcon, PencilIcon, TrashIcon, CheckIcon,
 } from 'lucide-vue-next';
-import { capitalize } from '@/utils/string';
 import { lazyStrings, ensureStrings } from '@/strings';
+import { endpointTypeLabel } from './endpoint-type-label';
 
 const props = defineProps<{
   profiles: ProviderProfile[],
@@ -127,7 +127,7 @@ defineExpose({
             </div>
             <div v-else tw-class="flex items-center gap-4">
               <h3 tw-class="text-base font-bold text-gray-800 dark:text-white truncate">{{ providerProfile.name }}</h3>
-              <span tw-class="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-900/30" data-testid="provider-type-badge">{{ capitalize({ value: providerProfile.endpoint.type }) }}</span>
+              <span tw-class="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-900/30" data-testid="provider-type-badge">{{ endpointTypeLabel({ endpointType: providerProfile.endpoint.type }) }}</span>
             </div>
             <div tw-class="text-xs font-medium text-gray-400 mt-1.5 truncate">{{ isHttpEndpoint(providerProfile.endpoint) ? providerProfile.endpoint.url : '' }}</div>
             <div tw-class="text-[11px] font-bold text-gray-500 mt-2 flex items-center gap-3">

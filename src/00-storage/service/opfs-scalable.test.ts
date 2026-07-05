@@ -156,6 +156,59 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     expect(loaded?.root.items[0]?.content).toBe('Hello');
   });
 
+  it('should validate persisted sidebar DTOs before mapping experimental endpoints', async () => {
+    const chatId = '123e4567-e89b-12d3-a456-426614174000';
+    const groupId = '123e4567-e89b-12d3-a456-426614174001';
+    const legacyEndpoint = {
+      type: 'experimental_type',
+      experimental: { type: 'prompt_api' },
+    };
+    const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
+    const metaDir = await storageDir.getDirectoryHandle('chat-metas', { create: true });
+    const groupDir = await storageDir.getDirectoryHandle('chat-groups', { create: true });
+    const metaFile = await metaDir.getFileHandle(`${chatId}.json`, { create: true });
+    const groupFile = await groupDir.getFileHandle(`${groupId}.json`, { create: true });
+
+    const metaWriter = await metaFile.createWritable();
+    await metaWriter.write(JSON.stringify({
+      id: chatId,
+      title: 'Legacy chat',
+      createdAt: 1,
+      updatedAt: 2,
+      debugEnabled: false,
+      endpoint: legacyEndpoint,
+    }));
+    await metaWriter.close();
+
+    const groupWriter = await groupFile.createWritable();
+    await groupWriter.write(JSON.stringify({
+      id: groupId,
+      name: 'Legacy group',
+      updatedAt: 2,
+      isCollapsed: false,
+      endpoint: legacyEndpoint,
+    }));
+    await groupWriter.close();
+
+    await provider.saveHierarchy({ hierarchy: {
+      items: [
+        { type: 'chat', id: chatId },
+        { type: 'chat_group', id: groupId, chat_ids: [] },
+      ],
+    } });
+
+    const snapshot = await provider.dump();
+
+    expect(snapshot.structure.chatMetas[0]?.endpoint).toEqual({
+      type: 'unsupported_experimental_endpoint',
+      persistedType: 'prompt_api',
+    });
+    expect(snapshot.structure.chatGroups[0]?.endpoint).toEqual({
+      type: 'unsupported_experimental_endpoint',
+      persistedType: 'prompt_api',
+    });
+  });
+
   it('should delete both meta entry and content file', async () => {
     const chatId = generateId<ChatId>();
     const mockChat: Chat = {

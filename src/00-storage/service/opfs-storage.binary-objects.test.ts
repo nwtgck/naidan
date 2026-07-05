@@ -148,6 +148,27 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     const resultAfterMarker = await provider.getFile({ binaryObjectId: toBinaryObjectId({ raw: id }) });
     expect(resultAfterMarker).not.toBeNull();
     expect(await resultAfterMarker!.text()).toBe('DATA');
+    expect(resultAfterMarker!.type).toBe('text/plain');
+  });
+
+  it('should restore the indexed MIME type when loading a binary object', async () => {
+    await provider.init();
+    const id = '550e8400-e29b-41d4-a716-4466554400c3';
+
+    await provider.saveFile({
+      blob: new Blob(['PNG'], { type: 'application/octet-stream' }),
+      binaryObjectId: toBinaryObjectId({ raw: id }),
+      name: 'image.png',
+      mimeType: 'image/png',
+    });
+
+    const result = await provider.getFile({
+      binaryObjectId: toBinaryObjectId({ raw: id }),
+    });
+
+    expect(result).not.toBeNull();
+    expect(await result!.text()).toBe('PNG');
+    expect(result!.type).toBe('image/png');
   });
 
   it('should correctly hydrate multiple attachments in a message tree', async () => {

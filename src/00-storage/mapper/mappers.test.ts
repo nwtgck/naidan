@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto, settingsToDomain, settingsToDto } from './mappers';
 import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode, Settings } from '@/01-models/types';
-import type { MessageNodeDto, SettingsDto } from '@/00-storage/00-dto/dto';
+import { SettingsSchemaDto, type MessageNodeDto, type SettingsDto } from '@/00-storage/00-dto/dto';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
 
 describe('MessageNode Mapping (Discriminated Union)', () => {
@@ -208,6 +208,122 @@ describe('Settings Mapping', () => {
     expect(domain.experimental?.fakeLm).toBe('disabled');
     expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
     expect(domain.experimental?.locale).toBeUndefined();
+  });
+
+  it('keeps settings readable when only an experimental endpoint identifier is unsupported', () => {
+    const dto = {
+      endpoint: {
+        type: 'experimental_type',
+        experimental: {
+          type: 'future_browser_ai',
+          futureMode: 'local_only',
+        },
+      },
+      defaultModelId: 'future-model',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: false,
+      systemPrompt: 'Keep the rest of settings readable.',
+      lmParameters: undefined,
+      experimental: undefined,
+    };
+
+    const parsed = SettingsSchemaDto.parse(dto);
+    const domain = settingsToDomain({ dto: parsed });
+
+    expect(domain.endpoint).toEqual({
+      type: 'unsupported_experimental_endpoint',
+      persistedType: 'future_browser_ai',
+    });
+    expect(domain.defaultModelId).toBe('future-model');
+    expect(domain.systemPrompt).toBe('Keep the rest of settings readable.');
+    expect(domain.storageType).toBe('local');
+  });
+
+  it('keeps a non-string experimental endpoint identifier local to that endpoint', () => {
+    const dto = {
+      endpoint: {
+        type: 'experimental_type',
+        experimental: {
+          type: 42,
+          futureMode: 'local_only',
+        },
+      },
+      defaultModelId: 'future-model',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: false,
+      systemPrompt: 'Keep the rest of settings readable.',
+      lmParameters: undefined,
+      experimental: undefined,
+    };
+
+    const parsed = SettingsSchemaDto.parse(dto);
+    const domain = settingsToDomain({ dto: parsed });
+
+    expect(domain.endpoint).toEqual({
+      type: 'unsupported_experimental_endpoint',
+      persistedType: undefined,
+    });
+    expect(domain.defaultModelId).toBe('future-model');
+    expect(domain.systemPrompt).toBe('Keep the rest of settings readable.');
+  });
+
+  it('maps the browser-provided LM domain endpoint through the experimental DTO envelope', () => {
+    const domain: Settings = {
+      endpoint: { type: 'browser_provided_lm' },
+      defaultModelId: 'browser-provided-language-model',
+      titleModelId: 'browser-provided-language-model',
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+    };
+
+    const dto = settingsToDto({ domain });
+    expect(dto.endpoint).toEqual({
+      type: 'experimental_type',
+      experimental: { type: 'browser_provided_lm' },
+    });
+    const remapped = settingsToDomain({ dto });
+    expect(remapped.endpoint).toEqual(domain.endpoint);
+    expect(remapped.defaultModelId).toBe(domain.defaultModelId);
+    expect(remapped.titleModelId).toBe(domain.titleModelId);
+    expect(remapped.storageType).toBe(domain.storageType);
+  });
+
+  it('keeps the browser-provided LM readable when future experimental fields are present', () => {
+    const dto = {
+      endpoint: {
+        type: 'experimental_type',
+        experimental: {
+          type: 'browser_provided_lm',
+          futureSessionMode: 'persistent',
+        },
+      },
+      defaultModelId: 'browser-provided-language-model',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: false,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      experimental: undefined,
+    };
+
+    const parsed = SettingsSchemaDto.parse(dto);
+    const domain = settingsToDomain({ dto: parsed });
+
+    expect(domain.endpoint).toEqual({ type: 'browser_provided_lm' });
+    expect(domain.defaultModelId).toBe('browser-provided-language-model');
   });
 
   it('preserves an empty HTTP URL through settings mapping', () => {

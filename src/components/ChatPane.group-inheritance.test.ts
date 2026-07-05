@@ -266,7 +266,7 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({
-      endpoint: { type: 'openai', url: '' },
+      endpoint: { type: 'openai', url: 'http://localhost:1234' },
       defaultModelId: 'global-model',
     }),
   }),
@@ -293,7 +293,7 @@ describe('ChatPane Group Inheritance UI', () => {
 
     // Default resolution (Global)
     mockResolvedSettings.value = {
-      endpoint: { type: 'openai', url: '' },
+      endpoint: { type: 'openai', url: 'http://localhost:1234' },
       modelId: 'global-model',
       sources: { modelId: 'global' },
     };
@@ -319,7 +319,7 @@ describe('ChatPane Group Inheritance UI', () => {
   it('displays "Model (Group)" when inheriting from a chat group', async () => {
     mockCurrentChat.value.groupId = 'group-1';
     mockResolvedSettings.value = {
-      endpoint: { type: 'openai', url: '' },
+      endpoint: { type: 'openai', url: 'http://localhost:1234' },
       modelId: 'group-model',
       sources: { modelId: 'chat_group' },
     };
@@ -340,7 +340,7 @@ describe('ChatPane Group Inheritance UI', () => {
   it('displays only the model name when a chat-specific override is set', async () => {
     mockCurrentChat.value.modelId = 'specific-model';
     mockResolvedSettings.value = {
-      endpoint: { type: 'openai', url: '' },
+      endpoint: { type: 'openai', url: 'http://localhost:1234' },
       modelId: 'specific-model',
       sources: { modelId: 'chat' },
     };
@@ -377,7 +377,7 @@ describe('ChatPane Group Inheritance UI', () => {
 
     // 2. Simulate moving to a group with a different model
     mockResolvedSettings.value = {
-      endpoint: { type: 'openai', url: '' },
+      endpoint: { type: 'openai', url: 'http://localhost:1234' },
       modelId: 'new-group-model',
       sources: { modelId: 'chat_group' },
     };
@@ -427,7 +427,7 @@ describe('ChatPane Group Inheritance UI', () => {
 
     // 1. Setup Group-level reasoning effort
     mockResolvedSettings.value = {
-      endpoint: { type: 'openai', url: '' },
+      endpoint: { type: 'openai', url: 'http://localhost:1234' },
       modelId: 'm',
       lmParameters: { reasoning: { effort: 'medium' } },
       sources: { modelId: 'global' },
