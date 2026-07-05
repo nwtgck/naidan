@@ -95,4 +95,7 @@ export function isCalculatorFunctionCategory(value: string): value is Calculator
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
-export const TEST_ONLY = { functionsByName, constantsByName };
+export const TEST_ONLY = {
+  functionsByName,
+  constantsByName,
+};

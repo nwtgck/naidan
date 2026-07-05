@@ -6,4 +6,5 @@ export {
   refreshPromptApiAvailability,
 } from './runtime';
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

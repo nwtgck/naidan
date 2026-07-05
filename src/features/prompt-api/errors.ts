@@ -55,4 +55,5 @@ export function normalizePromptApiError({ error }: { error: unknown }): PromptAp
   });
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

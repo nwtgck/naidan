@@ -1,8 +1,6 @@
 import type { Endpoint } from '@/01-models/types';
 import { lazyStrings } from '@/strings';
 
-export const TEST_ONLY = {};
-
 export function endpointTypeLabel({
   endpointType,
 }: {
@@ -25,3 +23,6 @@ export function endpointTypeLabel({
   }
   }
 }
+
+export const TEST_ONLY = {
+};

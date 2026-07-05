@@ -92,4 +92,5 @@ export class PromptApiProvider implements LmProvider {
   }
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

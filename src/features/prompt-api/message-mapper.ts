@@ -206,4 +206,5 @@ export function mapChatMessagesToPromptApi({
   };
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

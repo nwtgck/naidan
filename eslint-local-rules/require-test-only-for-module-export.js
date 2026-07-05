@@ -1,7 +1,9 @@
+// Keep TEST_ONLY multiline so newly added test-only exports naturally remain one per line.
 const requiredExportLines = [
   '// Export internal state and logic used only for testing here. Do not reference these in production logic.',
   '// ESLint-required for TypeScript modules.',
-  'export const TEST_ONLY = {};',
+  'export const TEST_ONLY = {',
+  '};',
 ];
 
 function isTestOnlyIdentifier(node) {
@@ -118,7 +120,7 @@ function getTopLevelTestOnlyEntries({ statement }) {
   return getDeclaredTestOnlyIdentifiers({ statement });
 }
 
-function isValidTestOnlyExport({ statement }) {
+function getTestOnlyObjectExpression({ statement }) {
   if (
     statement.type !== 'ExportNamedDeclaration'
     || statement.declaration?.type !== 'VariableDeclaration'
@@ -126,12 +128,22 @@ function isValidTestOnlyExport({ statement }) {
     || statement.declaration.kind !== 'const'
     || statement.declaration.declarations.length !== 1
   ) {
-    return false;
+    return undefined;
   }
 
   const [declaration] = statement.declaration.declarations;
-  return isTestOnlyIdentifier(declaration?.id)
-    && declaration.init?.type === 'ObjectExpression';
+  if (
+    !isTestOnlyIdentifier(declaration?.id)
+    || declaration.init?.type !== 'ObjectExpression'
+  ) {
+    return undefined;
+  }
+
+  return declaration.init;
+}
+
+function isValidTestOnlyExport({ statement }) {
+  return getTestOnlyObjectExpression({ statement }) !== undefined;
 }
 
 function getLineEnding({ text }) {
@@ -164,19 +176,72 @@ function hasUnresolvedTestOnlyReference(sourceCode) {
   )) === true;
 }
 
+function isFinalStatement({ program, statement, sourceCode }) {
+  if (program.body.at(-1) !== statement) {
+    return false;
+  }
+
+  return sourceCode.getText().slice(statement.range[1]).trim().length === 0;
+}
+
+function isMultilineObjectExpression({ objectExpression }) {
+  if (objectExpression.loc.start.line === objectExpression.loc.end.line) {
+    return false;
+  }
+
+  let previousEndLine = objectExpression.loc.start.line;
+  for (const property of objectExpression.properties) {
+    if (property.loc.start.line <= previousEndLine) {
+      return false;
+    }
+    previousEndLine = property.loc.end.line;
+  }
+
+  return objectExpression.loc.end.line > previousEndLine;
+}
+
+function hasCommentInside({ sourceCode, objectExpression }) {
+  return sourceCode.getAllComments().some((comment) => (
+    comment.range[0] > objectExpression.range[0]
+    && comment.range[1] < objectExpression.range[1]
+  ));
+}
+
+function buildMultilineObjectReplacement({ sourceCode, objectExpression }) {
+  if (
+    hasCommentInside({ sourceCode, objectExpression })
+    || objectExpression.properties.some((property) => (
+      property.loc.start.line !== property.loc.end.line
+    ))
+  ) {
+    return undefined;
+  }
+
+  const lineEnding = getLineEnding({ text: sourceCode.getText() });
+  if (objectExpression.properties.length === 0) {
+    return `{${lineEnding}}`;
+  }
+
+  const propertyLines = objectExpression.properties.map((property) => (
+    `  ${sourceCode.getText(property)},`
+  ));
+  return `{${lineEnding}${propertyLines.join(lineEnding)}${lineEnding}}`;
+}
+
 export const rule = {
   meta: {
     type: 'problem',
     docs: {
-      description: 'Require a removable top-level TEST_ONLY object export in testable TypeScript modules.',
+      description: 'Require a removable final top-level multiline TEST_ONLY object export in testable TypeScript modules.',
     },
     fixable: 'code',
     schema: [],
     messages: {
       missing: `\
-This TypeScript module must export test-only access from a top-level object literal.
+This TypeScript module must end with test-only access exported from a multiline top-level object literal.
 
-export const TEST_ONLY = {};`,
+export const TEST_ONLY = {
+};`,
       invalid: `\
 TEST_ONLY must be declared exactly once as a top-level exported const initialized directly with an object literal.
 
@@ -184,6 +249,8 @@ export const TEST_ONLY = {
   // test API
 };`,
       duplicate: 'This TypeScript module must contain exactly one top-level TEST_ONLY declaration.',
+      notLast: 'TEST_ONLY must be the final statement in the TypeScript module, with no comment or code after it.',
+      singleLine: 'TEST_ONLY must use a multiline object literal with each exported test entry on its own line.',
     },
   },
   create(context) {
@@ -213,19 +280,50 @@ export const TEST_ONLY = {
           return;
         }
 
-        const isValid = statementsWithTestOnly.length === 1
+        const isStructurallyValid = statementsWithTestOnly.length === 1
           && validExports.length === 1
           && testOnlyVariables.length === 1
           && !hasUnresolvedReference;
-        if (isValid) {
+        if (!isStructurallyValid) {
+          const isDuplicate = validExports.length === 1
+            && (statementsWithTestOnly.length > 1 || testOnlyVariables.length > 1);
+          context.report({
+            node: statementsWithTestOnly[0] ?? program,
+            messageId: isDuplicate ? 'duplicate' : 'invalid',
+          });
           return;
         }
 
-        const isDuplicate = validExports.length === 1
-          && (statementsWithTestOnly.length > 1 || testOnlyVariables.length > 1);
+        const [validExport] = validExports;
+        if (!isFinalStatement({
+          program,
+          statement: validExport,
+          sourceCode: context.sourceCode,
+        })) {
+          context.report({
+            node: validExport,
+            messageId: 'notLast',
+          });
+          return;
+        }
+
+        const objectExpression = getTestOnlyObjectExpression({ statement: validExport });
+        if (isMultilineObjectExpression({ objectExpression })) {
+          return;
+        }
+
         context.report({
-          node: statementsWithTestOnly[0] ?? program,
-          messageId: isDuplicate ? 'duplicate' : 'invalid',
+          node: objectExpression,
+          messageId: 'singleLine',
+          fix(fixer) {
+            const replacement = buildMultilineObjectReplacement({
+              sourceCode: context.sourceCode,
+              objectExpression,
+            });
+            return replacement === undefined
+              ? null
+              : fixer.replaceText(objectExpression, replacement);
+          },
         });
       },
     };
