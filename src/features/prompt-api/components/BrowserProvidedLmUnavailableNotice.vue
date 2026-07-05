@@ -6,6 +6,8 @@ import { lazyStrings } from '@/strings';
 import type { PromptApiRuntimeState } from '@/features/prompt-api/runtime';
 import type { PromptApiError } from '@/features/prompt-api/errors';
 
+type PromptApiBrowserFamily = 'chrome' | 'edge' | 'other';
+
 type UnavailableState = Extract<
   PromptApiRuntimeState,
   { status: 'api_unavailable' | 'model_unavailable' | 'error' }
@@ -32,6 +34,40 @@ function formatPromptApiError({ error }: { error: PromptApiError | undefined }):
   return `${error.name}: ${error.message}`;
 }
 
+function readUserAgentBrands(): readonly string[] {
+  if (typeof navigator === 'undefined') return [];
+
+  const userAgentData: unknown = Reflect.get(navigator, 'userAgentData');
+  if (typeof userAgentData !== 'object' || userAgentData === null) return [];
+
+  const brands: unknown = Reflect.get(userAgentData, 'brands');
+  if (!Array.isArray(brands)) return [];
+
+  return brands.flatMap((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const brand: unknown = Reflect.get(entry, 'brand');
+    return typeof brand === 'string' ? [brand] : [];
+  });
+}
+
+function detectPromptApiBrowserFamily(): PromptApiBrowserFamily {
+  const brands = readUserAgentBrands();
+  if (brands.includes('Microsoft Edge')) return 'edge';
+  if (brands.includes('Google Chrome')) return 'chrome';
+  if (brands.length > 0) return 'other';
+
+  if (typeof navigator === 'undefined') return 'other';
+  const userAgent = navigator.userAgent;
+
+  if (/\bEdg(?:A|iOS)?\//u.test(userAgent)) return 'edge';
+  if (!/\bChrome\//u.test(userAgent)) return 'other';
+  if (/\b(?:OPR|Vivaldi|YaBrowser)\//u.test(userAgent)) return 'other';
+  if ('brave' in navigator) return 'other';
+  return 'chrome';
+}
+
+const browserFamily = computed(detectPromptApiBrowserFamily);
+
 const technicalDetail = computed(() => {
   const state = props.state;
   switch (state.status) {
@@ -50,7 +86,6 @@ const technicalDetail = computed(() => {
   }
   }
 });
-
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
@@ -106,25 +141,74 @@ defineExpose({
           tw-class="mt-1 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300"
         >{{ lazyStrings.PromptApiStatus__browser_returned_an_error_while_preparing_model() }}</p>
 
-        <p tw-class="mt-3 text-[11px] font-bold text-gray-700 dark:text-gray-200">
-          {{ lazyStrings.PromptApiStatus__supported_browsers() }}
-        </p>
-        <ul tw-class="mt-1 list-disc pl-5 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
-          <li>{{ lazyStrings.PromptApiStatus__chrome_148_or_later_desktop() }}</li>
-          <li>{{ lazyStrings.PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag() }}</li>
-        </ul>
+        <template v-if="props.state.status === 'model_unavailable'">
+          <p tw-class="mt-3 text-[11px] font-bold text-gray-700 dark:text-gray-200">
+            {{ lazyStrings.PromptApiStatus__common_reasons_include() }}
+          </p>
 
-        <details tw-class="mt-3 border-t border-red-100 dark:border-red-900/30 pt-3">
-          <summary tw-class="cursor-pointer text-[11px] font-bold text-gray-700 dark:text-gray-300">
-            {{ lazyStrings.PromptApiStatus__if_unavailable_in_a_supported_browser() }}
-          </summary>
-          <ul tw-class="mt-2 list-disc pl-5 text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">
-            <li>{{ lazyStrings.PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy() }}</li>
-            <li>{{ lazyStrings.PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met() }}</li>
-            <li>{{ lazyStrings.PromptApiStatus__model_download_may_require_more_free_space() }}</li>
-            <li>{{ lazyStrings.PromptApiStatus__model_download_may_require_an_unmetered_network() }}</li>
+          <ul
+            data-testid="prompt-api-common-reasons"
+            tw-class="mt-1 list-disc pl-5 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300"
+          >
+            <template v-if="browserFamily === 'chrome'">
+              <li>{{ lazyStrings.PromptApiStatus__less_than_required_free_space_on_browser_profile_volume({ browser: 'Chrome', gigabytes: 22 }) }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__less_than_16_gb_ram_or_fewer_than_4_cpu_cores_for_cpu_inference() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__unsupported_operating_system_or_device() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__metered_or_unavailable_network_during_initial_download() }}</li>
+            </template>
+
+            <template v-else-if="browserFamily === 'edge'">
+              <li>{{ lazyStrings.PromptApiStatus__less_than_required_free_space_on_browser_profile_volume({ browser: 'Edge', gigabytes: 20 }) }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__unsupported_operating_system_or_device_performance_class() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__metered_or_unavailable_network_during_initial_download() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__required_edge_experimental_flags_are_not_enabled() }}</li>
+            </template>
+
+            <template v-else>
+              <li>{{ lazyStrings.PromptApiStatus__model_download_may_require_more_free_space() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__model_download_may_require_an_unmetered_network() }}</li>
+            </template>
           </ul>
-        </details>
+
+          <details
+            data-testid="prompt-api-supported-browsers-details"
+            tw-class="mt-3 border-t border-red-100 dark:border-red-900/30 pt-3"
+          >
+            <summary tw-class="cursor-pointer text-[11px] font-bold text-gray-700 dark:text-gray-300">
+              {{ lazyStrings.PromptApiStatus__supported_browsers_and_requirements() }}
+            </summary>
+            <ul tw-class="mt-2 list-disc pl-5 text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">
+              <li>{{ lazyStrings.PromptApiStatus__chrome_148_or_later_desktop() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag() }}</li>
+            </ul>
+          </details>
+        </template>
+
+        <template v-else>
+          <p tw-class="mt-3 text-[11px] font-bold text-gray-700 dark:text-gray-200">
+            {{ lazyStrings.PromptApiStatus__supported_browsers() }}
+          </p>
+          <ul tw-class="mt-1 list-disc pl-5 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300">
+            <li>{{ lazyStrings.PromptApiStatus__chrome_148_or_later_desktop() }}</li>
+            <li>{{ lazyStrings.PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag() }}</li>
+          </ul>
+
+          <details tw-class="mt-3 border-t border-red-100 dark:border-red-900/30 pt-3">
+            <summary tw-class="cursor-pointer text-[11px] font-bold text-gray-700 dark:text-gray-300">
+              {{ lazyStrings.PromptApiStatus__if_unavailable_in_a_supported_browser() }}
+            </summary>
+            <ul tw-class="mt-2 list-disc pl-5 text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">
+              <li>{{ lazyStrings.PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_met() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__model_download_may_require_more_free_space() }}</li>
+              <li>{{ lazyStrings.PromptApiStatus__model_download_may_require_an_unmetered_network() }}</li>
+            </ul>
+          </details>
+        </template>
 
         <details
           :open="props.state.status === 'error'"

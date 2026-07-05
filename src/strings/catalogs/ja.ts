@@ -811,12 +811,18 @@ import { PromptApiStatus__browser_returned_an_error_while_checking_availability 
 import { PromptApiStatus__browser_returned_an_error_while_preparing_model } from '@/strings/messages/PromptApiStatus__browser_returned_an_error_while_preparing_model/ja';
 import { PromptApiStatus__checking_browser_provided_language_model_availability } from '@/strings/messages/PromptApiStatus__checking_browser_provided_language_model_availability/ja';
 import { PromptApiStatus__chrome_148_or_later_desktop } from '@/strings/messages/PromptApiStatus__chrome_148_or_later_desktop/ja';
+import { PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less } from '@/strings/messages/PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less/ja';
+import { PromptApiStatus__common_reasons_include } from '@/strings/messages/PromptApiStatus__common_reasons_include/ja';
 import { PromptApiStatus__could_not_check_browser_provided_model_availability } from '@/strings/messages/PromptApiStatus__could_not_check_browser_provided_model_availability/ja';
 import { PromptApiStatus__downloading_browser_provided_model } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model/ja';
 import { PromptApiStatus__downloading_browser_provided_model_progress } from '@/strings/messages/PromptApiStatus__downloading_browser_provided_model_progress/ja';
 import { PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag } from '@/strings/messages/PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag/ja';
+import { PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini } from '@/strings/messages/PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini/ja';
 import { PromptApiStatus__if_unavailable_in_a_supported_browser } from '@/strings/messages/PromptApiStatus__if_unavailable_in_a_supported_browser/ja';
 import { PromptApiStatus__language_model_api_was_not_detected } from '@/strings/messages/PromptApiStatus__language_model_api_was_not_detected/ja';
+import { PromptApiStatus__less_than_16_gb_ram_or_fewer_than_4_cpu_cores_for_cpu_inference } from '@/strings/messages/PromptApiStatus__less_than_16_gb_ram_or_fewer_than_4_cpu_cores_for_cpu_inference/ja';
+import { PromptApiStatus__less_than_required_free_space_on_browser_profile_volume } from '@/strings/messages/PromptApiStatus__less_than_required_free_space_on_browser_profile_volume/ja';
+import { PromptApiStatus__metered_or_unavailable_network_during_initial_download } from '@/strings/messages/PromptApiStatus__metered_or_unavailable_network_during_initial_download/ja';
 import { PromptApiStatus__model_download_may_require_an_unmetered_network } from '@/strings/messages/PromptApiStatus__model_download_may_require_an_unmetered_network/ja';
 import { PromptApiStatus__model_download_may_require_more_free_space } from '@/strings/messages/PromptApiStatus__model_download_may_require_more_free_space/ja';
 import { PromptApiStatus__model_preparation_failed } from '@/strings/messages/PromptApiStatus__model_preparation_failed/ja';
@@ -824,9 +830,13 @@ import { PromptApiStatus__operating_system_or_hardware_requirements_may_not_be_m
 import { PromptApiStatus__prepare_browser_provided_model } from '@/strings/messages/PromptApiStatus__prepare_browser_provided_model/ja';
 import { PromptApiStatus__preparing_browser_provided_model } from '@/strings/messages/PromptApiStatus__preparing_browser_provided_model/ja';
 import { PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy } from '@/strings/messages/PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy/ja';
+import { PromptApiStatus__required_edge_experimental_flags_are_not_enabled } from '@/strings/messages/PromptApiStatus__required_edge_experimental_flags_are_not_enabled/ja';
 import { PromptApiStatus__supported_browsers } from '@/strings/messages/PromptApiStatus__supported_browsers/ja';
+import { PromptApiStatus__supported_browsers_and_requirements } from '@/strings/messages/PromptApiStatus__supported_browsers_and_requirements/ja';
 import { PromptApiStatus__technical_details } from '@/strings/messages/PromptApiStatus__technical_details/ja';
 import { PromptApiStatus__try_again } from '@/strings/messages/PromptApiStatus__try_again/ja';
+import { PromptApiStatus__unsupported_operating_system_or_device } from '@/strings/messages/PromptApiStatus__unsupported_operating_system_or_device/ja';
+import { PromptApiStatus__unsupported_operating_system_or_device_performance_class } from '@/strings/messages/PromptApiStatus__unsupported_operating_system_or_device_performance_class/ja';
 import { ProviderProfilePreview__configuration_preview } from '@/strings/messages/ProviderProfilePreview__configuration_preview/ja';
 import { ProviderProfilePreview__endpoint_url } from '@/strings/messages/ProviderProfilePreview__endpoint_url/ja';
 import { ProviderProfilePreview__headers } from '@/strings/messages/ProviderProfilePreview__headers/ja';
@@ -2308,12 +2318,18 @@ export const ja = {
   PromptApiStatus__browser_returned_an_error_while_preparing_model,
   PromptApiStatus__checking_browser_provided_language_model_availability,
   PromptApiStatus__chrome_148_or_later_desktop,
+  PromptApiStatus__chrome_gpu_with_4_gb_vram_or_less,
+  PromptApiStatus__common_reasons_include,
   PromptApiStatus__could_not_check_browser_provided_model_availability,
   PromptApiStatus__downloading_browser_provided_model,
   PromptApiStatus__downloading_browser_provided_model_progress,
   PromptApiStatus__edge_canary_or_dev_138_or_later_with_prompt_api_flag,
+  PromptApiStatus__edge_gpu_with_less_than_5_5_gb_vram_for_phi_4_mini,
   PromptApiStatus__if_unavailable_in_a_supported_browser,
   PromptApiStatus__language_model_api_was_not_detected,
+  PromptApiStatus__less_than_16_gb_ram_or_fewer_than_4_cpu_cores_for_cpu_inference,
+  PromptApiStatus__less_than_required_free_space_on_browser_profile_volume,
+  PromptApiStatus__metered_or_unavailable_network_during_initial_download,
   PromptApiStatus__model_download_may_require_an_unmetered_network,
   PromptApiStatus__model_download_may_require_more_free_space,
   PromptApiStatus__model_preparation_failed,
@@ -2321,9 +2337,13 @@ export const ja = {
   PromptApiStatus__prepare_browser_provided_model,
   PromptApiStatus__preparing_browser_provided_model,
   PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy,
+  PromptApiStatus__required_edge_experimental_flags_are_not_enabled,
   PromptApiStatus__supported_browsers,
+  PromptApiStatus__supported_browsers_and_requirements,
   PromptApiStatus__technical_details,
   PromptApiStatus__try_again,
+  PromptApiStatus__unsupported_operating_system_or_device,
+  PromptApiStatus__unsupported_operating_system_or_device_performance_class,
   ProviderProfilePreview__configuration_preview,
   ProviderProfilePreview__endpoint_url,
   ProviderProfilePreview__headers,
