@@ -121,6 +121,25 @@ describe('ConnectionTab Ollama management integration', () => {
     expect(wrapper.find('[data-testid="ollama-management-stub"]').exists()).toBe(false);
   });
 
+  it('keeps the browser-provided endpoint option enabled when the API is unavailable', () => {
+    vi.stubGlobal('LanguageModel', undefined);
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: createSettings({ endpointType: 'openai' }),
+        availableModels: [],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+
+    const option = wrapper.get('option[value="browser_provided_lm"]');
+    expect((option.element as HTMLOptionElement).disabled).toBe(false);
+
+    wrapper.unmount();
+    vi.unstubAllGlobals();
+  });
+
   it('persists both browser-provided model IDs when the endpoint is selected', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),

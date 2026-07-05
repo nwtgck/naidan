@@ -380,6 +380,17 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(true);
   });
 
+  it('keeps the browser-provided endpoint option enabled when the API is unavailable', () => {
+    vi.stubGlobal('LanguageModel', undefined);
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+
+    const option = wrapper.get('option[value="browser_provided_lm"]');
+    expect((option.element as HTMLOptionElement).disabled).toBe(false);
+
+    wrapper.unmount();
+    vi.unstubAllGlobals();
+  });
+
   it('persists browser-provided model IDs with a group endpoint override', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),

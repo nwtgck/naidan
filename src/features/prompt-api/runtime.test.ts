@@ -72,6 +72,47 @@ describe('Prompt API runtime', () => {
     expect(TEST_ONLY.getSessionState().hasWarmKeeper).toBe(false);
   });
 
+  it('keeps the raw availability error and records its phase', async () => {
+    const rawError = new DOMException('availability failed', 'NotSupportedError');
+    vi.stubGlobal('LanguageModel', {
+      availability: vi.fn().mockRejectedValue(rawError),
+      create: vi.fn(),
+    });
+
+    await refreshPromptApiAvailability({ showCheckingState: 'yes' });
+
+    expect(promptApiRuntimeState.value).toMatchObject({
+      status: 'error',
+      phase: 'availability',
+      error: {
+        code: 'unsupported_input',
+        cause: rawError,
+      },
+    });
+  });
+
+  it('keeps the raw preparation error and records its phase', async () => {
+    const rawError = new Error('model download failed');
+    vi.stubGlobal('LanguageModel', {
+      availability: vi.fn().mockResolvedValue('downloadable'),
+      create: vi.fn().mockRejectedValue(rawError),
+    });
+
+    await expect(preparePromptApi({ signal: undefined })).rejects.toMatchObject({
+      code: 'operation_failed',
+      cause: rawError,
+    });
+
+    expect(promptApiRuntimeState.value).toMatchObject({
+      status: 'error',
+      phase: 'preparation',
+      error: {
+        code: 'operation_failed',
+        cause: rawError,
+      },
+    });
+  });
+
   it('keeps the preparation session alive as the warm keeper', async () => {
     let downloadProgressListener: ((event: ProgressEvent) => void) | undefined;
     let resolveSession: ((session: unknown) => void) | undefined;

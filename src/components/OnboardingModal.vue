@@ -588,9 +588,8 @@ defineExpose({
                     >{{ lazyStrings.OnboardingModal__transformers_js() }}</button>
                     <button
                       @click="selectBrowserProvidedLm"
-                      :disabled="!isPromptApiSupported"
                       data-testid="onboarding-browser-provided-lm-button"
-                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'browser_provided_lm' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400']"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap flex items-center gap-1', effectiveType === 'browser_provided_lm' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400', { 'opacity-40': !isPromptApiSupported }]"
                     >
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5" aria-hidden="true" />
                       {{ lazyStrings.SHARED__browser_provided() }}
@@ -617,7 +616,7 @@ defineExpose({
               </div>
             </template>
 
-            <template v-else-if="availableModels.length === 0">
+            <template v-else-if="availableModels.length === 0 || (isBrowserProvidedLm && promptApiRuntimeState.status !== 'ready')">
 
               <!-- Step 1: Configuration -->
 
@@ -658,9 +657,8 @@ defineExpose({
                     </button>
                     <button
                       @click="selectBrowserProvidedLm"
-                      :disabled="!isPromptApiSupported"
                       data-testid="onboarding-browser-provided-lm-button"
-                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed', effectiveType === 'browser_provided_lm' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600']"
+                      :tw-class="['px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1', effectiveType === 'browser_provided_lm' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600', { 'opacity-40': !isPromptApiSupported }]"
                     >
                       <FlaskConicalIcon tw-class="w-2.5 h-2.5" aria-hidden="true" />
                       {{ lazyStrings.SHARED__browser_provided() }}

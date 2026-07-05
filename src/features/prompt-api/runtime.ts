@@ -4,16 +4,18 @@ import { createPromptApiSession, getPromptApiAvailability, getPromptApiLanguageM
 import { PromptApiError, normalizePromptApiError } from './errors';
 import type { PromptApiInputMode, PromptApiMessage, PromptApiSession } from './language-model';
 
+export type PromptApiRuntimeErrorPhase = 'availability' | 'preparation';
+
 export type PromptApiRuntimeState =
   | { status: 'unchecked' }
   | { status: 'checking' }
-  | { status: 'api_unavailable' }
-  | { status: 'model_unavailable' }
+  | { status: 'api_unavailable', error?: PromptApiError }
+  | { status: 'model_unavailable', error?: PromptApiError }
   | { status: 'downloadable' }
   | { status: 'downloading', progress: number | undefined }
   | { status: 'preparing' }
   | { status: 'ready' }
-  | { status: 'error', error: PromptApiError };
+  | { status: 'error', phase: PromptApiRuntimeErrorPhase, error: PromptApiError };
 
 export type PromptApiGenerationSessionLease = {
   session: PromptApiSession,
@@ -171,12 +173,12 @@ function handleBackgroundWarmKeeperError({ error }: { error: unknown }): void {
   case 'api_unavailable':
     cancelWarmKeeperRecreation();
     destroyWarmKeeper();
-    setState({ state: { status: 'api_unavailable' } });
+    setState({ state: { status: 'api_unavailable', error: normalized } });
     return;
   case 'model_unavailable':
     cancelWarmKeeperRecreation();
     destroyWarmKeeper();
-    setState({ state: { status: 'model_unavailable' } });
+    setState({ state: { status: 'model_unavailable', error: normalized } });
     return;
   case 'preparation_required':
     cancelWarmKeeperRecreation();
@@ -286,9 +288,13 @@ async function requireAvailablePromptApi({ inputMode }: {
     case 'api_unavailable':
       cancelWarmKeeperRecreation();
       destroyWarmKeeper();
-      setState({ state: { status: 'api_unavailable' } });
+      setState({ state: { status: 'api_unavailable', error: normalized } });
       break;
     case 'model_unavailable':
+      cancelWarmKeeperRecreation();
+      destroyWarmKeeper();
+      setState({ state: { status: 'model_unavailable', error: normalized } });
+      break;
     case 'preparation_required':
     case 'unsupported_input':
     case 'aborted':
@@ -401,14 +407,18 @@ export async function refreshPromptApiAvailability({
     case 'api_unavailable':
       cancelWarmKeeperRecreation();
       destroyWarmKeeper();
-      setState({ state: { status: 'api_unavailable' } });
+      setState({ state: { status: 'api_unavailable', error: normalized } });
       return;
     case 'model_unavailable':
+      cancelWarmKeeperRecreation();
+      destroyWarmKeeper();
+      setState({ state: { status: 'model_unavailable', error: normalized } });
+      return;
     case 'preparation_required':
     case 'unsupported_input':
     case 'aborted':
     case 'operation_failed':
-      setState({ state: { status: 'error', error: normalized } });
+      setState({ state: { status: 'error', phase: 'availability', error: normalized } });
       return;
     default: {
       const _ex: never = normalized.code;
@@ -504,7 +514,7 @@ export async function preparePromptApi({ signal }: {
         case 'preparation_required':
         case 'unsupported_input':
         case 'operation_failed':
-          setState({ state: { status: 'error', error: normalized } });
+          setState({ state: { status: 'error', phase: 'preparation', error: normalized } });
           break;
         default: {
           const _ex: never = normalized.code;

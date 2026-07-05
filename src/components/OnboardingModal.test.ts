@@ -125,13 +125,21 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.text()).toContain('Ollama');
   });
 
-  it('keeps the browser-provided option visible but disabled when LanguageModel is unavailable', () => {
+  it('keeps the browser-provided option selectable and explains why it is unavailable', async () => {
     vi.stubGlobal('LanguageModel', undefined);
     const wrapper = mount(OnboardingModal);
 
     const browserProvidedButton = wrapper.get('[data-testid="onboarding-browser-provided-lm-button"]');
     expect(browserProvidedButton.text()).toContain('Browser-provided');
-    expect((browserProvidedButton.element as HTMLButtonElement).disabled).toBe(true);
+    expect((browserProvidedButton.element as HTMLButtonElement).disabled).toBe(false);
+
+    await browserProvidedButton.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="browser-provided-lm-unavailable-notice"]').text()).toContain(
+      'The LanguageModel API was not detected in this browser.',
+    );
+    expect(wrapper.get('[data-testid="onboarding-connect-button"]').attributes('disabled')).toBeDefined();
 
     wrapper.unmount();
     vi.unstubAllGlobals();
@@ -201,6 +209,7 @@ describe('OnboardingModal.vue', () => {
       selectedModel: BROWSER_PROVIDED_LM_MODEL_ID,
     };
     const wrapper = mount(OnboardingModal);
+    await flushPromises();
 
     await wrapper.get('[data-testid="onboarding-finish-button"]').trigger('click');
     await flushPromises();

@@ -439,7 +439,7 @@ defineExpose({
                   <option :disabled="isStandalone" value="transformers_js">
                     {{ lazyStrings.ConnectionTab__transformers_js_experimental() }} {{ isStandalone ? lazyStrings.ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions() : '' }}
                   </option>
-                  <option value="browser_provided_lm" :disabled="!isPromptApiSupported">
+                  <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">
                     {{ lazyStrings.SHARED__browser_provided() }}
                   </option>
                   <option

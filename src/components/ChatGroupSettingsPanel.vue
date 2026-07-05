@@ -1019,7 +1019,7 @@ defineExpose({
               <option value="openai">{{ lazyStrings.ChatGroupSettingsPanel__openai_compatible() }}</option>
               <option value="ollama">{{ lazyStrings.ChatGroupSettingsPanel__ollama() }}</option>
               <option value="transformers_js">{{ lazyStrings.ChatGroupSettingsPanel__transformers_js_experimental() }}</option>
-              <option value="browser_provided_lm" :disabled="!isPromptApiSupported">{{ lazyStrings.SHARED__browser_provided() }}</option>
+              <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
               <option
                 v-if="localSettings.endpoint?.type === 'unsupported_experimental_endpoint'"
                 value="unsupported_experimental_endpoint"

@@ -24,9 +24,12 @@ describe('PromptApiStatus', () => {
     const wrapper = mount(PromptApiStatus);
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="prompt-api-status"]').text()).toContain(
+    const notice = wrapper.get('[data-testid="browser-provided-lm-unavailable-notice"]');
+    expect(notice.text()).toContain(
       'Browser-provided language models are not available in this browser.',
     );
+    expect(notice.text()).toContain('Google Chrome 148 or later');
+    expect(wrapper.classes()).toContain('md:col-span-2');
 
     wrapper.unmount();
   });
