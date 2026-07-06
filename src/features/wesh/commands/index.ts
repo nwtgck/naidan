@@ -13,6 +13,7 @@ import { grepCommandDefinition } from './grep/index.ts';
 import { findCommandDefinition } from './find/index.ts';
 import { headCommandDefinition } from './head/index.ts';
 import { tailCommandDefinition } from './tail/index.ts';
+import { treeCommandDefinition } from './tree/index.ts';
 import { printfCommandDefinition } from './printf/index.ts';
 import { dirnameCommandDefinition } from './dirname/index.ts';
 import { basenameCommandDefinition } from './basename/index.ts';
@@ -92,6 +93,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   findCommandDefinition,
   headCommandDefinition,
   tailCommandDefinition,
+  treeCommandDefinition,
   printfCommandDefinition,
   dirnameCommandDefinition,
   basenameCommandDefinition,
