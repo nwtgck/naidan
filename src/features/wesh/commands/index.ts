@@ -55,6 +55,7 @@ import { evalCommandDefinition } from './eval/index.ts';
 import { execCommandDefinition } from './exec/index.ts';
 import { readCommandDefinition } from './read/index.ts';
 import { lnCommandDefinition } from './ln/index.ts';
+import { nlCommandDefinition } from './nl/index.ts';
 import { readlinkCommandDefinition } from './readlink/index.ts';
 import { statCommandDefinition } from './stat/index.ts';
 import { leftBracketCommandDefinition, testCommandDefinition } from './test/index.ts';
@@ -135,6 +136,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   execCommandDefinition,
   readCommandDefinition,
   lnCommandDefinition,
+  nlCommandDefinition,
   readlinkCommandDefinition,
   statCommandDefinition,
   awkCommandDefinition,
