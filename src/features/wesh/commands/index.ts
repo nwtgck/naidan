@@ -78,6 +78,7 @@ import { diffCommandDefinition } from './diff/index.ts';
 import { sha256sumCommandDefinition } from './sha256sum/index.ts';
 import { patchCommandDefinition } from './patch/index.ts';
 import { duCommandDefinition } from './du/index.ts';
+import { splitCommandDefinition } from './split/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -158,6 +159,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   sha256sumCommandDefinition,
   patchCommandDefinition,
   duCommandDefinition,
+  splitCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];
