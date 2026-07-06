@@ -92,6 +92,7 @@ export type CssOwnershipPlan = {
   };
   metrics: CssOwnershipMetrics;
   tailwindVersion: string;
+  stylesheetDependencies: string[];
 };
 
 type CssWrapper =
@@ -588,6 +589,10 @@ export async function createCssOwnershipPlan({
         },
       },
       tailwindVersion: validator.tailwindVersion,
+      stylesheetDependencies: [...new Set([
+        ...baseline.stylesheetDependencies,
+        ...globalCompilation.stylesheetDependencies,
+      ])].sort(),
     };
   }
   case 'split':
@@ -709,6 +714,10 @@ export async function createCssOwnershipPlan({
     },
     metrics,
     tailwindVersion: validator.tailwindVersion,
+    stylesheetDependencies: [...new Set([
+      ...baseline.stylesheetDependencies,
+      ...globalCompilation.stylesheetDependencies,
+    ])].sort(),
   };
 
 }

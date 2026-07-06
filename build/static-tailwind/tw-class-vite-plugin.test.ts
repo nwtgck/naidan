@@ -55,6 +55,65 @@ function createFixture(): string {
   return root;
 }
 
+async function createServeHarness({ root }: { root: string }) {
+  const sourceRoot = path.join(root, 'src');
+  const plugin = createTwClassVitePlugin({
+    projectRoot: root,
+    sourceRoot,
+    entryModule: path.join(sourceRoot, 'main.ts'),
+    tailwindCssPath: path.join(sourceRoot, 'style.css'),
+    debugOutputDirectory: undefined,
+    outputMode: 'split',
+    cssPlanning: 'enabled',
+    maxSplitCssGroups: undefined,
+  });
+  const configResolved = getHookHandler<[unknown], void | Promise<void>>({
+    hook: plugin.configResolved,
+    name: 'configResolved',
+  });
+  await configResolved.call({} as never, { command: 'serve' });
+  const buildStart = getHookHandler<[unknown], void | Promise<void>>({
+    hook: plugin.buildStart,
+    name: 'buildStart',
+  });
+  await buildStart.call({ info() {} } as never, {});
+  const hotUpdate = getHookHandler<[unknown], unknown | Promise<unknown>>({
+    hook: plugin.hotUpdate,
+    name: 'hotUpdate',
+  });
+  return { hotUpdate, plugin, sourceRoot };
+}
+
+function createHotUpdateContext({ environmentName, reloads, sentPayloads, onSend }: {
+  environmentName: string;
+  reloads: unknown[];
+  sentPayloads: unknown[];
+  onSend: (() => void) | undefined;
+}) {
+  return {
+    environment: {
+      name: environmentName,
+      moduleGraph: {
+        getModuleById() {
+          return undefined;
+        },
+        getModulesByFile() {
+          return undefined;
+        },
+      },
+      async reloadModule(module: unknown) {
+        reloads.push(module);
+      },
+      hot: {
+        send(payload: unknown) {
+          sentPayloads.push(payload);
+          onSend?.();
+        },
+      },
+    },
+  };
+}
+
 describe('static Tailwind Vite plugin configuration', () => {
   function optionsForRoot({ root }: { root: string }) {
     const sourceRoot = path.join(root, 'src');
@@ -753,6 +812,417 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     expect(plugin.api.getPlan()?.candidates).toContain('m-4');
     expect(plugin.api.getPlan()?.candidates).not.toContain('p-4');
   });
+  it('skips the sequential SSR environment invocation after the client refresh', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const clientReloads: unknown[] = [];
+    const clientPayloads: unknown[] = [];
+    const clientContext = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: clientReloads,
+      sentPayloads: clientPayloads,
+      onSend: undefined,
+    });
+    const ssrReloads: unknown[] = [];
+    const ssrPayloads: unknown[] = [];
+    const ssrContext = createHotUpdateContext({
+      environmentName: 'ssr',
+      reloads: ssrReloads,
+      sentPayloads: ssrPayloads,
+      onSend: undefined,
+    });
+
+    fs.writeFileSync(featureA, '<template><div tw-class="p-4">A</div></template>\n');
+    const options = { file: featureA, timestamp: 5000, modules: [] };
+    await hotUpdate.call(clientContext as never, options);
+    const planAfterClientRefresh = plugin.api.getPlan();
+    await hotUpdate.call(ssrContext as never, options);
+
+    expect(plugin.api.getPlan()).toBe(planAfterClientRefresh);
+    expect(ssrReloads).toEqual([]);
+    expect(ssrPayloads).toEqual([]);
+  });
+
+  it('skips source files outside the static Tailwind analysis boundary', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const ignoredFile = path.join(sourceRoot, 'test-tmp', 'Ignored.vue');
+    const reloads: unknown[] = [];
+    const sentPayloads: unknown[] = [];
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads,
+      sentPayloads,
+      onSend: undefined,
+    });
+    const planBeforeIgnoredChange = plugin.api.getPlan();
+
+    fs.mkdirSync(path.dirname(ignoredFile), { recursive: true });
+    fs.writeFileSync(ignoredFile, '<template><div tw-class="p-8">ignored</div></template>\n');
+    await hotUpdate.call(context as never, { file: ignoredFile, timestamp: 5001, modules: [] });
+
+    expect(plugin.api.getPlan()).toBe(planBeforeIgnoredChange);
+    expect(plugin.api.getPlan()?.candidates).not.toContain('p-8');
+    expect(reloads).toEqual([]);
+    expect(sentPayloads).toEqual([]);
+  });
+
+  it('replans when a local stylesheet dependency changes', async () => {
+    const root = createFixture();
+    const sourceRoot = path.join(root, 'src');
+    const stylePath = path.join(sourceRoot, 'style.css');
+    const themePath = path.join(sourceRoot, 'theme.css');
+    fs.writeFileSync(stylePath, `\
+@import "tailwindcss" source(none);
+@import "./theme.css";
+`);
+    fs.writeFileSync(themePath, '.local-theme-marker { color: red; }\n');
+    const { hotUpdate, plugin } = await createServeHarness({ root });
+    const initialPlan = plugin.api.getPlan();
+    const reloads: unknown[] = [];
+    const context = {
+      environment: {
+        name: 'client',
+        moduleGraph: {
+          getModuleById(id: string) {
+            return { id };
+          },
+          getModulesByFile() {
+            return undefined;
+          },
+        },
+        async reloadModule(module: unknown) {
+          reloads.push(module);
+        },
+        hot: { send() {} },
+      },
+    };
+
+    fs.writeFileSync(themePath, '.local-theme-marker { color: blue; }\n');
+    await hotUpdate.call(context as never, { file: themePath, timestamp: 5009, modules: [] });
+
+    expect(plugin.api.getPlan()).not.toBe(initialPlan);
+    expect(plugin.api.getPlan()?.baselineCss).not.toBe(initialPlan?.baselineCss);
+    expect(reloads.length).toBeGreaterThan(0);
+  });
+
+  it('records local stylesheet dependencies and skips unchanged dependency events', async () => {
+    const root = createFixture();
+    const sourceRoot = path.join(root, 'src');
+    const stylePath = path.join(sourceRoot, 'style.css');
+    const themePath = path.join(sourceRoot, 'theme.css');
+    fs.writeFileSync(stylePath, `\
+@import "tailwindcss" source(none);
+@import "./theme.css";
+`);
+    fs.writeFileSync(themePath, '.local-theme-marker { color: red; }\n');
+    const { hotUpdate, plugin } = await createServeHarness({ root });
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+    const initialPlan = plugin.api.getPlan();
+
+    expect(initialPlan?.stylesheetDependencies).toContain(themePath);
+    await hotUpdate.call(context as never, { file: themePath, timestamp: 5017, modules: [] });
+    expect(plugin.api.getPlan()).toBe(initialPlan);
+
+    const touchedAt = new Date(Date.now() + 1000);
+    fs.utimesSync(themePath, touchedAt, touchedAt);
+    await hotUpdate.call(context as never, { file: themePath, timestamp: 5018, modules: [] });
+    expect(plugin.api.getPlan()).toBe(initialPlan);
+  });
+
+  it('skips companion stylesheet events after the entry stylesheet already applied them', async () => {
+    const root = createFixture();
+    const sourceRoot = path.join(root, 'src');
+    const stylePath = path.join(sourceRoot, 'style.css');
+    const themePath = path.join(sourceRoot, 'theme.css');
+    const { hotUpdate, plugin } = await createServeHarness({ root });
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+    const initialPlan = plugin.api.getPlan();
+
+    fs.writeFileSync(themePath, '.local-theme-marker { color: red; }\n');
+    await hotUpdate.call(context as never, { file: themePath, timestamp: 5019, modules: [] });
+    expect(plugin.api.getPlan()).toBe(initialPlan);
+
+    fs.writeFileSync(stylePath, `\
+@import "tailwindcss" source(none);
+@import "./theme.css";
+`);
+    await hotUpdate.call(context as never, { file: stylePath, timestamp: 5020, modules: [] });
+    const planWithTheme = plugin.api.getPlan();
+    expect(planWithTheme).not.toBe(initialPlan);
+    expect(planWithTheme?.stylesheetDependencies).toContain(themePath);
+
+    await hotUpdate.call(context as never, { file: themePath, timestamp: 5021, modules: [] });
+    expect(plugin.api.getPlan()).toBe(planWithTheme);
+
+    fs.writeFileSync(stylePath, '@import "tailwindcss" source(none);\n');
+    fs.rmSync(themePath);
+    await hotUpdate.call(context as never, { file: stylePath, timestamp: 5022, modules: [] });
+    const planWithoutTheme = plugin.api.getPlan();
+    expect(planWithoutTheme).not.toBe(planWithTheme);
+    expect(planWithoutTheme?.stylesheetDependencies).not.toContain(themePath);
+
+    await hotUpdate.call(context as never, { file: themePath, timestamp: 5023, modules: [] });
+    expect(plugin.api.getPlan()).toBe(planWithoutTheme);
+  });
+
+  it('recovers when a missing stylesheet dependency is created after the entry update fails', async () => {
+    const root = createFixture();
+    const sourceRoot = path.join(root, 'src');
+    const stylePath = path.join(sourceRoot, 'style.css');
+    const themePath = path.join(sourceRoot, 'late-theme.css');
+    const { hotUpdate, plugin } = await createServeHarness({ root });
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+    const validPlan = plugin.api.getPlan();
+
+    fs.writeFileSync(stylePath, `\
+@import "tailwindcss" source(none);
+@import "./late-theme.css";
+`);
+    await expect(hotUpdate.call(context as never, {
+      file: stylePath,
+      timestamp: 5027,
+      modules: [],
+    })).rejects.toThrow(/late-theme\.css/u);
+    expect(plugin.api.getPlan()).toBe(validPlan);
+
+    fs.writeFileSync(themePath, '.late-theme-marker { color: purple; }\n');
+    await expect(hotUpdate.call(context as never, {
+      file: themePath,
+      timestamp: 5028,
+      modules: [],
+    })).resolves.toEqual([]);
+    expect(plugin.api.getPlan()).not.toBe(validPlan);
+    expect(plugin.api.getPlan()?.stylesheetDependencies).toContain(themePath);
+    const recoveredPlan = plugin.api.getPlan();
+
+    const unrelatedStylesheet = path.join(sourceRoot, 'unrelated-after-recovery.css');
+    fs.writeFileSync(unrelatedStylesheet, '.unrelated { color: orange; }\n');
+    await expect(hotUpdate.call(context as never, {
+      file: unrelatedStylesheet,
+      timestamp: 5029,
+      modules: [],
+    })).resolves.toEqual([]);
+    expect(plugin.api.getPlan()).toBe(recoveredPlan);
+  });
+
+  it('skips same-content saves and mtime-only changes after a successful plan', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+    const initialPlan = plugin.api.getPlan();
+
+    fs.writeFileSync(featureA, '<template><div tw-class="p-2">A</div></template>\n');
+    await hotUpdate.call(context as never, { file: featureA, timestamp: 5010, modules: [] });
+    expect(plugin.api.getPlan()).toBe(initialPlan);
+
+    const touchedAt = new Date(Date.now() + 1000);
+    fs.utimesSync(featureA, touchedAt, touchedAt);
+    await hotUpdate.call(context as never, { file: featureA, timestamp: 5011, modules: [] });
+    expect(plugin.api.getPlan()).toBe(initialPlan);
+  });
+
+  it('runs a trailing refresh when a source reverts while an older refresh is active', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+    const slowCandidates = Array.from({ length: 240 }, (_, index) => `p-[${index + 1}px]`).join(' ');
+
+    fs.writeFileSync(featureA, `<template><div tw-class="${slowCandidates}">A</div></template>\n`);
+    const olderRefresh = hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 5004,
+      modules: [],
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    fs.writeFileSync(featureA, '<template><div tw-class="p-2">A</div></template>\n');
+    const revertingRefresh = hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 5005,
+      modules: [],
+    });
+    await Promise.all([olderRefresh, revertingRefresh]);
+
+    expect(plugin.api.getPlan()?.candidates).toContain('p-2');
+    expect(plugin.api.getPlan()?.candidates).not.toContain('p-[240px]');
+  });
+
+  it('coalesces a synchronous deletion burst and applies the retirement result once', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const featureB = path.join(sourceRoot, 'FeatureB.vue');
+    const reloads: unknown[] = [];
+    const sentPayloads: unknown[] = [];
+    let planWhenRetirementWasSent: ReturnType<typeof plugin.api.getPlan>;
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads,
+      sentPayloads,
+      onSend() {
+        planWhenRetirementWasSent = plugin.api.getPlan();
+      },
+    });
+
+    fs.rmSync(featureA);
+    const firstUpdate = hotUpdate.call(context as never, { file: featureA, timestamp: 5002, modules: [] });
+    fs.rmSync(featureB);
+    const secondUpdate = hotUpdate.call(context as never, { file: featureB, timestamp: 5003, modules: [] });
+    await Promise.all([firstUpdate, secondUpdate]);
+
+    expect(sentPayloads).toHaveLength(1);
+    expect(plugin.api.getPlan()).toBe(planWhenRetirementWasSent);
+    expect(plugin.api.getPlan()?.candidates).not.toContain('p-2');
+    expect(plugin.api.getPlan()?.candidates).not.toContain('text-blue-500');
+  });
+
+  it('converges to the renamed source file after delete and create notifications', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const previousFile = path.join(sourceRoot, 'FeatureA.vue');
+    const renamedFile = path.join(sourceRoot, 'FeatureRenamed.vue');
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+
+    fs.renameSync(previousFile, renamedFile);
+    await Promise.all([
+      hotUpdate.call(context as never, { file: previousFile, timestamp: 5012, modules: [] }),
+      hotUpdate.call(context as never, { file: renamedFile, timestamp: 5013, modules: [] }),
+    ]);
+
+    expect(plugin.api.getPlan()?.candidates).toContain('p-2');
+    expect(plugin.api.getImportsByModule().has(previousFile)).toBe(false);
+    expect(plugin.api.getImportsByModule().has(renamedFile)).toBe(true);
+  });
+
+  it('keeps the last valid plan after a failed refresh and recovers on the next change', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const context = createHotUpdateContext({
+      environmentName: 'client',
+      reloads: [],
+      sentPayloads: [],
+      onSend: undefined,
+    });
+    const validPlan = plugin.api.getPlan();
+
+    fs.writeFileSync(featureA, '<template><div tw-class="bg-reed-500">A</div></template>\n');
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 5014,
+      modules: [],
+    })).rejects.toThrow(/bg-reed-500/u);
+    expect(plugin.api.getPlan()).toBe(validPlan);
+
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 5015,
+      modules: [],
+    })).rejects.toThrow(/bg-reed-500/u);
+    expect(plugin.api.getPlan()).toBe(validPlan);
+
+    fs.writeFileSync(featureA, '<template><div tw-class="p-4">A</div></template>\n');
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 5016,
+      modules: [],
+    })).resolves.toEqual([]);
+    expect(plugin.api.getPlan()).not.toBe(validPlan);
+    expect(plugin.api.getPlan()?.candidates).toContain('p-4');
+    expect(plugin.api.getPlan()?.candidates).not.toContain('p-2');
+  });
+
+  it('retries HMR application after a reload failure before committing the new input state', async () => {
+    const root = createFixture();
+    const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
+    const featureA = path.join(sourceRoot, 'FeatureA.vue');
+    const expectedError = new Error('reload failed');
+    const reloads: unknown[] = [];
+    let shouldFail = true;
+    const context = {
+      environment: {
+        name: 'client',
+        moduleGraph: {
+          getModuleById(id: string) {
+            return { id };
+          },
+          getModulesByFile() {
+            return undefined;
+          },
+        },
+        async reloadModule(module: unknown) {
+          reloads.push(module);
+          if (shouldFail) {
+            shouldFail = false;
+            throw expectedError;
+          }
+        },
+        hot: { send() {} },
+      },
+    };
+
+    fs.writeFileSync(featureA, '<template><div tw-class="p-4">A</div></template>\n');
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 5024,
+      modules: [],
+    })).rejects.toBe(expectedError);
+    const reloadCountAfterFailure = reloads.length;
+    expect(plugin.api.getPlan()?.candidates).toContain('p-4');
+
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 5025,
+      modules: [],
+    })).resolves.toEqual([]);
+    expect(reloads.length).toBeGreaterThan(reloadCountAfterFailure);
+    const appliedPlan = plugin.api.getPlan();
+    const reloadCountAfterRecovery = reloads.length;
+
+    await expect(hotUpdate.call(context as never, {
+      file: featureA,
+      timestamp: 5026,
+      modules: [],
+    })).resolves.toEqual([]);
+    expect(plugin.api.getPlan()).toBe(appliedPlan);
+    expect(reloads).toHaveLength(reloadCountAfterRecovery);
+  });
+
   it('reloads the global stylesheet when single-asset candidate CSS changes', async () => {
     const root = createFixture();
     const sourceRoot = path.join(root, 'src');

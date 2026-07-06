@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { Plugin, ResolvedConfig } from 'vite';
+import type { DevEnvironment, Plugin, ResolvedConfig } from 'vite';
 import {
   collectTwCandidateOccurrencesFromVueSource,
   transformTwCallsInModule,
@@ -12,6 +12,7 @@ import {
   analyzeSourceModules,
   createSourceModuleAnalysisCache,
   isStaticTailwindSourceFile,
+  isStaticTailwindSourcePath,
   serializeSourceAnalysis,
   type SourceModuleAnalysis,
 } from './source-module-analyzer';
@@ -24,6 +25,7 @@ import {
   type CssOwnershipPlan,
   type CssRuntimeFragment,
 } from './css-ownership-planner';
+import { createRefreshCoordinator } from './refresh-coordinator';
 import {
   createTailwindCssRegistrationModuleSource,
   createTailwindCssRuntimeModuleSource,
@@ -126,21 +128,6 @@ function readExpectedTailwindVersion({ projectRoot }: { projectRoot: string }): 
 
 function groupHash({ ownerKey }: { ownerKey: string }): string {
   return crypto.createHash('sha256').update(ownerKey).digest('hex');
-}
-
-function fileContentFingerprint({ filename }: { filename: string }): string {
-  try {
-    return crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex');
-  } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') return 'missing';
-    throw error;
-  }
-}
-
-function isPathInside({ directory, candidate }: { directory: string; candidate: string }): boolean {
-  const relativePath = path.relative(path.resolve(directory), path.resolve(candidate));
-  return relativePath === ''
-    || (!path.isAbsolute(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
 }
 
 function assertPathDoesNotTraverseSymlinks({ root, target, label }: { root: string; target: string; label: string }): void {
@@ -447,9 +434,45 @@ export function createTwClassVitePlugin({
   let registrationDependenciesByResolvedId = new Map<string, string[]>();
   let importsByModule = new Map<string, string[]>();
   let ownerRootByName = new Map<string, string>();
+  let currentInputSourceByFile = new Map<string, string>();
+  let committedInputSourceByFile = new Map<string, string>();
+  let appliedEntryCss = '';
+  let appliedModuleSourceByResolvedId = new Map<string, string>();
+  let appliedImportsByModule = new Map<string, string[]>();
+  let appliedStylesheetDependencies = new Set<string>();
+  let hasAppliedPlan = false;
+  let hasFailedRefresh = false;
   const retiredCssModuleIds = new Set<string>();
-  let refreshQueue: Promise<void> = Promise.resolve();
-  const refreshPromisesByKey = new Map<string, Promise<RefreshResult>>();
+
+  function isLocalStylesheetPath({ filename }: { filename: string }): boolean {
+    return path.extname(filename) === '.css'
+      && isStaticTailwindSourcePath({ filename, sourceRoot: absoluteSourceRoot });
+  }
+
+  function hasInputChangedSinceLastAppliedPlan({ filename }: { filename: string }): boolean {
+    const committedSource = committedInputSourceByFile.get(filename);
+    try {
+      return fs.readFileSync(filename, 'utf8') !== committedSource;
+    } catch (error) {
+      if (isErrnoException(error) && error.code === 'ENOENT') return committedSource !== undefined;
+      throw error;
+    }
+  }
+
+  function markCurrentPlanApplied(): void {
+    const activePlan = plan;
+    if (activePlan === undefined) throw new Error('[tw-class] CSS plan was not initialized.');
+    appliedEntryCss = entryCss;
+    appliedModuleSourceByResolvedId = new Map(moduleSourceByResolvedId);
+    appliedImportsByModule = new Map(
+      [...importsByModule].map(([filename, imports]) => [filename, [...imports]]),
+    );
+    appliedStylesheetDependencies = new Set(
+      activePlan.stylesheetDependencies.filter((filename) => isLocalStylesheetPath({ filename })),
+    );
+    committedInputSourceByFile = new Map(currentInputSourceByFile);
+    hasAppliedPlan = true;
+  }
 
   function buildVirtualState({ nextAnalysis, nextPlan }: { nextAnalysis: SourceModuleAnalysis; nextPlan: CssOwnershipPlan }): VirtualState {
     if (!splitCss) {
@@ -551,14 +574,18 @@ export function createTwClassVitePlugin({
       maxSplitCssGroups,
     });
     const state = buildVirtualState({ nextAnalysis, nextPlan });
-    const previousModuleSourceByResolvedId = moduleSourceByResolvedId;
-    const previousImportsByModule = importsByModule;
-    const previousEntryCss = entryCss;
-    const hadPreviousPlan = plan !== undefined;
+    const nextInputSourceByFile = new Map(
+      [...sourceAnalysisCache].map(([filename, { source }]) => [filename, source]),
+    );
+    for (const filename of nextPlan.stylesheetDependencies) {
+      if (!isLocalStylesheetPath({ filename })) continue;
+      nextInputSourceByFile.set(filename, fs.readFileSync(filename, 'utf8'));
+    }
+    const previousActiveModuleSourceByResolvedId = moduleSourceByResolvedId;
     analysis = nextAnalysis;
     plan = nextPlan;
     entryCss = nextPlan.entryCss;
-    for (const id of previousModuleSourceByResolvedId.keys()) {
+    for (const id of previousActiveModuleSourceByResolvedId.keys()) {
       if (!state.nextModuleSourceByResolvedId.has(id)) retiredCssModuleIds.add(id);
     }
     for (const id of state.nextModuleSourceByResolvedId.keys()) retiredCssModuleIds.delete(id);
@@ -566,42 +593,70 @@ export function createTwClassVitePlugin({
     registrationDependenciesByResolvedId = state.nextRegistrationDependenciesByResolvedId;
     importsByModule = state.nextImportsByModule;
     ownerRootByName = state.nextOwnerRootByName;
+    currentInputSourceByFile = nextInputSourceByFile;
 
-    const changedCssIds = new Set([...previousModuleSourceByResolvedId.keys(), ...moduleSourceByResolvedId.keys()].filter((id) => previousModuleSourceByResolvedId.get(id) !== moduleSourceByResolvedId.get(id)));
-    const removedCssIds = new Set([...previousModuleSourceByResolvedId.keys()].filter((id) => !moduleSourceByResolvedId.has(id)));
-    const changedOwnerModules = new Set([...previousImportsByModule.keys(), ...importsByModule.keys()].filter((id) => (
-      JSON.stringify(previousImportsByModule.get(id) ?? []) !== JSON.stringify(importsByModule.get(id) ?? [])
+    const changedCssIds = new Set([
+      ...appliedModuleSourceByResolvedId.keys(),
+      ...moduleSourceByResolvedId.keys(),
+    ].filter((id) => appliedModuleSourceByResolvedId.get(id) !== moduleSourceByResolvedId.get(id)));
+    const removedCssIds = new Set(
+      [...appliedModuleSourceByResolvedId.keys()].filter((id) => !moduleSourceByResolvedId.has(id)),
+    );
+    const changedOwnerModules = new Set([
+      ...appliedImportsByModule.keys(),
+      ...importsByModule.keys(),
+    ].filter((id) => (
+      JSON.stringify(appliedImportsByModule.get(id) ?? []) !== JSON.stringify(importsByModule.get(id) ?? [])
     )));
     return {
-      baseCssChanged: hadPreviousPlan && previousEntryCss !== entryCss,
+      baseCssChanged: hasAppliedPlan && appliedEntryCss !== entryCss,
       changedCssIds,
       removedCssIds,
       changedOwnerModules,
     };
   }
 
-  function scheduleRefresh({ key }: { key: string }): Promise<RefreshResult> {
-    const existing = refreshPromisesByKey.get(key);
-    if (existing !== undefined) return existing;
-    const promise = refreshQueue.then(
-      () => refreshPlan(),
-      () => refreshPlan(),
-    );
-    refreshPromisesByKey.set(key, promise);
-    refreshQueue = promise.then(
-      () => undefined,
-      () => undefined,
-    );
-    promise.then(
-      () => {
-        if (refreshPromisesByKey.get(key) === promise) refreshPromisesByKey.delete(key);
-      },
-      () => {
-        if (refreshPromisesByKey.get(key) === promise) refreshPromisesByKey.delete(key);
-      },
-    );
-    return promise;
+  async function applyHotUpdateResult({ result, environment }: {
+    result: RefreshResult;
+    environment: DevEnvironment;
+  }): Promise<void> {
+    if (result.baseCssChanged) {
+      const modules = environment.moduleGraph.getModulesByFile(absoluteTailwindCssPath);
+      if (modules !== undefined) {
+        for (const module of modules) await environment.reloadModule(module);
+      }
+    }
+    for (const resolvedId of result.changedCssIds) {
+      const module = environment.moduleGraph.getModuleById(resolvedId);
+      if (module !== undefined) await environment.reloadModule(module);
+    }
+    for (const filename of result.changedOwnerModules) {
+      const modules = environment.moduleGraph.getModulesByFile(filename);
+      if (modules === undefined) continue;
+      for (const module of modules) await environment.reloadModule(module);
+    }
+    if (result.removedCssIds.size > 0) {
+      environment.hot.send({
+        type: 'custom',
+        event: 'naidan-tailwind:retire-css',
+        data: { moduleIds: [...result.removedCssIds] },
+      });
+    }
   }
+
+  const refreshCoordinator = createRefreshCoordinator<DevEnvironment>({
+    async refresh({ context: environment }) {
+      try {
+        const result = await refreshPlan();
+        await applyHotUpdateResult({ result, environment });
+        markCurrentPlanApplied();
+        hasFailedRefresh = false;
+      } catch (error) {
+        hasFailedRefresh = true;
+        throw error;
+      }
+    },
+  });
 
   function clearDebugOutput(): void {
     if (absoluteDebugOutputDirectory === undefined) return;
@@ -646,6 +701,7 @@ export function createTwClassVitePlugin({
       }
       }
       await refreshPlan();
+      markCurrentPlanApplied();
       const activePlan = plan;
       if (activePlan === undefined) throw new Error('[tw-class] CSS plan was not initialized.');
       this.info(splitCss
@@ -768,6 +824,7 @@ if (import.meta.hot) {
     hotUpdate: {
       order: 'pre',
       async handler(options) {
+        if (this.environment.name !== environmentName) return options.modules;
         switch (cssPlanning) {
         case 'disabled':
           return options.modules;
@@ -779,32 +836,27 @@ if (import.meta.hot) {
         }
         }
         const absoluteFile = path.resolve(options.file);
-        if (!isPathInside({ directory: absoluteSourceRoot, candidate: absoluteFile }) && absoluteFile !== absoluteTailwindCssPath) return options.modules;
-        const refreshKey = `${options.timestamp}\0${absoluteFile}\0${fileContentFingerprint({ filename: absoluteFile })}`;
-        const result = await scheduleRefresh({ key: refreshKey });
-        if (this.environment.name !== environmentName) return options.modules;
-        if (result.baseCssChanged) {
-          const modules = this.environment.moduleGraph.getModulesByFile(absoluteTailwindCssPath);
-          if (modules !== undefined) {
-            for (const module of modules) await this.environment.reloadModule(module);
-          }
-        }
-        for (const resolvedId of result.changedCssIds) {
-          const module = this.environment.moduleGraph.getModuleById(resolvedId);
-          if (module !== undefined) await this.environment.reloadModule(module);
-        }
-        for (const filename of result.changedOwnerModules) {
-          const modules = this.environment.moduleGraph.getModulesByFile(filename);
-          if (modules === undefined) continue;
-          for (const module of modules) await this.environment.reloadModule(module);
-        }
-        if (result.removedCssIds.size > 0) {
-          this.environment.hot.send?.({
-            type: 'custom',
-            event: 'naidan-tailwind:retire-css',
-            data: { moduleIds: [...result.removedCssIds] },
-          });
-        }
+        const isAnalyzedSource = isStaticTailwindSourceFile({
+          filename: absoluteFile,
+          sourceRoot: absoluteSourceRoot,
+        });
+        const isActiveStylesheetDependency = absoluteFile === absoluteTailwindCssPath
+          || plan?.stylesheetDependencies.includes(absoluteFile) === true
+          || appliedStylesheetDependencies.has(absoluteFile);
+        // A failed plan may have discovered a stylesheet that could not yet be
+        // loaded. Allow the next local CSS event to retry even though that path
+        // was never committed as an active dependency. Successful refreshes
+        // immediately restore the stricter dependency-only filter.
+        const isLocalStylesheetDependency = isLocalStylesheetPath({ filename: absoluteFile })
+          && (isActiveStylesheetDependency || hasFailedRefresh);
+        if (!isAnalyzedSource && !isLocalStylesheetDependency) return options.modules;
+        // An active refresh may have analyzed an intermediate version. Queue a
+        // trailing generation even when the file has reverted to committed content.
+        if (
+          !refreshCoordinator.hasPendingRefresh()
+          && !hasInputChangedSinceLastAppliedPlan({ filename: absoluteFile })
+        ) return options.modules;
+        await refreshCoordinator.request({ context: this.environment });
         return options.modules;
       },
     },

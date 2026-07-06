@@ -2,7 +2,31 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { analyzeSourceModules, createSourceModuleAnalysisCache } from './source-module-analyzer';
+import {
+  analyzeSourceModules,
+  createSourceModuleAnalysisCache,
+  isStaticTailwindSourceFile,
+  isStaticTailwindSourcePath,
+} from './source-module-analyzer';
+
+describe('static Tailwind source path boundary', () => {
+  it('keeps local stylesheet dependencies inside the boundary without treating them as analyzable modules', () => {
+    const sourceRoot = path.join(os.tmpdir(), 'naidan-tailwind-source-boundary');
+    const stylesheet = path.join(sourceRoot, 'theme.css');
+
+    expect(isStaticTailwindSourcePath({ filename: stylesheet, sourceRoot })).toBe(true);
+    expect(isStaticTailwindSourceFile({ filename: stylesheet, sourceRoot })).toBe(false);
+    expect(isStaticTailwindSourceFile({ filename: path.join(sourceRoot, 'Feature.vue'), sourceRoot })).toBe(true);
+    expect(isStaticTailwindSourcePath({
+      filename: path.join(sourceRoot, 'test-tmp', 'theme.css'),
+      sourceRoot,
+    })).toBe(false);
+    expect(isStaticTailwindSourcePath({
+      filename: path.join(path.dirname(sourceRoot), 'outside.css'),
+      sourceRoot,
+    })).toBe(false);
+  });
+});
 
 describe('static Tailwind source module analysis', () => {
   it('assigns every candidate to initial CSS without building a module graph in single CSS mode', () => {
