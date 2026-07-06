@@ -2,6 +2,7 @@ import type { WeshCommandDefinition } from '@/features/wesh/types';
 import { lsCommandDefinition } from './ls/index.ts';
 import { cdCommandDefinition } from './cd/index.ts';
 import { catCommandDefinition } from './cat/index.ts';
+import { cmpCommandDefinition } from './cmp/index.ts';
 import { mkdirCommandDefinition } from './mkdir/index.ts';
 import { rmCommandDefinition } from './rm/index.ts';
 import { rmdirCommandDefinition } from './rmdir/index.ts';
@@ -77,6 +78,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
   cdCommandDefinition,
   catCommandDefinition,
+  cmpCommandDefinition,
   mkdirCommandDefinition,
   rmCommandDefinition,
   rmdirCommandDefinition,
