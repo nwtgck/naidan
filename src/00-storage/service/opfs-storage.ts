@@ -542,11 +542,12 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Binary Object Storage ---
 
-  async saveFile({ blob, binaryObjectId, name, mimeType }: {
+  private async saveFileWithMetadata({ blob, binaryObjectId, name, mimeType, createdAt }: {
     blob: Blob,
     binaryObjectId: BinaryObjectId,
     name: string,
-    mimeType?: string,
+    mimeType: string | undefined,
+    createdAt: number,
   }): Promise<void> {
     const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
     const dir = await this.getShardDir({ shard: shard });
@@ -567,12 +568,27 @@ export class OPFSStorageProvider extends IStorageProvider {
     const index = await this.loadShardIndex({ shard: shard });
     index.objects[idToRaw({ id: binaryObjectId })] = {
       id: idToRaw({ id: binaryObjectId }),
-      mimeType: mimeType || blob.type || 'application/octet-stream',
+      mimeType: mimeType ?? (blob.type || 'application/octet-stream'),
       size: blob.size,
-      createdAt: Date.now(),
+      createdAt,
       name,
     };
     await this.saveShardIndex({ shard: shard, index: index });
+  }
+
+  async saveFile({ blob, binaryObjectId, name, mimeType }: {
+    blob: Blob,
+    binaryObjectId: BinaryObjectId,
+    name: string,
+    mimeType?: string,
+  }): Promise<void> {
+    await this.saveFileWithMetadata({
+      blob,
+      binaryObjectId,
+      name,
+      mimeType,
+      createdAt: Date.now(),
+    });
   }
 
   async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
@@ -757,7 +773,7 @@ export class OPFSStorageProvider extends IStorageProvider {
                 yield {
                   type: 'binary_object' as const,
                   id: bId,
-                  name: meta.name || 'file',
+                  name: meta.name ?? 'file',
                   mimeType: meta.mimeType,
                   size: meta.size,
                   createdAt: meta.createdAt,
@@ -788,7 +804,7 @@ export class OPFSStorageProvider extends IStorageProvider {
           mounts: [],
           storageType: 'opfs',
           endpoint: { type: 'openai', url: '' },
-        } as Settings,
+        } satisfies Settings,
         hierarchy: h,
         chatMetas,
         chatGroups,
@@ -822,11 +838,12 @@ export class OPFSStorageProvider extends IStorageProvider {
         break;
       }
       case 'binary_object':
-        await this.saveFile({
+        await this.saveFileWithMetadata({
           blob: chunk.blob,
           binaryObjectId: toBinaryObjectId({ raw: chunk.id }),
           name: chunk.name,
           mimeType: chunk.mimeType,
+          createdAt: chunk.createdAt,
         });
         break;
       default: {

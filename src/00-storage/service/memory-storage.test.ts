@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStorageProvider } from './memory-storage';
 import type { Chat, ChatContent, ChatGroup } from '@/01-models/types';
+import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
 
 describe('MemoryStorageProvider', () => {
@@ -111,6 +112,66 @@ describe('MemoryStorageProvider', () => {
 
     const meta = await provider.getBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: binaryObjectId }) });
     expect(meta?.name).toBe(name);
+  });
+
+  it('should preserve binary metadata across migration restore and dump', async () => {
+    const binaryObjectId = toBinaryObjectId({ raw: 'bin-metadata-1' });
+    const blob = new Blob(['hello'], { type: 'text/plain' });
+    const createdAt = 123456789;
+    const chunk = {
+      type: 'binary_object',
+      id: idToRaw({ id: binaryObjectId }),
+      name: '',
+      mimeType: '',
+      size: blob.size,
+      createdAt,
+      blob,
+    } satisfies MigrationChunkDto;
+
+    async function* contentStream() {
+      yield chunk;
+    }
+
+    await provider.restore({
+      snapshot: {
+        structure: {
+          settings: {
+            endpoint: { type: 'openai', url: '' },
+            autoTitleEnabled: true,
+            storageType: 'memory',
+            providerProfiles: [],
+            mounts: [],
+          },
+          hierarchy: { items: [] },
+          chatMetas: [],
+          chatGroups: [],
+        },
+        contentStream: contentStream(),
+      },
+    });
+
+    const meta = await provider.getBinaryObject({ binaryObjectId });
+    expect(meta).toEqual(expect.objectContaining({
+      name: '',
+      mimeType: '',
+      createdAt,
+    }));
+
+    const snapshot = await provider.dump();
+    const chunks: MigrationChunkDto[] = [];
+    for await (const item of snapshot.contentStream) {
+      chunks.push(item);
+    }
+
+    expect(chunks).toEqual([
+      expect.objectContaining({
+        type: 'binary_object',
+        id: idToRaw({ id: binaryObjectId }),
+        name: '',
+        mimeType: '',
+        createdAt,
+      }),
+    ]);
   });
 
   describe('Hierarchy Persistence', () => {

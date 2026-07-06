@@ -42,7 +42,7 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
   if (currentSettings) {
     await memoryProvider.saveSettings({ settings: {
       ...currentSettings,
-    } as Settings });
+    } satisfies Settings });
   }
 
   // 2. Chat Data
@@ -77,7 +77,7 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
       await memoryProvider.saveFile({
         blob,
         binaryObjectId: bId,
-        name: meta.name || 'file',
+        name: meta.name ?? 'file',
         mimeType: meta.mimeType,
       });
     }

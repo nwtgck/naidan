@@ -1,8 +1,41 @@
 import { describe, it, expect } from 'vitest';
-import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto, settingsToDomain, settingsToDto } from './mappers';
-import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode, Settings } from '@/01-models/types';
-import { SettingsSchemaDto, type MessageNodeDto, type SettingsDto } from '@/00-storage/00-dto/dto';
-import { toChatGroupId, toChatId } from '@/01-models/ids';
+import {
+  buildSidebarItemsFromHierarchy,
+  chatToDomain,
+  chatToDto,
+  lmParametersToDomain,
+  lmParametersToDto,
+  messageNodeToDomain,
+  messageNodeToDto,
+  settingsToDomain,
+  settingsToDto,
+} from './mappers';
+import type {
+  AssistantMessageNode,
+  Chat,
+  ChatGroup,
+  ChatMeta,
+  Hierarchy,
+  Settings,
+  SystemMessageNode,
+  UserMessageNode,
+} from '@/01-models/types';
+import {
+  SettingsSchemaDto,
+  type ChatDto,
+  type MessageNodeDto,
+  type SettingsDto,
+} from '@/00-storage/00-dto/dto';
+import {
+  toAttachmentId,
+  toBinaryObjectId,
+  toChatGroupId,
+  toChatId,
+  toMessageId,
+  toProviderProfileId,
+  toToolCallId,
+  toVolumeId,
+} from '@/01-models/ids';
 
 describe('MessageNode Mapping (Discriminated Union)', () => {
   it('should map user message with lmParameters and thinking: undefined', () => {
@@ -100,6 +133,259 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
     const backToDto = messageNodeToDto({ domain });
     expect(backToDto.role).toBe('system');
     expect(backToDto.thinking).toBeUndefined();
+  });
+});
+
+describe('Chat Mapping', () => {
+  it('preserves all currently persisted chat fields through bidirectional mapping', () => {
+    const chatId = toChatId({ raw: 'chat-complete' });
+    const groupId = toChatGroupId({ raw: 'group-complete' });
+    const currentLeafId = toMessageId({ raw: 'message-tool' });
+    const originChatId = toChatId({ raw: 'chat-origin' });
+    const originMessageId = toMessageId({ raw: 'message-origin' });
+    const binaryObjectId = toBinaryObjectId({ raw: 'binary-result' });
+    const toolCallId = toToolCallId({ raw: 'tool-call-primary' });
+    const secondToolCallId = toToolCallId({ raw: 'tool-call-secondary' });
+    const volumeId = toVolumeId({ raw: 'volume-chat' });
+    const lmParameters = {
+      temperature: 0.4,
+      topP: 0.8,
+      maxCompletionTokens: 321,
+      presencePenalty: 0.2,
+      frequencyPenalty: 0.3,
+      stop: ['DONE'],
+      reasoning: { effort: 'high' as const },
+    };
+    const toolConfigs = [
+      { key: 'builtin.calculator' as const, status: 'enabled' as const },
+      { key: 'builtin.choices' as const, status: 'disabled' as const },
+      { key: 'builtin.wikipedia' as const, status: 'enabled' as const },
+      {
+        key: 'builtin.wesh' as const,
+        status: 'enabled' as const,
+        naidanSysfs: { accessScope: 'current_chat_with_chat_group' as const },
+      },
+    ];
+    const chat: Chat = {
+      id: chatId,
+      title: 'Complete Chat',
+      groupId,
+      root: {
+        items: [
+          {
+            id: toMessageId({ raw: 'message-user' }),
+            role: 'user',
+            content: 'Hello',
+            timestamp: 100,
+            attachments: [{
+              id: toAttachmentId({ raw: 'attachment-1' }),
+              binaryObjectId,
+              originalName: 'attachment.txt',
+              mimeType: 'text/plain',
+              size: 123,
+              uploadedAt: 456,
+              status: 'persisted',
+            }],
+            lmParameters,
+            replies: {
+              items: [{
+                id: toMessageId({ raw: 'message-assistant' }),
+                role: 'assistant',
+                content: 'Assistant response',
+                timestamp: 200,
+                thinking: 'Thinking trace',
+                modelId: 'assistant-model',
+                lmParameters,
+                toolCalls: [{
+                  id: toolCallId,
+                  type: 'function',
+                  function: {
+                    name: 'calculator',
+                    arguments: '{"expression":"1+1"}',
+                  },
+                }],
+                replies: { items: [] },
+              }],
+            },
+          },
+          {
+            id: toMessageId({ raw: 'message-system' }),
+            role: 'system',
+            content: 'System message',
+            timestamp: 150,
+            attachments: undefined,
+            thinking: undefined,
+            error: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
+            toolCalls: undefined,
+            results: undefined,
+            replies: { items: [] },
+          },
+          {
+            id: currentLeafId,
+            role: 'tool',
+            content: undefined,
+            timestamp: 300,
+            attachments: undefined,
+            thinking: undefined,
+            error: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
+            toolCalls: undefined,
+            results: [
+              { toolCallId, status: 'executing' },
+              { toolCallId, status: 'success', content: { type: 'text', text: '2' } },
+              { toolCallId: secondToolCallId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } },
+              {
+                toolCallId: secondToolCallId,
+                status: 'error',
+                error: {
+                  code: 'execution_failed',
+                  message: { type: 'binary_object', id: binaryObjectId },
+                },
+              },
+            ],
+            replies: { items: [] },
+          },
+        ],
+      },
+      currentLeafId,
+      createdAt: 10,
+      updatedAt: 20,
+      debugEnabled: true,
+      endpoint: {
+        type: 'ollama',
+        url: 'http://localhost:11434',
+        httpHeaders: [['X-Chat', 'true']],
+      },
+      modelId: 'chat-model',
+      autoTitleEnabled: false,
+      titleModelId: 'title-model',
+      originChatId,
+      originMessageId,
+      systemPrompt: { behavior: 'override', content: null },
+      lmParameters,
+      mounts: [{ type: 'volume', volumeId, mountPath: '/mnt/chat', readOnly: true }],
+      toolConfigs,
+    };
+
+    const dto = chatToDto({ domain: chat });
+    const expectedDto: ChatDto = {
+      id: 'chat-complete',
+      experimental: { toolConfigs },
+      title: 'Complete Chat',
+      currentLeafId: 'message-tool',
+      updatedAt: 20,
+      createdAt: 10,
+      debugEnabled: true,
+      endpoint: {
+        type: 'ollama',
+        experimental: undefined,
+        url: 'http://localhost:11434',
+        httpHeaders: [['X-Chat', 'true']],
+      },
+      modelId: 'chat-model',
+      autoTitleEnabled: false,
+      titleModelId: 'title-model',
+      originChatId: 'chat-origin',
+      originMessageId: 'message-origin',
+      systemPrompt: { behavior: 'override', content: null },
+      lmParameters,
+      mounts: [{
+        type: 'volume',
+        experimental: undefined,
+        volumeId: 'volume-chat',
+        mountPath: '/mnt/chat',
+        readOnly: true,
+      }],
+      root: {
+        items: [
+          {
+            id: 'message-user',
+            role: 'user',
+            content: 'Hello',
+            timestamp: 100,
+            attachments: [{
+              id: 'attachment-1',
+              binaryObjectId: 'binary-result',
+              name: 'attachment.txt',
+              status: 'persisted',
+            }],
+            thinking: undefined,
+            modelId: undefined,
+            lmParameters,
+            toolCalls: undefined,
+            results: undefined,
+            replies: {
+              items: [{
+                id: 'message-assistant',
+                role: 'assistant',
+                content: 'Assistant response',
+                timestamp: 200,
+                attachments: undefined,
+                thinking: 'Thinking trace',
+                modelId: 'assistant-model',
+                lmParameters,
+                toolCalls: [{
+                  id: 'tool-call-primary',
+                  type: 'function',
+                  function: {
+                    name: 'calculator',
+                    arguments: '{"expression":"1+1"}',
+                  },
+                }],
+                results: undefined,
+                replies: { items: [] },
+              }],
+            },
+          },
+          {
+            id: 'message-system',
+            role: 'system',
+            content: 'System message',
+            timestamp: 150,
+            attachments: undefined,
+            thinking: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
+            toolCalls: undefined,
+            results: undefined,
+            replies: { items: [] },
+          },
+          {
+            id: 'message-tool',
+            role: 'tool',
+            content: undefined,
+            timestamp: 300,
+            attachments: undefined,
+            thinking: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
+            toolCalls: undefined,
+            results: [
+              { toolCallId: 'tool-call-primary', status: 'executing' },
+              { toolCallId: 'tool-call-primary', status: 'success', content: { type: 'text', text: '2' } },
+              { toolCallId: 'tool-call-secondary', status: 'success', content: { type: 'binary_object', id: 'binary-result' } },
+              {
+                toolCallId: 'tool-call-secondary',
+                status: 'error',
+                error: {
+                  code: 'execution_failed',
+                  message: { type: 'binary_object', id: 'binary-result' },
+                },
+              },
+            ],
+            replies: { items: [] },
+          },
+        ],
+        experimental: undefined,
+      },
+      messages: undefined,
+    };
+
+    expect(dto).toEqual(expectedDto);
+    expect(chatToDto({ domain: chatToDomain({ dto }) })).toEqual(expectedDto);
   });
 });
 
@@ -362,56 +648,130 @@ describe('Settings Mapping', () => {
     expect(settingsToDto({ domain }).experimental?.fakeLm).toBeUndefined();
   });
 
-  it('preserves experimental settings through settings mapping', () => {
+  it('preserves all currently persisted settings fields through settings mapping', () => {
+    const lmParameters = {
+      temperature: 0.4,
+      topP: 0.8,
+      maxCompletionTokens: 321,
+      presencePenalty: 0.2,
+      frequencyPenalty: 0.3,
+      stop: ['DONE'],
+      reasoning: { effort: 'medium' as const },
+    };
+    const toolConfigs = [
+      { key: 'builtin.calculator' as const, status: 'enabled' as const },
+      { key: 'builtin.choices' as const, status: 'disabled' as const },
+      { key: 'builtin.wikipedia' as const, status: 'enabled' as const },
+      {
+        key: 'builtin.wesh' as const,
+        status: 'enabled' as const,
+        naidanSysfs: { accessScope: 'main_chats' as const },
+      },
+    ];
     const domain: Settings = {
-      endpoint: { type: 'openai', url: 'http://localhost' },
-      defaultModelId: 'gpt-4',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-      heavyContentAlertDismissed: false,
-      systemPrompt: undefined,
-      lmParameters: undefined,
+      endpoint: {
+        type: 'openai',
+        url: 'https://api.example.test/v1',
+        httpHeaders: [['Authorization', 'Bearer token']],
+      },
+      defaultModelId: 'gpt-4.1',
+      titleModelId: 'gpt-4.1-mini',
+      autoTitleEnabled: false,
+      storageType: 'opfs',
+      providerProfiles: [{
+        id: toProviderProfileId({ raw: 'provider-profile-1' }),
+        name: 'Profile 1',
+        endpoint: {
+          type: 'ollama',
+          url: 'http://localhost:11434',
+          httpHeaders: [['X-Profile', 'yes']],
+        },
+        defaultModelId: 'llama3',
+        titleModelId: 'llama3-title',
+        systemPrompt: 'Profile prompt',
+        lmParameters,
+      }],
+      mounts: [{
+        type: 'volume',
+        volumeId: toVolumeId({ raw: 'volume-settings' }),
+        mountPath: '/mnt/settings',
+        readOnly: true,
+      }],
+      heavyContentAlertDismissed: true,
+      systemPrompt: 'Global prompt',
+      lmParameters,
       experimental: {
         locale: 'ja',
-        markdownRendering: undefined,
+        markdownRendering: 'monolithic_html',
         toolConfigPersistence: 'enabled',
+        toolConfigs,
         fakeLm: 'enabled',
         sidebarSendMessageReorder: 'move_sent_chat',
         globalSearch: {
-          scope: 'current_thread',
-          roleFilter: 'assistant',
-          previewMode: 'peek',
-          previewContextSize: 4,
+          scope: 'title_only',
+          roleFilter: 'user',
+          previewMode: 'always',
+          previewContextSize: 'full',
         },
       },
     };
 
     const dto = settingsToDto({ domain });
-    const mapped = settingsToDomain({ dto });
+    const expectedDto: SettingsDto = {
+      endpoint: {
+        type: 'openai',
+        experimental: undefined,
+        url: 'https://api.example.test/v1',
+        httpHeaders: [['Authorization', 'Bearer token']],
+      },
+      defaultModelId: 'gpt-4.1',
+      titleModelId: 'gpt-4.1-mini',
+      autoTitleEnabled: false,
+      storageType: 'opfs',
+      providerProfiles: [{
+        id: 'provider-profile-1',
+        experimental: undefined,
+        name: 'Profile 1',
+        endpoint: {
+          type: 'ollama',
+          experimental: undefined,
+          url: 'http://localhost:11434',
+          httpHeaders: [['X-Profile', 'yes']],
+        },
+        defaultModelId: 'llama3',
+        titleModelId: 'llama3-title',
+        systemPrompt: 'Profile prompt',
+        lmParameters,
+      }],
+      mounts: [{
+        type: 'volume',
+        experimental: undefined,
+        volumeId: 'volume-settings',
+        mountPath: '/mnt/settings',
+        readOnly: true,
+      }],
+      heavyContentAlertDismissed: true,
+      systemPrompt: 'Global prompt',
+      lmParameters,
+      experimental: {
+        locale: 'ja',
+        markdownRendering: 'monolithic_html',
+        toolConfigPersistence: 'enabled',
+        toolConfigs,
+        fakeLm: 'enabled',
+        sidebarSendMessageReorder: 'move_sent_chat',
+        globalSearch: {
+          scope: 'title_only',
+          roleFilter: 'user',
+          previewMode: 'always',
+          previewContextSize: 'full',
+        },
+        unreadable: undefined,
+      },
+    };
 
-    expect(dto.experimental?.toolConfigPersistence).toBe('enabled');
-    expect(dto.experimental?.locale).toBe('ja');
-    expect(dto.experimental?.fakeLm).toBe('enabled');
-    expect(dto.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
-    expect(dto.experimental?.globalSearch).toEqual({
-      scope: 'current_thread',
-      roleFilter: 'assistant',
-      previewMode: 'peek',
-      previewContextSize: 4,
-    });
-    expect(mapped.experimental?.toolConfigPersistence).toBe('enabled');
-    expect(mapped.experimental?.locale).toBe('ja');
-    expect(mapped.experimental?.fakeLm).toBe('enabled');
-    expect(mapped.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
-    expect(mapped.experimental?.globalSearch).toEqual({
-      scope: 'current_thread',
-      roleFilter: 'assistant',
-      previewMode: 'peek',
-      previewContextSize: 4,
-    });
+    expect(dto).toEqual(expectedDto);
+    expect(settingsToDto({ domain: settingsToDomain({ dto }) })).toEqual(expectedDto);
   });
 });
 
