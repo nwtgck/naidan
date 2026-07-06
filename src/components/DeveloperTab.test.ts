@@ -5,6 +5,7 @@ import DeveloperTab from './DeveloperTab.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSampleChat } from '@/composables/useSampleChat';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 vi.mock('../composables/usePWAUpdate', () => ({
   usePWAUpdate: vi.fn(),
@@ -16,6 +17,12 @@ vi.mock('../composables/useConfirm', () => ({
 
 vi.mock('../composables/useSampleChat', () => ({
   useSampleChat: vi.fn(),
+}));
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    replace: vi.fn(),
+  }),
 }));
 
 describe('DeveloperTab', () => {
@@ -37,7 +44,8 @@ describe('DeveloperTab', () => {
     });
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     needRefresh.value = false;
 
@@ -64,6 +72,7 @@ describe('DeveloperTab', () => {
     });
     expect(wrapper.find('[data-testid="toggle-pwa-update-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="setting-create-long-sample-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="data-deletion-factory-reset-preset-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="fake-lm-debug-mode-toggle"]').exists()).toBe(false);
   });
 
@@ -108,20 +117,14 @@ describe('DeveloperTab', () => {
     expect(wrapper.find('.animate-spin-slow').exists()).toBe(true);
   });
 
-  it('triggers Cache Storage clearing when the button is clicked and confirmed', async () => {
-    showConfirm.mockResolvedValue(true);
+  it('uses the data deletion panel for Cache Storage deletion through the factory reset preset', async () => {
+    showConfirm.mockResolvedValue(false);
     const wrapper = mountDeveloperTab();
 
-    const button = wrapper.find('[data-testid="clear-all-cache-storage-button"]');
-    await button.trigger('click');
+    await wrapper.find('[data-testid="data-deletion-factory-reset-preset-button"]').trigger('click');
+    const cacheStorageCheckbox = wrapper.find<HTMLInputElement>('[data-testid="data-deletion-checkbox-cache-storage-all"]');
 
-    await vi.waitFor(() => {
-      expect(showConfirm).toHaveBeenCalledWith({
-        title: 'Clear All Cache Storage',
-        message: expect.stringContaining("delete all entries in the browser's Cache Storage API"),
-        confirmButtonText: 'Clear All',
-        confirmButtonVariant: 'danger',
-      });
-    });
+    expect(cacheStorageCheckbox.element.checked).toBe(true);
+    expect(wrapper.find('[data-testid="clear-all-cache-storage-button"]').exists()).toBe(false);
   });
 });

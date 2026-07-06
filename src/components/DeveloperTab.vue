@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { useSampleChat } from '@/composables/useSampleChat';
-import { useConfirm } from '@/composables/useConfirm';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
-import { storageService } from '@/00-storage/service';
-import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
+import { CpuIcon, FlaskConicalIcon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
-import { lazyStrings, ensureStrings } from '@/strings';
+import DeveloperDataDeletionPanel from '@/features/data-deletion/components/DeveloperDataDeletionPanel.vue';
+import { lazyStrings } from '@/strings';
 
-defineProps<{
+const props = defineProps<{
   storageType: string,
 }>();
 
 const { createSampleChat, createLongSampleChat } = useSampleChat();
-const { showConfirm } = useConfirm();
 const { needRefresh, setNeedRefresh } = usePWAUpdate();
 
 function togglePWAUpdate() {
@@ -26,33 +24,6 @@ function togglePWAUpdate() {
   });
 }
 
-async function handleResetData() {
-  const confirmed = await showConfirm({
-    title: await ensureStrings.DeveloperTab__confirm_data_reset(),
-    message: await ensureStrings.DeveloperTab__reset_all_app_data_warning(),
-    confirmButtonText: await ensureStrings.DeveloperTab__reset(),
-    confirmButtonVariant: 'danger',
-  });
-  if (confirmed) {
-    await storageService.clearAll();
-    window.location.reload();
-  }
-}
-
-async function handleClearAllCacheStorage() {
-  const confirmed = await showConfirm({
-    title: await ensureStrings.DeveloperTab__clear_all_cache_storage(),
-    message: await ensureStrings.DeveloperTab__clear_cache_storage_warning(),
-    confirmButtonText: await ensureStrings.DeveloperTab__clear_all(),
-    confirmButtonVariant: 'danger',
-  });
-  if (confirmed) {
-    if (window.caches) {
-      const names = await caches.keys();
-      await Promise.all(names.map(name => caches.delete(name)));
-    }
-  }
-}
 
 function handleReload() {
   window.location.reload();
@@ -127,21 +98,6 @@ defineExpose({
             </div>
           </button>
 
-          <button
-            @click="handleClearAllCacheStorage"
-            tw-class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
-            data-testid="clear-all-cache-storage-button"
-          >
-            <div tw-class="flex items-center gap-2">
-              <div tw-class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
-                <Trash2Icon tw-class="w-4 h-4 text-gray-400" />
-              </div>
-              <div tw-class="flex flex-col">
-                <span tw-class="text-sm font-bold">{{ lazyStrings.DeveloperTab__clear_all_cache_storage() }}</span>
-                <span tw-class="text-[10px] font-medium text-gray-500">{{ lazyStrings.DeveloperTab__deletes_cache_storage_entries() }}</span>
-              </div>
-            </div>
-          </button>
 
           <button
             @click="handleReload"
@@ -160,30 +116,7 @@ defineExpose({
           </button>
         </div>
 
-        <div tw-class="pt-8 border-t border-gray-100 dark:border-gray-800 space-y-5">
-          <h3 tw-class="text-sm font-bold text-red-500 uppercase tracking-widest ml-1">{{ lazyStrings.DeveloperTab__danger_zone() }}</h3>
-          <div tw-class="p-5 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
-            <div tw-class="flex items-start gap-3">
-              <div tw-class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/20">
-                <AlertTriangleIcon tw-class="w-6 h-6 text-red-500 shrink-0" />
-              </div>
-              <div>
-                <h4 tw-class="font-bold text-red-800 dark:text-red-400 text-sm">{{ lazyStrings.DeveloperTab__reset_all_application_data() }}</h4>
-                <p tw-class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
-                  {{ lazyStrings.DeveloperTab__reset_data_provider_warning({ storageType }) }}
-                </p>
-              </div>
-            </div>
-            <button
-              @click="handleResetData"
-              tw-class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
-              data-testid="setting-reset-data-button"
-            >
-              <Trash2Icon tw-class="w-4 h-4" />
-              {{ lazyStrings.DeveloperTab__execute_reset() }}
-            </button>
-          </div>
-        </div>
+        <DeveloperDataDeletionPanel :storage-type="props.storageType" />
       </div>
     </section>
   </div>
