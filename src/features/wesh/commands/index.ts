@@ -73,6 +73,7 @@ import { psCommandDefinition } from './ps/index.ts';
 import { foldCommandDefinition } from './fold/index.ts';
 import { base64CommandDefinition } from './base64/index.ts';
 import { diffCommandDefinition } from './diff/index.ts';
+import { sha256sumCommandDefinition } from './sha256sum/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -148,6 +149,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   foldCommandDefinition,
   base64CommandDefinition,
   diffCommandDefinition,
+  sha256sumCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];
