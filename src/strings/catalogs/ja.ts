@@ -1274,6 +1274,21 @@ import { contextCompact__response_was_empty } from '@/strings/messages/contextCo
 import { contextCompact__to_compact } from '@/strings/messages/contextCompact__to_compact/ja';
 import { contextCompact__to_keep } from '@/strings/messages/contextCompact__to_keep/ja';
 import { contextCompact__waiting_for_the_model } from '@/strings/messages/contextCompact__waiting_for_the_model/ja';
+import { dataDeletion__advanced_mode } from '@/strings/messages/dataDeletion__advanced_mode/ja';
+import { dataDeletion__checked_selectors_matching_entries } from '@/strings/messages/dataDeletion__checked_selectors_matching_entries/ja';
+import { dataDeletion__delete_application_data } from '@/strings/messages/dataDeletion__delete_application_data/ja';
+import { dataDeletion__delete_data_matched_by_selected_selectors } from '@/strings/messages/dataDeletion__delete_data_matched_by_selected_selectors/ja';
+import { dataDeletion__delete_selected_data } from '@/strings/messages/dataDeletion__delete_selected_data/ja';
+import { dataDeletion__delete_selected_data_and_reload } from '@/strings/messages/dataDeletion__delete_selected_data_and_reload/ja';
+import { dataDeletion__delete_selected_data_question } from '@/strings/messages/dataDeletion__delete_selected_data_question/ja';
+import { dataDeletion__deletion_preview } from '@/strings/messages/dataDeletion__deletion_preview/ja';
+import { dataDeletion__developer_focused_deletion_controls_for_naidan_storage_selectors } from '@/strings/messages/dataDeletion__developer_focused_deletion_controls_for_naidan_storage_selectors/ja';
+import { dataDeletion__factory_reset } from '@/strings/messages/dataDeletion__factory_reset/ja';
+import { dataDeletion__no_matching_entries } from '@/strings/messages/dataDeletion__no_matching_entries/ja';
+import { dataDeletion__not_available_in_this_runtime } from '@/strings/messages/dataDeletion__not_available_in_this_runtime/ja';
+import { dataDeletion__preview_entries } from '@/strings/messages/dataDeletion__preview_entries/ja';
+import { dataDeletion__scanning_storage } from '@/strings/messages/dataDeletion__scanning_storage/ja';
+import { dataDeletion__select_at_least_one_deletion_selector } from '@/strings/messages/dataDeletion__select_at_least_one_deletion_selector/ja';
 import { fileExplorer__add } from '@/strings/messages/fileExplorer__add/ja';
 import { fileExplorer__archive_name } from '@/strings/messages/fileExplorer__archive_name/ja';
 import { fileExplorer__binary_file } from '@/strings/messages/fileExplorer__binary_file/ja';
@@ -2781,6 +2796,21 @@ export const ja = {
   contextCompact__to_compact,
   contextCompact__to_keep,
   contextCompact__waiting_for_the_model,
+  dataDeletion__advanced_mode,
+  dataDeletion__checked_selectors_matching_entries,
+  dataDeletion__delete_application_data,
+  dataDeletion__delete_data_matched_by_selected_selectors,
+  dataDeletion__delete_selected_data,
+  dataDeletion__delete_selected_data_and_reload,
+  dataDeletion__delete_selected_data_question,
+  dataDeletion__deletion_preview,
+  dataDeletion__developer_focused_deletion_controls_for_naidan_storage_selectors,
+  dataDeletion__factory_reset,
+  dataDeletion__no_matching_entries,
+  dataDeletion__not_available_in_this_runtime,
+  dataDeletion__preview_entries,
+  dataDeletion__scanning_storage,
+  dataDeletion__select_at_least_one_deletion_selector,
   fileExplorer__add,
   fileExplorer__archive_name,
   fileExplorer__binary_file,

@@ -751,7 +751,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(connectionTab.props('availableModels')).toEqual(['model-1', 'model-2', 'model-10']);
   });
 
-  it('triggers data reset after confirmation', async () => {
+  it('triggers developer data deletion after confirmation', async () => {
+    localStorage.setItem('naidan:settings-test', 'delete-me');
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
     await vi.dynamicImportSettled();
@@ -760,38 +761,24 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
 
+    await wrapper.find('[data-testid="data-deletion-factory-reset-preset-button"]').trigger('click');
+    await flushPromises();
+
     mockShowConfirm.mockResolvedValueOnce(true);
-
-    await wrapper.find('[data-testid="setting-reset-data-button"]').trigger('click');
-    await flushPromises(); // Wait for showConfirm to be called and promise to resolve
-
-    expect(mockShowConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Confirm Data Reset',
-        confirmButtonText: 'Reset',
-        confirmButtonVariant: 'danger',
-      }),
-    );
-    expect(storageService.clearAll).toHaveBeenCalled();
-    expect(window.location.reload).toHaveBeenCalled();
-
-    mockShowConfirm.mockClear();
-    (storageService.clearAll as Mock).mockClear();
-    (window.location.reload as Mock).mockClear();
-
-    // Simulate user cancelling the reset
-    mockShowConfirm.mockResolvedValueOnce(false);
 
     await wrapper.find('[data-testid="setting-reset-data-button"]').trigger('click');
     await flushPromises();
 
     expect(mockShowConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Confirm Data Reset',
-        confirmButtonText: 'Reset',
+        title: 'Delete selected data?',
+        confirmButtonText: 'Delete selected data',
         confirmButtonVariant: 'danger',
       }),
     );
+    expect(localStorage.getItem('naidan:settings-test')).toBeNull();
+    expect(useRouter().replace).toHaveBeenCalledWith('/');
+    expect(window.location.reload).toHaveBeenCalled();
 
   });
 

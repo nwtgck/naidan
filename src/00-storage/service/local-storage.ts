@@ -387,7 +387,7 @@ export class LocalStorageProvider extends IStorageProvider {
           mounts: [],
           storageType: 'local',
           endpoint: { type: 'openai', url: '' },
-        } as Settings,
+        } satisfies Settings,
         hierarchy: h,
         chatMetas,
         chatGroups,

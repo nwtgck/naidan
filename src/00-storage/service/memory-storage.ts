@@ -271,21 +271,37 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
 
+  private async saveFileWithMetadata({ blob, binaryObjectId, name, mimeType, createdAt }: {
+    blob: Blob,
+    binaryObjectId: BinaryObjectId,
+    name: string,
+    mimeType: string | undefined,
+    createdAt: number,
+  }): Promise<void> {
+    const meta: BinaryObject = {
+      id: binaryObjectId,
+      mimeType: mimeType ?? (blob.type || 'application/octet-stream'),
+      size: blob.size,
+      createdAt,
+      name,
+    };
+
+    this.binaryObjects.set(binaryObjectId, { blob, meta });
+  }
+
   async saveFile({ blob, binaryObjectId, name, mimeType }: {
     blob: Blob,
     binaryObjectId: BinaryObjectId,
     name: string,
     mimeType?: string,
   }): Promise<void> {
-    const meta: BinaryObject = {
-      id: binaryObjectId,
-      mimeType: mimeType || blob.type || 'application/octet-stream',
-      size: blob.size,
-      createdAt: Date.now(),
+    await this.saveFileWithMetadata({
+      blob,
+      binaryObjectId,
       name,
-    };
-
-    this.binaryObjects.set(binaryObjectId, { blob, meta });
+      mimeType,
+      createdAt: Date.now(),
+    });
   }
 
   async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
@@ -340,7 +356,7 @@ export class MemoryStorageProvider extends IStorageProvider {
         yield {
           type: 'binary_object' as const,
           id: idToRaw({ id }),
-          name: meta.name || 'file',
+          name: meta.name ?? 'file',
           mimeType: meta.mimeType,
           size: meta.size,
           createdAt: meta.createdAt,
@@ -357,7 +373,7 @@ export class MemoryStorageProvider extends IStorageProvider {
           mounts: [],
           storageType: 'memory',
           endpoint: { type: 'openai', url: '' },
-        } as Settings,
+        } satisfies Settings,
         hierarchy,
         chatMetas,
         chatGroups,
@@ -388,11 +404,12 @@ export class MemoryStorageProvider extends IStorageProvider {
         break;
       }
       case 'binary_object':
-        await this.saveFile({
+        await this.saveFileWithMetadata({
           blob: chunk.blob,
           binaryObjectId: toBinaryObjectId({ raw: chunk.id }),
           name: chunk.name,
           mimeType: chunk.mimeType,
+          createdAt: chunk.createdAt,
         });
         break;
       default: {

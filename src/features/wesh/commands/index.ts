@@ -2,6 +2,7 @@ import type { WeshCommandDefinition } from '@/features/wesh/types';
 import { lsCommandDefinition } from './ls/index.ts';
 import { cdCommandDefinition } from './cd/index.ts';
 import { catCommandDefinition } from './cat/index.ts';
+import { cmpCommandDefinition } from './cmp/index.ts';
 import { mkdirCommandDefinition } from './mkdir/index.ts';
 import { rmCommandDefinition } from './rm/index.ts';
 import { rmdirCommandDefinition } from './rmdir/index.ts';
@@ -12,6 +13,7 @@ import { grepCommandDefinition } from './grep/index.ts';
 import { findCommandDefinition } from './find/index.ts';
 import { headCommandDefinition } from './head/index.ts';
 import { tailCommandDefinition } from './tail/index.ts';
+import { treeCommandDefinition } from './tree/index.ts';
 import { printfCommandDefinition } from './printf/index.ts';
 import { dirnameCommandDefinition } from './dirname/index.ts';
 import { basenameCommandDefinition } from './basename/index.ts';
@@ -29,6 +31,7 @@ import { trCommandDefinition } from './tr/index.ts';
 import { shufCommandDefinition } from './shuf/index.ts';
 import { commCommandDefinition } from './comm/index.ts';
 import { pasteCommandDefinition } from './paste/index.ts';
+import { columnCommandDefinition } from './column/index.ts';
 import { realpathCommandDefinition } from './realpath/index.ts';
 import { trueCommandDefinition } from './true/index.ts';
 import { falseCommandDefinition } from './false/index.ts';
@@ -53,6 +56,7 @@ import { evalCommandDefinition } from './eval/index.ts';
 import { execCommandDefinition } from './exec/index.ts';
 import { readCommandDefinition } from './read/index.ts';
 import { lnCommandDefinition } from './ln/index.ts';
+import { nlCommandDefinition } from './nl/index.ts';
 import { readlinkCommandDefinition } from './readlink/index.ts';
 import { statCommandDefinition } from './stat/index.ts';
 import { leftBracketCommandDefinition, testCommandDefinition } from './test/index.ts';
@@ -72,11 +76,17 @@ import { psCommandDefinition } from './ps/index.ts';
 import { foldCommandDefinition } from './fold/index.ts';
 import { base64CommandDefinition } from './base64/index.ts';
 import { diffCommandDefinition } from './diff/index.ts';
+import { sha256sumCommandDefinition } from './sha256sum/index.ts';
+import { patchCommandDefinition } from './patch/index.ts';
+import { duCommandDefinition } from './du/index.ts';
+import { splitCommandDefinition } from './split/index.ts';
+import { csplitCommandDefinition } from './csplit/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
   cdCommandDefinition,
   catCommandDefinition,
+  cmpCommandDefinition,
   mkdirCommandDefinition,
   rmCommandDefinition,
   rmdirCommandDefinition,
@@ -87,6 +97,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   findCommandDefinition,
   headCommandDefinition,
   tailCommandDefinition,
+  treeCommandDefinition,
   printfCommandDefinition,
   dirnameCommandDefinition,
   basenameCommandDefinition,
@@ -104,6 +115,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   shufCommandDefinition,
   commCommandDefinition,
   pasteCommandDefinition,
+  columnCommandDefinition,
   realpathCommandDefinition,
   trueCommandDefinition,
   falseCommandDefinition,
@@ -128,6 +140,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   execCommandDefinition,
   readCommandDefinition,
   lnCommandDefinition,
+  nlCommandDefinition,
   readlinkCommandDefinition,
   statCommandDefinition,
   awkCommandDefinition,
@@ -146,6 +159,11 @@ export const builtinCommands: WeshCommandDefinition[] = [
   foldCommandDefinition,
   base64CommandDefinition,
   diffCommandDefinition,
+  sha256sumCommandDefinition,
+  patchCommandDefinition,
+  duCommandDefinition,
+  splitCommandDefinition,
+  csplitCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];

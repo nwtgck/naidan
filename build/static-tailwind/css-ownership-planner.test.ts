@@ -233,6 +233,7 @@ describe('static Tailwind CSS ownership planner', () => {
             },
           },
           tailwindVersion: '4.3.1',
+          stylesheetDependencies: [],
         },
       });
       const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'groups.json'), 'utf8')) as {

@@ -88,7 +88,7 @@ function walkFiles({ directory }: {
   });
 }
 
-export function isStaticTailwindSourceFile({ filename, sourceRoot }: {
+export function isStaticTailwindSourcePath({ filename, sourceRoot }: {
   filename: string;
   sourceRoot: string;
 }): boolean {
@@ -98,10 +98,17 @@ export function isStaticTailwindSourceFile({ filename, sourceRoot }: {
   return relativePath !== ''
     && !relativePath.startsWith('../')
     && !path.isAbsolute(relativePath)
-    && moduleExtensions.includes(path.extname(absoluteFilename))
     && !/\.(?:test|spec)\.[^.]+$/u.test(absoluteFilename)
     && !relativePath.startsWith('test-tmp/')
     && !relativePath.startsWith('lint-rule-tmp/');
+}
+
+export function isStaticTailwindSourceFile({ filename, sourceRoot }: {
+  filename: string;
+  sourceRoot: string;
+}): boolean {
+  return isStaticTailwindSourcePath({ filename, sourceRoot })
+    && moduleExtensions.includes(path.extname(path.resolve(filename)));
 }
 
 function parseVueDescriptor({ source, filename }: {

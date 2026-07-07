@@ -147,7 +147,12 @@ export function useChatDisplayFlow({
           nodeAtoms.push({ type: 'tool_calls', node, toolCalls: node.toolCalls, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         }
 
-        // 4. Waiting indicator
+        // 4. Error-only assistant message
+        if (nodeAtoms.length === 0 && node.error !== undefined) {
+          nodeAtoms.push({ type: 'content', node, content: '', isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+        }
+
+        // 5. Waiting indicator
         if (nodeAtoms.length === 0 && chatVal && isProcessing({ chatId: chatVal.id }) && nodeIdx === nodeArray.length - 1) {
           nodeAtoms.push({ type: 'waiting', node, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         }

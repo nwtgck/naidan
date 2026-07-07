@@ -91,6 +91,25 @@ describe('useChatDisplayFlow', () => {
     expect(chatFlow.value[0]?.type).toBe('message');
   });
 
+  it('keeps an error-only assistant node visible after processing stops', () => {
+    const message = createAssistantMsg('');
+    message.error = 'mock error 500';
+
+    const { chatFlow } = createFlow({ messages: [message] });
+
+    expect(chatFlow.value).toHaveLength(1);
+    const item = chatFlow.value[0];
+    expect(item?.type).toBe('message');
+    if (item?.type === 'message') {
+      expect(item.mode).toBe('content');
+      expect(item.partContent).toBe('');
+      expect(item.node).toBe(message);
+      expect(item.node.error).toBe('mock error 500');
+      expect(item.isFirstInNode).toBe(true);
+      expect(item.isLastInNode).toBe(true);
+    }
+  });
+
   it('correctly calculates sequence position metadata', () => {
     const user = { role: 'user', content: 'hi', id: toMessageId({ raw: 'u1' }), timestamp: 0, replies: { items: [] } } as MessageNode;
     const m1 = createAssistantMsg('<think>thinking...</think>');

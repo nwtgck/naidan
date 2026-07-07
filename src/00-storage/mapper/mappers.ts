@@ -1,7 +1,7 @@
 /**
  * Mappers
  */
-import type { ToolConfig } from '@/01-models/tool';
+import type { TextOrBinaryObject, ToolConfig, ToolExecutionResult } from '@/01-models/tool';
 import type {
   ExperimentalToolConfigDto,
   ExperimentalToolConfigsDto,
@@ -10,6 +10,9 @@ import type {
 import type {
   RoleDto,
   MessageNodeDto,
+  TextOrBinaryObjectDto,
+  ToolCallDto,
+  ToolExecutionResultDto,
   ChatDto,
   ChatMetaDto,
   ChatGroupDto,
@@ -30,6 +33,8 @@ import type {
   AssistantMessageNode,
   UserMessageNode,
   SystemMessageNode,
+  ToolMessageNode,
+  ToolCall,
   MessageBranch,
   Chat,
   ChatGroup,
@@ -69,6 +74,32 @@ import {
   normalizeLmParameters,
   REASONING_PARAMETER_KEYS,
 } from '@/utils/lm-parameters';
+
+
+/**
+ * Persistence mappers deliberately use both source-side destructuring checks and
+ * destination-side exact object construction. Persisted DTO fields are often
+ * optional for backward compatibility, so a plain return type annotation or
+ * `satisfies Destination` would not fail when a new optional field is added and
+ * forgotten by the mapper. The paired checks below make every currently known
+ * field an explicit decision: read it from the source, and either write it to
+ * the destination or document why it is intentionally not persisted.
+ */
+type NoRemainingProperties = Record<PropertyKey, never>;
+
+type ExhaustiveObjectKeys<
+  Expected extends object,
+  Actual extends object,
+> =
+  & Record<Exclude<keyof Expected, keyof Actual>, never>
+  & Record<Exclude<keyof Actual, keyof Expected>, never>;
+
+const exactObject =
+  <Expected extends object>() =>
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- This type-only helper intentionally mirrors TypeScript's `satisfies` expression form.
+    <Actual extends Expected>(
+      actual: Actual & ExhaustiveObjectKeys<Expected, Actual>,
+    ): Actual => actual;
 
 
 const toolConfigPersistenceToExperimentalDto = ({
@@ -182,8 +213,25 @@ const toolConfigsToExperimentalDto = ({
 const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
   const type = dto.type;
   switch (type) {
-  case 'volume':
-    return { type: 'volume', volumeId: toVolumeId({ raw: dto.volumeId }), mountPath: dto.mountPath, readOnly: dto.readOnly };
+  case 'volume': {
+    const {
+      type,
+      experimental: _experimental,
+      volumeId,
+      mountPath,
+      readOnly,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Mount>()({
+      type,
+      volumeId: toVolumeId({ raw: volumeId }),
+      mountPath,
+      readOnly,
+    });
+  }
   default: {
     const _ex: never = type;
     throw new Error(`Unhandled mount type: ${_ex}`);
@@ -194,8 +242,25 @@ const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
 const mountToDto = ({ domain }: { domain: Mount }): MountDto => {
   const type = domain.type;
   switch (type) {
-  case 'volume':
-    return { type: 'volume', volumeId: idToRaw({ id: domain.volumeId }), mountPath: domain.mountPath, readOnly: domain.readOnly };
+  case 'volume': {
+    const {
+      type,
+      volumeId,
+      mountPath,
+      readOnly,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<MountDto>()({
+      type,
+      experimental: undefined,
+      volumeId: idToRaw({ id: volumeId }),
+      mountPath,
+      readOnly,
+    });
+  }
   default: {
     const _ex: never = type;
     throw new Error(`Unhandled mount type: ${_ex}`);
@@ -254,26 +319,51 @@ export const hierarchyToDto = ({ domain }: { domain: Hierarchy }): HierarchyDto 
   }),
 });
 
-export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
-  id: toChatId({ raw: dto.id }),
-  title: dto.title,
-  createdAt: dto.createdAt,
-  updatedAt: dto.updatedAt,
-  debugEnabled: dto.debugEnabled,
-  modelId: dto.modelId,
-  endpoint: dto.endpoint === undefined
-    ? undefined
-    : endpointToDomain({ dto: dto.endpoint }),
-  systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
-  lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
-  autoTitleEnabled: dto.autoTitleEnabled,
-  titleModelId: dto.titleModelId,
-  currentLeafId: dto.currentLeafId === undefined ? undefined : toMessageId({ raw: dto.currentLeafId }),
-  originChatId: dto.originChatId === undefined ? undefined : toChatId({ raw: dto.originChatId }),
-  originMessageId: dto.originMessageId === undefined ? undefined : toMessageId({ raw: dto.originMessageId }),
-  mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
-  toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
-});
+export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => {
+  const {
+    id,
+    experimental,
+    title,
+    currentLeafId,
+    updatedAt,
+    createdAt,
+    debugEnabled,
+    endpoint,
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    originChatId,
+    originMessageId,
+    systemPrompt,
+    lmParameters,
+    mounts,
+    ...unhandled
+  } = dto;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<ChatMeta>()({
+    id: toChatId({ raw: id }),
+    title,
+    groupId: undefined,
+    currentLeafId: currentLeafId === undefined ? undefined : toMessageId({ raw: currentLeafId }),
+    createdAt,
+    updatedAt,
+    debugEnabled,
+    endpoint: endpoint === undefined
+      ? undefined
+      : endpointToDomain({ dto: endpoint }),
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    originChatId: originChatId === undefined ? undefined : toChatId({ raw: originChatId }),
+    originMessageId: originMessageId === undefined ? undefined : toMessageId({ raw: originMessageId }),
+    systemPrompt: systemPrompt as SystemPrompt | undefined,
+    lmParameters: lmParametersToDomain({ dto: lmParameters }),
+    mounts: mounts?.map(dto => mountToDomain({ dto })),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: experimental?.toolConfigs }),
+  });
+};
 
 /**
  * Converts a Chat Group DTO into a Domain ChatGroup.
@@ -302,39 +392,78 @@ export const chatGroupToDomain = (
     };
   });
 
-  return {
-    id: toChatGroupId({ raw: dto.id }),
-    name: dto.name,
-    isCollapsed: dto.isCollapsed,
-    updatedAt: dto.updatedAt,
+  const {
+    id,
+    experimental,
+    name,
+    updatedAt,
+    isCollapsed,
+    endpoint,
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    systemPrompt,
+    lmParameters,
+    mounts,
+    ...unhandled
+  } = dto;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<ChatGroup>()({
+    id: toChatGroupId({ raw: id }),
+    name,
+    isCollapsed,
     items,
-    endpoint: dto.endpoint === undefined
+    updatedAt,
+    endpoint: endpoint === undefined
       ? undefined
-      : endpointToDomain({ dto: dto.endpoint }),
-    modelId: dto.modelId,
-    autoTitleEnabled: dto.autoTitleEnabled,
-    titleModelId: dto.titleModelId,
-    systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
-    lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
-    mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
-    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
-  };
+      : endpointToDomain({ dto: endpoint }),
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    systemPrompt: systemPrompt as SystemPrompt | undefined,
+    lmParameters: lmParametersToDomain({ dto: lmParameters }),
+    mounts: mounts?.map(dto => mountToDomain({ dto })),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: experimental?.toolConfigs }),
+  });
 };
 
-export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto => ({
-  id: idToRaw({ id: domain.id }),
-  name: domain.name,
-  isCollapsed: domain.isCollapsed,
-  updatedAt: domain.updatedAt,
-  endpoint: domain.endpoint ? endpointToDto({ endpoint: domain.endpoint }) : undefined,
-  modelId: domain.modelId,
-  autoTitleEnabled: domain.autoTitleEnabled,
-  titleModelId: domain.titleModelId,
-  systemPrompt: domain.systemPrompt,
-  lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
-  mounts: domain.mounts?.map(domain => mountToDto({ domain })),
-  experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
-});
+export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto => {
+  const {
+    id,
+    name,
+    isCollapsed,
+    items: _items,
+    updatedAt,
+    endpoint,
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    systemPrompt,
+    lmParameters,
+    mounts,
+    toolConfigs,
+    ...unhandled
+  } = domain;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<ChatGroupDto>()({
+    id: idToRaw({ id }),
+    experimental: toolConfigsToExperimentalDto({ toolConfigs }),
+    name,
+    updatedAt,
+    isCollapsed,
+    endpoint: endpoint ? endpointToDto({ endpoint }) : undefined,
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    systemPrompt,
+    lmParameters: lmParametersToDto({ domain: lmParameters }),
+    mounts: mounts?.map(domain => mountToDto({ domain })),
+  });
+};
 
 export const lmParametersToDomain = (
   { dto }: { dto: LmParametersDto | undefined },
@@ -458,27 +587,55 @@ export const lmParametersToDto = (
 export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
   switch (dto.type) {
   case 'openai':
-  case 'ollama':
-    return {
-      type: dto.type,
-      url: dto.url,
-      httpHeaders: dto.httpHeaders?.map(([name, value]) => [name, value]),
-    };
-  case 'transformers_js':
-    return { type: 'transformers_js' };
+  case 'ollama': {
+    const {
+      type,
+      experimental: _experimental,
+      url,
+      httpHeaders,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<Endpoint, { type: 'openai' | 'ollama' }>>()({
+      type,
+      url,
+      httpHeaders: httpHeaders?.map(([name, value]): [string, string] => [name, value]),
+    });
+  }
+  case 'transformers_js': {
+    const {
+      type,
+      experimental: _experimental,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<Endpoint, { type: 'transformers_js' }>>()({ type });
+  }
   case 'experimental_type': {
-    const experimentalType = dto.experimental?.type;
+    const {
+      type: _type,
+      experimental,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    const experimentalType = experimental?.type;
     switch (experimentalType) {
     case 'browser_provided_lm':
-      return { type: 'browser_provided_lm' };
+      return exactObject<Extract<Endpoint, { type: 'browser_provided_lm' }>>()({ type: 'browser_provided_lm' });
     case undefined: {
-      const unreadableType = dto.experimental?.unreadable?.type;
-      return {
+      const unreadableType = experimental?.unreadable?.type;
+      return exactObject<Extract<Endpoint, { type: 'unsupported_experimental_endpoint' }>>()({
         type: 'unsupported_experimental_endpoint',
         persistedType: typeof unreadableType === 'string'
           ? unreadableType
           : undefined,
-      };
+      });
     }
     default: {
       const _ex: never = experimentalType;
@@ -496,24 +653,68 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
 export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
   switch (endpoint.type) {
   case 'openai':
-  case 'ollama':
-    return {
-      type: endpoint.type,
-      url: endpoint.url,
-      httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
-    };
-  case 'transformers_js':
-    return { type: 'transformers_js' };
-  case 'browser_provided_lm':
-    return {
+  case 'ollama': {
+    const {
+      type,
+      url,
+      httpHeaders,
+      ...unhandled
+    } = endpoint;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<EndpointDto, { type: 'openai' | 'ollama' }>>()({
+      type,
+      experimental: undefined,
+      url,
+      httpHeaders: httpHeaders?.map(([name, value]): [string, string] => [name, value]),
+    });
+  }
+  case 'transformers_js': {
+    const {
+      type,
+      ...unhandled
+    } = endpoint;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<EndpointDto, { type: 'transformers_js' }>>()({
+      type,
+      experimental: undefined,
+    });
+  }
+  case 'browser_provided_lm': {
+    const {
+      type: _type,
+      ...unhandled
+    } = endpoint;
+
+    unhandled satisfies NoRemainingProperties;
+
+    const experimental = exactObject<NonNullable<Extract<EndpointDto, { type: 'experimental_type' }>['experimental']>>()({
+      type: 'browser_provided_lm',
+      unreadable: undefined,
+    });
+
+    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
       type: 'experimental_type',
-      experimental: { type: 'browser_provided_lm' },
-    };
-  case 'unsupported_experimental_endpoint':
-    return {
+      experimental,
+    });
+  }
+  case 'unsupported_experimental_endpoint': {
+    const {
+      type: _type,
+      persistedType: _persistedType,
+      ...unhandled
+    } = endpoint;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
       type: 'experimental_type',
       experimental: undefined,
-    };
+    });
+  }
   default: {
     const _ex: never = endpoint;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
@@ -521,47 +722,80 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
   }
 };
 
+type AttachmentDtoV2 = Extract<AttachmentDto, { binaryObjectId: string }>;
+
 const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
   if ('binaryObjectId' in dto) {
     // V2
+    const {
+      id,
+      experimental: _experimental,
+      binaryObjectId,
+      name,
+      status,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
     const base = {
-      id: toAttachmentId({ raw: dto.id }),
-      binaryObjectId: toBinaryObjectId({ raw: dto.binaryObjectId }),
-      originalName: dto.name,
+      id: toAttachmentId({ raw: id }),
+      binaryObjectId: toBinaryObjectId({ raw: binaryObjectId }),
+      originalName: name,
       // Metadata will be hydrated by the StorageProvider
       mimeType: 'application/octet-stream',
       size: 0,
       uploadedAt: Date.now(),
     };
 
-    switch (dto.status) {
-    case 'persisted': return { ...base, status: 'persisted' };
-    case 'missing': return { ...base, status: 'missing' };
+    switch (status) {
+    case 'persisted':
+      return exactObject<Extract<Attachment, { status: 'persisted' }>>()({ ...base, status });
+    case 'missing':
+      return exactObject<Extract<Attachment, { status: 'missing' }>>()({ ...base, status });
     case 'memory':
-      return { ...base, status: 'memory' } as unknown as Attachment;
+      // Persisted V2 memory attachments can be reconstructed only as metadata here;
+      // the provider may reattach the in-memory blob from its separate blob cache.
+      return { ...base, status } as unknown as Attachment;
     default: {
-      const _ex: never = dto.status;
+      const _ex: never = status;
       throw new Error(`Unhandled attachment status: ${_ex}`);
     }
     }
   } else {
     // V1 (Legacy)
+    const {
+      id,
+      experimental: _experimental,
+      originalName,
+      mimeType,
+      size,
+      uploadedAt,
+      status,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
     const base = {
-      id: toAttachmentId({ raw: dto.id }),
-      binaryObjectId: toBinaryObjectId({ raw: dto.id }), // Legacy use id as binaryObjectId
-      originalName: dto.originalName,
-      mimeType: dto.mimeType,
-      size: dto.size,
-      uploadedAt: dto.uploadedAt,
+      id: toAttachmentId({ raw: id }),
+      binaryObjectId: toBinaryObjectId({ raw: id }), // Legacy use id as binaryObjectId
+      originalName,
+      mimeType,
+      size,
+      uploadedAt,
     };
 
-    switch (dto.status) {
-    case 'persisted': return { ...base, status: 'persisted' };
-    case 'missing': return { ...base, status: 'missing' };
+    switch (status) {
+    case 'persisted':
+      return exactObject<Extract<Attachment, { status: 'persisted' }>>()({ ...base, status });
+    case 'missing':
+      return exactObject<Extract<Attachment, { status: 'missing' }>>()({ ...base, status });
     case 'memory':
-      return { ...base, status: 'memory' } as unknown as Attachment;
+      // Legacy memory attachments likewise depend on the provider blob cache.
+      return { ...base, status } as unknown as Attachment;
     default: {
-      const _ex: never = dto.status;
+      const _ex: never = status;
       throw new Error(`Unhandled attachment status: ${_ex}`);
     }
     }
@@ -569,57 +803,452 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
 };
 
 const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
-  // Always output V2
-  return {
-    id: idToRaw({ id: domain.id }),
-    binaryObjectId: idToRaw({ id: domain.binaryObjectId }),
-    name: domain.originalName,
-    status: domain.status,
-  };
+  const toDto = ({ id, binaryObjectId, originalName, status }: {
+    id: Attachment['id'],
+    binaryObjectId: Attachment['binaryObjectId'],
+    originalName: string,
+    status: Attachment['status'],
+  }): AttachmentDtoV2 => exactObject<AttachmentDtoV2>()({
+    id: idToRaw({ id }),
+    experimental: undefined,
+    binaryObjectId: idToRaw({ id: binaryObjectId }),
+    name: originalName,
+    status,
+  });
+
+  switch (domain.status) {
+  case 'persisted':
+  case 'missing': {
+    const {
+      id,
+      binaryObjectId,
+      originalName,
+      mimeType: _mimeType,
+      size: _size,
+      uploadedAt: _uploadedAt,
+      status,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return toDto({ id, binaryObjectId, originalName, status });
+  }
+  case 'memory': {
+    const {
+      id,
+      binaryObjectId,
+      originalName,
+      mimeType: _mimeType,
+      size: _size,
+      uploadedAt: _uploadedAt,
+      status,
+      blob: _blob,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return toDto({ id, binaryObjectId, originalName, status });
+  }
+  default: {
+    const _ex: never = domain;
+    throw new Error(`Unhandled attachment status: ${(_ex as { status: string }).status}`);
+  }
+  }
+};
+
+const toolCallToDomain = ({ dto }: { dto: ToolCallDto }): ToolCall => {
+  const {
+    id,
+    experimental: _experimental,
+    type,
+    function: functionDto,
+    ...unhandled
+  } = dto;
+
+  unhandled satisfies NoRemainingProperties;
+
+  const {
+    name,
+    experimental: _functionExperimental,
+    arguments: rawArguments,
+    ...unhandledFunction
+  } = functionDto;
+
+  unhandledFunction satisfies NoRemainingProperties;
+
+  return exactObject<ToolCall>()({
+    id: toToolCallId({ raw: id }),
+    type,
+    function: exactObject<ToolCall['function']>()({
+      name,
+      arguments: rawArguments,
+    }),
+  });
+};
+
+const toolCallToDto = ({ domain }: { domain: ToolCall }): ToolCallDto => {
+  const {
+    id,
+    type,
+    function: functionDomain,
+    ...unhandled
+  } = domain;
+
+  unhandled satisfies NoRemainingProperties;
+
+  const {
+    name,
+    arguments: rawArguments,
+    ...unhandledFunction
+  } = functionDomain;
+
+  unhandledFunction satisfies NoRemainingProperties;
+
+  return exactObject<ToolCallDto>()({
+    id: idToRaw({ id }),
+    experimental: undefined,
+    type,
+    function: exactObject<ToolCallDto['function']>()({
+      name,
+      experimental: undefined,
+      arguments: rawArguments,
+    }),
+  });
+};
+
+const textOrBinaryObjectToDomain = ({ dto }: { dto: TextOrBinaryObjectDto }): TextOrBinaryObject => {
+  switch (dto.type) {
+  case 'text': {
+    const {
+      type,
+      text,
+      experimental: _experimental,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<TextOrBinaryObject, { type: 'text' }>>()({ type, text });
+  }
+  case 'binary_object': {
+    const {
+      type,
+      id,
+      experimental: _experimental,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<TextOrBinaryObject, { type: 'binary_object' }>>()({
+      type,
+      id: toBinaryObjectId({ raw: id }),
+    });
+  }
+  default: {
+    const _ex: never = dto;
+    throw new Error(`Unhandled text or binary object DTO: ${(_ex as { type: string }).type}`);
+  }
+  }
+};
+
+const textOrBinaryObjectToDto = ({ domain }: { domain: TextOrBinaryObject }): TextOrBinaryObjectDto => {
+  switch (domain.type) {
+  case 'text': {
+    const {
+      type,
+      text,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<TextOrBinaryObjectDto, { type: 'text' }>>()({
+      type,
+      experimental: undefined,
+      text,
+    });
+  }
+  case 'binary_object': {
+    const {
+      type,
+      id,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<TextOrBinaryObjectDto, { type: 'binary_object' }>>()({
+      type,
+      experimental: undefined,
+      id: idToRaw({ id }),
+    });
+  }
+  default: {
+    const _ex: never = domain;
+    throw new Error(`Unhandled text or binary object: ${(_ex as { type: string }).type}`);
+  }
+  }
+};
+
+const toolExecutionResultToDomain = ({ dto }: { dto: ToolExecutionResultDto }): ToolExecutionResult => {
+  switch (dto.status) {
+  case 'executing': {
+    const {
+      toolCallId,
+      status,
+      experimental: _experimental,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<ToolExecutionResult, { status: 'executing' }>>()({
+      toolCallId: toToolCallId({ raw: toolCallId }),
+      status,
+    });
+  }
+  case 'success': {
+    const {
+      toolCallId,
+      status,
+      experimental: _experimental,
+      content,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<ToolExecutionResult, { status: 'success' }>>()({
+      toolCallId: toToolCallId({ raw: toolCallId }),
+      status,
+      content: textOrBinaryObjectToDomain({ dto: content }),
+    });
+  }
+  case 'error': {
+    const {
+      toolCallId,
+      status,
+      experimental: _experimental,
+      error,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    const {
+      code,
+      experimental: _errorExperimental,
+      message,
+      ...unhandledError
+    } = error;
+
+    unhandledError satisfies NoRemainingProperties;
+
+    return exactObject<Extract<ToolExecutionResult, { status: 'error' }>>()({
+      toolCallId: toToolCallId({ raw: toolCallId }),
+      status,
+      error: exactObject<Extract<ToolExecutionResult, { status: 'error' }>['error']>()({
+        code,
+        message: textOrBinaryObjectToDomain({ dto: message }),
+      }),
+    });
+  }
+  default: {
+    const _ex: never = dto;
+    throw new Error(`Unhandled tool execution result status: ${(_ex as { status: string }).status}`);
+  }
+  }
+};
+
+const toolExecutionResultToDto = ({ domain }: { domain: ToolExecutionResult }): ToolExecutionResultDto => {
+  switch (domain.status) {
+  case 'executing': {
+    const {
+      toolCallId,
+      status,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<ToolExecutionResultDto, { status: 'executing' }>>()({
+      toolCallId: idToRaw({ id: toolCallId }),
+      status,
+      experimental: undefined,
+    });
+  }
+  case 'success': {
+    const {
+      toolCallId,
+      status,
+      content,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<ToolExecutionResultDto, { status: 'success' }>>()({
+      toolCallId: idToRaw({ id: toolCallId }),
+      status,
+      experimental: undefined,
+      content: textOrBinaryObjectToDto({ domain: content }),
+    });
+  }
+  case 'error': {
+    const {
+      toolCallId,
+      status,
+      error,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    const {
+      code,
+      message,
+      ...unhandledError
+    } = error;
+
+    unhandledError satisfies NoRemainingProperties;
+
+    return exactObject<Extract<ToolExecutionResultDto, { status: 'error' }>>()({
+      toolCallId: idToRaw({ id: toolCallId }),
+      status,
+      experimental: undefined,
+      error: exactObject<Extract<ToolExecutionResultDto, { status: 'error' }>['error']>()({
+        code,
+        experimental: undefined,
+        message: textOrBinaryObjectToDto({ domain: message }),
+      }),
+    });
+  }
+  default: {
+    const _ex: never = domain;
+    throw new Error(`Unhandled tool execution result status: ${(_ex as { status: string }).status}`);
+  }
+  }
+};
+
+const messageNodeRepliesToDomain = ({ replies }: { replies: MessageNodeDto['replies'] }): MessageBranch => {
+  const {
+    items,
+    ...unhandled
+  } = replies;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<MessageBranch>()({
+    items: items.map(dto => messageNodeToDomain({ dto })),
+  });
+};
+
+const messageNodeRepliesToDto = ({ replies }: { replies: MessageBranch }): MessageNodeDto['replies'] => {
+  const {
+    items,
+    ...unhandled
+  } = replies;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<MessageNodeDto['replies']>()({
+    items: items.map(domain => messageNodeToDto({ domain })),
+  });
 };
 
 export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNode => {
-  const common = {
-    id: toMessageId({ raw: dto.id }),
-    content: dto.content,
-    timestamp: dto.timestamp,
-    replies: {
-      items: dto.replies.items.map(dto => messageNodeToDomain({ dto })),
-    },
-  };
-
   switch (dto.role) {
-  case 'user':
-    return {
-      ...common,
-      role: 'user',
-      content: dto.content,
-      attachments: dto.attachments?.map(dto => attachmentToDomain({ dto })),
+  case 'user': {
+    const {
+      id,
+      role,
+      content,
+      attachments,
+      timestamp,
+      thinking: _thinking,
+      modelId: _modelId,
+      lmParameters,
+      toolCalls: _toolCalls,
+      results: _results,
+      replies,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<UserMessageNode>()({
+      id: toMessageId({ raw: id }),
+      role,
+      content,
+      attachments: attachments?.map(dto => attachmentToDomain({ dto })),
       thinking: undefined,
       error: undefined,
       modelId: undefined,
-      lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
+      lmParameters: lmParametersToDomain({ dto: lmParameters }),
       toolCalls: undefined,
       results: undefined,
-    };
-  case 'assistant':
-    return {
-      ...common,
-      role: 'assistant',
-      content: dto.content,
+      timestamp,
+      replies: messageNodeRepliesToDomain({ replies }),
+    });
+  }
+  case 'assistant': {
+    const {
+      id,
+      role,
+      content,
+      attachments: _attachments,
+      timestamp,
+      thinking,
+      modelId,
+      lmParameters,
+      toolCalls,
+      results: _results,
+      replies,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<AssistantMessageNode>()({
+      id: toMessageId({ raw: id }),
+      role,
+      content,
       attachments: undefined,
-      thinking: dto.thinking,
+      thinking,
       error: undefined,
-      modelId: dto.modelId,
-      lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
-      toolCalls: dto.toolCalls?.map(dto => ({ ...dto, id: toToolCallId({ raw: dto.id }) })),
+      modelId,
+      lmParameters: lmParametersToDomain({ dto: lmParameters }),
+      toolCalls: toolCalls?.map(dto => toolCallToDomain({ dto })),
       results: undefined,
-    };
-  case 'system':
-    return {
-      ...common,
-      role: 'system',
-      content: dto.content,
+      timestamp,
+      replies: messageNodeRepliesToDomain({ replies }),
+    });
+  }
+  case 'system': {
+    const {
+      id,
+      role,
+      content,
+      attachments: _attachments,
+      timestamp,
+      thinking: _thinking,
+      modelId: _modelId,
+      lmParameters: _lmParameters,
+      toolCalls: _toolCalls,
+      results: _results,
+      replies,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<SystemMessageNode>()({
+      id: toMessageId({ raw: id }),
+      role,
+      content,
       attachments: undefined,
       thinking: undefined,
       error: undefined,
@@ -627,11 +1256,31 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       lmParameters: undefined,
       toolCalls: undefined,
       results: undefined,
-    };
-  case 'tool':
-    return {
-      ...common,
-      role: 'tool',
+      timestamp,
+      replies: messageNodeRepliesToDomain({ replies }),
+    });
+  }
+  case 'tool': {
+    const {
+      id,
+      role,
+      content: _content,
+      attachments: _attachments,
+      timestamp,
+      thinking: _thinking,
+      modelId: _modelId,
+      lmParameters: _lmParameters,
+      toolCalls: _toolCalls,
+      results,
+      replies,
+      ...unhandled
+    } = dto;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<ToolMessageNode>()({
+      id: toMessageId({ raw: id }),
+      role,
       content: undefined,
       attachments: undefined,
       thinking: undefined,
@@ -639,54 +1288,11 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      results: dto.results.map(dto => {
-        switch (dto.status) {
-        case 'executing':
-          return { toolCallId: toToolCallId({ raw: dto.toolCallId }), status: 'executing' };
-        case 'success':
-          return {
-            toolCallId: toToolCallId({ raw: dto.toolCallId }),
-            status: 'success',
-            content: (() => {
-              switch (dto.content.type) {
-              case 'text':
-                return dto.content;
-              case 'binary_object':
-                return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.content.id }) };
-              default: {
-                const _ex: never = dto.content;
-                throw new Error(`Unhandled tool result content: ${((_ex satisfies never) as { readonly type: string }).type}`);
-              }
-              }
-            })(),
-          };
-        case 'error':
-          return {
-            toolCallId: toToolCallId({ raw: dto.toolCallId }),
-            status: 'error',
-            error: {
-              code: dto.error.code,
-              message: (() => {
-                switch (dto.error.message.type) {
-                case 'text':
-                  return dto.error.message;
-                case 'binary_object':
-                  return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.error.message.id }) };
-                default: {
-                  const _ex: never = dto.error.message;
-                  throw new Error(`Unhandled tool error message: ${((_ex satisfies never) as { readonly type: string }).type}`);
-                }
-                }
-              })(),
-            },
-          };
-        default: {
-          const _ex: never = dto;
-          throw new Error(`Unhandled tool execution result status: ${(_ex as { status: string }).status}`);
-        }
-        }
-      }),
-    };
+      results: results.map(dto => toolExecutionResultToDomain({ dto })),
+      timestamp,
+      replies: messageNodeRepliesToDomain({ replies }),
+    });
+  }
   default: {
     const _ex: never = dto;
     throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
@@ -695,110 +1301,139 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
 };
 
 export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNodeDto => {
-  const common = {
-    id: idToRaw({ id: domain.id }),
-    content: domain.content,
-    timestamp: domain.timestamp,
-    replies: {
-      items: domain.replies.items.map(domain => messageNodeToDto({ domain })),
-    },
-  };
-
   switch (domain.role) {
-  case 'user':
-    return {
-      ...common,
-      role: 'user',
-      content: domain.content,
-      attachments: domain.attachments?.map(domain => attachmentToDto({ domain })),
+  case 'user': {
+    const {
+      id,
+      role,
+      content,
+      attachments,
+      thinking: _thinking,
+      error: _error,
+      modelId: _modelId,
+      lmParameters,
+      toolCalls: _toolCalls,
+      results: _results,
+      timestamp,
+      replies,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<MessageNodeDto, { role: 'user' }>>()({
+      id: idToRaw({ id }),
+      role,
+      content,
+      attachments: attachments?.map(domain => attachmentToDto({ domain })),
       thinking: undefined,
       modelId: undefined,
-      lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
+      lmParameters: lmParametersToDto({ domain: lmParameters }),
       toolCalls: undefined,
       results: undefined,
-    };
-  case 'assistant':
-    return {
-      ...common,
-      role: 'assistant',
-      content: domain.content,
+      timestamp,
+      replies: messageNodeRepliesToDto({ replies }),
+    });
+  }
+  case 'assistant': {
+    const {
+      id,
+      role,
+      content,
+      attachments: _attachments,
+      thinking,
+      error: _error,
+      modelId,
+      lmParameters,
+      toolCalls,
+      results: _results,
+      timestamp,
+      replies,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<MessageNodeDto, { role: 'assistant' }>>()({
+      id: idToRaw({ id }),
+      role,
+      content,
       attachments: undefined,
-      thinking: domain.thinking,
-      modelId: domain.modelId,
-      lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
-      toolCalls: domain.toolCalls?.map(domain => ({ ...domain, id: idToRaw({ id: domain.id }) })),
+      thinking,
+      modelId,
+      lmParameters: lmParametersToDto({ domain: lmParameters }),
+      toolCalls: toolCalls?.map(domain => toolCallToDto({ domain })),
       results: undefined,
-    };
-  case 'system':
-    return {
-      ...common,
-      role: 'system',
-      content: domain.content,
+      timestamp,
+      replies: messageNodeRepliesToDto({ replies }),
+    });
+  }
+  case 'system': {
+    const {
+      id,
+      role,
+      content,
+      attachments: _attachments,
+      thinking: _thinking,
+      error: _error,
+      modelId: _modelId,
+      lmParameters: _lmParameters,
+      toolCalls: _toolCalls,
+      results: _results,
+      timestamp,
+      replies,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<MessageNodeDto, { role: 'system' }>>()({
+      id: idToRaw({ id }),
+      role,
+      content,
       attachments: undefined,
       thinking: undefined,
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
       results: undefined,
-    };
-  case 'tool':
-    return {
-      ...common,
-      role: 'tool',
+      timestamp,
+      replies: messageNodeRepliesToDto({ replies }),
+    });
+  }
+  case 'tool': {
+    const {
+      id,
+      role,
+      content: _content,
+      attachments: _attachments,
+      thinking: _thinking,
+      error: _error,
+      modelId: _modelId,
+      lmParameters: _lmParameters,
+      toolCalls: _toolCalls,
+      results,
+      timestamp,
+      replies,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<MessageNodeDto, { role: 'tool' }>>()({
+      id: idToRaw({ id }),
+      role,
       content: undefined,
       attachments: undefined,
       thinking: undefined,
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      results: domain.results.map(domain => {
-        switch (domain.status) {
-        case 'executing':
-          return { toolCallId: idToRaw({ id: domain.toolCallId }), status: 'executing' };
-        case 'success':
-          return {
-            toolCallId: idToRaw({ id: domain.toolCallId }),
-            status: 'success',
-            content: (() => {
-              switch (domain.content.type) {
-              case 'text':
-                return domain.content;
-              case 'binary_object':
-                return { type: 'binary_object', id: idToRaw({ id: domain.content.id }) };
-              default: {
-                const _ex: never = domain.content;
-                throw new Error(`Unhandled tool result content: ${((_ex satisfies never) as { readonly type: string }).type}`);
-              }
-              }
-            })(),
-          };
-        case 'error':
-          return {
-            toolCallId: idToRaw({ id: domain.toolCallId }),
-            status: 'error',
-            error: {
-              code: domain.error.code,
-              message: (() => {
-                switch (domain.error.message.type) {
-                case 'text':
-                  return domain.error.message;
-                case 'binary_object':
-                  return { type: 'binary_object', id: idToRaw({ id: domain.error.message.id }) };
-                default: {
-                  const _ex: never = domain.error.message;
-                  throw new Error(`Unhandled tool error message: ${((_ex satisfies never) as { readonly type: string }).type}`);
-                }
-                }
-              })(),
-            },
-          };
-        default: {
-          const _ex: never = domain;
-          throw new Error(`Unhandled tool execution result status: ${(_ex as { status: string }).status}`);
-        }
-        }
-      }),
-    };
+      results: results.map(domain => toolExecutionResultToDto({ domain })),
+      timestamp,
+      replies: messageNodeRepliesToDto({ replies }),
+    });
+  }
   default: {
     const _ex: never = domain;
     throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
@@ -897,27 +1532,46 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
 }
 
 export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
-  let root: MessageBranch = { items: [] };
-
-  if (dto.root && dto.root.items && dto.root.items.length > 0) {
-    root = { items: (dto.root.items as MessageNodeDto[]).map(dto => messageNodeToDomain({ dto })) };
-  } else if (dto.messages && dto.messages.length > 0) {
-    // Priority to legacy flat messages if tree is empty
-    root = migrateFlatMessagesToTree({ messages: dto.messages });
-  } else if (dto.root && !('items' in dto.root)) {
-    // Handle edge case where root might be a single node
-    root = { items: [messageNodeToDomain({ dto: dto.root as MessageNodeDto })] };
-  }
-
   const {
-    id, title, currentLeafId, createdAt, updatedAt,
-    debugEnabled, endpoint, modelId, originChatId, originMessageId,
-    systemPrompt, lmParameters,
+    id,
+    experimental,
+    title,
+    currentLeafId,
+    updatedAt,
+    createdAt,
+    debugEnabled,
+    endpoint,
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    originChatId,
+    originMessageId,
+    systemPrompt,
+    lmParameters,
+    mounts,
+    root: dtoRoot,
+    messages,
+    ...unhandled
   } = dto;
 
-  return {
+  unhandled satisfies NoRemainingProperties;
+
+  let root: MessageBranch = { items: [] };
+
+  if (dtoRoot && dtoRoot.items && dtoRoot.items.length > 0) {
+    root = exactObject<MessageBranch>()({ items: (dtoRoot.items as MessageNodeDto[]).map(dto => messageNodeToDomain({ dto })) });
+  } else if (messages && messages.length > 0) {
+    // Priority to legacy flat messages if tree is empty
+    root = migrateFlatMessagesToTree({ messages });
+  } else if (dtoRoot && !('items' in dtoRoot)) {
+    // Handle edge case where root might be a single node
+    root = exactObject<MessageBranch>()({ items: [messageNodeToDomain({ dto: dtoRoot as MessageNodeDto })] });
+  }
+
+  return exactObject<Chat>()({
     id: toChatId({ raw: id }),
     title,
+    groupId: undefined,
     root,
     currentLeafId: currentLeafId === undefined ? undefined : toMessageId({ raw: currentLeafId }),
     createdAt,
@@ -925,79 +1579,178 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     debugEnabled: debugEnabled ?? false,
     endpoint: endpoint === undefined ? undefined : endpointToDomain({ dto: endpoint }),
     modelId,
-    autoTitleEnabled: dto.autoTitleEnabled,
-    titleModelId: dto.titleModelId,
+    autoTitleEnabled,
+    titleModelId,
     originChatId: originChatId === undefined ? undefined : toChatId({ raw: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : toMessageId({ raw: originMessageId }),
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: lmParameters }),
-    mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
-    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
-  };
+    mounts: mounts?.map(dto => mountToDomain({ dto })),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: experimental?.toolConfigs }),
+  });
 };
 
-export const chatMetaToSummary = ({ domain }: { domain: ChatMeta }): ChatSummary => ({
-  id: domain.id,
-  title: domain.title,
-  updatedAt: domain.updatedAt,
-});
-
-export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => ({
-  id: idToRaw({ id: domain.id }),
-  title: domain.title,
-  createdAt: domain.createdAt,
-  updatedAt: domain.updatedAt,
-  debugEnabled: domain.debugEnabled,
-  endpoint: domain.endpoint ? endpointToDto({ endpoint: domain.endpoint }) : undefined,
-  modelId: domain.modelId,
-  autoTitleEnabled: domain.autoTitleEnabled,
-  titleModelId: domain.titleModelId,
-  originChatId: domain.originChatId === undefined ? undefined : idToRaw({ id: domain.originChatId }),
-  originMessageId: domain.originMessageId === undefined ? undefined : idToRaw({ id: domain.originMessageId }),
-  systemPrompt: domain.systemPrompt,
-  lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
-  currentLeafId: domain.currentLeafId === undefined ? undefined : idToRaw({ id: domain.currentLeafId }),
-  mounts: domain.mounts?.map(domain => mountToDto({ domain })),
-  experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
-});
-
-export const chatContentToDto = ({ domain }: { domain: ChatContent }): ChatContentDto => ({
-  root: { items: domain.root.items.map(domain => messageNodeToDto({ domain })) },
-  currentLeafId: domain.currentLeafId === undefined ? undefined : idToRaw({ id: domain.currentLeafId }),
-});
-
-export const chatContentToDomain = ({ dto }: { dto: ChatContentDto }): ChatContent => ({
-  root: { items: dto.root.items.map(dto => messageNodeToDomain({ dto })) },
-  currentLeafId: dto.currentLeafId === undefined ? undefined : toMessageId({ raw: dto.currentLeafId }),
-});
-
-export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
+export const chatMetaToSummary = ({ domain }: { domain: ChatMeta }): ChatSummary => {
   const {
-    id, title, root, currentLeafId, createdAt, updatedAt,
-    debugEnabled, endpoint,
-    modelId, originChatId, originMessageId, systemPrompt, lmParameters,
+    id,
+    title,
+    groupId,
+    currentLeafId: _currentLeafId,
+    createdAt: _createdAt,
+    updatedAt,
+    debugEnabled: _debugEnabled,
+    endpoint: _endpoint,
+    modelId: _modelId,
+    autoTitleEnabled: _autoTitleEnabled,
+    titleModelId: _titleModelId,
+    originChatId: _originChatId,
+    originMessageId: _originMessageId,
+    systemPrompt: _systemPrompt,
+    lmParameters: _lmParameters,
+    mounts: _mounts,
+    toolConfigs: _toolConfigs,
+    ...unhandled
   } = domain;
 
-  return {
-    id: idToRaw({ id }),
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<ChatSummary>()({
+    id,
     title,
-    root: { items: root.items.map(domain => messageNodeToDto({ domain })) },
-    currentLeafId: currentLeafId === undefined ? undefined : idToRaw({ id: currentLeafId }),
+    updatedAt,
+    groupId,
+  });
+};
+
+export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => {
+  const {
+    id,
+    title,
+    groupId: _groupId,
+    currentLeafId,
     createdAt,
     updatedAt,
     debugEnabled,
-    endpoint: endpoint === undefined ? undefined : endpointToDto({ endpoint }),
+    endpoint,
     modelId,
-    autoTitleEnabled: domain.autoTitleEnabled,
-    titleModelId: domain.titleModelId,
+    autoTitleEnabled,
+    titleModelId,
+    originChatId,
+    originMessageId,
+    systemPrompt,
+    lmParameters,
+    mounts,
+    toolConfigs,
+    ...unhandled
+  } = domain;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<ChatMetaDto>()({
+    id: idToRaw({ id }),
+    experimental: toolConfigsToExperimentalDto({ toolConfigs }),
+    title,
+    currentLeafId: currentLeafId === undefined ? undefined : idToRaw({ id: currentLeafId }),
+    updatedAt,
+    createdAt,
+    debugEnabled,
+    endpoint: endpoint ? endpointToDto({ endpoint }) : undefined,
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
     originChatId: originChatId === undefined ? undefined : idToRaw({ id: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : idToRaw({ id: originMessageId }),
     systemPrompt,
     lmParameters: lmParametersToDto({ domain: lmParameters }),
-    mounts: domain.mounts?.map(domain => mountToDto({ domain })),
-    experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
+    mounts: mounts?.map(domain => mountToDto({ domain })),
+  });
+};
+
+export const chatContentToDto = ({ domain }: { domain: ChatContent }): ChatContentDto => {
+  const {
+    root,
+    currentLeafId,
+    ...unhandled
+  } = domain;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<ChatContentDto>()({
+    root: exactObject<ChatContentDto['root']>()({
+      items: root.items.map(domain => messageNodeToDto({ domain })),
+      experimental: undefined,
+    }),
+    experimental: undefined,
+    currentLeafId: currentLeafId === undefined ? undefined : idToRaw({ id: currentLeafId }),
+  });
+};
+
+export const chatContentToDomain = ({ dto }: { dto: ChatContentDto }): ChatContent => {
+  const {
+    root,
+    experimental: _experimental,
+    currentLeafId,
+    ...unhandled
+  } = dto;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<ChatContent>()({
+    root: exactObject<MessageBranch>()({
+      items: root.items.map(dto => messageNodeToDomain({ dto })),
+    }),
+    currentLeafId: currentLeafId === undefined ? undefined : toMessageId({ raw: currentLeafId }),
+  });
+};
+
+export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
+  const {
+    id,
+    title,
+    groupId: _groupId,
+    root,
+    currentLeafId,
+    createdAt,
+    updatedAt,
+    debugEnabled,
+    endpoint,
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    originChatId,
+    originMessageId,
+    systemPrompt,
+    lmParameters,
+    mounts,
+    toolConfigs,
+    ...unhandled
+  } = domain;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<ChatDto>()({
+    id: idToRaw({ id }),
+    experimental: toolConfigsToExperimentalDto({ toolConfigs }),
+    title,
+    currentLeafId: currentLeafId === undefined ? undefined : idToRaw({ id: currentLeafId }),
+    updatedAt,
+    createdAt,
+    debugEnabled,
+    endpoint: endpoint === undefined ? undefined : endpointToDto({ endpoint }),
+    modelId,
+    autoTitleEnabled,
+    titleModelId,
+    originChatId: originChatId === undefined ? undefined : idToRaw({ id: originChatId }),
+    originMessageId: originMessageId === undefined ? undefined : idToRaw({ id: originMessageId }),
+    systemPrompt,
+    lmParameters: lmParametersToDto({ domain: lmParameters }),
+    mounts: mounts?.map(domain => mountToDto({ domain })),
+    root: exactObject<NonNullable<ChatDto['root']>>()({
+      items: root.items.map(domain => messageNodeToDto({ domain })),
+      experimental: undefined,
+    }),
     messages: undefined,
-  };
+  });
 };
 
 /**
@@ -1056,151 +1809,328 @@ export const buildSidebarItemsFromHierarchy = (
 };
 
 export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
-  const { endpoint, providerProfiles, storageType, ...rest } = dto;
+  const {
+    endpoint,
+    defaultModelId,
+    titleModelId,
+    autoTitleEnabled,
+    storageType,
+    providerProfiles,
+    mounts,
+    heavyContentAlertDismissed,
+    systemPrompt,
+    lmParameters,
+    experimental,
+    ...unhandled
+  } = dto;
 
-  return {
-    ...rest,
+  unhandled satisfies NoRemainingProperties;
+
+  const experimentalDomain = (() => {
+    const {
+      locale,
+      markdownRendering,
+      toolConfigPersistence,
+      toolConfigs,
+      fakeLm,
+      sidebarSendMessageReorder,
+      globalSearch,
+      unreadable,
+      ...unhandledExperimental
+    } = experimental ?? {};
+
+    unhandledExperimental satisfies NoRemainingProperties;
+
+    const globalSearchDomain = (() => {
+      if (globalSearch === undefined) return undefined;
+
+      const {
+        scope,
+        roleFilter,
+        previewMode,
+        previewContextSize,
+        ...unhandledGlobalSearch
+      } = globalSearch;
+
+      unhandledGlobalSearch satisfies NoRemainingProperties;
+
+      return exactObject<NonNullable<NonNullable<Settings['experimental']>['globalSearch']>>()({
+        scope,
+        roleFilter,
+        previewMode,
+        previewContextSize,
+      });
+    })();
+
+    return exactObject<NonNullable<Settings['experimental']>>()({
+      locale,
+      markdownRendering,
+      toolConfigPersistence: toolConfigPersistence ?? 'disabled',
+      toolConfigs: toolConfigsToDomain({ toolConfigs }),
+      fakeLm: fakeLm ?? 'disabled',
+      sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
+      globalSearch: globalSearchDomain,
+      unreadable,
+    });
+  })();
+
+  const profileDomains = providerProfiles.map(profile => {
+    const {
+      id,
+      experimental: _experimental,
+      name,
+      endpoint,
+      defaultModelId,
+      titleModelId,
+      systemPrompt,
+      lmParameters,
+      ...unhandledProfile
+    } = profile;
+
+    unhandledProfile satisfies NoRemainingProperties;
+
+    return exactObject<Settings['providerProfiles'][number]>()({
+      id: toProviderProfileId({ raw: id }),
+      name,
+      endpoint: endpointToDomain({ dto: endpoint }),
+      defaultModelId,
+      titleModelId,
+      systemPrompt,
+      lmParameters: lmParametersToDomain({ dto: lmParameters }),
+    });
+  });
+
+  return exactObject<Settings>()({
     endpoint: endpointToDomain({ dto: endpoint }),
+    defaultModelId,
+    titleModelId,
+    autoTitleEnabled,
     storageType: storageType as StorageType,
-    experimental: {
-      ...(rest.experimental?.locale === undefined
-        ? {}
-        : { locale: rest.experimental.locale }),
-      ...(rest.experimental?.markdownRendering === undefined
-        ? {}
-        : { markdownRendering: rest.experimental.markdownRendering }),
-      toolConfigPersistence: rest.experimental?.toolConfigPersistence ?? 'disabled',
-      toolConfigs: toolConfigsToDomain({ toolConfigs: rest.experimental?.toolConfigs }),
-      fakeLm: rest.experimental?.fakeLm ?? 'disabled',
-      sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
-      ...(rest.experimental?.globalSearch === undefined
-        ? {}
-        : {
-          globalSearch: {
-            scope: rest.experimental.globalSearch.scope,
-            roleFilter: rest.experimental.globalSearch.roleFilter,
-            previewMode: rest.experimental.globalSearch.previewMode,
-            previewContextSize: rest.experimental.globalSearch.previewContextSize,
-          },
-        }),
-      ...(rest.experimental?.unreadable === undefined
-        ? {}
-        : { unreadable: rest.experimental.unreadable }),
-    },
-    providerProfiles: providerProfiles?.map(p => {
-      const { endpoint: profileEndpoint, ...profileRest } = p;
-      return {
-        ...profileRest,
-        id: toProviderProfileId({ raw: profileRest.id }),
-        endpoint: endpointToDomain({ dto: profileEndpoint }),
-        lmParameters: lmParametersToDomain({ dto: profileRest.lmParameters }),
-      };
-    }) ?? [],
-    lmParameters: lmParametersToDomain({ dto: rest.lmParameters }),
-    mounts: rest.mounts.map(dto => mountToDomain({ dto })),
-  };
+    providerProfiles: profileDomains,
+    mounts: mounts.map(dto => mountToDomain({ dto })),
+    heavyContentAlertDismissed,
+    systemPrompt,
+    lmParameters: lmParametersToDomain({ dto: lmParameters }),
+    experimental: experimentalDomain,
+  });
 };
 
 export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => {
-  const { endpoint, storageType, providerProfiles, ...rest } = domain;
+  const {
+    endpoint,
+    defaultModelId,
+    titleModelId,
+    autoTitleEnabled,
+    storageType,
+    providerProfiles,
+    mounts,
+    heavyContentAlertDismissed,
+    systemPrompt,
+    lmParameters,
+    experimental,
+    ...unhandled
+  } = domain;
 
-  return {
-    endpoint: endpointToDto({ endpoint }),
-    defaultModelId: rest.defaultModelId,
-    titleModelId: rest.titleModelId,
-    autoTitleEnabled: rest.autoTitleEnabled,
-    storageType: storageType as StorageTypeDto,
-    providerProfiles: (providerProfiles || []).map(profile => ({
-      id: idToRaw({ id: profile.id }),
-      name: profile.name,
-      endpoint: endpointToDto({ endpoint: profile.endpoint }),
-      defaultModelId: profile.defaultModelId,
-      titleModelId: profile.titleModelId,
-      systemPrompt: profile.systemPrompt,
-      lmParameters: lmParametersToDto({ domain: profile.lmParameters }),
-    })),
-    heavyContentAlertDismissed: rest.heavyContentAlertDismissed,
-    systemPrompt: rest.systemPrompt,
-    lmParameters: lmParametersToDto({ domain: rest.lmParameters }),
-    experimental: {
-      locale: rest.experimental?.locale,
-      markdownRendering: rest.experimental?.markdownRendering,
+  unhandled satisfies NoRemainingProperties;
+
+  const experimentalDto = (() => {
+    const {
+      locale,
+      markdownRendering,
+      toolConfigPersistence,
+      toolConfigs,
+      fakeLm,
+      sidebarSendMessageReorder,
+      globalSearch,
+      unreadable: _unreadable,
+      ...unhandledExperimental
+    } = experimental ?? {};
+
+    unhandledExperimental satisfies NoRemainingProperties;
+
+    const globalSearchDto = (() => {
+      if (globalSearch === undefined) return undefined;
+
+      const {
+        scope,
+        roleFilter,
+        previewMode,
+        previewContextSize,
+        ...unhandledGlobalSearch
+      } = globalSearch;
+
+      unhandledGlobalSearch satisfies NoRemainingProperties;
+
+      return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['globalSearch']>>()({
+        scope,
+        roleFilter,
+        previewMode,
+        previewContextSize,
+      });
+    })();
+
+    return exactObject<NonNullable<SettingsDto['experimental']>>()({
+      locale,
+      markdownRendering,
       toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
-        persistence: rest.experimental?.toolConfigPersistence,
+        persistence: toolConfigPersistence,
       }),
-      toolConfigs: rest.experimental?.toolConfigs?.map(domain => toolConfigToDto({ domain })),
+      toolConfigs: toolConfigs?.map(domain => toolConfigToDto({ domain })),
       fakeLm: fakeLmToExperimentalDto({
-        status: rest.experimental?.fakeLm,
+        status: fakeLm,
       }),
-      sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
-      globalSearch: rest.experimental?.globalSearch === undefined
-        ? undefined
-        : {
-          scope: rest.experimental.globalSearch.scope,
-          roleFilter: rest.experimental.globalSearch.roleFilter,
-          previewMode: rest.experimental.globalSearch.previewMode,
-          previewContextSize: rest.experimental.globalSearch.previewContextSize,
-        },
-    },
-    mounts: (domain.mounts || []).map(m => {
-      const type = m.type;
-      switch (type) {
-      case 'volume':
-        return {
-          type: 'volume',
-          volumeId: idToRaw({ id: m.volumeId }),
-          mountPath: m.mountPath,
-          readOnly: m.readOnly,
-        };
-      default: {
-        const _ex: never = type;
-        throw new Error(`Unhandled mount type: ${_ex}`);
-      }
-      }
-    }),
-  };
+      sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
+      globalSearch: globalSearchDto,
+      unreadable: undefined,
+    });
+  })();
+
+  const profileDtos = (providerProfiles ?? []).map(profile => {
+    const {
+      id,
+      name,
+      endpoint,
+      defaultModelId,
+      titleModelId,
+      systemPrompt,
+      lmParameters,
+      ...unhandledProfile
+    } = profile;
+
+    unhandledProfile satisfies NoRemainingProperties;
+
+    return exactObject<SettingsDto['providerProfiles'][number]>()({
+      id: idToRaw({ id }),
+      experimental: undefined,
+      name,
+      endpoint: endpointToDto({ endpoint }),
+      defaultModelId,
+      titleModelId,
+      systemPrompt,
+      lmParameters: lmParametersToDto({ domain: lmParameters }),
+    });
+  });
+
+  return exactObject<SettingsDto>()({
+    endpoint: endpointToDto({ endpoint }),
+    defaultModelId,
+    titleModelId,
+    autoTitleEnabled,
+    storageType: storageType as StorageTypeDto,
+    providerProfiles: profileDtos,
+    mounts: (mounts ?? []).map(domain => mountToDto({ domain })),
+    heavyContentAlertDismissed,
+    systemPrompt,
+    lmParameters: lmParametersToDto({ domain: lmParameters }),
+    experimental: experimentalDto,
+  });
 };
 
-export const binaryObjectToDomain = ({ dto }: { dto: BinaryObjectDto }): BinaryObject => ({
-  id: toBinaryObjectId({ raw: dto.id }),
-  mimeType: dto.mimeType,
-  size: dto.size,
-  createdAt: dto.createdAt,
-  name: dto.name,
-});
+export const binaryObjectToDomain = ({ dto }: { dto: BinaryObjectDto }): BinaryObject => {
+  const {
+    id,
+    experimental: _experimental,
+    mimeType,
+    size,
+    createdAt,
+    name,
+    ...unhandled
+  } = dto;
 
-export const binaryObjectToDto = ({ domain }: { domain: BinaryObject }): BinaryObjectDto => ({
-  id: idToRaw({ id: domain.id }),
-  mimeType: domain.mimeType,
-  size: domain.size,
-  createdAt: domain.createdAt,
-  name: domain.name,
-});
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<BinaryObject>()({
+    id: toBinaryObjectId({ raw: id }),
+    mimeType,
+    size,
+    createdAt,
+    name,
+  });
+};
+
+export const binaryObjectToDto = ({ domain }: { domain: BinaryObject }): BinaryObjectDto => {
+  const {
+    id,
+    mimeType,
+    size,
+    createdAt,
+    name,
+    ...unhandled
+  } = domain;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<BinaryObjectDto>()({
+    id: idToRaw({ id }),
+    experimental: undefined,
+    mimeType,
+    size,
+    createdAt,
+    name,
+  });
+};
 
 
-export const volumeToDomain = ({ dto }: { dto: VolumeDto }): Volume => ({
-  id: toVolumeId({ raw: dto.id }),
-  name: dto.name,
-  type: dto.type,
-  createdAt: dto.createdAt,
-});
+export const volumeToDomain = ({ dto }: { dto: VolumeDto }): Volume => {
+  const {
+    id,
+    experimental: _experimental,
+    name,
+    type,
+    createdAt,
+    ...unhandled
+  } = dto;
+
+  unhandled satisfies NoRemainingProperties;
+
+  return exactObject<Volume>()({
+    id: toVolumeId({ raw: id }),
+    name,
+    type,
+    createdAt,
+  });
+};
 
 export const volumeToDto = ({ domain }: { domain: Volume }): VolumeDto => {
   switch (domain.type) {
-  case 'opfs':
-    return {
-      type: 'opfs',
-      id: idToRaw({ id: domain.id }),
-      name: domain.name,
-      createdAt: domain.createdAt,
-    };
-  case 'host':
-    return {
-      type: 'host',
-      id: idToRaw({ id: domain.id }),
-      name: domain.name,
-      createdAt: domain.createdAt,
-    };
+  case 'opfs': {
+    const {
+      type,
+      id,
+      name,
+      createdAt,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<VolumeDto, { type: 'opfs' }>>()({
+      type,
+      experimental: undefined,
+      id: idToRaw({ id }),
+      name,
+      createdAt,
+    });
+  }
+  case 'host': {
+    const {
+      type,
+      id,
+      name,
+      createdAt,
+      ...unhandled
+    } = domain;
+
+    unhandled satisfies NoRemainingProperties;
+
+    return exactObject<Extract<VolumeDto, { type: 'host' }>>()({
+      type,
+      experimental: undefined,
+      id: idToRaw({ id }),
+      name,
+      createdAt,
+    });
+  }
   default: {
     const _ex: never = domain.type;
     throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
