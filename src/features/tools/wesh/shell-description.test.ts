@@ -15,6 +15,7 @@ describe('buildShellDescription', () => {
   it('includes the base description with backtick help command', () => {
     const result = buildShellDescription({ mounts: noMounts, detectedExtensions: new Set() });
     expect(result).toContain('Run `help` to see available utilities.');
+    expect(result).not.toContain('patch --atomic --safe-paths -p1');
   });
 
   it('omits the mounted directories section when there are no mounts', () => {
