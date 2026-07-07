@@ -959,6 +959,7 @@ import { Sidebar__delete_group_warning } from '@/strings/messages/Sidebar__delet
 import { Sidebar__ephemeral_session } from '@/strings/messages/Sidebar__ephemeral_session/en';
 import { Sidebar__group_name } from '@/strings/messages/Sidebar__group_name/en';
 import { Sidebar__new_chat_in_group } from '@/strings/messages/Sidebar__new_chat_in_group/en';
+import { Sidebar__none } from '@/strings/messages/Sidebar__none/en';
 import { Sidebar__open_sidebar } from '@/strings/messages/Sidebar__open_sidebar/en';
 import { Sidebar__rename_group } from '@/strings/messages/Sidebar__rename_group/en';
 import { Sidebar__search_cmd_k } from '@/strings/messages/Sidebar__search_cmd_k/en';
@@ -1399,6 +1400,7 @@ import { fileExplorer__zip_cannot_be_extracted } from '@/strings/messages/fileEx
 import { fileExplorer__zip_file_upload } from '@/strings/messages/fileExplorer__zip_file_upload/en';
 import { fileExplorer__zip_upload_preview_outdated } from '@/strings/messages/fileExplorer__zip_upload_preview_outdated/en';
 import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/en';
+import { formatSettingsSourceLabel__none } from '@/strings/messages/formatSettingsSourceLabel__none/en';
 import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/en';
 import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/en';
 import { toolCall__arguments } from '@/strings/messages/toolCall__arguments/en';
@@ -2484,6 +2486,7 @@ export const en = {
   Sidebar__ephemeral_session,
   Sidebar__group_name,
   Sidebar__new_chat_in_group,
+  Sidebar__none,
   Sidebar__open_sidebar,
   Sidebar__rename_group,
   Sidebar__search_cmd_k,
@@ -2924,6 +2927,7 @@ export const en = {
   fileExplorer__zip_file_upload,
   fileExplorer__zip_upload_preview_outdated,
   formatSettingsSourceLabel__default,
+  formatSettingsSourceLabel__none,
   formatSettingsSourceLabel__value_from_global,
   formatSettingsSourceLabel__value_from_group,
   toolCall__arguments,

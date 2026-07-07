@@ -113,7 +113,7 @@ describe('Sidebar Transformers.js Support', () => {
     });
   });
 
-  it('does not render the selector if an HTTP endpoint URL is empty', async () => {
+  it('renders the selector if an HTTP endpoint URL is empty', async () => {
     mockSettings.endpoint = { type: 'openai', url: '' };
 
     const wrapper = mount(Sidebar, {
@@ -122,7 +122,7 @@ describe('Sidebar Transformers.js Support', () => {
     await nextTick();
 
     const selector = wrapper.find('[data-testid="model-selector-mock"]');
-    expect(selector.exists()).toBe(false);
+    expect(selector.exists()).toBe(true);
   });
 
   it('calls updateGlobalModel when model is changed in transformers_js mode', async () => {

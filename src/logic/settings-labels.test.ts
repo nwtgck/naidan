@@ -7,17 +7,17 @@ describe('formatSettingsSourceLabel', () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 
-  it('formats English default and inherited setting labels', () => {
-    expect(formatSettingsSourceLabel({ value: undefined, source: undefined })).toBe('Default');
+  it('formats English empty and inherited setting labels', () => {
+    expect(formatSettingsSourceLabel({ value: undefined, source: undefined })).toBe('None');
     expect(formatSettingsSourceLabel({ value: 'Model A', source: 'global' })).toBe('Model A (Global)');
     expect(formatSettingsSourceLabel({ value: 'Model B', source: 'chat_group' })).toBe('Model B (Group)');
     expect(formatSettingsSourceLabel({ value: 'Model C', source: 'chat' })).toBe('Model C');
   });
 
-  it('formats Japanese default and inherited setting labels', async () => {
+  it('formats Japanese empty and inherited setting labels', async () => {
     await ensureAllStringsForTest({ locale: 'ja' });
 
-    expect(formatSettingsSourceLabel({ value: undefined, source: undefined })).toBe('デフォルト');
+    expect(formatSettingsSourceLabel({ value: undefined, source: undefined })).toBe('なし');
     expect(formatSettingsSourceLabel({ value: 'モデルA', source: 'global' })).toBe('モデルA（グローバル）');
     expect(formatSettingsSourceLabel({ value: 'モデルB', source: 'chat_group' })).toBe('モデルB（グループ）');
     expect(formatSettingsSourceLabel({ value: 'モデルC', source: 'chat' })).toBe('モデルC');

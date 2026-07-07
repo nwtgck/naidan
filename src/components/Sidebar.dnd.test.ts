@@ -89,6 +89,7 @@ describe('Sidebar DND Improvements', () => {
     });
     (useSettings as any).mockReturnValue({
       settings: ref({ endpoint: { type: 'openai', url: '' } }),
+      availableModels: ref([]),
       isFetchingModels: ref(false),
     });
     (useLayout as any).mockReturnValue({

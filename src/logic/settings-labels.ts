@@ -13,7 +13,7 @@ export function formatSettingsSourceLabel({
   value: string | undefined,
   source: SettingsSource | undefined,
 }): string | undefined {
-  if (!value) return lazyStrings.formatSettingsSourceLabel__default();
+  if (!value) return lazyStrings.formatSettingsSourceLabel__none();
   switch (source) {
   case 'chat_group':
     return lazyStrings.formatSettingsSourceLabel__value_from_group({ value });
