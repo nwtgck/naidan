@@ -88,6 +88,66 @@ describe('wesh patch', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('requires explicit path stripping when safe path resolution is enabled', async () => {
+    await writeFile({ path: 'file.txt', data: `\
+one
+two
+three
+` });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'patch --safe-paths',
+      stdinText: `\
+--- a/sub/file.txt
++++ b/sub/file.txt
+@@ -1,3 +1,3 @@
+ one
+-two
++TWO
+ three
+`,
+    });
+
+    expect(await readFile({ path: 'file.txt' })).toBe(`\
+one
+two
+three
+`);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('patch: --safe-paths requires an explicit -p/--strip value');
+    expect(result.exitCode).toBe(2);
+  });
+
+  it('applies git-style paths when safe path resolution has explicit stripping', async () => {
+    await writeFile({ path: 'sub/file.txt', data: `\
+one
+two
+three
+` });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'patch --safe-paths -p1',
+      stdinText: `\
+--- a/sub/file.txt
++++ b/sub/file.txt
+@@ -1,3 +1,3 @@
+ one
+-two
++TWO
+ three
+`,
+    });
+
+    expect(await readFile({ path: 'sub/file.txt' })).toBe(`\
+one
+TWO
+three
+`);
+    expect(stdout.text).toBe('patching file sub/file.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('applies a unified diff from stdin using basename path selection', async () => {
     await writeFile({ path: 'file.txt', data: `\
 one
@@ -598,6 +658,34 @@ four
 `);
     expect(await readFile({ path: 'file.txt.rej' })).toContain('NOT-FOUR');
     expect(stdout.text).toContain('Hunk #2 FAILED');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('does not partially change earlier files when atomic preflight fails later', async () => {
+    await writeFile({ path: 'one.txt', data: 'old one\n' });
+    await writeFile({ path: 'two.txt', data: 'old two\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'patch --atomic',
+      stdinText: `\
+--- one.txt
++++ one.txt
+@@ -1 +1 @@
+-old one
++new one
+--- two.txt
++++ two.txt
+@@ -1 +1 @@
+-not present
++new two
+`,
+    });
+
+    expect(await readFile({ path: 'one.txt' })).toBe('old one\n');
+    expect(await readFile({ path: 'two.txt' })).toBe('old two\n');
+    expect(await exists({ path: 'two.txt.rej' })).toBe(false);
+    expect(stdout.text).toContain('Hunk #1 FAILED');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(1);
   });

@@ -1,7 +1,6 @@
 import type {
   WeshCommandContext,
   WeshEntryRef,
-  WeshFileType,
   WeshStat,
 } from '@/features/wesh/types';
 import type { DuOptions } from './options';

@@ -103,6 +103,8 @@ export interface PatchOptions {
   ifdefName: string | undefined,
   quietMode: 'normal' | 'quiet' | 'verbose',
   dryRun: boolean,
+  atomic: boolean,
+  safePaths: boolean,
   posix: boolean,
   binary: boolean,
   rejectFormat: RejectFormat | undefined,

@@ -942,7 +942,12 @@ export const csplitCommandDefinition: WeshCommandDefinition = {
         patternTokens,
         suppressMatched: options.suppressMatched,
       });
-      const createdPaths = await writeSections({
+      if (plan.errorMessage !== undefined && !options.keepFiles) {
+        await context.text().error({ text: `${plan.errorMessage}\n` });
+        return { exitCode: 1 };
+      }
+
+      await writeSections({
         context,
         lines,
         sections: plan.sections,
@@ -951,9 +956,6 @@ export const csplitCommandDefinition: WeshCommandDefinition = {
       });
 
       if (plan.errorMessage !== undefined) {
-        if (!options.keepFiles) {
-          await cleanupCreatedFiles({ context, paths: createdPaths });
-        }
         await context.text().error({ text: `${plan.errorMessage}\n` });
         return { exitCode: 1 };
       }

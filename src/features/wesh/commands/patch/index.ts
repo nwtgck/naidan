@@ -28,6 +28,7 @@ import type {
   PatchDirection,
   PatchFileKind,
   PatchOptions,
+  ResolvedPatchOperands,
   PatchSection,
   PatchTarget,
   TextHunk,
@@ -700,6 +701,42 @@ async function applySection({
   return { exitCode, output: resultContent };
 }
 
+
+async function applyPatchSections({
+  context,
+  sections,
+  operands,
+  effectiveDirectory,
+  options,
+}: {
+  context: WeshCommandContext,
+  sections: PatchSection[],
+  operands: ResolvedPatchOperands,
+  effectiveDirectory: string,
+  options: PatchOptions,
+}): Promise<{ exitCode: 0 | 1, outputs: PatchContent[] }> {
+  const initializedRejectPaths = new Set<string>();
+  const backedUpPaths = new Set<string>();
+  const outputs: PatchContent[] = [];
+  let exitCode: 0 | 1 = 0;
+
+  for (const section of sections) {
+    const result = await applySection({
+      context,
+      section,
+      explicitOriginalPath: operands.originalPath,
+      effectiveDirectory,
+      options,
+      initializedRejectPaths,
+      backedUpPaths,
+    });
+    outputs.push(result.output);
+    if (result.exitCode !== 0) exitCode = 1;
+  }
+
+  return { exitCode, outputs };
+}
+
 export const patchCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'patch',
@@ -759,6 +796,15 @@ export const patchCommandDefinition: WeshCommandDefinition = {
       });
       return { exitCode: 2 };
     }
+    if (options.safePaths && options.stripCount === undefined && operands.originalPath === undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'patch',
+        message: 'patch: --safe-paths requires an explicit -p/--strip value or an explicit original file operand',
+        argvSpec: patchArgvSpec,
+      });
+      return { exitCode: 2 };
+    }
 
     try {
       const effectiveDirectory = await resolveEffectiveDirectory({ context, directory: options.directory });
@@ -782,35 +828,41 @@ export const patchCommandDefinition: WeshCommandDefinition = {
         });
       }
 
-      const initializedRejectPaths = new Set<string>();
-      const backedUpPaths = new Set<string>();
-      const outputs: PatchContent[] = [];
-      let exitCode: 0 | 1 = 0;
-
-      for (const section of document.sections) {
-        const result = await applySection({
+      if (options.atomic && !options.dryRun) {
+        const preflight = await applyPatchSections({
           context,
-          section,
-          explicitOriginalPath: operands.originalPath,
+          sections: document.sections,
+          operands,
           effectiveDirectory,
-          options,
-          initializedRejectPaths,
-          backedUpPaths,
+          options: {
+            ...options,
+            dryRun: true,
+            quietMode: 'quiet',
+          },
         });
-        outputs.push(result.output);
-        if (result.exitCode !== 0) exitCode = 1;
+        if (preflight.exitCode !== 0) {
+          return { exitCode: preflight.exitCode };
+        }
       }
+
+      const applied = await applyPatchSections({
+        context,
+        sections: document.sections,
+        operands,
+        effectiveDirectory,
+        options,
+      });
 
       if (options.outputPath !== undefined && !options.dryRun) {
         await writeOutputContent({
           context,
           path: options.outputPath,
-          content: { kind: 'sequence', contents: outputs },
+          content: { kind: 'sequence', contents: applied.outputs },
           cwd: effectiveDirectory,
         });
       }
 
-      return { exitCode };
+      return { exitCode: applied.exitCode };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       await context.text().error({ text: `patch: **** ${message}\n` });

@@ -40,7 +40,8 @@ export function buildShellDescription({
 
   return (
     'Execute shell scripts to perform file operations, system exploration, and data processing. ' +
-    'You can use standard Unix-like commands (ls, cat, grep, etc.). Run `help` to see available utilities.' +
+    'You can use standard Unix-like commands (ls, cat, grep, etc.). Run `help` to see available utilities. ' +
+    'For code edits with unified diffs, prefer `patch --atomic --safe-paths -p1` so git-style paths are explicit and partial edits are avoided.' +
     mountList +
     fileTypeSection
   );

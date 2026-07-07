@@ -111,6 +111,8 @@ export const patchArgvSpec: StandardArgvParserSpec = {
     { kind: 'flag', short: undefined, long: 'silent', effects: [{ key: 'quietMode', value: 'quiet' }], help: { summary: 'suppress normal progress messages', category: 'advanced' } },
     { kind: 'flag', short: undefined, long: 'verbose', effects: [{ key: 'quietMode', value: 'verbose' }], help: { summary: 'print detailed progress messages', category: 'advanced' } },
     { kind: 'flag', short: undefined, long: 'dry-run', effects: [{ key: 'dryRun', value: true }], help: { summary: 'check whether the patch applies without changing files', category: 'common' } },
+    { kind: 'flag', short: undefined, long: 'atomic', effects: [{ key: 'atomic', value: true }], help: { summary: 'apply all file changes only after every hunk applies', category: 'common' } },
+    { kind: 'flag', short: undefined, long: 'safe-paths', effects: [{ key: 'safePaths', value: true }], help: { summary: 'require explicit path stripping and disable basename fallback', category: 'common' } },
     { kind: 'flag', short: undefined, long: 'posix', effects: [{ key: 'posix', value: true }], help: { summary: 'use POSIX-compatible behavior', category: 'advanced' } },
     { kind: 'flag', short: undefined, long: 'binary', effects: [{ key: 'binary', value: true }], help: { summary: 'do not strip carriage returns from patch input', category: 'advanced' } },
     { kind: 'value', short: undefined, long: 'reject-format', key: 'rejectFormat', valueName: 'FORMAT', allowAttachedValue: false, parseValue: parseRejectFormat, help: { summary: 'write rejects in unified or context format', valueName: 'FORMAT', category: 'advanced' } },
@@ -220,6 +222,8 @@ export function parsePatchArgv({
       ? parsed.optionValues.quietMode
       : 'normal',
     dryRun: parsed.optionValues.dryRun === true,
+    atomic: parsed.optionValues.atomic === true,
+    safePaths: parsed.optionValues.safePaths === true,
     posix: parsed.optionValues.posix === true,
     binary: parsed.optionValues.binary === true,
     rejectFormat: parsed.optionValues.rejectFormat === 'unified' || parsed.optionValues.rejectFormat === 'context'

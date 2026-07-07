@@ -448,10 +448,7 @@ e
       script: `\
 csplit input.txt 3 /missing/`,
     });
-    expect(removed.stdout.text).toBe(`\
-4
-6
-`);
+    expect(removed.stdout.text).toBe('');
     expect(removed.stderr.text).toContain("csplit: '/missing/': match not found");
     expect(removed.result.exitCode).toBe(1);
     expect(await fileExists({ path: 'xx00' })).toBe(false);
@@ -476,6 +473,31 @@ c
 d
 e
 `);
+  });
+
+  it('does not overwrite existing output files before a later pattern error', async () => {
+    await writeFile({
+      path: 'input.txt',
+      data: `\
+a
+b
+c
+d
+e
+`,
+    });
+    await writeFile({ path: 'xx00', data: 'preexisting\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+csplit input.txt 3 /missing/`,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("csplit: '/missing/': match not found");
+    expect(result.exitCode).toBe(1);
+    expect(await readFile({ path: 'xx00' })).toBe('preexisting\n');
+    expect(await fileExists({ path: 'xx01' })).toBe(false);
   });
 
   it('reports malformed patterns and suffix formats', async () => {
