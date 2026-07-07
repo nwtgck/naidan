@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
+import { useImageGeneration } from '@/composables/useImageGeneration';
 import { toBinaryObjectId, toChatId } from '@/01-models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
@@ -89,6 +90,8 @@ describe('MessageItem Image Generation', () => {
       settings: ref({}),
     });
 
+    useImageGeneration().imageProgressMap.value.clear();
+
     // Reset storage service mocks for each test
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({
@@ -115,6 +118,30 @@ describe('MessageItem Image Generation', () => {
     });
 
     expect(wrapper.findComponent({ name: 'ImageConjuringLoader' }).exists()).toBe(true);
+  });
+
+  it('shows ImageConjuringLoader for initial pending image generation in waiting mode', () => {
+    const message = createMessage(SENTINEL_IMAGE_PENDING);
+    const wrapper = mount(MessageItem, {
+      props: { message, mode: 'waiting', isGenerating: true },
+    });
+
+    expect(wrapper.findComponent({ name: 'ImageConjuringLoader' }).exists()).toBe(true);
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
+  });
+
+  it('shows the first active step for initial pending image generation in waiting mode', () => {
+    const message = createMessage(SENTINEL_IMAGE_PENDING);
+    useImageGeneration().imageProgressMap.value.set(toChatId({ raw: 'chat-1' }), {
+      currentStep: 0,
+      totalSteps: 25,
+    });
+
+    const wrapper = mount(MessageItem, {
+      props: { message, mode: 'waiting', isGenerating: true },
+    });
+
+    expect(wrapper.find('[data-testid="step-display"]').text()).toContain('1/ 25');
   });
 
   it('renders image when generation is processed (Legacy img tag)', () => {

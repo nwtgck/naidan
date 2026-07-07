@@ -125,6 +125,27 @@ describe('ChatToolsMenu', () => {
     expect(wrapper.emitted('toggle-image-mode')).toBeTruthy();
   });
 
+  it('does not pass extraneous class attributes to image generation settings', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      wrapper = mount(ChatToolsMenu, {
+        props: { ...defaultProps, isImageMode: true },
+        attachTo: document.body,
+      });
+      await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
+
+      const extraneousAttributeWarnings = warnSpy.mock.calls.filter((call) =>
+        call.some((value) => String(value).includes('Extraneous non-props attributes')),
+      );
+      expect(extraneousAttributeWarnings).toHaveLength(0);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('shows resolution, count and model selectors when image mode is on', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, isImageMode: true },
