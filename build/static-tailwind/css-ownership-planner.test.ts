@@ -34,7 +34,7 @@ async function plan({ analysis, outputMode, maxSplitCssGroups }: {
   return createCssOwnershipPlan({
     projectRoot: path.resolve(import.meta.dirname, '../..'),
     cssEntryPath: path.resolve(import.meta.dirname, '../../src/style.css'),
-    expectedTailwindVersion: '4.3.1',
+    expectedTailwindVersion: '4.3.2',
     analysis,
     outputMode,
     maxSplitCssGroups,
@@ -232,7 +232,7 @@ describe('static Tailwind CSS ownership planner', () => {
               structuralOverheadRaw: 0,
             },
           },
-          tailwindVersion: '4.3.1',
+          tailwindVersion: '4.3.2',
           stylesheetDependencies: [],
         },
       });

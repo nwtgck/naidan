@@ -42,7 +42,7 @@ function createFixture(): string {
   writeFile({
     root,
     relativePath: 'package.json',
-    content: JSON.stringify({ devDependencies: { tailwindcss: '4.3.1' } }),
+    content: JSON.stringify({ devDependencies: { tailwindcss: '4.3.2' } }),
   });
   writeFile({ root, relativePath: 'src/style.css', content: '@import "tailwindcss" source(none);\n' });
   writeFile({
