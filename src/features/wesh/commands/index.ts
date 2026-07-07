@@ -31,6 +31,7 @@ import { trCommandDefinition } from './tr/index.ts';
 import { shufCommandDefinition } from './shuf/index.ts';
 import { commCommandDefinition } from './comm/index.ts';
 import { pasteCommandDefinition } from './paste/index.ts';
+import { columnCommandDefinition } from './column/index.ts';
 import { realpathCommandDefinition } from './realpath/index.ts';
 import { trueCommandDefinition } from './true/index.ts';
 import { falseCommandDefinition } from './false/index.ts';
@@ -114,6 +115,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   shufCommandDefinition,
   commCommandDefinition,
   pasteCommandDefinition,
+  columnCommandDefinition,
   realpathCommandDefinition,
   trueCommandDefinition,
   falseCommandDefinition,
