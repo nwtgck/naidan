@@ -1223,12 +1223,16 @@ watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchModels();
 });
 
-watch([localTitleEndpointUrl, effectiveTitleEndpointType], ([url, type]) => {
-  error.value = null;
-  if (localTitleGenerationMode.value !== 'disabled' && !localTitleEndpointUsesSameScope.value) {
-    if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchTitleEndpointModels();
-  }
-});
+watch(
+  [localTitleEndpointUrl, effectiveTitleEndpointType, localTitleEndpointUsesInheritance, localTitleEndpointUsesSameScope],
+  ([url, type]) => {
+    error.value = null;
+    if (localTitleGenerationMode.value !== 'disabled' && !localTitleEndpointUsesSameScope.value) {
+      if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchTitleEndpointModels();
+    }
+  },
+  { immediate: true },
+);
 
 
 async function updateSystemPromptBehavior({

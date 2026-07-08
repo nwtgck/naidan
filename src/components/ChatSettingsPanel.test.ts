@@ -238,7 +238,9 @@ describe('ChatSettingsPanel.vue', () => {
         return await mockFetchAvailableModels({ chatId });
       },
       fetchForGlobalEndpoint: vi.fn(),
-      fetchForEndpoint: vi.fn(),
+      fetchForEndpoint: async ({ endpoint }) => {
+        return await mockFetchAvailableModels({ endpoint });
+      },
       TEST_ONLY: {},
     });
 
@@ -426,6 +428,25 @@ describe('ChatSettingsPanel.vue', () => {
       endpoint: { type: 'ollama', url: 'http://global-ollama' },
       model: { id: 'chat-title-model' },
     });
+  });
+
+  it('loads inherited title model options without requiring a manual model refresh', async () => {
+    mockCurrentChat.value.titleGeneration = undefined;
+    mockSettings.value.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
+    mockSettings.value.defaultModelId = 'global-model';
+    mockFetchAvailableModels.mockResolvedValue(['title-model-10', 'title-model-2', 'title-model-1']);
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Chat Group: global-model');
+    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
   });
 
   it('applies animation classes for entrance effects', () => {

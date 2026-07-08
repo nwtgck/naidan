@@ -329,6 +329,23 @@ describe('ChatGroupSettingsPanel.vue', () => {
     });
   });
 
+  it('loads inherited title model options without requiring a manual model refresh', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockSettings.titleGeneration = { endpoint: 'same_scope', model: 'same_scope' };
+    mockSettings.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
+    mockSettings.defaultModelId = 'global-model';
+    mockFetchAvailableModels.mockResolvedValue(['title-model-10', 'title-model-2', 'title-model-1']);
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
+  });
+
   it('shows the "Active Overrides" badge only when overrides are present', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
