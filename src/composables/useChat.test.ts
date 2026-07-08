@@ -19,7 +19,7 @@ const { mocks } = vi.hoisted(() => ({
         url: 'http://localhost',
       },
       storageType: 'local',
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       defaultModelId: 'gpt-4',
       providerProfiles: [],
       mounts: [],

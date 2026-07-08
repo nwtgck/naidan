@@ -477,8 +477,7 @@ describe('Settings Mapping', () => {
     const dto: SettingsDto = {
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
       defaultModelId: 'gpt-4',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -506,8 +505,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'future-model',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -539,8 +537,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'future-model',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -565,8 +562,7 @@ describe('Settings Mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'browser_provided_lm' },
       defaultModelId: 'browser-provided-language-model',
-      titleModelId: 'browser-provided-language-model',
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -580,7 +576,7 @@ describe('Settings Mapping', () => {
     const remapped = settingsToDomain({ dto });
     expect(remapped.endpoint).toEqual(domain.endpoint);
     expect(remapped.defaultModelId).toBe(domain.defaultModelId);
-    expect(remapped.titleModelId).toBe(domain.titleModelId);
+    expect(remapped.titleGeneration).toEqual(domain.titleGeneration);
     expect(remapped.storageType).toBe(domain.storageType);
   });
 
@@ -594,8 +590,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'browser-provided-language-model',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -615,7 +610,7 @@ describe('Settings Mapping', () => {
   it('preserves an empty HTTP URL through settings mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'openai', url: '' },
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -632,8 +627,7 @@ describe('Settings Mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       defaultModelId: 'gpt-4',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -675,8 +669,6 @@ describe('Settings Mapping', () => {
         httpHeaders: [['Authorization', 'Bearer token']],
       },
       defaultModelId: 'gpt-4.1',
-      autoTitleEnabled: false,
-      titleModelId: 'gpt-4.1-mini',
       titleGeneration: 'disabled',
       storageType: 'opfs',
       providerProfiles: [{

@@ -184,16 +184,14 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
   describe('Automatic Title Settings Resolution', () => {
     const globalSettings: ResolvableSettings = {
       endpoint: { type: 'openai', url: '' },
-      autoTitleEnabled: true,
-      titleModelId: 'global-title-model',
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'global-title-model' } },
     };
 
     it('should resolve global title settings when not overridden', () => {
       const result = resolveChatSettings({ chat: baseChat, groups: [], globalSettings });
       expect(result.autoTitleEnabled).toBe(true);
-      expect(result.titleModelId).toBe('global-title-model');
-      expect(result.sources.autoTitleEnabled).toBe('global');
-      expect(result.sources.titleModelId).toBe('global');
+      expect(result.titleGeneration).toEqual({ endpoint: globalSettings.endpoint, modelId: 'global-title-model' });
+      expect(result.sources.titleGeneration).toBe('global');
     });
 
     it('should allow group to override title settings', () => {
@@ -203,30 +201,24 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         isCollapsed: false,
         updatedAt: Date.now(),
         items: [],
-        autoTitleEnabled: false,
-        titleModelId: 'group-title-model',
+        titleGeneration: 'disabled',
       };
       const chat: Chat = { ...baseChat, groupId: toChatGroupId({ raw: 'group-1' }) };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.autoTitleEnabled).toBe(false);
-      expect(result.titleModelId).toBe('');
       expect(result.titleGeneration).toBe('disabled');
-      expect(result.sources.autoTitleEnabled).toBe('chat_group');
-      expect(result.sources.titleModelId).toBe('chat_group');
+      expect(result.sources.titleGeneration).toBe('chat_group');
     });
 
     it('should allow chat to override title settings', () => {
       const chat: Chat = {
         ...baseChat,
-        autoTitleEnabled: false,
-        titleModelId: 'chat-title-model',
+        titleGeneration: 'disabled',
       };
       const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.autoTitleEnabled).toBe(false);
-      expect(result.titleModelId).toBe('');
       expect(result.titleGeneration).toBe('disabled');
-      expect(result.sources.autoTitleEnabled).toBe('chat');
-      expect(result.sources.titleModelId).toBe('chat');
+      expect(result.sources.titleGeneration).toBe('chat');
     });
 
     it('resolves same_scope title generation against the same normal generation scope', () => {
@@ -253,7 +245,6 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       });
 
       expect(result.titleGeneration).toEqual({ endpoint: groupEndpoint, modelId: 'group-chat-model' });
-      expect(result.titleModelId).toBe('group-chat-model');
       expect(result.sources.titleGeneration).toBe('chat_group');
     });
 
@@ -281,7 +272,6 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       });
 
       expect(result.titleGeneration).toEqual({ endpoint: globalEndpoint, modelId: 'global-chat-model' });
-      expect(result.titleModelId).toBe('global-chat-model');
       expect(result.sources.titleGeneration).toBe('chat_group');
     });
 
@@ -301,7 +291,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       expect(result.endpoint).toEqual(normalEndpoint);
       expect(result.modelId).toBe('normal-model');
       expect(result.titleGeneration).toEqual({ endpoint: titleEndpoint, modelId: 'title-only-model' });
-      expect(result.titleModelId).toBe('title-only-model');
+
     });
 
   });
@@ -310,8 +300,8 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('hasChatOverrides should detect various overrides', () => {
       expect(hasChatOverrides({ chat: baseChat })).toBe(false);
       expect(hasChatOverrides({ chat: { ...baseChat, modelId: 'm1' } })).toBe(true);
-      expect(hasChatOverrides({ chat: { ...baseChat, autoTitleEnabled: false } })).toBe(true);
-      expect(hasChatOverrides({ chat: { ...baseChat, titleModelId: 'tm1' } })).toBe(true);
+      expect(hasChatOverrides({ chat: { ...baseChat, titleGeneration: 'disabled' } })).toBe(true);
+      expect(hasChatOverrides({ chat: { ...baseChat, titleGeneration: { endpoint: 'same_scope', model: { id: 'tm1' } } } })).toBe(true);
       expect(hasChatOverrides({ chat: { ...baseChat, endpoint: { type: 'ollama', url: '' } } })).toBe(true);
     });
 
@@ -319,8 +309,8 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'G', isCollapsed: false, updatedAt: 0, items: [] };
       expect(hasGroupOverrides({ group })).toBe(false);
       expect(hasGroupOverrides({ group: { ...group, modelId: 'm1' } })).toBe(true);
-      expect(hasGroupOverrides({ group: { ...group, autoTitleEnabled: true } })).toBe(true);
-      expect(hasGroupOverrides({ group: { ...group, titleModelId: 'tm1' } })).toBe(true);
+      expect(hasGroupOverrides({ group: { ...group, titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } } })).toBe(true);
+      expect(hasGroupOverrides({ group: { ...group, titleGeneration: { endpoint: 'same_scope', model: { id: 'tm1' } } } })).toBe(true);
     });
   });
 

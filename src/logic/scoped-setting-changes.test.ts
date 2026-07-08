@@ -24,8 +24,7 @@ function createChatMeta(): ChatMeta {
       httpHeaders: [['Authorization', 'Bearer old']],
     },
     modelId: 'old-model',
-    autoTitleEnabled: true,
-    titleModelId: 'old-title-model',
+    titleGeneration: { endpoint: 'same_scope', model: { id: 'old-title-model' } },
     systemPrompt: {
       behavior: 'append',
       content: 'Old prompt',
@@ -214,7 +213,7 @@ describe('scoped setting changes', () => {
     expect(updated.modelId).toBe(current.modelId);
   });
 
-  it('applies title_generation as a single scoped setting and synchronizes legacy fields', () => {
+  it('applies title_generation as a single scoped setting', () => {
     const current = createChatMeta();
     const updated = applyScopedSettingChangesToChatMeta({
       current,
@@ -233,11 +232,9 @@ describe('scoped setting changes', () => {
       endpoint: 'same_scope',
       model: { id: 'new-title-model' },
     });
-    expect(updated.autoTitleEnabled).toBe(true);
-    expect(updated.titleModelId).toBe('new-title-model');
   });
 
-  it('inherits title_generation as a single scoped setting and clears legacy title fields', () => {
+  it('inherits title_generation as a single scoped setting', () => {
     const updated = applyScopedSettingChangesToChatMeta({
       current: createChatMeta(),
       changes: [{ field: 'title_generation', behavior: 'inherit' }],
@@ -245,8 +242,6 @@ describe('scoped setting changes', () => {
     });
 
     expect(updated.titleGeneration).toBe('inherit');
-    expect(updated.autoTitleEnabled).toBeUndefined();
-    expect(updated.titleModelId).toBeUndefined();
   });
 
   it('applies the same change model to chat groups', () => {

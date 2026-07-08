@@ -110,7 +110,7 @@ const mockSettings = {
     url: 'http://localhost:1234/v1',
   },
   defaultModelId: 'gpt-4',
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
   storageType: 'local',
   mounts: [],
   providerProfiles: [] as ProviderProfile[],

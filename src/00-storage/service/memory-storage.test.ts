@@ -137,7 +137,7 @@ describe('MemoryStorageProvider', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            autoTitleEnabled: true,
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
             storageType: 'memory',
             providerProfiles: [],
             mounts: [],

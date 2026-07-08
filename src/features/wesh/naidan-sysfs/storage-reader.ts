@@ -341,8 +341,6 @@ function remoteChatGroupPayloadToDomain({
     endpoint: metadata.endpoint,
     modelId: payload.dto.modelId,
     titleGeneration: metadata.titleGeneration,
-    autoTitleEnabled: metadata.autoTitleEnabled,
-    titleModelId: metadata.titleModelId,
     systemPrompt: metadata.systemPrompt,
     lmParameters: lmParametersToDomain({ dto: payload.dto.lmParameters }),
     mounts: metadata.mounts,

@@ -23,7 +23,7 @@ describe('WelcomeScreen.vue', () => {
     TEST_ONLY.__testOnlySetSettings({ newSettings: {
       storageType: 'memory',
       endpoint: { type: 'openai', url: '' },
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       providerProfiles: [],
       mounts: [],
     } as Settings });

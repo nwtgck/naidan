@@ -26,8 +26,6 @@ export interface ResolvableSettings {
   endpoint: Endpoint,
   defaultModelId?: string,
   titleGeneration?: SettingsTitleGeneration,
-  titleModelId?: string,
-  autoTitleEnabled?: boolean,
   systemPrompt?: string,
   lmParameters?: ResolvableLmParameters,
 }
@@ -101,37 +99,6 @@ function applyLmParameterOverrides({
   }
 }
 
-function settingsTitleGenerationFromLegacy({
-  autoTitleEnabled,
-  titleModelId,
-}: {
-  autoTitleEnabled: boolean | undefined,
-  titleModelId: string | undefined,
-}): SettingsTitleGeneration {
-  if (autoTitleEnabled === false) return 'disabled';
-
-  return {
-    endpoint: 'same_scope',
-    model: titleModelId === undefined ? 'same_scope' : { id: titleModelId },
-  };
-}
-
-function scopedTitleGenerationFromLegacy({
-  autoTitleEnabled,
-  titleModelId,
-}: {
-  autoTitleEnabled: boolean | undefined,
-  titleModelId: string | undefined,
-}): ScopedTitleGeneration {
-  if (autoTitleEnabled === false) return 'disabled';
-  if (autoTitleEnabled === undefined && titleModelId === undefined) return 'inherit';
-
-  return {
-    endpoint: 'same_scope',
-    model: titleModelId === undefined ? 'same_scope' : { id: titleModelId },
-  };
-}
-
 function resolveLocalTitleGeneration({
   titleGeneration,
   sameScope,
@@ -153,11 +120,14 @@ function resolveSettingsTitleGeneration({
   titleGeneration,
   sameScope,
 }: {
-  titleGeneration: SettingsTitleGeneration,
+  titleGeneration?: SettingsTitleGeneration,
   sameScope: ResolvedNormalGeneration,
 }): ResolvedTitleGeneration {
   if (titleGeneration === 'disabled') return 'disabled';
-  return resolveLocalTitleGeneration({ titleGeneration, sameScope });
+  return resolveLocalTitleGeneration({
+    titleGeneration: titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope' },
+    sameScope,
+  });
 }
 
 function resolveScopedTitleGeneration({
@@ -179,12 +149,12 @@ function resolveScopedTitleGeneration({
   }
 }
 
-function titleModelIdFromResolvedTitleGeneration({
+function hasLocalTitleGenerationOverride({
   titleGeneration,
 }: {
-  titleGeneration: ResolvedTitleGeneration,
-}): string {
-  return titleGeneration === 'disabled' ? '' : titleGeneration.modelId;
+  titleGeneration: ScopedTitleGeneration | undefined,
+}): boolean {
+  return titleGeneration !== undefined && titleGeneration !== 'inherit';
 }
 
 function titleSource({
@@ -194,8 +164,8 @@ function titleSource({
   chat: Chat,
   group: ChatGroup | null | undefined,
 }): 'chat' | 'chat_group' | 'global' {
-  if (chat.titleGeneration !== undefined || chat.autoTitleEnabled !== undefined || chat.titleModelId !== undefined) return 'chat';
-  if (group?.titleGeneration !== undefined || group?.autoTitleEnabled !== undefined || group?.titleModelId !== undefined) return 'chat_group';
+  if (chat.titleGeneration !== undefined) return 'chat';
+  if (group?.titleGeneration !== undefined) return 'chat_group';
   return 'global';
 }
 
@@ -217,27 +187,18 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
   };
 
   const globalTitleGeneration = resolveSettingsTitleGeneration({
-    titleGeneration: globalSettings.titleGeneration ?? settingsTitleGenerationFromLegacy({
-      autoTitleEnabled: globalSettings.autoTitleEnabled,
-      titleModelId: globalSettings.titleModelId,
-    }),
+    titleGeneration: globalSettings.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope' },
     sameScope: globalGeneration,
   });
   const groupTitleGeneration = group === null || group === undefined
     ? globalTitleGeneration
     : resolveScopedTitleGeneration({
-      titleGeneration: group.titleGeneration ?? scopedTitleGenerationFromLegacy({
-        autoTitleEnabled: group.autoTitleEnabled,
-        titleModelId: group.titleModelId,
-      }),
+      titleGeneration: group.titleGeneration ?? 'inherit',
       parent: globalTitleGeneration,
       sameScope: groupGeneration,
     });
   const chatTitleGeneration = resolveScopedTitleGeneration({
-    titleGeneration: chat.titleGeneration ?? scopedTitleGenerationFromLegacy({
-      autoTitleEnabled: chat.autoTitleEnabled,
-      titleModelId: chat.titleModelId,
-    }),
+    titleGeneration: chat.titleGeneration ?? 'inherit',
     parent: groupTitleGeneration,
     sameScope: chatGeneration,
   });
@@ -294,15 +255,12 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
     endpoint: chatGeneration.endpoint,
     modelId: chatGeneration.modelId,
     autoTitleEnabled: chatTitleGeneration !== 'disabled',
-    titleModelId: titleModelIdFromResolvedTitleGeneration({ titleGeneration: chatTitleGeneration }),
     titleGeneration: chatTitleGeneration,
     systemPromptMessages: systemPrompts,
     lmParameters,
     sources: {
       endpoint: chat.endpoint !== undefined ? 'chat' : (group?.endpoint !== undefined ? 'chat_group' : 'global'),
       modelId: chat.modelId ? 'chat' : (group?.modelId ? 'chat_group' : 'global'),
-      autoTitleEnabled: titleSource({ chat, group }),
-      titleModelId: titleSource({ chat, group }),
       titleGeneration: titleSource({ chat, group }),
     } as const,
   };
@@ -316,8 +274,6 @@ export function hasChatOverrides({ chat }: {
     endpoint?: Endpoint,
     modelId?: string,
     titleGeneration?: ScopedTitleGeneration,
-    autoTitleEnabled?: boolean,
-    titleModelId?: string,
     systemPrompt?: SystemPrompt,
     lmParameters?: ResolvableLmParameters,
   },
@@ -325,9 +281,7 @@ export function hasChatOverrides({ chat }: {
   return !!(
     chat.endpoint ||
     chat.modelId ||
-    chat.titleGeneration !== undefined ||
-    chat.autoTitleEnabled !== undefined ||
-    chat.titleModelId ||
+    hasLocalTitleGenerationOverride({ titleGeneration: chat.titleGeneration }) ||
     chat.systemPrompt ||
     hasLmParameterOverrides({ lmParameters: chat.lmParameters })
   );
@@ -341,8 +295,6 @@ export function hasGroupOverrides({ group }: {
     endpoint?: Endpoint,
     modelId?: string,
     titleGeneration?: ScopedTitleGeneration,
-    autoTitleEnabled?: boolean,
-    titleModelId?: string,
     systemPrompt?: SystemPrompt,
     lmParameters?: ResolvableLmParameters,
     mounts?: readonly { type: string }[],
@@ -351,9 +303,7 @@ export function hasGroupOverrides({ group }: {
   return !!(
     group.endpoint ||
     group.modelId ||
-    group.titleGeneration !== undefined ||
-    group.autoTitleEnabled !== undefined ||
-    group.titleModelId ||
+    hasLocalTitleGenerationOverride({ titleGeneration: group.titleGeneration }) ||
     group.systemPrompt ||
     (group.mounts && group.mounts.length > 0) ||
     hasLmParameterOverrides({ lmParameters: group.lmParameters })

@@ -22,7 +22,7 @@ vi.mock('@/composables/useSettings', () => ({
       },
       defaultModelId: 'model-1',
       titleModelId: 'model-1',
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       systemPrompt: undefined,
       lmParameters: {},
       storageType: 'local',

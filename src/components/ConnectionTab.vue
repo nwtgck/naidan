@@ -4,7 +4,7 @@ import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import type { Endpoint, EndpointType, ProviderProfile, Settings, SettingsTitleGeneration } from '@/01-models/types';
-import { areEndpointsEqual, cloneEndpoint, isHttpEndpoint, selectHttpEndpointSeed } from '@/01-models/endpoint';
+import { areEndpointModelNamespacesEqual, areEndpointsEqual, cloneEndpoint, isHttpEndpoint, selectHttpEndpointSeed } from '@/01-models/endpoint';
 import { naturalSort } from '@/utils/string';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
@@ -69,6 +69,7 @@ const form = computed({
 const endpointType = computed<Endpoint['type']>({
   get: () => form.value.endpoint.type,
   set: (type) => {
+    const previousEndpoint = cloneEndpoint({ endpoint: form.value.endpoint });
     const clearBrowserProvidedLmModelIds = (): void => {
       if (form.value.defaultModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
         form.value.defaultModelId = '';
@@ -88,11 +89,13 @@ const endpointType = computed<Endpoint['type']>({
           ? current.httpHeaders?.map(([name, value]) => [name, value])
           : undefined,
       };
+      resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
       return;
     }
     case 'transformers_js':
       clearBrowserProvidedLmModelIds();
       form.value.endpoint = { type };
+      resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
       return;
     case 'browser_provided_lm':
       form.value.endpoint = { type };
@@ -114,10 +117,12 @@ const endpointUrl = computed({
   set: (url: string) => {
     const endpoint = form.value.endpoint;
     if (!isHttpEndpoint(endpoint)) return;
+    const previousEndpoint = cloneEndpoint({ endpoint });
     form.value.endpoint = {
       ...endpoint,
       url,
     };
+    resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
   },
 });
 
@@ -146,43 +151,36 @@ const selectedProviderProfileId = ref('');
 
 const copied = ref(false);
 
-function settingsTitleGenerationFromLegacy({
-  autoTitleEnabled,
-  titleModelId,
-}: {
-  autoTitleEnabled: boolean,
-  titleModelId: string | undefined,
-}): SettingsTitleGeneration {
-  if (!autoTitleEnabled) return 'disabled';
-  return {
-    endpoint: 'same_scope',
-    model: titleModelId === undefined || titleModelId === '' ? 'same_scope' : { id: titleModelId },
-  };
+function currentSettingsTitleGeneration(): SettingsTitleGeneration {
+  return form.value.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope' };
+}
+function resetSameScopeTitleModel(): void {
+  const titleGeneration = form.value.titleGeneration;
+  if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
+  setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
 }
 
-function legacyFieldsFromSettingsTitleGeneration({
+function resetModelsWhenEndpointNamespaceChanges({
+  previousEndpoint,
+  nextEndpoint,
+}: {
+  previousEndpoint: Endpoint,
+  nextEndpoint: Endpoint,
+}): void {
+  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
+  form.value.defaultModelId = '';
+  resetSameScopeTitleModel();
+}
+
+
+function titleModelIdFromSettingsTitleGeneration({
   titleGeneration,
 }: {
   titleGeneration: SettingsTitleGeneration,
-}): { autoTitleEnabled: boolean, titleModelId: string } {
-  switch (titleGeneration) {
-  case 'disabled':
-    return { autoTitleEnabled: false, titleModelId: '' };
-  default:
-    return {
-      autoTitleEnabled: true,
-      titleModelId: titleGeneration.model === 'same_scope' ? '' : titleGeneration.model.id,
-    };
-  }
+}): string | undefined {
+  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') return undefined;
+  return titleGeneration.model.id;
 }
-
-function currentSettingsTitleGeneration(): SettingsTitleGeneration {
-  return form.value.titleGeneration ?? settingsTitleGenerationFromLegacy({
-    autoTitleEnabled: form.value.autoTitleEnabled,
-    titleModelId: form.value.titleModelId,
-  });
-}
-
 const globalTitleGenerationEnabled = computed(() => currentSettingsTitleGeneration() !== 'disabled');
 
 const titleEndpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
@@ -254,10 +252,7 @@ function setFormTitleGeneration({
 }: {
   titleGeneration: SettingsTitleGeneration,
 }): void {
-  const legacy = legacyFieldsFromSettingsTitleGeneration({ titleGeneration });
   form.value.titleGeneration = titleGeneration;
-  form.value.autoTitleEnabled = legacy.autoTitleEnabled;
-  form.value.titleModelId = legacy.titleModelId;
 }
 
 function setGlobalAutoTitleEnabled({ enabled }: { enabled: boolean }): void {
@@ -422,9 +417,6 @@ function clearBrowserProvidedTitleModelOverride(): void {
     setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
     return;
   }
-  if (form.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
-    form.value.titleModelId = '';
-  }
 }
 
 async function copySetupUrl(): Promise<void> {
@@ -478,6 +470,7 @@ async function copySetupUrl(): Promise<void> {
 }
 
 function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
+  const previousEndpoint = cloneEndpoint({ endpoint: form.value.endpoint });
   form.value = {
     ...form.value,
     endpoint: {
@@ -489,8 +482,8 @@ function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
         ? ''
         : form.value.defaultModelId,
     titleGeneration: currentSettingsTitleGeneration(),
-    titleModelId: form.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID ? '' : form.value.titleModelId,
   };
+  resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
 }
 
 async function fetchModels() {
@@ -532,10 +525,7 @@ async function fetchModels() {
         updatedForm.defaultModelId = '';
         changed = true;
       }
-      const titleGeneration = updatedForm.titleGeneration ?? settingsTitleGenerationFromLegacy({
-        autoTitleEnabled: updatedForm.autoTitleEnabled,
-        titleModelId: updatedForm.titleModelId,
-      });
+      const titleGeneration = updatedForm.titleGeneration;
       if (
         titleGeneration !== 'disabled'
         && titleGeneration.endpoint === 'same_scope'
@@ -543,7 +533,6 @@ async function fetchModels() {
         && !models.includes(titleGeneration.model.id)
       ) {
         updatedForm.titleGeneration = { endpoint: 'same_scope', model: 'same_scope' };
-        updatedForm.titleModelId = '';
         changed = true;
       }
     }
@@ -580,8 +569,6 @@ async function handleSave() {
         endpoint: cloneEndpoint({ endpoint: form.value.endpoint }),
         defaultModelId: form.value.defaultModelId,
         titleGeneration: currentSettingsTitleGeneration(),
-        titleModelId: form.value.titleModelId,
-        autoTitleEnabled: form.value.autoTitleEnabled,
         systemPrompt: form.value.systemPrompt,
         lmParameters: form.value.lmParameters,
       },
@@ -619,7 +606,7 @@ async function handleCreateProviderProfile() {
     name,
     endpoint: cloneEndpoint({ endpoint: form.value.endpoint }),
     defaultModelId: form.value.defaultModelId,
-    titleModelId: form.value.titleModelId,
+    titleModelId: titleModelIdFromSettingsTitleGeneration({ titleGeneration: form.value.titleGeneration }),
     systemPrompt: form.value.systemPrompt,
     lmParameters: form.value.lmParameters ? JSON.parse(JSON.stringify(form.value.lmParameters)) : undefined,
   };

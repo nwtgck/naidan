@@ -32,7 +32,7 @@ const mockSettings = {
     defaultModelId: '',
     storageType: 'local' as const,
     mounts: [],
-    autoTitleEnabled: true,
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
   },
 };
 const mockIsOnboardingDismissed = { value: true };

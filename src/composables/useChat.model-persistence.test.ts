@@ -35,7 +35,7 @@ const mockSettings = {
   },
   storageType: 'local' as const,
   mounts: [],
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
   defaultModelId: 'gpt-3.5-turbo',
 };
 

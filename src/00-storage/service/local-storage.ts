@@ -382,7 +382,7 @@ export class LocalStorageProvider extends IStorageProvider {
     return {
       structure: {
         settings: settings || {
-          autoTitleEnabled: true,
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
           providerProfiles: [],
           mounts: [],
           storageType: 'local',

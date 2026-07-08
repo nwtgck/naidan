@@ -11,7 +11,7 @@ vi.mock('./useSettings', () => ({
         url: 'http://localhost:11434/v1',
       },
       defaultModelId: 'gpt-4',
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
     }),
     setHeavyContentAlertDismissed: vi.fn(),
     setOnboardingDraft: vi.fn(),

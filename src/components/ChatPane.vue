@@ -54,7 +54,7 @@ const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: 
 const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ConversationOutlineOverlay.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
-import type { LmParameters } from '@/01-models/types';
+import type { LmParameters, ScopedTitleGeneration, SettingsTitleGeneration } from '@/01-models/types';
 import { getSupportedEndpointType, isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import { idToRaw, toMessageId } from '@/01-models/ids';
@@ -849,23 +849,34 @@ const currentModelLabel = computed(() => formatSettingsSourceLabel({
   source: resolvedSettings.value?.sources.modelId,
 }));
 
-const activeTitleModelSource = computed<SettingsSource>(() => resolvedSettings.value?.sources.titleModelId ?? 'global');
+const activeTitleModelSource = computed<SettingsSource>(() => resolvedSettings.value?.sources.titleGeneration ?? 'global');
 
 const activeTitleModelId = computed(() => {
-  const source = activeTitleModelSource.value;
-  switch (source) {
-  case 'chat':
-    return chat.value?.titleModelId;
-  case 'chat_group':
-    return chatGroup.value?.titleModelId;
-  case 'global':
-    return settings.value.titleModelId;
-  default: {
-    const _ex: never = source;
-    throw new Error(`Unhandled title model source: ${_ex}`);
-  }
-  }
+  const titleGeneration = resolvedSettings.value?.titleGeneration;
+  return titleGeneration === undefined || titleGeneration === 'disabled'
+    ? undefined
+    : titleGeneration.modelId;
 });
+
+function titleGenerationWithModel({
+  titleGeneration,
+  modelId,
+}: {
+  titleGeneration: SettingsTitleGeneration | ScopedTitleGeneration | undefined,
+  modelId: string | undefined,
+}): Exclude<ScopedTitleGeneration, 'inherit'> | SettingsTitleGeneration {
+  if (modelId === undefined) return { endpoint: 'same_scope', model: 'same_scope' };
+  if (titleGeneration !== undefined && typeof titleGeneration !== 'string' && titleGeneration.endpoint !== 'same_scope') {
+    return {
+      endpoint: titleGeneration.endpoint,
+      model: { id: modelId },
+    };
+  }
+  return {
+    endpoint: 'same_scope',
+    model: { id: modelId },
+  };
+}
 
 async function updateActiveTitleModel({
   source,
@@ -882,29 +893,33 @@ async function updateActiveTitleModel({
   case 'chat':
     await chatMetadata.updateScopedSettings({
       chatId,
-      changes: [modelId === undefined
-        ? { field: 'title_model_id', behavior: 'inherit' }
-        : { field: 'title_model_id', behavior: 'override', value: modelId }],
+      changes: [{
+        field: 'title_generation',
+        behavior: 'override',
+        value: titleGenerationWithModel({ titleGeneration: chat.value?.titleGeneration, modelId }) as Exclude<ScopedTitleGeneration, 'inherit'>,
+      }],
     });
     return;
   case 'chat_group':
     if (chatGroupId === undefined) {
       await saveSettings({
-        patch: { titleModelId: modelId },
+        patch: { titleGeneration: titleGenerationWithModel({ titleGeneration: settings.value.titleGeneration, modelId }) as SettingsTitleGeneration },
         modelRefresh: 'await',
       });
       return;
     }
     await chatGroups.updateScopedSettings({
       chatGroupId,
-      changes: [modelId === undefined
-        ? { field: 'title_model_id', behavior: 'inherit' }
-        : { field: 'title_model_id', behavior: 'override', value: modelId }],
+      changes: [{
+        field: 'title_generation',
+        behavior: 'override',
+        value: titleGenerationWithModel({ titleGeneration: chatGroup.value?.titleGeneration, modelId }) as Exclude<ScopedTitleGeneration, 'inherit'>,
+      }],
     });
     return;
   case 'global':
     await saveSettings({
-      patch: { titleModelId: modelId },
+      patch: { titleGeneration: titleGenerationWithModel({ titleGeneration: settings.value.titleGeneration, modelId }) as SettingsTitleGeneration },
       modelRefresh: 'await',
     });
     return;
@@ -914,6 +929,7 @@ async function updateActiveTitleModel({
   }
   }
 }
+
 
 function handleSearchChatFromHeader() {
   if (chat.value) {

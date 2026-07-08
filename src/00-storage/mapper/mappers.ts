@@ -108,11 +108,6 @@ const exactObject =
     ): Actual => actual;
 
 
-type LegacyTitleGenerationFields = {
-  autoTitleEnabled: boolean | undefined,
-  titleModelId: string | undefined,
-};
-
 
 const titleGenerationEndpointToDto = ({
   domain,
@@ -130,17 +125,6 @@ const modelFromLegacyTitleModelId = ({
 }): 'same_scope' | { id: string } => titleModelId === undefined
   ? 'same_scope'
   : { id: titleModelId };
-
-const titleModelIdFromTitleGeneration = ({
-  titleGeneration,
-}: {
-  titleGeneration: SettingsTitleGeneration | ScopedTitleGeneration,
-}): string | undefined => {
-  if (typeof titleGeneration === 'string') return undefined;
-  if (titleGeneration.model === 'same_scope') return undefined;
-
-  return titleGeneration.model.id;
-};
 
 const settingsTitleGenerationToDomain = ({
   dto,
@@ -229,48 +213,6 @@ const scopedTitleGenerationToDto = ({
   }
 };
 
-const settingsTitleGenerationFromLegacyFields = ({
-  autoTitleEnabled,
-  titleModelId,
-}: LegacyTitleGenerationFields): SettingsTitleGeneration => {
-  if (autoTitleEnabled === false) return 'disabled';
-
-  return exactObject<Exclude<SettingsTitleGeneration, 'disabled'>>()({
-    endpoint: 'same_scope',
-    model: modelFromLegacyTitleModelId({ titleModelId }),
-  });
-};
-
-const scopedTitleGenerationFromLegacyFields = ({
-  autoTitleEnabled,
-  titleModelId,
-}: LegacyTitleGenerationFields): ScopedTitleGeneration => {
-  if (autoTitleEnabled === false) return 'disabled';
-  if (autoTitleEnabled === undefined && titleModelId === undefined) return 'inherit';
-
-  return exactObject<Exclude<ScopedTitleGeneration, 'disabled' | 'inherit'>>()({
-    endpoint: 'same_scope',
-    model: modelFromLegacyTitleModelId({ titleModelId }),
-  });
-};
-
-const legacyFieldsFromTitleGeneration = ({
-  titleGeneration,
-}: {
-  titleGeneration: SettingsTitleGeneration | ScopedTitleGeneration,
-}): LegacyTitleGenerationFields => {
-  switch (titleGeneration) {
-  case 'inherit':
-    return { autoTitleEnabled: undefined, titleModelId: undefined };
-  case 'disabled':
-    return { autoTitleEnabled: false, titleModelId: undefined };
-  default:
-    return {
-      autoTitleEnabled: true,
-      titleModelId: titleModelIdFromTitleGeneration({ titleGeneration }),
-    };
-  }
-};
 
 const toolConfigPersistenceToExperimentalDto = ({
   persistence,
@@ -491,7 +433,6 @@ export const hierarchyToDto = ({ domain }: { domain: Hierarchy }): HierarchyDto 
 
 export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => {
   const titleGeneration = scopedTitleGenerationToDomain({ dto });
-  const { autoTitleEnabled, titleModelId } = legacyFieldsFromTitleGeneration({ titleGeneration });
 
   const {
     id,
@@ -533,8 +474,6 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => {
       : endpointToDomain({ dto: endpoint }),
     modelId,
     titleGeneration,
-    autoTitleEnabled,
-    titleModelId,
     originChatId: originChatId === undefined ? undefined : toChatId({ raw: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : toMessageId({ raw: originMessageId }),
     systemPrompt: systemPrompt as SystemPrompt | undefined,
@@ -572,7 +511,6 @@ export const chatGroupToDomain = (
   });
 
   const titleGeneration = scopedTitleGenerationToDomain({ dto });
-  const { autoTitleEnabled, titleModelId } = legacyFieldsFromTitleGeneration({ titleGeneration });
 
   const {
     id,
@@ -608,8 +546,6 @@ export const chatGroupToDomain = (
       : endpointToDomain({ dto: endpoint }),
     modelId,
     titleGeneration,
-    autoTitleEnabled,
-    titleModelId,
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: lmParameters }),
     mounts: mounts?.map(dto => mountToDomain({ dto })),
@@ -627,8 +563,6 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
     endpoint,
     modelId,
     titleGeneration,
-    autoTitleEnabled,
-    titleModelId,
     systemPrompt,
     lmParameters,
     mounts,
@@ -647,10 +581,7 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
     endpoint: endpoint ? endpointToDto({ endpoint }) : undefined,
     modelId,
     titleGeneration: scopedTitleGenerationToDto({
-      titleGeneration: titleGeneration ?? scopedTitleGenerationFromLegacyFields({
-        autoTitleEnabled,
-        titleModelId,
-      }),
+      titleGeneration: titleGeneration ?? 'inherit',
     }),
     systemPrompt,
     lmParameters: lmParametersToDto({ domain: lmParameters }),
@@ -1726,7 +1657,6 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
 
 export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
   const titleGeneration = scopedTitleGenerationToDomain({ dto });
-  const { autoTitleEnabled, titleModelId } = legacyFieldsFromTitleGeneration({ titleGeneration });
 
   const {
     id,
@@ -1781,8 +1711,6 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     endpoint: endpoint === undefined ? undefined : endpointToDomain({ dto: endpoint }),
     modelId,
     titleGeneration,
-    autoTitleEnabled,
-    titleModelId,
     originChatId: originChatId === undefined ? undefined : toChatId({ raw: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : toMessageId({ raw: originMessageId }),
     systemPrompt: systemPrompt as SystemPrompt | undefined,
@@ -1804,8 +1732,6 @@ export const chatMetaToSummary = ({ domain }: { domain: ChatMeta }): ChatSummary
     endpoint: _endpoint,
     modelId: _modelId,
     titleGeneration: _titleGeneration,
-    autoTitleEnabled: _autoTitleEnabled,
-    titleModelId: _titleModelId,
     originChatId: _originChatId,
     originMessageId: _originMessageId,
     systemPrompt: _systemPrompt,
@@ -1837,8 +1763,6 @@ export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => 
     endpoint,
     modelId,
     titleGeneration,
-    autoTitleEnabled,
-    titleModelId,
     originChatId,
     originMessageId,
     systemPrompt,
@@ -1861,10 +1785,7 @@ export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => 
     endpoint: endpoint ? endpointToDto({ endpoint }) : undefined,
     modelId,
     titleGeneration: scopedTitleGenerationToDto({
-      titleGeneration: titleGeneration ?? scopedTitleGenerationFromLegacyFields({
-        autoTitleEnabled,
-        titleModelId,
-      }),
+      titleGeneration: titleGeneration ?? 'inherit',
     }),
     originChatId: originChatId === undefined ? undefined : idToRaw({ id: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : idToRaw({ id: originMessageId }),
@@ -1924,8 +1845,6 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
     endpoint,
     modelId,
     titleGeneration,
-    autoTitleEnabled,
-    titleModelId,
     originChatId,
     originMessageId,
     systemPrompt,
@@ -1948,10 +1867,7 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
     endpoint: endpoint === undefined ? undefined : endpointToDto({ endpoint }),
     modelId,
     titleGeneration: scopedTitleGenerationToDto({
-      titleGeneration: titleGeneration ?? scopedTitleGenerationFromLegacyFields({
-        autoTitleEnabled,
-        titleModelId,
-      }),
+      titleGeneration: titleGeneration ?? 'inherit',
     }),
     originChatId: originChatId === undefined ? undefined : idToRaw({ id: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : idToRaw({ id: originMessageId }),
@@ -2023,7 +1939,6 @@ export const buildSidebarItemsFromHierarchy = (
 
 export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
   const titleGeneration = settingsTitleGenerationToDomain({ dto });
-  const { autoTitleEnabled, titleModelId } = legacyFieldsFromTitleGeneration({ titleGeneration });
 
   const {
     endpoint,
@@ -2125,8 +2040,6 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
     endpoint: endpointToDomain({ dto: endpoint }),
     defaultModelId,
     titleGeneration,
-    titleModelId,
-    autoTitleEnabled: autoTitleEnabled ?? true,
     storageType: storageType as StorageType,
     providerProfiles: profileDomains,
     mounts: mounts.map(dto => mountToDomain({ dto })),
@@ -2142,8 +2055,6 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     endpoint,
     defaultModelId,
     titleGeneration,
-    titleModelId,
-    autoTitleEnabled,
     storageType,
     providerProfiles,
     mounts,
@@ -2237,12 +2148,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
   return exactObject<SettingsDtoV2>()({
     endpoint: endpointToDto({ endpoint }),
     defaultModelId,
-    titleGeneration: settingsTitleGenerationToDto({
-      titleGeneration: titleGeneration ?? settingsTitleGenerationFromLegacyFields({
-        autoTitleEnabled,
-        titleModelId,
-      }),
-    }),
+    titleGeneration: settingsTitleGenerationToDto({ titleGeneration }),
     storageType: storageType as StorageTypeDto,
     providerProfiles: profileDtos,
     mounts: (mounts ?? []).map(domain => mountToDto({ domain })),

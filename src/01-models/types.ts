@@ -204,8 +204,6 @@ export interface Chat {
   endpoint?: Endpoint,
   modelId?: string,
   titleGeneration?: ScopedTitleGeneration,
-  autoTitleEnabled?: boolean,
-  titleModelId?: string,
   originChatId?: ChatId,
   originMessageId?: MessageId,
 
@@ -231,8 +229,6 @@ export interface ChatMeta {
   endpoint?: Endpoint,
   modelId?: string,
   titleGeneration?: ScopedTitleGeneration,
-  autoTitleEnabled?: boolean,
-  titleModelId?: string,
   originChatId?: ChatId,
   originMessageId?: MessageId,
   systemPrompt?: SystemPrompt,
@@ -265,8 +261,6 @@ export interface ChatGroup {
   endpoint?: Endpoint,
   modelId?: string,
   titleGeneration?: ScopedTitleGeneration,
-  autoTitleEnabled?: boolean,
-  titleModelId?: string,
   systemPrompt?: SystemPrompt,
   lmParameters?: LmParameters,
   mounts?: Mount[],
@@ -376,9 +370,7 @@ export interface ProviderProfile {
 export interface Settings {
   endpoint: Endpoint,
   defaultModelId?: string,
-  titleGeneration?: SettingsTitleGeneration,
-  titleModelId?: string,
-  autoTitleEnabled: boolean,
+  titleGeneration: SettingsTitleGeneration,
   storageType: StorageType,
   providerProfiles: ProviderProfile[],
   mounts: Mount[],
@@ -414,7 +406,6 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
   titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
-  autoTitleEnabled: true,
   providerProfiles: [],
   mounts: [],
   heavyContentAlertDismissed: false,

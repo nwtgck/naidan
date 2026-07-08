@@ -35,8 +35,7 @@ name: ${chatGroup.name}
 isCollapsed: ${chatGroup.isCollapsed}
 updatedAt: ${chatGroup.updatedAt}
 modelId: ${formatValue({ value: chatGroup.modelId })}
-autoTitleEnabled: ${formatValue({ value: chatGroup.autoTitleEnabled })}
-titleModelId: ${formatValue({ value: chatGroup.titleModelId })}
+titleGeneration: ${formatValue({ value: chatGroup.titleGeneration })}
 systemPrompt: ${formatValue({ value: chatGroup.systemPrompt })}
 lmParameters: ${formatValue({ value: chatGroup.lmParameters })}
 endpoint: ${formatValue({ value: maskEndpoint({ endpoint: chatGroup.endpoint }) })}

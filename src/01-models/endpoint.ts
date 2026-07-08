@@ -102,6 +102,35 @@ export function cloneOptionalEndpoint({
   return endpoint === undefined ? undefined : cloneEndpoint({ endpoint });
 }
 
+export function areEndpointModelNamespacesEqual({
+  left,
+  right,
+}: {
+  left: Endpoint,
+  right: Endpoint,
+}): boolean {
+  if (left.type !== right.type) return false;
+
+  switch (left.type) {
+  case 'openai':
+  case 'ollama':
+    return right.type === left.type && left.url === right.url;
+  case 'transformers_js':
+    return right.type === 'transformers_js';
+  case 'browser_provided_lm':
+    return right.type === 'browser_provided_lm';
+  case 'unsupported_experimental_endpoint':
+    return (
+      right.type === 'unsupported_experimental_endpoint'
+      && left.persistedType === right.persistedType
+    );
+  default: {
+    const _ex: never = left;
+    throw new Error(`Unhandled endpoint: ${String(_ex)}`);
+  }
+  }
+}
+
 export function areEndpointsEqual({
   left,
   right,

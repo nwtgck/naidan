@@ -9,6 +9,7 @@ import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 import type { Chat, Endpoint } from '@/01-models/types';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
@@ -102,7 +103,8 @@ describe('ChatSettingsPanel.vue', () => {
     },
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
 
     // Reset global settings to a predictable state
@@ -125,7 +127,6 @@ describe('ChatSettingsPanel.vue', () => {
       id: 'chat-1',
       endpoint: undefined,
       modelId: undefined,
-      titleModelId: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     });
@@ -136,8 +137,7 @@ describe('ChatSettingsPanel.vue', () => {
       return {
         endpoint: chat?.endpoint ?? s.endpoint,
         modelId: chat?.modelId || s.defaultModelId,
-        autoTitleEnabled: true,
-        titleModelId: undefined,
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
         systemPromptMessages: [],
         lmParameters: undefined,
         sources: {
@@ -201,16 +201,8 @@ describe('ChatSettingsPanel.vue', () => {
           case 'model_id':
             updates.modelId = updated.modelId;
             break;
-          case 'auto_title_enabled':
-            updates.autoTitleEnabled = updated.autoTitleEnabled;
-            break;
-          case 'title_model_id':
-            updates.titleModelId = updated.titleModelId;
-            break;
           case 'title_generation':
             updates.titleGeneration = updated.titleGeneration;
-            updates.autoTitleEnabled = updated.autoTitleEnabled;
-            updates.titleModelId = updated.titleModelId;
             break;
           case 'system_prompt':
             updates.systemPrompt = updated.systemPrompt;
@@ -316,7 +308,6 @@ describe('ChatSettingsPanel.vue', () => {
       endpoint: { type: 'browser_provided_lm' },
       modelId: BROWSER_PROVIDED_LM_MODEL_ID,
       titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
-      titleModelId: undefined,
     });
     wrapper.unmount();
     vi.unstubAllGlobals();
@@ -530,7 +521,6 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpoint: { type: 'ollama', url: 'http://localhost:11434' },
         modelId: undefined,
-        titleModelId: undefined,
       }) });
     });
 
@@ -570,7 +560,7 @@ describe('ChatSettingsPanel.vue', () => {
           url: 'http://ollama:11434',
         },
         modelId: 'llama3',
-        titleModelId: 'llama3-title',
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'llama3-title' } },
       });
 
       // Should reset selection after apply
@@ -813,8 +803,7 @@ describe('ChatSettingsPanel.vue', () => {
         id: 'chat-B',
         endpoint: { type: 'openai', url: 'http://openai-for-B' },
         modelId: undefined,
-        autoTitleEnabled: undefined,
-        titleModelId: undefined,
+        titleGeneration: 'inherit',
         systemPrompt: undefined,
         lmParameters: undefined,
       });
@@ -847,8 +836,7 @@ describe('ChatSettingsPanel.vue', () => {
         id: 'chat-B',
         endpoint: undefined,
         modelId: undefined,
-        autoTitleEnabled: undefined,
-        titleModelId: undefined,
+        titleGeneration: 'inherit',
         systemPrompt: undefined,
         lmParameters: undefined,
       });
@@ -997,8 +985,8 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
 
       // First click Override to show the textarea
-      const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
-      await overrideBtn?.trigger('click');
+      const overrideBtn = wrapper.get('[data-testid="chat-setting-system-prompt-override-button"]');
+      await overrideBtn.trigger('click');
       await nextTick();
 
       const textarea = wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]');
@@ -1202,6 +1190,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
       await urlInput.setValue('http://localhost:11434');
+      await urlInput.trigger('blur');
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({

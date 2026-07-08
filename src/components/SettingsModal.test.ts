@@ -149,7 +149,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   const mockSettings: Settings = {
     endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
     defaultModelId: 'gpt-4',
-    autoTitleEnabled: true,
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
     storageType: 'local',
     mounts: [],
     providerProfiles: [] as ProviderProfile[],
@@ -631,13 +631,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(mockListModels).not.toHaveBeenCalledWith('http://localhost:1234/v1', undefined);
   });
 
-  it('clears defaultModelId and titleModelId if they are not available in the newly fetched models', async () => {
+  it('clears defaultModelId and titleGeneration model if they are not available in the newly fetched models', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
     const vm = wrapper.vm as any;
     vm.form.defaultModelId = 'old-model';
-    vm.form.titleModelId = 'old-title-model';
+    vm.form.titleGeneration = { endpoint: 'same_scope', model: { id: 'old-title-model' } };
     await nextTick();
 
     // Mock fetchModels to return a new list that doesn't include the old models
@@ -649,27 +649,27 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
 
     expect(vm.form.defaultModelId).toBe('');
-    expect(vm.form.titleModelId).toBe('');
+    expect(vm.form.titleGeneration).toEqual({ endpoint: 'same_scope', model: 'same_scope' });
   });
 
-  it('preserves defaultModelId and titleModelId if they are still available in the newly fetched models', async () => {
+  it('preserves defaultModelId and titleGeneration model if they are still available in the newly fetched models', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
     const vm = wrapper.vm as any;
     vm.form.defaultModelId = 'kept-model';
-    vm.form.titleModelId = 'kept-title-model';
+    vm.form.titleGeneration = { endpoint: 'same_scope', model: { id: 'kept-title-model' } };
     await nextTick();
 
     // Mock fetchModels to return a list that INCLUDES the kept models
     mockListModels.mockResolvedValue(['kept-model', 'kept-title-model', 'other-model']);
 
-    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
-    await urlInput.setValue('http://localhost:11434');
+    const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
+    await checkBtn.trigger('click');
     await flushPromises();
 
     expect(vm.form.defaultModelId).toBe('kept-model');
-    expect(vm.form.titleModelId).toBe('kept-title-model');
+    expect(vm.form.titleGeneration).toEqual({ endpoint: 'same_scope', model: { id: 'kept-title-model' } });
   });
 
   it('shows confirmation behavior for "X" button', async () => {
@@ -871,14 +871,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   });
 
   describe('Provider Profiles', () => {
-    it('creates a new profile from current settings including titleModelId', async () => {
+    it('creates a new profile from current settings including titleGeneration model', async () => {
       // Simulate user entering a profile name
       mockShowPrompt.mockResolvedValueOnce('New Test Profile');
 
       const customSettings = {
         ...mockSettings,
-        titleModelId: 'special-title-model',
-        autoTitleEnabled: true,
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'special-title-model' } },
       };
       (useSettings as unknown as Mock).mockReturnValue({
         settings: ref(customSettings),
@@ -927,7 +926,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Ensure some values are set first so clear button appears
       const vm = wrapper.vm as any;
       vm.form.defaultModelId = 'some-model';
-      vm.form.titleModelId = 'some-model';
+      vm.form.titleGeneration = { endpoint: 'same_scope', model: { id: 'some-model' } };
       await nextTick();
 
       // Select "None" for Default Model
@@ -1038,7 +1037,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         url: 'http://quick:11434',
       });
       expect(connectionVm.form.defaultModelId).toBe('model-a');
-      expect(connectionVm.form.titleModelId).toBe('model-title');
+      expect(connectionVm.form.titleGeneration).toEqual({ endpoint: 'same_scope', model: { id: 'model-title' } });
       expect(connectionVm.selectedProviderProfileId).toBe('');
 
       // Should enable the global save button

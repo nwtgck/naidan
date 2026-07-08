@@ -48,7 +48,7 @@ export type ChatOrganizationAdapter = {
     updates,
   }: {
     id: ChatGroupId,
-    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>,
+    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>,
   }): Promise<void>,
 
   moveChatToGroup({
@@ -203,7 +203,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     updates,
   }: {
     id: ChatGroupId,
-    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>,
+    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>,
   }): Promise<void> {
     if (currentChatGroupRef.value?.id === id) {
       Object.assign(currentChatGroupRef.value, updates);

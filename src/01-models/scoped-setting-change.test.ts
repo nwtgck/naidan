@@ -6,8 +6,6 @@ describe('scoped setting fields', () => {
     expect(SCOPED_SETTING_FIELDS).toEqual([
       'endpoint',
       'model_id',
-      'auto_title_enabled',
-      'title_model_id',
       'title_generation',
       'system_prompt',
       'lm_param_temperature',

@@ -27,7 +27,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'openai', url: 'http://localhost' }, storageType: 'local', titleGeneration: { endpoint: 'same_scope', model: 'same_scope' }, defaultModelId: 'gpt-4' } },
   }),
 }));
 

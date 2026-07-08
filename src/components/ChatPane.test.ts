@@ -756,7 +756,6 @@ function resetMocks() {
   mockResolvedSettings.value = {
     endpoint: { type: 'openai', url: 'http://localhost' },
     modelId: 'global-default-model',
-    titleModelId: undefined,
     sources: { modelId: 'global', titleModelId: 'global' },
   };
   mockInheritedSettings.value = {
@@ -1266,7 +1265,7 @@ Question`,
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({
-      patch: { titleModelId: 'model-2' },
+      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } } },
       modelRefresh: 'await',
     });
     expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: 'model-2' });
@@ -1377,12 +1376,12 @@ Question`,
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
-      titleModelId: 'model-2',
-      sources: { modelId: 'global', titleModelId: 'chat' },
+      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' },
+      sources: { modelId: 'global', titleGeneration: 'chat' },
     };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      titleModelId: 'model-2',
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } },
     };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1395,9 +1394,9 @@ Question`,
     expect(mockUpdateChatScopedSettings).toHaveBeenCalledWith({
       chatId: toChatId({ raw: '1' }),
       changes: [{
-        field: 'title_model_id',
+        field: 'title_generation',
         behavior: 'override',
-        value: 'model-2',
+        value: { endpoint: 'same_scope', model: { id: 'model-2' } },
       }],
     });
     expect(mockSaveSettings).not.toHaveBeenCalled();
@@ -1409,8 +1408,8 @@ Question`,
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
-      titleModelId: 'model-2',
-      sources: { modelId: 'global', titleModelId: 'chat_group' },
+      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' },
+      sources: { modelId: 'global', titleGeneration: 'chat_group' },
     };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
@@ -1419,7 +1418,7 @@ Question`,
     mockCurrentChatGroup.value = {
       id: 'group-1',
       name: 'Group 1',
-      titleModelId: 'model-2',
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } },
     };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1432,9 +1431,9 @@ Question`,
     expect(mockUpdateChatGroupScopedSettings).toHaveBeenCalledWith({
       chatGroupId: 'group-1',
       changes: [{
-        field: 'title_model_id',
+        field: 'title_generation',
         behavior: 'override',
-        value: 'model-2',
+        value: { endpoint: 'same_scope', model: { id: 'model-2' } },
       }],
     });
     expect(mockSaveSettings).not.toHaveBeenCalled();

@@ -64,7 +64,7 @@ describe('useChat Advanced Settings Resolution', () => {
     __testOnlySetSettings({ newSettings: {
       endpoint: { type: 'openai', url: 'http://global-openai' },
       defaultModelId: 'global-gpt',
-      autoTitleEnabled: false,
+      titleGeneration: 'disabled',
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -252,7 +252,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     __testOnlySetSettings({ newSettings: {
       endpoint: { type: 'openai', url: 'http://global-openai' },
       defaultModelId: 'global-gpt',
-      autoTitleEnabled: false,
+      titleGeneration: 'disabled',
       storageType: 'local',
       providerProfiles: [],
       mounts: [],

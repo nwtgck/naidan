@@ -31,7 +31,7 @@ const mockSettings = {
     },
     storageType: 'local',
     mounts: [],
-    autoTitleEnabled: false,
+    titleGeneration: 'disabled',
     defaultModelId: 'gpt-4',
     lmParameters: {},
     providerProfiles: [],

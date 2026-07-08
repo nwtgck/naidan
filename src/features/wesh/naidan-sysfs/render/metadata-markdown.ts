@@ -38,8 +38,7 @@ createdAt: ${metadata.createdAt}
 updatedAt: ${metadata.updatedAt}
 debugEnabled: ${metadata.debugEnabled}
 modelId: ${formatValue({ value: metadata.modelId })}
-autoTitleEnabled: ${formatValue({ value: metadata.autoTitleEnabled })}
-titleModelId: ${formatValue({ value: metadata.titleModelId })}
+titleGeneration: ${formatValue({ value: metadata.titleGeneration })}
 originChatId: ${formatValue({ value: metadata.originChatId === undefined ? undefined : idToRaw({ id: metadata.originChatId }) })}
 originMessageId: ${formatValue({ value: metadata.originMessageId === undefined ? undefined : idToRaw({ id: metadata.originMessageId }) })}
 systemPrompt: ${formatValue({ value: metadata.systemPrompt })}

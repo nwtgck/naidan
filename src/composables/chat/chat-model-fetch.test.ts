@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   settings: {
     value: {
       endpoint: { type: 'openai', url: 'http://global.example/v1' } as Endpoint,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'memory',
       providerProfiles: [],
       mounts: [],

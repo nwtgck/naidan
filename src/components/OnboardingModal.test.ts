@@ -57,9 +57,8 @@ describe('OnboardingModal.vue', () => {
   const mockSettings = {
     value: {
       endpoint: { type: 'openai' as const, url: '' },
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'existing-title-model' } },
       defaultModelId: 'existing-default-model',
-      titleModelId: 'existing-title-model',
     },
   };
   const mockIsOnboardingDismissed = ref(false);
@@ -72,7 +71,7 @@ describe('OnboardingModal.vue', () => {
     promptApiRuntimeTestOnly.reset();
     mockSettings.value.endpoint = { type: 'openai', url: '' };
     mockSettings.value.defaultModelId = 'existing-default-model';
-    mockSettings.value.titleModelId = 'existing-title-model';
+    mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: { id: 'existing-title-model' } };
     mockIsOnboardingDismissed.value = false;
     mockOnboardingDraft.value = null;
     document.cookie = 'reverse_proxy_path=; Max-Age=0'; // Clear the cookie
@@ -118,11 +117,11 @@ describe('OnboardingModal.vue', () => {
   it('renders Step 1 by default and shows correct labels', async () => {
     const wrapper = mount(OnboardingModal);
     await vi.waitFor(() => {
-      expect(wrapper.text()).toContain('Setup Endpoint');
+      expect(wrapper.text()).toContain('Ollama (local)');
     });
     expect(wrapper.find('input').exists()).toBe(true);
-    expect(wrapper.text()).toContain('OpenAI');
-    expect(wrapper.text()).toContain('Ollama');
+    expect(wrapper.text()).toContain('LM Studio (local)');
+    expect(wrapper.text()).toContain('llama-server (local)');
   });
 
   it('keeps the browser-provided option selectable and explains why it is unavailable', async () => {
@@ -218,7 +217,7 @@ describe('OnboardingModal.vue', () => {
       patch: expect.objectContaining({
         endpoint: { type: 'browser_provided_lm' },
         defaultModelId: BROWSER_PROVIDED_LM_MODEL_ID,
-        titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       }),
       modelRefresh: 'await',
     });
@@ -321,7 +320,7 @@ describe('OnboardingModal.vue', () => {
       patch: expect.objectContaining({
         endpoint: { type: 'openai', url: 'http://api.openai.com' },
         defaultModelId: 'model-1',
-        titleModelId: 'model-1',
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'model-1' } },
       }),
       modelRefresh: 'await',
     });
@@ -445,7 +444,7 @@ describe('OnboardingModal.vue', () => {
     const backBtn = wrapper.findAll('button').find(b => b.text().includes('Back'));
     await backBtn?.trigger('click');
 
-    expect(wrapper.text()).toContain('Setup Endpoint');
+    expect(wrapper.text()).toContain('Ollama (local)');
     expect(wrapper.find('input').exists()).toBe(true);
   });
 
@@ -609,7 +608,7 @@ describe('OnboardingModal.vue', () => {
       expect(effectiveType.value).toBe('openai');
     });
 
-    it('saves titleModelId as undefined when finishing onboarding with transformers_js', async () => {
+    it('saves same-scope title generation when finishing onboarding with transformers_js', async () => {
       listModelsMock.mockResolvedValue(['Xenova/gpt2']);
       const wrapper = mount(OnboardingModal);
       const { selectedType } = (wrapper.vm as any).TEST_ONLY;
@@ -628,7 +627,6 @@ describe('OnboardingModal.vue', () => {
         patch: expect.objectContaining({
           endpoint: { type: 'transformers_js' },
           defaultModelId: 'Xenova/gpt2',
-          titleModelId: undefined,
         }),
         modelRefresh: 'await',
       });

@@ -22,8 +22,6 @@ type ChatSettingsUpdate = Partial<Pick<
   | 'endpoint'
   | 'modelId'
   | 'titleGeneration'
-  | 'autoTitleEnabled'
-  | 'titleModelId'
   | 'systemPrompt'
   | 'lmParameters'
 >>;
@@ -32,8 +30,6 @@ const chatSettingsUpdateKeyRecord: Readonly<Record<keyof ChatSettingsUpdate, tru
   endpoint: true,
   modelId: true,
   titleGeneration: true,
-  autoTitleEnabled: true,
-  titleModelId: true,
   systemPrompt: true,
   lmParameters: true,
 };
@@ -74,16 +70,6 @@ function chatSettingsUpdatesToChanges({
       changes.push(updates.titleGeneration === undefined || updates.titleGeneration === 'inherit'
         ? { field: 'title_generation', behavior: 'inherit' }
         : { field: 'title_generation', behavior: 'override', value: updates.titleGeneration });
-      break;
-    case 'autoTitleEnabled':
-      changes.push(updates.autoTitleEnabled === undefined
-        ? { field: 'auto_title_enabled', behavior: 'inherit' }
-        : { field: 'auto_title_enabled', behavior: 'override', value: updates.autoTitleEnabled });
-      break;
-    case 'titleModelId':
-      changes.push(updates.titleModelId === undefined
-        ? { field: 'title_model_id', behavior: 'inherit' }
-        : { field: 'title_model_id', behavior: 'override', value: updates.titleModelId });
       break;
     case 'systemPrompt':
       changes.push(createSystemPromptSettingChange({ systemPrompt: updates.systemPrompt }));

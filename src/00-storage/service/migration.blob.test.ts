@@ -105,7 +105,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     // Setup valid settings to avoid Zod validation errors during switchProvider
     await storageService.updateSettings({ updater: () => ({
       endpoint: { type: 'openai', url: 'http://localhost:11434' },
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],

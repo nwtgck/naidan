@@ -290,8 +290,6 @@ export function cloneScopedSettingChanges({
       }
       }
     case 'model_id':
-    case 'auto_title_enabled':
-    case 'title_model_id':
     case 'system_prompt':
     case 'lm_param_temperature':
     case 'lm_param_top_p':
@@ -331,25 +329,6 @@ function cloneScopedTitleGeneration({
   };
 }
 
-function titleGenerationToLegacyFields({
-  titleGeneration,
-}: {
-  titleGeneration: ScopedTitleGeneration | undefined,
-}): Pick<ScopedSettingsState, 'autoTitleEnabled' | 'titleModelId'> {
-  switch (titleGeneration) {
-  case undefined:
-  case 'inherit':
-    return { autoTitleEnabled: undefined, titleModelId: undefined };
-  case 'disabled':
-    return { autoTitleEnabled: false, titleModelId: undefined };
-  default:
-    return {
-      autoTitleEnabled: true,
-      titleModelId: titleGeneration.model === 'same_scope' ? undefined : titleGeneration.model.id,
-    };
-  }
-}
-
 function normalizeEndpointOverride({ endpoint }: { endpoint: Endpoint }): Endpoint {
   return cloneEndpoint({ endpoint });
 }
@@ -371,8 +350,6 @@ function assertUniqueFields({
 type ScopedSettingsState = {
   endpoint: Endpoint | undefined,
   modelId: string | undefined,
-  autoTitleEnabled: boolean | undefined,
-  titleModelId: string | undefined,
   titleGeneration: ScopedTitleGeneration | undefined,
   systemPrompt: SystemPrompt | undefined,
   lmParameters: LmParameters | undefined,
@@ -392,8 +369,6 @@ function applyChanges({
       ? undefined
       : cloneEndpoint({ endpoint: current.endpoint }),
     modelId: current.modelId,
-    autoTitleEnabled: current.autoTitleEnabled,
-    titleModelId: current.titleModelId,
     titleGeneration: cloneScopedTitleGeneration({ titleGeneration: current.titleGeneration }),
     systemPrompt: current.systemPrompt === undefined
       ? undefined
@@ -438,37 +413,6 @@ function applyChanges({
       }
       break;
 
-    case 'auto_title_enabled':
-      next.titleGeneration = undefined;
-      switch (change.behavior) {
-      case 'inherit':
-        next.autoTitleEnabled = undefined;
-        break;
-      case 'override':
-        next.autoTitleEnabled = change.value;
-        break;
-      default: {
-        const _ex: never = change;
-        throw new Error(`Unhandled auto title behavior: ${String(_ex)}`);
-      }
-      }
-      break;
-
-    case 'title_model_id':
-      next.titleGeneration = undefined;
-      switch (change.behavior) {
-      case 'inherit':
-        next.titleModelId = undefined;
-        break;
-      case 'override':
-        next.titleModelId = change.value;
-        break;
-      default: {
-        const _ex: never = change;
-        throw new Error(`Unhandled title model behavior: ${String(_ex)}`);
-      }
-      }
-      break;
 
     case 'title_generation': {
       switch (change.behavior) {
@@ -483,9 +427,6 @@ function applyChanges({
         throw new Error(`Unhandled title generation behavior: ${String(_ex)}`);
       }
       }
-      const legacy = titleGenerationToLegacyFields({ titleGeneration: next.titleGeneration });
-      next.autoTitleEnabled = legacy.autoTitleEnabled;
-      next.titleModelId = legacy.titleModelId;
       break;
     }
 
@@ -691,8 +632,6 @@ export function applyScopedSettingChangesToChat({
     current: {
       endpoint: current.endpoint,
       modelId: current.modelId,
-      autoTitleEnabled: current.autoTitleEnabled,
-      titleModelId: current.titleModelId,
       titleGeneration: current.titleGeneration,
       systemPrompt: current.systemPrompt,
       lmParameters: current.lmParameters,
@@ -722,8 +661,6 @@ export function applyScopedSettingChangesToChatMeta({
     current: {
       endpoint: current.endpoint,
       modelId: current.modelId,
-      autoTitleEnabled: current.autoTitleEnabled,
-      titleModelId: current.titleModelId,
       titleGeneration: current.titleGeneration,
       systemPrompt: current.systemPrompt,
       lmParameters: current.lmParameters,
@@ -753,8 +690,6 @@ export function applyScopedSettingChangesToChatGroup({
     current: {
       endpoint: current.endpoint,
       modelId: current.modelId,
-      autoTitleEnabled: current.autoTitleEnabled,
-      titleModelId: current.titleModelId,
       titleGeneration: current.titleGeneration,
       systemPrompt: current.systemPrompt,
       lmParameters: current.lmParameters,

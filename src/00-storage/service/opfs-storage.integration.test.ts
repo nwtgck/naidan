@@ -127,7 +127,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     const zip = new JSZip();
     const root = zip.folder('naidan-backup');
     root!.file('export-manifest.json', JSON.stringify({ app_version: '0.1.0', exportedAt: Date.now() }));
-    root!.file('settings.json', JSON.stringify({ storageType: 'opfs', endpoint: { type: 'openai', url: '' }, autoTitleEnabled: true, providerProfiles: [] }));
+    root!.file('settings.json', JSON.stringify({ storageType: 'opfs', endpoint: { type: 'openai', url: '' }, titleGeneration: { endpoint: 'same_scope', model: 'same_scope' }, providerProfiles: [] }));
     root!.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat', id: chatID }] }));
     root!.file('chat-metas.json', JSON.stringify({ entries: [{ id: chatID, title: 'Test', createdAt: 0, updatedAt: 0, debugEnabled: false }] }));
 
