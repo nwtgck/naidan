@@ -260,8 +260,7 @@ describe('Chat Mapping', () => {
         httpHeaders: [['X-Chat', 'true']],
       },
       modelId: 'chat-model',
-      autoTitleEnabled: false,
-      titleModelId: 'title-model',
+      titleGeneration: 'disabled',
       originChatId,
       originMessageId,
       systemPrompt: { behavior: 'override', content: null },
@@ -286,8 +285,7 @@ describe('Chat Mapping', () => {
         httpHeaders: [['X-Chat', 'true']],
       },
       modelId: 'chat-model',
-      autoTitleEnabled: false,
-      titleModelId: 'title-model',
+      titleGeneration: 'disabled',
       originChatId: 'chat-origin',
       originMessageId: 'message-origin',
       systemPrompt: { behavior: 'override', content: null },
@@ -384,8 +382,10 @@ describe('Chat Mapping', () => {
       messages: undefined,
     };
 
-    expect(dto).toEqual(expectedDto);
-    expect(chatToDto({ domain: chatToDomain({ dto }) })).toEqual(expectedDto);
+    expect(dto).toMatchObject(expectedDto);
+    expect(dto).not.toHaveProperty('autoTitleEnabled');
+    expect(dto).not.toHaveProperty('titleModelId');
+    expect(chatToDto({ domain: chatToDomain({ dto }) })).toEqual(dto);
   });
 });
 
@@ -675,8 +675,9 @@ describe('Settings Mapping', () => {
         httpHeaders: [['Authorization', 'Bearer token']],
       },
       defaultModelId: 'gpt-4.1',
-      titleModelId: 'gpt-4.1-mini',
       autoTitleEnabled: false,
+      titleModelId: 'gpt-4.1-mini',
+      titleGeneration: 'disabled',
       storageType: 'opfs',
       providerProfiles: [{
         id: toProviderProfileId({ raw: 'provider-profile-1' }),
@@ -725,8 +726,7 @@ describe('Settings Mapping', () => {
         httpHeaders: [['Authorization', 'Bearer token']],
       },
       defaultModelId: 'gpt-4.1',
-      titleModelId: 'gpt-4.1-mini',
-      autoTitleEnabled: false,
+      titleGeneration: 'disabled',
       storageType: 'opfs',
       providerProfiles: [{
         id: 'provider-profile-1',
@@ -770,8 +770,10 @@ describe('Settings Mapping', () => {
       },
     };
 
-    expect(dto).toEqual(expectedDto);
-    expect(settingsToDto({ domain: settingsToDomain({ dto }) })).toEqual(expectedDto);
+    expect(dto).toMatchObject(expectedDto);
+    expect(dto).not.toHaveProperty('autoTitleEnabled');
+    expect(dto).not.toHaveProperty('titleModelId');
+    expect(settingsToDto({ domain: settingsToDomain({ dto }) })).toEqual(dto);
   });
 });
 

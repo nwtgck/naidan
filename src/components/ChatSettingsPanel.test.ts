@@ -207,6 +207,11 @@ describe('ChatSettingsPanel.vue', () => {
           case 'title_model_id':
             updates.titleModelId = updated.titleModelId;
             break;
+          case 'title_generation':
+            updates.titleGeneration = updated.titleGeneration;
+            updates.autoTitleEnabled = updated.autoTitleEnabled;
+            updates.titleModelId = updated.titleModelId;
+            break;
           case 'system_prompt':
             updates.systemPrompt = updated.systemPrompt;
             break;
@@ -290,7 +295,7 @@ describe('ChatSettingsPanel.vue', () => {
     vi.unstubAllGlobals();
   });
 
-  it('persists browser-provided model IDs with a chat endpoint override', async () => {
+  it('persists browser-provided chat model and same-scope title setting with a chat endpoint override', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -310,7 +315,8 @@ describe('ChatSettingsPanel.vue', () => {
     expect(mockCurrentChat.value).toMatchObject({
       endpoint: { type: 'browser_provided_lm' },
       modelId: BROWSER_PROVIDED_LM_MODEL_ID,
-      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+      titleModelId: undefined,
     });
     wrapper.unmount();
     vi.unstubAllGlobals();
@@ -394,6 +400,15 @@ describe('ChatSettingsPanel.vue', () => {
     expect(wrapper.text()).toContain('Chat Specific Overrides');
     expect(wrapper.text()).toContain('Quick Endpoint Presets');
     expect(wrapper.text()).toContain('Endpoint Type');
+  });
+
+  it('shows title-generation inheritance as using the chat group setting', async () => {
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+    expect(wrapper.text()).toContain('Use Chat Group Setting');
   });
 
   it('applies animation classes for entrance effects', () => {

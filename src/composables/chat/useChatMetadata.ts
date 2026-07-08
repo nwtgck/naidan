@@ -21,6 +21,7 @@ type ChatSettingsUpdate = Partial<Pick<
   Chat,
   | 'endpoint'
   | 'modelId'
+  | 'titleGeneration'
   | 'autoTitleEnabled'
   | 'titleModelId'
   | 'systemPrompt'
@@ -30,6 +31,7 @@ type ChatSettingsUpdate = Partial<Pick<
 const chatSettingsUpdateKeyRecord: Readonly<Record<keyof ChatSettingsUpdate, true>> = {
   endpoint: true,
   modelId: true,
+  titleGeneration: true,
   autoTitleEnabled: true,
   titleModelId: true,
   systemPrompt: true,
@@ -67,6 +69,11 @@ function chatSettingsUpdatesToChanges({
       changes.push(updates.modelId === undefined
         ? { field: 'model_id', behavior: 'inherit' }
         : { field: 'model_id', behavior: 'override', value: updates.modelId });
+      break;
+    case 'titleGeneration':
+      changes.push(updates.titleGeneration === undefined || updates.titleGeneration === 'inherit'
+        ? { field: 'title_generation', behavior: 'inherit' }
+        : { field: 'title_generation', behavior: 'override', value: updates.titleGeneration });
       break;
     case 'autoTitleEnabled':
       changes.push(updates.autoTitleEnabled === undefined

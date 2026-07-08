@@ -8,6 +8,7 @@ describe('scoped setting fields', () => {
       'model_id',
       'auto_title_enabled',
       'title_model_id',
+      'title_generation',
       'system_prompt',
       'lm_param_temperature',
       'lm_param_top_p',

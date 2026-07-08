@@ -209,7 +209,8 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       const chat: Chat = { ...baseChat, groupId: toChatGroupId({ raw: 'group-1' }) };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.autoTitleEnabled).toBe(false);
-      expect(result.titleModelId).toBe('group-title-model');
+      expect(result.titleModelId).toBe('');
+      expect(result.titleGeneration).toBe('disabled');
       expect(result.sources.autoTitleEnabled).toBe('chat_group');
       expect(result.sources.titleModelId).toBe('chat_group');
     });
@@ -222,10 +223,87 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       };
       const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.autoTitleEnabled).toBe(false);
-      expect(result.titleModelId).toBe('chat-title-model');
+      expect(result.titleModelId).toBe('');
+      expect(result.titleGeneration).toBe('disabled');
       expect(result.sources.autoTitleEnabled).toBe('chat');
       expect(result.sources.titleModelId).toBe('chat');
     });
+
+    it('resolves same_scope title generation against the same normal generation scope', () => {
+      const globalEndpoint = { type: 'openai' as const, url: 'https://global.example/v1' };
+      const groupEndpoint = { type: 'ollama' as const, url: 'https://group.example' };
+      const group: ChatGroup = {
+        id: toChatGroupId({ raw: 'same-scope-group' }),
+        name: 'Same Scope Group',
+        isCollapsed: false,
+        updatedAt: 0,
+        items: [],
+        endpoint: groupEndpoint,
+        modelId: 'group-chat-model',
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+      };
+      const result = resolveChatSettings({
+        chat: { ...baseChat, groupId: group.id },
+        groups: [group],
+        globalSettings: {
+          endpoint: globalEndpoint,
+          defaultModelId: 'global-chat-model',
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+        },
+      });
+
+      expect(result.titleGeneration).toEqual({ endpoint: groupEndpoint, modelId: 'group-chat-model' });
+      expect(result.titleModelId).toBe('group-chat-model');
+      expect(result.sources.titleGeneration).toBe('chat_group');
+    });
+
+    it('inherits the parent resolved title generation instead of re-evaluating parent same_scope in the child scope', () => {
+      const globalEndpoint = { type: 'openai' as const, url: 'https://global.example/v1' };
+      const groupEndpoint = { type: 'ollama' as const, url: 'https://group.example' };
+      const group: ChatGroup = {
+        id: toChatGroupId({ raw: 'inherit-resolved-group' }),
+        name: 'Inherit Resolved Group',
+        isCollapsed: false,
+        updatedAt: 0,
+        items: [],
+        endpoint: groupEndpoint,
+        modelId: 'group-chat-model',
+        titleGeneration: 'inherit',
+      };
+      const result = resolveChatSettings({
+        chat: { ...baseChat, groupId: group.id },
+        groups: [group],
+        globalSettings: {
+          endpoint: globalEndpoint,
+          defaultModelId: 'global-chat-model',
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+        },
+      });
+
+      expect(result.titleGeneration).toEqual({ endpoint: globalEndpoint, modelId: 'global-chat-model' });
+      expect(result.titleModelId).toBe('global-chat-model');
+      expect(result.sources.titleGeneration).toBe('chat_group');
+    });
+
+    it('resolves explicit title endpoint and model independently from normal generation', () => {
+      const normalEndpoint = { type: 'openai' as const, url: 'https://normal.example/v1' };
+      const titleEndpoint = { type: 'ollama' as const, url: 'https://title.example' };
+      const result = resolveChatSettings({
+        chat: baseChat,
+        groups: [],
+        globalSettings: {
+          endpoint: normalEndpoint,
+          defaultModelId: 'normal-model',
+          titleGeneration: { endpoint: titleEndpoint, model: { id: 'title-only-model' } },
+        },
+      });
+
+      expect(result.endpoint).toEqual(normalEndpoint);
+      expect(result.modelId).toBe('normal-model');
+      expect(result.titleGeneration).toEqual({ endpoint: titleEndpoint, modelId: 'title-only-model' });
+      expect(result.titleModelId).toBe('title-only-model');
+    });
+
   });
 
   describe('Override Detection Helpers', () => {

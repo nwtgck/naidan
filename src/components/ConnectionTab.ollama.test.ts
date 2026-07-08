@@ -140,7 +140,7 @@ describe('ConnectionTab Ollama management integration', () => {
     vi.unstubAllGlobals();
   });
 
-  it('persists both browser-provided model IDs when the endpoint is selected', async () => {
+  it('persists the browser-provided chat model and same-scope title setting when the endpoint is selected', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -163,11 +163,12 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
     expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
-    expect(settings.titleModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(settings.titleModelId).toBe('');
+    expect(settings.titleGeneration).toEqual({ endpoint: 'same_scope', model: 'same_scope' });
     wrapper.unmount();
   });
 
-  it('does not clear browser-provided model IDs when an earlier endpoint fetch finishes late', async () => {
+  it('does not clear the browser-provided chat model when an earlier endpoint fetch finishes late', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -199,7 +200,8 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
     expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
-    expect(settings.titleModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(settings.titleModelId).toBe('');
+    expect(settings.titleGeneration).toEqual({ endpoint: 'same_scope', model: 'same_scope' });
     wrapper.unmount();
   });
 

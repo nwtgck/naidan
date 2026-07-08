@@ -219,6 +219,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
           case 'title_model_id':
             updates.titleModelId = updated.titleModelId;
             break;
+          case 'title_generation':
+            updates.titleGeneration = updated.titleGeneration;
+            updates.autoTitleEnabled = updated.autoTitleEnabled;
+            updates.titleModelId = updated.titleModelId;
+            break;
           case 'system_prompt':
             updates.systemPrompt = updated.systemPrompt;
             break;
@@ -303,6 +308,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
   it('renders the group name in the header', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     expect(wrapper.find('h2').text()).toContain('Test Group Settings');
+  });
+
+  it('shows title-generation inheritance as using the global setting', () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    expect(wrapper.text()).toContain('Use Global Setting');
   });
 
   it('shows the "Active Overrides" badge only when overrides are present', async () => {
@@ -391,7 +401,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     vi.unstubAllGlobals();
   });
 
-  it('persists browser-provided model IDs with a group endpoint override', async () => {
+  it('persists browser-provided chat model and same-scope title setting with a group endpoint override', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -407,7 +417,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(mockGroup).toMatchObject({
       endpoint: { type: 'browser_provided_lm' },
       modelId: BROWSER_PROVIDED_LM_MODEL_ID,
-      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+      titleModelId: undefined,
     });
     wrapper.unmount();
     vi.unstubAllGlobals();

@@ -1,4 +1,13 @@
-import type { Chat, ChatGroup, Endpoint, LmParameters, Reasoning, SystemPrompt } from '@/01-models/types';
+import type {
+  Chat,
+  ChatGroup,
+  Endpoint,
+  LmParameters,
+  Reasoning,
+  ScopedTitleGeneration,
+  SettingsTitleGeneration,
+  SystemPrompt,
+} from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
   hasLmParameterOverrides,
@@ -16,12 +25,24 @@ export type ResolvableLmParameters = Readonly<
 export interface ResolvableSettings {
   endpoint: Endpoint,
   defaultModelId?: string,
+  titleGeneration?: SettingsTitleGeneration,
   titleModelId?: string,
   autoTitleEnabled?: boolean,
   systemPrompt?: string,
   lmParameters?: ResolvableLmParameters,
 }
 
+export type ResolvedTitleGeneration =
+  | 'disabled'
+  | Readonly<{
+      endpoint: Endpoint,
+      modelId: string,
+    }>;
+
+type ResolvedNormalGeneration = Readonly<{
+  endpoint: Endpoint,
+  modelId: string,
+}>;
 
 function applyLmParameterOverrides({
   target,
@@ -80,15 +101,146 @@ function applyLmParameterOverrides({
   }
 }
 
+function settingsTitleGenerationFromLegacy({
+  autoTitleEnabled,
+  titleModelId,
+}: {
+  autoTitleEnabled: boolean | undefined,
+  titleModelId: string | undefined,
+}): SettingsTitleGeneration {
+  if (autoTitleEnabled === false) return 'disabled';
+
+  return {
+    endpoint: 'same_scope',
+    model: titleModelId === undefined ? 'same_scope' : { id: titleModelId },
+  };
+}
+
+function scopedTitleGenerationFromLegacy({
+  autoTitleEnabled,
+  titleModelId,
+}: {
+  autoTitleEnabled: boolean | undefined,
+  titleModelId: string | undefined,
+}): ScopedTitleGeneration {
+  if (autoTitleEnabled === false) return 'disabled';
+  if (autoTitleEnabled === undefined && titleModelId === undefined) return 'inherit';
+
+  return {
+    endpoint: 'same_scope',
+    model: titleModelId === undefined ? 'same_scope' : { id: titleModelId },
+  };
+}
+
+function resolveLocalTitleGeneration({
+  titleGeneration,
+  sameScope,
+}: {
+  titleGeneration: Exclude<SettingsTitleGeneration, 'disabled'>,
+  sameScope: ResolvedNormalGeneration,
+}): ResolvedTitleGeneration {
+  const endpoint = titleGeneration.endpoint === 'same_scope'
+    ? sameScope.endpoint
+    : titleGeneration.endpoint;
+  const modelId = titleGeneration.model === 'same_scope'
+    ? sameScope.modelId
+    : titleGeneration.model.id;
+
+  return { endpoint, modelId };
+}
+
+function resolveSettingsTitleGeneration({
+  titleGeneration,
+  sameScope,
+}: {
+  titleGeneration: SettingsTitleGeneration,
+  sameScope: ResolvedNormalGeneration,
+}): ResolvedTitleGeneration {
+  if (titleGeneration === 'disabled') return 'disabled';
+  return resolveLocalTitleGeneration({ titleGeneration, sameScope });
+}
+
+function resolveScopedTitleGeneration({
+  titleGeneration,
+  parent,
+  sameScope,
+}: {
+  titleGeneration: ScopedTitleGeneration,
+  parent: ResolvedTitleGeneration,
+  sameScope: ResolvedNormalGeneration,
+}): ResolvedTitleGeneration {
+  switch (titleGeneration) {
+  case 'inherit':
+    return parent;
+  case 'disabled':
+    return 'disabled';
+  default:
+    return resolveLocalTitleGeneration({ titleGeneration, sameScope });
+  }
+}
+
+function titleModelIdFromResolvedTitleGeneration({
+  titleGeneration,
+}: {
+  titleGeneration: ResolvedTitleGeneration,
+}): string {
+  return titleGeneration === 'disabled' ? '' : titleGeneration.modelId;
+}
+
+function titleSource({
+  chat,
+  group,
+}: {
+  chat: Chat,
+  group: ChatGroup | null | undefined,
+}): 'chat' | 'chat_group' | 'global' {
+  if (chat.titleGeneration !== undefined || chat.autoTitleEnabled !== undefined || chat.titleModelId !== undefined) return 'chat';
+  if (group?.titleGeneration !== undefined || group?.autoTitleEnabled !== undefined || group?.titleModelId !== undefined) return 'chat_group';
+  return 'global';
+}
+
 export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Chat, groups: ChatGroup[], globalSettings: ResolvableSettings }) {
 
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
 
-  const endpoint = chat.endpoint ?? group?.endpoint ?? globalSettings.endpoint;
-  const modelId = chat.modelId || group?.modelId || globalSettings.defaultModelId || '';
+  const globalGeneration: ResolvedNormalGeneration = {
+    endpoint: globalSettings.endpoint,
+    modelId: globalSettings.defaultModelId || '',
+  };
+  const groupGeneration: ResolvedNormalGeneration = {
+    endpoint: group?.endpoint ?? globalGeneration.endpoint,
+    modelId: group?.modelId || globalGeneration.modelId,
+  };
+  const chatGeneration: ResolvedNormalGeneration = {
+    endpoint: chat.endpoint ?? groupGeneration.endpoint,
+    modelId: chat.modelId || groupGeneration.modelId,
+  };
 
-  const autoTitleEnabled = chat.autoTitleEnabled !== undefined ? chat.autoTitleEnabled : (group?.autoTitleEnabled !== undefined ? group.autoTitleEnabled : globalSettings.autoTitleEnabled ?? true);
-  const titleModelId = chat.titleModelId || group?.titleModelId || globalSettings.titleModelId || '';
+  const globalTitleGeneration = resolveSettingsTitleGeneration({
+    titleGeneration: globalSettings.titleGeneration ?? settingsTitleGenerationFromLegacy({
+      autoTitleEnabled: globalSettings.autoTitleEnabled,
+      titleModelId: globalSettings.titleModelId,
+    }),
+    sameScope: globalGeneration,
+  });
+  const groupTitleGeneration = group === null || group === undefined
+    ? globalTitleGeneration
+    : resolveScopedTitleGeneration({
+      titleGeneration: group.titleGeneration ?? scopedTitleGenerationFromLegacy({
+        autoTitleEnabled: group.autoTitleEnabled,
+        titleModelId: group.titleModelId,
+      }),
+      parent: globalTitleGeneration,
+      sameScope: groupGeneration,
+    });
+  const chatTitleGeneration = resolveScopedTitleGeneration({
+    titleGeneration: chat.titleGeneration ?? scopedTitleGenerationFromLegacy({
+      autoTitleEnabled: chat.autoTitleEnabled,
+      titleModelId: chat.titleModelId,
+    }),
+    parent: groupTitleGeneration,
+    sameScope: chatGeneration,
+  });
 
   let systemPrompts: string[] = [];
   if (globalSettings.systemPrompt) systemPrompts.push(globalSettings.systemPrompt);
@@ -139,12 +291,19 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
   }
 
   return {
-    endpoint, modelId, autoTitleEnabled, titleModelId, systemPromptMessages: systemPrompts, lmParameters,
+    endpoint: chatGeneration.endpoint,
+    modelId: chatGeneration.modelId,
+    autoTitleEnabled: chatTitleGeneration !== 'disabled',
+    titleModelId: titleModelIdFromResolvedTitleGeneration({ titleGeneration: chatTitleGeneration }),
+    titleGeneration: chatTitleGeneration,
+    systemPromptMessages: systemPrompts,
+    lmParameters,
     sources: {
       endpoint: chat.endpoint !== undefined ? 'chat' : (group?.endpoint !== undefined ? 'chat_group' : 'global'),
       modelId: chat.modelId ? 'chat' : (group?.modelId ? 'chat_group' : 'global'),
-      autoTitleEnabled: chat.autoTitleEnabled !== undefined ? 'chat' : (group?.autoTitleEnabled !== undefined ? 'chat_group' : 'global'),
-      titleModelId: chat.titleModelId ? 'chat' : (group?.titleModelId ? 'chat_group' : 'global'),
+      autoTitleEnabled: titleSource({ chat, group }),
+      titleModelId: titleSource({ chat, group }),
+      titleGeneration: titleSource({ chat, group }),
     } as const,
   };
 }
@@ -156,6 +315,7 @@ export function hasChatOverrides({ chat }: {
   chat: {
     endpoint?: Endpoint,
     modelId?: string,
+    titleGeneration?: ScopedTitleGeneration,
     autoTitleEnabled?: boolean,
     titleModelId?: string,
     systemPrompt?: SystemPrompt,
@@ -165,6 +325,7 @@ export function hasChatOverrides({ chat }: {
   return !!(
     chat.endpoint ||
     chat.modelId ||
+    chat.titleGeneration !== undefined ||
     chat.autoTitleEnabled !== undefined ||
     chat.titleModelId ||
     chat.systemPrompt ||
@@ -179,6 +340,7 @@ export function hasGroupOverrides({ group }: {
   group: {
     endpoint?: Endpoint,
     modelId?: string,
+    titleGeneration?: ScopedTitleGeneration,
     autoTitleEnabled?: boolean,
     titleModelId?: string,
     systemPrompt?: SystemPrompt,
@@ -189,6 +351,7 @@ export function hasGroupOverrides({ group }: {
   return !!(
     group.endpoint ||
     group.modelId ||
+    group.titleGeneration !== undefined ||
     group.autoTitleEnabled !== undefined ||
     group.titleModelId ||
     group.systemPrompt ||

@@ -81,6 +81,13 @@ export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserP
 export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
 export type EndpointType = SupportedEndpoint['type'];
 
+export type SettingsTitleGeneration =
+  | 'disabled'
+  | { endpoint: 'same_scope', model: 'same_scope' | { id: string } }
+  | { endpoint: Endpoint, model: { id: string } };
+
+export type ScopedTitleGeneration = SettingsTitleGeneration | 'inherit';
+
 export type MultimodalContent =
   | { type: 'text', text: string }
   | { type: 'image_url', image_url: { url: string } };
@@ -196,6 +203,7 @@ export interface Chat {
 
   endpoint?: Endpoint,
   modelId?: string,
+  titleGeneration?: ScopedTitleGeneration,
   autoTitleEnabled?: boolean,
   titleModelId?: string,
   originChatId?: ChatId,
@@ -222,6 +230,7 @@ export interface ChatMeta {
   debugEnabled: boolean,
   endpoint?: Endpoint,
   modelId?: string,
+  titleGeneration?: ScopedTitleGeneration,
   autoTitleEnabled?: boolean,
   titleModelId?: string,
   originChatId?: ChatId,
@@ -255,6 +264,7 @@ export interface ChatGroup {
 
   endpoint?: Endpoint,
   modelId?: string,
+  titleGeneration?: ScopedTitleGeneration,
   autoTitleEnabled?: boolean,
   titleModelId?: string,
   systemPrompt?: SystemPrompt,
@@ -366,6 +376,7 @@ export interface ProviderProfile {
 export interface Settings {
   endpoint: Endpoint,
   defaultModelId?: string,
+  titleGeneration?: SettingsTitleGeneration,
   titleModelId?: string,
   autoTitleEnabled: boolean,
   storageType: StorageType,
@@ -402,6 +413,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
   autoTitleEnabled: true,
   providerProfiles: [],
   mounts: [],
