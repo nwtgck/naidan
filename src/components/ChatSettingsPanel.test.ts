@@ -137,7 +137,7 @@ describe('ChatSettingsPanel.vue', () => {
       return {
         endpoint: chat?.endpoint ?? s.endpoint,
         modelId: chat?.modelId || s.defaultModelId,
-        titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+        titleGeneration: { endpoint: chat?.endpoint ?? s.endpoint, modelId: chat?.modelId || s.defaultModelId },
         systemPromptMessages: [],
         lmParameters: undefined,
         sources: {
@@ -1093,15 +1093,15 @@ describe('ChatSettingsPanel.vue', () => {
       });
       await nextTick();
 
-      const typeSelect = wrapper.findAll('select')[1];
-      const globalOption = typeSelect!.findAll('option').find(opt => opt.text().includes('(Global)'));
-      expect(globalOption!.text()).toContain('OpenAI (Global)');
+      const typeSelect = wrapper.get('[data-testid="chat-setting-title-endpoint-type-select"]');
+      const inheritedOption = () => typeSelect.find('option[value="inherit"]');
+      expect(inheritedOption().text()).toContain('Chat Group: OpenAI');
 
       // Update global setting
       mockSettings.value.endpoint = { type: 'ollama', url: 'http://global:1234' };
       await nextTick();
 
-      expect(globalOption!.text()).toContain('Ollama (Global)');
+      expect(inheritedOption().text()).toContain('Chat Group: Ollama');
     });
   });
 

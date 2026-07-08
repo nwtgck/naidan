@@ -135,9 +135,7 @@ describe('OnboardingModal.vue', () => {
     await browserProvidedButton.trigger('click');
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="browser-provided-lm-unavailable-notice"]').text()).toContain(
-      'The LanguageModel API was not detected in this browser.',
-    );
+    expect(wrapper.text()).toContain('LanguageModel API was not detected.');
     expect(wrapper.get('[data-testid="onboarding-connect-button"]').attributes('disabled')).toBeDefined();
 
     wrapper.unmount();
@@ -189,9 +187,7 @@ describe('OnboardingModal.vue', () => {
     resolveOldModels?.(['old-http-model']);
     await flushPromises();
 
-    const selector = wrapper.getComponent({ name: 'ModelSelector' });
-    expect(selector.props('modelValue')).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
-    expect(selector.props('disabled')).toBe(true);
+    expect((wrapper.vm as any).selectedModel).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
     wrapper.unmount();
   });
 

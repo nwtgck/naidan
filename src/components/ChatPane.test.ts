@@ -3546,7 +3546,7 @@ describe('ChatPane Model Selection', () => {
     });
 
     const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
-    expect(trigger.text()).toBe('global-default-model (Global)');
+    expect(trigger.text()).toBe('Global: global-default-model');
   });
 
   it('should trigger updateChatModel when a model is selected in ModelSelector', async () => {

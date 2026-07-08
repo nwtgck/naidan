@@ -345,15 +345,15 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (OpenAI)');
+    expect(inheritedOption().text()).toBe('Global: OpenAI');
 
     mockSettings.endpoint = { type: 'ollama', url: 'http://global-url' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (Ollama)');
+    expect(inheritedOption().text()).toBe('Global: Ollama');
 
     mockSettings.endpoint = { type: 'transformers_js' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (Transformers.js)');
+    expect(inheritedOption().text()).toBe('Global: Transformers.js');
   });
 
   it('toggles endpoint customization via select', async () => {

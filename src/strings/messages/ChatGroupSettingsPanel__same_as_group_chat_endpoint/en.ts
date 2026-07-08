@@ -1,1 +1,1 @@
-export const ChatGroupSettingsPanel__same_as_group_chat_endpoint = (): string => 'Same as group chat endpoint';
+export const ChatGroupSettingsPanel__same_as_group_chat_endpoint = ({ endpointType }: { endpointType: string }): string => `Chat Group: ${endpointType}`;

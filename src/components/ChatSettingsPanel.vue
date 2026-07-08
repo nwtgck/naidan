@@ -249,6 +249,23 @@ function titleModelExplanation(): string | undefined {
   });
 }
 
+function endpointTypeValueLabel({ endpoint }: { endpoint: Endpoint }): string | undefined {
+  return endpointTypeLabel({ endpointType: endpoint.type });
+}
+
+const inheritedTitleEndpointTypeOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: inheritedSettings.value?.titleGeneration === 'disabled'
+    ? lazyStrings.ChatSettingsPanel__disabled()
+    : inheritedSettings.value?.titleGeneration === undefined
+      ? undefined
+      : endpointTypeValueLabel({ endpoint: inheritedSettings.value.titleGeneration.endpoint }),
+  source: 'chat_group',
+}));
+const sameScopeTitleEndpointTypeOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: endpointTypeValueLabel({ endpoint: effectiveEndpoint.value }),
+  source: 'chat',
+}));
+
 
 function createChanges({
   previous,
@@ -352,19 +369,22 @@ const localTitleEndpointSelectValue = computed<TitleEndpointTypeSelectValue>(() 
 });
 const localTitleEndpointUsesInheritance = computed(() => localTitleEndpoint.value === 'inherit');
 const localTitleEndpointUsesSameScope = computed(() => localTitleEndpoint.value === 'same_scope');
-const effectiveTitleEndpoint = computed<Endpoint>(() => localTitleEndpoint.value === 'same_scope' || localTitleEndpoint.value === 'inherit'
-  ? effectiveEndpoint.value
-  : localTitleEndpoint.value);
+const activeTitleEndpoint = computed<Endpoint | undefined>(() => {
+  if (localTitleEndpoint.value === 'inherit') {
+    return inheritedSettings.value?.titleGeneration === 'disabled'
+      ? undefined
+      : inheritedSettings.value?.titleGeneration?.endpoint;
+  }
+  if (localTitleEndpoint.value === 'same_scope') return effectiveEndpoint.value;
+  return localTitleEndpoint.value;
+});
+const effectiveTitleEndpoint = computed<Endpoint>(() => activeTitleEndpoint.value ?? effectiveEndpoint.value);
 const effectiveTitleEndpointType = computed(() => effectiveTitleEndpoint.value.type);
 const localTitleEndpointUrl = computed({
-  get: () => {
-    const endpoint = localTitleEndpoint.value;
-    return endpoint !== 'same_scope' && endpoint !== 'inherit' && isHttpEndpoint(endpoint) ? endpoint.url : '';
-  },
+  get: () => (activeTitleEndpoint.value !== undefined && isHttpEndpoint(activeTitleEndpoint.value) ? activeTitleEndpoint.value.url : ''),
   set: (url: string) => {
-    const titleGeneration = localTitleGeneration.value;
-    const endpoint = localTitleEndpoint.value;
-    if (typeof titleGeneration === 'string' || endpoint === 'same_scope' || endpoint === 'inherit' || !isHttpEndpoint(endpoint)) return;
+    const endpoint = activeTitleEndpoint.value;
+    if (endpoint === undefined || !isHttpEndpoint(endpoint)) return;
     updateLocalTitleGenerationDraft({
       titleGeneration: {
         endpoint: {
@@ -372,7 +392,7 @@ const localTitleEndpointUrl = computed({
           url,
           httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
         },
-        model: titleGeneration.model === 'same_scope' ? { id: '' } : titleGeneration.model,
+        model: explicitTitleModel({ modelId: effectiveTitleModelId.value }),
       },
     });
   },
@@ -388,6 +408,26 @@ const titleModelLoading = computed(() => {
   return localTitleEndpointUsesSameScope.value
     ? isFetchingModels.value
     : isFetchingTitleEndpointModels.value;
+});
+const effectiveModelId = computed(() => localSettings.value.modelId || inheritedSettings.value?.modelId || settings.value.defaultModelId);
+const inheritedTitleModelOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: inheritedSettings.value?.titleGeneration === 'disabled'
+    ? lazyStrings.ChatSettingsPanel__disabled()
+    : inheritedSettings.value?.titleGeneration?.modelId,
+  source: 'chat_group',
+}));
+const sameScopeTitleModelOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: effectiveModelId.value,
+  source: 'chat',
+}));
+const effectiveTitleModelId = computed(() => {
+  if (localTitleEndpointUsesInheritance.value) {
+    return inheritedSettings.value?.titleGeneration === 'disabled'
+      ? undefined
+      : inheritedSettings.value?.titleGeneration?.modelId;
+  }
+  if (localTitleEndpointUsesSameScope.value) return effectiveModelId.value;
+  return localTitleModelId.value;
 });
 
 function preservedTitleModelIdForEndpoint({
@@ -443,7 +483,7 @@ function setLocalTitleEndpointType({
   case 'ollama': {
     const currentTitleEndpoint = localTitleEndpoint.value;
     const seed = selectHttpEndpointSeed({
-      preferred: currentTitleEndpoint === 'same_scope' || currentTitleEndpoint === 'inherit' ? undefined : currentTitleEndpoint,
+      preferred: currentTitleEndpoint === 'same_scope' || currentTitleEndpoint === 'inherit' ? activeTitleEndpoint.value : currentTitleEndpoint,
       fallback: effectiveEndpoint.value,
     });
     const nextEndpoint: Endpoint = {
@@ -1382,8 +1422,8 @@ defineExpose({
                   tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                   data-testid="chat-setting-title-endpoint-type-select"
                 >
-                  <option value="inherit">{{ lazyStrings.ChatSettingsPanel__use_chat_group_setting() }}</option>
-                  <option value="same_scope">{{ lazyStrings.ChatSettingsPanel__same_as_chat_endpoint() }}</option>
+                  <option value="inherit">{{ inheritedTitleEndpointTypeOptionLabel }}</option>
+                  <option value="same_scope">{{ sameScopeTitleEndpointTypeOptionLabel }}</option>
                   <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                   <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
                   <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
@@ -1396,7 +1436,7 @@ defineExpose({
                 </select>
               </div>
 
-              <div v-if="!localTitleEndpointUsesSameScope && isHttpEndpoint(effectiveTitleEndpoint)" tw-class="space-y-2">
+              <div tw-class="space-y-2">
                 <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</label>
                 <input
                   v-model="localTitleEndpointUrl"
@@ -1405,6 +1445,7 @@ defineExpose({
                   type="text"
                   tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                   :placeholder="isHttpEndpoint(effectiveEndpoint) ? effectiveEndpoint.url : undefined"
+                  :disabled="activeTitleEndpoint === undefined || !isHttpEndpoint(activeTitleEndpoint)"
                   data-testid="chat-setting-title-endpoint-url-input"
                 />
               </div>
@@ -1416,9 +1457,9 @@ defineExpose({
                   @update:model-value="val => setLocalTitleModelId({ modelId: val })"
                   :models="titleModelOptions"
                   :loading="titleModelLoading"
-                  :placeholder="localTitleEndpointUsesInheritance ? lazyStrings.ChatSettingsPanel__use_chat_group_setting() : (localTitleEndpointUsesSameScope ? formatSettingsSourceLabel({ value: resolvedSettings?.titleGeneration === 'disabled' ? undefined : resolvedSettings?.titleGeneration.modelId, source: resolvedSettings?.sources.titleGeneration }) : undefined)"
+                  :placeholder="localTitleEndpointUsesInheritance ? inheritedTitleModelOptionLabel : (localTitleEndpointUsesSameScope ? sameScopeTitleModelOptionLabel : undefined)"
                   :allow-clear="localTitleEndpointUsesSameScope && !localTitleEndpointUsesInheritance"
-                  :clear-label="localTitleEndpointUsesInheritance ? lazyStrings.ChatSettingsPanel__use_chat_group_setting() : formatSettingsSourceLabel({ value: resolvedSettings?.titleGeneration === 'disabled' ? undefined : resolvedSettings?.titleGeneration.modelId, source: resolvedSettings?.sources.titleGeneration })"
+                  :clear-label="localTitleEndpointUsesInheritance ? inheritedTitleModelOptionLabel : sameScopeTitleModelOptionLabel"
                   :disabled="localTitleEndpointUsesInheritance || effectiveTitleEndpoint.type === 'browser_provided_lm'"
                   @refresh="fetchTitleEndpointModels"
                   data-testid="chat-setting-title-model-select"

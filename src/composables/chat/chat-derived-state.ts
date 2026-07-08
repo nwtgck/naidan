@@ -89,6 +89,7 @@ export function createChatDerivedState({
       ...chat,
       modelId: undefined,
       endpoint: undefined,
+      titleGeneration: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     };

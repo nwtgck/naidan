@@ -124,13 +124,13 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     });
 
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
-    expect(urlInput.attributes('placeholder')).toBe('http://global-url (Global)');
+    expect(urlInput.attributes('placeholder')).toBe('Global: http://global-url');
 
     const modelSelector = wrapper.findComponent(ModelSelector);
-    expect(modelSelector.props('placeholder')).toBe('global-model (Global)');
+    expect(modelSelector.props('placeholder')).toBe('Global: global-model');
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('OpenAI (Global)');
+    expect(typeSelect.find('option').text()).toBe('Global: OpenAI');
   });
 
   it('shows Group placeholders when chat belongs to a group with overrides', () => {
@@ -141,12 +141,12 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     });
 
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
-    expect(urlInput.attributes('placeholder')).toBe('http://group-url (Group)');
+    expect(urlInput.attributes('placeholder')).toBe('Chat Group: http://group-url');
 
     const modelSelector = wrapper.findComponent(ModelSelector);
-    expect(modelSelector.props('placeholder')).toBe('group-model (Group)');
+    expect(modelSelector.props('placeholder')).toBe('Chat Group: group-model');
 
     const typeSelect = wrapper.find('select');
-    expect(typeSelect.find('option').text()).toBe('Ollama (Group)');
+    expect(typeSelect.find('option').text()).toBe('Chat Group: Ollama');
   });
 });

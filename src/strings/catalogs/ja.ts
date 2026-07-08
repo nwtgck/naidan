@@ -1408,6 +1408,7 @@ import { fileExplorer__zip_cannot_be_extracted } from '@/strings/messages/fileEx
 import { fileExplorer__zip_file_upload } from '@/strings/messages/fileExplorer__zip_file_upload/ja';
 import { fileExplorer__zip_upload_preview_outdated } from '@/strings/messages/fileExplorer__zip_upload_preview_outdated/ja';
 import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/ja';
+import { formatSettingsSourceLabel__value_from_chat } from '@/strings/messages/formatSettingsSourceLabel__value_from_chat/ja';
 import { formatSettingsSourceLabel__none } from '@/strings/messages/formatSettingsSourceLabel__none/ja';
 import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/ja';
 import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/ja';
@@ -2941,6 +2942,7 @@ export const ja = {
   fileExplorer__zip_upload_preview_outdated,
   formatSettingsSourceLabel__default,
   formatSettingsSourceLabel__none,
+  formatSettingsSourceLabel__value_from_chat,
   formatSettingsSourceLabel__value_from_global,
   formatSettingsSourceLabel__value_from_group,
   toolCall__arguments,
