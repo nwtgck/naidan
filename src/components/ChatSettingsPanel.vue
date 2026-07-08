@@ -398,13 +398,11 @@ const localTitleEndpointUrl = computed({
   },
 });
 const titleModelOptions = computed(() => {
-  if (localTitleEndpointUsesInheritance.value) return [];
   return localTitleEndpointUsesSameScope.value
     ? sortedAvailableModels.value
     : sortedTitleEndpointModels.value;
 });
 const titleModelLoading = computed(() => {
-  if (localTitleEndpointUsesInheritance.value) return false;
   return localTitleEndpointUsesSameScope.value
     ? isFetchingModels.value
     : isFetchingTitleEndpointModels.value;
@@ -511,7 +509,6 @@ function handleTitleEndpointTypeChange({ event }: { event: Event }): void {
 }
 
 async function fetchTitleEndpointModels(): Promise<void> {
-  if (localTitleEndpointUsesInheritance.value) return;
   if (localTitleEndpointUsesSameScope.value) {
     await fetchModels();
     return;
@@ -526,14 +523,14 @@ async function fetchTitleEndpointModels(): Promise<void> {
   try {
     const models = await chatModels.fetchForEndpoint({ endpoint });
     if (!areEndpointsEqual({ left: endpoint, right: effectiveTitleEndpoint.value })) return;
-    titleEndpointModels.value = models;
+    titleEndpointModels.value = models ?? [];
     const titleGeneration = localTitleGeneration.value;
     if (typeof titleGeneration === 'string' || titleGeneration.endpoint === 'same_scope') return;
-    if (titleGeneration.model.id !== '' && !models.includes(titleGeneration.model.id)) {
+    if (titleGeneration.model.id !== '' && !titleEndpointModels.value.includes(titleGeneration.model.id)) {
       setLocalTitleGeneration({
         titleGeneration: {
           endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
-          model: { id: models[0] ?? '' },
+          model: { id: titleEndpointModels.value[0] ?? '' },
         },
       });
     }
@@ -599,6 +596,24 @@ function setLocalTitleModelId({
   modelId: string | undefined,
 }): void {
   const titleGeneration = localTitleGeneration.value;
+  if (titleGeneration === 'inherit') {
+    if (modelId === undefined || modelId === '') {
+      setLocalTitleGeneration({ titleGeneration: 'inherit' });
+      return;
+    }
+    const endpoint = activeTitleEndpoint.value;
+    if (endpoint === undefined) {
+      setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: { id: modelId } } });
+      return;
+    }
+    setLocalTitleGeneration({
+      titleGeneration: {
+        endpoint: cloneEndpoint({ endpoint }),
+        model: { id: modelId },
+      },
+    });
+    return;
+  }
   const endpoint = typeof titleGeneration === 'string' ? 'same_scope' : titleGeneration.endpoint;
   if (endpoint === 'same_scope') {
     setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: sameScopeTitleModel({ modelId }) } });
@@ -1118,7 +1133,7 @@ watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
 
 watch([localTitleEndpointUrl, effectiveTitleEndpointType], ([url, type]) => {
   error.value = null;
-  if (localTitleGenerationMode.value === 'override' && !localTitleEndpointUsesSameScope.value) {
+  if (localTitleGenerationMode.value !== 'disabled' && !localTitleEndpointUsesSameScope.value) {
     if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchTitleEndpointModels();
   }
 });
@@ -1458,9 +1473,9 @@ defineExpose({
                   :models="titleModelOptions"
                   :loading="titleModelLoading"
                   :placeholder="localTitleEndpointUsesInheritance ? inheritedTitleModelOptionLabel : (localTitleEndpointUsesSameScope ? sameScopeTitleModelOptionLabel : undefined)"
-                  :allow-clear="localTitleEndpointUsesSameScope && !localTitleEndpointUsesInheritance"
+                  :allow-clear="localTitleEndpointUsesInheritance || localTitleEndpointUsesSameScope"
                   :clear-label="localTitleEndpointUsesInheritance ? inheritedTitleModelOptionLabel : sameScopeTitleModelOptionLabel"
-                  :disabled="localTitleEndpointUsesInheritance || effectiveTitleEndpoint.type === 'browser_provided_lm'"
+                  :disabled="effectiveTitleEndpoint.type === 'browser_provided_lm'"
                   @refresh="fetchTitleEndpointModels"
                   data-testid="chat-setting-title-model-select"
                 />

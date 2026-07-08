@@ -123,7 +123,7 @@ const globalStubs = {
   'ModelSelector': {
     name: 'ModelSelector',
     template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
-    props: ['modelValue', 'models'],
+    props: ['modelValue', 'models', 'loading', 'placeholder', 'allowClear', 'clearLabel', 'disabled'],
   },
   'ChatGroupToolsSettings': {
     name: 'ChatGroupToolsSettings',
@@ -304,6 +304,29 @@ describe('ChatGroupSettingsPanel.vue', () => {
   it('shows title-generation inheritance as using the global setting', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     expect(wrapper.text()).toContain('Use Global Setting');
+  });
+
+  it('keeps the inherited title model selector editable and materializes a group override on change', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockSettings.endpoint = { type: 'ollama', url: 'http://global-ollama' };
+    mockSettings.defaultModelId = 'global-model';
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('allowClear')).toBe(true);
+    expect(titleModelSelector!.props('disabled')).toBe(false);
+
+    await titleModelSelector!.vm.$emit('update:modelValue', 'group-title-model');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://global-ollama' },
+      model: { id: 'group-title-model' },
+    });
   });
 
   it('shows the "Active Overrides" badge only when overrides are present', async () => {
