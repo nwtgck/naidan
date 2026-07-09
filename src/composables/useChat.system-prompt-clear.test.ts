@@ -51,7 +51,7 @@ describe('useChat System Prompt Clear Policy', () => {
       endpoint: { type: 'openai', url: 'http://global' },
       defaultModelId: 'gpt',
       systemPrompt: 'Global System Prompt',
-      autoTitleEnabled: false,
+      titleGeneration: 'disabled',
       storageType: 'local',
       providerProfiles: [],
       mounts: [],

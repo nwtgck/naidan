@@ -141,11 +141,15 @@ import { ChatGroupSettingsPanel__these_settings_only_apply_to_this_group } from 
 import { ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat } from '@/strings/messages/ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat/en';
 import { ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions } from '@/strings/messages/ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions/en';
 import { ChatGroupSettingsPanel__title_model_explanation } from '@/strings/messages/ChatGroupSettingsPanel__title_model_explanation/en';
+import { ChatGroupSettingsPanel__use_global_setting } from '@/strings/messages/ChatGroupSettingsPanel__use_global_setting/en';
 import { ChatGroupSettingsPanel__title_model_override } from '@/strings/messages/ChatGroupSettingsPanel__title_model_override/en';
+import { ChatGroupSettingsPanel__same_as_group_chat_endpoint } from '@/strings/messages/ChatGroupSettingsPanel__same_as_group_chat_endpoint/en';
+import { ChatGroupSettingsPanel__title_endpoint_type } from '@/strings/messages/ChatGroupSettingsPanel__title_endpoint_type/en';
 import { ChatGroupSettingsPanel__tools } from '@/strings/messages/ChatGroupSettingsPanel__tools/en';
 import { ChatGroupSettingsPanel__transformers_js } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js/en';
 import { ChatGroupSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js_experimental/en';
 import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSettingsPanel__value/en';
+import { ChatGroupSettingsPanel__title_reasoning } from '@/strings/messages/ChatGroupSettingsPanel__title_reasoning/en';
 import { ChatInput__cancel } from '@/strings/messages/ChatInput__cancel/en';
 import { ChatInput__copying_name } from '@/strings/messages/ChatInput__copying_name/en';
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/en';
@@ -273,10 +277,14 @@ import { ChatSettingsPanel__system_prompt } from '@/strings/messages/ChatSetting
 import { ChatSettingsPanel__these_settings_only_apply_to_this_chat } from '@/strings/messages/ChatSettingsPanel__these_settings_only_apply_to_this_chat/en';
 import { ChatSettingsPanel__this_chat_will_not_use_any_system_instructions } from '@/strings/messages/ChatSettingsPanel__this_chat_will_not_use_any_system_instructions/en';
 import { ChatSettingsPanel__title_model_explanation } from '@/strings/messages/ChatSettingsPanel__title_model_explanation/en';
+import { ChatSettingsPanel__use_chat_group_setting } from '@/strings/messages/ChatSettingsPanel__use_chat_group_setting/en';
 import { ChatSettingsPanel__title_model_override } from '@/strings/messages/ChatSettingsPanel__title_model_override/en';
+import { ChatSettingsPanel__same_as_chat_endpoint } from '@/strings/messages/ChatSettingsPanel__same_as_chat_endpoint/en';
+import { ChatSettingsPanel__title_endpoint_type } from '@/strings/messages/ChatSettingsPanel__title_endpoint_type/en';
 import { ChatSettingsPanel__transformers_js } from '@/strings/messages/ChatSettingsPanel__transformers_js/en';
 import { ChatSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatSettingsPanel__transformers_js_experimental/en';
 import { ChatSettingsPanel__value } from '@/strings/messages/ChatSettingsPanel__value/en';
+import { ChatSettingsPanel__title_reasoning } from '@/strings/messages/ChatSettingsPanel__title_reasoning/en';
 import { ChatTitleDialog__chat_override } from '@/strings/messages/ChatTitleDialog__chat_override/en';
 import { ChatTitleDialog__chat_title } from '@/strings/messages/ChatTitleDialog__chat_title/en';
 import { ChatTitleDialog__close } from '@/strings/messages/ChatTitleDialog__close/en';
@@ -335,6 +343,8 @@ import { ConnectionTab__settings_saved } from '@/strings/messages/ConnectionTab_
 import { ConnectionTab__setup_url_copied } from '@/strings/messages/ConnectionTab__setup_url_copied/en';
 import { ConnectionTab__title_generation_model } from '@/strings/messages/ConnectionTab__title_generation_model/en';
 import { ConnectionTab__transformers_js_experimental } from '@/strings/messages/ConnectionTab__transformers_js_experimental/en';
+import { ConnectionTab__use_current_chat_endpoint } from '@/strings/messages/ConnectionTab__use_current_chat_endpoint/en';
+import { ConnectionTab__title_endpoint } from '@/strings/messages/ConnectionTab__title_endpoint/en';
 import { ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions } from '@/strings/messages/ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions/en';
 import { ConnectionTab__understand } from '@/strings/messages/ConnectionTab__understand/en';
 import { ConnectionTab__url_copied } from '@/strings/messages/ConnectionTab__url_copied/en';
@@ -342,6 +352,8 @@ import { ConnectionTab__use_current_chat_model } from '@/strings/messages/Connec
 import { ConnectionTab__used_for_new_conversations } from '@/strings/messages/ConnectionTab__used_for_new_conversations/en';
 import { ConnectionTab__value } from '@/strings/messages/ConnectionTab__value/en';
 import { ConnectionTab__view_profiles } from '@/strings/messages/ConnectionTab__view_profiles/en';
+import { ConnectionTab__title_reasoning } from '@/strings/messages/ConnectionTab__title_reasoning/en';
+import { ConnectionTab__use_current_chat_reasoning } from '@/strings/messages/ConnectionTab__use_current_chat_reasoning/en';
 import { ContextCompactProgressStrip__abort_compact } from '@/strings/messages/ContextCompactProgressStrip__abort_compact/en';
 import { ContextCompactProgressStrip__hide_request } from '@/strings/messages/ContextCompactProgressStrip__hide_request/en';
 import { ContextCompactProgressStrip__live_output } from '@/strings/messages/ContextCompactProgressStrip__live_output/en';
@@ -1400,6 +1412,7 @@ import { fileExplorer__zip_cannot_be_extracted } from '@/strings/messages/fileEx
 import { fileExplorer__zip_file_upload } from '@/strings/messages/fileExplorer__zip_file_upload/en';
 import { fileExplorer__zip_upload_preview_outdated } from '@/strings/messages/fileExplorer__zip_upload_preview_outdated/en';
 import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/en';
+import { formatSettingsSourceLabel__value_from_chat } from '@/strings/messages/formatSettingsSourceLabel__value_from_chat/en';
 import { formatSettingsSourceLabel__none } from '@/strings/messages/formatSettingsSourceLabel__none/en';
 import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/en';
 import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/en';
@@ -1668,11 +1681,15 @@ export const en = {
   ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat,
   ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions,
   ChatGroupSettingsPanel__title_model_explanation,
+  ChatGroupSettingsPanel__use_global_setting,
   ChatGroupSettingsPanel__title_model_override,
+  ChatGroupSettingsPanel__same_as_group_chat_endpoint,
+  ChatGroupSettingsPanel__title_endpoint_type,
   ChatGroupSettingsPanel__tools,
   ChatGroupSettingsPanel__transformers_js,
   ChatGroupSettingsPanel__transformers_js_experimental,
   ChatGroupSettingsPanel__value,
+  ChatGroupSettingsPanel__title_reasoning,
   ChatInput__cancel,
   ChatInput__copying_name,
   ChatInput__edit_image,
@@ -1800,10 +1817,14 @@ export const en = {
   ChatSettingsPanel__these_settings_only_apply_to_this_chat,
   ChatSettingsPanel__this_chat_will_not_use_any_system_instructions,
   ChatSettingsPanel__title_model_explanation,
+  ChatSettingsPanel__use_chat_group_setting,
   ChatSettingsPanel__title_model_override,
+  ChatSettingsPanel__same_as_chat_endpoint,
+  ChatSettingsPanel__title_endpoint_type,
   ChatSettingsPanel__transformers_js,
   ChatSettingsPanel__transformers_js_experimental,
   ChatSettingsPanel__value,
+  ChatSettingsPanel__title_reasoning,
   ChatTitleDialog__chat_override,
   ChatTitleDialog__chat_title,
   ChatTitleDialog__close,
@@ -1862,6 +1883,8 @@ export const en = {
   ConnectionTab__setup_url_copied,
   ConnectionTab__title_generation_model,
   ConnectionTab__transformers_js_experimental,
+  ConnectionTab__use_current_chat_endpoint,
+  ConnectionTab__title_endpoint,
   ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions,
   ConnectionTab__understand,
   ConnectionTab__url_copied,
@@ -1869,6 +1892,8 @@ export const en = {
   ConnectionTab__used_for_new_conversations,
   ConnectionTab__value,
   ConnectionTab__view_profiles,
+  ConnectionTab__title_reasoning,
+  ConnectionTab__use_current_chat_reasoning,
   ContextCompactProgressStrip__abort_compact,
   ContextCompactProgressStrip__hide_request,
   ContextCompactProgressStrip__live_output,
@@ -2928,6 +2953,7 @@ export const en = {
   fileExplorer__zip_upload_preview_outdated,
   formatSettingsSourceLabel__default,
   formatSettingsSourceLabel__none,
+  formatSettingsSourceLabel__value_from_chat,
   formatSettingsSourceLabel__value_from_global,
   formatSettingsSourceLabel__value_from_group,
   toolCall__arguments,

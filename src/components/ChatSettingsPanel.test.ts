@@ -7,8 +7,9 @@ import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
-import type { Chat, Endpoint } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type Chat, type Endpoint, type LmParameters, type SettingsTitleGeneration } from '@/01-models/types';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // --- Mocks ---
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
@@ -53,6 +54,8 @@ describe('ChatSettingsPanel.vue', () => {
     value: {
       endpoint: Endpoint,
       defaultModelId: string,
+      titleGeneration: SettingsTitleGeneration,
+      lmParameters?: LmParameters,
       providerProfiles: {
         id: string,
         name: string,
@@ -65,6 +68,7 @@ describe('ChatSettingsPanel.vue', () => {
     value: {
       endpoint: { type: 'openai', url: 'http://global:1234' },
       defaultModelId: 'global-model',
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       providerProfiles: [
         {
           id: 'profile-1',
@@ -93,7 +97,7 @@ describe('ChatSettingsPanel.vue', () => {
     ModelSelector: {
       name: 'ModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue">{{ modelValue }}<button v-if="!loading" data-testid="refresh-mock" @click="$emit(\'refresh\')">Refresh</button><span v-if="loading" class="loading-mock">Loading</span></div>',
-      props: ['modelValue', 'loading', 'placeholder', 'models'],
+      props: ['modelValue', 'loading', 'placeholder', 'models', 'allowClear', 'clearLabel', 'disabled'],
     },
     LmParametersEditor: {
       name: 'LmParametersEditor',
@@ -102,13 +106,16 @@ describe('ChatSettingsPanel.vue', () => {
     },
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
 
     // Reset global settings to a predictable state
     mockSettings.value = {
       endpoint: { type: 'openai', url: 'http://global:1234' },
       defaultModelId: 'global-model',
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      lmParameters: undefined,
       providerProfiles: [
         {
           id: 'profile-1',
@@ -125,39 +132,83 @@ describe('ChatSettingsPanel.vue', () => {
       id: 'chat-1',
       endpoint: undefined,
       modelId: undefined,
-      titleModelId: undefined,
       systemPrompt: undefined,
       lmParameters: undefined,
     });
 
+    const resolveMockTitleGeneration = ({
+      titleGeneration,
+      sameScopeEndpoint,
+      sameScopeModelId,
+      sameScopeLmParameters,
+    }: {
+      titleGeneration: SettingsTitleGeneration | undefined,
+      sameScopeEndpoint: Endpoint,
+      sameScopeModelId: string | undefined,
+      sameScopeLmParameters: LmParameters | undefined,
+    }) => {
+      const value = titleGeneration ?? { endpoint: 'same_scope' as const, model: 'same_scope' as const, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
+      if (value === 'disabled') return 'disabled';
+      return {
+        endpoint: value.endpoint === 'same_scope' ? sameScopeEndpoint : value.endpoint,
+        modelId: value.model === 'same_scope' ? sameScopeModelId : value.model.id,
+        lmParameters: value.lmParameters === 'same_scope' ? sameScopeLmParameters : value.lmParameters,
+      };
+    };
+
     const mockResolvedSettings = computed(() => {
       const chat = mockCurrentChat.value as any;
       const s = mockSettings.value;
+      const endpoint = chat?.endpoint ?? s.endpoint;
+      const modelId = chat?.modelId || s.defaultModelId;
       return {
-        endpoint: chat?.endpoint ?? s.endpoint,
-        modelId: chat?.modelId || s.defaultModelId,
-        autoTitleEnabled: true,
-        titleModelId: undefined,
+        endpoint,
+        modelId,
+        titleGeneration: resolveMockTitleGeneration({
+          titleGeneration: chat?.titleGeneration === undefined || chat?.titleGeneration === 'inherit'
+            ? s.titleGeneration
+            : chat.titleGeneration,
+          sameScopeEndpoint: endpoint,
+          sameScopeModelId: modelId,
+          sameScopeLmParameters: chat?.lmParameters ?? s.lmParameters,
+        }),
         systemPromptMessages: [],
-        lmParameters: undefined,
+        lmParameters: chat?.lmParameters ?? s.lmParameters,
         sources: {
           endpoint: chat?.endpoint ? 'chat' : 'global',
           modelId: chat?.modelId ? 'chat' : 'global',
           autoTitleEnabled: 'global',
           titleModelId: 'global',
+          titleGeneration: chat?.titleGeneration === undefined || chat?.titleGeneration === 'inherit' ? 'global' : 'chat',
           systemPrompt: 'global',
-          lmParameters: {},
+          lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
         },
       };
     });
-    const mockInheritedSettings = computed(() => ({
-      ...mockResolvedSettings.value,
-      endpoint: mockSettings.value.endpoint,
-      sources: {
-        ...mockResolvedSettings.value.sources,
-        endpoint: 'global' as const,
-      },
-    }));
+    const mockInheritedSettings = computed(() => {
+      const s = mockSettings.value;
+      return {
+        endpoint: s.endpoint,
+        modelId: s.defaultModelId,
+        titleGeneration: resolveMockTitleGeneration({
+          titleGeneration: s.titleGeneration,
+          sameScopeEndpoint: s.endpoint,
+          sameScopeModelId: s.defaultModelId,
+          sameScopeLmParameters: s.lmParameters,
+        }),
+        systemPromptMessages: [],
+        lmParameters: s.lmParameters,
+        sources: {
+          endpoint: 'global' as const,
+          modelId: 'global' as const,
+          autoTitleEnabled: 'global' as const,
+          titleModelId: 'global' as const,
+          titleGeneration: 'global' as const,
+          systemPrompt: 'global' as const,
+          lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+        },
+      };
+    });
 
     (useCurrentChatState as unknown as Mock).mockReturnValue({
       currentChatId: computed(() => mockCurrentChat.value?.id),
@@ -201,11 +252,8 @@ describe('ChatSettingsPanel.vue', () => {
           case 'model_id':
             updates.modelId = updated.modelId;
             break;
-          case 'auto_title_enabled':
-            updates.autoTitleEnabled = updated.autoTitleEnabled;
-            break;
-          case 'title_model_id':
-            updates.titleModelId = updated.titleModelId;
+          case 'title_generation':
+            updates.titleGeneration = updated.titleGeneration;
             break;
           case 'system_prompt':
             updates.systemPrompt = updated.systemPrompt;
@@ -241,7 +289,9 @@ describe('ChatSettingsPanel.vue', () => {
         return await mockFetchAvailableModels({ chatId });
       },
       fetchForGlobalEndpoint: vi.fn(),
-      fetchForEndpoint: vi.fn(),
+      fetchForEndpoint: async ({ endpoint }) => {
+        return await mockFetchAvailableModels({ endpoint });
+      },
       TEST_ONLY: {},
     });
 
@@ -290,7 +340,7 @@ describe('ChatSettingsPanel.vue', () => {
     vi.unstubAllGlobals();
   });
 
-  it('persists browser-provided model IDs with a chat endpoint override', async () => {
+  it('persists browser-provided chat model and same-scope title setting with a chat endpoint override', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -310,7 +360,7 @@ describe('ChatSettingsPanel.vue', () => {
     expect(mockCurrentChat.value).toMatchObject({
       endpoint: { type: 'browser_provided_lm' },
       modelId: BROWSER_PROVIDED_LM_MODEL_ID,
-      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     });
     wrapper.unmount();
     vi.unstubAllGlobals();
@@ -394,6 +444,159 @@ describe('ChatSettingsPanel.vue', () => {
     expect(wrapper.text()).toContain('Chat Specific Overrides');
     expect(wrapper.text()).toContain('Quick Endpoint Presets');
     expect(wrapper.text()).toContain('Endpoint Type');
+  });
+
+  it('shows title-generation inheritance as using the chat group setting', async () => {
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+    expect(wrapper.text()).toContain('Use Chat Group Setting');
+  });
+
+  it('keeps the inherited title model selector editable and materializes a chat override on change', async () => {
+    mockCurrentChat.value.titleGeneration = undefined;
+    mockSettings.value.endpoint = { type: 'ollama', url: 'http://global-ollama' };
+    mockSettings.value.defaultModelId = 'global-model';
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Chat Group: global-model');
+    expect(titleModelSelector!.props('allowClear')).toBe(true);
+    expect(titleModelSelector!.props('disabled')).toBe(false);
+
+    await titleModelSelector!.vm.$emit('update:modelValue', 'chat-title-model');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toMatchObject({
+      endpoint: 'same_scope',
+      model: { id: 'chat-title-model' },
+    });
+  });
+
+
+  it('preserves inherited title settings when switching the chat to override if same scope would differ', async () => {
+    mockCurrentChat.value.titleGeneration = undefined;
+    mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://chat-openai' };
+    mockCurrentChat.value.modelId = 'chat-model';
+    mockSettings.value.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://group-title-ollama' },
+      model: { id: 'group-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    };
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://group-title-ollama' },
+      model: { id: 'group-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    });
+  });
+
+  it('uses same scope when switching the chat to override keeps the same resolved title settings', async () => {
+    mockCurrentChat.value.titleGeneration = undefined;
+    mockCurrentChat.value.lmParameters = undefined;
+    mockSettings.value.titleGeneration = {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toEqual({
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: 'same_scope',
+    });
+  });
+
+  it('materializes inherited title endpoint and model when changing title reasoning', async () => {
+    mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://chat-openai' };
+    mockCurrentChat.value.modelId = 'chat-model';
+    mockSettings.value.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://group-title-ollama' },
+      model: { id: 'group-title-model' },
+      lmParameters: {
+        temperature: 0.3,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'high' },
+      },
+    };
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    const titleMediumButton = wrapper.findAll('[data-testid="reasoning-effort-medium"]').at(-1);
+    expect(titleMediumButton).toBeDefined();
+    await titleMediumButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://group-title-ollama' },
+      model: { id: 'group-title-model' },
+      lmParameters: {
+        temperature: 0.3,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'medium' },
+      },
+    });
+  });
+
+  it('loads inherited title model options without requiring a manual model refresh', async () => {
+    mockCurrentChat.value.titleGeneration = undefined;
+    mockSettings.value.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
+    mockSettings.value.defaultModelId = 'global-model';
+    mockFetchAvailableModels.mockResolvedValue(['title-model-10', 'title-model-2', 'title-model-1']);
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Chat Group: global-model');
+    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
   });
 
   it('applies animation classes for entrance effects', () => {
@@ -515,7 +718,6 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpoint: { type: 'ollama', url: 'http://localhost:11434' },
         modelId: undefined,
-        titleModelId: undefined,
       }) });
     });
 
@@ -555,7 +757,7 @@ describe('ChatSettingsPanel.vue', () => {
           url: 'http://ollama:11434',
         },
         modelId: 'llama3',
-        titleModelId: 'llama3-title',
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'llama3-title' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       });
 
       // Should reset selection after apply
@@ -742,6 +944,7 @@ describe('ChatSettingsPanel.vue', () => {
 
     it('does not affect global settings when overriding chat settings', async () => {
       mockSettings.value.endpoint = { type: 'openai', url: 'http://global:1234' };
+      mockCurrentChat.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
@@ -798,8 +1001,7 @@ describe('ChatSettingsPanel.vue', () => {
         id: 'chat-B',
         endpoint: { type: 'openai', url: 'http://openai-for-B' },
         modelId: undefined,
-        autoTitleEnabled: undefined,
-        titleModelId: undefined,
+        titleGeneration: 'inherit',
         systemPrompt: undefined,
         lmParameters: undefined,
       });
@@ -832,8 +1034,7 @@ describe('ChatSettingsPanel.vue', () => {
         id: 'chat-B',
         endpoint: undefined,
         modelId: undefined,
-        autoTitleEnabled: undefined,
-        titleModelId: undefined,
+        titleGeneration: 'inherit',
         systemPrompt: undefined,
         lmParameters: undefined,
       });
@@ -982,8 +1183,8 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
 
       // First click Override to show the textarea
-      const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
-      await overrideBtn?.trigger('click');
+      const overrideBtn = wrapper.get('[data-testid="chat-setting-system-prompt-override-button"]');
+      await overrideBtn.trigger('click');
       await nextTick();
 
       const textarea = wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]');
@@ -1084,21 +1285,22 @@ describe('ChatSettingsPanel.vue', () => {
 
     it('updates "Global" option labels when global settings change', async () => {
       mockSettings.value.endpoint = { type: 'openai', url: 'http://global:1234' };
+      mockCurrentChat.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
       });
       await nextTick();
 
-      const typeSelect = wrapper.findAll('select')[1];
-      const globalOption = typeSelect!.findAll('option').find(opt => opt.text().includes('(Global)'));
-      expect(globalOption!.text()).toContain('OpenAI (Global)');
+      const typeSelect = wrapper.get('[data-testid="chat-setting-title-endpoint-type-select"]');
+      const inheritedOption = () => typeSelect.find('option[value="inherit"]');
+      expect(inheritedOption().text()).toContain('Chat Group: OpenAI');
 
       // Update global setting
       mockSettings.value.endpoint = { type: 'ollama', url: 'http://global:1234' };
       await nextTick();
 
-      expect(globalOption!.text()).toContain('Ollama (Global)');
+      expect(inheritedOption().text()).toContain('Chat Group: Ollama');
     });
   });
 
@@ -1187,6 +1389,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
       await urlInput.setValue('http://localhost:11434');
+      await urlInput.trigger('blur');
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
@@ -1210,4 +1413,43 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
+
+  it('materializes inherited title endpoint headers when editing title headers', async () => {
+    mockSettings.value.titleGeneration = {
+      endpoint: {
+        type: 'openai',
+        url: 'https://group-title.example/v1',
+        httpHeaders: [['X-Group-Title', 'old']],
+      },
+      model: { id: 'group-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    await wrapper.get('[data-testid="chat-setting-title-http-header-name-input"]').setValue('X-Chat-Title');
+    await wrapper.get('[data-testid="chat-setting-title-http-header-name-input"]').trigger('blur');
+    await wrapper.get('[data-testid="chat-setting-title-http-header-value-input"]').setValue('next');
+    await wrapper.get('[data-testid="chat-setting-title-http-header-value-input"]').trigger('blur');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://group-title.example/v1',
+        httpHeaders: [['X-Chat-Title', 'next']],
+      },
+      model: { id: 'group-title-model' },
+    });
+    expect(mockSettings.value.titleGeneration).toMatchObject({
+      endpoint: {
+        httpHeaders: [['X-Group-Title', 'old']],
+      },
+    });
+  });
+
 });

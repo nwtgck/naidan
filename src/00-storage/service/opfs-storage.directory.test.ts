@@ -93,7 +93,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
 
     // Saving settings should put the file inside the subdirectory, NOT the root
     await provider.saveSettings({ settings: {
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'opfs',
       providerProfiles: [],
       mounts: [],
@@ -114,7 +114,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
 
     // Save some app data
     await provider.saveSettings({ settings: {
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'opfs',
       providerProfiles: [],
       mounts: [],

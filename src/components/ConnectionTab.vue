@@ -3,9 +3,11 @@ import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import type { Endpoint, ProviderProfile, Settings } from '@/01-models/types';
-import { areEndpointsEqual, cloneEndpoint, isHttpEndpoint } from '@/01-models/endpoint';
+import type { Endpoint, EndpointType, LmParameters, ProviderProfile, Reasoning, Settings, SettingsTitleGeneration } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { areEndpointModelNamespacesEqual, areEndpointsEqual, cloneEndpoint, isHttpEndpoint, selectHttpEndpointSeed } from '@/01-models/endpoint';
 import { naturalSort } from '@/utils/string';
+import { cloneLmParameters as clonePlainLmParameters } from '@/utils/lm-parameters';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
   CheckCircle2Icon, BookmarkPlusIcon,
@@ -15,6 +17,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ModelSelector is a core part of the connection setup UI and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
 import { endpointTypeLabel } from './endpoint-type-label';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
@@ -50,6 +53,9 @@ const emit = defineEmits<{
 }>();
 
 const sortedModels = computed(() => naturalSort({ values: Array.isArray(props.availableModels) ? props.availableModels : [] }));
+const titleEndpointModels = ref<string[]>([]);
+const isFetchingTitleEndpointModels = ref(false);
+const sortedTitleEndpointModels = computed(() => naturalSort({ values: titleEndpointModels.value }));
 
 const { save, fetchModels: fetchModelsGlobal, updateProviderProfiles } = useSettings();
 const { showConfirm } = useConfirm();
@@ -66,13 +72,12 @@ const form = computed({
 const endpointType = computed<Endpoint['type']>({
   get: () => form.value.endpoint.type,
   set: (type) => {
+    const previousEndpoint = cloneEndpoint({ endpoint: form.value.endpoint });
     const clearBrowserProvidedLmModelIds = (): void => {
       if (form.value.defaultModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
         form.value.defaultModelId = '';
       }
-      if (form.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
-        form.value.titleModelId = '';
-      }
+      clearBrowserProvidedTitleModelOverride();
     };
 
     switch (type) {
@@ -87,16 +92,18 @@ const endpointType = computed<Endpoint['type']>({
           ? current.httpHeaders?.map(([name, value]) => [name, value])
           : undefined,
       };
+      resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
       return;
     }
     case 'transformers_js':
       clearBrowserProvidedLmModelIds();
       form.value.endpoint = { type };
+      resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
       return;
     case 'browser_provided_lm':
       form.value.endpoint = { type };
       form.value.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
-      form.value.titleModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+      setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
       return;
     case 'unsupported_experimental_endpoint':
       return;
@@ -113,10 +120,12 @@ const endpointUrl = computed({
   set: (url: string) => {
     const endpoint = form.value.endpoint;
     if (!isHttpEndpoint(endpoint)) return;
+    const previousEndpoint = cloneEndpoint({ endpoint });
     form.value.endpoint = {
       ...endpoint,
       url,
     };
+    resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
   },
 });
 
@@ -144,6 +153,495 @@ const saveSuccess = ref(false);
 const selectedProviderProfileId = ref('');
 
 const copied = ref(false);
+
+type TitleReasoningSelectValue = 'same_scope' | Reasoning['effort'];
+
+type SettingsTitleGenerationDraft =
+  | 'disabled'
+  | {
+      endpoint: 'same_scope',
+      model: 'same_scope' | { id: string },
+      lmParameters?: 'same_scope' | LmParameters,
+    }
+  | {
+      endpoint: Endpoint,
+      model: { id: string },
+      lmParameters?: LmParameters,
+    };
+
+function emptyLmParameters(): LmParameters {
+  return {
+    ...EMPTY_LM_PARAMETERS,
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
+  };
+}
+
+function cloneTitleLmParameters({
+  lmParameters,
+}: {
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters | undefined {
+  if (lmParameters === undefined) return undefined;
+  if (lmParameters === 'same_scope') return 'same_scope';
+  return clonePlainLmParameters({ lmParameters }) ?? emptyLmParameters();
+}
+
+function titleLmParametersForEndpoint({
+  endpoint,
+  lmParameters,
+}: {
+  endpoint: Endpoint | 'same_scope',
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters {
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  return cloneTitleLmParameters({ lmParameters }) as LmParameters | undefined ?? emptyLmParameters();
+}
+
+function titleGenerationWithLmParameters({
+  titleGeneration,
+}: {
+  titleGeneration: SettingsTitleGenerationDraft,
+}): SettingsTitleGeneration {
+  if (titleGeneration === 'disabled') return 'disabled';
+
+  const current = currentSettingsTitleGeneration();
+  const currentLmParameters = current === 'disabled' ? undefined : current.lmParameters;
+  return {
+    ...titleGeneration,
+    lmParameters: titleLmParametersForEndpoint({
+      endpoint: titleGeneration.endpoint,
+      lmParameters: titleGeneration.lmParameters ?? currentLmParameters,
+    }),
+  } as SettingsTitleGeneration;
+}
+
+function titleReasoningSelectValueFromLmParameters({
+  endpoint,
+  lmParameters,
+}: {
+  endpoint: Endpoint | 'same_scope',
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): TitleReasoningSelectValue {
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  return lmParameters !== 'same_scope' && lmParameters?.reasoning?.effort !== undefined
+    ? lmParameters.reasoning.effort
+    : undefined;
+}
+
+function titleLmParametersFromReasoningSelectValue({
+  value,
+  current,
+}: {
+  value: TitleReasoningSelectValue,
+  current: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters {
+  switch (value) {
+  case 'same_scope':
+    return 'same_scope';
+  case undefined: {
+    const lmParameters = current === 'same_scope'
+      ? emptyLmParameters()
+      : clonePlainLmParameters({ lmParameters: current }) ?? emptyLmParameters();
+    lmParameters.reasoning.effort = undefined;
+    return lmParameters;
+  }
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high': {
+    const lmParameters = current === 'same_scope'
+      ? emptyLmParameters()
+      : clonePlainLmParameters({ lmParameters: current }) ?? emptyLmParameters();
+    lmParameters.reasoning.effort = value;
+    return lmParameters;
+  }
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled title reasoning value: ${_ex}`);
+  }
+  }
+}
+
+function reasoningEffortFromTitleReasoningValue({
+  value,
+}: {
+  value: TitleReasoningSelectValue,
+}): Reasoning['effort'] {
+  switch (value) {
+  case 'same_scope':
+  case undefined:
+    return undefined;
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high':
+    return value;
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled title reasoning value: ${_ex}`);
+  }
+  }
+}
+
+const globalTitleReasoningLeadingOptions = computed(() => {
+  const label = globalTitleEndpointUsesSameScope.value
+    ? lazyStrings.ConnectionTab__use_current_chat_reasoning()
+    : undefined;
+  return [{
+    value: 'same_scope' as const,
+    label,
+    shortLabel: label,
+    testId: 'same-scope',
+  }];
+});
+
+function currentSettingsTitleGeneration(): SettingsTitleGeneration {
+  return form.value.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() };
+}
+function resetSameScopeTitleModel(): void {
+  const titleGeneration = form.value.titleGeneration;
+  if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
+  setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+}
+
+function resetModelsWhenEndpointNamespaceChanges({
+  previousEndpoint,
+  nextEndpoint,
+}: {
+  previousEndpoint: Endpoint,
+  nextEndpoint: Endpoint,
+}): void {
+  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
+  form.value.defaultModelId = '';
+  resetSameScopeTitleModel();
+}
+
+
+function titleModelIdFromSettingsTitleGeneration({
+  titleGeneration,
+}: {
+  titleGeneration: SettingsTitleGeneration,
+}): string | undefined {
+  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') return undefined;
+  return titleGeneration.model.id;
+}
+const globalTitleGenerationEnabled = computed(() => currentSettingsTitleGeneration() !== 'disabled');
+
+const titleEndpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
+  openai: true,
+  ollama: true,
+  transformers_js: true,
+  browser_provided_lm: true,
+};
+
+type TitleEndpointTypeSelectValue = 'same_scope' | Endpoint['type'];
+
+function titleEndpointTypeFromSelectValue({ value }: { value: string }): TitleEndpointTypeSelectValue {
+  if (value === 'same_scope') return 'same_scope';
+  if (value === 'unsupported_experimental_endpoint') return 'unsupported_experimental_endpoint';
+  if (Object.hasOwn(titleEndpointTypeSelectValueRecord, value)) return value as EndpointType;
+  throw new Error(`Unhandled title endpoint type value: ${value}`);
+}
+
+const globalTitleEndpoint = computed(() => {
+  const titleGeneration = currentSettingsTitleGeneration();
+  if (titleGeneration === 'disabled') return 'same_scope';
+  return titleGeneration.endpoint;
+});
+const globalTitleEndpointSelectValue = computed<TitleEndpointTypeSelectValue>(() => {
+  const endpoint = globalTitleEndpoint.value;
+  return endpoint === 'same_scope' ? 'same_scope' : endpoint.type;
+});
+const globalTitleEndpointUsesSameScope = computed(() => globalTitleEndpoint.value === 'same_scope');
+const globalEffectiveTitleEndpoint = computed<Endpoint>(() => globalTitleEndpoint.value === 'same_scope'
+  ? form.value.endpoint
+  : globalTitleEndpoint.value);
+const globalTitleEndpointUrl = computed({
+  get: () => {
+    const endpoint = globalTitleEndpoint.value;
+    return endpoint !== 'same_scope' && isHttpEndpoint(endpoint) ? endpoint.url : '';
+  },
+  set: (url: string) => {
+    const titleGeneration = currentSettingsTitleGeneration();
+    const endpoint = globalTitleEndpoint.value;
+    if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) return;
+    setFormTitleGeneration({
+      titleGeneration: {
+        endpoint: {
+          type: endpoint.type,
+          url,
+          httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
+        },
+        model: titleGeneration.model === 'same_scope' ? explicitSettingsTitleModel({ modelId: undefined }) : titleGeneration.model,
+      },
+    });
+  },
+});
+const globalTitleEndpointHttpHeaders = computed(() => {
+  const endpoint = globalTitleEndpoint.value;
+  return endpoint !== 'same_scope' && isHttpEndpoint(endpoint)
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [string, string]) ?? []
+    : undefined;
+});
+
+function setGlobalTitleEndpointHttpHeaders({
+  httpHeaders,
+}: {
+  httpHeaders: [string, string][],
+}): void {
+  const titleGeneration = currentSettingsTitleGeneration();
+  const endpoint = globalTitleEndpoint.value;
+  if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) return;
+  setFormTitleGeneration({
+    titleGeneration: {
+      endpoint: {
+        type: endpoint.type,
+        url: endpoint.url,
+        httpHeaders,
+      },
+      model: titleGeneration.model === 'same_scope' ? explicitSettingsTitleModel({ modelId: undefined }) : titleGeneration.model,
+    },
+  });
+}
+
+function addGlobalTitleHeader(): void {
+  const headers = globalTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setGlobalTitleEndpointHttpHeaders({ httpHeaders: [...headers, ['', '']] });
+}
+
+function updateGlobalTitleHeader({
+  index,
+  field,
+  value,
+}: {
+  index: number,
+  field: 0 | 1,
+  value: string,
+}): void {
+  const headers = globalTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setGlobalTitleEndpointHttpHeaders({
+    httpHeaders: headers.map((header, headerIndex) => headerIndex === index
+      ? ([field === 0 ? value : header[0], field === 1 ? value : header[1]] as [string, string])
+      : header),
+  });
+}
+
+function removeGlobalTitleHeader({ index }: { index: number }): void {
+  const headers = globalTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setGlobalTitleEndpointHttpHeaders({ httpHeaders: headers.filter((_, headerIndex) => headerIndex !== index) });
+}
+const globalTitleModelOptions = computed(() => globalTitleEndpointUsesSameScope.value
+  ? sortedModels.value
+  : sortedTitleEndpointModels.value);
+const globalTitleModelAllowClear = computed(() => globalTitleEndpointUsesSameScope.value);
+const globalTitleModelLoading = computed(() => globalTitleEndpointUsesSameScope.value
+  ? props.isFetchingModels
+  : isFetchingTitleEndpointModels.value);
+
+const globalTitleModelId = computed(() => {
+  const titleGeneration = currentSettingsTitleGeneration();
+  if (titleGeneration === 'disabled' || titleGeneration.model === 'same_scope') return undefined;
+  return titleGeneration.model.id;
+});
+
+const globalTitleReasoningSelectValue = computed<TitleReasoningSelectValue>(() => {
+  const titleGeneration = currentSettingsTitleGeneration();
+  if (titleGeneration === 'disabled') return undefined;
+  return titleReasoningSelectValueFromLmParameters({
+    endpoint: titleGeneration.endpoint,
+    lmParameters: titleGeneration.lmParameters,
+  });
+});
+
+function setGlobalTitleReasoningSelectValue({ value }: { value: TitleReasoningSelectValue }): void {
+  const titleGeneration = currentSettingsTitleGeneration();
+  if (titleGeneration === 'disabled') return;
+  if (value === 'same_scope' && titleGeneration.endpoint !== 'same_scope') return;
+  setFormTitleGeneration({
+    titleGeneration: {
+      ...titleGeneration,
+      lmParameters: titleLmParametersFromReasoningSelectValue({
+        value,
+        current: titleGeneration.lmParameters,
+      }),
+    } as SettingsTitleGeneration,
+  });
+}
+
+function setFormTitleGeneration({
+  titleGeneration,
+}: {
+  titleGeneration: SettingsTitleGenerationDraft,
+}): void {
+  form.value.titleGeneration = titleGenerationWithLmParameters({ titleGeneration });
+}
+
+function setGlobalAutoTitleEnabled({ enabled }: { enabled: boolean }): void {
+  if (!enabled) {
+    setFormTitleGeneration({ titleGeneration: 'disabled' });
+    return;
+  }
+
+  const current = currentSettingsTitleGeneration();
+  setFormTitleGeneration({
+    titleGeneration: current === 'disabled'
+      ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() }
+      : current,
+  });
+}
+
+function handleGlobalAutoTitleChange({ event }: { event: Event }): void {
+  setGlobalAutoTitleEnabled({ enabled: (event.target as HTMLInputElement).checked });
+}
+
+function sameScopeSettingsTitleModel({
+  modelId,
+}: {
+  modelId: string | undefined,
+}): 'same_scope' | { id: string } {
+  return modelId === undefined || modelId === '' ? 'same_scope' : { id: modelId };
+}
+
+function explicitSettingsTitleModel({
+  modelId,
+}: {
+  modelId: string | undefined,
+}): { id: string } {
+  return { id: modelId || globalTitleModelOptions.value[0] || form.value.defaultModelId || BROWSER_PROVIDED_LM_MODEL_ID };
+}
+
+function setGlobalTitleEndpointType({
+  endpointType,
+}: {
+  endpointType: TitleEndpointTypeSelectValue,
+}): void {
+  const modelId = globalTitleModelId.value;
+  switch (endpointType) {
+  case 'same_scope':
+    setFormTitleGeneration({
+      titleGeneration: {
+        endpoint: 'same_scope',
+        model: sameScopeSettingsTitleModel({ modelId }),
+      },
+    });
+    return;
+  case 'browser_provided_lm':
+    setFormTitleGeneration({
+      titleGeneration: {
+        endpoint: { type: 'browser_provided_lm' },
+        model: { id: BROWSER_PROVIDED_LM_MODEL_ID },
+      },
+    });
+    return;
+  case 'transformers_js':
+    setFormTitleGeneration({
+      titleGeneration: {
+        endpoint: { type: 'transformers_js' },
+        model: explicitSettingsTitleModel({ modelId }),
+      },
+    });
+    return;
+  case 'unsupported_experimental_endpoint':
+    return;
+  case 'openai':
+  case 'ollama': {
+    const currentTitleEndpoint = globalTitleEndpoint.value;
+    const seed = selectHttpEndpointSeed({
+      preferred: currentTitleEndpoint === 'same_scope' ? undefined : currentTitleEndpoint,
+      fallback: form.value.endpoint,
+    });
+    setFormTitleGeneration({
+      titleGeneration: {
+        endpoint: {
+          type: endpointType,
+          url: seed?.url ?? '',
+          httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
+        },
+        model: explicitSettingsTitleModel({ modelId }),
+      },
+    });
+    return;
+  }
+  default: {
+    const _ex: never = endpointType;
+    throw new Error(`Unhandled title endpoint type: ${_ex}`);
+  }
+  }
+}
+
+function handleGlobalTitleEndpointTypeChange({ event }: { event: Event }): void {
+  setGlobalTitleEndpointType({ endpointType: titleEndpointTypeFromSelectValue({ value: (event.target as HTMLSelectElement).value }) });
+}
+
+function setGlobalTitleModelId({ modelId }: { modelId: string | undefined }): void {
+  const titleGeneration = currentSettingsTitleGeneration();
+  const endpoint = titleGeneration === 'disabled' ? 'same_scope' : titleGeneration.endpoint;
+  if (endpoint === 'same_scope') {
+    setFormTitleGeneration({
+      titleGeneration: {
+        endpoint: 'same_scope',
+        model: sameScopeSettingsTitleModel({ modelId }),
+      },
+    });
+    return;
+  }
+  setFormTitleGeneration({
+    titleGeneration: {
+      endpoint: cloneEndpoint({ endpoint }),
+      model: explicitSettingsTitleModel({ modelId }),
+    },
+  });
+}
+
+async function fetchTitleEndpointModels(): Promise<void> {
+  if (globalTitleEndpointUsesSameScope.value) {
+    await fetchModels();
+    return;
+  }
+  const endpoint = cloneEndpoint({ endpoint: globalEffectiveTitleEndpoint.value });
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
+    titleEndpointModels.value = [];
+    return;
+  }
+
+  isFetchingTitleEndpointModels.value = true;
+  error.value = null;
+  try {
+    const models = await fetchModelsGlobal({ overrides: endpoint });
+    if (!areEndpointsEqual({ left: endpoint, right: globalEffectiveTitleEndpoint.value })) return;
+    if (models.length === 0 && endpoint.type !== 'transformers_js') {
+      throw new Error(await ensureStrings.SHARED__no_models_found_at_this_endpoint());
+    }
+    titleEndpointModels.value = models;
+    const titleGeneration = currentSettingsTitleGeneration();
+    if (titleGeneration === 'disabled' || titleGeneration.endpoint === 'same_scope') return;
+    if (!models.includes(titleGeneration.model.id) && models[0] !== undefined) {
+      setFormTitleGeneration({
+        titleGeneration: {
+          endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
+          model: { id: models[0] },
+        },
+      });
+    }
+  } catch (caught) {
+    error.value = caught instanceof Error
+      ? caught.message
+      : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
+  } finally {
+    isFetchingTitleEndpointModels.value = false;
+  }
+}
+
+function clearBrowserProvidedTitleModelOverride(): void {
+  const titleGeneration = currentSettingsTitleGeneration();
+  if (titleGeneration !== 'disabled' && titleGeneration.model !== 'same_scope' && titleGeneration.model.id === BROWSER_PROVIDED_LM_MODEL_ID) {
+    setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+    return;
+  }
+}
 
 async function copySetupUrl(): Promise<void> {
   const baseUrl = window.location.origin + window.location.pathname;
@@ -196,6 +694,7 @@ async function copySetupUrl(): Promise<void> {
 }
 
 function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
+  const previousEndpoint = cloneEndpoint({ endpoint: form.value.endpoint });
   form.value = {
     ...form.value,
     endpoint: {
@@ -206,11 +705,9 @@ function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
       form.value.defaultModelId === BROWSER_PROVIDED_LM_MODEL_ID
         ? ''
         : form.value.defaultModelId,
-    titleModelId:
-      form.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID
-        ? ''
-        : form.value.titleModelId,
+    titleGeneration: currentSettingsTitleGeneration(),
   };
+  resetModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: form.value.endpoint });
 }
 
 async function fetchModels() {
@@ -252,8 +749,14 @@ async function fetchModels() {
         updatedForm.defaultModelId = '';
         changed = true;
       }
-      if (updatedForm.titleModelId && !models.includes(updatedForm.titleModelId)) {
-        updatedForm.titleModelId = '';
+      const titleGeneration = updatedForm.titleGeneration;
+      if (
+        titleGeneration !== 'disabled'
+        && titleGeneration.endpoint === 'same_scope'
+        && titleGeneration.model !== 'same_scope'
+        && !models.includes(titleGeneration.model.id)
+      ) {
+        updatedForm.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() };
         changed = true;
       }
     }
@@ -274,14 +777,22 @@ async function fetchModels() {
   }
 }
 
+
+watch([globalTitleEndpointUrl, globalTitleEndpointSelectValue], ([url, endpointType]) => {
+  if (globalTitleGenerationEnabled.value && !globalTitleEndpointUsesSameScope.value) {
+    if (endpointType === 'transformers_js' || endpointType === 'browser_provided_lm' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
+      void fetchTitleEndpointModels();
+    }
+  }
+});
+
 async function handleSave() {
   try {
     await save({
       patch: {
         endpoint: cloneEndpoint({ endpoint: form.value.endpoint }),
         defaultModelId: form.value.defaultModelId,
-        titleModelId: form.value.titleModelId,
-        autoTitleEnabled: form.value.autoTitleEnabled,
+        titleGeneration: currentSettingsTitleGeneration(),
         systemPrompt: form.value.systemPrompt,
         lmParameters: form.value.lmParameters,
       },
@@ -319,7 +830,7 @@ async function handleCreateProviderProfile() {
     name,
     endpoint: cloneEndpoint({ endpoint: form.value.endpoint }),
     defaultModelId: form.value.defaultModelId,
-    titleModelId: form.value.titleModelId,
+    titleModelId: titleModelIdFromSettingsTitleGeneration({ titleGeneration: form.value.titleGeneration }),
     systemPrompt: form.value.systemPrompt,
     lmParameters: form.value.lmParameters ? JSON.parse(JSON.stringify(form.value.lmParameters)) : undefined,
   };
@@ -341,7 +852,11 @@ function handleQuickProviderProfileChange() {
   if (providerProfile) {
     form.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     form.value.defaultModelId = providerProfile.defaultModelId;
-    form.value.titleModelId = providerProfile.titleModelId;
+    setFormTitleGeneration({
+      titleGeneration: providerProfile.titleModelId === undefined || providerProfile.titleModelId === ''
+        ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() }
+        : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: emptyLmParameters() },
+    });
     form.value.systemPrompt = providerProfile.systemPrompt;
     form.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
   }
@@ -606,7 +1121,8 @@ defineExpose({
                   <label tw-class="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
-                      v-model="form.autoTitleEnabled"
+                      :checked="globalTitleGenerationEnabled"
+                      @change="handleGlobalAutoTitleChange({ event: $event })"
                       tw-class="sr-only peer"
                       data-testid="setting-auto-title-checkbox"
                     >
@@ -614,20 +1130,121 @@ defineExpose({
                   </label>
                 </div>
 
-                <div :tw-class="['space-y-2 opacity-50 transition-all duration-300', { 'opacity-100': form.autoTitleEnabled }]">
-                  <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_generation_model() }}</label>
-                  <ModelSelector
-                    :model-value="form.titleModelId"
-                    @update:model-value="value => { form.titleModelId = value; }"
-                    :models="sortedModels"
-                    :loading="isFetchingModels"
-                    :disabled="!form.autoTitleEnabled || endpointType === 'browser_provided_lm'"
-                    :placeholder="lazyStrings.ConnectionTab__use_current_chat_model()"
-                    allow-clear
-                    :clear-label="lazyStrings.ConnectionTab__use_current_chat_model()"
-                    @refresh="fetchModels"
-                    data-testid="setting-title-model-select"
-                  />
+                <div :tw-class="['grid grid-cols-1 md:grid-cols-2 gap-4 opacity-50 transition-all duration-300', { 'opacity-100': globalTitleGenerationEnabled }]">
+                  <div tw-class="space-y-2">
+                    <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_endpoint() }}</label>
+                    <select
+                      :value="globalTitleEndpointSelectValue"
+                      @change="handleGlobalTitleEndpointTypeChange({ event: $event })"
+                      :disabled="!globalTitleGenerationEnabled"
+                      tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
+                      data-testid="setting-title-endpoint-type-select"
+                    >
+                      <option value="same_scope">{{ lazyStrings.ConnectionTab__use_current_chat_endpoint() }}</option>
+                      <option
+                        v-if="globalTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"
+                        value="unsupported_experimental_endpoint"
+                        disabled
+                      >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
+                      <option value="openai">{{ lazyStrings.ConnectionTab__openai_compatible() }}</option>
+                      <option value="ollama">{{ lazyStrings.ConnectionTab__ollama() }}</option>
+                      <option value="transformers_js">{{ lazyStrings.ConnectionTab__transformers_js_experimental() }}</option>
+                      <option value="browser_provided_lm">{{ lazyStrings.SHARED__browser_provided() }}</option>
+                    </select>
+                  </div>
+
+                  <div v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)" tw-class="space-y-2">
+                    <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__endpoint_url() }}</label>
+                    <input
+                      v-model="globalTitleEndpointUrl"
+                      @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
+                      type="text"
+                      tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                      placeholder="http://localhost:11434"
+                      data-testid="setting-title-endpoint-url-input"
+                    />
+                  </div>
+
+                  <div v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)" tw-class="space-y-3 md:col-span-2">
+                    <div tw-class="flex items-center justify-between ml-1">
+                      <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__custom_http_headers() }}</label>
+                      <button
+                        @click="addGlobalTitleHeader"
+                        type="button"
+                        :disabled="!globalTitleGenerationEnabled"
+                        tw-class="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:text-gray-400 transition-colors flex items-center gap-1"
+                      >
+                        <PlusIcon tw-class="w-3 h-3" />
+                        {{ lazyStrings.ConnectionTab__add_header() }}
+                      </button>
+                    </div>
+
+                    <div v-if="globalTitleEndpointHttpHeaders && globalTitleEndpointHttpHeaders.length > 0" tw-class="space-y-2">
+                      <div
+                        v-for="(header, index) in globalTitleEndpointHttpHeaders"
+                        :key="index"
+                        class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
+                      >
+                        <input
+                          :value="header[0]"
+                          @input="updateGlobalTitleHeader({ index, field: 0, value: ($event.target as HTMLInputElement).value })"
+                          type="text"
+                          tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm disabled:opacity-50"
+                          :placeholder="lazyStrings.ConnectionTab__header_name_example()"
+                          :disabled="!globalTitleGenerationEnabled"
+                          data-testid="setting-title-http-header-name-input"
+                        />
+                        <input
+                          :value="header[1]"
+                          @input="updateGlobalTitleHeader({ index, field: 1, value: ($event.target as HTMLInputElement).value })"
+                          type="text"
+                          tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm disabled:opacity-50"
+                          :placeholder="lazyStrings.ConnectionTab__value()"
+                          :disabled="!globalTitleGenerationEnabled"
+                          data-testid="setting-title-http-header-value-input"
+                        />
+                        <button
+                          @click="removeGlobalTitleHeader({ index })"
+                          :disabled="!globalTitleGenerationEnabled"
+                          tw-class="p-2 text-gray-400 hover:text-red-500 disabled:hover:text-gray-400 transition-colors"
+                          data-testid="setting-title-http-header-remove-button"
+                        >
+                          <Trash2Icon tw-class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div v-else tw-class="text-[11px] text-gray-400 italic ml-1">{{ lazyStrings.ConnectionTab__no_custom_headers() }}</div>
+                  </div>
+
+                  <div tw-class="space-y-2 md:col-span-2">
+                    <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">{{ lazyStrings.ConnectionTab__title_generation_model() }}</label>
+                    <ModelSelector
+                      :model-value="globalTitleModelId"
+                      @update:model-value="value => setGlobalTitleModelId({ modelId: value })"
+                      :models="globalTitleModelOptions"
+                      :loading="globalTitleModelLoading"
+                      :disabled="!globalTitleGenerationEnabled || globalEffectiveTitleEndpoint.type === 'browser_provided_lm'"
+                      :placeholder="globalTitleEndpointUsesSameScope ? lazyStrings.ConnectionTab__use_current_chat_model() : undefined"
+                      :allow-clear="globalTitleModelAllowClear"
+                      :clear-label="lazyStrings.ConnectionTab__use_current_chat_model()"
+                      @refresh="fetchTitleEndpointModels"
+                      data-testid="setting-title-model-select"
+                    />
+                  </div>
+
+
+                  <div tw-class="md:col-span-2">
+                    <ReasoningSettings
+                      :selected-effort="reasoningEffortFromTitleReasoningValue({ value: globalTitleReasoningSelectValue })"
+                      :selected-value="globalTitleReasoningSelectValue"
+                      :leading-options="globalTitleReasoningLeadingOptions"
+                      :heading="lazyStrings.ConnectionTab__title_reasoning()"
+                      :disabled="!globalTitleGenerationEnabled"
+                      surface="card"
+                      @update:value="value => setGlobalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })"
+                      data-testid="setting-title-reasoning-select"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

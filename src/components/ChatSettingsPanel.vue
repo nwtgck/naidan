@@ -12,10 +12,13 @@ import type {
   Endpoint,
   EndpointType,
   LmParameters,
+  Reasoning,
+  ScopedTitleGeneration,
   SystemPrompt,
 } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
+  areEndpointModelNamespacesEqual,
   areEndpointsEqual,
   areOptionalEndpointsEqual,
   cloneEndpoint,
@@ -41,7 +44,7 @@ import { naturalSort } from '@/utils/string';
 import { hasChatOverrides } from '@/logic/chat-settings-resolver';
 import { formatSettingsSourceLabel } from '@/logic/settings-labels';
 import {
-  cloneLmParameters,
+  cloneLmParameters as clonePlainLmParameters,
   hasLmParameterOverrides,
   normalizeLmParameters,
 } from '@/utils/lm-parameters';
@@ -73,14 +76,16 @@ const chatMetadata = useChatMetadata();
 const chatModels = useChatModels();
 const isFetchingModels = computed(() => chatModels.fetchingModels.value);
 const sortedAvailableModels = computed(() => naturalSort({ values: chatModels.availableModels.value || [] }));
+const titleEndpointModels = ref<string[]>([]);
+const isFetchingTitleEndpointModels = ref(false);
+const sortedTitleEndpointModels = computed(() => naturalSort({ values: titleEndpointModels.value }));
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
 type ChatSettingsDraft = {
   endpoint: Endpoint | undefined,
   modelId: string | undefined,
-  autoTitleEnabled: boolean | undefined,
-  titleModelId: string | undefined,
+  titleGeneration: ScopedTitleGeneration | undefined,
   systemPrompt: SystemPrompt | undefined,
   lmParameters: LmParameters | undefined,
 };
@@ -89,8 +94,7 @@ function emptyDraft(): ChatSettingsDraft {
   return {
     endpoint: undefined,
     modelId: undefined,
-    autoTitleEnabled: undefined,
-    titleModelId: undefined,
+    titleGeneration: undefined,
     systemPrompt: undefined,
     lmParameters: undefined,
   };
@@ -100,10 +104,9 @@ function cloneDraft({ draft }: { draft: ChatSettingsDraft }): ChatSettingsDraft 
   return {
     endpoint: cloneOptionalEndpoint({ endpoint: draft.endpoint }),
     modelId: draft.modelId,
-    autoTitleEnabled: draft.autoTitleEnabled,
-    titleModelId: draft.titleModelId,
+    titleGeneration: cloneScopedTitleGeneration({ titleGeneration: draft.titleGeneration }),
     systemPrompt: draft.systemPrompt === undefined ? undefined : { ...draft.systemPrompt },
-    lmParameters: cloneLmParameters({ lmParameters: draft.lmParameters }),
+    lmParameters: clonePlainLmParameters({ lmParameters: draft.lmParameters }),
   };
 }
 
@@ -111,10 +114,9 @@ function draftFromChat({ chat }: { chat: Chat }): ChatSettingsDraft {
   return {
     endpoint: cloneOptionalEndpoint({ endpoint: chat.endpoint }),
     modelId: chat.modelId,
-    autoTitleEnabled: chat.autoTitleEnabled,
-    titleModelId: chat.titleModelId,
+    titleGeneration: cloneScopedTitleGeneration({ titleGeneration: chat.titleGeneration }),
     systemPrompt: chat.systemPrompt === undefined ? undefined : { ...chat.systemPrompt },
-    lmParameters: cloneLmParameters({ lmParameters: chat.lmParameters }),
+    lmParameters: clonePlainLmParameters({ lmParameters: chat.lmParameters }),
   };
 }
 
@@ -126,6 +128,241 @@ function areSystemPromptsEqual({
   right: SystemPrompt | undefined,
 }): boolean {
   return left?.behavior === right?.behavior && left?.content === right?.content;
+}
+
+function cloneScopedTitleGeneration({
+  titleGeneration,
+}: {
+  titleGeneration: ScopedTitleGeneration | undefined,
+}): ScopedTitleGeneration | undefined {
+  if (titleGeneration === undefined) return undefined;
+  if (typeof titleGeneration === 'string') return titleGeneration;
+
+  return titleGeneration.endpoint === 'same_scope'
+    ? {
+      endpoint: 'same_scope',
+      model: titleGeneration.model === 'same_scope' ? 'same_scope' : { ...titleGeneration.model },
+      lmParameters: cloneTitleLmParameters({ lmParameters: titleGeneration.lmParameters }) ?? emptyLmParameters(),
+    }
+    : {
+      endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
+      model: { ...titleGeneration.model },
+      lmParameters: clonePlainLmParameters({ lmParameters: titleGeneration.lmParameters }) ?? emptyLmParameters(),
+    };
+}
+
+function areScopedTitleGenerationsEqual({
+  left,
+  right,
+}: {
+  left: ScopedTitleGeneration | undefined,
+  right: ScopedTitleGeneration | undefined,
+}): boolean {
+  if (left === right) return true;
+  if (left === undefined || right === undefined) return false;
+  if (typeof left === 'string' || typeof right === 'string') return left === right;
+  if (left.model !== right.model) {
+    if (left.model === 'same_scope' || right.model === 'same_scope') return false;
+    if (left.model.id !== right.model.id) return false;
+  }
+  if (!areLmParametersEqual({ left: left.lmParameters, right: right.lmParameters })) return false;
+  if (left.endpoint === 'same_scope' || right.endpoint === 'same_scope') {
+    return left.endpoint === right.endpoint;
+  }
+  return areEndpointsEqual({ left: left.endpoint, right: right.endpoint });
+}
+
+type TitleGenerationMode = 'inherit' | 'override' | 'disabled';
+
+type ScopedTitleGenerationDraft =
+  | 'inherit'
+  | 'disabled'
+  | {
+      endpoint: 'same_scope',
+      model: 'same_scope' | { id: string },
+      lmParameters?: 'same_scope' | LmParameters,
+    }
+  | {
+      endpoint: Endpoint,
+      model: { id: string },
+      lmParameters?: LmParameters,
+    };
+
+type MaterializedTitleGeneration = {
+  endpoint: Endpoint,
+  model: { id: string },
+  lmParameters: LmParameters,
+};
+
+function scopedTitleGenerationFromDraft({
+  draft,
+}: {
+  draft: { titleGeneration: ScopedTitleGeneration | undefined },
+}): ScopedTitleGeneration {
+  return draft.titleGeneration ?? 'inherit';
+}
+function titleGenerationModeFromValue({
+  titleGeneration,
+}: {
+  titleGeneration: ScopedTitleGeneration,
+}): TitleGenerationMode {
+  switch (titleGeneration) {
+  case 'inherit':
+    return 'inherit';
+  case 'disabled':
+    return 'disabled';
+  default:
+    return 'override';
+  }
+}
+
+function titleModelIdFromScopedTitleGeneration({
+  titleGeneration,
+}: {
+  titleGeneration: ScopedTitleGeneration,
+}): string | undefined {
+  if (typeof titleGeneration === 'string' || titleGeneration.model === 'same_scope') return undefined;
+  return titleGeneration.model.id;
+}
+
+type TitleReasoningSelectValue = 'inherit' | 'same_scope' | Reasoning['effort'];
+
+function emptyLmParameters(): LmParameters {
+  return {
+    ...EMPTY_LM_PARAMETERS,
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
+  };
+}
+
+function cloneTitleLmParameters({
+  lmParameters,
+}: {
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters | undefined {
+  if (lmParameters === undefined) return undefined;
+  if (lmParameters === 'same_scope') return 'same_scope';
+  return clonePlainLmParameters({ lmParameters }) ?? emptyLmParameters();
+}
+
+function titleLmParametersForEndpoint({
+  endpoint,
+  lmParameters,
+}: {
+  endpoint: Endpoint | 'same_scope',
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters {
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  return cloneTitleLmParameters({ lmParameters }) as LmParameters | undefined ?? emptyLmParameters();
+}
+
+function areLmParametersEqual({
+  left,
+  right,
+}: {
+  left: 'same_scope' | LmParameters | undefined,
+  right: 'same_scope' | LmParameters | undefined,
+}): boolean {
+  return JSON.stringify(left ?? emptyLmParameters()) === JSON.stringify(right ?? emptyLmParameters());
+}
+
+function titleGenerationWithLmParameters({
+  titleGeneration,
+}: {
+  titleGeneration: ScopedTitleGenerationDraft,
+}): ScopedTitleGeneration {
+  if (typeof titleGeneration === 'string') return titleGeneration;
+
+  const current = localTitleGeneration.value;
+  const currentLmParameters = current === 'inherit'
+    ? inheritedLmParameters()
+    : typeof current === 'string'
+      ? undefined
+      : current.lmParameters;
+  return {
+    ...titleGeneration,
+    lmParameters: titleLmParametersForEndpoint({
+      endpoint: titleGeneration.endpoint,
+      lmParameters: titleGeneration.lmParameters ?? currentLmParameters,
+    }),
+  } as ScopedTitleGeneration;
+}
+
+function titleReasoningSelectValueFromLmParameters({
+  endpoint,
+  lmParameters,
+}: {
+  endpoint: Endpoint | 'same_scope',
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): TitleReasoningSelectValue {
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  return lmParameters !== 'same_scope' && lmParameters?.reasoning?.effort !== undefined
+    ? lmParameters.reasoning.effort
+    : undefined;
+}
+
+function titleLmParametersFromReasoningSelectValue({
+  value,
+  current,
+}: {
+  value: Exclude<TitleReasoningSelectValue, 'inherit'>,
+  current: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters {
+  switch (value) {
+  case 'same_scope':
+    return 'same_scope';
+  case undefined: {
+    const lmParameters = current === 'same_scope'
+      ? emptyLmParameters()
+      : clonePlainLmParameters({ lmParameters: current }) ?? emptyLmParameters();
+    lmParameters.reasoning.effort = undefined;
+    return lmParameters;
+  }
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high': {
+    const lmParameters = current === 'same_scope'
+      ? emptyLmParameters()
+      : clonePlainLmParameters({ lmParameters: current }) ?? emptyLmParameters();
+    lmParameters.reasoning.effort = value;
+    return lmParameters;
+  }
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled title reasoning value: ${_ex}`);
+  }
+  }
+}
+
+function reasoningEffortLabel({ effort }: { effort: Reasoning['effort'] }): string | undefined {
+  switch (effort) {
+  case undefined:
+    return lazyStrings.ReasoningSettings__default();
+  case 'none':
+    return lazyStrings.ReasoningSettings__off();
+  case 'low':
+    return lazyStrings.ReasoningSettings__low();
+  case 'medium':
+    return lazyStrings.ReasoningSettings__medium();
+  case 'high':
+    return lazyStrings.ReasoningSettings__high();
+  default: {
+    const _ex: never = effort;
+    throw new Error(`Unhandled reasoning effort: ${_ex}`);
+  }
+  }
+}
+
+function titleReasoningLabel({
+  lmParameters,
+  sameScopeEffort,
+}: {
+  lmParameters: 'same_scope' | LmParameters | undefined,
+  sameScopeEffort: Reasoning['effort'],
+}): string | undefined {
+  return lmParameters === 'same_scope'
+    ? reasoningEffortLabel({ effort: sameScopeEffort })
+    : reasoningEffortLabel({ effort: lmParameters?.reasoning?.effort });
 }
 
 // Keep select parsing exhaustive: adding an EndpointType must fail typechecking
@@ -141,6 +378,17 @@ function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType
   if (value === 'global') return undefined;
   if (Object.hasOwn(endpointTypeSelectValueRecord, value)) return value as EndpointType;
   throw new Error(`Unhandled endpoint type value: ${value}`);
+}
+
+
+type TitleEndpointTypeSelectValue = 'inherit' | 'same_scope' | Endpoint['type'];
+
+function titleEndpointTypeFromSelectValue({ value }: { value: string }): TitleEndpointTypeSelectValue {
+  if (value === 'inherit') return 'inherit';
+  if (value === 'same_scope') return 'same_scope';
+  if (value === 'unsupported_experimental_endpoint') return 'unsupported_experimental_endpoint';
+  if (Object.hasOwn(endpointTypeSelectValueRecord, value)) return value as EndpointType;
+  throw new Error(`Unhandled title endpoint type value: ${value}`);
 }
 
 function inheritedEndpointTypeLabel(): string | undefined {
@@ -160,21 +408,106 @@ function inheritedEndpointTypeLabel(): string | undefined {
 }
 
 function titleModelExplanation(): string | undefined {
-  const source = resolvedSettings.value?.sources.autoTitleEnabled;
-  if (localSettings.value.autoTitleEnabled !== undefined || source === undefined) {
-    return lazyStrings.ChatSettingsPanel__title_model_explanation({
-      inheritance: { type: 'none' },
-    });
-  }
-
   return lazyStrings.ChatSettingsPanel__title_model_explanation({
-    inheritance: {
-      type: 'inherited',
-      state: resolvedSettings.value?.autoTitleEnabled ? 'enabled' : 'disabled',
-      source,
-    },
+    inheritance: { type: 'none' },
   });
 }
+
+function endpointTypeValueLabel({ endpoint }: { endpoint: Endpoint }): string | undefined {
+  return endpointTypeLabel({ endpointType: endpoint.type });
+}
+
+function mergedLmParameters({
+  base,
+  overrides,
+}: {
+  base: LmParameters | undefined,
+  overrides: LmParameters | undefined,
+}): LmParameters | undefined {
+  const lmParameters = clonePlainLmParameters({ lmParameters: base }) ?? emptyLmParameters();
+  if (overrides === undefined) return normalizeLmParameters({ lmParameters });
+
+  if (overrides.temperature !== undefined) lmParameters.temperature = overrides.temperature;
+  if (overrides.topP !== undefined) lmParameters.topP = overrides.topP;
+  if (overrides.maxCompletionTokens !== undefined) lmParameters.maxCompletionTokens = overrides.maxCompletionTokens;
+  if (overrides.presencePenalty !== undefined) lmParameters.presencePenalty = overrides.presencePenalty;
+  if (overrides.frequencyPenalty !== undefined) lmParameters.frequencyPenalty = overrides.frequencyPenalty;
+  if (overrides.stop !== undefined) lmParameters.stop = [...overrides.stop];
+  if (overrides.reasoning?.effort !== undefined) lmParameters.reasoning.effort = overrides.reasoning.effort;
+
+  return normalizeLmParameters({ lmParameters });
+}
+
+function localSameScopeLmParameters(): LmParameters | undefined {
+  return mergedLmParameters({
+    base: inheritedSettings.value?.lmParameters,
+    overrides: localSettings.value.lmParameters,
+  });
+}
+
+function inheritedLmParameters(): LmParameters | undefined {
+  const titleGeneration = inheritedSettings.value?.titleGeneration;
+  if (titleGeneration === undefined || titleGeneration === 'disabled') return undefined;
+  return titleGeneration.lmParameters;
+}
+
+function materializedLocalLmParameters(): LmParameters | undefined {
+  const titleGeneration = localTitleGeneration.value;
+  if (titleGeneration === 'disabled') return undefined;
+  if (titleGeneration === 'inherit') return clonePlainLmParameters({ lmParameters: inheritedLmParameters() });
+  if (titleGeneration.lmParameters === 'same_scope') return localSameScopeLmParameters();
+  return clonePlainLmParameters({ lmParameters: titleGeneration.lmParameters });
+}
+
+function materializedLocalTitleGeneration(): MaterializedTitleGeneration {
+  return {
+    endpoint: cloneEndpoint({ endpoint: effectiveTitleEndpoint.value }),
+    model: explicitTitleModel({ modelId: effectiveTitleModelId.value }),
+    lmParameters: clonePlainLmParameters({ lmParameters: materializedLocalLmParameters() }) ?? emptyLmParameters(),
+  };
+}
+
+function materializedLocalTitleGenerationOverride(): Exclude<ScopedTitleGeneration, 'inherit' | 'disabled'> {
+  const resolved = materializedLocalTitleGeneration();
+  const sameScopeEndpoint = effectiveEndpoint.value;
+  const sameScopeModelId = effectiveModelId.value;
+  const sameScopeLmParameters = localSameScopeLmParameters();
+
+  // UX: switching from inherited title settings to a local override should
+  // preserve the currently visible effective endpoint/model/parameters. Prefer
+  // `same_scope` only when it resolves to the same values; otherwise write the
+  // resolved values explicitly so the mode switch itself does not surprise the
+  // user by changing the title generation target.
+  if (areEndpointsEqual({ left: resolved.endpoint, right: sameScopeEndpoint })) {
+    return {
+      endpoint: 'same_scope',
+      model: resolved.model.id === sameScopeModelId ? 'same_scope' : { id: resolved.model.id },
+      lmParameters: areLmParametersEqual({ left: resolved.lmParameters, right: sameScopeLmParameters })
+        ? 'same_scope'
+        : clonePlainLmParameters({ lmParameters: resolved.lmParameters }) ?? emptyLmParameters(),
+    };
+  }
+
+  return {
+    endpoint: cloneEndpoint({ endpoint: resolved.endpoint }),
+    model: { ...resolved.model },
+    lmParameters: clonePlainLmParameters({ lmParameters: resolved.lmParameters }) ?? emptyLmParameters(),
+  };
+}
+
+const inheritedTitleEndpointTypeOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: inheritedSettings.value?.titleGeneration === 'disabled'
+    ? lazyStrings.ChatSettingsPanel__disabled()
+    : inheritedSettings.value?.titleGeneration === undefined
+      ? undefined
+      : endpointTypeValueLabel({ endpoint: inheritedSettings.value.titleGeneration.endpoint }),
+  source: 'chat_group',
+}));
+const sameScopeTitleEndpointTypeOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: endpointTypeValueLabel({ endpoint: effectiveEndpoint.value }),
+  source: 'chat',
+}));
+
 
 function createChanges({
   previous,
@@ -190,6 +523,10 @@ function createChanges({
       next: next.lmParameters,
     }).map(change => [change.field, change] as const),
   );
+  const titleGenerationChanged = !areScopedTitleGenerationsEqual({
+    left: previous.titleGeneration,
+    right: next.titleGeneration,
+  });
 
   // Iterate the exhaustive field list so adding a ScopedSettingChange variant
   // fails typechecking here until draft comparison semantics are implemented.
@@ -213,18 +550,11 @@ function createChanges({
           : { field: 'model_id', behavior: 'override', value: next.modelId });
       }
       break;
-    case 'auto_title_enabled':
-      if (previous.autoTitleEnabled !== next.autoTitleEnabled) {
-        changes.push(next.autoTitleEnabled === undefined
-          ? { field: 'auto_title_enabled', behavior: 'inherit' }
-          : { field: 'auto_title_enabled', behavior: 'override', value: next.autoTitleEnabled });
-      }
-      break;
-    case 'title_model_id':
-      if (previous.titleModelId !== next.titleModelId) {
-        changes.push(next.titleModelId === undefined
-          ? { field: 'title_model_id', behavior: 'inherit' }
-          : { field: 'title_model_id', behavior: 'override', value: next.titleModelId });
+    case 'title_generation':
+      if (titleGenerationChanged) {
+        changes.push(next.titleGeneration === undefined || next.titleGeneration === 'inherit'
+          ? { field: 'title_generation', behavior: 'inherit' }
+          : { field: 'title_generation', behavior: 'override', value: next.titleGeneration });
       }
       break;
     case 'system_prompt':
@@ -264,6 +594,480 @@ let nextSaveRevision = 0;
 const hasActiveOverrides = computed(() => hasChatOverrides({ chat: localSettings.value }));
 const effectiveEndpoint = computed(() => localSettings.value.endpoint ?? inheritedSettings.value?.endpoint ?? settings.value.endpoint);
 const effectiveEndpointType = computed(() => effectiveEndpoint.value?.type);
+const localTitleGeneration = computed(() => scopedTitleGenerationFromDraft({ draft: localSettings.value }));
+const localTitleGenerationMode = computed(() => titleGenerationModeFromValue({ titleGeneration: localTitleGeneration.value }));
+const localTitleModelId = computed(() => titleModelIdFromScopedTitleGeneration({ titleGeneration: localTitleGeneration.value }));
+
+const localTitleEndpoint = computed(() => {
+  const titleGeneration = localTitleGeneration.value;
+  if (titleGeneration === 'inherit') return 'inherit';
+  if (titleGeneration === 'disabled') return 'same_scope';
+  return titleGeneration.endpoint;
+});
+const localTitleEndpointSelectValue = computed<TitleEndpointTypeSelectValue>(() => {
+  const endpoint = localTitleEndpoint.value;
+  if (endpoint === 'inherit' || endpoint === 'same_scope') return endpoint;
+  return endpoint.type;
+});
+const localTitleEndpointUsesInheritance = computed(() => localTitleEndpoint.value === 'inherit');
+const localTitleEndpointUsesSameScope = computed(() => localTitleEndpoint.value === 'same_scope');
+const activeTitleEndpoint = computed<Endpoint | undefined>(() => {
+  if (localTitleEndpoint.value === 'inherit') {
+    return inheritedSettings.value?.titleGeneration === 'disabled'
+      ? undefined
+      : inheritedSettings.value?.titleGeneration?.endpoint;
+  }
+  if (localTitleEndpoint.value === 'same_scope') return effectiveEndpoint.value;
+  return localTitleEndpoint.value;
+});
+const effectiveTitleEndpoint = computed<Endpoint>(() => activeTitleEndpoint.value ?? effectiveEndpoint.value);
+const effectiveTitleEndpointType = computed(() => effectiveTitleEndpoint.value.type);
+const localTitleEndpointUrl = computed({
+  get: () => (activeTitleEndpoint.value !== undefined && isHttpEndpoint(activeTitleEndpoint.value) ? activeTitleEndpoint.value.url : ''),
+  set: (url: string) => {
+    const endpoint = activeTitleEndpoint.value;
+    if (endpoint === undefined || !isHttpEndpoint(endpoint)) return;
+    updateLocalTitleGenerationDraft({
+      titleGeneration: {
+        endpoint: {
+          type: endpoint.type,
+          url,
+          httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
+        },
+        model: explicitTitleModel({ modelId: effectiveTitleModelId.value }),
+      },
+    });
+  },
+});
+const localTitleEndpointHttpHeaders = computed(() => {
+  const endpoint = activeTitleEndpoint.value;
+  return endpoint !== undefined && isHttpEndpoint(endpoint)
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [string, string]) ?? []
+    : undefined;
+});
+
+function setLocalTitleEndpointHttpHeaders({
+  httpHeaders,
+}: {
+  httpHeaders: [string, string][],
+}): void {
+  const endpoint = activeTitleEndpoint.value;
+  if (endpoint === undefined || !isHttpEndpoint(endpoint)) return;
+  updateLocalTitleGenerationDraft({
+    titleGeneration: {
+      endpoint: {
+        type: endpoint.type,
+        url: endpoint.url,
+        httpHeaders,
+      },
+      model: explicitTitleModel({ modelId: effectiveTitleModelId.value }),
+    },
+  });
+}
+
+function addLocalTitleHeader(): void {
+  const headers = localTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setLocalTitleEndpointHttpHeaders({ httpHeaders: [...headers, ['', '']] });
+}
+
+function updateLocalTitleHeader({
+  index,
+  field,
+  value,
+}: {
+  index: number,
+  field: 0 | 1,
+  value: string,
+}): void {
+  const headers = localTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setLocalTitleEndpointHttpHeaders({
+    httpHeaders: headers.map((header, headerIndex) => headerIndex === index
+      ? ([field === 0 ? value : header[0], field === 1 ? value : header[1]] as [string, string])
+      : header),
+  });
+}
+
+async function removeLocalTitleHeader({ index }: { index: number }): Promise<void> {
+  const headers = localTitleEndpointHttpHeaders.value;
+  if (headers !== undefined) {
+    setLocalTitleEndpointHttpHeaders({ httpHeaders: headers.filter((_, headerIndex) => headerIndex !== index) });
+  }
+  await saveChangesFromUi();
+}
+const titleModelOptions = computed(() => {
+  return localTitleEndpointUsesSameScope.value
+    ? sortedAvailableModels.value
+    : sortedTitleEndpointModels.value;
+});
+const titleModelLoading = computed(() => {
+  return localTitleEndpointUsesSameScope.value
+    ? isFetchingModels.value
+    : isFetchingTitleEndpointModels.value;
+});
+const effectiveModelId = computed(() => localSettings.value.modelId || inheritedSettings.value?.modelId || settings.value.defaultModelId);
+const inheritedTitleModelOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: inheritedSettings.value?.titleGeneration === 'disabled'
+    ? lazyStrings.ChatSettingsPanel__disabled()
+    : inheritedSettings.value?.titleGeneration?.modelId,
+  source: 'chat_group',
+}));
+const sameScopeTitleModelOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: effectiveModelId.value,
+  source: 'chat',
+}));
+
+function reasoningEffortFromTitleReasoningValue({
+  value,
+}: {
+  value: TitleReasoningSelectValue,
+}): Reasoning['effort'] {
+  switch (value) {
+  case 'inherit':
+  case 'same_scope':
+  case undefined:
+    return undefined;
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high':
+    return value;
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled title reasoning value: ${_ex}`);
+  }
+  }
+}
+
+const sameScopeReasoningEffort = computed<Reasoning['effort']>(() => (
+  localSettings.value.lmParameters?.reasoning?.effort
+  ?? inheritedSettings.value?.lmParameters?.reasoning?.effort
+  ?? settings.value.lmParameters?.reasoning?.effort
+));
+
+const inheritedTitleReasoningOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: inheritedSettings.value?.titleGeneration === 'disabled'
+    ? lazyStrings.ChatSettingsPanel__disabled()
+    : titleReasoningLabel({ lmParameters: inheritedLmParameters(), sameScopeEffort: undefined }),
+  source: inheritedSettings.value?.sources.titleGeneration,
+}));
+const sameScopeTitleReasoningOptionLabel = computed(() => formatSettingsSourceLabel({
+  value: reasoningEffortLabel({ effort: sameScopeReasoningEffort.value }),
+  source: 'chat',
+}));
+const titleReasoningLeadingOptions = computed(() => ([
+  {
+    value: 'inherit' as const,
+    label: inheritedTitleReasoningOptionLabel.value,
+    shortLabel: inheritedTitleReasoningOptionLabel.value,
+    testId: 'inherit',
+  },
+  {
+    value: 'same_scope' as const,
+    label: localTitleEndpointUsesSameScope.value ? sameScopeTitleReasoningOptionLabel.value : undefined,
+    shortLabel: localTitleEndpointUsesSameScope.value ? sameScopeTitleReasoningOptionLabel.value : undefined,
+    testId: 'same-scope',
+  },
+]));
+const effectiveTitleModelId = computed(() => {
+  if (localTitleEndpointUsesInheritance.value) {
+    return inheritedSettings.value?.titleGeneration === 'disabled'
+      ? undefined
+      : inheritedSettings.value?.titleGeneration?.modelId;
+  }
+  if (localTitleEndpointUsesSameScope.value) return effectiveModelId.value;
+  return localTitleModelId.value;
+});
+
+const localTitleReasoningSelectValue = computed<TitleReasoningSelectValue>(() => {
+  const titleGeneration = localTitleGeneration.value;
+  if (titleGeneration === 'inherit') return 'inherit';
+  if (titleGeneration === 'disabled') return undefined;
+  return titleReasoningSelectValueFromLmParameters({
+    endpoint: titleGeneration.endpoint,
+    lmParameters: titleGeneration.lmParameters,
+  });
+});
+
+function setLocalTitleReasoningSelectValue({
+  value,
+}: {
+  value: TitleReasoningSelectValue,
+}): void {
+  switch (value) {
+  case 'inherit':
+    setLocalTitleGeneration({ titleGeneration: 'inherit' });
+    return;
+  case 'same_scope':
+  case undefined:
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high':
+    break;
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled title reasoning value: ${_ex}`);
+  }
+  }
+
+  const current = localTitleGeneration.value;
+  if (current === 'disabled') return;
+
+  switch (value) {
+  case 'same_scope': {
+    const base = current === 'inherit'
+      ? materializedLocalTitleGenerationOverride()
+      : current;
+    if (typeof base === 'string') return;
+    setLocalTitleGeneration({
+      titleGeneration: {
+        ...base,
+        lmParameters: titleLmParametersForEndpoint({
+          endpoint: base.endpoint,
+          lmParameters: 'same_scope',
+        }),
+      } as ScopedTitleGeneration,
+    });
+    return;
+  }
+  case undefined:
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high':
+    break;
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled title reasoning value: ${_ex}`);
+  }
+  }
+
+  const base = current === 'inherit'
+    ? materializedLocalTitleGenerationOverride()
+    : materializedLocalTitleGeneration();
+  const nextLmParameters = titleLmParametersFromReasoningSelectValue({
+    value,
+    current: base.lmParameters,
+  });
+
+  setLocalTitleGeneration({
+    titleGeneration: {
+      ...base,
+      lmParameters: nextLmParameters === 'same_scope'
+        ? emptyLmParameters()
+        : nextLmParameters,
+    },
+  });
+}
+
+
+function preservedTitleModelIdForEndpoint({
+  nextEndpoint,
+}: {
+  nextEndpoint: Endpoint,
+}): string | undefined {
+  return areEndpointModelNamespacesEqual({ left: effectiveTitleEndpoint.value, right: nextEndpoint })
+    ? localTitleModelId.value
+    : undefined;
+}
+
+function setLocalTitleEndpointType({
+  endpointType,
+}: {
+  endpointType: TitleEndpointTypeSelectValue,
+}): void {
+  switch (endpointType) {
+  case 'inherit':
+    setLocalTitleGeneration({ titleGeneration: 'inherit' });
+    return;
+  case 'same_scope': {
+    const modelId = preservedTitleModelIdForEndpoint({ nextEndpoint: effectiveEndpoint.value });
+    setLocalTitleGeneration({
+      titleGeneration: {
+        endpoint: 'same_scope',
+        model: sameScopeTitleModel({ modelId }),
+      },
+    });
+    return;
+  }
+  case 'browser_provided_lm':
+    setLocalTitleGeneration({
+      titleGeneration: {
+        endpoint: { type: 'browser_provided_lm' },
+        model: { id: BROWSER_PROVIDED_LM_MODEL_ID },
+      },
+    });
+    return;
+  case 'transformers_js': {
+    const nextEndpoint: Endpoint = { type: 'transformers_js' };
+    setLocalTitleGeneration({
+      titleGeneration: {
+        endpoint: nextEndpoint,
+        model: explicitTitleModel({ modelId: preservedTitleModelIdForEndpoint({ nextEndpoint }) }),
+      },
+    });
+    return;
+  }
+  case 'unsupported_experimental_endpoint':
+    return;
+  case 'openai':
+  case 'ollama': {
+    const currentTitleEndpoint = localTitleEndpoint.value;
+    const seed = selectHttpEndpointSeed({
+      preferred: currentTitleEndpoint === 'same_scope' || currentTitleEndpoint === 'inherit' ? activeTitleEndpoint.value : currentTitleEndpoint,
+      fallback: effectiveEndpoint.value,
+    });
+    const nextEndpoint: Endpoint = {
+      type: endpointType,
+      url: seed?.url ?? '',
+      httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
+    };
+    setLocalTitleGeneration({
+      titleGeneration: {
+        endpoint: nextEndpoint,
+        model: explicitTitleModel({ modelId: preservedTitleModelIdForEndpoint({ nextEndpoint }) }),
+      },
+    });
+    return;
+  }
+  default: {
+    const _ex: never = endpointType;
+    throw new Error(`Unhandled title endpoint type: ${_ex}`);
+  }
+  }
+}
+
+function handleTitleEndpointTypeChange({ event }: { event: Event }): void {
+  setLocalTitleEndpointType({ endpointType: titleEndpointTypeFromSelectValue({ value: (event.target as HTMLSelectElement).value }) });
+}
+
+async function fetchTitleEndpointModels(): Promise<void> {
+  if (localTitleEndpointUsesSameScope.value) {
+    await fetchModels();
+    return;
+  }
+  const endpoint = cloneEndpoint({ endpoint: effectiveTitleEndpoint.value });
+  if (isHttpEndpoint(endpoint) && endpoint.url === '') {
+    titleEndpointModels.value = [];
+    return;
+  }
+
+  isFetchingTitleEndpointModels.value = true;
+  try {
+    const models = await chatModels.fetchForEndpoint({ endpoint });
+    if (!areEndpointsEqual({ left: endpoint, right: effectiveTitleEndpoint.value })) return;
+    titleEndpointModels.value = models ?? [];
+    const titleGeneration = localTitleGeneration.value;
+    if (typeof titleGeneration === 'string' || titleGeneration.endpoint === 'same_scope') return;
+    if (!titleEndpointModels.value.includes(titleGeneration.model.id) && titleEndpointModels.value[0] !== undefined) {
+      setLocalTitleGeneration({
+        titleGeneration: {
+          endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
+          model: { id: titleEndpointModels.value[0] },
+        },
+      });
+    }
+  } catch (caught) {
+    error.value = caught instanceof Error
+      ? caught.message
+      : await ensureStrings.SHARED__connection_failed_check_url_or_provider();
+  } finally {
+    isFetchingTitleEndpointModels.value = false;
+  }
+}
+
+function updateLocalTitleGenerationDraft({
+  titleGeneration,
+}: {
+  titleGeneration: ScopedTitleGenerationDraft,
+}): void {
+  localSettings.value.titleGeneration = cloneScopedTitleGeneration({
+    titleGeneration: titleGenerationWithLmParameters({ titleGeneration }),
+  });
+}
+
+function setLocalTitleGeneration({
+  titleGeneration,
+}: {
+  titleGeneration: ScopedTitleGenerationDraft,
+}): void {
+  updateLocalTitleGenerationDraft({ titleGeneration });
+  saveChangesFromUi();
+}
+
+function setLocalTitleGenerationMode({
+  mode,
+}: {
+  mode: TitleGenerationMode,
+}): void {
+  switch (mode) {
+  case 'inherit':
+    setLocalTitleGeneration({ titleGeneration: 'inherit' });
+    return;
+  case 'disabled':
+    setLocalTitleGeneration({ titleGeneration: 'disabled' });
+    return;
+  case 'override':
+    setLocalTitleGeneration({ titleGeneration: materializedLocalTitleGenerationOverride() });
+    return;
+  default: {
+    const _ex: never = mode;
+    throw new Error(`Unhandled title generation mode: ${_ex}`);
+  }
+  }
+}
+
+function sameScopeTitleModel({ modelId }: { modelId: string | undefined }): 'same_scope' | { id: string } {
+  return modelId === undefined || modelId === '' ? 'same_scope' : { id: modelId };
+}
+
+function explicitTitleModel({ modelId }: { modelId: string | undefined }): { id: string } {
+  return { id: modelId || titleModelOptions.value[0] || effectiveModelId.value || BROWSER_PROVIDED_LM_MODEL_ID };
+}
+
+function setLocalTitleModelId({
+  modelId,
+}: {
+  modelId: string | undefined,
+}): void {
+  const titleGeneration = localTitleGeneration.value;
+  if (titleGeneration === 'inherit') {
+    if (modelId === undefined || modelId === '') {
+      setLocalTitleGeneration({ titleGeneration: 'inherit' });
+      return;
+    }
+    const base = materializedLocalTitleGenerationOverride();
+    if (base.endpoint === 'same_scope') {
+      setLocalTitleGeneration({
+        titleGeneration: {
+          ...base,
+          model: sameScopeTitleModel({ modelId }),
+        },
+      });
+      return;
+    }
+    setLocalTitleGeneration({
+      titleGeneration: {
+        ...base,
+        model: { id: modelId },
+      },
+    });
+    return;
+  }
+  const endpoint = typeof titleGeneration === 'string' ? 'same_scope' : titleGeneration.endpoint;
+  if (endpoint === 'same_scope') {
+    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: sameScopeTitleModel({ modelId }) } });
+    return;
+  }
+  setLocalTitleGeneration({
+    titleGeneration: {
+      endpoint: cloneEndpoint({ endpoint }),
+      model: explicitTitleModel({ modelId }),
+    },
+  });
+}
 const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 
 const localEndpointUrl = computed({
@@ -274,6 +1078,7 @@ const localEndpointUrl = computed({
       : '';
   },
   set: (url: string) => {
+    const previousEndpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
     const endpoint = localSettings.value.endpoint ?? inheritedSettings.value?.endpoint;
     if (!endpoint || !isHttpEndpoint(endpoint)) return;
     localSettings.value.endpoint = {
@@ -281,6 +1086,7 @@ const localEndpointUrl = computed({
       url,
       httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
     };
+    resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
   },
 });
 
@@ -390,11 +1196,8 @@ function applyFieldFromDraft({
   case 'model_id':
     target.modelId = source.modelId;
     return;
-  case 'auto_title_enabled':
-    target.autoTitleEnabled = source.autoTitleEnabled;
-    return;
-  case 'title_model_id':
-    target.titleModelId = source.titleModelId;
+  case 'title_generation':
+    target.titleGeneration = cloneScopedTitleGeneration({ titleGeneration: source.titleGeneration });
     return;
   case 'system_prompt':
     target.systemPrompt = source.systemPrompt === undefined ? undefined : { ...source.systemPrompt };
@@ -607,29 +1410,58 @@ function clearBrowserProvidedLmModelOverrides(): void {
   if (localSettings.value.modelId === BROWSER_PROVIDED_LM_MODEL_ID) {
     localSettings.value.modelId = undefined;
   }
-  if (localSettings.value.titleModelId === BROWSER_PROVIDED_LM_MODEL_ID) {
-    localSettings.value.titleModelId = undefined;
+  const titleGeneration = localSettings.value.titleGeneration;
+  if (typeof titleGeneration !== 'string' && titleGeneration?.model !== 'same_scope' && titleGeneration?.model.id === BROWSER_PROVIDED_LM_MODEL_ID) {
+    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
   }
 }
+function resetSameScopeTitleModelWhenEndpointNamespaceChanges({
+  previousEndpoint,
+  nextEndpoint,
+}: {
+  previousEndpoint: Endpoint,
+  nextEndpoint: Endpoint,
+}): void {
+  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
+  const titleGeneration = localSettings.value.titleGeneration;
+  if (titleGeneration === undefined || typeof titleGeneration === 'string' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
+  setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+}
+
+function resetLocalModelsWhenEndpointNamespaceChanges({
+  previousEndpoint,
+  nextEndpoint,
+}: {
+  previousEndpoint: Endpoint,
+  nextEndpoint: Endpoint,
+}): void {
+  if (areEndpointModelNamespacesEqual({ left: previousEndpoint, right: nextEndpoint })) return;
+  localSettings.value.modelId = undefined;
+  resetSameScopeTitleModelWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint });
+}
+
 
 async function updateEndpointType({
   endpointType,
 }: {
   endpointType: EndpointType | undefined,
 }): Promise<void> {
+  const previousEndpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
   switch (endpointType) {
   case undefined:
     localSettings.value.endpoint = undefined;
     clearBrowserProvidedLmModelOverrides();
+    resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
     break;
   case 'transformers_js':
     localSettings.value.endpoint = { type: endpointType };
     clearBrowserProvidedLmModelOverrides();
+    resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
     break;
   case 'browser_provided_lm':
     localSettings.value.endpoint = { type: endpointType };
     localSettings.value.modelId = BROWSER_PROVIDED_LM_MODEL_ID;
-    localSettings.value.titleModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
     break;
   case 'openai':
   case 'ollama': {
@@ -643,6 +1475,7 @@ async function updateEndpointType({
       httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
     };
     clearBrowserProvidedLmModelOverrides();
+    resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
     break;
   }
   default: {
@@ -655,8 +1488,10 @@ async function updateEndpointType({
 }
 
 async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
+  const previousEndpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
   localSettings.value.endpoint = { type: preset.type, url: preset.url };
   clearBrowserProvidedLmModelOverrides();
+  resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
   error.value = null;
   await saveChangesFromUi();
 }
@@ -666,11 +1501,13 @@ async function handleQuickProviderProfileChange() {
   if (providerProfile) {
     localSettings.value.endpoint = cloneEndpoint({ endpoint: providerProfile.endpoint });
     localSettings.value.modelId = providerProfile.defaultModelId;
-    localSettings.value.titleModelId = providerProfile.titleModelId;
+    localSettings.value.titleGeneration = providerProfile.titleModelId === undefined
+      ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() }
+      : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: emptyLmParameters() };
     localSettings.value.systemPrompt = providerProfile.systemPrompt
       ? { content: providerProfile.systemPrompt, behavior: 'override' }
       : undefined;
-    localSettings.value.lmParameters = cloneLmParameters({ lmParameters: providerProfile.lmParameters });
+    localSettings.value.lmParameters = clonePlainLmParameters({ lmParameters: providerProfile.lmParameters });
     await saveChangesFromUi();
   }
   error.value = null;
@@ -711,8 +1548,14 @@ async function fetchModels() {
       localSettings.value.modelId = undefined;
       changed = true;
     }
-    if (localSettings.value.titleModelId && !models.includes(localSettings.value.titleModelId)) {
-      localSettings.value.titleModelId = undefined;
+    const titleGeneration = localTitleGeneration.value;
+    if (
+      typeof titleGeneration !== 'string'
+      && titleGeneration.endpoint === 'same_scope'
+      && titleGeneration.model !== 'same_scope'
+      && !models.includes(titleGeneration.model.id)
+    ) {
+      updateLocalTitleGenerationDraft({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
       changed = true;
     }
     if (changed) {
@@ -729,6 +1572,18 @@ watch([localEndpointUrl, effectiveEndpointType], ([url, type]) => {
   error.value = null;
   if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchModels();
 });
+
+watch(
+  [localTitleEndpointUrl, effectiveTitleEndpointType, localTitleEndpointUsesInheritance, localTitleEndpointUsesSameScope],
+  ([url, type]) => {
+    error.value = null;
+    if (localTitleGenerationMode.value !== 'disabled' && !localTitleEndpointUsesSameScope.value) {
+      if (type === 'transformers_js' || type === 'browser_provided_lm' || (url && isLocalhost({ url }))) void fetchTitleEndpointModels();
+    }
+  },
+  { immediate: true },
+);
+
 
 async function updateSystemPromptBehavior({
   behavior,
@@ -877,6 +1732,11 @@ defineExpose({
                 <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
                 <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
                 <option
+                  v-if="localTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"
+                  value="unsupported_experimental_endpoint"
+                  disabled
+                >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
+                <option
                   v-if="localSettings.endpoint?.type === 'unsupported_experimental_endpoint'"
                   value="unsupported_experimental_endpoint"
                   disabled
@@ -994,41 +1854,140 @@ defineExpose({
               </div>
               <div tw-class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                 <button
-                  @click="localSettings.autoTitleEnabled = undefined; saveChangesFromUi();"
-                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localSettings.autoTitleEnabled === undefined ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                  @click="setLocalTitleGenerationMode({ mode: 'inherit' })"
+                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localTitleGenerationMode === 'inherit' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
                 >
-                  {{ lazyStrings.ChatSettingsPanel__inherit() }}
+                  {{ lazyStrings.ChatSettingsPanel__use_chat_group_setting() }}
                 </button>
                 <button
-                  @click="localSettings.autoTitleEnabled = true; saveChangesFromUi();"
-                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localSettings.autoTitleEnabled === true ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                  @click="setLocalTitleGenerationMode({ mode: 'override' })"
+                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localTitleGenerationMode === 'override' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
                 >
-                  {{ lazyStrings.ChatSettingsPanel__enabled() }}
+                  {{ lazyStrings.ChatSettingsPanel__override() }}
                 </button>
                 <button
-                  @click="localSettings.autoTitleEnabled = false; saveChangesFromUi();"
-                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localSettings.autoTitleEnabled === false ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                  @click="setLocalTitleGenerationMode({ mode: 'disabled' })"
+                  :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localTitleGenerationMode === 'disabled' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
                 >
                   {{ lazyStrings.ChatSettingsPanel__disabled() }}
                 </button>
               </div>
             </div>
 
-            <div v-if="localSettings.autoTitleEnabled !== false" tw-class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
+            <!-- UX: keep effective inherited title controls visible. Editing them intentionally materializes a local override instead of forcing users to switch modes first. -->
+            <div v-if="localTitleGenerationMode !== 'disabled'" tw-class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
+              <div tw-class="space-y-2">
+                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__title_endpoint_type() }}</label>
+                <select
+                  :value="localTitleEndpointSelectValue"
+                  @change="handleTitleEndpointTypeChange({ event: $event })"
+                  tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
+                  data-testid="chat-setting-title-endpoint-type-select"
+                >
+                  <option value="inherit">{{ inheritedTitleEndpointTypeOptionLabel }}</option>
+                  <option value="same_scope">{{ sameScopeTitleEndpointTypeOptionLabel }}</option>
+                  <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
+                  <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
+                  <option value="transformers_js">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
+                  <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
+                  <option
+                    v-if="localTitleEndpointSelectValue === 'unsupported_experimental_endpoint'"
+                    value="unsupported_experimental_endpoint"
+                    disabled
+                  >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
+                </select>
+              </div>
+
+              <div tw-class="space-y-2">
+                <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__endpoint_url() }}</label>
+                <input
+                  v-model="localTitleEndpointUrl"
+                  @blur="saveChangesFromUi"
+                  @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
+                  type="text"
+                  tw-class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                  :placeholder="isHttpEndpoint(effectiveEndpoint) ? effectiveEndpoint.url : undefined"
+                  :disabled="activeTitleEndpoint === undefined || !isHttpEndpoint(activeTitleEndpoint)"
+                  data-testid="chat-setting-title-endpoint-url-input"
+                />
+              </div>
+
+              <div v-if="activeTitleEndpoint !== undefined && isHttpEndpoint(activeTitleEndpoint)" tw-class="space-y-3 md:col-span-2">
+                <div tw-class="flex items-center justify-between ml-1">
+                  <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__custom_http_headers() }}</label>
+                  <button
+                    @click="addLocalTitleHeader"
+                    type="button"
+                    tw-class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
+                  >
+                    <PlusIcon tw-class="w-3 h-3" />
+                    {{ lazyStrings.ChatSettingsPanel__add_header() }}
+                  </button>
+                </div>
+
+                <div v-if="localTitleEndpointHttpHeaders && localTitleEndpointHttpHeaders.length > 0" tw-class="space-y-2">
+                  <div
+                    v-for="(header, index) in localTitleEndpointHttpHeaders"
+                    :key="index"
+                    class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
+                  >
+                    <input
+                      :value="header[0]"
+                      @input="updateLocalTitleHeader({ index, field: 0, value: ($event.target as HTMLInputElement).value })"
+                      @blur="saveChangesFromUi"
+                      type="text"
+                      tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                      :placeholder="lazyStrings.ChatSettingsPanel__name()"
+                      data-testid="chat-setting-title-http-header-name-input"
+                    />
+                    <input
+                      :value="header[1]"
+                      @input="updateLocalTitleHeader({ index, field: 1, value: ($event.target as HTMLInputElement).value })"
+                      @blur="saveChangesFromUi"
+                      type="text"
+                      tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                      :placeholder="lazyStrings.ChatSettingsPanel__value()"
+                      data-testid="chat-setting-title-http-header-value-input"
+                    />
+                    <button
+                      @click="removeLocalTitleHeader({ index })"
+                      tw-class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                      data-testid="chat-setting-title-http-header-remove-button"
+                    >
+                      <Trash2Icon tw-class="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div v-else tw-class="text-[10px] text-gray-400 italic ml-1">{{ lazyStrings.ChatSettingsPanel__no_custom_headers() }}</div>
+              </div>
+
               <div tw-class="space-y-2">
                 <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatSettingsPanel__title_model_override() }}</label>
                 <ModelSelector
-                  :model-value="localSettings.titleModelId"
-                  @update:model-value="val => { localSettings.titleModelId = val; saveChangesFromUi(); }"
-                  :models="sortedAvailableModels"
-                  :loading="isFetchingModels"
-                  :placeholder="formatSettingsSourceLabel({ value: resolvedSettings?.titleModelId, source: resolvedSettings?.sources.titleModelId })"
-                  :allow-clear="true"
-                  :disabled="effectiveEndpointType === 'browser_provided_lm'"
-                  @refresh="fetchModels"
+                  :model-value="localTitleEndpointUsesInheritance ? undefined : localTitleModelId"
+                  @update:model-value="val => setLocalTitleModelId({ modelId: val })"
+                  :models="titleModelOptions"
+                  :loading="titleModelLoading"
+                  :placeholder="localTitleEndpointUsesInheritance ? inheritedTitleModelOptionLabel : (localTitleEndpointUsesSameScope ? sameScopeTitleModelOptionLabel : undefined)"
+                  :allow-clear="localTitleEndpointUsesInheritance || localTitleEndpointUsesSameScope"
+                  :clear-label="localTitleEndpointUsesInheritance ? inheritedTitleModelOptionLabel : sameScopeTitleModelOptionLabel"
+                  :disabled="effectiveTitleEndpoint.type === 'browser_provided_lm'"
+                  @refresh="fetchTitleEndpointModels"
                   data-testid="chat-setting-title-model-select"
                 />
               </div>
+              <div tw-class="md:col-span-2">
+                <ReasoningSettings
+                  :selected-effort="reasoningEffortFromTitleReasoningValue({ value: localTitleReasoningSelectValue })"
+                  :selected-value="localTitleReasoningSelectValue"
+                  :leading-options="titleReasoningLeadingOptions"
+                  :heading="lazyStrings.ChatSettingsPanel__title_reasoning()"
+                  surface="card"
+                  @update:value="value => setLocalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })"
+                  data-testid="chat-setting-title-reasoning-select"
+                />
+              </div>
+
               <div tw-class="flex items-center">
                 <p tw-class="text-[10px] text-gray-400 italic leading-relaxed">
                   {{ titleModelExplanation() }}
@@ -1095,6 +2054,7 @@ defineExpose({
                     <button
                       @click="updateSystemPromptBehavior({ behavior: 'replace' })"
                       :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                      data-testid="chat-setting-system-prompt-override-button"
                     >
                       {{ lazyStrings.ChatSettingsPanel__override() }}
                     </button>

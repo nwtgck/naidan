@@ -297,6 +297,13 @@ function remoteChatGroupPayloadToDomain({
 }: {
   payload: NaidanSysfsRemoteChatGroupPayload,
 }): ChatGroup {
+  const titleGenerationFields = 'titleGeneration' in payload.dto
+    ? { titleGeneration: payload.dto.titleGeneration }
+    : {
+      autoTitleEnabled: payload.dto.autoTitleEnabled,
+      titleModelId: payload.dto.titleModelId,
+    };
+
   const metadata = chatMetaToDomain({
     dto: {
       id: payload.dto.id,
@@ -306,8 +313,7 @@ function remoteChatGroupPayloadToDomain({
       debugEnabled: false,
       endpoint: payload.dto.endpoint,
       modelId: payload.dto.modelId,
-      autoTitleEnabled: payload.dto.autoTitleEnabled,
-      titleModelId: payload.dto.titleModelId,
+      ...titleGenerationFields,
       currentLeafId: undefined,
       originChatId: undefined,
       originMessageId: undefined,
@@ -334,8 +340,7 @@ function remoteChatGroupPayloadToDomain({
     })),
     endpoint: metadata.endpoint,
     modelId: payload.dto.modelId,
-    autoTitleEnabled: payload.dto.autoTitleEnabled,
-    titleModelId: payload.dto.titleModelId,
+    titleGeneration: metadata.titleGeneration,
     systemPrompt: metadata.systemPrompt,
     lmParameters: lmParametersToDomain({ dto: payload.dto.lmParameters }),
     mounts: metadata.mounts,

@@ -1,4 +1,4 @@
-import type { Endpoint, Reasoning } from '@/01-models/types';
+import type { Endpoint, Reasoning, ScopedTitleGeneration } from '@/01-models/types';
 
 export type ScopedSettingChange =
   | Readonly<{
@@ -20,22 +20,13 @@ export type ScopedSettingChange =
       value: string,
     }>
   | Readonly<{
-      field: 'auto_title_enabled',
+      field: 'title_generation',
       behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'auto_title_enabled',
+      field: 'title_generation',
       behavior: 'override',
-      value: boolean,
-    }>
-  | Readonly<{
-      field: 'title_model_id',
-      behavior: 'inherit',
-    }>
-  | Readonly<{
-      field: 'title_model_id',
-      behavior: 'override',
-      value: string,
+      value: Exclude<ScopedTitleGeneration, 'inherit'>,
     }>
   | Readonly<{
       field: 'system_prompt',
@@ -129,8 +120,7 @@ export type LmParameterSettingField = LmParameterSettingChange['field'];
 const scopedSettingFieldRecord: Readonly<Record<ScopedSettingChange['field'], true>> = {
   endpoint: true,
   model_id: true,
-  auto_title_enabled: true,
-  title_model_id: true,
+  title_generation: true,
   system_prompt: true,
   lm_param_temperature: true,
   lm_param_top_p: true,

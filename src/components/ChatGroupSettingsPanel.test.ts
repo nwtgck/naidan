@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, ref, toRef } from 'vue';
-import type { ChatGroup, Settings } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type ChatGroup, type Settings } from '@/01-models/types';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
@@ -42,7 +42,7 @@ const mockCurrentGroup = ref<ChatGroup>(mockGroup);
 const mockSettings = reactive<Settings>({
   endpoint: { type: 'openai', url: 'http://global-url' },
   defaultModelId: 'global-model',
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   storageType: 'opfs',
   providerProfiles: [],
   mounts: [],
@@ -123,7 +123,7 @@ const globalStubs = {
   'ModelSelector': {
     name: 'ModelSelector',
     template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
-    props: ['modelValue', 'models'],
+    props: ['modelValue', 'models', 'loading', 'placeholder', 'allowClear', 'clearLabel', 'disabled'],
   },
   'ChatGroupToolsSettings': {
     name: 'ChatGroupToolsSettings',
@@ -213,11 +213,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
           case 'model_id':
             updates.modelId = updated.modelId;
             break;
-          case 'auto_title_enabled':
-            updates.autoTitleEnabled = updated.autoTitleEnabled;
-            break;
-          case 'title_model_id':
-            updates.titleModelId = updated.titleModelId;
+          case 'title_generation':
+            updates.titleGeneration = updated.titleGeneration;
             break;
           case 'system_prompt':
             updates.systemPrompt = updated.systemPrompt;
@@ -271,8 +268,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       name: 'Test Group',
       endpoint: undefined,
       modelId: undefined,
-      autoTitleEnabled: undefined,
-      titleModelId: undefined,
+      titleGeneration: 'inherit',
       systemPrompt: undefined,
       lmParameters: { reasoning: { effort: undefined } },
       mounts: undefined,
@@ -305,6 +301,155 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(wrapper.find('h2').text()).toContain('Test Group Settings');
   });
 
+  it('shows title-generation inheritance as using the global setting', () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    expect(wrapper.text()).toContain('Use Global Setting');
+  });
+
+  it('keeps the inherited title model selector editable and materializes a group override on change', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockSettings.endpoint = { type: 'ollama', url: 'http://global-ollama' };
+    mockSettings.defaultModelId = 'global-model';
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('allowClear')).toBe(true);
+    expect(titleModelSelector!.props('disabled')).toBe(false);
+
+    await titleModelSelector!.vm.$emit('update:modelValue', 'group-title-model');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toMatchObject({
+      endpoint: 'same_scope',
+      model: { id: 'group-title-model' },
+    });
+  });
+
+  it('preserves inherited title settings when switching the group to override if same scope would differ', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockGroup.endpoint = { type: 'openai', url: 'http://group-openai' };
+    mockGroup.modelId = 'group-model';
+    mockSettings.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    });
+  });
+
+  it('uses same scope when switching the group to override keeps the same resolved title settings', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockGroup.endpoint = { type: 'openai', url: 'http://global-url' };
+    mockGroup.modelId = 'global-model';
+    mockGroup.lmParameters = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: 'same_scope',
+    });
+  });
+
+  it('materializes global title endpoint and model when changing title reasoning', async () => {
+    mockGroup.endpoint = { type: 'openai', url: 'http://group-openai' };
+    mockGroup.modelId = 'group-model';
+    mockGroup.titleGeneration = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: {
+        temperature: 0.3,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'high' },
+      },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleMediumButton = wrapper.findAll('[data-testid="reasoning-effort-medium"]').at(-1);
+    expect(titleMediumButton).toBeDefined();
+    await titleMediumButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: {
+        temperature: 0.3,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'medium' },
+      },
+    });
+  });
+
+  it('loads inherited title model options without requiring a manual model refresh', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: {
+        temperature: undefined,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: undefined },
+      },
+    };
+    mockSettings.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
+    mockSettings.defaultModelId = 'global-model';
+    mockFetchAvailableModels.mockResolvedValue(['title-model-10', 'title-model-2', 'title-model-1']);
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
+  });
+
   it('shows the "Active Overrides" badge only when overrides are present', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
@@ -317,8 +462,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
   it('hides the "Active Overrides" badge when endpoint URL is cleared', async () => {
     // Explicitly set title overrides to undefined
-    mockGroup.autoTitleEnabled = undefined;
-    mockGroup.titleModelId = undefined;
+    mockGroup.titleGeneration = undefined;
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await flushPromises();
@@ -345,15 +489,15 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (OpenAI)');
+    expect(inheritedOption().text()).toBe('Global: OpenAI');
 
     mockSettings.endpoint = { type: 'ollama', url: 'http://global-url' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (Ollama)');
+    expect(inheritedOption().text()).toBe('Global: Ollama');
 
     mockSettings.endpoint = { type: 'transformers_js' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (Transformers.js)');
+    expect(inheritedOption().text()).toBe('Global: Transformers.js');
   });
 
   it('toggles endpoint customization via select', async () => {
@@ -391,7 +535,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     vi.unstubAllGlobals();
   });
 
-  it('persists browser-provided model IDs with a group endpoint override', async () => {
+  it('persists browser-provided chat model and same-scope title setting with a group endpoint override', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -407,7 +551,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(mockGroup).toMatchObject({
       endpoint: { type: 'browser_provided_lm' },
       modelId: BROWSER_PROVIDED_LM_MODEL_ID,
-      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     });
     wrapper.unmount();
     vi.unstubAllGlobals();
@@ -456,7 +600,6 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(mockGroup).toMatchObject({
       endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       modelId: undefined,
-      titleModelId: undefined,
     });
   });
 
@@ -577,7 +720,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     });
 
     // Click Override
-    const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
+    const overrideBtn = wrapper.findAll('button').filter(b => b.text() === 'Override').at(-1);
     await overrideBtn?.trigger('click');
 
     expectLatestGroupUpdate({
@@ -611,8 +754,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
         url: 'http://group-b',
       },
       modelId: undefined,
-      autoTitleEnabled: undefined,
-      titleModelId: undefined,
+      titleGeneration: 'inherit',
       systemPrompt: undefined,
       lmParameters: undefined,
     });
@@ -724,7 +866,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await nextTick();
 
     // First click Override to show the textarea
-    const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
+    const overrideBtn = wrapper.findAll('button').filter(b => b.text() === 'Override').at(-1);
     await overrideBtn?.trigger('click');
     await nextTick();
 
@@ -969,4 +1111,40 @@ describe('ChatGroupSettingsPanel.vue', () => {
       }) });
     });
   });
+
+  it('materializes global title endpoint headers when editing title headers', async () => {
+    mockSettings.titleGeneration = {
+      endpoint: {
+        type: 'openai',
+        url: 'https://global-title.example/v1',
+        httpHeaders: [['X-Global-Title', 'old']],
+      },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-title-http-header-name-input"]').setValue('X-Group-Title');
+    await wrapper.get('[data-testid="group-setting-title-http-header-name-input"]').trigger('blur');
+    await wrapper.get('[data-testid="group-setting-title-http-header-value-input"]').setValue('next');
+    await wrapper.get('[data-testid="group-setting-title-http-header-value-input"]').trigger('blur');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://global-title.example/v1',
+        httpHeaders: [['X-Group-Title', 'next']],
+      },
+      model: { id: 'global-title-model' },
+    });
+    expect(mockSettings.titleGeneration).toMatchObject({
+      endpoint: {
+        httpHeaders: [['X-Global-Title', 'old']],
+      },
+    });
+  });
+
 });

@@ -31,9 +31,9 @@ const mockSettings = {
     },
     storageType: 'local',
     mounts: [],
-    autoTitleEnabled: false,
+    titleGeneration: 'disabled',
     defaultModelId: 'gpt-4',
-    lmParameters: {},
+    lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
     providerProfiles: [],
   },
 };

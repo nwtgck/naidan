@@ -33,7 +33,7 @@ describe('useChatWeshPreferences', () => {
   function setToolConfigPersistence({ persistence }: { persistence: 'disabled' | 'enabled' }) {
     useSettings().TEST_ONLY.__testOnlySetSettings({
       newSettings: {
-        autoTitleEnabled: true,
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         providerProfiles: [],
         mounts: [],
         heavyContentAlertDismissed: false,

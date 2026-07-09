@@ -848,16 +848,13 @@ export class ImportExportService {
         targetKey: 'endpoint',
       });
       applyField({ strategy: strategies.model, newValue: newSettingsDomain.defaultModelId, targetKey: 'defaultModelId' });
-      applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleModelId, targetKey: 'titleModelId' });
+      applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleGeneration, targetKey: 'titleGeneration' });
       applyField({ strategy: strategies.systemPrompt, newValue: newSettingsDomain.systemPrompt, targetKey: 'systemPrompt' });
       applyField({ strategy: strategies.lmParameters, newValue: newSettingsDomain.lmParameters, targetKey: 'lmParameters' });
 
       // Always merge UI flags if present in the import
       if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
         finalSettings.heavyContentAlertDismissed = newSettingsDomain.heavyContentAlertDismissed;
-      }
-      if (newSettingsDomain.autoTitleEnabled !== undefined) {
-        finalSettings.autoTitleEnabled = newSettingsDomain.autoTitleEnabled;
       }
 
       switch (strategies.providerProfiles) {
@@ -974,7 +971,7 @@ export class ImportExportService {
     return {
       structure: {
         settings: settingsDto ? settingsToDomain({ dto: settingsDto }) : {
-          autoTitleEnabled: true,
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
           providerProfiles: [],
           mounts: [],
           storageType: 'local',
@@ -1189,7 +1186,7 @@ export class ImportExportService {
     return {
       structure: {
         settings: settings || {
-          autoTitleEnabled: true,
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
           providerProfiles: [],
           mounts: [],
           storageType: 'local',

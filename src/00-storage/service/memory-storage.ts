@@ -368,7 +368,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     return {
       structure: {
         settings: settings || {
-          autoTitleEnabled: true,
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
           providerProfiles: [],
           mounts: [],
           storageType: 'memory',

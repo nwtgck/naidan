@@ -20,7 +20,7 @@ const mockSettings = ref({
     url: 'http://localhost',
   },
   storageType: 'local',
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   defaultModelId: 'gpt-4',
   providerProfiles: [],
   mounts: [],

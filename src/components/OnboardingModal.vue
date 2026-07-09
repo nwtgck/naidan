@@ -461,17 +461,19 @@ async function handleFinish() {
       case 'ollama':
         return {
           defaultModelId: selectedModel.value || undefined,
-          titleModelId: selectedModel.value || undefined,
+          titleGeneration: selectedModel.value === ''
+            ? { endpoint: 'same_scope' as const, model: 'same_scope' as const, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } }
+            : { endpoint: 'same_scope' as const, model: { id: selectedModel.value }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         };
       case 'transformers_js':
         return {
           defaultModelId: selectedModel.value || undefined,
-          titleModelId: undefined,
+          titleGeneration: { endpoint: 'same_scope' as const, model: 'same_scope' as const , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         };
       case 'browser_provided_lm':
         return {
           defaultModelId: BROWSER_PROVIDED_LM_MODEL_ID,
-          titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+          titleGeneration: { endpoint: 'same_scope' as const, model: 'same_scope' as const , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         };
       default: {
         const _ex: never = type;

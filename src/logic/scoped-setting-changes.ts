@@ -5,6 +5,7 @@ import type {
   ChatMeta,
   Endpoint,
   LmParameters,
+  ScopedTitleGeneration,
   SystemPrompt,
 } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
@@ -17,7 +18,6 @@ import {
 } from '@/utils/lm-parameters';
 
 export { normalizeLmParameters };
-
 
 export function createSystemPromptSettingChange({
   systemPrompt,
@@ -263,6 +263,21 @@ export function cloneScopedSettingChanges({
         throw new Error(`Unhandled endpoint behavior: ${String(_ex)}`);
       }
       }
+    case 'title_generation':
+      switch (change.behavior) {
+      case 'inherit':
+        return { ...change };
+      case 'override':
+        return {
+          ...change,
+          value: cloneScopedTitleGeneration({ titleGeneration: change.value }) as Exclude<ScopedTitleGeneration, 'inherit'>,
+        };
+      default: {
+        const _ex: never = change;
+        throw new Error(`Unhandled title generation behavior: ${String(_ex)}`);
+      }
+      }
+
     case 'lm_param_stop':
       switch (change.behavior) {
       case 'inherit':
@@ -275,8 +290,6 @@ export function cloneScopedSettingChanges({
       }
       }
     case 'model_id':
-    case 'auto_title_enabled':
-    case 'title_model_id':
     case 'system_prompt':
     case 'lm_param_temperature':
     case 'lm_param_top_p':
@@ -291,6 +304,33 @@ export function cloneScopedSettingChanges({
     }
     }
   });
+}
+
+function cloneScopedTitleGeneration({
+  titleGeneration,
+}: {
+  titleGeneration: ScopedTitleGeneration | undefined,
+}): ScopedTitleGeneration | undefined {
+  if (titleGeneration === undefined) return undefined;
+  if (typeof titleGeneration === 'string') return titleGeneration;
+
+  if (titleGeneration.endpoint === 'same_scope') {
+    return {
+      endpoint: 'same_scope',
+      model: titleGeneration.model === 'same_scope'
+        ? 'same_scope'
+        : { ...titleGeneration.model },
+      lmParameters: titleGeneration.lmParameters === 'same_scope'
+        ? 'same_scope'
+        : cloneLmParameters({ lmParameters: titleGeneration.lmParameters }) ?? EMPTY_LM_PARAMETERS,
+    };
+  }
+
+  return {
+    endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
+    model: { ...titleGeneration.model },
+    lmParameters: cloneLmParameters({ lmParameters: titleGeneration.lmParameters }) ?? EMPTY_LM_PARAMETERS,
+  };
 }
 
 function normalizeEndpointOverride({ endpoint }: { endpoint: Endpoint }): Endpoint {
@@ -314,8 +354,7 @@ function assertUniqueFields({
 type ScopedSettingsState = {
   endpoint: Endpoint | undefined,
   modelId: string | undefined,
-  autoTitleEnabled: boolean | undefined,
-  titleModelId: string | undefined,
+  titleGeneration: ScopedTitleGeneration | undefined,
   systemPrompt: SystemPrompt | undefined,
   lmParameters: LmParameters | undefined,
 };
@@ -334,8 +373,7 @@ function applyChanges({
       ? undefined
       : cloneEndpoint({ endpoint: current.endpoint }),
     modelId: current.modelId,
-    autoTitleEnabled: current.autoTitleEnabled,
-    titleModelId: current.titleModelId,
+    titleGeneration: cloneScopedTitleGeneration({ titleGeneration: current.titleGeneration }),
     systemPrompt: current.systemPrompt === undefined
       ? undefined
       : { ...current.systemPrompt },
@@ -379,35 +417,22 @@ function applyChanges({
       }
       break;
 
-    case 'auto_title_enabled':
-      switch (change.behavior) {
-      case 'inherit':
-        next.autoTitleEnabled = undefined;
-        break;
-      case 'override':
-        next.autoTitleEnabled = change.value;
-        break;
-      default: {
-        const _ex: never = change;
-        throw new Error(`Unhandled auto title behavior: ${String(_ex)}`);
-      }
-      }
-      break;
 
-    case 'title_model_id':
+    case 'title_generation': {
       switch (change.behavior) {
       case 'inherit':
-        next.titleModelId = undefined;
+        next.titleGeneration = 'inherit';
         break;
       case 'override':
-        next.titleModelId = change.value;
+        next.titleGeneration = cloneScopedTitleGeneration({ titleGeneration: change.value });
         break;
       default: {
         const _ex: never = change;
-        throw new Error(`Unhandled title model behavior: ${String(_ex)}`);
+        throw new Error(`Unhandled title generation behavior: ${String(_ex)}`);
       }
       }
       break;
+    }
 
     case 'system_prompt':
       switch (change.behavior) {
@@ -611,8 +636,7 @@ export function applyScopedSettingChangesToChat({
     current: {
       endpoint: current.endpoint,
       modelId: current.modelId,
-      autoTitleEnabled: current.autoTitleEnabled,
-      titleModelId: current.titleModelId,
+      titleGeneration: current.titleGeneration,
       systemPrompt: current.systemPrompt,
       lmParameters: current.lmParameters,
     },
@@ -641,8 +665,7 @@ export function applyScopedSettingChangesToChatMeta({
     current: {
       endpoint: current.endpoint,
       modelId: current.modelId,
-      autoTitleEnabled: current.autoTitleEnabled,
-      titleModelId: current.titleModelId,
+      titleGeneration: current.titleGeneration,
       systemPrompt: current.systemPrompt,
       lmParameters: current.lmParameters,
     },
@@ -671,8 +694,7 @@ export function applyScopedSettingChangesToChatGroup({
     current: {
       endpoint: current.endpoint,
       modelId: current.modelId,
-      autoTitleEnabled: current.autoTitleEnabled,
-      titleModelId: current.titleModelId,
+      titleGeneration: current.titleGeneration,
       systemPrompt: current.systemPrompt,
       lmParameters: current.lmParameters,
     },

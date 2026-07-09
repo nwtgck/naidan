@@ -13,15 +13,17 @@ export function formatSettingsSourceLabel({
   value: string | undefined,
   source: SettingsSource | undefined,
 }): string | undefined {
-  if (!value) return lazyStrings.formatSettingsSourceLabel__none();
+  const resolvedValue = value || lazyStrings.formatSettingsSourceLabel__none();
+  if (resolvedValue === undefined) return undefined;
   switch (source) {
-  case 'chat_group':
-    return lazyStrings.formatSettingsSourceLabel__value_from_group({ value });
-  case 'global':
-    return lazyStrings.formatSettingsSourceLabel__value_from_global({ value });
   case 'chat':
+    return lazyStrings.formatSettingsSourceLabel__value_from_chat({ value: resolvedValue });
+  case 'chat_group':
+    return lazyStrings.formatSettingsSourceLabel__value_from_group({ value: resolvedValue });
+  case 'global':
+    return lazyStrings.formatSettingsSourceLabel__value_from_global({ value: resolvedValue });
   case undefined:
-    return value;
+    return resolvedValue;
   default: {
     const _ex: never = source;
     throw new Error(`Unhandled source: ${_ex}`);

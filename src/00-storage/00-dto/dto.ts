@@ -118,6 +118,47 @@ export const LmParametersSchemaDto = resolveMissingAsUndefined(z.object({
 }));
 export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
 
+const SettingsTitleGenerationSchemaDto = z.union([
+  z.literal('disabled'),
+  z.object({
+    endpoint: z.literal('same_scope'),
+    model: z.union([
+      z.literal('same_scope'),
+      z.object({ id: z.string().min(1) }),
+    ]),
+    lmParameters: z.union([
+      z.literal('same_scope'),
+      LmParametersSchemaDto,
+    ]),
+  }),
+  z.object({
+    endpoint: EndpointSchemaDto,
+    model: z.object({ id: z.string().min(1) }),
+    lmParameters: LmParametersSchemaDto,
+  }),
+]);
+
+const ScopedTitleGenerationSchemaDto = z.union([
+  z.literal('disabled'),
+  z.literal('inherit'),
+  z.object({
+    endpoint: z.literal('same_scope'),
+    model: z.union([
+      z.literal('same_scope'),
+      z.object({ id: z.string().min(1) }),
+    ]),
+    lmParameters: z.union([
+      z.literal('same_scope'),
+      LmParametersSchemaDto,
+    ]),
+  }),
+  z.object({
+    endpoint: EndpointSchemaDto,
+    model: z.object({ id: z.string().min(1) }),
+    lmParameters: LmParametersSchemaDto,
+  }),
+]);
+
 export const SystemPromptSchemaDto = z.discriminatedUnion('behavior', [
   z.object({
     behavior: z.literal('override'),
@@ -180,7 +221,7 @@ export type MountDto = z.infer<typeof MountSchemaDto>;
 
 // --- Grouping ---
 
-export const ChatGroupSchemaDto = resolveMissingAsUndefined(z.object({
+export const ChatGroupSchemaDtoV1 = resolveMissingAsUndefined(z.object({
   id: z.string(),
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatGroupSchemaDto }),
   name: z.string(),
@@ -195,6 +236,28 @@ export const ChatGroupSchemaDto = resolveMissingAsUndefined(z.object({
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
   mounts: missingAsUndefined(z.array(MountSchemaDto)),
 }));
+export type ChatGroupDtoV1 = z.infer<typeof ChatGroupSchemaDtoV1>;
+
+export const ChatGroupSchemaDtoV2 = resolveMissingAsUndefined(z.object({
+  id: z.string(),
+  experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatGroupSchemaDto }),
+  name: z.string(),
+  updatedAt: z.number(),
+  isCollapsed: z.boolean().default(false),
+
+  endpoint: missingAsUndefined(EndpointSchemaDto),
+  modelId: missingAsUndefined(z.string()),
+  titleGeneration: ScopedTitleGenerationSchemaDto,
+  systemPrompt: missingAsUndefined(SystemPromptSchemaDto),
+  lmParameters: missingAsUndefined(LmParametersSchemaDto),
+  mounts: missingAsUndefined(z.array(MountSchemaDto)),
+}));
+export type ChatGroupDtoV2 = z.infer<typeof ChatGroupSchemaDtoV2>;
+
+export const ChatGroupSchemaDto = z.union([
+  ChatGroupSchemaDtoV2,
+  ChatGroupSchemaDtoV1,
+]);
 export type ChatGroupDto = z.infer<typeof ChatGroupSchemaDto>;
 
 // --- Hierarchy (Structural Source of Truth) ---
@@ -431,7 +494,7 @@ export type MessageNodeDto =
  * Chat Metadata
  * Contains all attributes except the heavy message tree.
  */
-export const ChatMetaSchemaDto = resolveMissingAsUndefined(z.object({
+export const ChatMetaSchemaDtoV1 = resolveMissingAsUndefined(z.object({
   id: z.string(),
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatMetaSchemaDto }),
   title: z.string().nullable(),
@@ -451,6 +514,33 @@ export const ChatMetaSchemaDto = resolveMissingAsUndefined(z.object({
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
   mounts: missingAsUndefined(z.array(MountSchemaDto)),
 }));
+export type ChatMetaDtoV1 = z.infer<typeof ChatMetaSchemaDtoV1>;
+
+export const ChatMetaSchemaDtoV2 = resolveMissingAsUndefined(z.object({
+  id: z.string(),
+  experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalChatMetaSchemaDto }),
+  title: z.string().nullable(),
+  currentLeafId: missingAsUndefined(z.string()),
+  updatedAt: z.number(),
+  createdAt: z.number(),
+  debugEnabled: z.boolean().optional().default(false),
+
+  endpoint: missingAsUndefined(EndpointSchemaDto),
+  modelId: missingAsUndefined(z.string()),
+  titleGeneration: ScopedTitleGenerationSchemaDto,
+  originChatId: missingAsUndefined(z.string()),
+  originMessageId: missingAsUndefined(z.string()),
+
+  systemPrompt: missingAsUndefined(SystemPromptSchemaDto),
+  lmParameters: missingAsUndefined(LmParametersSchemaDto),
+  mounts: missingAsUndefined(z.array(MountSchemaDto)),
+}));
+export type ChatMetaDtoV2 = z.infer<typeof ChatMetaSchemaDtoV2>;
+
+export const ChatMetaSchemaDto = z.union([
+  ChatMetaSchemaDtoV2,
+  ChatMetaSchemaDtoV1,
+]);
 
 export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
 
@@ -481,13 +571,28 @@ export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
  * Combined Chat DTO
  * Used for memory handling and migration (full data export).
  */
-export const ChatSchemaDto = ChatMetaSchemaDto.safeExtend({
+export const ChatSchemaDtoV1 = ChatMetaSchemaDtoV1.safeExtend({
   root: missingAsUndefined(MessageBranchSchemaDto),
   currentLeafId: missingAsUndefined(z.string()),
 
   // Legacy support field
   messages: missingAsUndefined(z.array(z.unknown())),
 });
+export type ChatDtoV1 = z.infer<typeof ChatSchemaDtoV1>;
+
+export const ChatSchemaDtoV2 = ChatMetaSchemaDtoV2.safeExtend({
+  root: missingAsUndefined(MessageBranchSchemaDto),
+  currentLeafId: missingAsUndefined(z.string()),
+
+  // Legacy support field
+  messages: missingAsUndefined(z.array(z.unknown())),
+});
+export type ChatDtoV2 = z.infer<typeof ChatSchemaDtoV2>;
+
+export const ChatSchemaDto = z.union([
+  ChatSchemaDtoV2,
+  ChatSchemaDtoV1,
+]);
 
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
 
@@ -505,7 +610,7 @@ export const ProviderProfileSchemaDto = resolveMissingAsUndefined(z.object({
 }));
 export type ProviderProfileDto = z.infer<typeof ProviderProfileSchemaDto>;
 
-export const SettingsSchemaDto = resolveMissingAsUndefined(z.object({
+export const SettingsSchemaDtoV1 = resolveMissingAsUndefined(z.object({
   endpoint: EndpointSchemaDto,
   defaultModelId: missingAsUndefined(z.string()),
   titleModelId: missingAsUndefined(z.string()),
@@ -518,6 +623,26 @@ export const SettingsSchemaDto = resolveMissingAsUndefined(z.object({
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalSettingsSchemaDto }),
 }));
+export type SettingsDtoV1 = z.infer<typeof SettingsSchemaDtoV1>;
+
+export const SettingsSchemaDtoV2 = resolveMissingAsUndefined(z.object({
+  endpoint: EndpointSchemaDto,
+  defaultModelId: missingAsUndefined(z.string()),
+  titleGeneration: SettingsTitleGenerationSchemaDto,
+  storageType: StorageTypeSchemaDto,
+  providerProfiles: z.array(ProviderProfileSchemaDto).default([]),
+  mounts: z.array(MountSchemaDto).default([]),
+  heavyContentAlertDismissed: missingAsUndefined(z.boolean()),
+  systemPrompt: missingAsUndefined(z.string()),
+  lmParameters: missingAsUndefined(LmParametersSchemaDto),
+  experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalSettingsSchemaDto }),
+}));
+export type SettingsDtoV2 = z.infer<typeof SettingsSchemaDtoV2>;
+
+export const SettingsSchemaDto = z.union([
+  SettingsSchemaDtoV2,
+  SettingsSchemaDtoV1,
+]);
 export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
 
 /**

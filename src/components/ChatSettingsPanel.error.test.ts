@@ -57,7 +57,7 @@ describe('ChatSettingsPanel Error Handling', () => {
         url: 'http://old-url',
       },
       systemPrompt: null,
-      lmParameters: {},
+      lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
     };
 
     vi.mocked(useCurrentChatState).mockReturnValue({

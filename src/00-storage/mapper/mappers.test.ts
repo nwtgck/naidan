@@ -20,6 +20,7 @@ import type {
   SystemMessageNode,
   UserMessageNode,
 } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
   SettingsSchemaDto,
   type ChatDto,
@@ -260,8 +261,7 @@ describe('Chat Mapping', () => {
         httpHeaders: [['X-Chat', 'true']],
       },
       modelId: 'chat-model',
-      autoTitleEnabled: false,
-      titleModelId: 'title-model',
+      titleGeneration: 'disabled',
       originChatId,
       originMessageId,
       systemPrompt: { behavior: 'override', content: null },
@@ -286,8 +286,7 @@ describe('Chat Mapping', () => {
         httpHeaders: [['X-Chat', 'true']],
       },
       modelId: 'chat-model',
-      autoTitleEnabled: false,
-      titleModelId: 'title-model',
+      titleGeneration: 'disabled',
       originChatId: 'chat-origin',
       originMessageId: 'message-origin',
       systemPrompt: { behavior: 'override', content: null },
@@ -384,8 +383,10 @@ describe('Chat Mapping', () => {
       messages: undefined,
     };
 
-    expect(dto).toEqual(expectedDto);
-    expect(chatToDto({ domain: chatToDomain({ dto }) })).toEqual(expectedDto);
+    expect(dto).toMatchObject(expectedDto);
+    expect(dto).not.toHaveProperty('autoTitleEnabled');
+    expect(dto).not.toHaveProperty('titleModelId');
+    expect(chatToDto({ domain: chatToDomain({ dto }) })).toEqual(dto);
   });
 });
 
@@ -477,8 +478,7 @@ describe('Settings Mapping', () => {
     const dto: SettingsDto = {
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
       defaultModelId: 'gpt-4',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -496,6 +496,43 @@ describe('Settings Mapping', () => {
     expect(domain.experimental?.locale).toBeUndefined();
   });
 
+  it('roundtrips title generation reasoning parameters through settings DTO', () => {
+    const domain: Settings = {
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      defaultModelId: 'gpt-4',
+      titleGeneration: {
+        endpoint: 'same_scope',
+        model: 'same_scope',
+        lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
+          reasoning: { effort: 'low' },
+        },
+      },
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+    };
+
+    const dto = settingsToDto({ domain });
+    const dtoTitleGeneration = (dto as { titleGeneration: Settings['titleGeneration'] }).titleGeneration;
+    expect(dtoTitleGeneration).not.toBe('disabled');
+    if (dtoTitleGeneration !== 'disabled') {
+      expect(dtoTitleGeneration.lmParameters).not.toBe('same_scope');
+      if (dtoTitleGeneration.lmParameters !== 'same_scope') {
+        expect(dtoTitleGeneration.lmParameters?.reasoning.effort).toBe('low');
+      }
+    }
+
+    const remapped = settingsToDomain({ dto });
+    expect(remapped.titleGeneration).not.toBe('disabled');
+    if (remapped.titleGeneration !== 'disabled') {
+      expect(remapped.titleGeneration.lmParameters).not.toBe('same_scope');
+      if (remapped.titleGeneration.lmParameters !== 'same_scope') {
+        expect(remapped.titleGeneration.lmParameters?.reasoning.effort).toBe('low');
+      }
+    }
+  });
+
   it('keeps settings readable when only an experimental endpoint identifier is unsupported', () => {
     const dto = {
       endpoint: {
@@ -506,8 +543,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'future-model',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -539,8 +575,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'future-model',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -565,8 +600,7 @@ describe('Settings Mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'browser_provided_lm' },
       defaultModelId: 'browser-provided-language-model',
-      titleModelId: 'browser-provided-language-model',
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -580,7 +614,7 @@ describe('Settings Mapping', () => {
     const remapped = settingsToDomain({ dto });
     expect(remapped.endpoint).toEqual(domain.endpoint);
     expect(remapped.defaultModelId).toBe(domain.defaultModelId);
-    expect(remapped.titleModelId).toBe(domain.titleModelId);
+    expect(remapped.titleGeneration).toEqual(domain.titleGeneration);
     expect(remapped.storageType).toBe(domain.storageType);
   });
 
@@ -594,8 +628,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'browser-provided-language-model',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -615,7 +648,7 @@ describe('Settings Mapping', () => {
   it('preserves an empty HTTP URL through settings mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'openai', url: '' },
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -632,8 +665,7 @@ describe('Settings Mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       defaultModelId: 'gpt-4',
-      titleModelId: undefined,
-      autoTitleEnabled: true,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -675,8 +707,7 @@ describe('Settings Mapping', () => {
         httpHeaders: [['Authorization', 'Bearer token']],
       },
       defaultModelId: 'gpt-4.1',
-      titleModelId: 'gpt-4.1-mini',
-      autoTitleEnabled: false,
+      titleGeneration: 'disabled',
       storageType: 'opfs',
       providerProfiles: [{
         id: toProviderProfileId({ raw: 'provider-profile-1' }),
@@ -725,8 +756,7 @@ describe('Settings Mapping', () => {
         httpHeaders: [['Authorization', 'Bearer token']],
       },
       defaultModelId: 'gpt-4.1',
-      titleModelId: 'gpt-4.1-mini',
-      autoTitleEnabled: false,
+      titleGeneration: 'disabled',
       storageType: 'opfs',
       providerProfiles: [{
         id: 'provider-profile-1',
@@ -770,8 +800,10 @@ describe('Settings Mapping', () => {
       },
     };
 
-    expect(dto).toEqual(expectedDto);
-    expect(settingsToDto({ domain: settingsToDomain({ dto }) })).toEqual(expectedDto);
+    expect(dto).toMatchObject(expectedDto);
+    expect(dto).not.toHaveProperty('autoTitleEnabled');
+    expect(dto).not.toHaveProperty('titleModelId');
+    expect(settingsToDto({ domain: settingsToDomain({ dto }) })).toEqual(dto);
   });
 });
 

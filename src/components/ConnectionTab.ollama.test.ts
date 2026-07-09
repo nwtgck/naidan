@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import type { EndpointType, Settings } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type EndpointType, type Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
@@ -51,8 +51,7 @@ function createSettings({ endpointType }: {
       }
     })(),
     defaultModelId: '',
-    titleModelId: '',
-    autoTitleEnabled: true,
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     storageType: 'memory',
     providerProfiles: [],
     mounts: [],
@@ -140,7 +139,7 @@ describe('ConnectionTab Ollama management integration', () => {
     vi.unstubAllGlobals();
   });
 
-  it('persists both browser-provided model IDs when the endpoint is selected', async () => {
+  it('persists the browser-provided chat model and same-scope title setting when the endpoint is selected', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -163,11 +162,11 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
     expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
-    expect(settings.titleModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(settings.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: 'same_scope' });
     wrapper.unmount();
   });
 
-  it('does not clear browser-provided model IDs when an earlier endpoint fetch finishes late', async () => {
+  it('does not clear the browser-provided chat model when an earlier endpoint fetch finishes late', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -199,7 +198,7 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
     expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
-    expect(settings.titleModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
+    expect(settings.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: 'same_scope' });
     wrapper.unmount();
   });
 
@@ -210,7 +209,7 @@ describe('ConnectionTab Ollama management integration', () => {
     }));
     const settings = createSettings({ endpointType: 'browser_provided_lm' });
     settings.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
-    settings.titleModelId = BROWSER_PROVIDED_LM_MODEL_ID;
+    settings.titleGeneration = { endpoint: 'same_scope', model: { id: BROWSER_PROVIDED_LM_MODEL_ID }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
 
     const wrapper = mount(ConnectionTab, {
       props: {
@@ -227,7 +226,7 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(settings.endpoint).toEqual({ type: 'ollama', url: '' });
     expect(settings.defaultModelId).toBe('');
-    expect(settings.titleModelId).toBe('');
+    expect(settings.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: 'same_scope' });
     wrapper.unmount();
   });
 
@@ -239,7 +238,7 @@ describe('ConnectionTab Ollama management integration', () => {
     mockFetchModels.mockResolvedValue(['browser-provided-language-model']);
     const settings = createSettings({ endpointType: 'browser_provided_lm' });
     settings.defaultModelId = 'browser-provided-language-model';
-    settings.titleModelId = 'browser-provided-language-model';
+    settings.titleGeneration = { endpoint: 'same_scope', model: { id: 'browser-provided-language-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
 
     const wrapper = mount(ConnectionTab, {
       props: {
@@ -257,6 +256,55 @@ describe('ConnectionTab Ollama management integration', () => {
     expect(selectors[0]?.props('disabled')).toBe(true);
     expect(selectors[1]?.props('modelValue')).toBe('browser-provided-language-model');
     expect(selectors[1]?.props('disabled')).toBe(true);
+    wrapper.unmount();
+  });
+
+
+  it('edits HTTP headers on an explicit title endpoint', async () => {
+    const settings = createSettings({ endpointType: 'openai' });
+    settings.titleGeneration = {
+      endpoint: {
+        type: 'openai',
+        url: 'https://title.example/v1',
+        httpHeaders: [['X-Title', 'old']],
+      },
+      model: { id: 'title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: [],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="setting-title-http-header-name-input"]').setValue('X-Title-Next');
+    await wrapper.get('[data-testid="setting-title-http-header-value-input"]').setValue('next');
+
+    expect(settings.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://title.example/v1',
+        httpHeaders: [['X-Title-Next', 'next']],
+      },
+      model: { id: 'title-model' },
+    });
+
+    await wrapper.get('[data-testid="setting-title-http-header-remove-button"]').trigger('click');
+
+    expect(settings.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://title.example/v1',
+        httpHeaders: [],
+      },
+      model: { id: 'title-model' },
+    });
     wrapper.unmount();
   });
 

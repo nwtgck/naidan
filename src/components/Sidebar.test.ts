@@ -21,7 +21,7 @@ const mockSettings = ref({
   endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' },
   defaultModelId: 'llama3',
   storageType: 'local' as StorageType,
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   providerProfiles: [],
 });
 const mockAvailableModels = ref(['llama3', 'mistral', 'phi3']);

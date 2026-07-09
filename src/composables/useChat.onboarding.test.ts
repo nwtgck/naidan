@@ -32,7 +32,7 @@ const mockSettings = {
     defaultModelId: '',
     storageType: 'local' as const,
     mounts: [],
-    autoTitleEnabled: true,
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   },
 };
 const mockIsOnboardingDismissed = { value: true };

@@ -54,8 +54,9 @@ const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: 
 const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ConversationOutlineOverlay.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
-import type { LmParameters } from '@/01-models/types';
-import { getSupportedEndpointType, isConfiguredEndpoint } from '@/01-models/endpoint';
+import type { Endpoint, LmParameters, ScopedTitleGeneration, SettingsTitleGeneration } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
+import { areEndpointsEqual, cloneEndpoint, getSupportedEndpointType, isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { ChatId } from '@/01-models/ids';
 import { idToRaw, toMessageId } from '@/01-models/ids';
 import type { ChatGroupId, MessageId } from '@/01-models/ids';
@@ -146,6 +147,8 @@ const inheritedSettings = chatPaneState.inheritedSettings;
 const availableChatGroups = chatPaneState.chatGroups;
 const availableModels = chatModels.availableModels;
 const fetchingModels = chatModels.fetchingModels;
+const titleDialogModels = ref<string[]>([]);
+const titleDialogFetchingModels = ref(false);
 const isProcessing = computed(() => isChatProcessing({ chatId: props.chatId }));
 const {
   chatFlow,
@@ -849,23 +852,79 @@ const currentModelLabel = computed(() => formatSettingsSourceLabel({
   source: resolvedSettings.value?.sources.modelId,
 }));
 
-const activeTitleModelSource = computed<SettingsSource>(() => resolvedSettings.value?.sources.titleModelId ?? 'global');
+const activeTitleModelSource = computed<SettingsSource>(() => resolvedSettings.value?.sources.titleGeneration ?? 'global');
 
 const activeTitleModelId = computed(() => {
-  const source = activeTitleModelSource.value;
-  switch (source) {
-  case 'chat':
-    return chat.value?.titleModelId;
-  case 'chat_group':
-    return chatGroup.value?.titleModelId;
-  case 'global':
-    return settings.value.titleModelId;
-  default: {
-    const _ex: never = source;
-    throw new Error(`Unhandled title model source: ${_ex}`);
-  }
-  }
+  const titleGeneration = resolvedSettings.value?.titleGeneration;
+  return titleGeneration === undefined || titleGeneration === 'disabled'
+    ? undefined
+    : titleGeneration.modelId;
 });
+
+const activeTitleEndpoint = computed<Endpoint | undefined>(() => {
+  const titleGeneration = resolvedSettings.value?.titleGeneration;
+  return titleGeneration === undefined || titleGeneration === 'disabled'
+    ? undefined
+    : titleGeneration.endpoint;
+});
+
+const titleDialogAvailableModels = computed(() => {
+  const titleEndpoint = activeTitleEndpoint.value;
+  const generationEndpoint = resolvedSettings.value?.endpoint;
+  if (titleEndpoint === undefined || generationEndpoint === undefined) return availableModels.value;
+  return areEndpointsEqual({ left: titleEndpoint, right: generationEndpoint })
+    ? availableModels.value
+    : titleDialogModels.value;
+});
+
+const titleDialogFetching = computed(() => {
+  const titleEndpoint = activeTitleEndpoint.value;
+  const generationEndpoint = resolvedSettings.value?.endpoint;
+  if (titleEndpoint === undefined || generationEndpoint === undefined) return fetchingModels.value;
+  return areEndpointsEqual({ left: titleEndpoint, right: generationEndpoint })
+    ? fetchingModels.value
+    : titleDialogFetchingModels.value;
+});
+
+function emptyTitleLmParameters(): LmParameters {
+  return {
+    ...EMPTY_LM_PARAMETERS,
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
+  };
+}
+
+function titleGenerationWithModel({
+  titleGeneration,
+  modelId,
+}: {
+  titleGeneration: SettingsTitleGeneration | ScopedTitleGeneration | undefined,
+  modelId: string | undefined,
+}): Exclude<ScopedTitleGeneration, 'inherit'> | SettingsTitleGeneration {
+  const existing = titleGeneration !== undefined && typeof titleGeneration !== 'string'
+    ? titleGeneration
+    : undefined;
+
+  if (modelId === undefined || modelId === '') {
+    return {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: existing?.endpoint === 'same_scope' ? existing.lmParameters : emptyTitleLmParameters(),
+    };
+  }
+
+  if (existing !== undefined) {
+    return {
+      ...existing,
+      model: { id: modelId },
+    };
+  }
+
+  return {
+    endpoint: 'same_scope',
+    model: { id: modelId },
+    lmParameters: emptyTitleLmParameters(),
+  };
+}
 
 async function updateActiveTitleModel({
   source,
@@ -882,29 +941,33 @@ async function updateActiveTitleModel({
   case 'chat':
     await chatMetadata.updateScopedSettings({
       chatId,
-      changes: [modelId === undefined
-        ? { field: 'title_model_id', behavior: 'inherit' }
-        : { field: 'title_model_id', behavior: 'override', value: modelId }],
+      changes: [{
+        field: 'title_generation',
+        behavior: 'override',
+        value: titleGenerationWithModel({ titleGeneration: chat.value?.titleGeneration, modelId }) as Exclude<ScopedTitleGeneration, 'inherit'>,
+      }],
     });
     return;
   case 'chat_group':
     if (chatGroupId === undefined) {
       await saveSettings({
-        patch: { titleModelId: modelId },
+        patch: { titleGeneration: titleGenerationWithModel({ titleGeneration: settings.value.titleGeneration, modelId }) as SettingsTitleGeneration },
         modelRefresh: 'await',
       });
       return;
     }
     await chatGroups.updateScopedSettings({
       chatGroupId,
-      changes: [modelId === undefined
-        ? { field: 'title_model_id', behavior: 'inherit' }
-        : { field: 'title_model_id', behavior: 'override', value: modelId }],
+      changes: [{
+        field: 'title_generation',
+        behavior: 'override',
+        value: titleGenerationWithModel({ titleGeneration: chatGroup.value?.titleGeneration, modelId }) as Exclude<ScopedTitleGeneration, 'inherit'>,
+      }],
     });
     return;
   case 'global':
     await saveSettings({
-      patch: { titleModelId: modelId },
+      patch: { titleGeneration: titleGenerationWithModel({ titleGeneration: settings.value.titleGeneration, modelId }) as SettingsTitleGeneration },
       modelRefresh: 'await',
     });
     return;
@@ -914,6 +977,7 @@ async function updateActiveTitleModel({
   }
   }
 }
+
 
 function handleSearchChatFromHeader() {
   if (chat.value) {
@@ -1095,13 +1159,43 @@ function getChatSiblings({ messageId }: { messageId: MessageId }) {
   })];
 }
 
-async function handleRefreshModels() {
+async function fetchTitleDialogModels(): Promise<void> {
   const chatValue = chat.value;
   if (!chatValue) return;
-  await chatModels.fetchForChat({
-    chatId: chatValue.id,
-  });
+  const titleEndpoint = activeTitleEndpoint.value;
+  const generationEndpoint = resolvedSettings.value?.endpoint;
+  if (titleEndpoint === undefined || generationEndpoint === undefined || areEndpointsEqual({ left: titleEndpoint, right: generationEndpoint })) {
+    await chatModels.fetchForChat({ chatId: chatValue.id });
+    return;
+  }
+
+  if (!isConfiguredEndpoint({ endpoint: titleEndpoint })) {
+    titleDialogModels.value = [];
+    return;
+  }
+
+  const endpoint = cloneEndpoint({ endpoint: titleEndpoint });
+  titleDialogFetchingModels.value = true;
+  try {
+    const models = await chatModels.fetchForEndpoint({ endpoint });
+    if (activeTitleEndpoint.value === undefined || !areEndpointsEqual({ left: endpoint, right: activeTitleEndpoint.value })) return;
+    titleDialogModels.value = models;
+  } finally {
+    titleDialogFetchingModels.value = false;
+  }
 }
+
+async function handleRefreshModels() {
+  await fetchTitleDialogModels();
+}
+
+watch(
+  () => [showTitleDialog.value, activeTitleEndpoint.value] as const,
+  ([isOpen]) => {
+    if (!isOpen) return;
+    void fetchTitleDialogModels();
+  },
+);
 
 function handleApprovalDecision({
   decision,
@@ -1315,12 +1409,12 @@ watch(
     <ChatTitleDialog
       :is-open="showTitleDialog"
       :title="chat?.title ?? null"
-      :available-models="availableModels"
+      :available-models="titleDialogAvailableModels"
       :selected-title-model="activeTitleModelId"
       :title-model-source="activeTitleModelSource"
       :generated-titles="generatedTitleHistory"
       :generating-title="isGeneratingTitle"
-      :fetching-models="fetchingModels"
+      :fetching-models="titleDialogFetching"
       @close="showTitleDialog = false"
       @save-title="title => handleSaveTitle({ title })"
       @generate-title="modelId => handleGenerateTitle({ modelId })"

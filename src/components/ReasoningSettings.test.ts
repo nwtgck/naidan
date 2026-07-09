@@ -56,6 +56,36 @@ describe('ReasoningSettings Component', () => {
     expect(lowBtn.classes()).not.toContain('flex-[1.4]');
   });
 
+
+  it('renders and emits leading source options without emitting an effort', async () => {
+    const wrapper = mount(ReasoningSettings, {
+      props: {
+        selectedEffort: undefined,
+        selectedValue: 'inherit',
+        leadingOptions: [
+          {
+            value: 'inherit',
+            label: 'Global: Default',
+            shortLabel: 'Global: Default',
+            testId: 'inherit',
+          },
+        ],
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="reasoning-effort-inherit"]').exists()).toBe(true);
+    });
+
+    const inheritButton = wrapper.find('[data-testid="reasoning-effort-inherit"]');
+    expect(inheritButton.classes()).toContain('text-blue-600');
+
+    await inheritButton.trigger('click');
+
+    expect(wrapper.emitted('update:value')).toEqual([['inherit']]);
+    expect(wrapper.emitted('update:effort')).toBeUndefined();
+  });
+
   it('initializes slider position on mount', async () => {
     const wrapper = await getWrapper('high');
     await nextTick();
