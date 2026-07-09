@@ -29,6 +29,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         shardIndex: [1, 2, 3, 4, 5, 6, 7, 8]
         shardTotal: [8]
@@ -48,7 +49,47 @@ jobs:
 
       - name: Run tests
         if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
-        run: npm run test -- --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        shell: bash
+        env:
+          FORCE_COLOR: "1"
+          npm_config_color: always
+        run: |
+          mkdir -p "$RUNNER_TEMP/test-logs"
+          set -o pipefail
+
+          # Use script to allocate a pseudo-TTY so test reporters keep color
+          # output even though tee records the same stream for artifact logs.
+          script -q -e -c \
+            "npm run test -- --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}" \
+            /dev/null 2>&1 \
+            | tee "$RUNNER_TEMP/test-logs/npm-test-shard-${{ matrix.shardIndex }}-of-${{ matrix.shardTotal }}.log"
+
+      - name: Upload test shard log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-test-log-shard-${{ matrix.shardIndex }}-of-${{ matrix.shardTotal }}
+          path: ${{ runner.temp }}/test-logs/
+          if-no-files-found: warn
+
+  merge_test_logs:
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ always() && !cancelled() }}
+    steps:
+      - name: Download all test shard logs
+        uses: actions/download-artifact@v7
+        with:
+          pattern: npm-test-log-shard-*
+          path: all-test-logs
+          merge-multiple: true
+
+      - name: Upload merged test logs
+        uses: actions/upload-artifact@v7
+        with:
+          name: npm-test-logs
+          path: all-test-logs/
+          if-no-files-found: error
 
   test_python_server:
     runs-on: ubuntu-latest
