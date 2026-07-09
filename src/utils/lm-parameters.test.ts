@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import type { LmParameters } from '@/01-models/types';
+import type { LmParameterOverrides } from './lm-parameters';
 import {
   cloneLmParameters,
   hasLmParameterOverrides,
@@ -87,5 +88,15 @@ describe('LM parameter override detection', () => {
       temperature: 0.5,
     };
     expect(normalizeLmParameters({ lmParameters: overridden })).toBe(overridden);
+  });
+
+  it('normalizes_partial_overrides_to_the_complete_parameter_shape', () => {
+    const partial: LmParameterOverrides = { temperature: 0.5 };
+
+    expect(normalizeLmParameters({ lmParameters: partial })).toStrictEqual({
+      ...emptyLmParameters(),
+      temperature: 0.5,
+    });
+    expect(normalizeLmParameters({ lmParameters: partial })).not.toBe(partial);
   });
 });
