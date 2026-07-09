@@ -306,7 +306,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(wrapper.text()).toContain('Use Global Setting');
   });
 
-  it('hides title controls while using the global setting', async () => {
+  it('keeps the inherited title model selector editable and materializes a group override on change', async () => {
     mockGroup.titleGeneration = undefined;
     mockSettings.endpoint = { type: 'ollama', url: 'http://global-ollama' };
     mockSettings.defaultModelId = 'global-model';
@@ -314,8 +314,19 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    expect(wrapper.find('[data-testid="group-setting-title-model-select"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Use Global Setting');
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('allowClear')).toBe(true);
+    expect(titleModelSelector!.props('disabled')).toBe(false);
+
+    await titleModelSelector!.vm.$emit('update:modelValue', 'group-title-model');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toMatchObject({
+      endpoint: { type: 'ollama', url: 'http://global-ollama' },
+      model: { id: 'group-title-model' },
+    });
   });
 
   it('materializes global title endpoint and model when changing title reasoning', async () => {
@@ -335,7 +346,6 @@ describe('ChatGroupSettingsPanel.vue', () => {
         reasoning: { effort: 'high' },
       },
     };
-    mockGroup.titleGeneration = mockSettings.titleGeneration;
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
@@ -360,17 +370,33 @@ describe('ChatGroupSettingsPanel.vue', () => {
     });
   });
 
-  it('hides inherited title model options until title generation is enabled locally', async () => {
+  it('loads inherited title model options without requiring a manual model refresh', async () => {
     mockGroup.titleGeneration = undefined;
-    mockSettings.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
+    mockSettings.titleGeneration = {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: {
+        temperature: undefined,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: undefined },
+      },
+    };
     mockSettings.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
     mockSettings.defaultModelId = 'global-model';
+    mockFetchAvailableModels.mockResolvedValue(['title-model-10', 'title-model-2', 'title-model-1']);
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await flushPromises();
     await nextTick();
 
-    expect(wrapper.find('[data-testid="group-setting-title-model-select"]').exists()).toBe(false);
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
   });
 
   it('shows the "Active Overrides" badge only when overrides are present', async () => {
@@ -1045,7 +1071,6 @@ describe('ChatGroupSettingsPanel.vue', () => {
       model: { id: 'global-title-model' },
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
     };
-    mockGroup.titleGeneration = mockSettings.titleGeneration;
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();

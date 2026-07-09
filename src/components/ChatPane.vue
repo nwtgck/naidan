@@ -886,26 +886,6 @@ const titleDialogFetching = computed(() => {
     : titleDialogFetchingModels.value;
 });
 
-const titleDialogModelAllowClear = computed(() => {
-  const source = activeTitleModelSource.value;
-  const titleGeneration = (() => {
-    switch (source) {
-    case 'chat':
-      return chat.value?.titleGeneration;
-    case 'chat_group':
-      return chatGroup.value?.titleGeneration;
-    case 'global':
-      return settings.value.titleGeneration;
-    default: {
-      const _ex: never = source;
-      throw new Error(`Unhandled title model source: ${_ex}`);
-    }
-    }
-  })();
-
-  return titleGeneration === undefined || titleGeneration === 'inherit' || (typeof titleGeneration !== 'string' && titleGeneration.endpoint === 'same_scope');
-});
-
 function emptyTitleLmParameters(): LmParameters {
   return {
     ...EMPTY_LM_PARAMETERS,
@@ -925,13 +905,11 @@ function titleGenerationWithModel({
     : undefined;
 
   if (modelId === undefined || modelId === '') {
-    if (existing === undefined) {
-      return { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() };
-    }
-    if (existing.endpoint === 'same_scope') {
-      return { ...existing, model: 'same_scope' };
-    }
-    return existing;
+    return {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: existing?.endpoint === 'same_scope' ? existing.lmParameters : emptyTitleLmParameters(),
+    };
   }
 
   if (existing !== undefined) {
@@ -1437,7 +1415,6 @@ watch(
       :generated-titles="generatedTitleHistory"
       :generating-title="isGeneratingTitle"
       :fetching-models="titleDialogFetching"
-      :title-model-allow-clear="titleDialogModelAllowClear"
       @close="showTitleDialog = false"
       @save-title="title => handleSaveTitle({ title })"
       @generate-title="modelId => handleGenerateTitle({ modelId })"

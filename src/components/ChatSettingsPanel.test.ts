@@ -455,7 +455,7 @@ describe('ChatSettingsPanel.vue', () => {
     expect(wrapper.text()).toContain('Use Chat Group Setting');
   });
 
-  it('hides title controls while using the chat group setting', async () => {
+  it('keeps the inherited title model selector editable and materializes a chat override on change', async () => {
     mockCurrentChat.value.titleGeneration = undefined;
     mockSettings.value.endpoint = { type: 'ollama', url: 'http://global-ollama' };
     mockSettings.value.defaultModelId = 'global-model';
@@ -466,8 +466,19 @@ describe('ChatSettingsPanel.vue', () => {
     });
     await nextTick();
 
-    expect(wrapper.find('[data-testid="chat-setting-title-model-select"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Use Chat Group Setting');
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Chat Group: global-model');
+    expect(titleModelSelector!.props('allowClear')).toBe(true);
+    expect(titleModelSelector!.props('disabled')).toBe(false);
+
+    await titleModelSelector!.vm.$emit('update:modelValue', 'chat-title-model');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toMatchObject({
+      endpoint: { type: 'ollama', url: 'http://global-ollama' },
+      model: { id: 'chat-title-model' },
+    });
   });
 
 
@@ -487,7 +498,6 @@ describe('ChatSettingsPanel.vue', () => {
         reasoning: { effort: 'high' },
       },
     };
-    mockCurrentChat.value.titleGeneration = mockSettings.value.titleGeneration;
 
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
@@ -515,7 +525,7 @@ describe('ChatSettingsPanel.vue', () => {
     });
   });
 
-  it('hides inherited title model options until title generation is enabled locally', async () => {
+  it('loads inherited title model options without requiring a manual model refresh', async () => {
     mockCurrentChat.value.titleGeneration = undefined;
     mockSettings.value.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
     mockSettings.value.defaultModelId = 'global-model';
@@ -528,7 +538,10 @@ describe('ChatSettingsPanel.vue', () => {
     await flushPromises();
     await nextTick();
 
-    expect(wrapper.find('[data-testid="chat-setting-title-model-select"]').exists()).toBe(false);
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Chat Group: global-model');
+    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
   });
 
   it('applies animation classes for entrance effects', () => {
@@ -1356,7 +1369,6 @@ describe('ChatSettingsPanel.vue', () => {
       model: { id: 'group-title-model' },
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
     };
-    mockCurrentChat.value.titleGeneration = mockSettings.value.titleGeneration;
 
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },

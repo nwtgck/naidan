@@ -42,6 +42,10 @@ For intentionally unused fields, destructure them with an underscore-prefixed na
 
 Use inline `Record<PropertyKey, never>` for rest-property checks. Do not create an alias for it. Use `exactObject` for destination-side exactness; see `src/utils/exact-object.ts`.
 
+# UI is not a data mirror
+
+Do not mechanically mirror DTO or domain state into UI. Prefer the user workflow. For example, inherited controls may stay visible so the user can see the effective value and editing that control can intentionally materialize a local override. Add comments/tests for these UX contracts so they are not simplified away as a data-model cleanup.
+
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.
 * **Boundary Strings in Tests**: When string loading is not part of the behavior under test, preload strings locally in the relevant test file or suite:

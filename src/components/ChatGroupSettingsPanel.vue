@@ -1999,7 +1999,7 @@ defineExpose({
                 @click="setLocalTitleGenerationMode({ mode: 'override' })"
                 :tw-class="['px-3 py-1 text-[9px] font-bold rounded transition-all', localTitleGenerationMode === 'override' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
               >
-                {{ lazyStrings.ChatGroupSettingsPanel__enabled() }}
+                {{ lazyStrings.ChatGroupSettingsPanel__override() }}
               </button>
               <button
                 @click="setLocalTitleGenerationMode({ mode: 'disabled' })"
@@ -2010,7 +2010,8 @@ defineExpose({
             </div>
           </div>
 
-          <div v-if="localTitleGenerationMode === 'override'" tw-class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
+          <!-- UX: keep effective inherited title controls visible. Editing them intentionally materializes a local override instead of forcing users to switch modes first. -->
+          <div v-if="localTitleGenerationMode !== 'disabled'" tw-class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
             <div tw-class="space-y-2">
               <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">{{ lazyStrings.ChatGroupSettingsPanel__title_endpoint_type() }}</label>
               <select

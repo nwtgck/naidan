@@ -16,7 +16,6 @@ const props = defineProps<{
   generatedTitles: readonly string[],
   generatingTitle: boolean,
   fetchingModels: boolean,
-  titleModelAllowClear: boolean,
 }>();
 
 const emit = defineEmits<{
@@ -236,9 +235,9 @@ defineExpose({
                     v-model="selectedTitleModelDraft"
                     :models="availableModels"
                     :loading="fetchingModels"
-                    :allow-clear="titleModelAllowClear"
-                    :clear-label="titleModelAllowClear ? lazyStrings.ChatTitleDialog__use_chat_model() : undefined"
-                    :placeholder="titleModelAllowClear ? lazyStrings.ChatTitleDialog__use_chat_model() : undefined"
+                    :allow-clear="true"
+                    :clear-label="lazyStrings.ChatTitleDialog__use_chat_model()"
+                    :placeholder="lazyStrings.ChatTitleDialog__use_chat_model()"
                     data-testid="chat-title-model-select"
                     @refresh="emit('refresh-models')"
                   />
