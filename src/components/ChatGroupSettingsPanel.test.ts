@@ -324,8 +324,59 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await flushPromises();
 
     expect(mockGroup.titleGeneration).toMatchObject({
-      endpoint: { type: 'ollama', url: 'http://global-ollama' },
+      endpoint: 'same_scope',
       model: { id: 'group-title-model' },
+    });
+  });
+
+  it('preserves inherited title settings when switching the group to override if same scope would differ', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockGroup.endpoint = { type: 'openai', url: 'http://group-openai' };
+    mockGroup.modelId = 'group-model';
+    mockSettings.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    });
+  });
+
+  it('uses same scope when switching the group to override keeps the same resolved title settings', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockGroup.endpoint = { type: 'openai', url: 'http://global-url' };
+    mockGroup.modelId = 'global-model';
+    mockGroup.lmParameters = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: 'same_scope',
     });
   });
 

@@ -188,6 +188,12 @@ type ScopedTitleGenerationDraft =
       lmParameters?: LmParameters,
     };
 
+type MaterializedTitleGeneration = {
+  endpoint: Endpoint,
+  model: { id: string },
+  lmParameters: LmParameters,
+};
+
 function scopedTitleGenerationFromDraft({
   draft,
 }: {
@@ -453,11 +459,39 @@ function materializedLocalLmParameters(): LmParameters | undefined {
   return clonePlainLmParameters({ lmParameters: titleGeneration.lmParameters });
 }
 
-function materializedLocalTitleGeneration(): Exclude<ScopedTitleGeneration, 'inherit' | 'disabled'> {
+function materializedLocalTitleGeneration(): MaterializedTitleGeneration {
   return {
     endpoint: cloneEndpoint({ endpoint: effectiveTitleEndpoint.value }),
     model: explicitTitleModel({ modelId: effectiveTitleModelId.value }),
     lmParameters: clonePlainLmParameters({ lmParameters: materializedLocalLmParameters() }) ?? emptyLmParameters(),
+  };
+}
+
+function materializedLocalTitleGenerationOverride(): Exclude<ScopedTitleGeneration, 'inherit' | 'disabled'> {
+  const resolved = materializedLocalTitleGeneration();
+  const sameScopeEndpoint = effectiveEndpoint.value;
+  const sameScopeModelId = effectiveModelId.value;
+  const sameScopeLmParameters = localSameScopeLmParameters();
+
+  // UX: switching from inherited title settings to a local override should
+  // preserve the currently visible effective endpoint/model/parameters. Prefer
+  // `same_scope` only when it resolves to the same values; otherwise write the
+  // resolved values explicitly so the mode switch itself does not surprise the
+  // user by changing the title generation target.
+  if (areEndpointsEqual({ left: resolved.endpoint, right: sameScopeEndpoint })) {
+    return {
+      endpoint: 'same_scope',
+      model: resolved.model.id === sameScopeModelId ? 'same_scope' : { id: resolved.model.id },
+      lmParameters: areLmParametersEqual({ left: resolved.lmParameters, right: sameScopeLmParameters })
+        ? 'same_scope'
+        : clonePlainLmParameters({ lmParameters: resolved.lmParameters }) ?? emptyLmParameters(),
+    };
+  }
+
+  return {
+    endpoint: cloneEndpoint({ endpoint: resolved.endpoint }),
+    model: { ...resolved.model },
+    lmParameters: clonePlainLmParameters({ lmParameters: resolved.lmParameters }) ?? emptyLmParameters(),
   };
 }
 
@@ -784,7 +818,7 @@ function setLocalTitleReasoningSelectValue({
   switch (value) {
   case 'same_scope': {
     const base = current === 'inherit'
-      ? materializedLocalTitleGeneration()
+      ? materializedLocalTitleGenerationOverride()
       : current;
     if (typeof base === 'string') return;
     setLocalTitleGeneration({
@@ -810,7 +844,9 @@ function setLocalTitleReasoningSelectValue({
   }
   }
 
-  const base = materializedLocalTitleGeneration();
+  const base = current === 'inherit'
+    ? materializedLocalTitleGenerationOverride()
+    : materializedLocalTitleGeneration();
   const nextLmParameters = titleLmParametersFromReasoningSelectValue({
     value,
     current: base.lmParameters,
@@ -974,7 +1010,7 @@ function setLocalTitleGenerationMode({
     setLocalTitleGeneration({ titleGeneration: 'disabled' });
     return;
   case 'override':
-    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
+    setLocalTitleGeneration({ titleGeneration: materializedLocalTitleGenerationOverride() });
     return;
   default: {
     const _ex: never = mode;
@@ -1002,14 +1038,19 @@ function setLocalTitleModelId({
       setLocalTitleGeneration({ titleGeneration: 'inherit' });
       return;
     }
-    const endpoint = activeTitleEndpoint.value;
-    if (endpoint === undefined) {
-      setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: { id: modelId } } });
+    const base = materializedLocalTitleGenerationOverride();
+    if (base.endpoint === 'same_scope') {
+      setLocalTitleGeneration({
+        titleGeneration: {
+          ...base,
+          model: sameScopeTitleModel({ modelId }),
+        },
+      });
       return;
     }
     setLocalTitleGeneration({
       titleGeneration: {
-        endpoint: cloneEndpoint({ endpoint }),
+        ...base,
         model: { id: modelId },
       },
     });

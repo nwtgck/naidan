@@ -476,11 +476,66 @@ describe('ChatSettingsPanel.vue', () => {
     await flushPromises();
 
     expect(mockCurrentChat.value.titleGeneration).toMatchObject({
-      endpoint: { type: 'ollama', url: 'http://global-ollama' },
+      endpoint: 'same_scope',
       model: { id: 'chat-title-model' },
     });
   });
 
+
+  it('preserves inherited title settings when switching the chat to override if same scope would differ', async () => {
+    mockCurrentChat.value.titleGeneration = undefined;
+    mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://chat-openai' };
+    mockCurrentChat.value.modelId = 'chat-model';
+    mockSettings.value.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://group-title-ollama' },
+      model: { id: 'group-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    };
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://group-title-ollama' },
+      model: { id: 'group-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    });
+  });
+
+  it('uses same scope when switching the chat to override keeps the same resolved title settings', async () => {
+    mockCurrentChat.value.titleGeneration = undefined;
+    mockCurrentChat.value.lmParameters = undefined;
+    mockSettings.value.titleGeneration = {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toEqual({
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: 'same_scope',
+    });
+  });
 
   it('materializes inherited title endpoint and model when changing title reasoning', async () => {
     mockCurrentChat.value.endpoint = { type: 'openai', url: 'http://chat-openai' };
