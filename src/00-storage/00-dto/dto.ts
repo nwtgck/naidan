@@ -118,38 +118,45 @@ export const LmParametersSchemaDto = resolveMissingAsUndefined(z.object({
 }));
 export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
 
-
-const TitleLmParametersSchemaDto = z.union([
-  z.literal('same_scope'),
-  LmParametersSchemaDto,
-]);
-
-const SameScopeTitleGenerationSchemaDto = z.object({
-  endpoint: z.literal('same_scope'),
-  model: z.union([
-    z.literal('same_scope'),
-    z.object({ id: z.string() }),
-  ]),
-  lmParameters: missingAsUndefined(TitleLmParametersSchemaDto),
-});
-
-const ExplicitTitleGenerationSchemaDto = z.object({
-  endpoint: EndpointSchemaDto,
-  model: z.object({ id: z.string() }),
-  lmParameters: missingAsUndefined(LmParametersSchemaDto),
-});
-
 const SettingsTitleGenerationSchemaDto = z.union([
   z.literal('disabled'),
-  SameScopeTitleGenerationSchemaDto,
-  ExplicitTitleGenerationSchemaDto,
+  z.object({
+    endpoint: z.literal('same_scope'),
+    model: z.union([
+      z.literal('same_scope'),
+      z.object({ id: z.string() }),
+    ]),
+    lmParameters: missingAsUndefined(z.union([
+      z.literal('same_scope'),
+      LmParametersSchemaDto,
+    ])),
+  }),
+  z.object({
+    endpoint: EndpointSchemaDto,
+    model: z.object({ id: z.string() }),
+    lmParameters: missingAsUndefined(LmParametersSchemaDto),
+  }),
 ]);
 
 const ScopedTitleGenerationSchemaDto = z.union([
   z.literal('disabled'),
   z.literal('inherit'),
-  SameScopeTitleGenerationSchemaDto,
-  ExplicitTitleGenerationSchemaDto,
+  z.object({
+    endpoint: z.literal('same_scope'),
+    model: z.union([
+      z.literal('same_scope'),
+      z.object({ id: z.string() }),
+    ]),
+    lmParameters: missingAsUndefined(z.union([
+      z.literal('same_scope'),
+      LmParametersSchemaDto,
+    ])),
+  }),
+  z.object({
+    endpoint: EndpointSchemaDto,
+    model: z.object({ id: z.string() }),
+    lmParameters: missingAsUndefined(LmParametersSchemaDto),
+  }),
 ]);
 
 export const SystemPromptSchemaDto = z.discriminatedUnion('behavior', [
