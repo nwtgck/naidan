@@ -56,6 +56,7 @@ describe('ChatSettingsPanel.vue', () => {
       defaultModelId: string,
       titleGeneration: SettingsTitleGeneration,
       lmParameters?: LmParameters,
+      systemPrompt?: string,
       providerProfiles: {
         id: string,
         name: string,
@@ -69,6 +70,7 @@ describe('ChatSettingsPanel.vue', () => {
       endpoint: { type: 'openai', url: 'http://global:1234' },
       defaultModelId: 'global-model',
       titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      systemPrompt: undefined,
       providerProfiles: [
         {
           id: 'profile-1',
@@ -115,6 +117,7 @@ describe('ChatSettingsPanel.vue', () => {
       endpoint: { type: 'openai', url: 'http://global:1234' },
       defaultModelId: 'global-model',
       titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      systemPrompt: undefined,
       lmParameters: undefined,
       providerProfiles: [
         {
@@ -172,7 +175,7 @@ describe('ChatSettingsPanel.vue', () => {
           sameScopeModelId: modelId,
           sameScopeLmParameters: chat?.lmParameters ?? s.lmParameters,
         }),
-        systemPromptMessages: [],
+        systemPromptMessages: s.systemPrompt ? [s.systemPrompt] : [],
         lmParameters: chat?.lmParameters ?? s.lmParameters,
         sources: {
           endpoint: chat?.endpoint ? 'chat' : 'global',
@@ -196,7 +199,7 @@ describe('ChatSettingsPanel.vue', () => {
           sameScopeModelId: s.defaultModelId,
           sameScopeLmParameters: s.lmParameters,
         }),
-        systemPromptMessages: [],
+        systemPromptMessages: s.systemPrompt ? [s.systemPrompt] : [],
         lmParameters: s.lmParameters,
         sources: {
           endpoint: 'global' as const,
@@ -1165,24 +1168,148 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   describe('Settings Resolution Indicators', () => {
-    it('shows "Group/Global Default" for system prompt when not overridden', async () => {
+    it('shows parent source status for system prompt when not overridden', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
       });
       await nextTick();
       const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
-      expect(status.text()).toBe('Group/Global Default');
+      expect(status.text()).toBe('Chat Group: Not set');
     });
 
-    it('shows "Overriding" for system prompt when overridden with override behavior', async () => {
+    it('shows system prompt modes and keeps the editor mounted', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
       });
       await nextTick();
 
-      // First click Override to show the textarea
+      expect(wrapper.text()).toContain('Chat Group');
+      expect(wrapper.text()).toContain('No Prompt');
+      expect(wrapper.text()).toContain('Override');
+      expect(wrapper.text()).toContain('Append');
+      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+      await wrapper.get('[data-testid="chat-setting-system-prompt-no-prompt-button"]').trigger('click');
+      await nextTick();
+      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+      await wrapper.get('[data-testid="chat-setting-system-prompt-override-button"]').trigger('click');
+      await nextTick();
+      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+      await wrapper.get('[data-testid="chat-setting-system-prompt-append-button"]').trigger('click');
+      await nextTick();
+      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+      await wrapper.get('[data-testid="chat-setting-system-prompt-parent-button"]').trigger('click');
+      await nextTick();
+      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
+    });
+
+    it('shows the chat group prompt in parent mode and materializes an override when edited', async () => {
+      mockSettings.value.systemPrompt = 'Inherited prompt';
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs },
+      });
+      await nextTick();
+
+      const textarea = wrapper.get('[data-testid="chat-setting-system-prompt-textarea"]');
+      expect((textarea.element as HTMLTextAreaElement).value).toBe('Inherited prompt');
+
+      await textarea.setValue('Edited chat prompt');
+      await textarea.trigger('blur');
+
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
+        systemPrompt: { behavior: 'override', content: 'Edited chat prompt' },
+      }) });
+    });
+
+    it('keeps No Prompt editable and switches to override when typing', async () => {
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs },
+      });
+      await nextTick();
+
+      await wrapper.get('[data-testid="chat-setting-system-prompt-no-prompt-button"]').trigger('click');
+      await flushPromises();
+
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
+        systemPrompt: { behavior: 'override', content: null },
+      }) });
+
+      const textarea = wrapper.get('[data-testid="chat-setting-system-prompt-textarea"]');
+      await textarea.setValue('Prompt after none');
+      await textarea.trigger('blur');
+
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
+        systemPrompt: { behavior: 'override', content: 'Prompt after none' },
+      }) });
+    });
+
+    it('does not copy the chat group prompt into append mode', async () => {
+      mockSettings.value.systemPrompt = 'Inherited prompt';
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs },
+      });
+      await nextTick();
+
+      await wrapper.get('[data-testid="chat-setting-system-prompt-append-button"]').trigger('click');
+      await nextTick();
+
+      const textarea = wrapper.get('[data-testid="chat-setting-system-prompt-textarea"]');
+      expect((textarea.element as HTMLTextAreaElement).value).toBe('');
+    });
+
+    it('materializes the chat group prompt when Override is clicked from parent mode', async () => {
+      mockSettings.value.systemPrompt = 'Inherited prompt';
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs },
+      });
+      await nextTick();
+
+      await wrapper.get('[data-testid="chat-setting-system-prompt-override-button"]').trigger('click');
+      await flushPromises();
+
+      const textarea = wrapper.get('[data-testid="chat-setting-system-prompt-textarea"]');
+      expect((textarea.element as HTMLTextAreaElement).value).toBe('Inherited prompt');
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
+        systemPrompt: { behavior: 'override', content: 'Inherited prompt' },
+      }) });
+    });
+
+    it('saves append editor content as append-only chat prompt content', async () => {
+      mockSettings.value.systemPrompt = 'Inherited prompt';
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs },
+      });
+      await nextTick();
+
+      await wrapper.get('[data-testid="chat-setting-system-prompt-append-button"]').trigger('click');
+      await flushPromises();
+
+      const textarea = wrapper.get('[data-testid="chat-setting-system-prompt-textarea"]');
+      await textarea.setValue('Append only prompt');
+      await textarea.trigger('blur');
+
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
+        systemPrompt: { behavior: 'append', content: 'Append only prompt' },
+      }) });
+    });
+
+    it('shows "Override" for system prompt when overridden with override behavior', async () => {
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs },
+      });
+      await nextTick();
+
       const overrideBtn = wrapper.get('[data-testid="chat-setting-system-prompt-override-button"]');
       await overrideBtn.trigger('click');
       await nextTick();
@@ -1193,24 +1320,22 @@ describe('ChatSettingsPanel.vue', () => {
       await textarea.trigger('blur');
 
       const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
-      expect(status.text()).toBe('Overriding');
+      expect(status.text()).toBe('Override');
     });
 
-    it('shows "Appending" for system prompt when overridden with append behavior', async () => {
+    it('shows "Append" for system prompt when overridden with append behavior', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
         global: { stubs: globalStubs },
       });
       await nextTick();
-      const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
-      await appendBtn?.trigger('click');
+      await wrapper.get('[data-testid="chat-setting-system-prompt-append-button"]').trigger('click');
 
       const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
-      expect(status.text()).toBe('Appending');
+      expect(status.text()).toBe('Append');
     });
 
-    it('shows "Inherit" behavior and clears override when clicking Inherit button', async () => {
-      // Set an initial override
+    it('uses the chat group mode and clears override when clicking Chat Group button', async () => {
       mockCurrentChat.value.systemPrompt = { content: 'Old prompt', behavior: 'override' };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
@@ -1218,23 +1343,16 @@ describe('ChatSettingsPanel.vue', () => {
       });
       await nextTick();
 
-      // Ensure textarea exists initially
       expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
 
-      // Click Inherit in the System Prompt section (it's the second one now)
-      const inheritBtns = wrapper.findAll('button').filter(b => b.text().includes('Inherit'));
-      const inheritBtn = inheritBtns.find(b => b.element.closest('.md\\:col-span-2')) || inheritBtns[0];
-      await inheritBtn?.trigger('click');
+      await wrapper.get('[data-testid="chat-setting-system-prompt-parent-button"]').trigger('click');
       await flushPromises();
 
-      // Verify updateChatSettings was called with undefined for systemPrompt
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         systemPrompt: undefined,
       }) });
-
-      // Verify UI state: textarea should be gone, and inherited notice shown
-      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(false);
-      expect(wrapper.text()).toContain('Inherited Instructions');
+      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
+      expect(wrapper.get('[data-testid="chat-setting-system-prompt-caption"]').text()).toBe('Chat Group: Not set');
     });
 
     it('shows "Inherited" for parameters when not overridden', async () => {

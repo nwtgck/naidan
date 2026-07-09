@@ -173,6 +173,7 @@ function areScopedTitleGenerationsEqual({
 }
 
 type TitleGenerationMode = 'inherit' | 'override' | 'disabled';
+type SystemPromptUiMode = 'parent' | 'no_prompt' | 'override' | 'append';
 
 type ScopedTitleGenerationDraft =
   | 'inherit'
@@ -1585,41 +1586,184 @@ watch(
 );
 
 
-async function updateSystemPromptBehavior({
-  behavior,
+function systemPromptUiModeFromValue({
+  systemPrompt,
 }: {
-  behavior: 'inherit' | 'clear' | 'replace' | 'append',
-}) {
-  switch (behavior) {
-  case 'inherit':
+  systemPrompt: SystemPrompt | undefined,
+}): SystemPromptUiMode {
+  if (systemPrompt === undefined) return 'parent';
+  switch (systemPrompt.behavior) {
+  case 'override':
+    return systemPrompt.content === null ? 'no_prompt' : 'override';
+  case 'append':
+    return 'append';
+  default: {
+    const _ex: never = systemPrompt;
+    throw new Error(`Unhandled system prompt behavior: ${String(_ex)}`);
+  }
+  }
+}
+
+function systemPromptOverrideContent({
+  systemPrompt,
+}: {
+  systemPrompt: SystemPrompt | undefined,
+}): string {
+  if (systemPrompt === undefined) return '';
+  switch (systemPrompt.behavior) {
+  case 'override':
+    return systemPrompt.content ?? '';
+  case 'append':
+    return '';
+  default: {
+    const _ex: never = systemPrompt;
+    throw new Error(`Unhandled system prompt behavior: ${String(_ex)}`);
+  }
+  }
+}
+
+function systemPromptAppendContent({
+  systemPrompt,
+}: {
+  systemPrompt: SystemPrompt | undefined,
+}): string {
+  if (systemPrompt === undefined) return '';
+  switch (systemPrompt.behavior) {
+  case 'override':
+    return '';
+  case 'append':
+    return systemPrompt.content;
+  default: {
+    const _ex: never = systemPrompt;
+    throw new Error(`Unhandled system prompt behavior: ${String(_ex)}`);
+  }
+  }
+}
+
+const parentSystemPromptText = computed(() => inheritedSettings.value?.systemPromptMessages?.join('\n\n') ?? '');
+const systemPromptUiMode = computed(() => systemPromptUiModeFromValue({ systemPrompt: localSettings.value.systemPrompt }));
+
+// UX contract: this editor is intentionally not a mirror of the systemPrompt DTO.
+// Parent/no-prompt states still keep the same textarea mounted so lower settings
+// do not jump when the user changes modes, and typing materializes an override.
+const systemPromptEditorValue = computed(() => {
+  switch (systemPromptUiMode.value) {
+  case 'parent':
+    return parentSystemPromptText.value;
+  case 'no_prompt':
+    return '';
+  case 'override':
+    return systemPromptOverrideContent({ systemPrompt: localSettings.value.systemPrompt });
+  case 'append':
+    return systemPromptAppendContent({ systemPrompt: localSettings.value.systemPrompt });
+  default: {
+    const _ex: never = systemPromptUiMode.value;
+    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
+  }
+  }
+});
+
+const systemPromptEditorCaption = computed(() => {
+  switch (systemPromptUiMode.value) {
+  case 'parent':
+    return parentSystemPromptText.value
+      ? lazyStrings.ChatSettingsPanel__system_prompt_chat_group_set()
+      : lazyStrings.ChatSettingsPanel__system_prompt_chat_group_not_set();
+  case 'no_prompt':
+    return lazyStrings.ChatSettingsPanel__system_prompt_no_prompt();
+  case 'override':
+    return lazyStrings.ChatSettingsPanel__instructions_for_this_chat();
+  case 'append':
+    return lazyStrings.ChatSettingsPanel__instructions_to_append();
+  default: {
+    const _ex: never = systemPromptUiMode.value;
+    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
+  }
+  }
+});
+
+const systemPromptEditorPlaceholder = computed(() => {
+  switch (systemPromptUiMode.value) {
+  case 'parent':
+  case 'no_prompt':
+    return lazyStrings.ChatSettingsPanel__start_typing_to_override();
+  case 'override':
+    return lazyStrings.ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting();
+  case 'append':
+    return lazyStrings.ChatSettingsPanel__enter_instructions_to_append();
+  default: {
+    const _ex: never = systemPromptUiMode.value;
+    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
+  }
+  }
+});
+
+const systemPromptResolutionStatus = computed(() => {
+  switch (systemPromptUiMode.value) {
+  case 'parent':
+    return parentSystemPromptText.value
+      ? lazyStrings.ChatSettingsPanel__system_prompt_chat_group_set()
+      : lazyStrings.ChatSettingsPanel__system_prompt_chat_group_not_set();
+  case 'no_prompt':
+    return lazyStrings.ChatSettingsPanel__system_prompt_no_prompt();
+  case 'override':
+    return lazyStrings.ChatSettingsPanel__override();
+  case 'append':
+    return lazyStrings.ChatSettingsPanel__append();
+  default: {
+    const _ex: never = systemPromptUiMode.value;
+    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
+  }
+  }
+});
+
+async function updateSystemPromptMode({
+  mode,
+}: {
+  mode: SystemPromptUiMode,
+}): Promise<void> {
+  switch (mode) {
+  case 'parent':
     localSettings.value.systemPrompt = undefined;
     break;
-  case 'clear':
+  case 'no_prompt':
     localSettings.value.systemPrompt = { behavior: 'override', content: null };
     break;
-  case 'replace': {
-    const content = localSettings.value.systemPrompt?.content ?? '';
+  case 'override': {
+    const current = localSettings.value.systemPrompt;
+    const content = current?.behavior === 'override' && current.content !== null
+      ? current.content
+      : parentSystemPromptText.value;
     localSettings.value.systemPrompt = { behavior: 'override', content };
     break;
   }
   case 'append': {
-    const content = localSettings.value.systemPrompt?.content ?? '';
+    const content = systemPromptAppendContent({ systemPrompt: localSettings.value.systemPrompt });
     localSettings.value.systemPrompt = { behavior: 'append', content };
     break;
   }
   default: {
-    const _ex: never = behavior;
-    throw new Error(`Unhandled behavior: ${_ex}`);
+    const _ex: never = mode;
+    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
   }
   }
   await saveChangesFromUi();
 }
 
-function updateSystemPromptContent({ content }: { content: string }) {
-  if (localSettings.value.systemPrompt) {
-    localSettings.value.systemPrompt.content = content;
-  } else {
-    localSettings.value.systemPrompt = { content, behavior: 'override' };
+function updateSystemPromptEditorContent({ content }: { content: string }): void {
+  switch (systemPromptUiMode.value) {
+  case 'parent':
+  case 'no_prompt':
+  case 'override':
+    localSettings.value.systemPrompt = { behavior: 'override', content };
+    return;
+  case 'append':
+    localSettings.value.systemPrompt = { behavior: 'append', content };
+    return;
+  default: {
+    const _ex: never = systemPromptUiMode.value;
+    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
+  }
   }
 }
 
@@ -2040,50 +2184,45 @@ defineExpose({
 
                   <div tw-class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                     <button
-                      @click="updateSystemPromptBehavior({ behavior: 'inherit' })"
-                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', !localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                      @click="updateSystemPromptMode({ mode: 'parent' })"
+                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', systemPromptUiMode === 'parent' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                      data-testid="chat-setting-system-prompt-parent-button"
                     >
-                      {{ lazyStrings.ChatSettingsPanel__inherit() }}
+                      {{ lazyStrings.ChatSettingsPanel__chat_group() }}
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior({ behavior: 'clear' })"
-                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                      @click="updateSystemPromptMode({ mode: 'no_prompt' })"
+                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', systemPromptUiMode === 'no_prompt' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                      data-testid="chat-setting-system-prompt-no-prompt-button"
                     >
-                      {{ lazyStrings.ChatSettingsPanel__clear() }}
+                      {{ lazyStrings.ChatSettingsPanel__no_prompt() }}
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior({ behavior: 'replace' })"
-                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                      @click="updateSystemPromptMode({ mode: 'override' })"
+                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', systemPromptUiMode === 'override' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
                       data-testid="chat-setting-system-prompt-override-button"
                     >
                       {{ lazyStrings.ChatSettingsPanel__override() }}
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior({ behavior: 'append' })"
-                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                      @click="updateSystemPromptMode({ mode: 'append' })"
+                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', systemPromptUiMode === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
+                      data-testid="chat-setting-system-prompt-append-button"
                     >
                       {{ lazyStrings.ChatSettingsPanel__append() }}
                     </button>
                   </div>
                 </div>
-                <div v-if="!localSettings.systemPrompt" tw-class="w-full bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-4 text-left">
-                  <p tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">{{ lazyStrings.ChatSettingsPanel__inherited_instructions() }}</p>
-                  <p tw-class="text-xs text-gray-400 dark:text-gray-500 italic whitespace-pre-wrap line-clamp-6">
-                    {{ inheritedSettings?.systemPromptMessages?.join('\n\n') || lazyStrings.ChatSettingsPanel__no_instructions_inherited() }}
-                  </p>
-                </div>
-                <div v-else-if="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null" tw-class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center">
-                  <p tw-class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__parent_prompt_cleared() }}</p>
-                  <p tw-class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{{ lazyStrings.ChatSettingsPanel__this_chat_will_not_use_any_system_instructions() }}</p>
-                </div>
+                <p tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1" data-testid="chat-setting-system-prompt-caption">
+                  {{ systemPromptEditorCaption }}
+                </p>
                 <textarea
-                  v-else
-                  :value="localSettings.systemPrompt?.content || ''"
-                  @input="e => updateSystemPromptContent({ content: (e.target as HTMLTextAreaElement).value })"
+                  :value="systemPromptEditorValue"
+                  @input="e => updateSystemPromptEditorContent({ content: (e.target as HTMLTextAreaElement).value })"
                   @blur="saveChangesFromUi"
                   rows="4"
                   tw-class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
-                  :placeholder="localSettings.systemPrompt?.behavior === 'append' ? lazyStrings.ChatSettingsPanel__added_after_global_instructions() : lazyStrings.ChatSettingsPanel__completely_replaces_global_instructions()"
+                  :placeholder="systemPromptEditorPlaceholder"
                   data-testid="chat-setting-system-prompt-textarea"
                 ></textarea>
               </div>
@@ -2096,8 +2235,8 @@ defineExpose({
                 <div tw-class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3">
                   <div tw-class="flex items-center justify-between text-[10px] font-bold">
                     <span tw-class="text-gray-400">{{ lazyStrings.ChatSettingsPanel__system_prompt() }}</span>
-                    <span :tw-class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">
-                      {{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? lazyStrings.ChatSettingsPanel__appending() : (localSettings.systemPrompt.content === null ? lazyStrings.ChatSettingsPanel__cleared() : lazyStrings.ChatSettingsPanel__overriding())) : lazyStrings.ChatSettingsPanel__group_global_default() }}
+                    <span :tw-class="systemPromptUiMode === 'parent' ? 'text-gray-300' : 'text-blue-500'" data-testid="resolution-status-system-prompt">
+                      {{ systemPromptResolutionStatus }}
                     </span>
                   </div>
                   <div tw-class="flex items-center justify-between text-[10px] font-bold">
