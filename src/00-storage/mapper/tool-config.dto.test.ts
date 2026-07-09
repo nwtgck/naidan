@@ -75,7 +75,7 @@ describe('experimental tool config DTO', () => {
   it('round-trips global tool configs in settings', () => {
     const dto = SettingsSchemaDto.parse({
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],

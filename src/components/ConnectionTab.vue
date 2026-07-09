@@ -7,7 +7,7 @@ import type { Endpoint, EndpointType, LmParameters, ProviderProfile, Reasoning, 
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { areEndpointModelNamespacesEqual, areEndpointsEqual, cloneEndpoint, isHttpEndpoint, selectHttpEndpointSeed } from '@/01-models/endpoint';
 import { naturalSort } from '@/utils/string';
-import { cloneLmParameters } from '@/utils/lm-parameters';
+import { cloneLmParameters as clonePlainLmParameters } from '@/utils/lm-parameters';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
   CheckCircle2Icon, BookmarkPlusIcon,
@@ -103,7 +103,7 @@ const endpointType = computed<Endpoint['type']>({
     case 'browser_provided_lm':
       form.value.endpoint = { type };
       form.value.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
-      setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() } });
+      setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
       return;
     case 'unsupported_experimental_endpoint':
       return;
@@ -156,7 +156,20 @@ const copied = ref(false);
 
 type TitleReasoningSelectValue = 'same_scope' | Reasoning['effort'];
 
-function emptyTitleLmParameters(): LmParameters {
+type SettingsTitleGenerationDraft =
+  | 'disabled'
+  | {
+      endpoint: 'same_scope',
+      model: 'same_scope' | { id: string },
+      lmParameters?: 'same_scope' | LmParameters,
+    }
+  | {
+      endpoint: Endpoint,
+      model: { id: string },
+      lmParameters?: LmParameters,
+    };
+
+function emptyLmParameters(): LmParameters {
   return {
     ...EMPTY_LM_PARAMETERS,
     reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
@@ -168,9 +181,9 @@ function cloneTitleLmParameters({
 }: {
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): 'same_scope' | LmParameters | undefined {
-  return lmParameters === 'same_scope'
-    ? 'same_scope'
-    : cloneLmParameters({ lmParameters });
+  if (lmParameters === undefined) return undefined;
+  if (lmParameters === 'same_scope') return 'same_scope';
+  return clonePlainLmParameters({ lmParameters }) ?? emptyLmParameters();
 }
 
 function titleLmParametersForEndpoint({
@@ -181,13 +194,13 @@ function titleLmParametersForEndpoint({
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): 'same_scope' | LmParameters {
   if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
-  return cloneTitleLmParameters({ lmParameters }) as LmParameters | undefined ?? emptyTitleLmParameters();
+  return cloneTitleLmParameters({ lmParameters }) as LmParameters | undefined ?? emptyLmParameters();
 }
 
 function titleGenerationWithLmParameters({
   titleGeneration,
 }: {
-  titleGeneration: SettingsTitleGeneration,
+  titleGeneration: SettingsTitleGenerationDraft,
 }): SettingsTitleGeneration {
   if (titleGeneration === 'disabled') return 'disabled';
 
@@ -227,8 +240,8 @@ function titleLmParametersFromReasoningSelectValue({
     return 'same_scope';
   case undefined: {
     const lmParameters = current === 'same_scope'
-      ? emptyTitleLmParameters()
-      : cloneLmParameters({ lmParameters: current }) ?? emptyTitleLmParameters();
+      ? emptyLmParameters()
+      : clonePlainLmParameters({ lmParameters: current }) ?? emptyLmParameters();
     lmParameters.reasoning.effort = undefined;
     return lmParameters;
   }
@@ -237,8 +250,8 @@ function titleLmParametersFromReasoningSelectValue({
   case 'medium':
   case 'high': {
     const lmParameters = current === 'same_scope'
-      ? emptyTitleLmParameters()
-      : cloneLmParameters({ lmParameters: current }) ?? emptyTitleLmParameters();
+      ? emptyLmParameters()
+      : clonePlainLmParameters({ lmParameters: current }) ?? emptyLmParameters();
     lmParameters.reasoning.effort = value;
     return lmParameters;
   }
@@ -283,12 +296,12 @@ const globalTitleReasoningLeadingOptions = computed(() => {
 });
 
 function currentSettingsTitleGeneration(): SettingsTitleGeneration {
-  return form.value.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() };
+  return form.value.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() };
 }
 function resetSameScopeTitleModel(): void {
   const titleGeneration = form.value.titleGeneration;
   if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
-  setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() } });
+  setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
 }
 
 function resetModelsWhenEndpointNamespaceChanges({
@@ -359,7 +372,7 @@ const globalTitleEndpointUrl = computed({
           url,
           httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
         },
-        model: titleGeneration.model === 'same_scope' ? { id: '' } : titleGeneration.model,
+        model: titleGeneration.model === 'same_scope' ? explicitSettingsTitleModel({ modelId: undefined }) : titleGeneration.model
       },
     });
   },
@@ -386,8 +399,8 @@ function setGlobalTitleEndpointHttpHeaders({
         url: endpoint.url,
         httpHeaders,
       },
-      model: titleGeneration.model === 'same_scope' ? { id: '' } : titleGeneration.model,
-    },
+      model: titleGeneration.model === 'same_scope' ? explicitSettingsTitleModel({ modelId: undefined }) : titleGeneration.model
+      },
   });
 }
 
@@ -461,7 +474,7 @@ function setGlobalTitleReasoningSelectValue({ value }: { value: TitleReasoningSe
 function setFormTitleGeneration({
   titleGeneration,
 }: {
-  titleGeneration: SettingsTitleGeneration,
+  titleGeneration: SettingsTitleGenerationDraft,
 }): void {
   form.value.titleGeneration = titleGenerationWithLmParameters({ titleGeneration });
 }
@@ -475,7 +488,7 @@ function setGlobalAutoTitleEnabled({ enabled }: { enabled: boolean }): void {
   const current = currentSettingsTitleGeneration();
   setFormTitleGeneration({
     titleGeneration: current === 'disabled'
-      ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() }
+      ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() }
       : current,
   });
 }
@@ -497,7 +510,7 @@ function explicitSettingsTitleModel({
 }: {
   modelId: string | undefined,
 }): { id: string } {
-  return { id: modelId ?? '' };
+  return { id: modelId || globalTitleModelOptions.value[0] || form.value.defaultModelId || BROWSER_PROVIDED_LM_MODEL_ID };
 }
 
 function setGlobalTitleEndpointType({
@@ -511,7 +524,7 @@ function setGlobalTitleEndpointType({
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: 'same_scope',
-        model: sameScopeSettingsTitleModel({ modelId }),
+        model: sameScopeSettingsTitleModel({ modelId })
       },
     });
     return;
@@ -519,7 +532,7 @@ function setGlobalTitleEndpointType({
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: { type: 'browser_provided_lm' },
-        model: { id: BROWSER_PROVIDED_LM_MODEL_ID },
+        model: { id: BROWSER_PROVIDED_LM_MODEL_ID }
       },
     });
     return;
@@ -527,7 +540,7 @@ function setGlobalTitleEndpointType({
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: { type: 'transformers_js' },
-        model: explicitSettingsTitleModel({ modelId }),
+        model: explicitSettingsTitleModel({ modelId })
       },
     });
     return;
@@ -547,7 +560,7 @@ function setGlobalTitleEndpointType({
           url: seed?.url ?? '',
           httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
         },
-        model: explicitSettingsTitleModel({ modelId }),
+        model: explicitSettingsTitleModel({ modelId })
       },
     });
     return;
@@ -570,7 +583,7 @@ function setGlobalTitleModelId({ modelId }: { modelId: string | undefined }): vo
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: 'same_scope',
-        model: sameScopeSettingsTitleModel({ modelId }),
+        model: sameScopeSettingsTitleModel({ modelId })
       },
     });
     return;
@@ -578,8 +591,8 @@ function setGlobalTitleModelId({ modelId }: { modelId: string | undefined }): vo
   setFormTitleGeneration({
     titleGeneration: {
       endpoint: cloneEndpoint({ endpoint }),
-      model: explicitSettingsTitleModel({ modelId }),
-    },
+      model: explicitSettingsTitleModel({ modelId })
+      },
   });
 }
 
@@ -605,12 +618,12 @@ async function fetchTitleEndpointModels(): Promise<void> {
     titleEndpointModels.value = models;
     const titleGeneration = currentSettingsTitleGeneration();
     if (titleGeneration === 'disabled' || titleGeneration.endpoint === 'same_scope') return;
-    if (titleGeneration.model.id !== '' && !models.includes(titleGeneration.model.id)) {
+    if (!models.includes(titleGeneration.model.id) && models[0] !== undefined) {
       setFormTitleGeneration({
         titleGeneration: {
           endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
-          model: { id: models[0] ?? '' },
-        },
+          model: { id: models[0] }
+      },
       });
     }
   } catch (caught) {
@@ -625,7 +638,7 @@ async function fetchTitleEndpointModels(): Promise<void> {
 function clearBrowserProvidedTitleModelOverride(): void {
   const titleGeneration = currentSettingsTitleGeneration();
   if (titleGeneration !== 'disabled' && titleGeneration.model !== 'same_scope' && titleGeneration.model.id === BROWSER_PROVIDED_LM_MODEL_ID) {
-    setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() } });
+    setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() } });
     return;
   }
 }
@@ -743,7 +756,7 @@ async function fetchModels() {
         && titleGeneration.model !== 'same_scope'
         && !models.includes(titleGeneration.model.id)
       ) {
-        updatedForm.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() };
+        updatedForm.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() };
         changed = true;
       }
     }
@@ -841,8 +854,8 @@ function handleQuickProviderProfileChange() {
     form.value.defaultModelId = providerProfile.defaultModelId;
     setFormTitleGeneration({
       titleGeneration: providerProfile.titleModelId === undefined || providerProfile.titleModelId === ''
-        ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() }
-        : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: emptyTitleLmParameters() },
+        ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyLmParameters() }
+        : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: emptyLmParameters() },
     });
     form.value.systemPrompt = providerProfile.systemPrompt;
     form.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;

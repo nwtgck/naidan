@@ -124,17 +124,17 @@ const SettingsTitleGenerationSchemaDto = z.union([
     endpoint: z.literal('same_scope'),
     model: z.union([
       z.literal('same_scope'),
-      z.object({ id: z.string() }),
+      z.object({ id: z.string().min(1) }),
     ]),
-    lmParameters: missingAsUndefined(z.union([
+    lmParameters: z.union([
       z.literal('same_scope'),
       LmParametersSchemaDto,
-    ])),
+    ]),
   }),
   z.object({
     endpoint: EndpointSchemaDto,
-    model: z.object({ id: z.string() }),
-    lmParameters: missingAsUndefined(LmParametersSchemaDto),
+    model: z.object({ id: z.string().min(1) }),
+    lmParameters: LmParametersSchemaDto,
   }),
 ]);
 
@@ -145,17 +145,17 @@ const ScopedTitleGenerationSchemaDto = z.union([
     endpoint: z.literal('same_scope'),
     model: z.union([
       z.literal('same_scope'),
-      z.object({ id: z.string() }),
+      z.object({ id: z.string().min(1) }),
     ]),
-    lmParameters: missingAsUndefined(z.union([
+    lmParameters: z.union([
       z.literal('same_scope'),
       LmParametersSchemaDto,
-    ])),
+    ]),
   }),
   z.object({
     endpoint: EndpointSchemaDto,
-    model: z.object({ id: z.string() }),
-    lmParameters: missingAsUndefined(LmParametersSchemaDto),
+    model: z.object({ id: z.string().min(1) }),
+    lmParameters: LmParametersSchemaDto,
   }),
 ]);
 
@@ -384,7 +384,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       timestamp: z.number(),
       thinking: missingAsUndefined(z.undefined()),
       modelId: missingAsUndefined(z.undefined()),
-      lmParameters: missingAsUndefined(LmParametersSchemaDto),
+      lmParameters: LmParametersSchemaDto,
       toolCalls: missingAsUndefined(z.undefined()),
       results: missingAsUndefined(z.undefined()),
       replies: MessageBranchSchemaDto,
@@ -398,7 +398,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       timestamp: z.number(),
       thinking: missingAsUndefined(z.string()),
       modelId: missingAsUndefined(z.string()),
-      lmParameters: missingAsUndefined(LmParametersSchemaDto),
+      lmParameters: LmParametersSchemaDto,
       toolCalls: missingAsUndefined(z.array(ToolCallSchemaDto)),
       results: missingAsUndefined(z.undefined()),
       replies: MessageBranchSchemaDto,

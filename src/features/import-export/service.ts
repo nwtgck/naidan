@@ -971,7 +971,7 @@ export class ImportExportService {
     return {
       structure: {
         settings: settingsDto ? settingsToDomain({ dto: settingsDto }) : {
-          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
           providerProfiles: [],
           mounts: [],
           storageType: 'local',
@@ -1186,7 +1186,7 @@ export class ImportExportService {
     return {
       structure: {
         settings: settings || {
-          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
           providerProfiles: [],
           mounts: [],
           storageType: 'local',

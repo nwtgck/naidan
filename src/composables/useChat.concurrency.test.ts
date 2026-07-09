@@ -394,7 +394,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
   it('should not overwrite a manual rename with an auto-generated title', async () => {
     const { createNewChat, currentChat, sendMessage, renameChat } = useChat();
-    mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope' };
+    mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
 
     // 1. Setup Chat A
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });

@@ -24,7 +24,7 @@ function createChatMeta(): ChatMeta {
       httpHeaders: [['Authorization', 'Bearer old']],
     },
     modelId: 'old-model',
-    titleGeneration: { endpoint: 'same_scope', model: { id: 'old-title-model' } },
+    titleGeneration: { endpoint: 'same_scope', model: { id: 'old-title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     systemPrompt: {
       behavior: 'append',
       content: 'Old prompt',
@@ -223,6 +223,7 @@ describe('scoped setting changes', () => {
         value: {
           endpoint: 'same_scope',
           model: { id: 'new-title-model' },
+          lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
         },
       }],
       updatedAt: 3,
@@ -231,6 +232,7 @@ describe('scoped setting changes', () => {
     expect(updated.titleGeneration).toEqual({
       endpoint: 'same_scope',
       model: { id: 'new-title-model' },
+      lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
     });
   });
 
@@ -278,6 +280,7 @@ describe('scoped setting changes', () => {
           value: {
             endpoint: { type: 'openai', url: 'https://title.example/v1', httpHeaders: titleEndpointHeaders },
             model: { id: 'title-model' },
+            lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
           },
         },
       ],
@@ -300,6 +303,7 @@ describe('scoped setting changes', () => {
         value: {
           endpoint: { type: 'openai', url: 'https://title.example/v1', httpHeaders: [['X-Title', 'old']] },
           model: { id: 'title-model' },
+          lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
         },
       },
     ]);

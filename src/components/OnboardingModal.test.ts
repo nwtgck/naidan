@@ -57,7 +57,7 @@ describe('OnboardingModal.vue', () => {
   const mockSettings = {
     value: {
       endpoint: { type: 'openai' as const, url: '' },
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'existing-title-model' } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'existing-title-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       defaultModelId: 'existing-default-model',
     },
   };
@@ -71,7 +71,7 @@ describe('OnboardingModal.vue', () => {
     promptApiRuntimeTestOnly.reset();
     mockSettings.value.endpoint = { type: 'openai', url: '' };
     mockSettings.value.defaultModelId = 'existing-default-model';
-    mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: { id: 'existing-title-model' } };
+    mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: { id: 'existing-title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
     mockIsOnboardingDismissed.value = false;
     mockOnboardingDraft.value = null;
     document.cookie = 'reverse_proxy_path=; Max-Age=0'; // Clear the cookie
@@ -213,7 +213,7 @@ describe('OnboardingModal.vue', () => {
       patch: expect.objectContaining({
         endpoint: { type: 'browser_provided_lm' },
         defaultModelId: BROWSER_PROVIDED_LM_MODEL_ID,
-        titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       }),
       modelRefresh: 'await',
     });
@@ -316,7 +316,7 @@ describe('OnboardingModal.vue', () => {
       patch: expect.objectContaining({
         endpoint: { type: 'openai', url: 'http://api.openai.com' },
         defaultModelId: 'model-1',
-        titleGeneration: { endpoint: 'same_scope', model: { id: 'model-1' } },
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'model-1' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       }),
       modelRefresh: 'await',
     });

@@ -322,14 +322,14 @@ function cloneScopedTitleGeneration({
         : { ...titleGeneration.model },
       lmParameters: titleGeneration.lmParameters === 'same_scope'
         ? 'same_scope'
-        : cloneLmParameters({ lmParameters: titleGeneration.lmParameters }),
+        : cloneLmParameters({ lmParameters: titleGeneration.lmParameters }) ?? EMPTY_LM_PARAMETERS,
     };
   }
 
   return {
     endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
     model: { ...titleGeneration.model },
-    lmParameters: cloneLmParameters({ lmParameters: titleGeneration.lmParameters }),
+    lmParameters: cloneLmParameters({ lmParameters: titleGeneration.lmParameters }) ?? EMPTY_LM_PARAMETERS,
   };
 }
 

@@ -14,6 +14,7 @@ import {
   LM_PARAMETER_KEYS,
   normalizeLmParameters,
   REASONING_PARAMETER_KEYS,
+  type LmParameterOverrides,
 } from '@/utils/lm-parameters';
 
 export type ResolvableLmParameters = Readonly<
@@ -105,7 +106,7 @@ function applyLmParameterOverrides({
 function cloneResolvedLmParameters({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined,
+  lmParameters: LmParameterOverrides | undefined,
 }): LmParameters | undefined {
   const normalized = normalizeLmParameters({ lmParameters });
   return normalized === undefined
@@ -154,7 +155,7 @@ function resolveSettingsTitleGeneration({
 }): ResolvedTitleGeneration {
   if (titleGeneration === 'disabled') return 'disabled';
   return resolveLocalTitleGeneration({
-    titleGeneration: titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope' },
+    titleGeneration: titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope', lmParameters: EMPTY_LM_PARAMETERS },
     sameScope,
   });
 }
@@ -193,8 +194,8 @@ function titleSource({
   chat: Chat,
   group: ChatGroup | null | undefined,
 }): 'chat' | 'chat_group' | 'global' {
-  if (chat.titleGeneration !== undefined) return 'chat';
-  if (group?.titleGeneration !== undefined) return 'chat_group';
+  if (hasLocalTitleGenerationOverride({ titleGeneration: chat.titleGeneration })) return 'chat';
+  if (hasLocalTitleGenerationOverride({ titleGeneration: group?.titleGeneration })) return 'chat_group';
   return 'global';
 }
 
@@ -239,7 +240,7 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
   };
 
   const globalTitleGeneration = resolveSettingsTitleGeneration({
-    titleGeneration: globalSettings.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope' },
+    titleGeneration: globalSettings.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope', lmParameters: EMPTY_LM_PARAMETERS },
     sameScope: globalGeneration,
   });
   const groupTitleGeneration = group === null || group === undefined

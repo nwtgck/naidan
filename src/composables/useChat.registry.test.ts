@@ -47,7 +47,7 @@ vi.mock('../00-storage/service', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' }, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'm1' }),
+    settings: ref({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } }, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'm1' }),
     isOnboardingDismissed: ref(true),
     onboardingDraft: ref(null),
   }),

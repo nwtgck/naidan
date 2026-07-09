@@ -184,7 +184,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
   describe('Automatic Title Settings Resolution', () => {
     const globalSettings: ResolvableSettings = {
       endpoint: { type: 'openai', url: '' },
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'global-title-model' } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'global-title-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     };
 
     it('should resolve global title settings when not overridden', () => {
@@ -232,7 +232,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         items: [],
         endpoint: groupEndpoint,
         modelId: 'group-chat-model',
-        titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       };
       const result = resolveChatSettings({
         chat: { ...baseChat, groupId: group.id },
@@ -240,7 +240,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         globalSettings: {
           endpoint: globalEndpoint,
           defaultModelId: 'global-chat-model',
-          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         },
       });
 
@@ -267,12 +267,12 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         globalSettings: {
           endpoint: globalEndpoint,
           defaultModelId: 'global-chat-model',
-          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         },
       });
 
       expect(result.titleGeneration).toEqual({ endpoint: globalEndpoint, modelId: 'global-chat-model', lmParameters: undefined });
-      expect(result.sources.titleGeneration).toBe('chat_group');
+      expect(result.sources.titleGeneration).toBe('global');
     });
 
     it('resolves explicit title endpoint and model independently from normal generation', () => {
@@ -284,7 +284,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         globalSettings: {
           endpoint: normalEndpoint,
           defaultModelId: 'normal-model',
-          titleGeneration: { endpoint: titleEndpoint, model: { id: 'title-only-model' } },
+          titleGeneration: { endpoint: titleEndpoint, model: { id: 'title-only-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         },
       });
 
@@ -325,7 +325,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
             ...EMPTY_LM_PARAMETERS,
             reasoning: { effort: 'low' },
           },
-          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         },
       });
 
@@ -376,7 +376,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         expect(result.titleGeneration.modelId).toBe('global-chat-model');
         expect(result.titleGeneration.lmParameters?.reasoning.effort).toBe('low');
       }
-      expect(result.sources.titleGeneration).toBe('chat_group');
+      expect(result.sources.titleGeneration).toBe('global');
     });
 
     it('resolves explicit title reasoning independently from normal generation parameters', () => {
@@ -414,7 +414,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       expect(hasChatOverrides({ chat: baseChat })).toBe(false);
       expect(hasChatOverrides({ chat: { ...baseChat, modelId: 'm1' } })).toBe(true);
       expect(hasChatOverrides({ chat: { ...baseChat, titleGeneration: 'disabled' } })).toBe(true);
-      expect(hasChatOverrides({ chat: { ...baseChat, titleGeneration: { endpoint: 'same_scope', model: { id: 'tm1' } } } })).toBe(true);
+      expect(hasChatOverrides({ chat: { ...baseChat, titleGeneration: { endpoint: 'same_scope', model: { id: 'tm1' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } } })).toBe(true);
       expect(hasChatOverrides({ chat: { ...baseChat, endpoint: { type: 'ollama', url: '' } } })).toBe(true);
     });
 
@@ -422,8 +422,8 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'G', isCollapsed: false, updatedAt: 0, items: [] };
       expect(hasGroupOverrides({ group })).toBe(false);
       expect(hasGroupOverrides({ group: { ...group, modelId: 'm1' } })).toBe(true);
-      expect(hasGroupOverrides({ group: { ...group, titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } } })).toBe(true);
-      expect(hasGroupOverrides({ group: { ...group, titleGeneration: { endpoint: 'same_scope', model: { id: 'tm1' } } } })).toBe(true);
+      expect(hasGroupOverrides({ group: { ...group, titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } } })).toBe(true);
+      expect(hasGroupOverrides({ group: { ...group, titleGeneration: { endpoint: 'same_scope', model: { id: 'tm1' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } } })).toBe(true);
     });
   });
 

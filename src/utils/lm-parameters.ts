@@ -3,7 +3,7 @@ import type { LmParameters, Reasoning } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 
-type LmParameterOverrides = Readonly<{
+export type LmParameterOverrides = Readonly<{
   [K in keyof LmParameters]?: K extends 'stop'
     ? readonly string[]
     : K extends 'reasoning'
@@ -73,7 +73,7 @@ export function hasLmParameterOverrides({
 export function cloneLmParameters({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined,
+  lmParameters: LmParameterOverrides | undefined,
 }): LmParameters | undefined {
   if (lmParameters === undefined) return undefined;
 
@@ -131,10 +131,10 @@ export function cloneLmParameters({
 export function normalizeLmParameters({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined,
+  lmParameters: LmParameterOverrides | undefined,
 }): LmParameters | undefined {
   return hasLmParameterOverrides({ lmParameters })
-    ? lmParameters
+    ? cloneLmParameters({ lmParameters })
     : undefined;
 }
 

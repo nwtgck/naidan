@@ -32,11 +32,13 @@ describe('Zod Schemas', () => {
             role: 'user',
             content: 'Hi',
             timestamp: 123456,
+            lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
             replies: { items: [] },
           },
         ],
       },
       modelId: 'gpt-4',
+      titleGeneration: 'inherit',
       createdAt: 123,
       updatedAt: 123,
       debugEnabled: false,
@@ -55,7 +57,7 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint: 'same_scope',
         model: 'same_scope',
-      },
+       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     }).success).toBe(true);
 
     expect(SettingsSchemaDtoV2.safeParse({
@@ -63,7 +65,7 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint,
         model: { id: 'title-model' },
-      },
+       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     }).success).toBe(true);
   });
 
@@ -73,7 +75,7 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint: 'same_scope',
         model: 'same_scope',
-      },
+       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     }).success).toBe(true);
 
     expect(SettingsSchemaDtoV2.safeParse({
@@ -115,7 +117,7 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint,
         model: 'same_scope',
-      },
+       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     }).success).toBe(false);
   });
 

@@ -96,6 +96,44 @@ async function deleteUser({ id }: { id: string }) { ... }
 await deleteUser({ id: "user_123" });
 ```
 
+# Exhaustive Object Mapping
+
+Prevent newly added fields from being silently ignored.
+
+Use a rest-property check on the source object:
+
+```ts
+type FruitDto = {
+  name: string;
+  nutrition: {
+    calories: number;
+    sugarGrams: number;
+  };
+};
+
+function fruitToDomain(dto: FruitDto): Fruit {
+  const { name, nutrition, ...unhandledFruit } = dto;
+  unhandledFruit satisfies Record<PropertyKey, never>;
+
+  const { calories, sugarGrams, ...unhandledNutrition } = nutrition;
+  unhandledNutrition satisfies Record<PropertyKey, never>;
+
+  return exactObject<Fruit>()({
+    name,
+    nutrition: exactObject<Fruit['nutrition']>()({
+      calories,
+      sugarGrams,
+    }),
+  });
+}
+```
+
+For nested objects, check each object at the level where it is unpacked.
+
+Use inline `Record<PropertyKey, never>` for rest-property checks. Do not create an alias for it.
+
+Use `exactObject` for the destination object when exact output keys matter. See `src/utils/exact-object.ts`.
+
 # Type Design: Avoid Booleans for Future-Proofing
 
 Even if a property seems binary today, prefer a **Literal String Union** over a `boolean` if there is any possibility it could evolve. Replacing a boolean with a union later requires refactoring all call sites, which we want to avoid.

@@ -51,7 +51,7 @@ function createSettings({ endpointType }: {
       }
     })(),
     defaultModelId: '',
-    titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     storageType: 'memory',
     providerProfiles: [],
     mounts: [],
@@ -209,7 +209,7 @@ describe('ConnectionTab Ollama management integration', () => {
     }));
     const settings = createSettings({ endpointType: 'browser_provided_lm' });
     settings.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
-    settings.titleGeneration = { endpoint: 'same_scope', model: { id: BROWSER_PROVIDED_LM_MODEL_ID } };
+    settings.titleGeneration = { endpoint: 'same_scope', model: { id: BROWSER_PROVIDED_LM_MODEL_ID }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
 
     const wrapper = mount(ConnectionTab, {
       props: {
@@ -238,7 +238,7 @@ describe('ConnectionTab Ollama management integration', () => {
     mockFetchModels.mockResolvedValue(['browser-provided-language-model']);
     const settings = createSettings({ endpointType: 'browser_provided_lm' });
     settings.defaultModelId = 'browser-provided-language-model';
-    settings.titleGeneration = { endpoint: 'same_scope', model: { id: 'browser-provided-language-model' } };
+    settings.titleGeneration = { endpoint: 'same_scope', model: { id: 'browser-provided-language-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
 
     const wrapper = mount(ConnectionTab, {
       props: {

@@ -6,7 +6,7 @@ import type { Settings } from '@/01-models/types';
 const mocks = vi.hoisted(() => ({ updateExperimental: vi.fn() }));
 const settings = ref<Settings>({
   endpoint: { type: 'openai', url: '' },
-  titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   storageType: 'local',
   providerProfiles: [],
   mounts: [],

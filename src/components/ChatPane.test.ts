@@ -1265,7 +1265,7 @@ Question`,
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({
-      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } } },
+      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } },
       modelRefresh: 'await',
     });
     expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: 'model-2' });
@@ -1376,12 +1376,12 @@ Question`,
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
-      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' },
+      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       sources: { modelId: 'global', titleGeneration: 'chat' },
     };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1396,7 +1396,7 @@ Question`,
       changes: [{
         field: 'title_generation',
         behavior: 'override',
-        value: { endpoint: 'same_scope', model: { id: 'model-2' } },
+        value: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       }],
     });
     expect(mockSaveSettings).not.toHaveBeenCalled();
@@ -1408,7 +1408,7 @@ Question`,
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
-      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' },
+      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       sources: { modelId: 'global', titleGeneration: 'chat_group' },
     };
     mockCurrentChat.value = {
@@ -1418,7 +1418,7 @@ Question`,
     mockCurrentChatGroup.value = {
       id: 'group-1',
       name: 'Group 1',
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1433,7 +1433,7 @@ Question`,
       changes: [{
         field: 'title_generation',
         behavior: 'override',
-        value: { endpoint: 'same_scope', model: { id: 'model-2' } },
+        value: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       }],
     });
     expect(mockSaveSettings).not.toHaveBeenCalled();

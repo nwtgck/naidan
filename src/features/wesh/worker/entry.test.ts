@@ -167,7 +167,7 @@ describe('wesh.worker', () => {
         httpHeaders: [['Authorization', 'secret-token']],
       },
       modelId: 'gpt-5',
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       originChatId: undefined,
       originMessageId: undefined,
       systemPrompt: undefined,

@@ -86,12 +86,12 @@ export type SettingsTitleGeneration =
   | {
       endpoint: 'same_scope',
       model: 'same_scope' | { id: string },
-      lmParameters?: 'same_scope' | LmParameters,
+      lmParameters: 'same_scope' | LmParameters,
     }
   | {
       endpoint: Endpoint,
       model: { id: string },
-      lmParameters?: LmParameters,
+      lmParameters: LmParameters,
     };
 
 export type ScopedTitleGeneration = SettingsTitleGeneration | 'inherit';
@@ -413,7 +413,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
-  titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   providerProfiles: [],
   mounts: [],
   heavyContentAlertDismissed: false,

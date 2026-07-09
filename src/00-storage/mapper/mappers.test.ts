@@ -478,7 +478,7 @@ describe('Settings Mapping', () => {
     const dto: SettingsDto = {
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
       defaultModelId: 'gpt-4',
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -543,7 +543,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'future-model',
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -575,7 +575,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'future-model',
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -600,7 +600,7 @@ describe('Settings Mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'browser_provided_lm' },
       defaultModelId: 'browser-provided-language-model',
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -628,7 +628,7 @@ describe('Settings Mapping', () => {
         },
       },
       defaultModelId: 'browser-provided-language-model',
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -648,7 +648,7 @@ describe('Settings Mapping', () => {
   it('preserves an empty HTTP URL through settings mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'openai', url: '' },
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
@@ -665,7 +665,7 @@ describe('Settings Mapping', () => {
     const domain: Settings = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       defaultModelId: 'gpt-4',
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       storageType: 'local',
       providerProfiles: [],
       mounts: [],

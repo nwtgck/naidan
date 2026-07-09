@@ -110,7 +110,7 @@ const mockSettings = {
     url: 'http://localhost:1234/v1',
   },
   defaultModelId: 'gpt-4',
-  titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   storageType: 'local',
   mounts: [],
   providerProfiles: [] as ProviderProfile[],
