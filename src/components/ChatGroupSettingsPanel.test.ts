@@ -323,9 +323,51 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await titleModelSelector!.vm.$emit('update:modelValue', 'group-title-model');
     await flushPromises();
 
-    expect(mockGroup.titleGeneration).toEqual({
+    expect(mockGroup.titleGeneration).toMatchObject({
       endpoint: { type: 'ollama', url: 'http://global-ollama' },
       model: { id: 'group-title-model' },
+    });
+  });
+
+
+  it('materializes global title endpoint and model when changing title reasoning', async () => {
+    mockGroup.endpoint = { type: 'openai', url: 'http://group-openai' };
+    mockGroup.modelId = 'group-model';
+    mockGroup.titleGeneration = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: {
+        temperature: 0.3,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'high' },
+      },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleMediumButton = wrapper.findAll('[data-testid="reasoning-effort-medium"]').at(-1);
+    expect(titleMediumButton).toBeDefined();
+    await titleMediumButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: {
+        temperature: 0.3,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'medium' },
+      },
     });
   });
 

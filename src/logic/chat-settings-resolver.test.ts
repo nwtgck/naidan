@@ -190,7 +190,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('should resolve global title settings when not overridden', () => {
       const result = resolveChatSettings({ chat: baseChat, groups: [], globalSettings });
       expect(result.autoTitleEnabled).toBe(true);
-      expect(result.titleGeneration).toEqual({ endpoint: globalSettings.endpoint, modelId: 'global-title-model' });
+      expect(result.titleGeneration).toEqual({ endpoint: globalSettings.endpoint, modelId: 'global-title-model', lmParameters: undefined });
       expect(result.sources.titleGeneration).toBe('global');
     });
 
@@ -244,7 +244,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         },
       });
 
-      expect(result.titleGeneration).toEqual({ endpoint: groupEndpoint, modelId: 'group-chat-model' });
+      expect(result.titleGeneration).toEqual({ endpoint: groupEndpoint, modelId: 'group-chat-model', lmParameters: undefined });
       expect(result.sources.titleGeneration).toBe('chat_group');
     });
 
@@ -271,7 +271,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         },
       });
 
-      expect(result.titleGeneration).toEqual({ endpoint: globalEndpoint, modelId: 'global-chat-model' });
+      expect(result.titleGeneration).toEqual({ endpoint: globalEndpoint, modelId: 'global-chat-model', lmParameters: undefined });
       expect(result.sources.titleGeneration).toBe('chat_group');
     });
 
@@ -290,8 +290,121 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
 
       expect(result.endpoint).toEqual(normalEndpoint);
       expect(result.modelId).toBe('normal-model');
-      expect(result.titleGeneration).toEqual({ endpoint: titleEndpoint, modelId: 'title-only-model' });
+      expect(result.titleGeneration).toEqual({ endpoint: titleEndpoint, modelId: 'title-only-model', lmParameters: undefined });
 
+    });
+
+    it('resolves same_scope title reasoning from the same normal generation scope', () => {
+      const groupEndpoint = { type: 'ollama' as const, url: 'https://group.example' };
+      const group: ChatGroup = {
+        id: toChatGroupId({ raw: 'title-reasoning-group' }),
+        name: 'Title Reasoning Group',
+        isCollapsed: false,
+        updatedAt: 0,
+        items: [],
+        endpoint: groupEndpoint,
+        modelId: 'group-chat-model',
+        lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
+          reasoning: { effort: 'high' },
+        },
+        titleGeneration: {
+          endpoint: 'same_scope',
+          model: 'same_scope',
+          lmParameters: 'same_scope',
+        },
+      };
+
+      const result = resolveChatSettings({
+        chat: { ...baseChat, groupId: group.id },
+        groups: [group],
+        globalSettings: {
+          endpoint: { type: 'openai', url: 'https://global.example/v1' },
+          defaultModelId: 'global-chat-model',
+          lmParameters: {
+            ...EMPTY_LM_PARAMETERS,
+            reasoning: { effort: 'low' },
+          },
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+        },
+      });
+
+      expect(result.titleGeneration).not.toBe('disabled');
+      if (result.titleGeneration !== 'disabled') {
+        expect(result.titleGeneration.endpoint).toEqual(groupEndpoint);
+        expect(result.titleGeneration.modelId).toBe('group-chat-model');
+        expect(result.titleGeneration.lmParameters?.reasoning.effort).toBe('high');
+      }
+    });
+
+    it('inherits parent resolved title reasoning without re-evaluating parent same_scope in the child scope', () => {
+      const globalEndpoint = { type: 'openai' as const, url: 'https://global.example/v1' };
+      const group: ChatGroup = {
+        id: toChatGroupId({ raw: 'inherited-title-reasoning-group' }),
+        name: 'Inherited Title Reasoning Group',
+        isCollapsed: false,
+        updatedAt: 0,
+        items: [],
+        lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
+          reasoning: { effort: 'high' },
+        },
+        titleGeneration: 'inherit',
+      };
+
+      const result = resolveChatSettings({
+        chat: { ...baseChat, groupId: group.id },
+        groups: [group],
+        globalSettings: {
+          endpoint: globalEndpoint,
+          defaultModelId: 'global-chat-model',
+          lmParameters: {
+            ...EMPTY_LM_PARAMETERS,
+            reasoning: { effort: 'low' },
+          },
+          titleGeneration: {
+            endpoint: 'same_scope',
+            model: 'same_scope',
+            lmParameters: 'same_scope',
+          },
+        },
+      });
+
+      expect(result.titleGeneration).not.toBe('disabled');
+      if (result.titleGeneration !== 'disabled') {
+        expect(result.titleGeneration.endpoint).toEqual(globalEndpoint);
+        expect(result.titleGeneration.modelId).toBe('global-chat-model');
+        expect(result.titleGeneration.lmParameters?.reasoning.effort).toBe('low');
+      }
+      expect(result.sources.titleGeneration).toBe('chat_group');
+    });
+
+    it('resolves explicit title reasoning independently from normal generation parameters', () => {
+      const result = resolveChatSettings({
+        chat: baseChat,
+        groups: [],
+        globalSettings: {
+          endpoint: { type: 'openai', url: 'https://normal.example/v1' },
+          defaultModelId: 'normal-model',
+          lmParameters: {
+            ...EMPTY_LM_PARAMETERS,
+            reasoning: { effort: 'high' },
+          },
+          titleGeneration: {
+            endpoint: 'same_scope',
+            model: 'same_scope',
+            lmParameters: {
+              ...EMPTY_LM_PARAMETERS,
+              reasoning: { effort: 'low' },
+            },
+          },
+        },
+      });
+
+      expect(result.titleGeneration).not.toBe('disabled');
+      if (result.titleGeneration !== 'disabled') {
+        expect(result.titleGeneration.lmParameters?.reasoning.effort).toBe('low');
+      }
     });
 
   });

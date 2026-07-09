@@ -3,9 +3,11 @@ import { generateId } from '@/01-models/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
-import type { Endpoint, EndpointType, ProviderProfile, Settings, SettingsTitleGeneration } from '@/01-models/types';
+import type { Endpoint, EndpointType, LmParameters, ProviderProfile, Reasoning, Settings, SettingsTitleGeneration } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { areEndpointModelNamespacesEqual, areEndpointsEqual, cloneEndpoint, isHttpEndpoint, selectHttpEndpointSeed } from '@/01-models/endpoint';
 import { naturalSort } from '@/utils/string';
+import { cloneLmParameters } from '@/utils/lm-parameters';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
   CheckCircle2Icon, BookmarkPlusIcon,
@@ -15,6 +17,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ModelSelector is a core part of the connection setup UI and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
 import { endpointTypeLabel } from './endpoint-type-label';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
@@ -100,7 +103,7 @@ const endpointType = computed<Endpoint['type']>({
     case 'browser_provided_lm':
       form.value.endpoint = { type };
       form.value.defaultModelId = BROWSER_PROVIDED_LM_MODEL_ID;
-      setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
+      setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() } });
       return;
     case 'unsupported_experimental_endpoint':
       return;
@@ -151,13 +154,141 @@ const selectedProviderProfileId = ref('');
 
 const copied = ref(false);
 
+type TitleReasoningSelectValue = 'same_scope' | Reasoning['effort'];
+
+function emptyTitleLmParameters(): LmParameters {
+  return {
+    ...EMPTY_LM_PARAMETERS,
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
+  };
+}
+
+function cloneTitleLmParameters({
+  lmParameters,
+}: {
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters | undefined {
+  return lmParameters === 'same_scope'
+    ? 'same_scope'
+    : cloneLmParameters({ lmParameters });
+}
+
+function titleLmParametersForEndpoint({
+  endpoint,
+  lmParameters,
+}: {
+  endpoint: Endpoint | 'same_scope',
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters {
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  return cloneTitleLmParameters({ lmParameters }) as LmParameters | undefined ?? emptyTitleLmParameters();
+}
+
+function titleGenerationWithLmParameters({
+  titleGeneration,
+}: {
+  titleGeneration: SettingsTitleGeneration,
+}): SettingsTitleGeneration {
+  if (titleGeneration === 'disabled') return 'disabled';
+
+  const current = currentSettingsTitleGeneration();
+  const currentLmParameters = current === 'disabled' ? undefined : current.lmParameters;
+  return {
+    ...titleGeneration,
+    lmParameters: titleLmParametersForEndpoint({
+      endpoint: titleGeneration.endpoint,
+      lmParameters: titleGeneration.lmParameters ?? currentLmParameters,
+    }),
+  } as SettingsTitleGeneration;
+}
+
+function titleReasoningSelectValueFromLmParameters({
+  endpoint,
+  lmParameters,
+}: {
+  endpoint: Endpoint | 'same_scope',
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): TitleReasoningSelectValue {
+  if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
+  return lmParameters !== 'same_scope' && lmParameters?.reasoning.effort !== undefined
+    ? lmParameters.reasoning.effort
+    : undefined;
+}
+
+function titleLmParametersFromReasoningSelectValue({
+  value,
+  current,
+}: {
+  value: TitleReasoningSelectValue,
+  current: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParameters {
+  switch (value) {
+  case 'same_scope':
+    return 'same_scope';
+  case undefined: {
+    const lmParameters = current === 'same_scope'
+      ? emptyTitleLmParameters()
+      : cloneLmParameters({ lmParameters: current }) ?? emptyTitleLmParameters();
+    lmParameters.reasoning.effort = undefined;
+    return lmParameters;
+  }
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high': {
+    const lmParameters = current === 'same_scope'
+      ? emptyTitleLmParameters()
+      : cloneLmParameters({ lmParameters: current }) ?? emptyTitleLmParameters();
+    lmParameters.reasoning.effort = value;
+    return lmParameters;
+  }
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled title reasoning value: ${_ex}`);
+  }
+  }
+}
+
+function reasoningEffortFromTitleReasoningValue({
+  value,
+}: {
+  value: TitleReasoningSelectValue,
+}): Reasoning['effort'] {
+  switch (value) {
+  case 'same_scope':
+  case undefined:
+    return undefined;
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high':
+    return value;
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled title reasoning value: ${_ex}`);
+  }
+  }
+}
+
+const globalTitleReasoningLeadingOptions = computed(() => {
+  const label = globalTitleEndpointUsesSameScope.value
+    ? lazyStrings.ConnectionTab__use_current_chat_reasoning()
+    : undefined;
+  return [{
+    value: 'same_scope' as const,
+    label,
+    shortLabel: label,
+    testId: 'same-scope',
+  }];
+});
+
 function currentSettingsTitleGeneration(): SettingsTitleGeneration {
-  return form.value.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope' };
+  return form.value.titleGeneration ?? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() };
 }
 function resetSameScopeTitleModel(): void {
   const titleGeneration = form.value.titleGeneration;
   if (titleGeneration === 'disabled' || titleGeneration.endpoint !== 'same_scope' || titleGeneration.model === 'same_scope') return;
-  setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
+  setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() } });
 }
 
 function resetModelsWhenEndpointNamespaceChanges({
@@ -247,12 +378,36 @@ const globalTitleModelId = computed(() => {
   return titleGeneration.model.id;
 });
 
+const globalTitleReasoningSelectValue = computed<TitleReasoningSelectValue>(() => {
+  const titleGeneration = currentSettingsTitleGeneration();
+  if (titleGeneration === 'disabled') return undefined;
+  return titleReasoningSelectValueFromLmParameters({
+    endpoint: titleGeneration.endpoint,
+    lmParameters: titleGeneration.lmParameters,
+  });
+});
+
+function setGlobalTitleReasoningSelectValue({ value }: { value: TitleReasoningSelectValue }): void {
+  const titleGeneration = currentSettingsTitleGeneration();
+  if (titleGeneration === 'disabled') return;
+  if (value === 'same_scope' && titleGeneration.endpoint !== 'same_scope') return;
+  setFormTitleGeneration({
+    titleGeneration: {
+      ...titleGeneration,
+      lmParameters: titleLmParametersFromReasoningSelectValue({
+        value,
+        current: titleGeneration.lmParameters,
+      }),
+    } as SettingsTitleGeneration,
+  });
+}
+
 function setFormTitleGeneration({
   titleGeneration,
 }: {
   titleGeneration: SettingsTitleGeneration,
 }): void {
-  form.value.titleGeneration = titleGeneration;
+  form.value.titleGeneration = titleGenerationWithLmParameters({ titleGeneration });
 }
 
 function setGlobalAutoTitleEnabled({ enabled }: { enabled: boolean }): void {
@@ -264,7 +419,7 @@ function setGlobalAutoTitleEnabled({ enabled }: { enabled: boolean }): void {
   const current = currentSettingsTitleGeneration();
   setFormTitleGeneration({
     titleGeneration: current === 'disabled'
-      ? { endpoint: 'same_scope', model: 'same_scope' }
+      ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() }
       : current,
   });
 }
@@ -414,7 +569,7 @@ async function fetchTitleEndpointModels(): Promise<void> {
 function clearBrowserProvidedTitleModelOverride(): void {
   const titleGeneration = currentSettingsTitleGeneration();
   if (titleGeneration !== 'disabled' && titleGeneration.model !== 'same_scope' && titleGeneration.model.id === BROWSER_PROVIDED_LM_MODEL_ID) {
-    setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
+    setFormTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() } });
     return;
   }
 }
@@ -532,7 +687,7 @@ async function fetchModels() {
         && titleGeneration.model !== 'same_scope'
         && !models.includes(titleGeneration.model.id)
       ) {
-        updatedForm.titleGeneration = { endpoint: 'same_scope', model: 'same_scope' };
+        updatedForm.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() };
         changed = true;
       }
     }
@@ -630,8 +785,8 @@ function handleQuickProviderProfileChange() {
     form.value.defaultModelId = providerProfile.defaultModelId;
     setFormTitleGeneration({
       titleGeneration: providerProfile.titleModelId === undefined || providerProfile.titleModelId === ''
-        ? { endpoint: 'same_scope', model: 'same_scope' }
-        : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId } },
+        ? { endpoint: 'same_scope', model: 'same_scope', lmParameters: emptyTitleLmParameters() }
+        : { endpoint: 'same_scope', model: { id: providerProfile.titleModelId }, lmParameters: emptyTitleLmParameters() },
     });
     form.value.systemPrompt = providerProfile.systemPrompt;
     form.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
@@ -954,6 +1109,20 @@ defineExpose({
                       :clear-label="lazyStrings.ConnectionTab__use_current_chat_model()"
                       @refresh="fetchTitleEndpointModels"
                       data-testid="setting-title-model-select"
+                    />
+                  </div>
+
+
+                  <div tw-class="md:col-span-2">
+                    <ReasoningSettings
+                      :selected-effort="reasoningEffortFromTitleReasoningValue({ value: globalTitleReasoningSelectValue })"
+                      :selected-value="globalTitleReasoningSelectValue"
+                      :leading-options="globalTitleReasoningLeadingOptions"
+                      :heading="lazyStrings.ConnectionTab__title_reasoning()"
+                      :disabled="!globalTitleGenerationEnabled"
+                      surface="card"
+                      @update:value="value => setGlobalTitleReasoningSelectValue({ value: value as TitleReasoningSelectValue })"
+                      data-testid="setting-title-reasoning-select"
                     />
                   </div>
                 </div>

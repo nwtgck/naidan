@@ -162,7 +162,7 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
     expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
-    expect(settings.titleGeneration).toEqual({ endpoint: 'same_scope', model: 'same_scope' });
+    expect(settings.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: 'same_scope' });
     wrapper.unmount();
   });
 
@@ -198,7 +198,7 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(settings.endpoint).toEqual({ type: 'browser_provided_lm' });
     expect(settings.defaultModelId).toBe(BROWSER_PROVIDED_LM_MODEL_ID);
-    expect(settings.titleGeneration).toEqual({ endpoint: 'same_scope', model: 'same_scope' });
+    expect(settings.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: 'same_scope' });
     wrapper.unmount();
   });
 
@@ -226,7 +226,7 @@ describe('ConnectionTab Ollama management integration', () => {
 
     expect(settings.endpoint).toEqual({ type: 'ollama', url: '' });
     expect(settings.defaultModelId).toBe('');
-    expect(settings.titleGeneration).toEqual({ endpoint: 'same_scope', model: 'same_scope' });
+    expect(settings.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: 'same_scope' });
     wrapper.unmount();
   });
 

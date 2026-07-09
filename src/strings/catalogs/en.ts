@@ -149,6 +149,7 @@ import { ChatGroupSettingsPanel__tools } from '@/strings/messages/ChatGroupSetti
 import { ChatGroupSettingsPanel__transformers_js } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js/en';
 import { ChatGroupSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js_experimental/en';
 import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSettingsPanel__value/en';
+import { ChatGroupSettingsPanel__title_reasoning } from '@/strings/messages/ChatGroupSettingsPanel__title_reasoning/en';
 import { ChatInput__cancel } from '@/strings/messages/ChatInput__cancel/en';
 import { ChatInput__copying_name } from '@/strings/messages/ChatInput__copying_name/en';
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/en';
@@ -283,6 +284,7 @@ import { ChatSettingsPanel__title_endpoint_type } from '@/strings/messages/ChatS
 import { ChatSettingsPanel__transformers_js } from '@/strings/messages/ChatSettingsPanel__transformers_js/en';
 import { ChatSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatSettingsPanel__transformers_js_experimental/en';
 import { ChatSettingsPanel__value } from '@/strings/messages/ChatSettingsPanel__value/en';
+import { ChatSettingsPanel__title_reasoning } from '@/strings/messages/ChatSettingsPanel__title_reasoning/en';
 import { ChatTitleDialog__chat_override } from '@/strings/messages/ChatTitleDialog__chat_override/en';
 import { ChatTitleDialog__chat_title } from '@/strings/messages/ChatTitleDialog__chat_title/en';
 import { ChatTitleDialog__close } from '@/strings/messages/ChatTitleDialog__close/en';
@@ -350,6 +352,8 @@ import { ConnectionTab__use_current_chat_model } from '@/strings/messages/Connec
 import { ConnectionTab__used_for_new_conversations } from '@/strings/messages/ConnectionTab__used_for_new_conversations/en';
 import { ConnectionTab__value } from '@/strings/messages/ConnectionTab__value/en';
 import { ConnectionTab__view_profiles } from '@/strings/messages/ConnectionTab__view_profiles/en';
+import { ConnectionTab__title_reasoning } from '@/strings/messages/ConnectionTab__title_reasoning/en';
+import { ConnectionTab__use_current_chat_reasoning } from '@/strings/messages/ConnectionTab__use_current_chat_reasoning/en';
 import { ContextCompactProgressStrip__abort_compact } from '@/strings/messages/ContextCompactProgressStrip__abort_compact/en';
 import { ContextCompactProgressStrip__hide_request } from '@/strings/messages/ContextCompactProgressStrip__hide_request/en';
 import { ContextCompactProgressStrip__live_output } from '@/strings/messages/ContextCompactProgressStrip__live_output/en';
@@ -1685,6 +1689,7 @@ export const en = {
   ChatGroupSettingsPanel__transformers_js,
   ChatGroupSettingsPanel__transformers_js_experimental,
   ChatGroupSettingsPanel__value,
+  ChatGroupSettingsPanel__title_reasoning,
   ChatInput__cancel,
   ChatInput__copying_name,
   ChatInput__edit_image,
@@ -1819,6 +1824,7 @@ export const en = {
   ChatSettingsPanel__transformers_js,
   ChatSettingsPanel__transformers_js_experimental,
   ChatSettingsPanel__value,
+  ChatSettingsPanel__title_reasoning,
   ChatTitleDialog__chat_override,
   ChatTitleDialog__chat_title,
   ChatTitleDialog__close,
@@ -1886,6 +1892,8 @@ export const en = {
   ConnectionTab__used_for_new_conversations,
   ConnectionTab__value,
   ConnectionTab__view_profiles,
+  ConnectionTab__title_reasoning,
+  ConnectionTab__use_current_chat_reasoning,
   ContextCompactProgressStrip__abort_compact,
   ContextCompactProgressStrip__hide_request,
   ContextCompactProgressStrip__live_output,

@@ -65,7 +65,7 @@ describe('ImportExportService', () => {
   const createValidSettingsDto = (overrides: Partial<SettingsDto> = {}): SettingsDto => ({
     endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: undefined },
     storageType: 'local',
-    titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
     providerProfiles: [],
     experimental: undefined,
     defaultModelId: undefined,
@@ -79,7 +79,7 @@ describe('ImportExportService', () => {
   const createValidSettings = (overrides: Partial<Settings> = {}): Settings => ({
     endpoint: { type: 'ollama', url: 'http://localhost:11434' },
     storageType: 'local',
-    titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
     providerProfiles: [],
     defaultModelId: undefined,
     heavyContentAlertDismissed: undefined,
@@ -139,7 +139,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -159,7 +159,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -220,7 +220,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -262,7 +262,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -643,7 +643,7 @@ ${JSON.stringify({
         structure: {
           settings: {
             endpoint: { type: 'openai', url: 'http://localhost:11434' },
-            titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -712,7 +712,7 @@ ${JSON.stringify({
         structure: {
           settings: {
             endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-            titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -748,7 +748,7 @@ ${JSON.stringify({
         structure: {
           settings: {
             endpoint: { type: 'transformers_js' },
-            titleGeneration: { endpoint: 'same_scope', model: 'same_scope' },
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: undefined },
             storageType: 'local',
             providerProfiles: [],
           } as any,

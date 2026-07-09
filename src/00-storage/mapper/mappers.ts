@@ -118,6 +118,19 @@ const titleGenerationEndpointToDto = ({
   return endpointToDto({ endpoint: domain });
 };
 
+function emptyLmParametersDto(): LmParametersDto {
+  return {
+    temperature: undefined,
+    experimental: undefined,
+    topP: undefined,
+    maxCompletionTokens: undefined,
+    presencePenalty: undefined,
+    frequencyPenalty: undefined,
+    stop: undefined,
+    reasoning: undefined,
+  };
+}
+
 const modelFromLegacyTitleModelId = ({
   titleModelId,
 }: {
@@ -125,6 +138,29 @@ const modelFromLegacyTitleModelId = ({
 }): 'same_scope' | { id: string } => titleModelId === undefined
   ? 'same_scope'
   : { id: titleModelId };
+
+const titleLmParametersToDomain = ({
+  dto,
+  allowSameScope,
+}: {
+  dto: 'same_scope' | LmParametersDto | undefined,
+  allowSameScope: boolean,
+}): 'same_scope' | LmParameters | undefined => {
+  if (dto === 'same_scope') {
+    return allowSameScope ? 'same_scope' : undefined;
+  }
+
+  return lmParametersToDomain({ dto });
+};
+
+const titleLmParametersToDto = ({
+  lmParameters,
+}: {
+  lmParameters: 'same_scope' | LmParameters | undefined,
+}): 'same_scope' | LmParametersDto => {
+  if (lmParameters === 'same_scope') return 'same_scope';
+  return lmParametersToDto({ domain: lmParameters }) ?? emptyLmParametersDto();
+};
 
 const settingsTitleGenerationToDomain = ({
   dto,
@@ -135,12 +171,23 @@ const settingsTitleGenerationToDomain = ({
     if (dto.titleGeneration === 'disabled') return 'disabled';
 
     if (dto.titleGeneration.endpoint === 'same_scope') {
-      return { endpoint: 'same_scope', model: dto.titleGeneration.model };
+      return {
+        endpoint: 'same_scope',
+        model: dto.titleGeneration.model,
+        lmParameters: titleLmParametersToDomain({
+          dto: dto.titleGeneration.lmParameters,
+          allowSameScope: true,
+        }),
+      };
     }
 
     return {
       endpoint: endpointToDomain({ dto: dto.titleGeneration.endpoint }),
       model: dto.titleGeneration.model,
+      lmParameters: titleLmParametersToDomain({
+        dto: dto.titleGeneration.lmParameters,
+        allowSameScope: false,
+      }) as LmParameters,
     };
   }
 
@@ -149,6 +196,7 @@ const settingsTitleGenerationToDomain = ({
   return exactObject<Exclude<SettingsTitleGeneration, 'disabled'>>()({
     endpoint: 'same_scope',
     model: modelFromLegacyTitleModelId({ titleModelId: dto.titleModelId }),
+    lmParameters: undefined,
   });
 };
 
@@ -164,12 +212,23 @@ const scopedTitleGenerationToDomain = ({
       return dto.titleGeneration;
     default:
       if (dto.titleGeneration.endpoint === 'same_scope') {
-        return { endpoint: 'same_scope', model: dto.titleGeneration.model };
+        return {
+          endpoint: 'same_scope',
+          model: dto.titleGeneration.model,
+          lmParameters: titleLmParametersToDomain({
+            dto: dto.titleGeneration.lmParameters,
+            allowSameScope: true,
+          }),
+        };
       }
 
       return {
         endpoint: endpointToDomain({ dto: dto.titleGeneration.endpoint }),
         model: dto.titleGeneration.model,
+        lmParameters: titleLmParametersToDomain({
+          dto: dto.titleGeneration.lmParameters,
+          allowSameScope: false,
+        }) as LmParameters,
       };
     }
   }
@@ -180,6 +239,7 @@ const scopedTitleGenerationToDomain = ({
   return exactObject<Exclude<ScopedTitleGeneration, 'disabled' | 'inherit'>>()({
     endpoint: 'same_scope',
     model: modelFromLegacyTitleModelId({ titleModelId: dto.titleModelId }),
+    lmParameters: undefined,
   });
 };
 
@@ -193,6 +253,7 @@ const settingsTitleGenerationToDto = ({
   return {
     endpoint: titleGenerationEndpointToDto({ domain: titleGeneration.endpoint }),
     model: titleGeneration.model,
+    lmParameters: titleLmParametersToDto({ lmParameters: titleGeneration.lmParameters }),
   } as SettingsDtoV2['titleGeneration'];
 };
 
@@ -209,6 +270,7 @@ const scopedTitleGenerationToDto = ({
     return {
       endpoint: titleGenerationEndpointToDto({ domain: titleGeneration.endpoint }),
       model: titleGeneration.model,
+      lmParameters: titleLmParametersToDto({ lmParameters: titleGeneration.lmParameters }),
     } as ChatMetaDtoV2['titleGeneration'];
   }
 };

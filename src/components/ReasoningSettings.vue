@@ -8,32 +8,78 @@ defineOptions({
   name: 'ReasoningSettings',
 });
 
-const props = defineProps<{
-  selectedEffort: Reasoning['effort'],
-}>();
+type SpecialReasoningSettingsValue = 'inherit' | 'same_scope';
+type ReasoningSettingsValue = Reasoning['effort'] | SpecialReasoningSettingsValue;
 
-const emit = defineEmits<{
-  (e: 'update:effort', effort: Reasoning['effort']): void,
-}>();
+type LeadingOption = {
+  label: string | undefined,
+  shortLabel: string | undefined,
+  testId: string,
+  value: SpecialReasoningSettingsValue,
+};
 
 type EffortOption = {
   label: string,
   shortLabel: string,
   testId: string,
-  value: Reasoning['effort'],
+  value: ReasoningSettingsValue,
+  width: 'default' | 'normal' | 'wide',
 };
 
+const props = defineProps<{
+  selectedEffort: Reasoning['effort'],
+  selectedValue?: ReasoningSettingsValue,
+  leadingOptions?: readonly LeadingOption[],
+  heading?: string | undefined,
+  disabled?: boolean,
+  surface?: 'flat' | 'card',
+}>();
+
+const emit = defineEmits<{
+  (e: 'update:effort', effort: Reasoning['effort']): void,
+  (e: 'update:value', value: ReasoningSettingsValue): void,
+}>();
+
+function isReasoningEffort(value: ReasoningSettingsValue): value is Reasoning['effort'] {
+  switch (value) {
+  case undefined:
+  case 'none':
+  case 'low':
+  case 'medium':
+  case 'high':
+    return true;
+  case 'inherit':
+  case 'same_scope':
+    return false;
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled reasoning settings value: ${_ex}`);
+  }
+  }
+}
+
+const selectedValue = computed<ReasoningSettingsValue>(() => props.selectedValue ?? props.selectedEffort);
+const headingLabel = computed(() => props.heading ?? lazyStrings.ReasoningSettings__think());
+const surface = computed(() => props.surface ?? 'flat');
+
 const effortOptions = computed<EffortOption[]>(() => {
-  const options = [
-    { label: lazyStrings.ReasoningSettings__default(), shortLabel: lazyStrings.ReasoningSettings__default(), testId: 'default', value: undefined },
-    { label: lazyStrings.ReasoningSettings__off(), shortLabel: lazyStrings.ReasoningSettings__off(), testId: 'off', value: 'none' as const },
-    { label: lazyStrings.ReasoningSettings__low(), shortLabel: lazyStrings.ReasoningSettings__low(), testId: 'low', value: 'low' as const },
-    { label: lazyStrings.ReasoningSettings__medium(), shortLabel: lazyStrings.ReasoningSettings__med(), testId: 'medium', value: 'medium' as const },
-    { label: lazyStrings.ReasoningSettings__high(), shortLabel: lazyStrings.ReasoningSettings__high(), testId: 'high', value: 'high' as const },
+  const leadingOptions = props.leadingOptions ?? [];
+  const leading = leadingOptions
+    .filter((option): option is LeadingOption & { label: string, shortLabel: string } => (
+      option.label !== undefined && option.shortLabel !== undefined
+    ))
+    .map((option): EffortOption => ({ ...option, width: 'wide' }));
+  const options: Array<Omit<EffortOption, 'label' | 'shortLabel'> & { label: string | undefined, shortLabel: string | undefined }> = [
+    { label: lazyStrings.ReasoningSettings__default(), shortLabel: lazyStrings.ReasoningSettings__default(), testId: 'default', value: undefined, width: 'default' },
+    { label: lazyStrings.ReasoningSettings__off(), shortLabel: lazyStrings.ReasoningSettings__off(), testId: 'off', value: 'none' as const, width: 'normal' },
+    { label: lazyStrings.ReasoningSettings__low(), shortLabel: lazyStrings.ReasoningSettings__low(), testId: 'low', value: 'low' as const, width: 'normal' },
+    { label: lazyStrings.ReasoningSettings__medium(), shortLabel: lazyStrings.ReasoningSettings__med(), testId: 'medium', value: 'medium' as const, width: 'normal' },
+    { label: lazyStrings.ReasoningSettings__high(), shortLabel: lazyStrings.ReasoningSettings__high(), testId: 'high', value: 'high' as const, width: 'normal' },
   ];
-  return options.filter((option): option is EffortOption => (
+  const resolvedOptions = options.filter((option): option is EffortOption => (
     option.label !== undefined && option.shortLabel !== undefined
   ));
+  return [...leading, ...resolvedOptions];
 });
 
 const buttonRefs = ref<(HTMLElement | null)[]>([]);
@@ -46,7 +92,7 @@ const sliderStyle = ref({
 });
 
 function updateSlider({ immediate }: { immediate?: boolean }) {
-  const index = effortOptions.value.findIndex(o => o.value === props.selectedEffort);
+  const index = effortOptions.value.findIndex(o => o.value === selectedValue.value);
   const el = buttonRefs.value[index];
   if (el) {
     sliderStyle.value = {
@@ -58,8 +104,10 @@ function updateSlider({ immediate }: { immediate?: boolean }) {
   }
 }
 
-function setEffort({ effort }: { effort: Reasoning['effort'] }) {
-  emit('update:effort', effort);
+function setValue({ value }: { value: ReasoningSettingsValue }) {
+  if (props.disabled) return;
+  emit('update:value', value);
+  if (isReasoningEffort(value)) emit('update:effort', value);
 }
 
 onMounted(() => {
@@ -73,7 +121,7 @@ onMounted(() => {
 });
 
 // Monitor for selection changes or potential layout updates (e.g., resizing)
-watch(() => props.selectedEffort, () => {
+watch([selectedValue, effortOptions], () => {
   nextTick(() => updateSlider({}));
 });
 
@@ -88,10 +136,17 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="px-3 py-2 border-b dark:border-gray-700">
+  <div
+    :tw-class="[
+      surface === 'card'
+        ? 'p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl'
+        : 'px-3 py-2 border-b dark:border-gray-700',
+      disabled ? 'opacity-50' : ''
+    ]"
+  >
     <div tw-class="flex items-center gap-2 mb-2">
       <BrainIcon tw-class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-      <span tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{{ lazyStrings.ReasoningSettings__think() }}</span>
+      <span tw-class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{{ headingLabel }}</span>
     </div>
 
     <!-- Segmented Control Container -->
@@ -108,12 +163,17 @@ defineExpose({
         v-for="(opt, idx) in effortOptions"
         :key="String(opt.value)"
         :ref="el => buttonRefs[idx] = el as HTMLElement"
-        @click="setEffort({ effort: opt.value })"
-        :tw-class="['relative z-10 flex-1 py-1 text-[10px] font-medium transition-colors truncate px-0.5',
-                    selectedEffort === opt.value
+        :disabled="disabled"
+        @click="setValue({ value: opt.value })"
+        :tw-class="['relative z-10 py-1 text-[10px] font-medium transition-colors truncate px-0.5 disabled:cursor-not-allowed',
+                    selectedValue === opt.value
                       ? 'text-blue-600 dark:text-blue-400 font-bold'
                       : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
-                    opt.value === undefined ? 'flex-[1.4]' : 'flex-1'
+                    opt.width === 'wide'
+                      ? 'flex-[2.2]'
+                      : opt.width === 'default'
+                        ? 'flex-[1.4]'
+                        : 'flex-1'
         ]"
         :data-testid="`reasoning-effort-${opt.testId}`"
         :title="opt.label"

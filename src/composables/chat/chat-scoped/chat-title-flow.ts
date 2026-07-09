@@ -114,7 +114,7 @@ export async function generateChatTitleForChat({
       onChunk: ({ chunk }) => {
         generatedTitle += chunk;
       },
-      parameters: undefined,
+      parameters: resolved.titleGeneration.lmParameters,
       signal: combinedSignal,
     });
 

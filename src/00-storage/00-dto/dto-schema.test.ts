@@ -8,6 +8,18 @@ import {
 
 const endpoint = { type: 'openai' as const, url: 'https://example.test/v1' };
 
+const settingsDtoBase = {
+  endpoint,
+  defaultModelId: undefined,
+  storageType: 'opfs' as const,
+  providerProfiles: [],
+  mounts: [],
+  heavyContentAlertDismissed: undefined,
+  systemPrompt: undefined,
+  lmParameters: undefined,
+  experimental: undefined,
+};
+
 describe('Zod Schemas', () => {
   it('should validate a correct chat object', () => {
     const chat = {
@@ -34,81 +46,76 @@ describe('Zod Schemas', () => {
   });
 
   it('requires inline titleGeneration in V2 settings DTO', () => {
-    expect(SettingsSchemaDtoV2.safeParse({
-      endpoint,
-      defaultModelId: undefined,
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      heavyContentAlertDismissed: undefined,
-      systemPrompt: undefined,
-      lmParameters: undefined,
-      experimental: undefined,
-    }).success).toBe(false);
+    expect(SettingsSchemaDtoV2.safeParse(settingsDtoBase).success).toBe(false);
   });
 
   it('accepts same_scope and explicit title generation settings in V2 settings DTO', () => {
     expect(SettingsSchemaDtoV2.safeParse({
-      endpoint,
-      defaultModelId: undefined,
+      ...settingsDtoBase,
       titleGeneration: {
         endpoint: 'same_scope',
         model: 'same_scope',
       },
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      heavyContentAlertDismissed: undefined,
-      systemPrompt: undefined,
-      lmParameters: undefined,
-      experimental: undefined,
     }).success).toBe(true);
 
     expect(SettingsSchemaDtoV2.safeParse({
-      endpoint,
-      defaultModelId: undefined,
+      ...settingsDtoBase,
       titleGeneration: {
         endpoint,
         model: { id: 'title-model' },
       },
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      heavyContentAlertDismissed: undefined,
-      systemPrompt: undefined,
-      lmParameters: undefined,
-      experimental: undefined,
     }).success).toBe(true);
+  });
+
+  it('accepts title generation lmParameters while preserving patch6 missing-field compatibility', () => {
+    expect(SettingsSchemaDtoV2.safeParse({
+      ...settingsDtoBase,
+      titleGeneration: {
+        endpoint: 'same_scope',
+        model: 'same_scope',
+      },
+    }).success).toBe(true);
+
+    expect(SettingsSchemaDtoV2.safeParse({
+      ...settingsDtoBase,
+      titleGeneration: {
+        endpoint: 'same_scope',
+        model: 'same_scope',
+        lmParameters: 'same_scope',
+      },
+    }).success).toBe(true);
+
+    expect(SettingsSchemaDtoV2.safeParse({
+      ...settingsDtoBase,
+      titleGeneration: {
+        endpoint,
+        model: { id: 'title-model' },
+        lmParameters: { reasoning: { effort: 'low' } },
+      },
+    }).success).toBe(true);
+
+    expect(SettingsSchemaDtoV2.safeParse({
+      ...settingsDtoBase,
+      titleGeneration: {
+        endpoint,
+        model: { id: 'title-model' },
+        lmParameters: 'same_scope',
+      },
+    }).success).toBe(false);
   });
 
   it('does not allow inherit or explicit endpoint plus same_scope model in V2 settings DTO', () => {
     expect(SettingsSchemaDtoV2.safeParse({
-      endpoint,
-      defaultModelId: undefined,
+      ...settingsDtoBase,
       titleGeneration: 'inherit',
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      heavyContentAlertDismissed: undefined,
-      systemPrompt: undefined,
-      lmParameters: undefined,
-      experimental: undefined,
     }).success).toBe(false);
 
     expect(SettingsSchemaDtoV2.safeParse({
-      endpoint,
-      defaultModelId: undefined,
+      ...settingsDtoBase,
       titleGeneration: {
         endpoint,
         model: 'same_scope',
       },
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      heavyContentAlertDismissed: undefined,
-      systemPrompt: undefined,
-      lmParameters: undefined,
-      experimental: undefined,
     }).success).toBe(false);
   });
 

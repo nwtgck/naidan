@@ -12,6 +12,7 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
   hasLmParameterOverrides,
   LM_PARAMETER_KEYS,
+  normalizeLmParameters,
   REASONING_PARAMETER_KEYS,
 } from '@/utils/lm-parameters';
 
@@ -35,11 +36,13 @@ export type ResolvedTitleGeneration =
   | Readonly<{
       endpoint: Endpoint,
       modelId: string,
+      lmParameters: LmParameters | undefined,
     }>;
 
 type ResolvedNormalGeneration = Readonly<{
   endpoint: Endpoint,
   modelId: string,
+  lmParameters: LmParameters | undefined,
 }>;
 
 function applyLmParameterOverrides({
@@ -99,6 +102,31 @@ function applyLmParameterOverrides({
   }
 }
 
+function cloneResolvedLmParameters({
+  lmParameters,
+}: {
+  lmParameters: LmParameters | undefined,
+}): LmParameters | undefined {
+  const normalized = normalizeLmParameters({ lmParameters });
+  return normalized === undefined
+    ? undefined
+    : JSON.parse(JSON.stringify(normalized)) as LmParameters;
+}
+
+function resolveTitleLmParameters({
+  titleGeneration,
+  sameScope,
+}: {
+  titleGeneration: Exclude<SettingsTitleGeneration, 'disabled'>,
+  sameScope: ResolvedNormalGeneration,
+}): LmParameters | undefined {
+  if (titleGeneration.lmParameters === 'same_scope') {
+    return cloneResolvedLmParameters({ lmParameters: sameScope.lmParameters });
+  }
+
+  return cloneResolvedLmParameters({ lmParameters: titleGeneration.lmParameters });
+}
+
 function resolveLocalTitleGeneration({
   titleGeneration,
   sameScope,
@@ -112,8 +140,9 @@ function resolveLocalTitleGeneration({
   const modelId = titleGeneration.model === 'same_scope'
     ? sameScope.modelId
     : titleGeneration.model.id;
+  const lmParameters = resolveTitleLmParameters({ titleGeneration, sameScope });
 
-  return { endpoint, modelId };
+  return { endpoint, modelId, lmParameters };
 }
 
 function resolveSettingsTitleGeneration({
@@ -173,17 +202,40 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
 
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
 
+  const globalLmParameters: LmParameters = {
+    ...EMPTY_LM_PARAMETERS,
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
+  };
+  applyLmParameterOverrides({ target: globalLmParameters, source: globalSettings.lmParameters });
+
+  const groupLmParameters: LmParameters = {
+    ...globalLmParameters,
+    reasoning: { ...globalLmParameters.reasoning },
+    stop: globalLmParameters.stop === undefined ? undefined : [...globalLmParameters.stop],
+  };
+  applyLmParameterOverrides({ target: groupLmParameters, source: group?.lmParameters });
+
+  const chatLmParameters: LmParameters = {
+    ...groupLmParameters,
+    reasoning: { ...groupLmParameters.reasoning },
+    stop: groupLmParameters.stop === undefined ? undefined : [...groupLmParameters.stop],
+  };
+  applyLmParameterOverrides({ target: chatLmParameters, source: chat.lmParameters });
+
   const globalGeneration: ResolvedNormalGeneration = {
     endpoint: globalSettings.endpoint,
     modelId: globalSettings.defaultModelId || '',
+    lmParameters: globalLmParameters,
   };
   const groupGeneration: ResolvedNormalGeneration = {
     endpoint: group?.endpoint ?? globalGeneration.endpoint,
     modelId: group?.modelId || globalGeneration.modelId,
+    lmParameters: groupLmParameters,
   };
   const chatGeneration: ResolvedNormalGeneration = {
     endpoint: chat.endpoint ?? groupGeneration.endpoint,
     modelId: chat.modelId || groupGeneration.modelId,
+    lmParameters: chatLmParameters,
   };
 
   const globalTitleGeneration = resolveSettingsTitleGeneration({
@@ -242,22 +294,13 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
     }
   }
 
-  const lmParameters: LmParameters = {
-    ...EMPTY_LM_PARAMETERS,
-    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
-  };
-
-  for (const source of [globalSettings.lmParameters, group?.lmParameters, chat.lmParameters]) {
-    applyLmParameterOverrides({ target: lmParameters, source });
-  }
-
   return {
     endpoint: chatGeneration.endpoint,
     modelId: chatGeneration.modelId,
     autoTitleEnabled: chatTitleGeneration !== 'disabled',
     titleGeneration: chatTitleGeneration,
     systemPromptMessages: systemPrompts,
-    lmParameters,
+    lmParameters: chatLmParameters,
     sources: {
       endpoint: chat.endpoint !== undefined ? 'chat' : (group?.endpoint !== undefined ? 'chat_group' : 'global'),
       modelId: chat.modelId ? 'chat' : (group?.modelId ? 'chat_group' : 'global'),

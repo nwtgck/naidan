@@ -118,6 +118,40 @@ export const LmParametersSchemaDto = resolveMissingAsUndefined(z.object({
 }));
 export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
 
+
+const TitleLmParametersSchemaDto = z.union([
+  z.literal('same_scope'),
+  LmParametersSchemaDto,
+]);
+
+const SameScopeTitleGenerationSchemaDto = z.object({
+  endpoint: z.literal('same_scope'),
+  model: z.union([
+    z.literal('same_scope'),
+    z.object({ id: z.string() }),
+  ]),
+  lmParameters: missingAsUndefined(TitleLmParametersSchemaDto),
+});
+
+const ExplicitTitleGenerationSchemaDto = z.object({
+  endpoint: EndpointSchemaDto,
+  model: z.object({ id: z.string() }),
+  lmParameters: missingAsUndefined(LmParametersSchemaDto),
+});
+
+const SettingsTitleGenerationSchemaDto = z.union([
+  z.literal('disabled'),
+  SameScopeTitleGenerationSchemaDto,
+  ExplicitTitleGenerationSchemaDto,
+]);
+
+const ScopedTitleGenerationSchemaDto = z.union([
+  z.literal('disabled'),
+  z.literal('inherit'),
+  SameScopeTitleGenerationSchemaDto,
+  ExplicitTitleGenerationSchemaDto,
+]);
+
 export const SystemPromptSchemaDto = z.discriminatedUnion('behavior', [
   z.object({
     behavior: z.literal('override'),
@@ -206,21 +240,7 @@ export const ChatGroupSchemaDtoV2 = resolveMissingAsUndefined(z.object({
 
   endpoint: missingAsUndefined(EndpointSchemaDto),
   modelId: missingAsUndefined(z.string()),
-  titleGeneration: z.union([
-    z.literal('disabled'),
-    z.literal('inherit'),
-    z.object({
-      endpoint: z.literal('same_scope'),
-      model: z.union([
-        z.literal('same_scope'),
-        z.object({ id: z.string() }),
-      ]),
-    }),
-    z.object({
-      endpoint: EndpointSchemaDto,
-      model: z.object({ id: z.string() }),
-    }),
-  ]),
+  titleGeneration: ScopedTitleGenerationSchemaDto,
   systemPrompt: missingAsUndefined(SystemPromptSchemaDto),
   lmParameters: missingAsUndefined(LmParametersSchemaDto),
   mounts: missingAsUndefined(z.array(MountSchemaDto)),
@@ -500,21 +520,7 @@ export const ChatMetaSchemaDtoV2 = resolveMissingAsUndefined(z.object({
 
   endpoint: missingAsUndefined(EndpointSchemaDto),
   modelId: missingAsUndefined(z.string()),
-  titleGeneration: z.union([
-    z.literal('disabled'),
-    z.literal('inherit'),
-    z.object({
-      endpoint: z.literal('same_scope'),
-      model: z.union([
-        z.literal('same_scope'),
-        z.object({ id: z.string() }),
-      ]),
-    }),
-    z.object({
-      endpoint: EndpointSchemaDto,
-      model: z.object({ id: z.string() }),
-    }),
-  ]),
+  titleGeneration: ScopedTitleGenerationSchemaDto,
   originChatId: missingAsUndefined(z.string()),
   originMessageId: missingAsUndefined(z.string()),
 
@@ -615,20 +621,7 @@ export type SettingsDtoV1 = z.infer<typeof SettingsSchemaDtoV1>;
 export const SettingsSchemaDtoV2 = resolveMissingAsUndefined(z.object({
   endpoint: EndpointSchemaDto,
   defaultModelId: missingAsUndefined(z.string()),
-  titleGeneration: z.union([
-    z.literal('disabled'),
-    z.object({
-      endpoint: z.literal('same_scope'),
-      model: z.union([
-        z.literal('same_scope'),
-        z.object({ id: z.string() }),
-      ]),
-    }),
-    z.object({
-      endpoint: EndpointSchemaDto,
-      model: z.object({ id: z.string() }),
-    }),
-  ]),
+  titleGeneration: SettingsTitleGenerationSchemaDto,
   storageType: StorageTypeSchemaDto,
   providerProfiles: z.array(ProviderProfileSchemaDto).default([]),
   mounts: z.array(MountSchemaDto).default([]),

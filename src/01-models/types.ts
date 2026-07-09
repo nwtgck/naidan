@@ -83,8 +83,16 @@ export type EndpointType = SupportedEndpoint['type'];
 
 export type SettingsTitleGeneration =
   | 'disabled'
-  | { endpoint: 'same_scope', model: 'same_scope' | { id: string } }
-  | { endpoint: Endpoint, model: { id: string } };
+  | {
+      endpoint: 'same_scope',
+      model: 'same_scope' | { id: string },
+      lmParameters?: 'same_scope' | LmParameters,
+    }
+  | {
+      endpoint: Endpoint,
+      model: { id: string },
+      lmParameters?: LmParameters,
+    };
 
 export type ScopedTitleGeneration = SettingsTitleGeneration | 'inherit';
 
