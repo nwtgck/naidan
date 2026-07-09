@@ -372,7 +372,7 @@ const globalTitleEndpointUrl = computed({
           url,
           httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
         },
-        model: titleGeneration.model === 'same_scope' ? explicitSettingsTitleModel({ modelId: undefined }) : titleGeneration.model
+        model: titleGeneration.model === 'same_scope' ? explicitSettingsTitleModel({ modelId: undefined }) : titleGeneration.model,
       },
     });
   },
@@ -399,8 +399,8 @@ function setGlobalTitleEndpointHttpHeaders({
         url: endpoint.url,
         httpHeaders,
       },
-      model: titleGeneration.model === 'same_scope' ? explicitSettingsTitleModel({ modelId: undefined }) : titleGeneration.model
-      },
+      model: titleGeneration.model === 'same_scope' ? explicitSettingsTitleModel({ modelId: undefined }) : titleGeneration.model,
+    },
   });
 }
 
@@ -524,7 +524,7 @@ function setGlobalTitleEndpointType({
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: 'same_scope',
-        model: sameScopeSettingsTitleModel({ modelId })
+        model: sameScopeSettingsTitleModel({ modelId }),
       },
     });
     return;
@@ -532,7 +532,7 @@ function setGlobalTitleEndpointType({
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: { type: 'browser_provided_lm' },
-        model: { id: BROWSER_PROVIDED_LM_MODEL_ID }
+        model: { id: BROWSER_PROVIDED_LM_MODEL_ID },
       },
     });
     return;
@@ -540,7 +540,7 @@ function setGlobalTitleEndpointType({
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: { type: 'transformers_js' },
-        model: explicitSettingsTitleModel({ modelId })
+        model: explicitSettingsTitleModel({ modelId }),
       },
     });
     return;
@@ -560,7 +560,7 @@ function setGlobalTitleEndpointType({
           url: seed?.url ?? '',
           httpHeaders: seed?.httpHeaders?.map(([name, value]) => [name, value]),
         },
-        model: explicitSettingsTitleModel({ modelId })
+        model: explicitSettingsTitleModel({ modelId }),
       },
     });
     return;
@@ -583,7 +583,7 @@ function setGlobalTitleModelId({ modelId }: { modelId: string | undefined }): vo
     setFormTitleGeneration({
       titleGeneration: {
         endpoint: 'same_scope',
-        model: sameScopeSettingsTitleModel({ modelId })
+        model: sameScopeSettingsTitleModel({ modelId }),
       },
     });
     return;
@@ -591,8 +591,8 @@ function setGlobalTitleModelId({ modelId }: { modelId: string | undefined }): vo
   setFormTitleGeneration({
     titleGeneration: {
       endpoint: cloneEndpoint({ endpoint }),
-      model: explicitSettingsTitleModel({ modelId })
-      },
+      model: explicitSettingsTitleModel({ modelId }),
+    },
   });
 }
 
@@ -622,8 +622,8 @@ async function fetchTitleEndpointModels(): Promise<void> {
       setFormTitleGeneration({
         titleGeneration: {
           endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
-          model: { id: models[0] }
-      },
+          model: { id: models[0] },
+        },
       });
     }
   } catch (caught) {

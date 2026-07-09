@@ -766,7 +766,7 @@ const localTitleEndpointUrl = computed({
           url,
           httpHeaders: endpoint.httpHeaders?.map(([name, value]) => [name, value]),
         },
-        model: explicitTitleModel({ modelId: effectiveTitleModelId.value })
+        model: explicitTitleModel({ modelId: effectiveTitleModelId.value }),
       },
     });
   },
@@ -792,8 +792,8 @@ function setLocalTitleEndpointHttpHeaders({
         url: endpoint.url,
         httpHeaders,
       },
-      model: explicitTitleModel({ modelId: effectiveTitleModelId.value })
-      },
+      model: explicitTitleModel({ modelId: effectiveTitleModelId.value }),
+    },
   });
 }
 
@@ -949,7 +949,7 @@ function setLocalTitleEndpointType({
     setLocalTitleGeneration({
       titleGeneration: {
         endpoint: 'same_scope',
-        model: sameScopeTitleModel({ modelId })
+        model: sameScopeTitleModel({ modelId }),
       },
     });
     return;
@@ -958,7 +958,7 @@ function setLocalTitleEndpointType({
     setLocalTitleGeneration({
       titleGeneration: {
         endpoint: { type: 'browser_provided_lm' },
-        model: { id: BROWSER_PROVIDED_LM_MODEL_ID }
+        model: { id: BROWSER_PROVIDED_LM_MODEL_ID },
       },
     });
     return;
@@ -967,7 +967,7 @@ function setLocalTitleEndpointType({
     setLocalTitleGeneration({
       titleGeneration: {
         endpoint: nextEndpoint,
-        model: explicitTitleModel({ modelId: preservedTitleModelIdForEndpoint({ nextEndpoint }) })
+        model: explicitTitleModel({ modelId: preservedTitleModelIdForEndpoint({ nextEndpoint }) }),
       },
     });
     return;
@@ -989,7 +989,7 @@ function setLocalTitleEndpointType({
     setLocalTitleGeneration({
       titleGeneration: {
         endpoint: nextEndpoint,
-        model: explicitTitleModel({ modelId: preservedTitleModelIdForEndpoint({ nextEndpoint }) })
+        model: explicitTitleModel({ modelId: preservedTitleModelIdForEndpoint({ nextEndpoint }) }),
       },
     });
     return;
@@ -1027,8 +1027,8 @@ async function fetchTitleEndpointModels(): Promise<void> {
       setLocalTitleGeneration({
         titleGeneration: {
           endpoint: cloneEndpoint({ endpoint: titleGeneration.endpoint }),
-          model: { id: titleEndpointModels.value[0] }
-      },
+          model: { id: titleEndpointModels.value[0] },
+        },
       });
     }
   } catch (caught) {
@@ -1102,27 +1102,27 @@ function setLocalTitleModelId({
     }
     const endpoint = activeTitleEndpoint.value;
     if (endpoint === undefined) {
-      setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: { id: modelId }  } });
+      setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: { id: modelId } } });
       return;
     }
     setLocalTitleGeneration({
       titleGeneration: {
         endpoint: cloneEndpoint({ endpoint }),
-        model: { id: modelId }
+        model: { id: modelId },
       },
     });
     return;
   }
   const endpoint = typeof titleGeneration === 'string' ? 'same_scope' : titleGeneration.endpoint;
   if (endpoint === 'same_scope') {
-    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: sameScopeTitleModel({ modelId })  } });
+    setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: sameScopeTitleModel({ modelId }) } });
     return;
   }
   setLocalTitleGeneration({
     titleGeneration: {
       endpoint: cloneEndpoint({ endpoint }),
-      model: explicitTitleModel({ modelId })
-      },
+      model: explicitTitleModel({ modelId }),
+    },
   });
 }
 const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);

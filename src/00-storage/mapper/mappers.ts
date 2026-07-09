@@ -119,7 +119,6 @@ const titleModelToDomain = ({
   return exactObject<{ id: string }>()({ id });
 };
 
-
 const explicitTitleModelToDomain = ({
   model,
 }: {

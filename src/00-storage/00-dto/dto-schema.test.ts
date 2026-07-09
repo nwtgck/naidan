@@ -8,6 +8,16 @@ import {
 
 const endpoint = { type: 'openai' as const, url: 'https://example.test/v1' };
 
+const emptyLmParametersDto = {
+  temperature: undefined,
+  topP: undefined,
+  maxCompletionTokens: undefined,
+  presencePenalty: undefined,
+  frequencyPenalty: undefined,
+  stop: undefined,
+  reasoning: { effort: undefined },
+};
+
 const settingsDtoBase = {
   endpoint,
   defaultModelId: undefined,
@@ -32,7 +42,7 @@ describe('Zod Schemas', () => {
             role: 'user',
             content: 'Hi',
             timestamp: 123456,
-            lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+            lmParameters: emptyLmParametersDto,
             replies: { items: [] },
           },
         ],
@@ -57,15 +67,8 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint: 'same_scope',
         model: 'same_scope',
+        lmParameters: emptyLmParametersDto,
       },
-    }).success).toBe(false);
-
-    expect(SettingsSchemaDtoV2.safeParse({
-      ...settingsDtoBase,
-      titleGeneration: {
-        endpoint: 'same_scope',
-        model: 'same_scope',
-       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     }).success).toBe(true);
 
     expect(SettingsSchemaDtoV2.safeParse({
@@ -73,7 +76,8 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint,
         model: { id: 'title-model' },
-       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        lmParameters: emptyLmParametersDto,
+      },
     }).success).toBe(true);
   });
 
@@ -83,7 +87,16 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint: 'same_scope',
         model: 'same_scope',
-       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      },
+    }).success).toBe(false);
+
+    expect(SettingsSchemaDtoV2.safeParse({
+      ...settingsDtoBase,
+      titleGeneration: {
+        endpoint: 'same_scope',
+        model: 'same_scope',
+        lmParameters: emptyLmParametersDto,
+      },
     }).success).toBe(true);
 
     expect(SettingsSchemaDtoV2.safeParse({
@@ -125,7 +138,8 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint,
         model: 'same_scope',
-       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        lmParameters: emptyLmParametersDto,
+      },
     }).success).toBe(false);
   });
 

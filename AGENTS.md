@@ -5,6 +5,43 @@
 *   **Keyed Promise Aggregation**: Use `promiseAllKeyed` from `@/utils/promise` instead of `Promise.all` for a fixed set of concurrent operations that produce values. Use `Promise.all` only for fixed operations that produce no values or for dynamic collections.
 *   **LM Terminology**: Use `LM` rather than `LLM` for generative language-model domain terminology, regardless of model size. In identifiers, use `Lm` or `lm` (for example, `LmProvider` and `lmParameters`). User-facing prose may intentionally use `LLM` when it is clearer to a general audience; explain ambiguous cases to the user before changing them.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
+
+# Exhaustive Object Handling
+
+Prevent newly added fields from being silently ignored. Use this pattern when a function handles the complete shape of an object, such as mapping, normalizing, comparing, cloning, or migrating data. When in doubt, prefer code that makes missed fields detectable by static analysis.
+
+```ts
+type Fruit = {
+  name: string,
+  nutrition: {
+    calories: number,
+    sugarGrams: number,
+  },
+};
+
+type FruitSummary = {
+  name: string,
+  calories: number,
+};
+
+function summarizeFruit({ fruit }: { fruit: Fruit }): FruitSummary {
+  const { name, nutrition, ...unhandledFruit } = fruit;
+  unhandledFruit satisfies Record<PropertyKey, never>;
+
+  const { calories, sugarGrams: _sugarGrams, ...unhandledNutrition } = nutrition;
+  unhandledNutrition satisfies Record<PropertyKey, never>;
+
+  return exactObject<FruitSummary>()({
+    name,
+    calories,
+  });
+}
+```
+
+For intentionally unused fields, destructure them with an underscore-prefixed name, such as `_sugarGrams`, so future fields still fail the rest-property check.
+
+Use inline `Record<PropertyKey, never>` for rest-property checks. Do not create an alias for it. Use `exactObject` for destination-side exactness; see `src/utils/exact-object.ts`.
+
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.
 * **Boundary Strings in Tests**: When string loading is not part of the behavior under test, preload strings locally in the relevant test file or suite:
@@ -95,47 +132,6 @@ await processRecord({
 async function deleteUser({ id }: { id: string }) { ... }
 await deleteUser({ id: "user_123" });
 ```
-
-# Exhaustive Object Handling
-
-Prevent newly added fields from being silently ignored when mapping, comparing, cloning, normalizing, migrating, or otherwise reading a complete object shape. When a field is intentionally unused, destructure it with an `_` name before the rest check.
-
-```ts
-type Fruit = {
-  name: string;
-  color: string;
-  nutrition: {
-    calories: number;
-    sugarGrams: number;
-  };
-};
-
-type FruitSummary = {
-  label: string;
-  nutrition: {
-    calories: number;
-    sugarGrams: number;
-  };
-};
-
-function summarizeFruit({ fruit }: { fruit: Fruit }): FruitSummary {
-  const { name, color: _color, nutrition, ...unhandledFruit } = fruit;
-  unhandledFruit satisfies Record<PropertyKey, never>;
-
-  const { calories, sugarGrams, ...unhandledNutrition } = nutrition;
-  unhandledNutrition satisfies Record<PropertyKey, never>;
-
-  return exactObject<FruitSummary>()({
-    label: name,
-    nutrition: exactObject<FruitSummary['nutrition']>()({
-      calories,
-      sugarGrams,
-    }),
-  });
-}
-```
-
-For nested objects, check each object at the level where it is unpacked. Prefer a shape that preserves static exhaustiveness checks when unsure. Use inline `Record<PropertyKey, never>` for rest-property checks; do not create an alias for it. Use `exactObject` for exact destination keys; see `src/utils/exact-object.ts`.
 
 # Type Design: Avoid Booleans for Future-Proofing
 
