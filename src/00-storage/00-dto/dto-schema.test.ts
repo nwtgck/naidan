@@ -57,6 +57,14 @@ describe('Zod Schemas', () => {
       titleGeneration: {
         endpoint: 'same_scope',
         model: 'same_scope',
+      },
+    }).success).toBe(false);
+
+    expect(SettingsSchemaDtoV2.safeParse({
+      ...settingsDtoBase,
+      titleGeneration: {
+        endpoint: 'same_scope',
+        model: 'same_scope',
        lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     }).success).toBe(true);
 
@@ -69,7 +77,7 @@ describe('Zod Schemas', () => {
     }).success).toBe(true);
   });
 
-  it('accepts title generation lmParameters while preserving patch6 missing-field compatibility', () => {
+  it('requires title generation lmParameters in V2 titleGeneration objects', () => {
     expect(SettingsSchemaDtoV2.safeParse({
       ...settingsDtoBase,
       titleGeneration: {

@@ -96,31 +96,38 @@ async function deleteUser({ id }: { id: string }) { ... }
 await deleteUser({ id: "user_123" });
 ```
 
-# Exhaustive Object Mapping
+# Exhaustive Object Handling
 
-Prevent newly added fields from being silently ignored.
-
-Use a rest-property check on the source object:
+Prevent newly added fields from being silently ignored when mapping, comparing, cloning, normalizing, migrating, or otherwise reading a complete object shape. When a field is intentionally unused, destructure it with an `_` name before the rest check.
 
 ```ts
-type FruitDto = {
+type Fruit = {
   name: string;
+  color: string;
   nutrition: {
     calories: number;
     sugarGrams: number;
   };
 };
 
-function fruitToDomain(dto: FruitDto): Fruit {
-  const { name, nutrition, ...unhandledFruit } = dto;
+type FruitSummary = {
+  label: string;
+  nutrition: {
+    calories: number;
+    sugarGrams: number;
+  };
+};
+
+function summarizeFruit({ fruit }: { fruit: Fruit }): FruitSummary {
+  const { name, color: _color, nutrition, ...unhandledFruit } = fruit;
   unhandledFruit satisfies Record<PropertyKey, never>;
 
   const { calories, sugarGrams, ...unhandledNutrition } = nutrition;
   unhandledNutrition satisfies Record<PropertyKey, never>;
 
-  return exactObject<Fruit>()({
-    name,
-    nutrition: exactObject<Fruit['nutrition']>()({
+  return exactObject<FruitSummary>()({
+    label: name,
+    nutrition: exactObject<FruitSummary['nutrition']>()({
       calories,
       sugarGrams,
     }),
@@ -128,11 +135,7 @@ function fruitToDomain(dto: FruitDto): Fruit {
 }
 ```
 
-For nested objects, check each object at the level where it is unpacked.
-
-Use inline `Record<PropertyKey, never>` for rest-property checks. Do not create an alias for it.
-
-Use `exactObject` for the destination object when exact output keys matter. See `src/utils/exact-object.ts`.
+For nested objects, check each object at the level where it is unpacked. Prefer a shape that preserves static exhaustiveness checks when unsure. Use inline `Record<PropertyKey, never>` for rest-property checks; do not create an alias for it. Use `exactObject` for exact destination keys; see `src/utils/exact-object.ts`.
 
 # Type Design: Avoid Booleans for Future-Proofing
 

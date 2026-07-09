@@ -113,17 +113,68 @@ export function areEndpointModelNamespacesEqual({
 
   switch (left.type) {
   case 'openai':
-  case 'ollama':
-    return right.type === left.type && left.url === right.url;
-  case 'transformers_js':
-    return right.type === 'transformers_js';
-  case 'browser_provided_lm':
-    return right.type === 'browser_provided_lm';
-  case 'unsupported_experimental_endpoint':
-    return (
-      right.type === 'unsupported_experimental_endpoint'
-      && left.persistedType === right.persistedType
-    );
+  case 'ollama': {
+    if (right.type !== left.type) return false;
+
+    const {
+      type: leftType,
+      url: leftUrl,
+      httpHeaders: _leftHttpHeaders,
+      ...unhandledLeft
+    } = left;
+    unhandledLeft satisfies Record<PropertyKey, never>;
+
+    const {
+      type: rightType,
+      url: rightUrl,
+      httpHeaders: _rightHttpHeaders,
+      ...unhandledRight
+    } = right;
+    unhandledRight satisfies Record<PropertyKey, never>;
+
+    return leftType === rightType && leftUrl === rightUrl;
+  }
+  case 'transformers_js': {
+    if (right.type !== 'transformers_js') return false;
+
+    const { type: leftType, ...unhandledLeft } = left;
+    unhandledLeft satisfies Record<PropertyKey, never>;
+
+    const { type: rightType, ...unhandledRight } = right;
+    unhandledRight satisfies Record<PropertyKey, never>;
+
+    return leftType === rightType;
+  }
+  case 'browser_provided_lm': {
+    if (right.type !== 'browser_provided_lm') return false;
+
+    const { type: leftType, ...unhandledLeft } = left;
+    unhandledLeft satisfies Record<PropertyKey, never>;
+
+    const { type: rightType, ...unhandledRight } = right;
+    unhandledRight satisfies Record<PropertyKey, never>;
+
+    return leftType === rightType;
+  }
+  case 'unsupported_experimental_endpoint': {
+    if (right.type !== 'unsupported_experimental_endpoint') return false;
+
+    const {
+      type: leftType,
+      persistedType: leftPersistedType,
+      ...unhandledLeft
+    } = left;
+    unhandledLeft satisfies Record<PropertyKey, never>;
+
+    const {
+      type: rightType,
+      persistedType: rightPersistedType,
+      ...unhandledRight
+    } = right;
+    unhandledRight satisfies Record<PropertyKey, never>;
+
+    return leftType === rightType && leftPersistedType === rightPersistedType;
+  }
   default: {
     const _ex: never = left;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
@@ -143,9 +194,25 @@ export function areEndpointsEqual({
   switch (left.type) {
   case 'openai':
   case 'ollama': {
-    if (right.type !== left.type || left.url !== right.url) return false;
-    const leftHeaders = left.httpHeaders;
-    const rightHeaders = right.httpHeaders;
+    if (right.type !== left.type) return false;
+
+    const {
+      type: leftType,
+      url: leftUrl,
+      httpHeaders: leftHeaders,
+      ...unhandledLeft
+    } = left;
+    unhandledLeft satisfies Record<PropertyKey, never>;
+
+    const {
+      type: rightType,
+      url: rightUrl,
+      httpHeaders: rightHeaders,
+      ...unhandledRight
+    } = right;
+    unhandledRight satisfies Record<PropertyKey, never>;
+
+    if (leftType !== rightType || leftUrl !== rightUrl) return false;
     if (leftHeaders === rightHeaders) return true;
     if (
       leftHeaders === undefined
@@ -161,15 +228,47 @@ export function areEndpointsEqual({
       ),
     );
   }
-  case 'transformers_js':
-    return right.type === 'transformers_js';
-  case 'browser_provided_lm':
-    return right.type === 'browser_provided_lm';
-  case 'unsupported_experimental_endpoint':
-    return (
-      right.type === 'unsupported_experimental_endpoint'
-      && left.persistedType === right.persistedType
-    );
+  case 'transformers_js': {
+    if (right.type !== 'transformers_js') return false;
+
+    const { type: leftType, ...unhandledLeft } = left;
+    unhandledLeft satisfies Record<PropertyKey, never>;
+
+    const { type: rightType, ...unhandledRight } = right;
+    unhandledRight satisfies Record<PropertyKey, never>;
+
+    return leftType === rightType;
+  }
+  case 'browser_provided_lm': {
+    if (right.type !== 'browser_provided_lm') return false;
+
+    const { type: leftType, ...unhandledLeft } = left;
+    unhandledLeft satisfies Record<PropertyKey, never>;
+
+    const { type: rightType, ...unhandledRight } = right;
+    unhandledRight satisfies Record<PropertyKey, never>;
+
+    return leftType === rightType;
+  }
+  case 'unsupported_experimental_endpoint': {
+    if (right.type !== 'unsupported_experimental_endpoint') return false;
+
+    const {
+      type: leftType,
+      persistedType: leftPersistedType,
+      ...unhandledLeft
+    } = left;
+    unhandledLeft satisfies Record<PropertyKey, never>;
+
+    const {
+      type: rightType,
+      persistedType: rightPersistedType,
+      ...unhandledRight
+    } = right;
+    unhandledRight satisfies Record<PropertyKey, never>;
+
+    return leftType === rightType && leftPersistedType === rightPersistedType;
+  }
   default: {
     const _ex: never = left;
     throw new Error(`Unhandled endpoint: ${String(_ex)}`);
