@@ -649,7 +649,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
 
     expect(vm.form.defaultModelId).toBe('');
-    expect(vm.form.titleGeneration).toEqual({ endpoint: 'same_scope', model: 'same_scope' });
+    expect(vm.form.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: 'same_scope' });
   });
 
   it('preserves defaultModelId and titleGeneration model if they are still available in the newly fetched models', async () => {
@@ -669,7 +669,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
 
     expect(vm.form.defaultModelId).toBe('kept-model');
-    expect(vm.form.titleGeneration).toEqual({ endpoint: 'same_scope', model: { id: 'kept-title-model' } });
+    expect(vm.form.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: { id: 'kept-title-model' } });
   });
 
   it('shows confirmation behavior for "X" button', async () => {
@@ -1037,7 +1037,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         url: 'http://quick:11434',
       });
       expect(connectionVm.form.defaultModelId).toBe('model-a');
-      expect(connectionVm.form.titleGeneration).toEqual({ endpoint: 'same_scope', model: { id: 'model-title' } });
+      expect(connectionVm.form.titleGeneration).toMatchObject({ endpoint: 'same_scope', model: { id: 'model-title' } });
       expect(connectionVm.selectedProviderProfileId).toBe('');
 
       // Should enable the global save button

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import type { EndpointType, Settings } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type EndpointType, type Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
@@ -256,6 +256,55 @@ describe('ConnectionTab Ollama management integration', () => {
     expect(selectors[0]?.props('disabled')).toBe(true);
     expect(selectors[1]?.props('modelValue')).toBe('browser-provided-language-model');
     expect(selectors[1]?.props('disabled')).toBe(true);
+    wrapper.unmount();
+  });
+
+
+  it('edits HTTP headers on an explicit title endpoint', async () => {
+    const settings = createSettings({ endpointType: 'openai' });
+    settings.titleGeneration = {
+      endpoint: {
+        type: 'openai',
+        url: 'https://title.example/v1',
+        httpHeaders: [['X-Title', 'old']],
+      },
+      model: { id: 'title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ConnectionTab, {
+      props: {
+        modelValue: settings,
+        availableModels: [],
+        isFetchingModels: false,
+        hasUnsavedChanges: false,
+      },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-testid="setting-title-http-header-name-input"]').setValue('X-Title-Next');
+    await wrapper.get('[data-testid="setting-title-http-header-value-input"]').setValue('next');
+
+    expect(settings.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://title.example/v1',
+        httpHeaders: [['X-Title-Next', 'next']],
+      },
+      model: { id: 'title-model' },
+    });
+
+    await wrapper.get('[data-testid="setting-title-http-header-remove-button"]').trigger('click');
+
+    expect(settings.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://title.example/v1',
+        httpHeaders: [],
+      },
+      model: { id: 'title-model' },
+    });
     wrapper.unmount();
   });
 

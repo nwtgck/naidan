@@ -210,7 +210,7 @@ function titleReasoningSelectValueFromLmParameters({
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): TitleReasoningSelectValue {
   if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
-  return lmParameters !== 'same_scope' && lmParameters?.reasoning.effort !== undefined
+  return lmParameters !== 'same_scope' && lmParameters?.reasoning?.effort !== undefined
     ? lmParameters.reasoning.effort
     : undefined;
 }
@@ -364,6 +364,62 @@ const globalTitleEndpointUrl = computed({
     });
   },
 });
+const globalTitleEndpointHttpHeaders = computed(() => {
+  const endpoint = globalTitleEndpoint.value;
+  return endpoint !== 'same_scope' && isHttpEndpoint(endpoint)
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [string, string]) ?? []
+    : undefined;
+});
+
+function setGlobalTitleEndpointHttpHeaders({
+  httpHeaders,
+}: {
+  httpHeaders: [string, string][],
+}): void {
+  const titleGeneration = currentSettingsTitleGeneration();
+  const endpoint = globalTitleEndpoint.value;
+  if (titleGeneration === 'disabled' || endpoint === 'same_scope' || !isHttpEndpoint(endpoint)) return;
+  setFormTitleGeneration({
+    titleGeneration: {
+      endpoint: {
+        type: endpoint.type,
+        url: endpoint.url,
+        httpHeaders,
+      },
+      model: titleGeneration.model === 'same_scope' ? { id: '' } : titleGeneration.model,
+    },
+  });
+}
+
+function addGlobalTitleHeader(): void {
+  const headers = globalTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setGlobalTitleEndpointHttpHeaders({ httpHeaders: [...headers, ['', '']] });
+}
+
+function updateGlobalTitleHeader({
+  index,
+  field,
+  value,
+}: {
+  index: number,
+  field: 0 | 1,
+  value: string,
+}): void {
+  const headers = globalTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setGlobalTitleEndpointHttpHeaders({
+    httpHeaders: headers.map((header, headerIndex) => headerIndex === index
+      ? ([field === 0 ? value : header[0], field === 1 ? value : header[1]] as [string, string])
+      : header),
+  });
+}
+
+function removeGlobalTitleHeader({ index }: { index: number }): void {
+  const headers = globalTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setGlobalTitleEndpointHttpHeaders({ httpHeaders: headers.filter((_, headerIndex) => headerIndex !== index) });
+}
 const globalTitleModelOptions = computed(() => globalTitleEndpointUsesSameScope.value
   ? sortedModels.value
   : sortedTitleEndpointModels.value);
@@ -1094,6 +1150,57 @@ defineExpose({
                       placeholder="http://localhost:11434"
                       data-testid="setting-title-endpoint-url-input"
                     />
+                  </div>
+
+                  <div v-if="!globalTitleEndpointUsesSameScope && isHttpEndpoint(globalEffectiveTitleEndpoint)" tw-class="space-y-3 md:col-span-2">
+                    <div tw-class="flex items-center justify-between ml-1">
+                      <label tw-class="block text-xs font-bold text-gray-400 uppercase tracking-widest">{{ lazyStrings.ConnectionTab__custom_http_headers() }}</label>
+                      <button
+                        @click="addGlobalTitleHeader"
+                        type="button"
+                        :disabled="!globalTitleGenerationEnabled"
+                        tw-class="text-[10px] font-bold text-blue-600 hover:text-blue-700 disabled:text-gray-400 transition-colors flex items-center gap-1"
+                      >
+                        <PlusIcon tw-class="w-3 h-3" />
+                        {{ lazyStrings.ConnectionTab__add_header() }}
+                      </button>
+                    </div>
+
+                    <div v-if="globalTitleEndpointHttpHeaders && globalTitleEndpointHttpHeaders.length > 0" tw-class="space-y-2">
+                      <div
+                        v-for="(header, index) in globalTitleEndpointHttpHeaders"
+                        :key="index"
+                        class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
+                      >
+                        <input
+                          :value="header[0]"
+                          @input="updateGlobalTitleHeader({ index, field: 0, value: ($event.target as HTMLInputElement).value })"
+                          type="text"
+                          tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm disabled:opacity-50"
+                          :placeholder="lazyStrings.ConnectionTab__header_name_example()"
+                          :disabled="!globalTitleGenerationEnabled"
+                          data-testid="setting-title-http-header-name-input"
+                        />
+                        <input
+                          :value="header[1]"
+                          @input="updateGlobalTitleHeader({ index, field: 1, value: ($event.target as HTMLInputElement).value })"
+                          type="text"
+                          tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm disabled:opacity-50"
+                          :placeholder="lazyStrings.ConnectionTab__value()"
+                          :disabled="!globalTitleGenerationEnabled"
+                          data-testid="setting-title-http-header-value-input"
+                        />
+                        <button
+                          @click="removeGlobalTitleHeader({ index })"
+                          :disabled="!globalTitleGenerationEnabled"
+                          tw-class="p-2 text-gray-400 hover:text-red-500 disabled:hover:text-gray-400 transition-colors"
+                          data-testid="setting-title-http-header-remove-button"
+                        >
+                          <Trash2Icon tw-class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div v-else tw-class="text-[11px] text-gray-400 italic ml-1">{{ lazyStrings.ConnectionTab__no_custom_headers() }}</div>
                   </div>
 
                   <div tw-class="space-y-2 md:col-span-2">

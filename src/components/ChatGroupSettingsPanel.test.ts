@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, ref, toRef } from 'vue';
-import type { ChatGroup, Settings } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type ChatGroup, type Settings } from '@/01-models/types';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
@@ -1049,4 +1049,41 @@ describe('ChatGroupSettingsPanel.vue', () => {
       }) });
     });
   });
+
+  it('materializes global title endpoint headers when editing title headers', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: {
+        type: 'openai',
+        url: 'https://global-title.example/v1',
+        httpHeaders: [['X-Global-Title', 'old']],
+      },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-title-http-header-name-input"]').setValue('X-Group-Title');
+    await wrapper.get('[data-testid="group-setting-title-http-header-name-input"]').trigger('blur');
+    await wrapper.get('[data-testid="group-setting-title-http-header-value-input"]').setValue('next');
+    await wrapper.get('[data-testid="group-setting-title-http-header-value-input"]').trigger('blur');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://global-title.example/v1',
+        httpHeaders: [['X-Group-Title', 'next']],
+      },
+      model: { id: 'global-title-model' },
+    });
+    expect(mockSettings.titleGeneration).toMatchObject({
+      endpoint: {
+        httpHeaders: [['X-Global-Title', 'old']],
+      },
+    });
+  });
+
 });

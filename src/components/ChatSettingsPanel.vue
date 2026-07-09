@@ -275,7 +275,7 @@ function titleReasoningSelectValueFromLmParameters({
   lmParameters: 'same_scope' | LmParameters | undefined,
 }): TitleReasoningSelectValue {
   if (endpoint === 'same_scope' && lmParameters === 'same_scope') return 'same_scope';
-  return lmParameters !== 'same_scope' && lmParameters?.reasoning.effort !== undefined
+  return lmParameters !== 'same_scope' && lmParameters?.reasoning?.effort !== undefined
     ? lmParameters.reasoning.effort
     : undefined;
 }
@@ -342,7 +342,7 @@ function titleReasoningLabel({
 }): string | undefined {
   return lmParameters === 'same_scope'
     ? reasoningEffortLabel({ effort: sameScopeEffort })
-    : reasoningEffortLabel({ effort: lmParameters?.reasoning.effort });
+    : reasoningEffortLabel({ effort: lmParameters?.reasoning?.effort });
 }
 
 // Keep select parsing exhaustive: adding an EndpointType must fail typechecking
@@ -591,6 +591,63 @@ const localTitleEndpointUrl = computed({
     });
   },
 });
+const localTitleEndpointHttpHeaders = computed(() => {
+  const endpoint = activeTitleEndpoint.value;
+  return endpoint !== undefined && isHttpEndpoint(endpoint)
+    ? endpoint.httpHeaders?.map(([name, value]) => [name, value] as [string, string]) ?? []
+    : undefined;
+});
+
+function setLocalTitleEndpointHttpHeaders({
+  httpHeaders,
+}: {
+  httpHeaders: [string, string][],
+}): void {
+  const endpoint = activeTitleEndpoint.value;
+  if (endpoint === undefined || !isHttpEndpoint(endpoint)) return;
+  updateLocalTitleGenerationDraft({
+    titleGeneration: {
+      endpoint: {
+        type: endpoint.type,
+        url: endpoint.url,
+        httpHeaders,
+      },
+      model: explicitTitleModel({ modelId: effectiveTitleModelId.value }),
+    },
+  });
+}
+
+function addLocalTitleHeader(): void {
+  const headers = localTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setLocalTitleEndpointHttpHeaders({ httpHeaders: [...headers, ['', '']] });
+}
+
+function updateLocalTitleHeader({
+  index,
+  field,
+  value,
+}: {
+  index: number,
+  field: 0 | 1,
+  value: string,
+}): void {
+  const headers = localTitleEndpointHttpHeaders.value;
+  if (headers === undefined) return;
+  setLocalTitleEndpointHttpHeaders({
+    httpHeaders: headers.map((header, headerIndex) => headerIndex === index
+      ? ([field === 0 ? value : header[0], field === 1 ? value : header[1]] as [string, string])
+      : header),
+  });
+}
+
+async function removeLocalTitleHeader({ index }: { index: number }): Promise<void> {
+  const headers = localTitleEndpointHttpHeaders.value;
+  if (headers !== undefined) {
+    setLocalTitleEndpointHttpHeaders({ httpHeaders: headers.filter((_, headerIndex) => headerIndex !== index) });
+  }
+  await saveChangesFromUi();
+}
 const titleModelOptions = computed(() => {
   return localTitleEndpointUsesSameScope.value
     ? sortedAvailableModels.value
@@ -637,8 +694,8 @@ function reasoningEffortFromTitleReasoningValue({
 
 const sameScopeReasoningEffort = computed<Reasoning['effort']>(() => (
   localSettings.value.lmParameters?.reasoning?.effort
-  ?? inheritedSettings.value?.lmParameters?.reasoning.effort
-  ?? settings.value.lmParameters?.reasoning.effort
+  ?? inheritedSettings.value?.lmParameters?.reasoning?.effort
+  ?? settings.value.lmParameters?.reasoning?.effort
 ));
 
 const inheritedTitleReasoningOptionLabel = computed(() => formatSettingsSourceLabel({
@@ -1797,6 +1854,55 @@ defineExpose({
                   :disabled="activeTitleEndpoint === undefined || !isHttpEndpoint(activeTitleEndpoint)"
                   data-testid="chat-setting-title-endpoint-url-input"
                 />
+              </div>
+
+              <div v-if="activeTitleEndpoint !== undefined && isHttpEndpoint(activeTitleEndpoint)" tw-class="space-y-3 md:col-span-2">
+                <div tw-class="flex items-center justify-between ml-1">
+                  <label tw-class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{{ lazyStrings.ChatSettingsPanel__custom_http_headers() }}</label>
+                  <button
+                    @click="addLocalTitleHeader"
+                    type="button"
+                    tw-class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
+                  >
+                    <PlusIcon tw-class="w-3 h-3" />
+                    {{ lazyStrings.ChatSettingsPanel__add_header() }}
+                  </button>
+                </div>
+
+                <div v-if="localTitleEndpointHttpHeaders && localTitleEndpointHttpHeaders.length > 0" tw-class="space-y-2">
+                  <div
+                    v-for="(header, index) in localTitleEndpointHttpHeaders"
+                    :key="index"
+                    class="animate-in fade-in slide-in-from-left-1" tw-class="flex gap-2 duration-200"
+                  >
+                    <input
+                      :value="header[0]"
+                      @input="updateLocalTitleHeader({ index, field: 0, value: ($event.target as HTMLInputElement).value })"
+                      @blur="saveChangesFromUi"
+                      type="text"
+                      tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                      :placeholder="lazyStrings.ChatSettingsPanel__name()"
+                      data-testid="chat-setting-title-http-header-name-input"
+                    />
+                    <input
+                      :value="header[1]"
+                      @input="updateLocalTitleHeader({ index, field: 1, value: ($event.target as HTMLInputElement).value })"
+                      @blur="saveChangesFromUi"
+                      type="text"
+                      tw-class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                      :placeholder="lazyStrings.ChatSettingsPanel__value()"
+                      data-testid="chat-setting-title-http-header-value-input"
+                    />
+                    <button
+                      @click="removeLocalTitleHeader({ index })"
+                      tw-class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                      data-testid="chat-setting-title-http-header-remove-button"
+                    >
+                      <Trash2Icon tw-class="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div v-else tw-class="text-[10px] text-gray-400 italic ml-1">{{ lazyStrings.ChatSettingsPanel__no_custom_headers() }}</div>
               </div>
 
               <div tw-class="space-y-2">

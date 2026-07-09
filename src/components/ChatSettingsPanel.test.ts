@@ -7,7 +7,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
-import type { Chat, Endpoint, LmParameters, SettingsTitleGeneration } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type Chat, type Endpoint, type LmParameters, type SettingsTitleGeneration } from '@/01-models/types';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
@@ -1357,4 +1357,44 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
+
+  it('materializes inherited title endpoint headers when editing title headers', async () => {
+    mockCurrentChat.value.titleGeneration = undefined;
+    mockSettings.value.titleGeneration = {
+      endpoint: {
+        type: 'openai',
+        url: 'https://group-title.example/v1',
+        httpHeaders: [['X-Group-Title', 'old']],
+      },
+      model: { id: 'group-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    await wrapper.get('[data-testid="chat-setting-title-http-header-name-input"]').setValue('X-Chat-Title');
+    await wrapper.get('[data-testid="chat-setting-title-http-header-name-input"]').trigger('blur');
+    await wrapper.get('[data-testid="chat-setting-title-http-header-value-input"]').setValue('next');
+    await wrapper.get('[data-testid="chat-setting-title-http-header-value-input"]').trigger('blur');
+    await flushPromises();
+
+    expect(mockCurrentChat.value.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://group-title.example/v1',
+        httpHeaders: [['X-Chat-Title', 'next']],
+      },
+      model: { id: 'group-title-model' },
+    });
+    expect(mockSettings.value.titleGeneration).toMatchObject({
+      endpoint: {
+        httpHeaders: [['X-Group-Title', 'old']],
+      },
+    });
+  });
+
 });
