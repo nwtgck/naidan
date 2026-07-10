@@ -56,7 +56,7 @@ describe('ChatSettingsPanel Error Handling', () => {
         type: 'openai',
         url: 'http://old-url',
       },
-      systemPrompt: null,
+      systemPrompt: undefined,
       lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
     };
 

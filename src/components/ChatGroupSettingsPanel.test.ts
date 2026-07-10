@@ -144,7 +144,8 @@ vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
 }));
 
 describe('ChatGroupSettingsPanel.vue', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mocks.updateChatGroup.mockImplementation(async ({ id, updater }: { id: string, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup }) => {
       if (idToRaw({ id: mockGroup.id }) === id) {
@@ -277,6 +278,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     // Default global settings
     mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     mockSettings.providerProfiles = [];
+    mockSettings.systemPrompt = undefined;
     mockSettings.experimental = { toolConfigPersistence: 'enabled' };
   });
 
@@ -705,12 +707,37 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(upsell.props('show')).toBe(true);
   });
 
+  it('shows system prompt modes and keeps the editor mounted', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    expect(wrapper.text()).toContain('Global');
+    expect(wrapper.text()).toContain('No Prompt');
+    expect(wrapper.text()).toContain('Replace');
+    expect(wrapper.text()).toContain('Append');
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-no-prompt-button"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-parent-button"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+  });
+
   it('updates system prompt behavior correctly', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
-    // Click Append
-    const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
-    await appendBtn?.trigger('click');
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
 
     expectLatestGroupUpdate({
       partial: {
@@ -719,9 +746,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       },
     });
 
-    // Click Override
-    const overrideBtn = wrapper.findAll('button').filter(b => b.text() === 'Override').at(-1);
-    await overrideBtn?.trigger('click');
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
 
     expectLatestGroupUpdate({
       partial: {
@@ -729,6 +754,256 @@ describe('ChatGroupSettingsPanel.vue', () => {
         systemPrompt: expect.objectContaining({ behavior: 'override' }) as ChatGroup['systemPrompt'],
       },
     });
+  });
+
+  it('shows the global prompt in parent mode and materializes an override when edited', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('Global prompt');
+
+    await textarea.setValue('Edited group prompt');
+    await textarea.trigger('blur');
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: 'Edited group prompt' },
+      },
+    });
+  });
+
+  it('keeps No Prompt editable and switches to override when typing', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-no-prompt-button"]').trigger('click');
+    await flushPromises();
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: null },
+      },
+    });
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    await textarea.setValue('Prompt after none');
+    await textarea.trigger('blur');
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: 'Prompt after none' },
+      },
+    });
+  });
+
+  it('does not copy the global prompt into append mode', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await nextTick();
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('keeps parent-materialized text when changing from Replace to Append', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Global prompt');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Global prompt');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'append', content: 'Global prompt' },
+      },
+    });
+  });
+
+  it('materializes the global prompt when Replace is clicked from parent mode', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await flushPromises();
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('Global prompt');
+    expect(textarea.attributes('placeholder')).toBe('Enter instructions for this chat group...');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: 'Global prompt' },
+      },
+    });
+  });
+
+  it('saves append editor content as append-only group prompt content', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    await textarea.setValue('Append only prompt');
+    await textarea.trigger('blur');
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'append', content: 'Append only prompt' },
+      },
+    });
+  });
+
+
+  it('keeps editor text when switching through No Prompt while the panel is open', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Draft replace prompt');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-no-prompt-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Draft replace prompt');
+  });
+
+  it('keeps editor text when switching through Global while the panel is open', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Draft append prompt');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-parent-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Global prompt');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Draft append prompt');
+  });
+
+  it('keeps typed text when changing from Replace to Append', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Draft to try as append');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Draft to try as append');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'append', content: 'Draft to try as append' },
+      },
+    });
+  });
+
+  it('keeps later Replace edits when changing back to Append', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Replace text after visiting append');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Replace text after visiting append');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'append', content: 'Replace text after visiting append' },
+      },
+    });
+  });
+
+  it('keeps typed text when changing from Append to Replace', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Draft to try as replace');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await flushPromises();
+
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Draft to try as replace');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: 'Draft to try as replace' },
+      },
+    });
+  });
+
+  it('uses one prompt buffer across repeated Replace and Append changes', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Shared prompt draft');
+
+    for (let index = 0; index < 4; index += 1) {
+      await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+      await flushPromises();
+      expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Shared prompt draft');
+      expectLatestGroupUpdate({
+        partial: {
+          id: toChatGroupId({ raw: 'g1' }),
+          systemPrompt: { behavior: 'append', content: 'Shared prompt draft' },
+        },
+      });
+
+      await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+      await flushPromises();
+      expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Shared prompt draft');
+      expectLatestGroupUpdate({
+        partial: {
+          id: toChatGroupId({ raw: 'g1' }),
+          systemPrompt: { behavior: 'override', content: 'Shared prompt draft' },
+        },
+      });
+    }
   });
 
   it('saves pending settings to the previous group when the current group changes', async () => {
@@ -818,19 +1093,14 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await flushPromises();
   });
 
-  it('clears system prompt override when clicking Inherit button', async () => {
+  it('clears system prompt override when clicking Global button', async () => {
     mockGroup.systemPrompt = { content: 'group prompt', behavior: 'override' };
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    // Ensure textarea exists initially
     expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
 
-    // Click Inherit in the System Prompt section
-    const inheritBtns = wrapper.findAll('button').filter(b => b.text().includes('Inherit'));
-    // The second one is for the system prompt
-    const inheritBtn = inheritBtns[1] || inheritBtns[0];
-    await inheritBtn?.trigger('click');
+    await wrapper.get('[data-testid="group-setting-system-prompt-parent-button"]').trigger('click');
     await nextTick();
 
     expectLatestGroupUpdate({
@@ -839,10 +1109,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
         systemPrompt: undefined,
       },
     });
-
-    // Verify UI state
-    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Inherited Instructions');
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="group-setting-system-prompt-caption"]').text()).toBe('Global: Not set');
   });
 
   it('displays correct resolution status for system prompt', async () => {
@@ -850,24 +1118,23 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await nextTick();
     const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
 
-    expect(status.text()).toBe('Global Default');
+    expect(status.text()).toBe('Global: Not set');
 
     mockGroup.systemPrompt = { content: 'test', behavior: 'append' };
     await nextTick();
-    expect(status.text()).toBe('Appending');
+    expect(status.text()).toBe('Append');
 
     mockGroup.systemPrompt = { content: 'test', behavior: 'override' };
     await nextTick();
-    expect(status.text()).toBe('Overriding');
+    expect(status.text()).toBe('Replace');
   });
 
   it('calls updateChatGroupMetadata when settings change', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    // First click Override to show the textarea
-    const overrideBtn = wrapper.findAll('button').filter(b => b.text() === 'Override').at(-1);
-    await overrideBtn?.trigger('click');
+    // First click Replace to show the textarea
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
     await nextTick();
 
     // Set system prompt via textarea
