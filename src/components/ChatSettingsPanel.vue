@@ -31,7 +31,6 @@ import { idToRaw } from '@/01-models/ids';
 import {
   XIcon,
   Settings2Icon,
-  MessageSquareQuoteIcon,
   LayersIcon,
   GlobeIcon,
   AlertCircleIcon,
@@ -58,6 +57,8 @@ import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 import ModelSelector from './ModelSelector.vue';
+import SystemPromptSettingsEditor from './SystemPromptSettingsEditor.vue';
+import { systemPromptUiModeFromValue } from './system-prompt-settings-editor';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
@@ -173,7 +174,6 @@ function areScopedTitleGenerationsEqual({
 }
 
 type TitleGenerationMode = 'inherit' | 'override' | 'disabled';
-type SystemPromptUiMode = 'parent' | 'no_prompt' | 'override' | 'append';
 
 type ScopedTitleGenerationDraft =
   | 'inherit'
@@ -1586,117 +1586,8 @@ watch(
 );
 
 
-function systemPromptUiModeFromValue({
-  systemPrompt,
-}: {
-  systemPrompt: SystemPrompt | undefined,
-}): SystemPromptUiMode {
-  if (systemPrompt === undefined) return 'parent';
-  switch (systemPrompt.behavior) {
-  case 'override':
-    return systemPrompt.content === null ? 'no_prompt' : 'override';
-  case 'append':
-    return 'append';
-  default: {
-    const _ex: never = systemPrompt;
-    throw new Error(`Unhandled system prompt behavior: ${String(_ex)}`);
-  }
-  }
-}
-
-function systemPromptOverrideContent({
-  systemPrompt,
-}: {
-  systemPrompt: SystemPrompt | undefined,
-}): string {
-  if (systemPrompt === undefined) return '';
-  switch (systemPrompt.behavior) {
-  case 'override':
-    return systemPrompt.content ?? '';
-  case 'append':
-    return '';
-  default: {
-    const _ex: never = systemPrompt;
-    throw new Error(`Unhandled system prompt behavior: ${String(_ex)}`);
-  }
-  }
-}
-
-function systemPromptAppendContent({
-  systemPrompt,
-}: {
-  systemPrompt: SystemPrompt | undefined,
-}): string {
-  if (systemPrompt === undefined) return '';
-  switch (systemPrompt.behavior) {
-  case 'override':
-    return '';
-  case 'append':
-    return systemPrompt.content;
-  default: {
-    const _ex: never = systemPrompt;
-    throw new Error(`Unhandled system prompt behavior: ${String(_ex)}`);
-  }
-  }
-}
-
 const parentSystemPromptText = computed(() => inheritedSettings.value?.systemPromptMessages?.join('\n\n') ?? '');
 const systemPromptUiMode = computed(() => systemPromptUiModeFromValue({ systemPrompt: localSettings.value.systemPrompt }));
-
-// UX contract: this editor is intentionally not a mirror of the systemPrompt DTO.
-// Parent/no-prompt states still keep the same textarea mounted so lower settings
-// do not jump when the user changes modes, and typing materializes an override.
-const systemPromptEditorValue = computed(() => {
-  switch (systemPromptUiMode.value) {
-  case 'parent':
-    return parentSystemPromptText.value;
-  case 'no_prompt':
-    return '';
-  case 'override':
-    return systemPromptOverrideContent({ systemPrompt: localSettings.value.systemPrompt });
-  case 'append':
-    return systemPromptAppendContent({ systemPrompt: localSettings.value.systemPrompt });
-  default: {
-    const _ex: never = systemPromptUiMode.value;
-    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
-  }
-  }
-});
-
-const systemPromptEditorCaption = computed(() => {
-  switch (systemPromptUiMode.value) {
-  case 'parent':
-    return parentSystemPromptText.value
-      ? lazyStrings.ChatSettingsPanel__system_prompt_chat_group_set()
-      : lazyStrings.ChatSettingsPanel__system_prompt_chat_group_not_set();
-  case 'no_prompt':
-    return lazyStrings.ChatSettingsPanel__system_prompt_no_prompt();
-  case 'override':
-    return lazyStrings.ChatSettingsPanel__instructions_for_this_chat();
-  case 'append':
-    return lazyStrings.ChatSettingsPanel__instructions_to_append();
-  default: {
-    const _ex: never = systemPromptUiMode.value;
-    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
-  }
-  }
-});
-
-const systemPromptEditorPlaceholder = computed(() => {
-  switch (systemPromptUiMode.value) {
-  case 'parent':
-  case 'no_prompt':
-    return lazyStrings.ChatSettingsPanel__start_typing_to_override();
-  case 'override':
-    return lazyStrings.ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting();
-  case 'append':
-    return lazyStrings.ChatSettingsPanel__enter_instructions_to_append();
-  default: {
-    const _ex: never = systemPromptUiMode.value;
-    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
-  }
-  }
-});
 
 const systemPromptResolutionStatus = computed(() => {
   switch (systemPromptUiMode.value) {
@@ -1706,8 +1597,8 @@ const systemPromptResolutionStatus = computed(() => {
       : lazyStrings.ChatSettingsPanel__system_prompt_chat_group_not_set();
   case 'no_prompt':
     return lazyStrings.ChatSettingsPanel__system_prompt_no_prompt();
-  case 'override':
-    return lazyStrings.ChatSettingsPanel__override();
+  case 'replace':
+    return lazyStrings.ChatSettingsPanel__replace();
   case 'append':
     return lazyStrings.ChatSettingsPanel__append();
   default: {
@@ -1717,55 +1608,6 @@ const systemPromptResolutionStatus = computed(() => {
   }
 });
 
-async function updateSystemPromptMode({
-  mode,
-}: {
-  mode: SystemPromptUiMode,
-}): Promise<void> {
-  switch (mode) {
-  case 'parent':
-    localSettings.value.systemPrompt = undefined;
-    break;
-  case 'no_prompt':
-    localSettings.value.systemPrompt = { behavior: 'override', content: null };
-    break;
-  case 'override': {
-    const current = localSettings.value.systemPrompt;
-    const content = current?.behavior === 'override' && current.content !== null
-      ? current.content
-      : parentSystemPromptText.value;
-    localSettings.value.systemPrompt = { behavior: 'override', content };
-    break;
-  }
-  case 'append': {
-    const content = systemPromptAppendContent({ systemPrompt: localSettings.value.systemPrompt });
-    localSettings.value.systemPrompt = { behavior: 'append', content };
-    break;
-  }
-  default: {
-    const _ex: never = mode;
-    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
-  }
-  }
-  await saveChangesFromUi();
-}
-
-function updateSystemPromptEditorContent({ content }: { content: string }): void {
-  switch (systemPromptUiMode.value) {
-  case 'parent':
-  case 'no_prompt':
-  case 'override':
-    localSettings.value.systemPrompt = { behavior: 'override', content };
-    return;
-  case 'append':
-    localSettings.value.systemPrompt = { behavior: 'append', content };
-    return;
-  default: {
-    const _ex: never = systemPromptUiMode.value;
-    throw new Error(`Unhandled system prompt UI mode: ${_ex}`);
-  }
-  }
-}
 
 async function handleRestoreDefaults() {
   localSettings.value = emptyDraft();
@@ -2176,55 +2018,27 @@ defineExpose({
           <div tw-class="pt-8 border-t border-gray-200/50 dark:border-gray-800 space-y-8">
             <div tw-class="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div tw-class="md:col-span-2 space-y-4">
-                <div tw-class="flex items-center justify-between">
-                  <label tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                    <MessageSquareQuoteIcon tw-class="w-3 h-3" />
-                    {{ lazyStrings.ChatSettingsPanel__chat_system_prompt() }}
-                  </label>
-
-                  <div tw-class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                    <button
-                      @click="updateSystemPromptMode({ mode: 'parent' })"
-                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', systemPromptUiMode === 'parent' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
-                      data-testid="chat-setting-system-prompt-parent-button"
-                    >
-                      {{ lazyStrings.ChatSettingsPanel__chat_group() }}
-                    </button>
-                    <button
-                      @click="updateSystemPromptMode({ mode: 'no_prompt' })"
-                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', systemPromptUiMode === 'no_prompt' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
-                      data-testid="chat-setting-system-prompt-no-prompt-button"
-                    >
-                      {{ lazyStrings.ChatSettingsPanel__no_prompt() }}
-                    </button>
-                    <button
-                      @click="updateSystemPromptMode({ mode: 'override' })"
-                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', systemPromptUiMode === 'override' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
-                      data-testid="chat-setting-system-prompt-override-button"
-                    >
-                      {{ lazyStrings.ChatSettingsPanel__override() }}
-                    </button>
-                    <button
-                      @click="updateSystemPromptMode({ mode: 'append' })"
-                      :tw-class="['px-2 py-0.5 text-[9px] font-bold rounded transition-all', systemPromptUiMode === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600']"
-                      data-testid="chat-setting-system-prompt-append-button"
-                    >
-                      {{ lazyStrings.ChatSettingsPanel__append() }}
-                    </button>
-                  </div>
-                </div>
-                <p tw-class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1" data-testid="chat-setting-system-prompt-caption">
-                  {{ systemPromptEditorCaption }}
-                </p>
-                <textarea
-                  :value="systemPromptEditorValue"
-                  @input="e => updateSystemPromptEditorContent({ content: (e.target as HTMLTextAreaElement).value })"
-                  @blur="saveChangesFromUi"
-                  rows="4"
-                  tw-class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
-                  :placeholder="systemPromptEditorPlaceholder"
-                  data-testid="chat-setting-system-prompt-textarea"
-                ></textarea>
+                <SystemPromptSettingsEditor
+                  v-model="localSettings.systemPrompt"
+                  :title="lazyStrings.ChatSettingsPanel__chat_system_prompt()"
+                  :parent-mode-label="lazyStrings.ChatSettingsPanel__chat_group()"
+                  :no-prompt-mode-label="lazyStrings.ChatSettingsPanel__no_prompt()"
+                  :replace-mode-label="lazyStrings.ChatSettingsPanel__replace()"
+                  :append-mode-label="lazyStrings.ChatSettingsPanel__append()"
+                  :parent-prompt-text="parentSystemPromptText"
+                  :parent-prompt-set-caption="lazyStrings.ChatSettingsPanel__system_prompt_chat_group_set()"
+                  :parent-prompt-not-set-caption="lazyStrings.ChatSettingsPanel__system_prompt_chat_group_not_set()"
+                  :no-prompt-caption="lazyStrings.ChatSettingsPanel__system_prompt_no_prompt()"
+                  :replace-caption="lazyStrings.ChatSettingsPanel__instructions_for_this_chat()"
+                  :append-caption="lazyStrings.ChatSettingsPanel__instructions_to_append()"
+                  :type-to-replace-placeholder="lazyStrings.ChatSettingsPanel__start_typing_to_replace()"
+                  :replace-placeholder="lazyStrings.ChatSettingsPanel__enter_instructions_for_this_chat()"
+                  :append-placeholder="lazyStrings.ChatSettingsPanel__enter_instructions_to_append()"
+                  :reset-key="currentChatId ? idToRaw({ id: currentChatId }) : ''"
+                  test-id-prefix="chat-setting-system-prompt"
+                  :rows="4"
+                  @save="saveChangesFromUi"
+                />
               </div>
 
               <div tw-class="space-y-4">

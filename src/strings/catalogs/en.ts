@@ -120,6 +120,9 @@ import { ChatGroupSettingsPanel__system_prompt_no_prompt } from '@/strings/messa
 import { ChatGroupSettingsPanel__instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__instructions_for_this_chat_group/en';
 import { ChatGroupSettingsPanel__instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__instructions_to_append/en';
 import { ChatGroupSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatGroupSettingsPanel__start_typing_to_override/en';
+import { ChatGroupSettingsPanel__enter_instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_for_this_chat_group/en';
+import { ChatGroupSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatGroupSettingsPanel__start_typing_to_replace/en';
+import { ChatGroupSettingsPanel__replace } from '@/strings/messages/ChatGroupSettingsPanel__replace/en';
 import { ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting/en';
 import { ChatGroupSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_to_append/en';
 import { ChatGroupSettingsPanel__inherit } from '@/strings/messages/ChatGroupSettingsPanel__inherit/en';
@@ -272,6 +275,9 @@ import { ChatSettingsPanel__system_prompt_no_prompt } from '@/strings/messages/C
 import { ChatSettingsPanel__instructions_for_this_chat } from '@/strings/messages/ChatSettingsPanel__instructions_for_this_chat/en';
 import { ChatSettingsPanel__instructions_to_append } from '@/strings/messages/ChatSettingsPanel__instructions_to_append/en';
 import { ChatSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatSettingsPanel__start_typing_to_override/en';
+import { ChatSettingsPanel__enter_instructions_for_this_chat } from '@/strings/messages/ChatSettingsPanel__enter_instructions_for_this_chat/en';
+import { ChatSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatSettingsPanel__start_typing_to_replace/en';
+import { ChatSettingsPanel__replace } from '@/strings/messages/ChatSettingsPanel__replace/en';
 import { ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting } from '@/strings/messages/ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting/en';
 import { ChatSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatSettingsPanel__enter_instructions_to_append/en';
 import { ChatSettingsPanel__inherit } from '@/strings/messages/ChatSettingsPanel__inherit/en';
@@ -1680,6 +1686,9 @@ export const en = {
   ChatGroupSettingsPanel__instructions_for_this_chat_group,
   ChatGroupSettingsPanel__instructions_to_append,
   ChatGroupSettingsPanel__start_typing_to_override,
+  ChatGroupSettingsPanel__enter_instructions_for_this_chat_group,
+  ChatGroupSettingsPanel__start_typing_to_replace,
+  ChatGroupSettingsPanel__replace,
   ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting,
   ChatGroupSettingsPanel__enter_instructions_to_append,
   ChatGroupSettingsPanel__inherit,
@@ -1832,6 +1841,9 @@ export const en = {
   ChatSettingsPanel__instructions_for_this_chat,
   ChatSettingsPanel__instructions_to_append,
   ChatSettingsPanel__start_typing_to_override,
+  ChatSettingsPanel__enter_instructions_for_this_chat,
+  ChatSettingsPanel__start_typing_to_replace,
+  ChatSettingsPanel__replace,
   ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting,
   ChatSettingsPanel__enter_instructions_to_append,
   ChatSettingsPanel__inherit,
