@@ -14,9 +14,13 @@ import type {
   ToolCallDto,
   ToolExecutionResultDto,
   ChatDto,
+  ChatDtoV2,
   ChatMetaDto,
+  ChatMetaDtoV2,
   ChatGroupDto,
+  ChatGroupDtoV2,
   SettingsDto,
+  SettingsDtoV2,
   EndpointDto,
   StorageTypeDto,
   AttachmentDto,
@@ -56,6 +60,8 @@ import type {
   Mount,
   Volume,
   ToolConfigPersistence,
+  SettingsTitleGeneration,
+  ScopedTitleGeneration,
 } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import {
@@ -69,6 +75,7 @@ import {
   toToolCallId,
   toVolumeId,
 } from '@/01-models/ids';
+import { exactObject } from '@/utils/exact-object';
 import {
   LM_PARAMETER_KEYS,
   normalizeLmParameters,
@@ -85,21 +92,232 @@ import {
  * field an explicit decision: read it from the source, and either write it to
  * the destination or document why it is intentionally not persisted.
  */
-type NoRemainingProperties = Record<PropertyKey, never>;
 
-type ExhaustiveObjectKeys<
-  Expected extends object,
-  Actual extends object,
-> =
-  & Record<Exclude<keyof Expected, keyof Actual>, never>
-  & Record<Exclude<keyof Actual, keyof Expected>, never>;
+function emptyLmParametersDto(): LmParametersDto {
+  return {
+    temperature: undefined,
+    experimental: undefined,
+    topP: undefined,
+    maxCompletionTokens: undefined,
+    presencePenalty: undefined,
+    frequencyPenalty: undefined,
+    stop: undefined,
+    reasoning: undefined,
+  };
+}
 
-const exactObject =
-  <Expected extends object>() =>
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- This type-only helper intentionally mirrors TypeScript's `satisfies` expression form.
-    <Actual extends Expected>(
-      actual: Actual & ExhaustiveObjectKeys<Expected, Actual>,
-    ): Actual => actual;
+const titleModelToDomain = ({
+  model,
+}: {
+  model: 'same_scope' | { id: string },
+}): 'same_scope' | { id: string } => {
+  if (model === 'same_scope') return 'same_scope';
+
+  const { id, ...unhandled } = model;
+  unhandled satisfies Record<PropertyKey, never>;
+
+  return exactObject<{ id: string }>()({ id });
+};
+
+const explicitTitleModelToDomain = ({
+  model,
+}: {
+  model: { id: string },
+}): { id: string } => {
+  const { id, ...unhandled } = model;
+  unhandled satisfies Record<PropertyKey, never>;
+
+  return exactObject<{ id: string }>()({ id });
+};
+
+const modelFromLegacyTitleModelId = ({
+  titleModelId,
+}: {
+  titleModelId: string | undefined,
+}): 'same_scope' | { id: string } => titleModelId === undefined
+  ? 'same_scope'
+  : exactObject<{ id: string }>()({ id: titleModelId });
+
+const titleLmParametersToDomain = ({
+  dto,
+}: {
+  dto: 'same_scope' | LmParametersDto,
+}): 'same_scope' | LmParameters => {
+  if (dto === 'same_scope') return 'same_scope';
+  return lmParametersToDomain({ dto }) ?? EMPTY_LM_PARAMETERS;
+};
+
+const explicitTitleLmParametersToDomain = ({
+  dto,
+}: {
+  dto: LmParametersDto,
+}): LmParameters => lmParametersToDomain({ dto }) ?? EMPTY_LM_PARAMETERS;
+
+const titleLmParametersToDto = ({
+  lmParameters,
+}: {
+  lmParameters: 'same_scope' | LmParameters,
+}): 'same_scope' | LmParametersDto => {
+  if (lmParameters === 'same_scope') return 'same_scope';
+  return lmParametersToDto({ domain: lmParameters }) ?? emptyLmParametersDto();
+};
+
+const explicitTitleLmParametersToDto = ({
+  lmParameters,
+}: {
+  lmParameters: LmParameters,
+}): LmParametersDto => lmParametersToDto({ domain: lmParameters }) ?? emptyLmParametersDto();
+
+const settingsTitleGenerationToDomain = ({
+  dto,
+}: {
+  dto: SettingsDto,
+}): SettingsTitleGeneration => {
+  if ('titleGeneration' in dto) {
+    if (dto.titleGeneration === 'disabled') return 'disabled';
+
+    const {
+      endpoint,
+      model,
+      lmParameters,
+      ...unhandled
+    } = dto.titleGeneration;
+    unhandled satisfies Record<PropertyKey, never>;
+
+    if (endpoint === 'same_scope') {
+      return exactObject<Extract<SettingsTitleGeneration, { endpoint: 'same_scope' }>>()({
+        endpoint,
+        model: titleModelToDomain({ model }),
+        lmParameters: titleLmParametersToDomain({ dto: lmParameters }),
+      });
+    }
+
+    return exactObject<Extract<SettingsTitleGeneration, { endpoint: Endpoint }>>()({
+      endpoint: endpointToDomain({ dto: endpoint }),
+      model: explicitTitleModelToDomain({ model }),
+      lmParameters: explicitTitleLmParametersToDomain({ dto: lmParameters }),
+    });
+  }
+
+  if (dto.autoTitleEnabled === false) return 'disabled';
+
+  return exactObject<Exclude<SettingsTitleGeneration, 'disabled'>>()({
+    endpoint: 'same_scope',
+    model: modelFromLegacyTitleModelId({ titleModelId: dto.titleModelId }),
+    lmParameters: EMPTY_LM_PARAMETERS,
+  });
+};
+
+const scopedTitleGenerationToDomain = ({
+  dto,
+}: {
+  dto: ChatGroupDto | ChatMetaDto | ChatDto,
+}): ScopedTitleGeneration => {
+  if ('titleGeneration' in dto) {
+    switch (dto.titleGeneration) {
+    case 'inherit':
+    case 'disabled':
+      return dto.titleGeneration;
+    default: {
+      const {
+        endpoint,
+        model,
+        lmParameters,
+        ...unhandled
+      } = dto.titleGeneration;
+      unhandled satisfies Record<PropertyKey, never>;
+
+      if (endpoint === 'same_scope') {
+        return exactObject<Extract<ScopedTitleGeneration, { endpoint: 'same_scope' }>>()({
+          endpoint,
+          model: titleModelToDomain({ model }),
+          lmParameters: titleLmParametersToDomain({ dto: lmParameters }),
+        });
+      }
+
+      return exactObject<Extract<ScopedTitleGeneration, { endpoint: Endpoint }>>()({
+        endpoint: endpointToDomain({ dto: endpoint }),
+        model: explicitTitleModelToDomain({ model }),
+        lmParameters: explicitTitleLmParametersToDomain({ dto: lmParameters }),
+      });
+    }
+    }
+  }
+
+  if (dto.autoTitleEnabled === false) return 'disabled';
+  if (dto.autoTitleEnabled === undefined && dto.titleModelId === undefined) return 'inherit';
+
+  return exactObject<Exclude<ScopedTitleGeneration, 'disabled' | 'inherit'>>()({
+    endpoint: 'same_scope',
+    model: modelFromLegacyTitleModelId({ titleModelId: dto.titleModelId }),
+    lmParameters: EMPTY_LM_PARAMETERS,
+  });
+};
+
+const settingsTitleGenerationToDto = ({
+  titleGeneration,
+}: {
+  titleGeneration: SettingsTitleGeneration,
+}): SettingsDtoV2['titleGeneration'] => {
+  if (titleGeneration === 'disabled') return 'disabled';
+
+  const {
+    endpoint,
+    model,
+    lmParameters,
+    ...unhandled
+  } = titleGeneration;
+  unhandled satisfies Record<PropertyKey, never>;
+
+  if (endpoint === 'same_scope') {
+    return exactObject<Extract<SettingsDtoV2['titleGeneration'], { endpoint: 'same_scope' }>>()({
+      endpoint,
+      model,
+      lmParameters: titleLmParametersToDto({ lmParameters }),
+    });
+  }
+
+  return exactObject<Exclude<Exclude<SettingsDtoV2['titleGeneration'], 'disabled'>, { endpoint: 'same_scope' }>>()({
+    endpoint: endpointToDto({ endpoint }),
+    model,
+    lmParameters: explicitTitleLmParametersToDto({ lmParameters }),
+  });
+};
+
+const scopedTitleGenerationToDto = ({
+  titleGeneration,
+}: {
+  titleGeneration: ScopedTitleGeneration,
+}): ChatMetaDtoV2['titleGeneration'] => {
+  switch (titleGeneration) {
+  case 'inherit':
+  case 'disabled':
+    return titleGeneration;
+  default: {
+    const {
+      endpoint,
+      model,
+      lmParameters,
+      ...unhandled
+    } = titleGeneration;
+    unhandled satisfies Record<PropertyKey, never>;
+
+    if (endpoint === 'same_scope') {
+      return exactObject<Extract<ChatMetaDtoV2['titleGeneration'], { endpoint: 'same_scope' }>>()({
+        endpoint,
+        model,
+        lmParameters: titleLmParametersToDto({ lmParameters }),
+      });
+    }
+
+    return exactObject<Exclude<Exclude<ChatMetaDtoV2['titleGeneration'], 'disabled' | 'inherit'>, { endpoint: 'same_scope' }>>()({
+      endpoint: endpointToDto({ endpoint }),
+      model,
+      lmParameters: explicitTitleLmParametersToDto({ lmParameters }),
+    });
+  }
+  }
+};
 
 
 const toolConfigPersistenceToExperimentalDto = ({
@@ -223,7 +441,7 @@ const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Mount>()({
       type,
@@ -251,7 +469,7 @@ const mountToDto = ({ domain }: { domain: Mount }): MountDto => {
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<MountDto>()({
       type,
@@ -320,6 +538,8 @@ export const hierarchyToDto = ({ domain }: { domain: Hierarchy }): HierarchyDto 
 });
 
 export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => {
+  const titleGeneration = scopedTitleGenerationToDomain({ dto });
+
   const {
     id,
     experimental,
@@ -330,17 +550,22 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => {
     debugEnabled,
     endpoint,
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration: _titleGeneration,
+    autoTitleEnabled: _legacyAutoTitleEnabled,
+    titleModelId: _legacyTitleModelId,
     originChatId,
     originMessageId,
     systemPrompt,
     lmParameters,
     mounts,
     ...unhandled
-  } = dto;
+  } = dto as ChatMetaDto & {
+    titleGeneration?: ChatMetaDtoV2['titleGeneration'],
+    autoTitleEnabled?: boolean,
+    titleModelId?: string,
+  };
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<ChatMeta>()({
     id: toChatId({ raw: id }),
@@ -354,8 +579,7 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => {
       ? undefined
       : endpointToDomain({ dto: endpoint }),
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration,
     originChatId: originChatId === undefined ? undefined : toChatId({ raw: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : toMessageId({ raw: originMessageId }),
     systemPrompt: systemPrompt as SystemPrompt | undefined,
@@ -392,6 +616,8 @@ export const chatGroupToDomain = (
     };
   });
 
+  const titleGeneration = scopedTitleGenerationToDomain({ dto });
+
   const {
     id,
     experimental,
@@ -400,15 +626,20 @@ export const chatGroupToDomain = (
     isCollapsed,
     endpoint,
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration: _titleGeneration,
+    autoTitleEnabled: _legacyAutoTitleEnabled,
+    titleModelId: _legacyTitleModelId,
     systemPrompt,
     lmParameters,
     mounts,
     ...unhandled
-  } = dto;
+  } = dto as ChatGroupDto & {
+    titleGeneration?: ChatGroupDtoV2['titleGeneration'],
+    autoTitleEnabled?: boolean,
+    titleModelId?: string,
+  };
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<ChatGroup>()({
     id: toChatGroupId({ raw: id }),
@@ -420,8 +651,7 @@ export const chatGroupToDomain = (
       ? undefined
       : endpointToDomain({ dto: endpoint }),
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration,
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: lmParameters }),
     mounts: mounts?.map(dto => mountToDomain({ dto })),
@@ -438,8 +668,7 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
     updatedAt,
     endpoint,
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration,
     systemPrompt,
     lmParameters,
     mounts,
@@ -447,9 +676,9 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
     ...unhandled
   } = domain;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
-  return exactObject<ChatGroupDto>()({
+  return exactObject<ChatGroupDtoV2>()({
     id: idToRaw({ id }),
     experimental: toolConfigsToExperimentalDto({ toolConfigs }),
     name,
@@ -457,8 +686,9 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
     isCollapsed,
     endpoint: endpoint ? endpointToDto({ endpoint }) : undefined,
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration: scopedTitleGenerationToDto({
+      titleGeneration: titleGeneration ?? 'inherit',
+    }),
     systemPrompt,
     lmParameters: lmParametersToDto({ domain: lmParameters }),
     mounts: mounts?.map(domain => mountToDto({ domain })),
@@ -596,7 +826,7 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<Endpoint, { type: 'openai' | 'ollama' }>>()({
       type,
@@ -611,7 +841,7 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<Endpoint, { type: 'transformers_js' }>>()({ type });
   }
@@ -622,7 +852,7 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     const experimentalType = experimental?.type;
     switch (experimentalType) {
@@ -661,7 +891,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       ...unhandled
     } = endpoint;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<EndpointDto, { type: 'openai' | 'ollama' }>>()({
       type,
@@ -676,7 +906,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       ...unhandled
     } = endpoint;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<EndpointDto, { type: 'transformers_js' }>>()({
       type,
@@ -689,7 +919,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       ...unhandled
     } = endpoint;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     const experimental = exactObject<NonNullable<Extract<EndpointDto, { type: 'experimental_type' }>['experimental']>>()({
       type: 'browser_provided_lm',
@@ -708,7 +938,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
       ...unhandled
     } = endpoint;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
       type: 'experimental_type',
@@ -736,7 +966,7 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     const base = {
       id: toAttachmentId({ raw: id }),
@@ -775,7 +1005,7 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     const base = {
       id: toAttachmentId({ raw: id }),
@@ -830,7 +1060,7 @@ const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return toDto({ id, binaryObjectId, originalName, status });
   }
@@ -847,7 +1077,7 @@ const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return toDto({ id, binaryObjectId, originalName, status });
   }
@@ -867,7 +1097,7 @@ const toolCallToDomain = ({ dto }: { dto: ToolCallDto }): ToolCall => {
     ...unhandled
   } = dto;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   const {
     name,
@@ -876,7 +1106,7 @@ const toolCallToDomain = ({ dto }: { dto: ToolCallDto }): ToolCall => {
     ...unhandledFunction
   } = functionDto;
 
-  unhandledFunction satisfies NoRemainingProperties;
+  unhandledFunction satisfies Record<PropertyKey, never>;
 
   return exactObject<ToolCall>()({
     id: toToolCallId({ raw: id }),
@@ -896,7 +1126,7 @@ const toolCallToDto = ({ domain }: { domain: ToolCall }): ToolCallDto => {
     ...unhandled
   } = domain;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   const {
     name,
@@ -904,7 +1134,7 @@ const toolCallToDto = ({ domain }: { domain: ToolCall }): ToolCallDto => {
     ...unhandledFunction
   } = functionDomain;
 
-  unhandledFunction satisfies NoRemainingProperties;
+  unhandledFunction satisfies Record<PropertyKey, never>;
 
   return exactObject<ToolCallDto>()({
     id: idToRaw({ id }),
@@ -928,7 +1158,7 @@ const textOrBinaryObjectToDomain = ({ dto }: { dto: TextOrBinaryObjectDto }): Te
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<TextOrBinaryObject, { type: 'text' }>>()({ type, text });
   }
@@ -940,7 +1170,7 @@ const textOrBinaryObjectToDomain = ({ dto }: { dto: TextOrBinaryObjectDto }): Te
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<TextOrBinaryObject, { type: 'binary_object' }>>()({
       type,
@@ -963,7 +1193,7 @@ const textOrBinaryObjectToDto = ({ domain }: { domain: TextOrBinaryObject }): Te
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<TextOrBinaryObjectDto, { type: 'text' }>>()({
       type,
@@ -978,7 +1208,7 @@ const textOrBinaryObjectToDto = ({ domain }: { domain: TextOrBinaryObject }): Te
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<TextOrBinaryObjectDto, { type: 'binary_object' }>>()({
       type,
@@ -1003,7 +1233,7 @@ const toolExecutionResultToDomain = ({ dto }: { dto: ToolExecutionResultDto }): 
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<ToolExecutionResult, { status: 'executing' }>>()({
       toolCallId: toToolCallId({ raw: toolCallId }),
@@ -1019,7 +1249,7 @@ const toolExecutionResultToDomain = ({ dto }: { dto: ToolExecutionResultDto }): 
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<ToolExecutionResult, { status: 'success' }>>()({
       toolCallId: toToolCallId({ raw: toolCallId }),
@@ -1036,7 +1266,7 @@ const toolExecutionResultToDomain = ({ dto }: { dto: ToolExecutionResultDto }): 
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     const {
       code,
@@ -1045,7 +1275,7 @@ const toolExecutionResultToDomain = ({ dto }: { dto: ToolExecutionResultDto }): 
       ...unhandledError
     } = error;
 
-    unhandledError satisfies NoRemainingProperties;
+    unhandledError satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<ToolExecutionResult, { status: 'error' }>>()({
       toolCallId: toToolCallId({ raw: toolCallId }),
@@ -1072,7 +1302,7 @@ const toolExecutionResultToDto = ({ domain }: { domain: ToolExecutionResult }): 
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<ToolExecutionResultDto, { status: 'executing' }>>()({
       toolCallId: idToRaw({ id: toolCallId }),
@@ -1088,7 +1318,7 @@ const toolExecutionResultToDto = ({ domain }: { domain: ToolExecutionResult }): 
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<ToolExecutionResultDto, { status: 'success' }>>()({
       toolCallId: idToRaw({ id: toolCallId }),
@@ -1105,7 +1335,7 @@ const toolExecutionResultToDto = ({ domain }: { domain: ToolExecutionResult }): 
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     const {
       code,
@@ -1113,7 +1343,7 @@ const toolExecutionResultToDto = ({ domain }: { domain: ToolExecutionResult }): 
       ...unhandledError
     } = error;
 
-    unhandledError satisfies NoRemainingProperties;
+    unhandledError satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<ToolExecutionResultDto, { status: 'error' }>>()({
       toolCallId: idToRaw({ id: toolCallId }),
@@ -1139,7 +1369,7 @@ const messageNodeRepliesToDomain = ({ replies }: { replies: MessageNodeDto['repl
     ...unhandled
   } = replies;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<MessageBranch>()({
     items: items.map(dto => messageNodeToDomain({ dto })),
@@ -1152,7 +1382,7 @@ const messageNodeRepliesToDto = ({ replies }: { replies: MessageBranch }): Messa
     ...unhandled
   } = replies;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<MessageNodeDto['replies']>()({
     items: items.map(domain => messageNodeToDto({ domain })),
@@ -1177,7 +1407,7 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<UserMessageNode>()({
       id: toMessageId({ raw: id }),
@@ -1210,7 +1440,7 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<AssistantMessageNode>()({
       id: toMessageId({ raw: id }),
@@ -1243,7 +1473,7 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<SystemMessageNode>()({
       id: toMessageId({ raw: id }),
@@ -1276,7 +1506,7 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       ...unhandled
     } = dto;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<ToolMessageNode>()({
       id: toMessageId({ raw: id }),
@@ -1319,7 +1549,7 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<MessageNodeDto, { role: 'user' }>>()({
       id: idToRaw({ id }),
@@ -1352,7 +1582,7 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<MessageNodeDto, { role: 'assistant' }>>()({
       id: idToRaw({ id }),
@@ -1385,7 +1615,7 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<MessageNodeDto, { role: 'system' }>>()({
       id: idToRaw({ id }),
@@ -1418,7 +1648,7 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<MessageNodeDto, { role: 'tool' }>>()({
       id: idToRaw({ id }),
@@ -1532,6 +1762,8 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
 }
 
 export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
+  const titleGeneration = scopedTitleGenerationToDomain({ dto });
+
   const {
     id,
     experimental,
@@ -1542,8 +1774,9 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     debugEnabled,
     endpoint,
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration: _titleGeneration,
+    autoTitleEnabled: _legacyAutoTitleEnabled,
+    titleModelId: _legacyTitleModelId,
     originChatId,
     originMessageId,
     systemPrompt,
@@ -1552,9 +1785,13 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     root: dtoRoot,
     messages,
     ...unhandled
-  } = dto;
+  } = dto as ChatDto & {
+    titleGeneration?: ChatDtoV2['titleGeneration'],
+    autoTitleEnabled?: boolean,
+    titleModelId?: string,
+  };
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   let root: MessageBranch = { items: [] };
 
@@ -1579,8 +1816,7 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     debugEnabled: debugEnabled ?? false,
     endpoint: endpoint === undefined ? undefined : endpointToDomain({ dto: endpoint }),
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration,
     originChatId: originChatId === undefined ? undefined : toChatId({ raw: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : toMessageId({ raw: originMessageId }),
     systemPrompt: systemPrompt as SystemPrompt | undefined,
@@ -1601,8 +1837,7 @@ export const chatMetaToSummary = ({ domain }: { domain: ChatMeta }): ChatSummary
     debugEnabled: _debugEnabled,
     endpoint: _endpoint,
     modelId: _modelId,
-    autoTitleEnabled: _autoTitleEnabled,
-    titleModelId: _titleModelId,
+    titleGeneration: _titleGeneration,
     originChatId: _originChatId,
     originMessageId: _originMessageId,
     systemPrompt: _systemPrompt,
@@ -1612,7 +1847,7 @@ export const chatMetaToSummary = ({ domain }: { domain: ChatMeta }): ChatSummary
     ...unhandled
   } = domain;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<ChatSummary>()({
     id,
@@ -1633,8 +1868,7 @@ export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => 
     debugEnabled,
     endpoint,
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration,
     originChatId,
     originMessageId,
     systemPrompt,
@@ -1644,9 +1878,9 @@ export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => 
     ...unhandled
   } = domain;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
-  return exactObject<ChatMetaDto>()({
+  return exactObject<ChatMetaDtoV2>()({
     id: idToRaw({ id }),
     experimental: toolConfigsToExperimentalDto({ toolConfigs }),
     title,
@@ -1656,8 +1890,9 @@ export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => 
     debugEnabled,
     endpoint: endpoint ? endpointToDto({ endpoint }) : undefined,
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration: scopedTitleGenerationToDto({
+      titleGeneration: titleGeneration ?? 'inherit',
+    }),
     originChatId: originChatId === undefined ? undefined : idToRaw({ id: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : idToRaw({ id: originMessageId }),
     systemPrompt,
@@ -1673,7 +1908,7 @@ export const chatContentToDto = ({ domain }: { domain: ChatContent }): ChatConte
     ...unhandled
   } = domain;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<ChatContentDto>()({
     root: exactObject<ChatContentDto['root']>()({
@@ -1693,7 +1928,7 @@ export const chatContentToDomain = ({ dto }: { dto: ChatContentDto }): ChatConte
     ...unhandled
   } = dto;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<ChatContent>()({
     root: exactObject<MessageBranch>()({
@@ -1715,8 +1950,7 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
     debugEnabled,
     endpoint,
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration,
     originChatId,
     originMessageId,
     systemPrompt,
@@ -1726,9 +1960,9 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
     ...unhandled
   } = domain;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
-  return exactObject<ChatDto>()({
+  return exactObject<ChatDtoV2>()({
     id: idToRaw({ id }),
     experimental: toolConfigsToExperimentalDto({ toolConfigs }),
     title,
@@ -1738,8 +1972,9 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
     debugEnabled,
     endpoint: endpoint === undefined ? undefined : endpointToDto({ endpoint }),
     modelId,
-    autoTitleEnabled,
-    titleModelId,
+    titleGeneration: scopedTitleGenerationToDto({
+      titleGeneration: titleGeneration ?? 'inherit',
+    }),
     originChatId: originChatId === undefined ? undefined : idToRaw({ id: originChatId }),
     originMessageId: originMessageId === undefined ? undefined : idToRaw({ id: originMessageId }),
     systemPrompt,
@@ -1809,11 +2044,14 @@ export const buildSidebarItemsFromHierarchy = (
 };
 
 export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
+  const titleGeneration = settingsTitleGenerationToDomain({ dto });
+
   const {
     endpoint,
     defaultModelId,
-    titleModelId,
-    autoTitleEnabled,
+    titleGeneration: _titleGeneration,
+    titleModelId: _legacyTitleModelId,
+    autoTitleEnabled: _legacyAutoTitleEnabled,
     storageType,
     providerProfiles,
     mounts,
@@ -1822,9 +2060,13 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
     lmParameters,
     experimental,
     ...unhandled
-  } = dto;
+  } = dto as SettingsDto & {
+    titleGeneration?: SettingsDtoV2['titleGeneration'],
+    titleModelId?: string,
+    autoTitleEnabled?: boolean,
+  };
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   const experimentalDomain = (() => {
     const {
@@ -1839,7 +2081,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       ...unhandledExperimental
     } = experimental ?? {};
 
-    unhandledExperimental satisfies NoRemainingProperties;
+    unhandledExperimental satisfies Record<PropertyKey, never>;
 
     const globalSearchDomain = (() => {
       if (globalSearch === undefined) return undefined;
@@ -1852,7 +2094,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
         ...unhandledGlobalSearch
       } = globalSearch;
 
-      unhandledGlobalSearch satisfies NoRemainingProperties;
+      unhandledGlobalSearch satisfies Record<PropertyKey, never>;
 
       return exactObject<NonNullable<NonNullable<Settings['experimental']>['globalSearch']>>()({
         scope,
@@ -1887,7 +2129,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       ...unhandledProfile
     } = profile;
 
-    unhandledProfile satisfies NoRemainingProperties;
+    unhandledProfile satisfies Record<PropertyKey, never>;
 
     return exactObject<Settings['providerProfiles'][number]>()({
       id: toProviderProfileId({ raw: id }),
@@ -1903,8 +2145,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
   return exactObject<Settings>()({
     endpoint: endpointToDomain({ dto: endpoint }),
     defaultModelId,
-    titleModelId,
-    autoTitleEnabled,
+    titleGeneration,
     storageType: storageType as StorageType,
     providerProfiles: profileDomains,
     mounts: mounts.map(dto => mountToDomain({ dto })),
@@ -1919,8 +2160,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
   const {
     endpoint,
     defaultModelId,
-    titleModelId,
-    autoTitleEnabled,
+    titleGeneration,
     storageType,
     providerProfiles,
     mounts,
@@ -1931,7 +2171,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     ...unhandled
   } = domain;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   const experimentalDto = (() => {
     const {
@@ -1946,7 +2186,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       ...unhandledExperimental
     } = experimental ?? {};
 
-    unhandledExperimental satisfies NoRemainingProperties;
+    unhandledExperimental satisfies Record<PropertyKey, never>;
 
     const globalSearchDto = (() => {
       if (globalSearch === undefined) return undefined;
@@ -1959,7 +2199,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         ...unhandledGlobalSearch
       } = globalSearch;
 
-      unhandledGlobalSearch satisfies NoRemainingProperties;
+      unhandledGlobalSearch satisfies Record<PropertyKey, never>;
 
       return exactObject<NonNullable<NonNullable<SettingsDto['experimental']>['globalSearch']>>()({
         scope,
@@ -1997,7 +2237,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       ...unhandledProfile
     } = profile;
 
-    unhandledProfile satisfies NoRemainingProperties;
+    unhandledProfile satisfies Record<PropertyKey, never>;
 
     return exactObject<SettingsDto['providerProfiles'][number]>()({
       id: idToRaw({ id }),
@@ -2011,11 +2251,10 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     });
   });
 
-  return exactObject<SettingsDto>()({
+  return exactObject<SettingsDtoV2>()({
     endpoint: endpointToDto({ endpoint }),
     defaultModelId,
-    titleModelId,
-    autoTitleEnabled,
+    titleGeneration: settingsTitleGenerationToDto({ titleGeneration }),
     storageType: storageType as StorageTypeDto,
     providerProfiles: profileDtos,
     mounts: (mounts ?? []).map(domain => mountToDto({ domain })),
@@ -2037,7 +2276,7 @@ export const binaryObjectToDomain = ({ dto }: { dto: BinaryObjectDto }): BinaryO
     ...unhandled
   } = dto;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<BinaryObject>()({
     id: toBinaryObjectId({ raw: id }),
@@ -2058,7 +2297,7 @@ export const binaryObjectToDto = ({ domain }: { domain: BinaryObject }): BinaryO
     ...unhandled
   } = domain;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<BinaryObjectDto>()({
     id: idToRaw({ id }),
@@ -2081,7 +2320,7 @@ export const volumeToDomain = ({ dto }: { dto: VolumeDto }): Volume => {
     ...unhandled
   } = dto;
 
-  unhandled satisfies NoRemainingProperties;
+  unhandled satisfies Record<PropertyKey, never>;
 
   return exactObject<Volume>()({
     id: toVolumeId({ raw: id }),
@@ -2102,7 +2341,7 @@ export const volumeToDto = ({ domain }: { domain: Volume }): VolumeDto => {
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<VolumeDto, { type: 'opfs' }>>()({
       type,
@@ -2121,7 +2360,7 @@ export const volumeToDto = ({ domain }: { domain: Volume }): VolumeDto => {
       ...unhandled
     } = domain;
 
-    unhandled satisfies NoRemainingProperties;
+    unhandled satisfies Record<PropertyKey, never>;
 
     return exactObject<Extract<VolumeDto, { type: 'host' }>>()({
       type,

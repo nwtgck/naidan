@@ -1,1 +1,1 @@
-export const formatSettingsSourceLabel__value_from_group = ({ value }: { value: string }): string => `${value} (Group)`;
+export const formatSettingsSourceLabel__value_from_group = ({ value }: { value: string }): string => `Chat Group: ${value}`;

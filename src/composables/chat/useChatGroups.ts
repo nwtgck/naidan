@@ -21,8 +21,7 @@ type ChatGroupMetadataUpdate = Partial<Pick<
   | 'name'
   | 'endpoint'
   | 'modelId'
-  | 'autoTitleEnabled'
-  | 'titleModelId'
+  | 'titleGeneration'
   | 'systemPrompt'
   | 'lmParameters'
 >>;
@@ -31,8 +30,7 @@ const chatGroupMetadataUpdateKeyRecord: Readonly<Record<keyof ChatGroupMetadataU
   name: true,
   endpoint: true,
   modelId: true,
-  autoTitleEnabled: true,
-  titleModelId: true,
+  titleGeneration: true,
   systemPrompt: true,
   lmParameters: true,
 };
@@ -79,15 +77,10 @@ function legacyUpdatesToChanges({
         ? { field: 'model_id', behavior: 'inherit' }
         : { field: 'model_id', behavior: 'override', value: updates.modelId });
       break;
-    case 'autoTitleEnabled':
-      changes.push(updates.autoTitleEnabled === undefined
-        ? { field: 'auto_title_enabled', behavior: 'inherit' }
-        : { field: 'auto_title_enabled', behavior: 'override', value: updates.autoTitleEnabled });
-      break;
-    case 'titleModelId':
-      changes.push(updates.titleModelId === undefined
-        ? { field: 'title_model_id', behavior: 'inherit' }
-        : { field: 'title_model_id', behavior: 'override', value: updates.titleModelId });
+    case 'titleGeneration':
+      changes.push(updates.titleGeneration === undefined || updates.titleGeneration === 'inherit'
+        ? { field: 'title_generation', behavior: 'inherit' }
+        : { field: 'title_generation', behavior: 'override', value: updates.titleGeneration });
       break;
     case 'systemPrompt':
       changes.push(createSystemPromptSettingChange({ systemPrompt: updates.systemPrompt }));

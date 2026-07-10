@@ -38,8 +38,30 @@ describe('ImageConjuringLoader', () => {
         totalSteps: 20,
       },
     });
-    expect(wrapper.find('[data-testid="step-display"]').text()).toContain('5/ 20');
+    expect(wrapper.find('[data-testid="step-display"]').text()).toContain('6/ 20');
     expect(wrapper.find('[data-testid="step-display"]').text()).toContain('steps');
+  });
+
+  it('displays the first active step before any provider step has completed', () => {
+    const wrapper = mount(ImageConjuringLoader, {
+      props: {
+        currentStep: 0,
+        totalSteps: 20,
+      },
+    });
+
+    expect(wrapper.find('[data-testid="step-display"]').text()).toContain('1/ 20');
+  });
+
+  it('caps the active step display at the total step count', () => {
+    const wrapper = mount(ImageConjuringLoader, {
+      props: {
+        currentStep: 20,
+        totalSteps: 20,
+      },
+    });
+
+    expect(wrapper.find('[data-testid="step-display"]').text()).toContain('20/ 20');
   });
 
   it('combines image count and step progress', () => {
@@ -53,7 +75,7 @@ describe('ImageConjuringLoader', () => {
     });
     // currentNumber = 3 - 2 + 1 = 2
     expect(wrapper.find('[data-testid="image-count-label"]').text()).toBe('Image 2 / 3');
-    expect(wrapper.find('[data-testid="step-display"]').text()).toContain('10/ 50');
+    expect(wrapper.find('[data-testid="step-display"]').text()).toContain('11/ 50');
     expect(wrapper.find('[data-testid="step-display"]').text()).toContain('steps');
   });
 

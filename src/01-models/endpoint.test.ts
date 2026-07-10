@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  areEndpointModelNamespacesEqual,
   areEndpointsEqual,
   cloneEndpoint,
   isConfiguredEndpoint,
@@ -35,4 +36,22 @@ describe('endpoint helpers', () => {
     expect(clone).not.toBe(endpoint);
     expect(areEndpointsEqual({ left: endpoint, right: clone })).toBe(true);
   });
+
+  it('compares model namespaces without treating auth headers as a model reset boundary', () => {
+    expect(areEndpointModelNamespacesEqual({
+      left: { type: 'openai', url: 'https://api.example/v1', httpHeaders: [['Authorization', 'old']] },
+      right: { type: 'openai', url: 'https://api.example/v1', httpHeaders: [['Authorization', 'new']] },
+    })).toBe(true);
+
+    expect(areEndpointModelNamespacesEqual({
+      left: { type: 'openai', url: 'https://api.example/v1' },
+      right: { type: 'openai', url: 'https://other.example/v1' },
+    })).toBe(false);
+
+    expect(areEndpointModelNamespacesEqual({
+      left: { type: 'browser_provided_lm' },
+      right: { type: 'browser_provided_lm' },
+    })).toBe(true);
+  });
+
 });

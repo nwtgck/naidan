@@ -35,7 +35,7 @@ describe('useChatTools', () => {
   function setToolConfigPersistence({ persistence }: { persistence: 'disabled' | 'enabled' }) {
     useSettings().TEST_ONLY.__testOnlySetSettings({
       newSettings: {
-        autoTitleEnabled: true,
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
         providerProfiles: [],
         mounts: [],
         heavyContentAlertDismissed: false,
@@ -289,7 +289,7 @@ describe('useChatTools', () => {
     it('inherits Global Settings when the chat group has no override', () => {
       useSettings().TEST_ONLY.__testOnlySetSettings({
         newSettings: {
-          autoTitleEnabled: true,
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
           providerProfiles: [],
           mounts: [],
           heavyContentAlertDismissed: false,
@@ -326,7 +326,7 @@ describe('useChatTools', () => {
     it('uses the Chat Group override and does not expose a direct Global inheritance choice', async () => {
       useSettings().TEST_ONLY.__testOnlySetSettings({
         newSettings: {
-          autoTitleEnabled: true,
+          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
           providerProfiles: [],
           mounts: [],
           heavyContentAlertDismissed: false,

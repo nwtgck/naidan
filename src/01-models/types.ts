@@ -81,6 +81,21 @@ export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserP
 export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
 export type EndpointType = SupportedEndpoint['type'];
 
+export type SettingsTitleGeneration =
+  | 'disabled'
+  | {
+      endpoint: 'same_scope',
+      model: 'same_scope' | { id: string },
+      lmParameters: 'same_scope' | LmParameters,
+    }
+  | {
+      endpoint: Endpoint,
+      model: { id: string },
+      lmParameters: LmParameters,
+    };
+
+export type ScopedTitleGeneration = SettingsTitleGeneration | 'inherit';
+
 export type MultimodalContent =
   | { type: 'text', text: string }
   | { type: 'image_url', image_url: { url: string } };
@@ -196,8 +211,7 @@ export interface Chat {
 
   endpoint?: Endpoint,
   modelId?: string,
-  autoTitleEnabled?: boolean,
-  titleModelId?: string,
+  titleGeneration?: ScopedTitleGeneration,
   originChatId?: ChatId,
   originMessageId?: MessageId,
 
@@ -222,8 +236,7 @@ export interface ChatMeta {
   debugEnabled: boolean,
   endpoint?: Endpoint,
   modelId?: string,
-  autoTitleEnabled?: boolean,
-  titleModelId?: string,
+  titleGeneration?: ScopedTitleGeneration,
   originChatId?: ChatId,
   originMessageId?: MessageId,
   systemPrompt?: SystemPrompt,
@@ -255,8 +268,7 @@ export interface ChatGroup {
 
   endpoint?: Endpoint,
   modelId?: string,
-  autoTitleEnabled?: boolean,
-  titleModelId?: string,
+  titleGeneration?: ScopedTitleGeneration,
   systemPrompt?: SystemPrompt,
   lmParameters?: LmParameters,
   mounts?: Mount[],
@@ -366,8 +378,7 @@ export interface ProviderProfile {
 export interface Settings {
   endpoint: Endpoint,
   defaultModelId?: string,
-  titleModelId?: string,
-  autoTitleEnabled: boolean,
+  titleGeneration: SettingsTitleGeneration,
   storageType: StorageType,
   providerProfiles: ProviderProfile[],
   mounts: Mount[],
@@ -402,7 +413,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpoint'> = {
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   providerProfiles: [],
   mounts: [],
   heavyContentAlertDismissed: false,

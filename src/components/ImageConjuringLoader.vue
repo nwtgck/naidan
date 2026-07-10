@@ -14,6 +14,11 @@ const currentNumber = computed(() => {
   return Math.min(props.totalCount, Math.max(1, props.totalCount - props.remainingCount + 1));
 });
 
+const displayedCurrentStep = computed(() => {
+  if (props.currentStep === undefined || props.totalSteps === undefined || props.totalSteps <= 0) return undefined;
+  return Math.min(props.totalSteps, Math.max(1, props.currentStep + 1));
+});
+
 const stepProgress = computed(() => {
   if (props.currentStep === undefined || props.totalSteps === undefined || props.totalSteps === 0) return undefined;
   return Math.round((props.currentStep / props.totalSteps) * 100);
@@ -23,6 +28,7 @@ defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       currentNumber,
+      displayedCurrentStep,
       stepProgress,
     },
   }) || {}),
@@ -64,10 +70,10 @@ defineExpose({
           </span>
 
           <!-- Step Display -->
-          <div v-if="currentStep !== undefined" tw-class="flex flex-col items-center -space-y-1" data-testid="step-display">
+          <div v-if="displayedCurrentStep !== undefined" tw-class="flex flex-col items-center -space-y-1" data-testid="step-display">
             <div tw-class="flex items-baseline gap-1">
               <span tw-class="text-3xl font-mono font-bold text-blue-500 dark:text-blue-400 tabular-nums">
-                {{ currentStep }}
+                {{ displayedCurrentStep }}
               </span>
               <span tw-class="text-xl font-bold text-blue-500/60 dark:text-blue-400/60">/ {{ totalSteps }}</span>
             </div>

@@ -3,11 +3,15 @@ import type { LmParameters, Reasoning } from '@/01-models/types';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Move this Naidan-specific helper into 01-models or application logic.
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 
-type LmParameterOverrides = Readonly<{
+type ReasoningParameterOverrides = Readonly<{
+  [K in keyof Reasoning]?: Reasoning[K];
+}>;
+
+export type LmParameterOverrides = Readonly<{
   [K in keyof LmParameters]?: K extends 'stop'
-    ? readonly string[]
+    ? readonly string[] | undefined
     : K extends 'reasoning'
-      ? Readonly<Partial<Reasoning>>
+      ? ReasoningParameterOverrides | undefined
       : LmParameters[K];
 }>;
 
@@ -73,7 +77,7 @@ export function hasLmParameterOverrides({
 export function cloneLmParameters({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined,
+  lmParameters: LmParameterOverrides | undefined,
 }): LmParameters | undefined {
   if (lmParameters === undefined) return undefined;
 
@@ -128,14 +132,58 @@ export function cloneLmParameters({
   return cloned;
 }
 
+
+function hasCompleteReasoningShape(
+  reasoning: LmParameterOverrides['reasoning'],
+): reasoning is Reasoning {
+  if (reasoning === undefined) return false;
+
+  return REASONING_PARAMETER_KEYS.every((key) => {
+    switch (key) {
+    case 'effort':
+      return Object.prototype.hasOwnProperty.call(reasoning, 'effort');
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled reasoning parameter key: ${_ex}`);
+    }
+    }
+  });
+}
+
+function hasCompleteLmParametersShape(
+  lmParameters: LmParameterOverrides | undefined,
+): lmParameters is LmParameters {
+  if (lmParameters === undefined) return false;
+
+  return LM_PARAMETER_KEYS.every((key) => {
+    switch (key) {
+    case 'temperature':
+    case 'topP':
+    case 'maxCompletionTokens':
+    case 'presencePenalty':
+    case 'frequencyPenalty':
+    case 'stop':
+      return Object.prototype.hasOwnProperty.call(lmParameters, key);
+    case 'reasoning':
+      return hasCompleteReasoningShape(lmParameters.reasoning);
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled LM parameter key: ${_ex}`);
+    }
+    }
+  });
+}
+
 export function normalizeLmParameters({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined,
+  lmParameters: LmParameterOverrides | undefined,
 }): LmParameters | undefined {
-  return hasLmParameterOverrides({ lmParameters })
+  if (!hasLmParameterOverrides({ lmParameters })) return undefined;
+
+  return hasCompleteLmParametersShape(lmParameters)
     ? lmParameters
-    : undefined;
+    : cloneLmParameters({ lmParameters });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

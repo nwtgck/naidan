@@ -418,6 +418,40 @@ describe('useImageGeneration', () => {
       generateImageSpy.mockRestore();
     });
 
+    it('seeds progress at zero completed steps before the provider emits progress', async () => {
+      const { handleImageGeneration, imageProgressMap } = useImageGeneration();
+      const { OllamaProvider } = await import('@/features/lm/ollama');
+      const progressChatId = toChatId({ raw: 'initial-step-progress-chat' });
+
+      imageProgressMap.value.delete(progressChatId);
+
+      const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
+        .mockImplementation(async () => {
+          expect(imageProgressMap.value.get(progressChatId)).toEqual({
+            currentStep: 0,
+            totalSteps: 25,
+          });
+
+          return {
+            image: new Blob(['test'], { type: 'image/png' }),
+            totalSteps: 25,
+          };
+        });
+
+      try {
+        await handleImageGeneration({
+          ...commonParams,
+          chatId: progressChatId,
+          steps: 25,
+          storageType: 'opfs',
+        });
+
+        expect(imageProgressMap.value.get(progressChatId)).toBeUndefined();
+      } finally {
+        generateImageSpy.mockRestore();
+      }
+    });
+
     it('updates and then clears imageProgressMap during generation', async () => {
       const { handleImageGeneration, imageProgressMap } = useImageGeneration();
 

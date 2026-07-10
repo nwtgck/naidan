@@ -96,7 +96,7 @@ describe('useChat Persistence Timing', () => {
           url: 'http://localhost:11434',
         },
         defaultModelId: 'gpt-4',
-        autoTitleEnabled: false,
+        titleGeneration: 'disabled',
         storageType: 'local',
         providerProfiles: [],
       } as any,

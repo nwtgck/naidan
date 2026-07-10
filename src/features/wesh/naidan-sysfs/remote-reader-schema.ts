@@ -1,20 +1,12 @@
 import { z } from 'zod';
-import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
+import { resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
 import {
   BinaryObjectSchemaDto,
   ChatContentSchemaDto,
   ChatGroupSchemaDto,
   ChatMetaSchemaDto,
-  EndpointSchemaDto,
-  LmParametersSchemaDto,
-  MountSchemaDto,
-  SystemPromptSchemaDto,
 } from '@/00-storage/00-dto/dto';
-
-// Keep the existing local helper name so this remote schema diff stays focused
-// on the Zod 4.4 missing-key semantics rather than a broad rename.
-const orUndefined = missingAsUndefined;
 
 export const naidanSysfsRemoteChatSummarySchema = z.object({
   id: z.string().min(1),
@@ -30,15 +22,7 @@ export const naidanSysfsRemoteChatSidebarItemSchema = z.object({
 });
 
 export const naidanSysfsRemoteChatGroupPayloadSchema = z.object({
-  dto: ChatGroupSchemaDto.safeExtend({
-    endpoint: orUndefined(EndpointSchemaDto),
-    modelId: orUndefined(z.string()),
-    autoTitleEnabled: orUndefined(z.boolean()),
-    titleModelId: orUndefined(z.string()),
-    systemPrompt: orUndefined(SystemPromptSchemaDto),
-    lmParameters: orUndefined(LmParametersSchemaDto),
-    mounts: orUndefined(z.array(MountSchemaDto)),
-  }),
+  dto: ChatGroupSchemaDto,
   items: z.array(naidanSysfsRemoteChatSidebarItemSchema),
 });
 

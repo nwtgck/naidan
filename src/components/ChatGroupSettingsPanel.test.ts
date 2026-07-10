@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, ref, toRef } from 'vue';
-import type { ChatGroup, Settings } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type ChatGroup, type Settings } from '@/01-models/types';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
@@ -42,7 +42,7 @@ const mockCurrentGroup = ref<ChatGroup>(mockGroup);
 const mockSettings = reactive<Settings>({
   endpoint: { type: 'openai', url: 'http://global-url' },
   defaultModelId: 'global-model',
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   storageType: 'opfs',
   providerProfiles: [],
   mounts: [],
@@ -123,7 +123,7 @@ const globalStubs = {
   'ModelSelector': {
     name: 'ModelSelector',
     template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
-    props: ['modelValue', 'models'],
+    props: ['modelValue', 'models', 'loading', 'placeholder', 'allowClear', 'clearLabel', 'disabled'],
   },
   'ChatGroupToolsSettings': {
     name: 'ChatGroupToolsSettings',
@@ -144,7 +144,8 @@ vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
 }));
 
 describe('ChatGroupSettingsPanel.vue', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     mocks.updateChatGroup.mockImplementation(async ({ id, updater }: { id: string, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup }) => {
       if (idToRaw({ id: mockGroup.id }) === id) {
@@ -213,11 +214,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
           case 'model_id':
             updates.modelId = updated.modelId;
             break;
-          case 'auto_title_enabled':
-            updates.autoTitleEnabled = updated.autoTitleEnabled;
-            break;
-          case 'title_model_id':
-            updates.titleModelId = updated.titleModelId;
+          case 'title_generation':
+            updates.titleGeneration = updated.titleGeneration;
             break;
           case 'system_prompt':
             updates.systemPrompt = updated.systemPrompt;
@@ -271,8 +269,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       name: 'Test Group',
       endpoint: undefined,
       modelId: undefined,
-      autoTitleEnabled: undefined,
-      titleModelId: undefined,
+      titleGeneration: 'inherit',
       systemPrompt: undefined,
       lmParameters: { reasoning: { effort: undefined } },
       mounts: undefined,
@@ -281,6 +278,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     // Default global settings
     mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     mockSettings.providerProfiles = [];
+    mockSettings.systemPrompt = undefined;
     mockSettings.experimental = { toolConfigPersistence: 'enabled' };
   });
 
@@ -305,6 +303,155 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(wrapper.find('h2').text()).toContain('Test Group Settings');
   });
 
+  it('shows title-generation inheritance as using the global setting', () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    expect(wrapper.text()).toContain('Use Global Setting');
+  });
+
+  it('keeps the inherited title model selector editable and materializes a group override on change', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockSettings.endpoint = { type: 'ollama', url: 'http://global-ollama' };
+    mockSettings.defaultModelId = 'global-model';
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('allowClear')).toBe(true);
+    expect(titleModelSelector!.props('disabled')).toBe(false);
+
+    await titleModelSelector!.vm.$emit('update:modelValue', 'group-title-model');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toMatchObject({
+      endpoint: 'same_scope',
+      model: { id: 'group-title-model' },
+    });
+  });
+
+  it('preserves inherited title settings when switching the group to override if same scope would differ', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockGroup.endpoint = { type: 'openai', url: 'http://group-openai' };
+    mockGroup.modelId = 'group-model';
+    mockSettings.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.3, reasoning: { effort: 'high' } },
+    });
+  });
+
+  it('uses same scope when switching the group to override keeps the same resolved title settings', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockGroup.endpoint = { type: 'openai', url: 'http://global-url' };
+    mockGroup.modelId = 'global-model';
+    mockGroup.lmParameters = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleOverrideButton = wrapper.findAll('button').filter(button => button.text() === 'Override').at(0);
+    expect(titleOverrideButton).toBeDefined();
+    await titleOverrideButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: 'same_scope',
+    });
+  });
+
+  it('materializes global title endpoint and model when changing title reasoning', async () => {
+    mockGroup.endpoint = { type: 'openai', url: 'http://group-openai' };
+    mockGroup.modelId = 'group-model';
+    mockGroup.titleGeneration = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: {
+        temperature: 0.3,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'high' },
+      },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const titleMediumButton = wrapper.findAll('[data-testid="reasoning-effort-medium"]').at(-1);
+    expect(titleMediumButton).toBeDefined();
+    await titleMediumButton!.trigger('click');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toEqual({
+      endpoint: { type: 'ollama', url: 'http://global-title-ollama' },
+      model: { id: 'global-title-model' },
+      lmParameters: {
+        temperature: 0.3,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'medium' },
+      },
+    });
+  });
+
+  it('loads inherited title model options without requiring a manual model refresh', async () => {
+    mockGroup.titleGeneration = undefined;
+    mockSettings.titleGeneration = {
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: {
+        temperature: undefined,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: undefined },
+      },
+    };
+    mockSettings.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
+    mockSettings.defaultModelId = 'global-model';
+    mockFetchAvailableModels.mockResolvedValue(['title-model-10', 'title-model-2', 'title-model-1']);
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    await nextTick();
+
+    const titleModelSelector = wrapper.findAllComponents({ name: 'ModelSelector' }).at(-1);
+    expect(titleModelSelector).toBeDefined();
+    expect(titleModelSelector!.props('placeholder')).toBe('Global: global-model');
+    expect(titleModelSelector!.props('models')).toEqual(['title-model-1', 'title-model-2', 'title-model-10']);
+  });
+
   it('shows the "Active Overrides" badge only when overrides are present', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
@@ -317,8 +464,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
   it('hides the "Active Overrides" badge when endpoint URL is cleared', async () => {
     // Explicitly set title overrides to undefined
-    mockGroup.autoTitleEnabled = undefined;
-    mockGroup.titleModelId = undefined;
+    mockGroup.titleGeneration = undefined;
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await flushPromises();
@@ -345,15 +491,15 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     mockSettings.endpoint = { type: 'openai', url: 'http://global-url' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (OpenAI)');
+    expect(inheritedOption().text()).toBe('Global: OpenAI');
 
     mockSettings.endpoint = { type: 'ollama', url: 'http://global-url' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (Ollama)');
+    expect(inheritedOption().text()).toBe('Global: Ollama');
 
     mockSettings.endpoint = { type: 'transformers_js' };
     await nextTick();
-    expect(inheritedOption().text()).toBe('Global (Transformers.js)');
+    expect(inheritedOption().text()).toBe('Global: Transformers.js');
   });
 
   it('toggles endpoint customization via select', async () => {
@@ -391,7 +537,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     vi.unstubAllGlobals();
   });
 
-  it('persists browser-provided model IDs with a group endpoint override', async () => {
+  it('persists browser-provided chat model and same-scope title setting with a group endpoint override', async () => {
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
       availability: vi.fn().mockResolvedValue('available'),
       create: vi.fn(),
@@ -407,7 +553,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(mockGroup).toMatchObject({
       endpoint: { type: 'browser_provided_lm' },
       modelId: BROWSER_PROVIDED_LM_MODEL_ID,
-      titleModelId: BROWSER_PROVIDED_LM_MODEL_ID,
+      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     });
     wrapper.unmount();
     vi.unstubAllGlobals();
@@ -456,7 +602,6 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(mockGroup).toMatchObject({
       endpoint: { type: 'ollama', url: 'http://localhost:11434' },
       modelId: undefined,
-      titleModelId: undefined,
     });
   });
 
@@ -562,12 +707,37 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(upsell.props('show')).toBe(true);
   });
 
+  it('shows system prompt modes and keeps the editor mounted', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    expect(wrapper.text()).toContain('Global');
+    expect(wrapper.text()).toContain('No Prompt');
+    expect(wrapper.text()).toContain('Replace');
+    expect(wrapper.text()).toContain('Append');
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-no-prompt-button"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-parent-button"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+  });
+
   it('updates system prompt behavior correctly', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
-    // Click Append
-    const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
-    await appendBtn?.trigger('click');
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
 
     expectLatestGroupUpdate({
       partial: {
@@ -576,9 +746,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       },
     });
 
-    // Click Override
-    const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
-    await overrideBtn?.trigger('click');
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
 
     expectLatestGroupUpdate({
       partial: {
@@ -586,6 +754,256 @@ describe('ChatGroupSettingsPanel.vue', () => {
         systemPrompt: expect.objectContaining({ behavior: 'override' }) as ChatGroup['systemPrompt'],
       },
     });
+  });
+
+  it('shows the global prompt in parent mode and materializes an override when edited', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('Global prompt');
+
+    await textarea.setValue('Edited group prompt');
+    await textarea.trigger('blur');
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: 'Edited group prompt' },
+      },
+    });
+  });
+
+  it('keeps No Prompt editable and switches to override when typing', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-no-prompt-button"]').trigger('click');
+    await flushPromises();
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: null },
+      },
+    });
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    await textarea.setValue('Prompt after none');
+    await textarea.trigger('blur');
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: 'Prompt after none' },
+      },
+    });
+  });
+
+  it('does not copy the global prompt into append mode', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await nextTick();
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('keeps parent-materialized text when changing from Replace to Append', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Global prompt');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Global prompt');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'append', content: 'Global prompt' },
+      },
+    });
+  });
+
+  it('materializes the global prompt when Replace is clicked from parent mode', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await flushPromises();
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('Global prompt');
+    expect(textarea.attributes('placeholder')).toBe('Enter instructions for this chat group...');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: 'Global prompt' },
+      },
+    });
+  });
+
+  it('saves append editor content as append-only group prompt content', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+
+    const textarea = wrapper.get('[data-testid="group-setting-system-prompt-textarea"]');
+    await textarea.setValue('Append only prompt');
+    await textarea.trigger('blur');
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'append', content: 'Append only prompt' },
+      },
+    });
+  });
+
+
+  it('keeps editor text when switching through No Prompt while the panel is open', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Draft replace prompt');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-no-prompt-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Draft replace prompt');
+  });
+
+  it('keeps editor text when switching through Global while the panel is open', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Draft append prompt');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-parent-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Global prompt');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Draft append prompt');
+  });
+
+  it('keeps typed text when changing from Replace to Append', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Draft to try as append');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Draft to try as append');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'append', content: 'Draft to try as append' },
+      },
+    });
+  });
+
+  it('keeps later Replace edits when changing back to Append', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Replace text after visiting append');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await flushPromises();
+
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Replace text after visiting append');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'append', content: 'Replace text after visiting append' },
+      },
+    });
+  });
+
+  it('keeps typed text when changing from Append to Replace', async () => {
+    mockSettings.systemPrompt = 'Global prompt';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Draft to try as replace');
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await flushPromises();
+
+    expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Draft to try as replace');
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        systemPrompt: { behavior: 'override', content: 'Draft to try as replace' },
+      },
+    });
+  });
+
+  it('uses one prompt buffer across repeated Replace and Append changes', async () => {
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').setValue('Shared prompt draft');
+
+    for (let index = 0; index < 4; index += 1) {
+      await wrapper.get('[data-testid="group-setting-system-prompt-append-button"]').trigger('click');
+      await flushPromises();
+      expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Shared prompt draft');
+      expectLatestGroupUpdate({
+        partial: {
+          id: toChatGroupId({ raw: 'g1' }),
+          systemPrompt: { behavior: 'append', content: 'Shared prompt draft' },
+        },
+      });
+
+      await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
+      await flushPromises();
+      expect((wrapper.get('[data-testid="group-setting-system-prompt-textarea"]').element as HTMLTextAreaElement).value).toBe('Shared prompt draft');
+      expectLatestGroupUpdate({
+        partial: {
+          id: toChatGroupId({ raw: 'g1' }),
+          systemPrompt: { behavior: 'override', content: 'Shared prompt draft' },
+        },
+      });
+    }
   });
 
   it('saves pending settings to the previous group when the current group changes', async () => {
@@ -611,8 +1029,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
         url: 'http://group-b',
       },
       modelId: undefined,
-      autoTitleEnabled: undefined,
-      titleModelId: undefined,
+      titleGeneration: 'inherit',
       systemPrompt: undefined,
       lmParameters: undefined,
     });
@@ -676,19 +1093,14 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await flushPromises();
   });
 
-  it('clears system prompt override when clicking Inherit button', async () => {
+  it('clears system prompt override when clicking Global button', async () => {
     mockGroup.systemPrompt = { content: 'group prompt', behavior: 'override' };
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    // Ensure textarea exists initially
     expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
 
-    // Click Inherit in the System Prompt section
-    const inheritBtns = wrapper.findAll('button').filter(b => b.text().includes('Inherit'));
-    // The second one is for the system prompt
-    const inheritBtn = inheritBtns[1] || inheritBtns[0];
-    await inheritBtn?.trigger('click');
+    await wrapper.get('[data-testid="group-setting-system-prompt-parent-button"]').trigger('click');
     await nextTick();
 
     expectLatestGroupUpdate({
@@ -697,10 +1109,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
         systemPrompt: undefined,
       },
     });
-
-    // Verify UI state
-    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Inherited Instructions');
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="group-setting-system-prompt-caption"]').text()).toBe('Global: Not set');
   });
 
   it('displays correct resolution status for system prompt', async () => {
@@ -708,24 +1118,23 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await nextTick();
     const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
 
-    expect(status.text()).toBe('Global Default');
+    expect(status.text()).toBe('Global: Not set');
 
     mockGroup.systemPrompt = { content: 'test', behavior: 'append' };
     await nextTick();
-    expect(status.text()).toBe('Appending');
+    expect(status.text()).toBe('Append');
 
     mockGroup.systemPrompt = { content: 'test', behavior: 'override' };
     await nextTick();
-    expect(status.text()).toBe('Overriding');
+    expect(status.text()).toBe('Replace');
   });
 
   it('calls updateChatGroupMetadata when settings change', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
-    // First click Override to show the textarea
-    const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
-    await overrideBtn?.trigger('click');
+    // First click Replace to show the textarea
+    await wrapper.get('[data-testid="group-setting-system-prompt-replace-button"]').trigger('click');
     await nextTick();
 
     // Set system prompt via textarea
@@ -969,4 +1378,40 @@ describe('ChatGroupSettingsPanel.vue', () => {
       }) });
     });
   });
+
+  it('materializes global title endpoint headers when editing title headers', async () => {
+    mockSettings.titleGeneration = {
+      endpoint: {
+        type: 'openai',
+        url: 'https://global-title.example/v1',
+        httpHeaders: [['X-Global-Title', 'old']],
+      },
+      model: { id: 'global-title-model' },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { ...EMPTY_LM_PARAMETERS.reasoning } },
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    await wrapper.get('[data-testid="group-setting-title-http-header-name-input"]').setValue('X-Group-Title');
+    await wrapper.get('[data-testid="group-setting-title-http-header-name-input"]').trigger('blur');
+    await wrapper.get('[data-testid="group-setting-title-http-header-value-input"]').setValue('next');
+    await wrapper.get('[data-testid="group-setting-title-http-header-value-input"]').trigger('blur');
+    await flushPromises();
+
+    expect(mockGroup.titleGeneration).toMatchObject({
+      endpoint: {
+        type: 'openai',
+        url: 'https://global-title.example/v1',
+        httpHeaders: [['X-Group-Title', 'next']],
+      },
+      model: { id: 'global-title-model' },
+    });
+    expect(mockSettings.titleGeneration).toMatchObject({
+      endpoint: {
+        httpHeaders: [['X-Global-Title', 'old']],
+      },
+    });
+  });
+
 });

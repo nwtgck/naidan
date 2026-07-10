@@ -112,6 +112,19 @@ import { ChatGroupSettingsPanel__group_overrides } from '@/strings/messages/Chat
 import { ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats } from '@/strings/messages/ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats/ja';
 import { ChatGroupSettingsPanel__group_settings_title } from '@/strings/messages/ChatGroupSettingsPanel__group_settings_title/ja';
 import { ChatGroupSettingsPanel__group_system_prompt } from '@/strings/messages/ChatGroupSettingsPanel__group_system_prompt/ja';
+import { ChatGroupSettingsPanel__global } from '@/strings/messages/ChatGroupSettingsPanel__global/ja';
+import { ChatGroupSettingsPanel__no_prompt } from '@/strings/messages/ChatGroupSettingsPanel__no_prompt/ja';
+import { ChatGroupSettingsPanel__system_prompt_global_set } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_global_set/ja';
+import { ChatGroupSettingsPanel__system_prompt_global_not_set } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_global_not_set/ja';
+import { ChatGroupSettingsPanel__system_prompt_no_prompt } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_no_prompt/ja';
+import { ChatGroupSettingsPanel__instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__instructions_for_this_chat_group/ja';
+import { ChatGroupSettingsPanel__instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__instructions_to_append/ja';
+import { ChatGroupSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatGroupSettingsPanel__start_typing_to_override/ja';
+import { ChatGroupSettingsPanel__enter_instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_for_this_chat_group/ja';
+import { ChatGroupSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatGroupSettingsPanel__start_typing_to_replace/ja';
+import { ChatGroupSettingsPanel__replace } from '@/strings/messages/ChatGroupSettingsPanel__replace/ja';
+import { ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting/ja';
+import { ChatGroupSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_to_append/ja';
 import { ChatGroupSettingsPanel__inherit } from '@/strings/messages/ChatGroupSettingsPanel__inherit/ja';
 import { ChatGroupSettingsPanel__inherit_global_settings_or_override_individual_tools_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__inherit_global_settings_or_override_individual_tools_for_this_chat_group/ja';
 import { ChatGroupSettingsPanel__inherited } from '@/strings/messages/ChatGroupSettingsPanel__inherited/ja';
@@ -141,11 +154,15 @@ import { ChatGroupSettingsPanel__these_settings_only_apply_to_this_group } from 
 import { ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat } from '@/strings/messages/ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat/ja';
 import { ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions } from '@/strings/messages/ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions/ja';
 import { ChatGroupSettingsPanel__title_model_explanation } from '@/strings/messages/ChatGroupSettingsPanel__title_model_explanation/ja';
+import { ChatGroupSettingsPanel__use_global_setting } from '@/strings/messages/ChatGroupSettingsPanel__use_global_setting/ja';
 import { ChatGroupSettingsPanel__title_model_override } from '@/strings/messages/ChatGroupSettingsPanel__title_model_override/ja';
+import { ChatGroupSettingsPanel__same_as_group_chat_endpoint } from '@/strings/messages/ChatGroupSettingsPanel__same_as_group_chat_endpoint/ja';
+import { ChatGroupSettingsPanel__title_endpoint_type } from '@/strings/messages/ChatGroupSettingsPanel__title_endpoint_type/ja';
 import { ChatGroupSettingsPanel__tools } from '@/strings/messages/ChatGroupSettingsPanel__tools/ja';
 import { ChatGroupSettingsPanel__transformers_js } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js/ja';
 import { ChatGroupSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js_experimental/ja';
 import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSettingsPanel__value/ja';
+import { ChatGroupSettingsPanel__title_reasoning } from '@/strings/messages/ChatGroupSettingsPanel__title_reasoning/ja';
 import { ChatInput__cancel } from '@/strings/messages/ChatInput__cancel/ja';
 import { ChatInput__copying_name } from '@/strings/messages/ChatInput__copying_name/ja';
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/ja';
@@ -250,6 +267,19 @@ import { ChatSettingsPanel__endpoint_type } from '@/strings/messages/ChatSetting
 import { ChatSettingsPanel__endpoint_url } from '@/strings/messages/ChatSettingsPanel__endpoint_url/ja';
 import { ChatSettingsPanel__failed_to_save_chat_settings } from '@/strings/messages/ChatSettingsPanel__failed_to_save_chat_settings/ja';
 import { ChatSettingsPanel__group_global_default } from '@/strings/messages/ChatSettingsPanel__group_global_default/ja';
+import { ChatSettingsPanel__chat_group } from '@/strings/messages/ChatSettingsPanel__chat_group/ja';
+import { ChatSettingsPanel__no_prompt } from '@/strings/messages/ChatSettingsPanel__no_prompt/ja';
+import { ChatSettingsPanel__system_prompt_chat_group_set } from '@/strings/messages/ChatSettingsPanel__system_prompt_chat_group_set/ja';
+import { ChatSettingsPanel__system_prompt_chat_group_not_set } from '@/strings/messages/ChatSettingsPanel__system_prompt_chat_group_not_set/ja';
+import { ChatSettingsPanel__system_prompt_no_prompt } from '@/strings/messages/ChatSettingsPanel__system_prompt_no_prompt/ja';
+import { ChatSettingsPanel__instructions_for_this_chat } from '@/strings/messages/ChatSettingsPanel__instructions_for_this_chat/ja';
+import { ChatSettingsPanel__instructions_to_append } from '@/strings/messages/ChatSettingsPanel__instructions_to_append/ja';
+import { ChatSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatSettingsPanel__start_typing_to_override/ja';
+import { ChatSettingsPanel__enter_instructions_for_this_chat } from '@/strings/messages/ChatSettingsPanel__enter_instructions_for_this_chat/ja';
+import { ChatSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatSettingsPanel__start_typing_to_replace/ja';
+import { ChatSettingsPanel__replace } from '@/strings/messages/ChatSettingsPanel__replace/ja';
+import { ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting } from '@/strings/messages/ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting/ja';
+import { ChatSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatSettingsPanel__enter_instructions_to_append/ja';
 import { ChatSettingsPanel__inherit } from '@/strings/messages/ChatSettingsPanel__inherit/ja';
 import { ChatSettingsPanel__inherited } from '@/strings/messages/ChatSettingsPanel__inherited/ja';
 import { ChatSettingsPanel__inherited_instructions } from '@/strings/messages/ChatSettingsPanel__inherited_instructions/ja';
@@ -273,10 +303,14 @@ import { ChatSettingsPanel__system_prompt } from '@/strings/messages/ChatSetting
 import { ChatSettingsPanel__these_settings_only_apply_to_this_chat } from '@/strings/messages/ChatSettingsPanel__these_settings_only_apply_to_this_chat/ja';
 import { ChatSettingsPanel__this_chat_will_not_use_any_system_instructions } from '@/strings/messages/ChatSettingsPanel__this_chat_will_not_use_any_system_instructions/ja';
 import { ChatSettingsPanel__title_model_explanation } from '@/strings/messages/ChatSettingsPanel__title_model_explanation/ja';
+import { ChatSettingsPanel__use_chat_group_setting } from '@/strings/messages/ChatSettingsPanel__use_chat_group_setting/ja';
 import { ChatSettingsPanel__title_model_override } from '@/strings/messages/ChatSettingsPanel__title_model_override/ja';
+import { ChatSettingsPanel__same_as_chat_endpoint } from '@/strings/messages/ChatSettingsPanel__same_as_chat_endpoint/ja';
+import { ChatSettingsPanel__title_endpoint_type } from '@/strings/messages/ChatSettingsPanel__title_endpoint_type/ja';
 import { ChatSettingsPanel__transformers_js } from '@/strings/messages/ChatSettingsPanel__transformers_js/ja';
 import { ChatSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatSettingsPanel__transformers_js_experimental/ja';
 import { ChatSettingsPanel__value } from '@/strings/messages/ChatSettingsPanel__value/ja';
+import { ChatSettingsPanel__title_reasoning } from '@/strings/messages/ChatSettingsPanel__title_reasoning/ja';
 import { ChatTitleDialog__chat_override } from '@/strings/messages/ChatTitleDialog__chat_override/ja';
 import { ChatTitleDialog__chat_title } from '@/strings/messages/ChatTitleDialog__chat_title/ja';
 import { ChatTitleDialog__close } from '@/strings/messages/ChatTitleDialog__close/ja';
@@ -335,6 +369,8 @@ import { ConnectionTab__settings_saved } from '@/strings/messages/ConnectionTab_
 import { ConnectionTab__setup_url_copied } from '@/strings/messages/ConnectionTab__setup_url_copied/ja';
 import { ConnectionTab__title_generation_model } from '@/strings/messages/ConnectionTab__title_generation_model/ja';
 import { ConnectionTab__transformers_js_experimental } from '@/strings/messages/ConnectionTab__transformers_js_experimental/ja';
+import { ConnectionTab__use_current_chat_endpoint } from '@/strings/messages/ConnectionTab__use_current_chat_endpoint/ja';
+import { ConnectionTab__title_endpoint } from '@/strings/messages/ConnectionTab__title_endpoint/ja';
 import { ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions } from '@/strings/messages/ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions/ja';
 import { ConnectionTab__understand } from '@/strings/messages/ConnectionTab__understand/ja';
 import { ConnectionTab__url_copied } from '@/strings/messages/ConnectionTab__url_copied/ja';
@@ -342,6 +378,8 @@ import { ConnectionTab__use_current_chat_model } from '@/strings/messages/Connec
 import { ConnectionTab__used_for_new_conversations } from '@/strings/messages/ConnectionTab__used_for_new_conversations/ja';
 import { ConnectionTab__value } from '@/strings/messages/ConnectionTab__value/ja';
 import { ConnectionTab__view_profiles } from '@/strings/messages/ConnectionTab__view_profiles/ja';
+import { ConnectionTab__title_reasoning } from '@/strings/messages/ConnectionTab__title_reasoning/ja';
+import { ConnectionTab__use_current_chat_reasoning } from '@/strings/messages/ConnectionTab__use_current_chat_reasoning/ja';
 import { ContextCompactProgressStrip__abort_compact } from '@/strings/messages/ContextCompactProgressStrip__abort_compact/ja';
 import { ContextCompactProgressStrip__hide_request } from '@/strings/messages/ContextCompactProgressStrip__hide_request/ja';
 import { ContextCompactProgressStrip__live_output } from '@/strings/messages/ContextCompactProgressStrip__live_output/ja';
@@ -959,6 +997,7 @@ import { Sidebar__delete_group_warning } from '@/strings/messages/Sidebar__delet
 import { Sidebar__ephemeral_session } from '@/strings/messages/Sidebar__ephemeral_session/ja';
 import { Sidebar__group_name } from '@/strings/messages/Sidebar__group_name/ja';
 import { Sidebar__new_chat_in_group } from '@/strings/messages/Sidebar__new_chat_in_group/ja';
+import { Sidebar__none } from '@/strings/messages/Sidebar__none/ja';
 import { Sidebar__open_sidebar } from '@/strings/messages/Sidebar__open_sidebar/ja';
 import { Sidebar__rename_group } from '@/strings/messages/Sidebar__rename_group/ja';
 import { Sidebar__search_cmd_k } from '@/strings/messages/Sidebar__search_cmd_k/ja';
@@ -1399,6 +1438,8 @@ import { fileExplorer__zip_cannot_be_extracted } from '@/strings/messages/fileEx
 import { fileExplorer__zip_file_upload } from '@/strings/messages/fileExplorer__zip_file_upload/ja';
 import { fileExplorer__zip_upload_preview_outdated } from '@/strings/messages/fileExplorer__zip_upload_preview_outdated/ja';
 import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/ja';
+import { formatSettingsSourceLabel__value_from_chat } from '@/strings/messages/formatSettingsSourceLabel__value_from_chat/ja';
+import { formatSettingsSourceLabel__none } from '@/strings/messages/formatSettingsSourceLabel__none/ja';
 import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/ja';
 import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/ja';
 import { toolCall__arguments } from '@/strings/messages/toolCall__arguments/ja';
@@ -1634,6 +1675,19 @@ export const ja = {
   ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats,
   ChatGroupSettingsPanel__group_settings_title,
   ChatGroupSettingsPanel__group_system_prompt,
+  ChatGroupSettingsPanel__global,
+  ChatGroupSettingsPanel__no_prompt,
+  ChatGroupSettingsPanel__system_prompt_global_set,
+  ChatGroupSettingsPanel__system_prompt_global_not_set,
+  ChatGroupSettingsPanel__system_prompt_no_prompt,
+  ChatGroupSettingsPanel__instructions_for_this_chat_group,
+  ChatGroupSettingsPanel__instructions_to_append,
+  ChatGroupSettingsPanel__start_typing_to_override,
+  ChatGroupSettingsPanel__enter_instructions_for_this_chat_group,
+  ChatGroupSettingsPanel__start_typing_to_replace,
+  ChatGroupSettingsPanel__replace,
+  ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting,
+  ChatGroupSettingsPanel__enter_instructions_to_append,
   ChatGroupSettingsPanel__inherit,
   ChatGroupSettingsPanel__inherit_global_settings_or_override_individual_tools_for_this_chat_group,
   ChatGroupSettingsPanel__inherited,
@@ -1663,11 +1717,15 @@ export const ja = {
   ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat,
   ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions,
   ChatGroupSettingsPanel__title_model_explanation,
+  ChatGroupSettingsPanel__use_global_setting,
   ChatGroupSettingsPanel__title_model_override,
+  ChatGroupSettingsPanel__same_as_group_chat_endpoint,
+  ChatGroupSettingsPanel__title_endpoint_type,
   ChatGroupSettingsPanel__tools,
   ChatGroupSettingsPanel__transformers_js,
   ChatGroupSettingsPanel__transformers_js_experimental,
   ChatGroupSettingsPanel__value,
+  ChatGroupSettingsPanel__title_reasoning,
   ChatInput__cancel,
   ChatInput__copying_name,
   ChatInput__edit_image,
@@ -1772,6 +1830,19 @@ export const ja = {
   ChatSettingsPanel__endpoint_url,
   ChatSettingsPanel__failed_to_save_chat_settings,
   ChatSettingsPanel__group_global_default,
+  ChatSettingsPanel__chat_group,
+  ChatSettingsPanel__no_prompt,
+  ChatSettingsPanel__system_prompt_chat_group_set,
+  ChatSettingsPanel__system_prompt_chat_group_not_set,
+  ChatSettingsPanel__system_prompt_no_prompt,
+  ChatSettingsPanel__instructions_for_this_chat,
+  ChatSettingsPanel__instructions_to_append,
+  ChatSettingsPanel__start_typing_to_override,
+  ChatSettingsPanel__enter_instructions_for_this_chat,
+  ChatSettingsPanel__start_typing_to_replace,
+  ChatSettingsPanel__replace,
+  ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting,
+  ChatSettingsPanel__enter_instructions_to_append,
   ChatSettingsPanel__inherit,
   ChatSettingsPanel__inherited,
   ChatSettingsPanel__inherited_instructions,
@@ -1795,10 +1866,14 @@ export const ja = {
   ChatSettingsPanel__these_settings_only_apply_to_this_chat,
   ChatSettingsPanel__this_chat_will_not_use_any_system_instructions,
   ChatSettingsPanel__title_model_explanation,
+  ChatSettingsPanel__use_chat_group_setting,
   ChatSettingsPanel__title_model_override,
+  ChatSettingsPanel__same_as_chat_endpoint,
+  ChatSettingsPanel__title_endpoint_type,
   ChatSettingsPanel__transformers_js,
   ChatSettingsPanel__transformers_js_experimental,
   ChatSettingsPanel__value,
+  ChatSettingsPanel__title_reasoning,
   ChatTitleDialog__chat_override,
   ChatTitleDialog__chat_title,
   ChatTitleDialog__close,
@@ -1857,6 +1932,8 @@ export const ja = {
   ConnectionTab__setup_url_copied,
   ConnectionTab__title_generation_model,
   ConnectionTab__transformers_js_experimental,
+  ConnectionTab__use_current_chat_endpoint,
+  ConnectionTab__title_endpoint,
   ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions,
   ConnectionTab__understand,
   ConnectionTab__url_copied,
@@ -1864,6 +1941,8 @@ export const ja = {
   ConnectionTab__used_for_new_conversations,
   ConnectionTab__value,
   ConnectionTab__view_profiles,
+  ConnectionTab__title_reasoning,
+  ConnectionTab__use_current_chat_reasoning,
   ContextCompactProgressStrip__abort_compact,
   ContextCompactProgressStrip__hide_request,
   ContextCompactProgressStrip__live_output,
@@ -2481,6 +2560,7 @@ export const ja = {
   Sidebar__ephemeral_session,
   Sidebar__group_name,
   Sidebar__new_chat_in_group,
+  Sidebar__none,
   Sidebar__open_sidebar,
   Sidebar__rename_group,
   Sidebar__search_cmd_k,
@@ -2921,6 +3001,8 @@ export const ja = {
   fileExplorer__zip_file_upload,
   fileExplorer__zip_upload_preview_outdated,
   formatSettingsSourceLabel__default,
+  formatSettingsSourceLabel__none,
+  formatSettingsSourceLabel__value_from_chat,
   formatSettingsSourceLabel__value_from_global,
   formatSettingsSourceLabel__value_from_group,
   toolCall__arguments,

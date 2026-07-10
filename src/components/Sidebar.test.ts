@@ -21,7 +21,7 @@ const mockSettings = ref({
   endpoint: { type: 'ollama' as const, url: 'http://localhost:11434' },
   defaultModelId: 'llama3',
   storageType: 'local' as StorageType,
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   providerProfiles: [],
 });
 const mockAvailableModels = ref(['llama3', 'mistral', 'phi3']);
@@ -268,10 +268,11 @@ describe('Sidebar Logic Stability', () => {
     }),
     'ModelSelector': {
       name: 'ModelSelector',
-      template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear">{{ modelValue }}<div v-if="loading" class="animate-spin-mock"></div></div>',
+      template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear" :placeholder="placeholder">{{ modelValue || placeholder }}<div v-if="loading" class="animate-spin-mock"></div></div>',
       props: {
         modelValue: String,
         models: Array,
+        placeholder: String,
         loading: {
           type: Boolean,
           default: false,
@@ -310,7 +311,7 @@ describe('Sidebar Logic Stability', () => {
       });
     });
 
-    it('does not render the selector if endpointUrl is missing', async () => {
+    it('renders the selector if endpointUrl is missing', async () => {
       mockSettings.value.endpoint = { type: 'ollama', url: '' };
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
@@ -318,7 +319,19 @@ describe('Sidebar Logic Stability', () => {
       await nextTick();
 
       const selector = wrapper.find('[data-testid="model-selector-mock"]');
-      expect(selector.exists()).toBe(false);
+      expect(selector.exists()).toBe(true);
+    });
+
+    it('displays None when the current model is missing', async () => {
+      mockSettings.value.defaultModelId = '';
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const selector = wrapper.get('[data-testid="model-selector-mock"]');
+      expect(selector.attributes('placeholder')).toBe('None');
+      expect(selector.text()).toContain('None');
     });
 
     it('displays the current model via ModelSelector', async () => {

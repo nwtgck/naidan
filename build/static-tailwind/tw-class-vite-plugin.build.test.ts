@@ -37,7 +37,7 @@ function createFixture(): string {
     relativePath: 'package.json',
     content: JSON.stringify({
       type: 'module',
-      devDependencies: { tailwindcss: '4.3.1' },
+      devDependencies: { tailwindcss: '4.3.2' },
     }),
   });
   writeFile({

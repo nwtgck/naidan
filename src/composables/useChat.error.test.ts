@@ -56,7 +56,7 @@ describe('useChat Error Handling', () => {
     __testOnlySetSettings({ newSettings: {
       endpoint: { type: 'openai', url: 'https://api.openai.com' },
       defaultModelId: 'gpt-4',
-      autoTitleEnabled: false,
+      titleGeneration: 'disabled',
       storageType: 'local',
       providerProfiles: [],
       mounts: [],

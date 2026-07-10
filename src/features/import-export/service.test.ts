@@ -65,11 +65,10 @@ describe('ImportExportService', () => {
   const createValidSettingsDto = (overrides: Partial<SettingsDto> = {}): SettingsDto => ({
     endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: undefined },
     storageType: 'local',
-    autoTitleEnabled: true,
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     providerProfiles: [],
     experimental: undefined,
     defaultModelId: undefined,
-    titleModelId: undefined,
     heavyContentAlertDismissed: undefined,
     systemPrompt: undefined,
     lmParameters: undefined,
@@ -80,10 +79,9 @@ describe('ImportExportService', () => {
   const createValidSettings = (overrides: Partial<Settings> = {}): Settings => ({
     endpoint: { type: 'ollama', url: 'http://localhost:11434' },
     storageType: 'local',
-    autoTitleEnabled: true,
+    titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     providerProfiles: [],
     defaultModelId: undefined,
-    titleModelId: undefined,
     heavyContentAlertDismissed: undefined,
     systemPrompt: undefined,
     lmParameters: undefined,
@@ -100,8 +98,7 @@ describe('ImportExportService', () => {
     currentLeafId: undefined,
     endpoint: undefined,
     modelId: undefined,
-    autoTitleEnabled: undefined,
-    titleModelId: undefined,
+    titleGeneration: 'inherit',
     originChatId: undefined,
     originMessageId: undefined,
     systemPrompt: undefined,
@@ -119,8 +116,7 @@ describe('ImportExportService', () => {
     currentLeafId: undefined,
     endpoint: undefined,
     modelId: undefined,
-    autoTitleEnabled: undefined,
-    titleModelId: undefined,
+    titleGeneration: 'inherit',
     originChatId: undefined,
     originMessageId: undefined,
     systemPrompt: undefined,
@@ -143,7 +139,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            autoTitleEnabled: true,
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -163,7 +159,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            autoTitleEnabled: true,
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -224,7 +220,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            autoTitleEnabled: true,
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -266,7 +262,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpoint: { type: 'openai', url: '' },
-            autoTitleEnabled: true,
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -647,7 +643,7 @@ ${JSON.stringify({
         structure: {
           settings: {
             endpoint: { type: 'openai', url: 'http://localhost:11434' },
-            autoTitleEnabled: true,
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -716,7 +712,7 @@ ${JSON.stringify({
         structure: {
           settings: {
             endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-            autoTitleEnabled: true,
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -752,7 +748,7 @@ ${JSON.stringify({
         structure: {
           settings: {
             endpoint: { type: 'transformers_js' },
-            autoTitleEnabled: true,
+            titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
             storageType: 'local',
             providerProfiles: [],
           } as any,
@@ -1132,8 +1128,7 @@ ${JSON.stringify({
         isCollapsed: false,
         endpoint: undefined,
         modelId: undefined,
-        autoTitleEnabled: undefined,
-        titleModelId: undefined,
+        titleGeneration: 'inherit',
         systemPrompt: undefined,
         lmParameters: undefined,
         mounts: undefined,

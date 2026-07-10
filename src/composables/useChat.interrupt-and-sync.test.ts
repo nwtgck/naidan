@@ -62,7 +62,7 @@ vi.mock('../00-storage/service', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpoint: { type: 'ollama', url: 'http://localhost' }, storageType: 'opfs', autoTitleEnabled: false, defaultModelId: 'gpt-4' } },
+    settings: { value: { endpoint: { type: 'ollama', url: 'http://localhost' }, storageType: 'opfs', titleGeneration: 'disabled', defaultModelId: 'gpt-4' } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
     setHeavyContentAlertDismissed: vi.fn(),

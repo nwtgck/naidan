@@ -24,8 +24,7 @@ function createChatMeta(): ChatMeta {
       httpHeaders: [['Authorization', 'Bearer old']],
     },
     modelId: 'old-model',
-    autoTitleEnabled: true,
-    titleModelId: 'old-title-model',
+    titleGeneration: { endpoint: 'same_scope', model: { id: 'old-title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     systemPrompt: {
       behavior: 'append',
       content: 'Old prompt',
@@ -214,6 +213,39 @@ describe('scoped setting changes', () => {
     expect(updated.modelId).toBe(current.modelId);
   });
 
+  it('applies title_generation as a single scoped setting', () => {
+    const current = createChatMeta();
+    const updated = applyScopedSettingChangesToChatMeta({
+      current,
+      changes: [{
+        field: 'title_generation',
+        behavior: 'override',
+        value: {
+          endpoint: 'same_scope',
+          model: { id: 'new-title-model' },
+          lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+        },
+      }],
+      updatedAt: 3,
+    });
+
+    expect(updated.titleGeneration).toEqual({
+      endpoint: 'same_scope',
+      model: { id: 'new-title-model' },
+      lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+    });
+  });
+
+  it('inherits title_generation as a single scoped setting', () => {
+    const updated = applyScopedSettingChangesToChatMeta({
+      current: createChatMeta(),
+      changes: [{ field: 'title_generation', behavior: 'inherit' }],
+      updatedAt: 3,
+    });
+
+    expect(updated.titleGeneration).toBe('inherit');
+  });
+
   it('applies the same change model to chat groups', () => {
     const current = createChatGroup();
     const updated = applyScopedSettingChangesToChatGroup({
@@ -233,6 +265,7 @@ describe('scoped setting changes', () => {
   it('snapshots_nested_change_values_for_queued_updates', () => {
     const headers: [string, string][] = [['Authorization', 'Bearer old']];
     const stop = ['OLD'];
+    const titleEndpointHeaders: [string, string][] = [['X-Title', 'old']];
     const changes = cloneScopedSettingChanges({
       changes: [
         {
@@ -241,11 +274,21 @@ describe('scoped setting changes', () => {
           value: { type: 'openai', url: 'https://example.test/v1', httpHeaders: headers },
         },
         { field: 'lm_param_stop', behavior: 'override', value: stop },
+        {
+          field: 'title_generation',
+          behavior: 'override',
+          value: {
+            endpoint: { type: 'openai', url: 'https://title.example/v1', httpHeaders: titleEndpointHeaders },
+            model: { id: 'title-model' },
+            lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          },
+        },
       ],
     });
 
     headers[0]![1] = 'Bearer mutated';
     stop[0] = 'MUTATED';
+    titleEndpointHeaders[0]![1] = 'mutated';
 
     expect(changes).toEqual([
       {
@@ -254,6 +297,15 @@ describe('scoped setting changes', () => {
         value: { type: 'openai', url: 'https://example.test/v1', httpHeaders: [['Authorization', 'Bearer old']] },
       },
       { field: 'lm_param_stop', behavior: 'override', value: ['OLD'] },
+      {
+        field: 'title_generation',
+        behavior: 'override',
+        value: {
+          endpoint: { type: 'openai', url: 'https://title.example/v1', httpHeaders: [['X-Title', 'old']] },
+          model: { id: 'title-model' },
+          lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+        },
+      },
     ]);
   });
 

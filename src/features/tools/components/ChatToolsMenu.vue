@@ -164,7 +164,6 @@ defineExpose({
                   @update:seed="s => emit('update:seed', s)"
                   @update:persist-as="f => emit('update:persist-as', f)"
                   @update:model="m => emit('update:model', m)"
-                  tw-class="!p-0 !border-none"
                 />
               </div>
             </div>

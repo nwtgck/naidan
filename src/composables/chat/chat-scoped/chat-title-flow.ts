@@ -40,18 +40,6 @@ export function abortTitleGenerationForChat({
   chatRuntimeStore.deleteActiveTitleGeneration({ chatId });
 }
 
-function resolveTitleModelId({
-  titleModelIdOverride,
-  resolvedTitleModelId,
-  resolvedModelId,
-}: {
-  titleModelIdOverride: string | undefined,
-  resolvedTitleModelId: string,
-  resolvedModelId: string,
-}): string {
-  return titleModelIdOverride || resolvedTitleModelId || resolvedModelId;
-}
-
 export async function generateChatTitleForChat({
   chatId,
   titleModelIdOverride,
@@ -97,11 +85,11 @@ export async function generateChatTitleForChat({
       return undefined;
     }
 
-    const titleModelId = resolveTitleModelId({
-      titleModelIdOverride,
-      resolvedTitleModelId: resolved.titleModelId,
-      resolvedModelId: resolved.modelId,
-    });
+    if (resolved.titleGeneration === 'disabled') {
+      return undefined;
+    }
+
+    const titleModelId = titleModelIdOverride || resolved.titleGeneration.modelId;
     if (!titleModelId) {
       return undefined;
     }
@@ -109,7 +97,7 @@ export async function generateChatTitleForChat({
     const combinedSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
     combinedSignal.throwIfAborted();
     const provider = await loadTitleProvider({
-      endpoint: resolved.endpoint,
+      endpoint: resolved.titleGeneration.endpoint,
     });
     combinedSignal.throwIfAborted();
 
@@ -126,7 +114,7 @@ export async function generateChatTitleForChat({
       onChunk: ({ chunk }) => {
         generatedTitle += chunk;
       },
-      parameters: undefined,
+      parameters: resolved.titleGeneration.lmParameters,
       signal: combinedSignal,
     });
 
@@ -184,9 +172,9 @@ function resolveTitleSettings({
 
   return {
     endpoint: resolved.endpoint,
-    modelId: resolved.modelId,
-    titleModelId: resolved.titleModelId,
-    hasReachableEndpoint: isConfiguredEndpoint({ endpoint: resolved.endpoint }),
+    titleGeneration: resolved.titleGeneration,
+    hasReachableEndpoint: resolved.titleGeneration !== 'disabled'
+      && isConfiguredEndpoint({ endpoint: resolved.titleGeneration.endpoint }),
   };
 }
 

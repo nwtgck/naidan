@@ -103,8 +103,7 @@ const mockChat: Chat = {
   modelId: undefined,
   originChatId: undefined,
   originMessageId: undefined,
-  autoTitleEnabled: undefined,
-  titleModelId: undefined,
+  titleGeneration: 'inherit',
 };
 
 const mockChatGroup: ChatGroup = {
@@ -117,7 +116,7 @@ const mockChatGroup: ChatGroup = {
 
 const mockSettings: Settings = {
   endpoint: { type: 'openai', url: '' },
-  autoTitleEnabled: true,
+  titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
   storageType: 'local',
   mounts: [],
   providerProfiles: [],
@@ -130,7 +129,6 @@ const mockSettings: Settings = {
 const normalizedMockSettings: Settings = {
   ...mockSettings,
   defaultModelId: undefined,
-  titleModelId: undefined,
   heavyContentAlertDismissed: undefined,
   systemPrompt: undefined,
   experimental: {

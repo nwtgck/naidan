@@ -279,8 +279,13 @@ export function useImageGeneration() {
       for (let i = 0; i < imageCount; i++) {
         if (signal?.aborted) break;
 
-        // Clear progress for the new image starting to avoid showing stale progress from the previous image
-        imageProgressMap.value.delete(chatId);
+        // Clear stale provider progress from the previous image, then expose step 1 immediately when
+        // the requested total is known. Provider progress callbacks report completed steps.
+        if (steps === undefined || steps <= 0) {
+          imageProgressMap.value.delete(chatId);
+        } else {
+          imageProgressMap.value.set(chatId, { currentStep: 0, totalSteps: steps });
+        }
 
         let activeSeed: number | undefined = undefined;
         if (typeof seed === 'number' && seed >= 0) {

@@ -306,7 +306,7 @@ export function useChat() {
     updates,
   }: {
     id: string,
-    updates: Partial<Pick<Chat, 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>,
+    updates: Partial<Pick<Chat, 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>,
   }) {
     await chatMetadata.updateSettings({
       chatId: toChatId({ raw: id }),

@@ -693,9 +693,9 @@ defineExpose({
         </div>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
-        <!-- Only shown in content mode or first part if pending -->
+        <!-- Show the image loader for both initial waiting and incremental content updates. -->
         <ImageConjuringLoader
-          v-if="mode === 'content' && isImageGenerationPending({ content: message.content || '' }) && message.role === 'assistant' && !message.error"
+          v-if="(mode === 'content' || mode === 'waiting') && isImageGenerationPending({ content: message.content || '' }) && message.role === 'assistant' && !message.error"
           v-bind="getImageGenerationProgress({ content: message.content || '' })"
           :current-step="isGenerating ? imageProgressCurrentStep : undefined"
           :total-steps="isGenerating ? imageProgressTotalSteps : undefined"

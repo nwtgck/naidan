@@ -63,7 +63,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     __testOnlySetSettings({ newSettings: {
       endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
       defaultModelId: 'gpt-4',
-      autoTitleEnabled: false,
+      titleGeneration: 'disabled',
       storageType: 'local',
       providerProfiles: [],
       mounts: [],

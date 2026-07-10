@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/00-storage/service';
-import type { Chat, SidebarItem, Hierarchy } from '@/01-models/types';
+import type { Chat, SidebarItem, Hierarchy, Settings } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import type { ChatId } from '@/01-models/ids';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
@@ -85,7 +85,7 @@ vi.mock('../00-storage/service', () => ({
 }));
 
 // Stable mock for settings
-const mockSettings = {
+const mockSettings: { value: Settings } = {
   value: {
     endpoint: {
       type: 'openai',
@@ -93,9 +93,9 @@ const mockSettings = {
     },
     storageType: 'local',
     mounts: [],
-    autoTitleEnabled: false,
+    titleGeneration: 'disabled',
     defaultModelId: 'gpt-4',
-    lmParameters: {},
+    lmParameters: undefined,
     providerProfiles: [],
   },
 };
@@ -164,7 +164,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     mockChatStorage.clear();
     mockHierarchy = { items: [] };
     clearEvents();
-    mockSettings.value.autoTitleEnabled = false;
+    mockSettings.value.titleGeneration = 'disabled';
   });
 
   afterEach(() => {
@@ -394,7 +394,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
   it('should not overwrite a manual rename with an auto-generated title', async () => {
     const { createNewChat, currentChat, sendMessage, renameChat } = useChat();
-    mockSettings.value.autoTitleEnabled = true;
+    mockSettings.value.titleGeneration = { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } };
 
     // 1. Setup Chat A
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });

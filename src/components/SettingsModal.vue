@@ -70,8 +70,7 @@ function pickConnectionFields({ settings }: { settings: Settings }) {
   return {
     endpoint: JSON.stringify(settings.endpoint),
     defaultModelId: settings.defaultModelId,
-    titleModelId: settings.titleModelId,
-    autoTitleEnabled: settings.autoTitleEnabled,
+    titleGeneration: JSON.stringify(settings.titleGeneration),
     systemPrompt: settings.systemPrompt,
     lmParameters: JSON.stringify(settings.lmParameters),
   };
