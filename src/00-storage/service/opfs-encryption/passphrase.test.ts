@@ -5,6 +5,14 @@ import {
 } from './passphrase';
 
 describe('encryption passphrase validation', () => {
+  it.each(['q', '1'])(
+    'accepts the single-character passphrase %j',
+    (passphrase) => {
+      expect(validateEncryptionPassphrase({ passphrase })).toEqual({ type: 'valid' });
+      expect(() => assertEncryptionPassphraseCanBeUsed({ passphrase })).not.toThrow();
+    },
+  );
+
   it('preserves boundary whitespace while reporting it', () => {
     expect(validateEncryptionPassphrase({
       passphrase: ' correct horse battery staple ',

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EncryptionStateDto } from '@/00-storage/00-dto/encryption.dto';
-import type { Chat, ChatGroup } from '@/01-models/types';
+import { DEFAULT_SETTINGS, type Chat, type ChatGroup, type Settings } from '@/01-models/types';
+import { settingsToDto } from '@/00-storage/mapper/mappers';
 import {
   idToRaw,
   toBinaryObjectId,
@@ -10,9 +11,12 @@ import {
 import {
   MockFileSystemDirectoryHandle,
 } from '@/utils/in-memory-file-system';
+import { PlainOPFSStorageBackend } from '@/00-storage/service/opfs/plain-opfs-storage-backend';
 import type { EncryptedOPFSStorageBackend } from './encrypted-opfs-storage-backend';
+import { createEncryptionMaterial } from './encryption-key-manager';
 import {
   EncryptionTransitionCoordinator,
+  TEST_ONLY as TRANSITION_TEST_ONLY,
   type EncryptionTransitionResult,
 } from './encryption-transition-coordinator';
 import { EncryptionStateStore } from './encryption-state-store';
@@ -75,6 +79,47 @@ function createTransitionState({
     },
     operation,
   };
+}
+
+function createTestSettings({
+  marker,
+}: {
+  marker: string,
+}): Settings {
+  return {
+    ...structuredClone(DEFAULT_SETTINGS),
+    endpoint: {
+      type: 'openai',
+      url: `https://${marker}.example.invalid`,
+    },
+    storageType: 'opfs',
+    experimental: {
+      locale: 'en',
+      globalSearch: {
+        scope: 'title_only',
+        roleFilter: 'all',
+        previewMode: 'always',
+        previewContextSize: 2,
+      },
+    },
+  };
+}
+
+function expectSettingsEquivalent({
+  actual,
+  expected,
+}: {
+  actual: Settings | null,
+  expected: Settings,
+}): void {
+  if (actual === null) {
+    throw new Error('Expected persisted settings');
+  }
+  expect(TRANSITION_TEST_ONLY.stringifyComparable({
+    value: settingsToDto({ domain: actual }),
+  })).toBe(TRANSITION_TEST_ONLY.stringifyComparable({
+    value: settingsToDto({ domain: expected }),
+  }));
 }
 
 interface TestEncryptedOPFSStorageBackend {
@@ -372,6 +417,251 @@ describe('EncryptedOPFSStorageBackend special filesystems', () => {
     await backend.deleteChatGroup({ id: chatGroup.id });
     await expect(backend.listChatMetasRaw()).resolves.toEqual([]);
     await expect(backend.listChatGroupsRaw()).resolves.toEqual([]);
+  });
+});
+
+describe('EncryptionTransitionCoordinator transfer verification', () => {
+  it('compares nested JSON objects independently of property insertion order', () => {
+    const source = {
+      second: 2,
+      first: {
+        beta: true,
+        alpha: 'value',
+        omitted: undefined,
+      },
+    };
+    const target = {
+      first: {
+        alpha: 'value',
+        beta: true,
+      },
+      second: 2,
+    };
+
+    expect(TRANSITION_TEST_ONLY.stringifyComparable({ value: source })).toBe(
+      TRANSITION_TEST_ONLY.stringifyComparable({ value: target }),
+    );
+  });
+
+  it.each(['q', '1'])(
+    'completes encryption with the single-character passphrase %j',
+    async (passphrase) => {
+      const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
+      const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+      installNavigatorMocks({ opfsRoot });
+      const source = new PlainOPFSStorageBackend();
+      await source.init();
+      const settings = createTestSettings({ marker: passphrase === 'q' ? 'letter' : 'number' });
+      await source.saveSettings({ settings });
+
+      const coordinator = new EncryptionTransitionCoordinator({ storageRoot });
+      const result = await coordinator.enableEncryption({
+        passphrase,
+        signal: undefined,
+      });
+
+      expect(result.type).toBe('encrypted');
+      if (result.type !== 'encrypted') {
+        throw new Error('Expected encryption to complete');
+      }
+      expectSettingsEquivalent({
+        actual: await result.session.backend.loadSettings(),
+        expected: settings,
+      });
+      await expect(new EncryptionStateStore({ storageRoot }).inspect()).resolves.toMatchObject({
+        type: 'encrypted',
+        state: { state: 'encrypted' },
+      });
+      result.session.storageUnlockKey.fill(0);
+    },
+    20_000,
+  );
+
+  it('rolls back to plain storage when target verification fails', async () => {
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    installNavigatorMocks({ opfsRoot });
+    const source = new PlainOPFSStorageBackend();
+    await source.init();
+    const settings = createTestSettings({ marker: 'source' });
+    await source.saveSettings({ settings });
+
+    const originalLoadSettings = PlainOPFSStorageBackend.prototype.loadSettings;
+    let loadCount = 0;
+    vi.spyOn(PlainOPFSStorageBackend.prototype, 'loadSettings').mockImplementation(
+      async function(this: PlainOPFSStorageBackend) {
+        const loaded = await originalLoadSettings.call(this);
+        loadCount += 1;
+        if (loadCount >= 2 && loaded !== null) {
+          return {
+            ...loaded,
+            heavyContentAlertDismissed: !loaded.heavyContentAlertDismissed,
+          };
+        }
+        return loaded;
+      },
+    );
+
+    const coordinator = new EncryptionTransitionCoordinator({ storageRoot });
+    await expect(coordinator.enableEncryption({
+      passphrase: 'q',
+      signal: undefined,
+    })).rejects.toThrow('Transferred settings do not match their source');
+
+    await expect(new EncryptionStateStore({ storageRoot }).inspect()).resolves.toEqual({
+      type: 'plain',
+    });
+    await expect(storageRoot.getDirectoryHandle('encrypted-stores')).rejects.toMatchObject({
+      name: 'NotFoundError',
+    });
+    vi.mocked(PlainOPFSStorageBackend.prototype.loadSettings).mockRestore();
+    expectSettingsEquivalent({
+      actual: await source.loadSettings(),
+      expected: settings,
+    });
+  }, 20_000);
+
+  it('clears the passphrase-unlocked key when a resumed decryption returns plain storage', async () => {
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    installNavigatorMocks({ opfsRoot });
+    const material = await createEncryptionMaterial({
+      passphrase: 'q',
+      pbkdf2Iterations: 10,
+    });
+    const state = createTransitionState({
+      operation: {
+        type: 'decrypting',
+        phase: 'building_target',
+        sourceEncryptedStoreId: 'source-store',
+      },
+    });
+    state.passphraseKeySlot = material.passphraseKeySlot;
+    const coordinator = new EncryptionTransitionCoordinator({ storageRoot });
+    let unlockedKey: Uint8Array | undefined;
+    const target = new PlainOPFSStorageBackend();
+    await target.init();
+    Object.defineProperty(coordinator, 'resume', {
+      configurable: true,
+      value: vi.fn(async ({ storageUnlockKey }: { storageUnlockKey: Uint8Array }) => {
+        unlockedKey = storageUnlockKey;
+        return { type: 'plain' as const, backend: target };
+      }),
+    });
+
+    const result = await coordinator.resumeWithPassphrase({
+      state,
+      passphrase: 'q',
+      signal: undefined,
+    });
+
+    expect(result.type).toBe('plain');
+    expect(unlockedKey).toBeDefined();
+    expect([...unlockedKey ?? []]).toEqual(new Array(32).fill(0));
+    material.storageUnlockKey.fill(0);
+    material.storeRootKey.fill(0);
+  });
+
+  it('removes a re-encryption target when persisting the transition state fails', async () => {
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    installNavigatorMocks({ opfsRoot });
+    const source = new PlainOPFSStorageBackend();
+    await source.init();
+    await source.saveSettings({
+      settings: createTestSettings({ marker: 'reencrypt-state-write' }),
+    });
+    const coordinator = new EncryptionTransitionCoordinator({ storageRoot });
+    const enabled = await coordinator.enableEncryption({
+      passphrase: 'q',
+      signal: undefined,
+    });
+    if (enabled.type !== 'encrypted') {
+      throw new Error('Expected encrypted source session');
+    }
+    const activeStoreId = enabled.session.state.activeEncryptedStoreId;
+    vi.spyOn(EncryptionStateStore.prototype, 'writeState')
+      .mockRejectedValueOnce(new Error('state write failed'));
+
+    await expect(coordinator.reencrypt({
+      session: enabled.session,
+      signal: undefined,
+    })).rejects.toThrow('state write failed');
+
+    await expect(new EncryptionStateStore({ storageRoot }).inspect()).resolves.toMatchObject({
+      type: 'encrypted',
+      state: {
+        state: 'encrypted',
+        activeEncryptedStoreId: activeStoreId,
+      },
+    });
+    const storesDirectory = await storageRoot.getDirectoryHandle('encrypted-stores');
+    const storeNames: string[] = [];
+    for await (const name of storesDirectory.keys()) {
+      storeNames.push(name);
+    }
+    expect(storeNames).toEqual([activeStoreId]);
+    enabled.session.storageUnlockKey.fill(0);
+  }, 20_000);
+
+  it('rebuilds a stale building target before resuming with passphrase q', async () => {
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    installNavigatorMocks({ opfsRoot });
+    const source = new PlainOPFSStorageBackend();
+    await source.init();
+    const sourceSettings = createTestSettings({ marker: 'fresh-source' });
+    await source.saveSettings({ settings: sourceSettings });
+
+    const material = await createEncryptionMaterial({
+      passphrase: 'q',
+      pbkdf2Iterations: 10,
+    });
+    const coordinator = new EncryptionTransitionCoordinator({ storageRoot });
+    const testCoordinator = coordinator as unknown as TestEncryptionTransitionCoordinator;
+    const target = await testCoordinator.createEncryptedBackend({
+      encryptedStoreId: 'stale-target',
+      storageUnlockKey: material.storageUnlockKey,
+      storeRootKey: material.storeRootKey,
+      replace: true,
+    });
+    await target.saveSettings({
+      settings: createTestSettings({ marker: 'stale-target' }),
+    });
+    const state = createTransitionState({
+      operation: {
+        type: 'encrypting',
+        phase: 'building_target',
+        targetEncryptedStoreId: 'stale-target',
+      },
+    });
+    state.passphraseKeySlot = material.passphraseKeySlot;
+    await new EncryptionStateStore({ storageRoot }).writeState({ state });
+
+    const result = await coordinator.resumeWithPassphrase({
+      state,
+      passphrase: 'q',
+      signal: undefined,
+    });
+
+    expect(result.type).toBe('encrypted');
+    if (result.type !== 'encrypted') {
+      throw new Error('Expected resumed encryption to complete');
+    }
+    expectSettingsEquivalent({
+      actual: await result.session.backend.loadSettings(),
+      expected: sourceSettings,
+    });
+    await expect(new EncryptionStateStore({ storageRoot }).inspect()).resolves.toMatchObject({
+      type: 'encrypted',
+      state: {
+        state: 'encrypted',
+        activeEncryptedStoreId: 'stale-target',
+      },
+    });
+    result.session.storageUnlockKey.fill(0);
+    material.storageUnlockKey.fill(0);
+    material.storeRootKey.fill(0);
   });
 });
 

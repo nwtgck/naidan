@@ -66,8 +66,117 @@ export type EncryptionTransitionResult =
       readonly backend: PlainOPFSStorageBackend,
     };
 
+function normalizeJsonForComparison({ value }: { value: unknown }): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeJsonForComparison({ value: item }));
+  }
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  const normalized: Record<string, unknown> = {};
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entryValue]) => entryValue !== undefined)
+    .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+  for (const [key, entryValue] of entries) {
+    normalized[key] = normalizeJsonForComparison({ value: entryValue });
+  }
+  return normalized;
+}
+
 function stringifyComparable({ value }: { value: unknown }): string {
-  return JSON.stringify(value);
+  return JSON.stringify(normalizeJsonForComparison({ value }));
+}
+
+function collectJsonDifferencePaths({
+  source,
+  target,
+  path,
+  output,
+}: {
+  source: unknown,
+  target: unknown,
+  path: string,
+  output: string[],
+}): void {
+  if (output.length >= 8 || Object.is(source, target)) {
+    return;
+  }
+  if (Array.isArray(source) && Array.isArray(target)) {
+    if (source.length !== target.length) {
+      output.push(`${path}.length`);
+      return;
+    }
+    for (const [index, sourceValue] of source.entries()) {
+      collectJsonDifferencePaths({
+        source: sourceValue,
+        target: target[index],
+        path: `${path}[${index}]`,
+        output,
+      });
+    }
+    return;
+  }
+  if (
+    source !== null
+    && target !== null
+    && typeof source === 'object'
+    && typeof target === 'object'
+    && !Array.isArray(source)
+    && !Array.isArray(target)
+  ) {
+    const sourceObject = source as Record<string, unknown>;
+    const targetObject = target as Record<string, unknown>;
+    const keys = new Set([
+      ...Object.keys(sourceObject),
+      ...Object.keys(targetObject),
+    ]);
+    for (const key of [...keys].sort()) {
+      collectJsonDifferencePaths({
+        source: sourceObject[key],
+        target: targetObject[key],
+        path: `${path}.${key}`,
+        output,
+      });
+    }
+    return;
+  }
+  output.push(path);
+}
+
+function describeJsonDifferences({
+  source,
+  target,
+}: {
+  source: unknown,
+  target: unknown,
+}): string {
+  const paths: string[] = [];
+  collectJsonDifferencePaths({
+    source: normalizeJsonForComparison({ value: source }),
+    target: normalizeJsonForComparison({ value: target }),
+    path: '$',
+    output: paths,
+  });
+  return paths.length === 0 ? 'unknown fields' : paths.join(', ');
+}
+
+
+function isSourceAuthoritativePhase({
+  phase,
+}: {
+  phase: EncryptionOperationDto['phase'],
+}): boolean {
+  switch (phase) {
+  case 'building_target':
+    return true;
+  case 'cleaning_up_source':
+    return false;
+  default: {
+    const _ex: never = phase;
+    throw new Error(`Unhandled encryption operation phase: ${String(_ex)}`);
+  }
+  }
 }
 
 async function collectBinaryObjects({
@@ -288,7 +397,14 @@ async function verifyProviderCopy({
     stringifyComparable({ value: sourceSettings === null ? null : settingsToDto({ domain: sourceSettings }) })
     !== stringifyComparable({ value: targetSettings === null ? null : settingsToDto({ domain: targetSettings }) })
   ) {
-    throw new Error('Transferred settings do not match their source');
+    const sourceDto = sourceSettings === null ? null : settingsToDto({ domain: sourceSettings });
+    const targetDto = targetSettings === null ? null : settingsToDto({ domain: targetSettings });
+    throw new Error(
+      `Transferred settings do not match their source (${describeJsonDifferences({
+        source: sourceDto,
+        target: targetDto,
+      })})`,
+    );
   }
 
   const {
@@ -496,43 +612,56 @@ export class EncryptionTransitionCoordinator {
           passphrase,
           pbkdf2Iterations: DEFAULT_PBKDF2_ITERATIONS,
         });
-        let target: EncryptedOPFSStorageBackend;
+        let transitionState: TransitioningEncryptionState | undefined;
+        let succeeded = false;
         try {
-          target = await this.createEncryptedBackend({
+          const target = await this.createEncryptedBackend({
             encryptedStoreId,
             storageUnlockKey: material.storageUnlockKey,
             storeRootKey: material.storeRootKey,
             replace: true,
           });
+          transitionState = {
+            formatVersion: 1,
+            sequence: 0,
+            state: 'transitioning',
+            passphraseKeySlot: material.passphraseKeySlot,
+            operation: {
+              type: 'encrypting',
+              phase: 'building_target',
+              targetEncryptedStoreId: encryptedStoreId,
+            },
+          };
+          await this.stateStore.writeState({ state: transitionState });
+          const stableState = await this.runEncryptingTransition({
+            state: transitionState,
+            source,
+            target,
+            signal,
+          });
+          succeeded = true;
+          return {
+            type: 'encrypted',
+            session: {
+              state: stableState,
+              storageUnlockKey: material.storageUnlockKey,
+              backend: target,
+            },
+          };
+        } catch (error) {
+          if (transitionState === undefined || isSourceAuthoritativePhase({ phase: transitionState.operation.phase })) {
+            await this.rollbackEncryptingToPlain({
+              targetEncryptedStoreId: encryptedStoreId,
+              originalError: error,
+            });
+          }
+          throw error;
         } finally {
           material.storeRootKey.fill(0);
+          if (!succeeded) {
+            material.storageUnlockKey.fill(0);
+          }
         }
-        const transitionState: TransitioningEncryptionState = {
-          formatVersion: 1,
-          sequence: 0,
-          state: 'transitioning',
-          passphraseKeySlot: material.passphraseKeySlot,
-          operation: {
-            type: 'encrypting',
-            phase: 'building_target',
-            targetEncryptedStoreId: encryptedStoreId,
-          },
-        };
-        await this.stateStore.writeState({ state: transitionState });
-        const stableState = await this.runEncryptingTransition({
-          state: transitionState,
-          source,
-          target,
-          signal,
-        });
-        return {
-          type: 'encrypted',
-          session: {
-            state: stableState,
-            storageUnlockKey: material.storageUnlockKey,
-            backend: target,
-          },
-        };
       },
     });
   }
@@ -564,17 +693,27 @@ export class EncryptionTransitionCoordinator {
             sourceEncryptedStoreId: session.state.activeEncryptedStoreId,
           },
         };
-        await this.stateStore.writeState({ state: transitionState });
-        await copyProviderData({ source: session.backend, target, signal });
-        await this.updateTransitionPhase({ state: transitionState, phase: 'verifying_target' });
-        await verifyProviderCopy({ source: session.backend, target });
-        await this.updateTransitionPhase({ state: transitionState, phase: 'cleaning_up_source' });
-        await this.headerStore.removeStore({
-          encryptedStoreId: session.state.activeEncryptedStoreId,
-        });
-        await this.removeEncryptedStoresDirectory();
-        await this.stateStore.removeAll();
-        return { type: 'plain', backend: target };
+        try {
+          await this.stateStore.writeState({ state: transitionState });
+          await copyProviderData({ source: session.backend, target, signal });
+          await verifyProviderCopy({ source: session.backend, target });
+          await this.updateTransitionPhase({ state: transitionState, phase: 'cleaning_up_source' });
+          await this.headerStore.removeStore({
+            encryptedStoreId: session.state.activeEncryptedStoreId,
+          });
+          await this.removeEncryptedStoresDirectory();
+          await this.stateStore.removeAll();
+          return { type: 'plain', backend: target };
+        } catch (error) {
+          if (isSourceAuthoritativePhase({ phase: transitionState.operation.phase })) {
+            await this.rollbackDecryptingToEncrypted({
+              state: transitionState,
+              target,
+              originalError: error,
+            });
+          }
+          throw error;
+        }
       },
     });
   }
@@ -601,6 +740,17 @@ export class EncryptionTransitionCoordinator {
             storeRootKey: targetStoreRootKey,
             replace: true,
           });
+        } catch (error) {
+          await this.runRollback({
+            message: 'Failed to remove an incomplete OPFS re-encryption target',
+            originalError: error,
+            rollback: async () => {
+              await this.headerStore.removeStore({
+                encryptedStoreId: targetEncryptedStoreId,
+              });
+            },
+          });
+          throw error;
         } finally {
           targetStoreRootKey.fill(0);
         }
@@ -616,26 +766,35 @@ export class EncryptionTransitionCoordinator {
             targetEncryptedStoreId,
           },
         };
-        await this.stateStore.writeState({ state: transitionState });
-        await copyProviderData({ source: session.backend, target, signal });
-        await this.updateTransitionPhase({ state: transitionState, phase: 'verifying_target' });
-        await verifyProviderCopy({ source: session.backend, target });
-        await this.updateTransitionPhase({ state: transitionState, phase: 'cleaning_up_source' });
-        await this.headerStore.removeStore({
-          encryptedStoreId: session.state.activeEncryptedStoreId,
-        });
-        const stableState = await this.writeStableState({
-          previousState: transitionState,
-          activeEncryptedStoreId: targetEncryptedStoreId,
-        });
-        return {
-          type: 'encrypted',
-          session: {
-            state: stableState,
-            storageUnlockKey: session.storageUnlockKey,
-            backend: target,
-          },
-        };
+        try {
+          await this.stateStore.writeState({ state: transitionState });
+          await copyProviderData({ source: session.backend, target, signal });
+          await verifyProviderCopy({ source: session.backend, target });
+          await this.updateTransitionPhase({ state: transitionState, phase: 'cleaning_up_source' });
+          await this.headerStore.removeStore({
+            encryptedStoreId: session.state.activeEncryptedStoreId,
+          });
+          const stableState = await this.writeStableState({
+            previousState: transitionState,
+            activeEncryptedStoreId: targetEncryptedStoreId,
+          });
+          return {
+            type: 'encrypted',
+            session: {
+              state: stableState,
+              storageUnlockKey: session.storageUnlockKey,
+              backend: target,
+            },
+          };
+        } catch (error) {
+          if (isSourceAuthoritativePhase({ phase: transitionState.operation.phase })) {
+            await this.rollbackReencryptingToSource({
+              state: transitionState,
+              originalError: error,
+            });
+          }
+          throw error;
+        }
       },
     });
   }
@@ -653,7 +812,16 @@ export class EncryptionTransitionCoordinator {
       passphraseKeySlot: state.passphraseKeySlot,
       passphrase,
     });
-    return await this.resume({ state, storageUnlockKey, signal });
+    let retainedByEncryptedSession = false;
+    try {
+      const result = await this.resume({ state, storageUnlockKey, signal });
+      retainedByEncryptedSession = result.type === 'encrypted';
+      return result;
+    } finally {
+      if (!retainedByEncryptedSession) {
+        storageUnlockKey.fill(0);
+      }
+    }
   }
 
 
@@ -672,113 +840,126 @@ export class EncryptionTransitionCoordinator {
         case 'encrypting': {
           const source = new PlainOPFSStorageBackend();
           await source.init();
-          const target = await this.openEncryptedBackend({
+          const target = await this.openEncryptedTransitionTargetForPhase({
             encryptedStoreId: state.operation.targetEncryptedStoreId,
             storageUnlockKey,
+            phase: state.operation.phase,
           });
-          const stableState = await this.runEncryptingTransition({ state, source, target, signal });
-          return {
-            type: 'encrypted',
-            session: {
-              state: stableState,
-              storageUnlockKey,
-              backend: target,
-            },
-          };
+          try {
+            const stableState = await this.runEncryptingTransition({ state, source, target, signal });
+            return {
+              type: 'encrypted',
+              session: {
+                state: stableState,
+                storageUnlockKey,
+                backend: target,
+              },
+            };
+          } catch (error) {
+            if (isSourceAuthoritativePhase({ phase: state.operation.phase })) {
+              await this.rollbackEncryptingToPlain({
+                targetEncryptedStoreId: state.operation.targetEncryptedStoreId,
+                originalError: error,
+              });
+            }
+            throw error;
+          }
         }
         case 'decrypting': {
           const target = new PlainOPFSStorageBackend();
           await target.init();
           const phase = state.operation.phase;
-          switch (phase) {
-          case 'building_target': {
-            const source = await this.openEncryptedBackend({
-              encryptedStoreId: state.operation.sourceEncryptedStoreId,
-              storageUnlockKey,
-            });
-            await target.assertEncryptionTransitionSupported();
-            await target.clearPlainDataForTransition();
-            for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
-              await target.removeSpecialFileSystemForTransition({ type });
+          try {
+            switch (phase) {
+            case 'building_target': {
+              const source = await this.openEncryptedBackend({
+                encryptedStoreId: state.operation.sourceEncryptedStoreId,
+                storageUnlockKey,
+              });
+              await target.assertEncryptionTransitionSupported();
+              await target.clearPlainDataForTransition();
+              for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
+                await target.removeSpecialFileSystemForTransition({ type });
+              }
+              await copyProviderData({ source, target, signal });
+              await verifyProviderCopy({ source, target });
+              await this.updateTransitionPhase({ state, phase: 'cleaning_up_source' });
+              break;
             }
-            await copyProviderData({ source, target, signal });
-            await this.updateTransitionPhase({ state, phase: 'verifying_target' });
-            await verifyProviderCopy({ source, target });
-            await this.updateTransitionPhase({ state, phase: 'cleaning_up_source' });
-            break;
-          }
-          case 'verifying_target': {
-            const source = await this.openEncryptedBackend({
+            case 'cleaning_up_source':
+              break;
+            default: {
+              const _ex: never = phase;
+              throw new Error(`Unhandled decrypting phase: ${String(_ex)}`);
+            }
+            }
+            await this.headerStore.removeStore({
               encryptedStoreId: state.operation.sourceEncryptedStoreId,
-              storageUnlockKey,
             });
-            await verifyProviderCopy({ source, target });
-            await this.updateTransitionPhase({ state, phase: 'cleaning_up_source' });
-            break;
+            await this.removeEncryptedStoresDirectory();
+            await this.stateStore.removeAll();
+            return { type: 'plain', backend: target };
+          } catch (error) {
+            if (isSourceAuthoritativePhase({ phase: state.operation.phase })) {
+              await this.rollbackDecryptingToEncrypted({
+                state,
+                target,
+                originalError: error,
+              });
+            }
+            throw error;
           }
-          case 'cleaning_up_source':
-            break;
-          default: {
-            const _ex: never = phase;
-            throw new Error(`Unhandled decrypting phase: ${String(_ex)}`);
-          }
-          }
-          await this.headerStore.removeStore({
-            encryptedStoreId: state.operation.sourceEncryptedStoreId,
-          });
-          await this.removeEncryptedStoresDirectory();
-          await this.stateStore.removeAll();
-          return { type: 'plain', backend: target };
         }
         case 'reencrypting': {
-          const target = await this.openEncryptedBackend({
+          const phase = state.operation.phase;
+          const target = await this.openEncryptedTransitionTargetForPhase({
             encryptedStoreId: state.operation.targetEncryptedStoreId,
             storageUnlockKey,
+            phase,
           });
-          const phase = state.operation.phase;
-          switch (phase) {
-          case 'building_target': {
-            const source = await this.openEncryptedBackend({
+          try {
+            switch (phase) {
+            case 'building_target': {
+              const source = await this.openEncryptedBackend({
+                encryptedStoreId: state.operation.sourceEncryptedStoreId,
+                storageUnlockKey,
+              });
+              await copyProviderData({ source, target, signal });
+              await verifyProviderCopy({ source, target });
+              await this.updateTransitionPhase({ state, phase: 'cleaning_up_source' });
+              break;
+            }
+            case 'cleaning_up_source':
+              break;
+            default: {
+              const _ex: never = phase;
+              throw new Error(`Unhandled re-encrypting phase: ${String(_ex)}`);
+            }
+            }
+            await this.headerStore.removeStore({
               encryptedStoreId: state.operation.sourceEncryptedStoreId,
-              storageUnlockKey,
             });
-            await copyProviderData({ source, target, signal });
-            await this.updateTransitionPhase({ state, phase: 'verifying_target' });
-            await verifyProviderCopy({ source, target });
-            await this.updateTransitionPhase({ state, phase: 'cleaning_up_source' });
-            break;
-          }
-          case 'verifying_target': {
-            const source = await this.openEncryptedBackend({
-              encryptedStoreId: state.operation.sourceEncryptedStoreId,
-              storageUnlockKey,
+            const stableState = await this.writeStableState({
+              previousState: state,
+              activeEncryptedStoreId: state.operation.targetEncryptedStoreId,
             });
-            await verifyProviderCopy({ source, target });
-            await this.updateTransitionPhase({ state, phase: 'cleaning_up_source' });
-            break;
+            return {
+              type: 'encrypted',
+              session: {
+                state: stableState,
+                storageUnlockKey,
+                backend: target,
+              },
+            };
+          } catch (error) {
+            if (isSourceAuthoritativePhase({ phase: state.operation.phase })) {
+              await this.rollbackReencryptingToSource({
+                state,
+                originalError: error,
+              });
+            }
+            throw error;
           }
-          case 'cleaning_up_source':
-            break;
-          default: {
-            const _ex: never = phase;
-            throw new Error(`Unhandled re-encrypting phase: ${String(_ex)}`);
-          }
-          }
-          await this.headerStore.removeStore({
-            encryptedStoreId: state.operation.sourceEncryptedStoreId,
-          });
-          const stableState = await this.writeStableState({
-            previousState: state,
-            activeEncryptedStoreId: state.operation.targetEncryptedStoreId,
-          });
-          return {
-            type: 'encrypted',
-            session: {
-              state: stableState,
-              storageUnlockKey,
-              backend: target,
-            },
-          };
         }
         default: {
           const _ex: never = state.operation;
@@ -817,11 +998,6 @@ export class EncryptionTransitionCoordinator {
     switch (phase) {
     case 'building_target':
       await copyProviderData({ source, target, signal });
-      await this.updateTransitionPhase({ state, phase: 'verifying_target' });
-      await verifyProviderCopy({ source, target });
-      await this.updateTransitionPhase({ state, phase: 'cleaning_up_source' });
-      break;
-    case 'verifying_target':
       await verifyProviderCopy({ source, target });
       await this.updateTransitionPhase({ state, phase: 'cleaning_up_source' });
       break;
@@ -849,9 +1025,17 @@ export class EncryptionTransitionCoordinator {
     state: TransitioningEncryptionState,
     phase: EncryptionOperationDto['phase'],
   }): Promise<void> {
-    state.sequence += 1;
-    state.operation.phase = phase;
-    await this.stateStore.writeState({ state });
+    const nextState: TransitioningEncryptionState = {
+      ...state,
+      sequence: state.sequence + 1,
+      operation: {
+        ...state.operation,
+        phase,
+      },
+    };
+    await this.stateStore.writeState({ state: nextState });
+    state.sequence = nextState.sequence;
+    state.operation.phase = nextState.operation.phase;
   }
 
   private async writeStableState({
@@ -870,6 +1054,164 @@ export class EncryptionTransitionCoordinator {
     };
     await this.stateStore.writeState({ state: stableState });
     return stableState;
+  }
+
+  private async rollbackEncryptingToPlain({
+    targetEncryptedStoreId,
+    originalError,
+  }: {
+    targetEncryptedStoreId: string,
+    originalError: unknown,
+  }): Promise<void> {
+    await this.runRollback({
+      message: 'Failed to roll back an interrupted OPFS encryption attempt',
+      originalError,
+      rollback: async () => {
+        await this.headerStore.removeStore({ encryptedStoreId: targetEncryptedStoreId });
+        await this.removeEncryptedStoresDirectory();
+        await this.stateStore.removeAll();
+      },
+    });
+  }
+
+  private async rollbackDecryptingToEncrypted({
+    state,
+    target,
+    originalError,
+  }: {
+    state: TransitioningEncryptionState,
+    target: PlainOPFSStorageBackend,
+    originalError: unknown,
+  }): Promise<void> {
+    const operation = (() => {
+      switch (state.operation.type) {
+      case 'decrypting':
+        return state.operation;
+      case 'encrypting':
+      case 'reencrypting':
+        throw new Error('Decrypting rollback received another operation type');
+      default: {
+        const _ex: never = state.operation;
+        throw new Error(`Unhandled encryption operation: ${String(_ex)}`);
+      }
+      }
+    })();
+    await this.runRollback({
+      message: 'Failed to roll back an interrupted OPFS decryption attempt',
+      originalError,
+      rollback: async () => {
+        await target.clearPlainDataForTransition();
+        for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
+          await target.removeSpecialFileSystemForTransition({ type });
+        }
+        await this.writeStableState({
+          previousState: state,
+          activeEncryptedStoreId: operation.sourceEncryptedStoreId,
+        });
+      },
+    });
+  }
+
+  private async rollbackReencryptingToSource({
+    state,
+    originalError,
+  }: {
+    state: TransitioningEncryptionState,
+    originalError: unknown,
+  }): Promise<void> {
+    const operation = (() => {
+      switch (state.operation.type) {
+      case 'reencrypting':
+        return state.operation;
+      case 'encrypting':
+      case 'decrypting':
+        throw new Error('Re-encrypting rollback received another operation type');
+      default: {
+        const _ex: never = state.operation;
+        throw new Error(`Unhandled encryption operation: ${String(_ex)}`);
+      }
+      }
+    })();
+    await this.runRollback({
+      message: 'Failed to roll back an interrupted OPFS re-encryption attempt',
+      originalError,
+      rollback: async () => {
+        await this.headerStore.removeStore({
+          encryptedStoreId: operation.targetEncryptedStoreId,
+        });
+        await this.writeStableState({
+          previousState: state,
+          activeEncryptedStoreId: operation.sourceEncryptedStoreId,
+        });
+      },
+    });
+  }
+
+  private async runRollback({
+    message,
+    originalError,
+    rollback,
+  }: {
+    message: string,
+    originalError: unknown,
+    rollback: () => Promise<void>,
+  }): Promise<void> {
+    try {
+      await rollback();
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [originalError, rollbackError],
+        message,
+      );
+    }
+  }
+
+
+  private async openEncryptedTransitionTargetForPhase({
+    encryptedStoreId,
+    storageUnlockKey,
+    phase,
+  }: {
+    encryptedStoreId: string,
+    storageUnlockKey: Uint8Array,
+    phase: EncryptionOperationDto['phase'],
+  }): Promise<EncryptedOPFSStorageBackend> {
+    switch (phase) {
+    case 'building_target':
+      return await this.recreateEncryptedTransitionTarget({
+        encryptedStoreId,
+        storageUnlockKey,
+      });
+    case 'cleaning_up_source':
+      return await this.openEncryptedBackend({
+        encryptedStoreId,
+        storageUnlockKey,
+      });
+    default: {
+      const _ex: never = phase;
+      throw new Error(`Unhandled encryption operation phase: ${String(_ex)}`);
+    }
+    }
+  }
+
+  private async recreateEncryptedTransitionTarget({
+    encryptedStoreId,
+    storageUnlockKey,
+  }: {
+    encryptedStoreId: string,
+    storageUnlockKey: Uint8Array,
+  }): Promise<EncryptedOPFSStorageBackend> {
+    const storeRootKey = crypto.getRandomValues(new Uint8Array(32));
+    try {
+      return await this.createEncryptedBackend({
+        encryptedStoreId,
+        storageUnlockKey,
+        storeRootKey,
+        replace: true,
+      });
+    } finally {
+      storeRootKey.fill(0);
+    }
   }
 
   private async createEncryptedBackend({
@@ -995,6 +1337,9 @@ export class EncryptionTransitionCoordinator {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  normalizeJsonForComparison,
+  stringifyComparable,
+  describeJsonDifferences,
   copyProviderData,
   verifyDirectoriesEqual,
   verifyProviderCopy,

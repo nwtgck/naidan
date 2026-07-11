@@ -110,42 +110,48 @@ export class StorageService {
   }: {
     run: () => Promise<T>,
   }): Promise<T> {
-    this.notify({
-      event: {
-        type: 'opfs_encryption',
-        status: 'transition_started',
-        timestamp: Date.now(),
+    return await this.synchronizer.withLock({
+      fn: async () => {
+        // Announce the transition only after holding the global storage lock.
+        // A tab that starts concurrently must wait here before it can initialize
+        // OPFS and acquire a long-lived shared OPFS session lock. Otherwise it
+        // could miss this broadcast and keep the transition's exclusive lock
+        // waiting indefinitely.
+        this.notify({
+          event: {
+            type: 'opfs_encryption',
+            status: 'transition_started',
+            timestamp: Date.now(),
+          },
+        });
+
+        try {
+          const result = await run();
+          this.notify({
+            event: {
+              type: 'opfs_encryption',
+              status: 'transition_completed',
+              timestamp: Date.now(),
+            },
+          });
+          return result;
+        } catch (error) {
+          this.notify({
+            event: {
+              type: 'opfs_encryption',
+              status: 'transition_failed',
+              timestamp: Date.now(),
+            },
+          });
+          throw error;
+        }
       },
+      lockKey: SYNC_LOCK_KEY,
+      ...this.getLockOptions({
+        source: 'opfsEncryptionTransition',
+        custom: { notifyLockWaitAfterMs: 5000 },
+      }),
     });
-
-    try {
-      const result = await this.synchronizer.withLock({
-        fn: run,
-        lockKey: SYNC_LOCK_KEY,
-        ...this.getLockOptions({
-          source: 'opfsEncryptionTransition',
-          custom: { notifyLockWaitAfterMs: 5000 },
-        }),
-      });
-
-      this.notify({
-        event: {
-          type: 'opfs_encryption',
-          status: 'transition_completed',
-          timestamp: Date.now(),
-        },
-      });
-      return result;
-    } catch (error) {
-      this.notify({
-        event: {
-          type: 'opfs_encryption',
-          status: 'transition_failed',
-          timestamp: Date.now(),
-        },
-      });
-      throw error;
-    }
   }
 
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {

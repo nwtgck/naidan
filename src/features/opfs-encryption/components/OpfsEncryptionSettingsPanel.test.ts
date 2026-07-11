@@ -158,6 +158,46 @@ describe('OpfsEncryptionSettingsPanel', () => {
     expect(mockFinishLocalOperation).toHaveBeenCalledWith({ success: true });
   });
 
+  it.each(['q', '1'])(
+    'enables encryption with the single-character passphrase %s',
+    async passphrase => {
+      const wrapper = await mountPanel({ storageType: 'opfs' });
+      await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+      await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
+      await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
+      await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
+
+      await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
+      await flushPromises();
+
+      expect(storageService.enableOpfsEncryption).toHaveBeenCalledWith({
+        passphrase,
+        signal: undefined,
+      });
+      expect(mockFinishLocalOperation).toHaveBeenCalledWith({ success: true });
+    },
+  );
+
+  it('refreshes the stable inspection after an encryption transition fails', async () => {
+    vi.mocked(storageService.enableOpfsEncryption).mockRejectedValueOnce(
+      new Error('Transferred settings do not match their source'),
+    );
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+    await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue('q');
+    await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue('q');
+    await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
+
+    await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
+    await flushPromises();
+
+    expect(mockFinishLocalOperation).toHaveBeenCalledWith({ success: false });
+    expect(storageService.inspectOpfsEncryption).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).toContain(
+      'Transferred settings do not match their source',
+    );
+  });
+
   it('rejects pasted line breaks rather than silently changing the passphrase', async () => {
     const wrapper = await mountPanel({ storageType: 'opfs' });
     await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');

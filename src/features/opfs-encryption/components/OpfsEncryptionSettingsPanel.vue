@@ -136,6 +136,20 @@ async function rejectLineBreakPaste({ event }: { event: ClipboardEvent }): Promi
   }
 }
 
+async function refreshInspectionAfterOperationError({
+  error,
+}: {
+  error: unknown,
+}): Promise<void> {
+  const operationErrorMessage = error instanceof Error ? error.message : String(error);
+  await refreshInspection();
+  const inspectionErrorMessage = errorMessage.value;
+  errorMessage.value = inspectionErrorMessage === undefined
+    ? operationErrorMessage
+    : `${operationErrorMessage}
+${inspectionErrorMessage}`;
+}
+
 async function handleToggle(): Promise<void> {
   if (!available.value || loading.value || operationLocked.value) {
     return;
@@ -164,8 +178,7 @@ async function handleToggle(): Promise<void> {
     window.location.reload();
   } catch (error) {
     finishLocalOperation({ success: false });
-    errorMessage.value = error instanceof Error ? error.message : String(error);
-    await refreshInspection();
+    await refreshInspectionAfterOperationError({ error });
   } finally {
     loading.value = false;
   }
@@ -189,8 +202,7 @@ async function enableEncryption(): Promise<void> {
     window.location.reload();
   } catch (error) {
     finishLocalOperation({ success: false });
-    errorMessage.value = error instanceof Error ? error.message : String(error);
-    await refreshInspection();
+    await refreshInspectionAfterOperationError({ error });
   } finally {
     loading.value = false;
   }
@@ -236,8 +248,7 @@ async function reencrypt(): Promise<void> {
     window.location.reload();
   } catch (error) {
     finishLocalOperation({ success: false });
-    errorMessage.value = error instanceof Error ? error.message : String(error);
-    await refreshInspection();
+    await refreshInspectionAfterOperationError({ error });
   } finally {
     loading.value = false;
   }

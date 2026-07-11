@@ -16,7 +16,6 @@ export type PassphraseEncryptionKeySlotDto = z.infer<
 
 export const EncryptionOperationPhaseSchemaDto = z.enum([
   'building_target',
-  'verifying_target',
   'cleaning_up_source',
 ]);
 export type EncryptionOperationPhaseDto = z.infer<typeof EncryptionOperationPhaseSchemaDto>;

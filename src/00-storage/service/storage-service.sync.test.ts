@@ -55,6 +55,7 @@ const mockProvider = {
   saveHierarchy: vi.fn().mockResolvedValue(undefined),
   dump: vi.fn(),
   restore: vi.fn(),
+  dispose: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('./local-storage', () => ({
@@ -133,6 +134,41 @@ describe('StorageService Synchronization Wrapper', () => {
     }));
     expect(mockProvider.deleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
     expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'g1' }) });
+  });
+
+  it('announces an OPFS encryption transition only after acquiring the global storage lock', async () => {
+    const run = vi.fn(async () => 'completed');
+    mockWithLock.mockImplementationOnce(async ({ fn, lockKey }) => {
+      expect(lockKey).toBe(SYNC_LOCK_KEY);
+      expect(mockNotify).not.toHaveBeenCalledWith({
+        event: expect.objectContaining({
+          type: 'opfs_encryption',
+          status: 'transition_started',
+        }),
+      });
+      return await fn();
+    });
+
+    const result = await (
+      service as unknown as {
+        runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+      }
+    ).runOpfsEncryptionTransition({ run });
+
+    expect(result).toBe('completed');
+    expect(run).toHaveBeenCalledOnce();
+    expect(mockNotify).toHaveBeenNthCalledWith(1, {
+      event: expect.objectContaining({
+        type: 'opfs_encryption',
+        status: 'transition_started',
+      }),
+    });
+    expect(mockNotify).toHaveBeenNthCalledWith(2, {
+      event: expect.objectContaining({
+        type: 'opfs_encryption',
+        status: 'transition_completed',
+      }),
+    });
   });
 
   it('should wrap updateSettings with lock and notify after success', async () => {

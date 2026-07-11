@@ -183,9 +183,9 @@ entry name.
 The operation type is one of `encrypting`, `decrypting`, or `reencrypting`.
 Its phase is one of:
 
-- `building_target`: source is authoritative; target may be rebuilt.
-- `verifying_target`: source remains authoritative; target is complete and is
-  being compared with the source.
+- `building_target`: source is authoritative; copying and verification both
+  occur in this phase. If execution is interrupted before verification
+  completes, the target is discarded and rebuilt from the source on resume.
 - `cleaning_up_source`: target is authoritative; source cleanup may resume.
 
 All application functionality is blocked while a transitioning state exists.

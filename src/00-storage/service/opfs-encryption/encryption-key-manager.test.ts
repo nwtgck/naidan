@@ -9,6 +9,21 @@ import {
 } from './encryption-key-manager';
 
 describe('encryption key manager', () => {
+  it.each(['q', '1'])(
+    'accepts and unlocks a single-character passphrase %j',
+    async (passphrase) => {
+      const material = await createEncryptionMaterial({
+        passphrase,
+        pbkdf2Iterations: 10,
+      });
+
+      await expect(unlockStorageUnlockKeyWithPassphrase({
+        passphraseKeySlot: material.passphraseKeySlot,
+        passphrase,
+      })).resolves.toEqual(material.storageUnlockKey);
+    },
+  );
+
   it('unlocks the storage key using its passphrase slot', async () => {
     const material = await createEncryptionMaterial({
       passphrase: 'correct horse battery staple',
