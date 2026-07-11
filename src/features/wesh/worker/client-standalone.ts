@@ -20,6 +20,7 @@ import {
 } from './types';
 import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
 import type { WeshMount } from '@/features/wesh/types';
+import { registerWeshWorkerClient } from './client-registry';
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
   rootHandle,
@@ -71,7 +72,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
 
   let runtime = await createRuntime();
 
-  return {
+  return registerWeshWorkerClient({ client: {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest,
       onEvent?: WeshWorkerExecutionEventCallback,
@@ -144,7 +145,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
         await destroyRuntime(activeRuntime);
       }
     },
-  };
+  } });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

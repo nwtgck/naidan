@@ -90,18 +90,30 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
     if (volume) {
       switch (volume.type) {
       case 'host': {
-        const handle = await storageService.getVolumeDirectoryHandle({ volumeId: volumeId });
-        if (handle) {
+        const access = await storageService.openVolume({ volumeId });
+        if (access === null) {
+          break;
+        }
+        switch (access.type) {
+        case 'direct_directory': {
           const mode = readOnly ? 'read' : 'readwrite';
           // @ts-expect-error: File System Access API
-          const current = await handle.queryPermission({ mode });
+          const current = await access.handle.queryPermission({ mode });
           if (current !== 'granted') {
             // @ts-expect-error: File System Access API
-            const result = await handle.requestPermission({ mode });
+            const result = await access.handle.requestPermission({ mode });
             if (result !== 'granted') {
               addToast({ message: await ensureStrings.volumes__permission_denied_folder_may_not_be_accessible() });
             }
           }
+          break;
+        }
+        case 'encrypted_directory':
+          throw new Error('A host volume cannot use encrypted OPFS directory access');
+        default: {
+          const _ex: never = access;
+          throw new Error(`Unhandled storage volume access: ${String(_ex)}`);
+        }
         }
         break;
       }

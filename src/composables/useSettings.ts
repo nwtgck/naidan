@@ -15,6 +15,7 @@ import {
   type UiLocale,
 } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
+import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
 import { checkOPFSSupport } from '@/utils/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { loadLmProvider, prefetchLmProvider } from '@/features/lm/providerFactory';
@@ -75,7 +76,7 @@ interface UseSettingsApi {
   globalSearchRoleFilter: ComputedRef<GlobalSearchRoleFilterSetting>,
   searchPreviewMode: ComputedRef<SearchPreviewMode>,
   searchContextSize: ComputedRef<SearchContextSize>,
-  init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>,
+  init: ({ storageTypeOverride, dataZipBase64, onOpfsEncryptionAccessRequired }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined, onOpfsEncryptionAccessRequired?: ({ inspection }: { inspection: Exclude<OpfsEncryptionInspection, { type: 'plain' }> }) => Promise<void> }) => Promise<void>,
   save: ({ patch, modelRefresh }: {
     patch: Partial<Settings>,
     modelRefresh: 'await' | 'background',
@@ -228,13 +229,14 @@ export function useSettings(): UseSettingsApi {
       || (hasEndpoint && hasModel);
   });
 
-  async function init({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) {
+  async function init({ storageTypeOverride, dataZipBase64, onOpfsEncryptionAccessRequired }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined, onOpfsEncryptionAccessRequired?: ({ inspection }: { inspection: Exclude<OpfsEncryptionInspection, { type: 'plain' }> }) => Promise<void> }) {
     if (_initialized.value) return;
     if (initPromise) return initPromise;
     console.log("storageTypeOverride", storageTypeOverride);
 
     initPromise = (async () => {
       loading.value = true;
+      let completed = false;
       try {
         // Determine storage type from persisted flag
         const {
@@ -324,7 +326,27 @@ export function useSettings(): UseSettingsApi {
         // Sync local settings ref with determined storage type
         _settings.value.storageType = bootstrapType;
 
-        await storageService.init({ type: bootstrapType });
+        try {
+          await storageService.init({ type: bootstrapType });
+        } catch (error) {
+          if (bootstrapType !== 'opfs' || onOpfsEncryptionAccessRequired === undefined) {
+            throw error;
+          }
+          const inspection = await storageService.inspectOpfsEncryption();
+          switch (inspection.type) {
+          case 'plain':
+            throw error;
+          case 'encrypted':
+          case 'transitioning':
+          case 'recovery_required':
+            await onOpfsEncryptionAccessRequired({ inspection });
+            break;
+          default: {
+            const _ex: never = inspection;
+            throw new Error(`Unhandled OPFS encryption inspection: ${((_ex satisfies never) as { readonly type: string }).type}`);
+          }
+          }
+        }
 
         // Handle URL-based data import BEFORE loading existing settings to ensure append mode works correctly
         if (dataZipBase64) {
@@ -372,9 +394,12 @@ export function useSettings(): UseSettingsApi {
           _settings.value.endpoint = { type: 'openai', url: '' };
           await setStringLocale({ locale: resolveBrowserLocale() });
         }
+        completed = true;
       } finally {
         loading.value = false;
-        _initialized.value = true;
+        if (completed) {
+          _initialized.value = true;
+        }
         initPromise = null;
       }
     })();

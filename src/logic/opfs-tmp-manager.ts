@@ -2,8 +2,10 @@ import { z } from 'zod';
 import { generateId } from '@/01-models/id';
 import { idToRaw, toOPFSTmpOwnerScopeId } from '@/01-models/ids';
 import type { OPFSTmpDirectoryId, OPFSTmpOwnerScopeId } from '@/01-models/ids';
-import { OPFS_TMP_CLEANUP_LOCK_KEY, OPFS_TMP_DIR, OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY } from '@/constants';
+import { OPFS_TMP_CLEANUP_LOCK_KEY, OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY } from '@/constants';
 import { StorageSynchronizer } from '@/00-storage/service/synchronizer';
+import { storageService } from '@/00-storage/service';
+import type { StorageVolumeAccess } from '@/00-storage/service/volume-access';
 
 const PendingOwnerCleanupSchema = z.object({
   ownerScopeIds: z.array(z.string()),
@@ -12,10 +14,6 @@ const PendingOwnerCleanupSchema = z.object({
 type PendingOwnerCleanup = {
   ownerScopeIds: OPFSTmpOwnerScopeId[],
 };
-
-function isNotFoundError({ error }: { error: unknown }): boolean {
-  return error instanceof Error && error.name === 'NotFoundError';
-}
 
 function hasWindow(): boolean {
   return typeof window !== 'undefined';
@@ -52,15 +50,19 @@ class OPFSTmpManager {
     }
   }
 
-  async createTmpDirectory({ prefix }: { prefix: string }): Promise<FileSystemDirectoryHandle> {
-    const opfsRoot = await navigator.storage.getDirectory();
-    const tmpRoot = await opfsRoot.getDirectoryHandle(OPFS_TMP_DIR, { create: true });
-    const ownerRoot = await tmpRoot.getDirectoryHandle(idToRaw({ id: this.ownerScopeId }), { create: true });
+  async createTmpDirectory({ prefix }: { prefix: string }): Promise<StorageVolumeAccess> {
     const tmpDirectoryId = generateId<OPFSTmpDirectoryId>();
     const tmpDirName = `${prefix}-${idToRaw({ id: tmpDirectoryId })}`;
-    const handle = await ownerRoot.getDirectoryHandle(tmpDirName, { create: true });
+    const access = await storageService.openOpfsSpecialFileSystemDirectory({
+      type: 'tmp',
+      path: `/${idToRaw({ id: this.ownerScopeId })}/${tmpDirName}`,
+      create: true,
+    });
+    if (access === null) {
+      throw new Error('Failed to create an OPFS temporary directory');
+    }
     void this.flushPendingScopeCleanups();
-    return handle;
+    return access;
   }
 
   async flushPendingScopeCleanups(): Promise<void> {
@@ -152,14 +154,13 @@ class OPFSTmpManager {
 
   private async deleteOwnerScopeDirectory({ ownerScopeId }: { ownerScopeId: OPFSTmpOwnerScopeId }): Promise<boolean> {
     try {
-      const opfsRoot = await navigator.storage.getDirectory();
-      const tmpRoot = await opfsRoot.getDirectoryHandle(OPFS_TMP_DIR);
-      await tmpRoot.removeEntry(idToRaw({ id: ownerScopeId }), { recursive: true });
+      await storageService.removeOpfsSpecialFileSystemEntry({
+        type: 'tmp',
+        path: `/${idToRaw({ id: ownerScopeId })}`,
+        recursive: true,
+      });
       return true;
-    } catch (error) {
-      if (isNotFoundError({ error })) {
-        return true;
-      }
+    } catch {
       return false;
     }
   }

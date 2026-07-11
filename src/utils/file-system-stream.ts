@@ -3,7 +3,9 @@ export function isFileSystemEntryLookupMiss({ error }: { error: unknown }): bool
     return error.name === 'NotFoundError' || error.name === 'TypeMismatchError';
   }
   if (error instanceof Error) {
-    return error.message.startsWith('NotFoundError:')
+    return error.name === 'NotFoundError'
+      || error.name === 'TypeMismatchError'
+      || error.message.startsWith('NotFoundError:')
       || error.message.startsWith('TypeMismatchError:');
   }
   return false;

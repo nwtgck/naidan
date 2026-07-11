@@ -4,6 +4,7 @@ import {
   type ChatMetaDto,
   type ChatGroupDto,
   type HierarchyDto,
+  type StorageBinaryObjectWriteSource,
   ChatMetaSchemaDto,
   ChatGroupSchemaDto,
   SettingsSchemaDto,
@@ -26,6 +27,8 @@ import {
   buildSidebarItemsFromHierarchy,
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from './interface';
+import type { StorageBinaryObjectReadHandle } from './binary-object-io';
+import type { StorageVolumeAccess } from './volume-access';
 
 import { STORAGE_KEY_PREFIX } from '@/constants';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
@@ -90,7 +93,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- Internal Data Access ---
 
-  protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
+  async listChatMetasRaw(): Promise<ChatMetaDto[]> {
     const metas: ChatMetaDto[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -102,7 +105,7 @@ export class LocalStorageProvider extends IStorageProvider {
     return metas;
   }
 
-  protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
+  async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
     const groups: ChatGroupDto[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -293,9 +296,9 @@ export class LocalStorageProvider extends IStorageProvider {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }
 
-  async getVolumeDirectoryHandle({ volumeId: _volumeId }: {
+  async openVolume({ volumeId: _volumeId }: {
     volumeId: VolumeId,
-  }): Promise<FileSystemDirectoryHandle | null> {
+  }): Promise<StorageVolumeAccess | null> {
     return null;
   }
 
@@ -314,21 +317,31 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
 
-  async saveFile({
-    blob: _blob,
+  async writeBinaryObject({
+    source: _source,
     binaryObjectId: _binaryObjectId,
     name: _name,
     mimeType: _mimeType,
+    size: _size,
+    createdAt: _createdAt,
+    signal: _signal,
   }: {
-    blob: Blob,
+    source: StorageBinaryObjectWriteSource,
     binaryObjectId: BinaryObjectId,
     name: string,
-    mimeType?: string,
+    mimeType: string,
+    size: number,
+    createdAt: number,
+    signal: AbortSignal | undefined,
   }): Promise<void> {
     throw new Error('File persistence is not supported in LocalStorage provider.');
   }
 
-  async getFile({ binaryObjectId: _binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
+  async openBinaryObject({
+    binaryObjectId: _binaryObjectId,
+  }: {
+    binaryObjectId: BinaryObjectId,
+  }): Promise<StorageBinaryObjectReadHandle | null> {
     return null;
   }
 

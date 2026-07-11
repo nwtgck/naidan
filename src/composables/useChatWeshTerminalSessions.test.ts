@@ -3,9 +3,9 @@ import { ref } from 'vue';
 import { toVolumeId, toChatId, toChatGroupId } from '@/01-models/ids';
 
 const mocks = vi.hoisted(() => ({
-  getVolumeDirectoryHandle: vi.fn(),
+  openVolume: vi.fn(),
+  openOpfsSpecialFileSystemDirectory: vi.fn(),
   createClient: vi.fn(),
-  getDirectory: vi.fn(),
   ensureChatTmpDirectory: vi.fn(),
   settingsValue: {
     storageType: 'opfs',
@@ -23,7 +23,8 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    openVolume: mocks.openVolume,
+    openOpfsSpecialFileSystemDirectory: mocks.openOpfsSpecialFileSystemDirectory,
   },
 }));
 
@@ -55,8 +56,14 @@ describe('useChatWeshTerminalSessions', () => {
     mocks.settingsValue.mounts = [
       { type: 'volume', volumeId: 'global-vol-1', mountPath: '/home/user/global', readOnly: true },
     ];
-    mocks.getVolumeDirectoryHandle.mockResolvedValue({ kind: 'directory', name: 'dir' } as FileSystemDirectoryHandle);
-    mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
+    mocks.openVolume.mockResolvedValue({
+      type: 'direct_directory',
+      handle: { kind: 'directory', name: 'dir' } as FileSystemDirectoryHandle,
+    });
+    mocks.ensureChatTmpDirectory.mockResolvedValue({
+      access: { type: 'direct_directory', handle: tmpHandle },
+      mountPath: '/tmp',
+    });
     mocks.createClient.mockResolvedValue({
       startExecution: vi.fn(),
       awaitExecution: vi.fn(),
@@ -64,15 +71,10 @@ describe('useChatWeshTerminalSessions', () => {
       disposeExecution: vi.fn(),
       dispose: vi.fn(),
     });
-    vi.stubGlobal('navigator', {
-      storage: {
-        getDirectory: mocks.getDirectory,
-      },
-    });
     const chatRoot = createDirectoryHandleMock({ name: 'chat-root' });
-    const terminalRoot = { getDirectoryHandle: vi.fn().mockResolvedValue(chatRoot) } as unknown as FileSystemDirectoryHandle;
-    mocks.getDirectory.mockResolvedValue({
-      getDirectoryHandle: vi.fn().mockResolvedValue(terminalRoot),
+    mocks.openOpfsSpecialFileSystemDirectory.mockResolvedValue({
+      type: 'direct_directory',
+      handle: chatRoot,
     });
   });
 
@@ -187,7 +189,7 @@ describe('useChatWeshTerminalSessions', () => {
       // Only one mount at that path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' })});
+      expect(mocks.openVolume).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' })});
     });
 
     it('includes chat group mounts between global and chat mounts', async () => {
@@ -221,7 +223,7 @@ describe('useChatWeshTerminalSessions', () => {
 
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'group-vol-override' })});
+      expect(mocks.openVolume).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'group-vol-override' })});
     });
 
     it('chat mount overrides chat group mount at the same path', async () => {
@@ -240,7 +242,7 @@ describe('useChatWeshTerminalSessions', () => {
       // Only one mount at the shared path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/shared')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/shared')).toMatchObject({ readOnly: false });
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' })});
+      expect(mocks.openVolume).toHaveBeenCalledWith({ volumeId: toVolumeId({ raw: 'chat-vol-override' })});
     });
 
     it('works with only chat group mounts and no chat-level mounts', async () => {

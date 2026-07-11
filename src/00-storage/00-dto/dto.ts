@@ -692,6 +692,24 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
  * Structural metadata (Settings, Hierarchy, Groups) are handled as
  * complete domain objects during the restoration process.
  */
+export type StorageBinaryObjectWriteSource =
+  | {
+      type: 'direct_blob',
+
+      /**
+       * The Blob must already be directly available without reading,
+       * decrypting, decompressing, or copying the complete payload.
+       *
+       * A Blob materialized from a stream or reader must never be represented
+       * by this branch.
+       */
+      blob: Blob,
+    }
+  | {
+      type: 'stream',
+      stream: ReadableStream<Uint8Array>,
+    };
+
 export type MigrationChunkDto =
   | { type: 'chat', data: ChatDto }
   | {
@@ -701,7 +719,7 @@ export type MigrationChunkDto =
       mimeType: string,
       size: number,
       createdAt: number,
-      blob: Blob,
+      source: StorageBinaryObjectWriteSource,
     };
 
 /**

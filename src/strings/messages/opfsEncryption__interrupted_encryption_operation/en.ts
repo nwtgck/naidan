@@ -1,0 +1,1 @@
+export const opfsEncryption__interrupted_encryption_operation = (): string => 'A previous encryption, decryption, or re-encryption operation was interrupted. Unlock the storage to verify and finish it before using Naidan.';

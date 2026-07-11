@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { defineAsyncComponent, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
@@ -20,6 +20,9 @@ import { lazyStrings, ensureStrings } from '@/strings';
 
 // Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
 const ImportExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/import-export/components/ImportExportModal.vue') });
+const OpfsEncryptionSettingsPanel = defineAsyncComponent(
+  () => import('@/features/opfs-encryption/components/OpfsEncryptionSettingsPanel.vue'),
+);
 
 const props = defineProps<{
   storageType: 'local' | 'opfs' | 'memory',
@@ -389,6 +392,8 @@ defineExpose({
             </div>
           </button>
         </div>
+
+        <OpfsEncryptionSettingsPanel :storage-type="storageType" />
 
         <div tw-class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
           <InfoIcon tw-class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />

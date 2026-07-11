@@ -295,6 +295,7 @@ export function useChatSearch({ sidebarItems }: {
       case 'chat_content_generation':
       case 'settings':
       case 'binary_objects':
+      case 'opfs_encryption':
         break;
       default: {
         const _ex: never = event;

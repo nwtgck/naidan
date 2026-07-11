@@ -1,0 +1,1 @@
+export const opfsEncryption__decrypt_storage_explanation = (): string => 'Naidan will create and verify the complete legacy plaintext OPFS layout before removing the encrypted store. All app functions will be locked until it finishes.';

@@ -27,6 +27,7 @@ import {
   type BinaryShardIndexDto,
   BinaryShardIndexSchemaDto,
 } from '@/00-storage/00-dto/dto';
+import { openStorageBinaryObjectWriteSourceStream } from '@/00-storage/service/binary-object-io';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import {
   settingsToDomain,
@@ -455,19 +456,6 @@ export class ImportExportService {
         const pendingBinaryObjects: Array<Extract<MigrationChunkDto, { type: 'binary_object' }>> = [];
         const getShard = ({ id }: { id: string }) => id.slice(-2).toLowerCase();
 
-        const createBlobStream = ({ blob }: { blob: Blob }): ReadableStream<Uint8Array> => {
-          if (typeof blob.stream === 'function') {
-            return blob.stream();
-          }
-
-          return new ReadableStream<Uint8Array>({
-            async start(controller) {
-              controller.enqueue(new Uint8Array(await blob.arrayBuffer()));
-              controller.close();
-            },
-          });
-        };
-
         const addBinaryObjectToZip = async ({
           chunk,
         }: {
@@ -476,7 +464,7 @@ export class ImportExportService {
           const shard = getShard({ id: chunk.id });
           const fileName = `${chunk.id}.bin`;
           const shardPath = `${rootPath}binary-objects/${shard}/`;
-          await addFile({ path: `${shardPath}${fileName}`, stream: createBlobStream({ blob: chunk.blob }) });
+          await addFile({ path: `${shardPath}${fileName}`, stream: openStorageBinaryObjectWriteSourceStream({ source: chunk.source }) });
           await addEmptyFile({ path: `${shardPath}.${fileName}.complete` });
 
           let index = shardIndices.get(shard);
@@ -960,7 +948,7 @@ export class ImportExportService {
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,
-                blob,
+                source: { type: 'direct_blob', blob },
               };
             }
           }
@@ -1174,7 +1162,7 @@ export class ImportExportService {
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,
-                blob,
+                source: { type: 'direct_blob', blob },
               };
             }
           }

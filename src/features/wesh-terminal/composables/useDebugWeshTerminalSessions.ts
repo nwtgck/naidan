@@ -2,9 +2,10 @@ import { useSettings } from '@/composables/useSettings';
 import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
 import { storageService } from '@/00-storage/service';
 import type { WeshMount } from '@/features/wesh/types';
+import { createWeshStorageMount } from '@/features/wesh/storage-mount';
 
 const store = createWeshTerminalSessions({
-  opfsRootName: 'naidan-debug-wesh',
+  fileSystemType: 'debug_wesh',
   user: 'debug',
   initialEnv: { HOME: '/home/debug', TMPDIR: '/tmp' },
   initialCwd: '/home/debug',
@@ -17,9 +18,13 @@ async function buildWorkerMounts(): Promise<WeshMount[]> {
   const mounts: WeshMount[] = [];
   for (const mount of settings.value.mounts) {
     if (mount.type !== 'volume') continue;
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (!handle) continue;
-    mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
+    const access = await storageService.openVolume({ volumeId: mount.volumeId });
+    if (access === null) continue;
+    mounts.push(createWeshStorageMount({
+      path: mount.mountPath,
+      access,
+      readOnly: mount.readOnly,
+    }));
   }
   return mounts;
 }

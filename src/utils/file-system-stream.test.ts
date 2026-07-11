@@ -30,6 +30,11 @@ describe('file-system-stream', () => {
     expect(isFileSystemEntryLookupMiss({
       error: new Error("TypeMismatchError: Entry 'item' has another kind."),
     })).toBe(true);
+    const namedNotFoundError = new Error("Directory 'item' not found.");
+    namedNotFoundError.name = 'NotFoundError';
+    expect(isFileSystemEntryLookupMiss({
+      error: namedNotFoundError,
+    })).toBe(true);
     expect(isFileSystemEntryLookupMiss({
       error: new DOMException('permission denied', 'NotAllowedError'),
     })).toBe(false);

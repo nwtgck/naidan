@@ -1,23 +1,35 @@
 <script setup lang="ts">
-import { computed, type ShallowRef } from 'vue';
+import { computed, defineAsyncComponent, type ShallowRef } from 'vue';
 import GlobalDialogHost from '@/components/GlobalDialogHost.vue';
 import OnboardingModal from '@/components/OnboardingModal.vue';
 import ToastContainer from '@/components/ToastContainer.vue';
 import StartupErrorView from '@/components/startup/StartupErrorView.vue';
 import { provideAppPresentation } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
+import { useOpfsEncryptionTransition } from '@/features/opfs-encryption/composables/useOpfsEncryptionTransition';
+
+const OpfsEncryptionTransitionView = defineAsyncComponent(
+  () => import('@/features/opfs-encryption/components/OpfsEncryptionTransitionView.vue'),
+);
+const OpfsEncryptionUnlockView = defineAsyncComponent(
+  () => import('@/features/opfs-encryption/components/OpfsEncryptionUnlockView.vue'),
+);
 
 const props = defineProps<{
   startupState: ShallowRef<StartupState>,
 }>();
 
 const startup = computed(() => props.startupState.value);
+const { active: opfsEncryptionTransitionActive } = useOpfsEncryptionTransition();
 const {
   onboardingPresentation,
   appInteraction,
 } = provideAppPresentation({ startupState: props.startupState });
 
 const appContentInert = computed(() => {
+  if (opfsEncryptionTransitionActive.value) {
+    return true;
+  }
   const interaction = appInteraction.value;
   switch (interaction) {
   case 'blocked-by-startup':
@@ -83,6 +95,13 @@ defineExpose({
       tw-class="h-dvh bg-gray-50 dark:bg-gray-950"
     />
   </div>
+
+  <OpfsEncryptionTransitionView v-if="opfsEncryptionTransitionActive" />
+
+  <OpfsEncryptionUnlockView
+    v-if="startup.kind === 'opfs-encryption-required'"
+    :gate="startup.gate"
+  />
 
   <Transition name="modal">
     <OnboardingModal v-if="renderOnboarding" />

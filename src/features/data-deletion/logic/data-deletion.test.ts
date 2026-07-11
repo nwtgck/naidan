@@ -1,15 +1,30 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { storageService } from '@/00-storage/service';
 import {
   DATA_DELETION_OPTIONS,
   FACTORY_RESET_OPTION_IDS,
   createDataDeletionPreview,
+  executeDataDeletion,
   getDataDeletionOptionSupport,
   normalizeDataDeletionOptionIds,
 } from './data-deletion';
 
+
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    openOpfsSpecialFileSystemDirectory: vi.fn(),
+    clearOpfsSpecialFileSystem: vi.fn(),
+  },
+}));
+
 describe('data-deletion logic', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('keeps factory reset scoped to Naidan data plus all Cache Storage', () => {
@@ -83,4 +98,43 @@ describe('data-deletion logic', () => {
     ]);
     expect(preview.entries.every(entry => entry.location === 'localStorage')).toBe(true);
   });
+
+  it('previews and deletes the logical tmp filesystem through the active OPFS backend', async () => {
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn(),
+      },
+    });
+    vi.mocked(storageService.openOpfsSpecialFileSystemDirectory).mockResolvedValue({
+      type: 'direct_directory',
+      handle: {} as FileSystemDirectoryHandle,
+    });
+
+    const preview = await createDataDeletionPreview({
+      selectedOptionIds: new Set(['opfs-naidan-tmp']),
+    });
+
+    expect(preview).toEqual({
+      status: 'ready',
+      entries: [{ path: '/naidan-tmp', location: 'OPFS' }],
+      notes: [],
+    });
+    expect(storageService.openOpfsSpecialFileSystemDirectory).toHaveBeenCalledWith({
+      type: 'tmp',
+      path: '/',
+      create: false,
+    });
+
+    await expect(executeDataDeletion({
+      selectedOptionIds: new Set(['opfs-naidan-tmp']),
+    })).resolves.toMatchObject({
+      deletedSelectors: ['OPFS: /naidan-tmp'],
+      skippedSelectors: [],
+      failedSelectors: [],
+    });
+    expect(storageService.clearOpfsSpecialFileSystem).toHaveBeenCalledWith({
+      type: 'tmp',
+    });
+  });
+
 });

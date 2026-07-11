@@ -10,6 +10,9 @@ import {
 } from '@/features/wesh-terminal/utils/terminalCompletion';
 import type { WeshWorkerShellState } from '@/features/wesh/worker/types';
 import type { WeshMount } from '@/features/wesh/types';
+import { storageService } from '@/00-storage/service';
+import type { OpfsSpecialFileSystemType } from '@/00-storage/service/opfs/opfs-special-file-system';
+import { createWeshStorageMount } from '@/features/wesh/storage-mount';
 
 export type WeshTerminalLineKind = 'system' | 'command' | 'stdout' | 'stderr' | 'error';
 
@@ -39,34 +42,27 @@ interface InternalSession extends WeshTerminalSession {
   _client: WeshWorkerClient | undefined,
 }
 
-async function ensureDirectoryPath({
-  rootHandle,
-  path,
-}: {
-  rootHandle: FileSystemDirectoryHandle,
-  path: string,
-}): Promise<void> {
-  const segments = path.split('/').filter(segment => segment.length > 0);
-  let current = rootHandle;
-  for (const segment of segments) {
-    current = await current.getDirectoryHandle(segment, { create: true });
-  }
-}
-
 async function ensureTerminalBaseDirectories({
-  rootHandle,
+  fileSystemType,
   homeDirectory,
   tmpDirectory,
 }: {
-  rootHandle: FileSystemDirectoryHandle,
+  fileSystemType: OpfsSpecialFileSystemType,
   homeDirectory: string | undefined,
   tmpDirectory: string | undefined,
-}) {
-  if (homeDirectory !== undefined) {
-    await ensureDirectoryPath({ rootHandle, path: homeDirectory });
-  }
-  if (tmpDirectory !== undefined) {
-    await ensureDirectoryPath({ rootHandle, path: tmpDirectory });
+}): Promise<void> {
+  const paths = [homeDirectory, tmpDirectory].filter(
+    (path): path is string => path !== undefined,
+  );
+  for (const path of paths) {
+    const access = await storageService.openOpfsSpecialFileSystemDirectory({
+      type: fileSystemType,
+      path: `/global${path}`,
+      create: true,
+    });
+    if (access === null) {
+      throw new Error(`Failed to create Wesh directory: ${path}`);
+    }
   }
 }
 
@@ -75,14 +71,14 @@ function shouldClearTerminalOutput({ text }: { text: string }): boolean {
 }
 
 export function createWeshTerminalSessions({
-  opfsRootName,
+  fileSystemType,
   user,
   initialEnv,
   initialCwd,
   homeDirectory,
   tmpDirectory,
 }: {
-  opfsRootName: string,
+  fileSystemType: Extract<OpfsSpecialFileSystemType, 'chat_wesh' | 'debug_wesh'>,
   user: string,
   initialEnv: Record<string, string>,
   initialCwd: string | undefined,
@@ -130,22 +126,46 @@ export function createWeshTerminalSessions({
     activeSessionId.value = id;
 
     try {
-      if (!navigator.storage || typeof navigator.storage.getDirectory !== 'function') {
-        throw new Error('OPFS is not available in this environment.');
-      }
-      const root = await navigator.storage.getDirectory();
-      const termRoot = await root.getDirectoryHandle(opfsRootName, { create: true });
-      const globalRoot = await termRoot.getDirectoryHandle('global', { create: true });
       await ensureTerminalBaseDirectories({
-        rootHandle: globalRoot as unknown as FileSystemDirectoryHandle,
+        fileSystemType,
         homeDirectory,
         tmpDirectory,
       });
+      const rootAccess = await storageService.openOpfsSpecialFileSystemDirectory({
+        type: fileSystemType,
+        path: '/global',
+        create: true,
+      });
+      if (rootAccess === null) {
+        throw new Error('Failed to open the Wesh filesystem root.');
+      }
       const mounts = await buildMounts();
+      const root = (() => {
+        switch (rootAccess.type) {
+        case 'direct_directory':
+          return {
+            rootHandle: rootAccess.handle,
+            rootMounts: [] as WeshMount[],
+          };
+        case 'encrypted_directory':
+          return {
+            rootHandle: 'readonly' as const,
+            rootMounts: [createWeshStorageMount({
+              path: '/',
+              access: rootAccess,
+              readOnly: false,
+            })],
+          };
+        default: {
+          const _ex: never = rootAccess;
+          throw new Error(`Unhandled storage volume access: ${((_ex satisfies never) as { readonly type: string }).type}`);
+        }
+        }
+      })();
 
       const client = await createFileProtocolCompatibleWeshWorkerClient({
-        rootHandle: globalRoot as unknown as FileSystemDirectoryHandle,
-        mounts,
+        rootHandle: root.rootHandle,
+        mounts: [...root.rootMounts, ...mounts],
         user,
         initialEnv,
         initialCwd,
@@ -335,6 +355,5 @@ export function createWeshTerminalSessions({
 
 export type WeshTerminalStore = ReturnType<typeof createWeshTerminalSessions>;
 export const TEST_ONLY = {
-  ensureDirectoryPath,
   shouldClearTerminalOutput,
 };

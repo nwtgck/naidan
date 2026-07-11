@@ -30,7 +30,7 @@ vi.mock('../00-storage/service', () => ({
     mountVolume: vi.fn(),
     createVolume: vi.fn(),
     createVolumeFromFiles: vi.fn(),
-    getVolumeDirectoryHandle: vi.fn(),
+    openVolume: vi.fn(),
   },
 }));
 
@@ -473,7 +473,7 @@ describe('VolumeSettingsTab - Permission re-request on save', () => {
     const queryPermission = vi.fn().mockResolvedValue('prompt');
     const requestPermission = vi.fn().mockResolvedValue('granted');
     const mockHandle = { queryPermission, requestPermission } as unknown as FileSystemDirectoryHandle;
-    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue(mockHandle);
+    vi.mocked(storageService.openVolume).mockResolvedValue({ type: 'direct_directory', handle: mockHandle });
 
     vi.mocked(storageService.listVolumes)
       .mockReturnValueOnce((async function* () {
@@ -491,7 +491,7 @@ describe('VolumeSettingsTab - Permission re-request on save', () => {
     await wrapper.find('[data-testid="mount-save-btn"]').trigger('click');
     await flushPromises();
 
-    expect(storageService.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: vol.id });
+    expect(storageService.openVolume).toHaveBeenCalledWith({ volumeId: vol.id });
     expect(queryPermission).toHaveBeenCalledWith({ mode: 'read' });
     expect(requestPermission).toHaveBeenCalledWith({ mode: 'read' });
   });
@@ -516,6 +516,6 @@ describe('VolumeSettingsTab - Permission re-request on save', () => {
     await wrapper.find('[data-testid="mount-save-btn"]').trigger('click');
     await flushPromises();
 
-    expect(storageService.getVolumeDirectoryHandle).not.toHaveBeenCalled();
+    expect(storageService.openVolume).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,1 @@
+export const opfsEncryption__enter_passphrase_or_recovery_key = (): string => 'Enter the passphrase or recovery key for this OPFS storage. Chats and the main interface are loaded only after successful authentication.';

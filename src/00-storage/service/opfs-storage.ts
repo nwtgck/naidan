@@ -1,1167 +1,872 @@
-import { generateId } from '@/01-models/id';
-import { idToRaw } from '@/01-models/ids';
-import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
-import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
-import {
-  type ChatMetaDto,
-  type ChatGroupDto,
-  type HierarchyDto,
-  type MigrationChunkDto,
-  type MessageNodeDto,
-  ChatMetaSchemaDto,
-  ChatGroupSchemaDto,
-  SettingsSchemaDto,
-  HierarchySchemaDto,
-  ChatContentSchemaDto,
-  type VolumeDto,
-  type VolumeIndexDto,
-  VolumeIndexSchemaDto,
+import type {
+  BinaryObject,
+  Chat,
+  ChatContent,
+  ChatGroup,
+  ChatMeta,
+  Settings,
+  SidebarItem,
+  StorageSnapshot,
+  Volume,
+  VolumeType,
+} from '@/01-models/types';
+import type {
+  BinaryObjectId,
+  ChatGroupId,
+  ChatId,
+  VolumeId,
+} from '@/01-models/ids';
+import type {
+  ChatGroupDto,
+  ChatMetaDto,
+  HierarchyDto,
+  StorageBinaryObjectWriteSource,
 } from '@/00-storage/00-dto/dto';
-import {
-  chatToDomain,
-  chatToDto,
-  chatGroupToDomain,
-  chatGroupToDto,
-  settingsToDomain,
-  settingsToDto,
-  hierarchyToDomain,
-  hierarchyToDto,
-  chatMetaToDto,
-  chatMetaToDomain,
-  chatContentToDto,
-  chatContentToDomain,
-  buildSidebarItemsFromHierarchy,
-  binaryObjectToDomain,
-  volumeToDomain,
-} from '@/00-storage/mapper/mappers';
+import type { StorageBinaryObjectReadHandle } from './binary-object-io';
+import type { StorageVolumeAccess } from './volume-access';
 import { IStorageProvider } from './interface';
-
+import { PlainOPFSStorageBackend } from './opfs/plain-opfs-storage-backend';
+import { OpfsStorageSessionLock } from './opfs/opfs-storage-session-lock';
+import { isOpfsTransitionStorageBackend } from './opfs/opfs-transition-backend';
 import {
-  type MigrationStateDto,
-  type BinaryShardIndexDto,
-  MigrationStateSchemaDto,
-  BinaryShardIndexSchemaDto,
-} from '@/00-storage/00-dto/dto';
-import { toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
-import { promiseAllKeyed } from '@/utils/promise';
+  isOpfsSpecialFileSystemBackend,
+  type OpfsSpecialFileSystemType,
+} from './opfs/opfs-special-file-system';
+import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
+import type {
+  EncryptionTransitionResult,
+  UnlockedOpfsEncryptionSession,
+} from './opfs-encryption/encryption-transition-coordinator';
 
-interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
-  createWritable(): Promise<FileSystemWritableFileStream>,
+const STORAGE_DIRECTORY_NAME = 'naidan-storage';
+const ENCRYPTION_STATE_DIRECTORY_NAME = 'encryption-state';
+
+function isNotFoundError({ error }: { error: unknown }): boolean {
+  return error instanceof DOMException
+    ? error.name === 'NotFoundError'
+    : error instanceof Error
+      && (error.name === 'NotFoundError'
+        || error.message.startsWith('NotFoundError'));
 }
 
-const MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS = 'v1_uploaded_files_to_binary_objects';
+async function getStorageRootIfPresent(): Promise<FileSystemDirectoryHandle | undefined> {
+  const opfsRoot = await navigator.storage.getDirectory();
+  try {
+    return await opfsRoot.getDirectoryHandle(STORAGE_DIRECTORY_NAME);
+  } catch (error) {
+    if (isNotFoundError({ error })) {
+      return undefined;
+    }
+    throw error;
+  }
+}
 
-type BinaryShardIndex = BinaryShardIndexDto;
+async function getOrCreateStorageRoot(): Promise<FileSystemDirectoryHandle> {
+  const opfsRoot = await navigator.storage.getDirectory();
+  return await opfsRoot.getDirectoryHandle(STORAGE_DIRECTORY_NAME, { create: true });
+}
 
+async function hasEncryptionStateDirectory({
+  storageRoot,
+}: {
+  storageRoot: FileSystemDirectoryHandle,
+}): Promise<boolean> {
+  try {
+    await storageRoot.getDirectoryHandle(ENCRYPTION_STATE_DIRECTORY_NAME);
+    return true;
+  } catch (error) {
+    if (isNotFoundError({ error })) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function requireEncryptedInspection({
+  inspection,
+}: {
+  inspection: OpfsEncryptionInspection,
+}): Extract<OpfsEncryptionInspection, { type: 'encrypted' }> {
+  switch (inspection.type) {
+  case 'encrypted':
+    return inspection;
+  case 'plain':
+  case 'transitioning':
+  case 'recovery_required':
+    throw new Error(`OPFS storage cannot be unlocked from state: ${inspection.type}`);
+  default: {
+    const _ex: never = inspection;
+    throw new Error(
+      `Unhandled OPFS encryption inspection: ${((_ex satisfies never) as { readonly type: string }).type}`,
+    );
+  }
+  }
+}
+
+function requirePlainInspection({
+  inspection,
+}: {
+  inspection: OpfsEncryptionInspection,
+}): void {
+  switch (inspection.type) {
+  case 'plain':
+    return;
+  case 'encrypted':
+  case 'transitioning':
+  case 'recovery_required':
+    throw new Error(`OPFS encryption cannot be enabled from state: ${inspection.type}`);
+  default: {
+    const _ex: never = inspection;
+    throw new Error(
+      `Unhandled OPFS encryption inspection: ${((_ex satisfies never) as { readonly type: string }).type}`,
+    );
+  }
+  }
+}
+
+function requireTransitioningInspection({
+  inspection,
+}: {
+  inspection: OpfsEncryptionInspection,
+}): Extract<OpfsEncryptionInspection, { type: 'transitioning' }> {
+  switch (inspection.type) {
+  case 'transitioning':
+    return inspection;
+  case 'plain':
+  case 'encrypted':
+  case 'recovery_required':
+    throw new Error(`OPFS transition cannot be resumed from state: ${inspection.type}`);
+  default: {
+    const _ex: never = inspection;
+    throw new Error(
+      `Unhandled OPFS encryption inspection: ${((_ex satisfies never) as { readonly type: string }).type}`,
+    );
+  }
+  }
+}
+
+/**
+ * Public OPFS storage facade.
+ *
+ * Plain OPFS keeps the existing persistence format and implementation. The
+ * encryption bootstrap and encrypted backend are loaded only when an
+ * encryption-state directory exists or encryption-specific APIs are called.
+ */
 export class OPFSStorageProvider extends IStorageProvider {
-  private root: FileSystemDirectoryHandle | null = null;
-  private readonly STORAGE_DIR = 'naidan-storage';
   readonly canPersistBinary = true;
 
-  private async loadUnhydratedChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
-    try {
-      const contentDir = await this.getDir({ name: 'chat-contents' });
-      const contentFile = await (await contentDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      return chatContentToDomain({
-        dto: ChatContentSchemaDto.parse(JSON.parse(await contentFile.text())),
-      });
-    } catch {
-      return null;
-    }
-  }
+  private backend: IStorageProvider | undefined;
+  private unlockedEncryptionSession: UnlockedOpfsEncryptionSession | undefined;
+  private readonly storageSessionLock = new OpfsStorageSessionLock();
 
   async init(): Promise<void> {
-    await this.ensureRoot();
-    await this.runMigrations();
-  }
-
-  private async ensureRoot(): Promise<void> {
-    if (!this.root) {
-      const opfsRoot = await navigator.storage.getDirectory();
-      this.root = await opfsRoot.getDirectoryHandle(this.STORAGE_DIR, { create: true });
-    }
-  }
-
-  private async loadMigrationState(): Promise<MigrationStateDto> {
+    await this.storageSessionLock.acquire();
     try {
-      const fileHandle = await this.root!.getFileHandle('migration-state.json');
-      const file = await fileHandle.getFile();
-      return MigrationStateSchemaDto.parse(JSON.parse(await file.text()));
-    } catch {
-      return { completedMigrations: [] };
+      await this.storageSessionLock.run({ run: async () => {
+        if (this.backend !== undefined) {
+          await this.backend.init();
+          return;
+        }
+
+        const storageRoot = await getStorageRootIfPresent();
+        if (
+          storageRoot === undefined
+          || !(await hasEncryptionStateDirectory({ storageRoot }))
+        ) {
+          const backend = new PlainOPFSStorageBackend();
+          await backend.init();
+          this.backend = backend;
+          return;
+        }
+
+        const inspection = await this.inspectEncryption();
+        switch (inspection.type) {
+        case 'plain': {
+          const backend = new PlainOPFSStorageBackend();
+          await backend.init();
+          this.backend = backend;
+          return;
+        }
+        case 'encrypted':
+          throw new Error('OPFS encryption must be unlocked before storage can be used');
+        case 'transitioning':
+          throw new Error('OPFS encryption transition is in progress');
+        case 'recovery_required':
+          throw new Error('OPFS encryption state could not be read safely', { cause: inspection.error });
+        default: {
+          const _ex: never = inspection;
+          throw new Error(`Unhandled OPFS encryption inspection: ${String(_ex)}`);
+        }
+        }
+      } });
+    } catch (error) {
+      await this.storageSessionLock.suspend();
+      throw error;
     }
   }
 
-  private async saveMigrationState({ state }: { state: MigrationStateDto }): Promise<void> {
-    const fileHandle = await this.root!.getFileHandle('migration-state.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(state));
-    await writable.close();
+  async inspectEncryption(): Promise<OpfsEncryptionInspection> {
+    const storageRoot = await getStorageRootIfPresent();
+    if (storageRoot === undefined) {
+      return { type: 'plain' };
+    }
+    const encryptionModule = await import('./opfs-encryption/bootstrap');
+    return await encryptionModule.inspectOpfsEncryption({ storageRoot });
   }
 
-  private async runMigrations(): Promise<void> {
-    const state = await this.loadMigrationState();
-    const completed = new Set(state.completedMigrations.map(m => m.name));
+  async unlockWithPassphrase({
+    passphrase,
+  }: {
+    passphrase: string,
+  }): Promise<void> {
+    await this.storageSessionLock.acquire();
+    try {
+      await this.storageSessionLock.run({ run: async () => {
+        const storageRoot = await getStorageRootIfPresent();
+        if (storageRoot === undefined) {
+          throw new Error('OPFS storage root does not exist');
+        }
+        const encryptionModule = await import('./opfs-encryption/bootstrap');
+        const inspection = requireEncryptedInspection({
+          inspection: await encryptionModule.inspectOpfsEncryption({ storageRoot }),
+        });
+        const session = await encryptionModule.unlockOpfsEncryptionWithPassphrase({
+          storageRoot,
+          state: inspection.state,
+          passphrase,
+        });
+        this.unlockedEncryptionSession = session;
+        this.backend = session.backend;
+      } });
+    } catch (error) {
+      await this.storageSessionLock.suspend();
+      throw error;
+    }
+  }
 
-    if (!completed.has(MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS)) {
-      await this.migrateV1UploadedFilesToBinaryObjects();
-      state.completedMigrations.push({
-        name: MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS,
-        completedAt: Date.now(),
+  async unlockWithRecoveryKey({
+    recoveryKey,
+  }: {
+    recoveryKey: string,
+  }): Promise<void> {
+    await this.storageSessionLock.acquire();
+    try {
+      await this.storageSessionLock.run({ run: async () => {
+        const storageRoot = await getStorageRootIfPresent();
+        if (storageRoot === undefined) {
+          throw new Error('OPFS storage root does not exist');
+        }
+        const encryptionModule = await import('./opfs-encryption/bootstrap');
+        const inspection = requireEncryptedInspection({
+          inspection: await encryptionModule.inspectOpfsEncryption({ storageRoot }),
+        });
+        const session = await encryptionModule.unlockOpfsEncryptionWithRecoveryKey({
+          storageRoot,
+          state: inspection.state,
+          recoveryKey,
+        });
+        this.unlockedEncryptionSession = session;
+        this.backend = session.backend;
+      } });
+    } catch (error) {
+      await this.storageSessionLock.suspend();
+      throw error;
+    }
+  }
+
+  async lockEncryption(): Promise<void> {
+    await this.storageSessionLock.suspend();
+    this.clearEncryptionSession();
+    this.backend = undefined;
+  }
+
+  async suspendStorageSession(): Promise<void> {
+    await this.storageSessionLock.suspend();
+  }
+
+  override async dispose(): Promise<void> {
+    await this.storageSessionLock.suspend();
+    this.clearEncryptionSession();
+    this.backend = undefined;
+  }
+
+  async enableEncryption({
+    passphrase,
+    signal,
+  }: {
+    passphrase: string,
+    signal: AbortSignal | undefined,
+  }): Promise<{ readonly recoveryKey: string }> {
+    const result = await this.runTransition({ run: async () => {
+      const inspection = await this.inspectEncryption();
+      requirePlainInspection({ inspection });
+      const storageRoot = await getOrCreateStorageRoot();
+      const transitionModule = await import(
+        './opfs-encryption/encryption-transition-coordinator'
+      );
+      return await new transitionModule.EncryptionTransitionCoordinator({
+        storageRoot,
+      }).enableEncryption({ passphrase, signal });
+    } });
+    if (result.type !== 'encrypted' || result.recoveryKey === undefined) {
+      throw new Error('Enabling OPFS encryption did not return a recovery key');
+    }
+    return { recoveryKey: result.recoveryKey };
+  }
+
+  async changePassphrase({
+    passphrase,
+  }: {
+    passphrase: string,
+  }): Promise<void> {
+    await this.storageSessionLock.run({ run: async () => {
+      const session = this.requireUnlockedEncryptionSession();
+      const storageRoot = await getOrCreateStorageRoot();
+      const keyManager = await import('./opfs-encryption/encryption-key-manager');
+      const stateModule = await import('./opfs-encryption/encryption-state-store');
+      const state = {
+        ...session.state,
+        sequence: session.state.sequence + 1,
+        keySlots: await keyManager.replacePassphraseEncryptionKeySlots({
+          keySlots: session.state.keySlots,
+          storageUnlockKey: session.storageUnlockKey,
+          passphrase,
+          pbkdf2Iterations: keyManager.DEFAULT_PBKDF2_ITERATIONS,
+        }),
+      };
+      await new stateModule.EncryptionStateStore({ storageRoot }).writeState({ state });
+      this.unlockedEncryptionSession = {
+        ...session,
+        state,
+      };
+    } });
+  }
+
+  async disableEncryption({
+    signal,
+  }: {
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    const session = this.requireUnlockedEncryptionSession();
+    await this.runTransition({ run: async () => {
+      const storageRoot = await getOrCreateStorageRoot();
+      const transitionModule = await import(
+        './opfs-encryption/encryption-transition-coordinator'
+      );
+      return await new transitionModule.EncryptionTransitionCoordinator({
+        storageRoot,
+      }).disableEncryption({ session, signal });
+    } });
+  }
+
+  async reencrypt({
+    signal,
+  }: {
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    const session = this.requireUnlockedEncryptionSession();
+    await this.runTransition({ run: async () => {
+      const storageRoot = await getOrCreateStorageRoot();
+      const transitionModule = await import(
+        './opfs-encryption/encryption-transition-coordinator'
+      );
+      return await new transitionModule.EncryptionTransitionCoordinator({
+        storageRoot,
+      }).reencrypt({ session, signal });
+    } });
+  }
+
+  async resumeTransitionWithPassphrase({
+    passphrase,
+    signal,
+  }: {
+    passphrase: string,
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runTransition({ run: async () => {
+      const inspection = requireTransitioningInspection({
+        inspection: await this.inspectEncryption(),
       });
-      await this.saveMigrationState({ state });
-    }
+      const storageRoot = await getOrCreateStorageRoot();
+      const transitionModule = await import(
+        './opfs-encryption/encryption-transition-coordinator'
+      );
+      return await new transitionModule.EncryptionTransitionCoordinator({
+        storageRoot,
+      }).resumeWithPassphrase({ state: inspection.state, passphrase, signal });
+    } });
   }
 
-  private async migrateV1UploadedFilesToBinaryObjects(): Promise<void> {
-    try {
-      const legacyDir = await this.root!.getDirectoryHandle('uploaded-files');
-      console.log(`[OPFSStorageProvider] Starting migration: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
-
-      // 1. Migrate Files and Create Mapping (attachmentId -> binaryObjectId)
-      const idMap = new Map<string, string>();
-
-      for await (const attachmentDirEntry of legacyDir.values()) {
-        const entryKind = attachmentDirEntry.kind;
-        switch (entryKind) {
-        case 'directory': {
-          const attachmentId = attachmentDirEntry.name;
-          for await (const fileEntry of (attachmentDirEntry as FileSystemDirectoryHandle).values()) {
-            const fileKind = fileEntry.kind;
-            switch (fileKind) {
-            case 'file': {
-              const blob = await (fileEntry as FileSystemFileHandle).getFile();
-              const newBinaryObjectId = generateId<BinaryObjectId>();
-
-              // Save to new location with NEW ID
-              await this.saveFile({ blob, binaryObjectId: newBinaryObjectId, name: fileEntry.name });
-              idMap.set(attachmentId, idToRaw({ id: newBinaryObjectId }));
-              break;
-            }
-            case 'directory':
-              break;
-            default: {
-              const _ex: never = fileKind;
-              throw new Error(`Unhandled file kind: ${_ex}`);
-            }
-            }
-          }
-          break;
-        }
-        case 'file':
-          break;
-        default: {
-          const _ex: never = entryKind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
-        }
-        }
-      }
-
-      // 2. Update all Chat Content JSON files to point to the new IDs
-      const contentDir = await this.getDir({ name: 'chat-contents' });
-      for await (const entry of contentDir.values()) {
-        const entryKind = entry.kind;
-        switch (entryKind) {
-        case 'file': {
-          if (entry.name.endsWith('.json')) {
-            try {
-              const file = await (entry as FileSystemFileHandle).getFile();
-              const content = ChatContentSchemaDto.parse(JSON.parse(await file.text()));
-
-              let modified = false;
-              const processNodes = ({ nodes }: { nodes: MessageNodeDto[] }): void => {
-                for (const node of nodes) {
-                  if (node.attachments) {
-                    for (const attachment of node.attachments) {
-                      if ('binaryObjectId' in attachment) continue;
-
-                      const binaryObjectId = idMap.get(attachment.id);
-                      if (binaryObjectId === undefined) continue;
-
-                      Object.assign(attachment, {
-                        binaryObjectId,
-                        name: attachment.originalName,
-                      });
-                      modified = true;
-                    }
-                  }
-                  processNodes({ nodes: node.replies.items });
-                }
-              };
-
-              processNodes({ nodes: content.root.items });
-              if (modified) {
-                const writable = await (entry as unknown as FileSystemFileHandleWithWritable).createWritable();
-                await writable.write(JSON.stringify(content));
-                await writable.close();
-              }
-            } catch (jsonErr) {
-              console.warn(`[OPFSStorageProvider] Skipping corrupted chat content file: ${entry.name}`, jsonErr);
-            }
-          }
-          break;
-        }
-        case 'directory':
-          break;
-        default: {
-          const _ex: never = entryKind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
-        }
-        }
-      }
-
-      // 3. Cleanup
-      await this.root!.removeEntry('uploaded-files', { recursive: true });
-      console.log(`[OPFSStorageProvider] Migration completed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
-    } catch (e) {
-      // If uploaded-files doesn't exist, migration is not needed
-      const isNotFound = e instanceof Error && (e.name === 'NotFoundError' || (e as { code?: number }).code === 8);
-      if (!isNotFound) {
-        console.error(`[OPFSStorageProvider] Migration failed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`, e);
-        throw e;
-      }
-    }
+  async resumeTransitionWithRecoveryKey({
+    recoveryKey,
+    signal,
+  }: {
+    recoveryKey: string,
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runTransition({ run: async () => {
+      const inspection = requireTransitioningInspection({
+        inspection: await this.inspectEncryption(),
+      });
+      const storageRoot = await getOrCreateStorageRoot();
+      const transitionModule = await import(
+        './opfs-encryption/encryption-transition-coordinator'
+      );
+      return await new transitionModule.EncryptionTransitionCoordinator({
+        storageRoot,
+      }).resumeWithRecoveryKey({ state: inspection.state, recoveryKey, signal });
+    } });
   }
 
-  private async getDir({ name, parent = this.root! }: { name: string, parent?: FileSystemDirectoryHandle }): Promise<FileSystemDirectoryHandle> {
-    await this.ensureRoot();
-    return await parent.getDirectoryHandle(name, { create: true });
+  async listChatMetasRaw(): Promise<ChatMetaDto[]> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.listChatMetasRaw() });
   }
 
-  // --- Binary Object Storage (Sharded) ---
-
-  private getBinaryObjectShardPath({ id }: { id: BinaryObjectId }): string {
-    return idToRaw({ id }).slice(-2).toLowerCase();
+  async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.listChatGroupsRaw() });
   }
-
-  private async getBinaryObjectsDir(): Promise<FileSystemDirectoryHandle> {
-    return await this.getDir({ name: 'binary-objects' });
-  }
-
-  private async getShardDir({ shard }: { shard: string }): Promise<FileSystemDirectoryHandle> {
-    const baseDir = await this.getBinaryObjectsDir();
-    return await this.getDir({ name: shard, parent: baseDir });
-  }
-
-  private async loadShardIndex({ shard }: { shard: string }): Promise<BinaryShardIndex> {
-    try {
-      const dir = await this.getShardDir({ shard: shard });
-      const fileHandle = await dir.getFileHandle('index.json');
-      const file = await fileHandle.getFile();
-      return BinaryShardIndexSchemaDto.parse(JSON.parse(await file.text()));
-    } catch {
-      return { objects: {} };
-    }
-  }
-
-  private async saveShardIndex({ shard, index }: { shard: string, index: BinaryShardIndex }): Promise<void> {
-    const dir = await this.getShardDir({ shard: shard });
-    const fileHandle = await dir.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
-    await writable.close();
-  }
-
-  private async hydrateAttachments({ nodes }: { nodes: MessageNode[] }): Promise<void> {
-    const shardCache = new Map<string, BinaryShardIndex>();
-
-    const processNodes = async ({ items }: { items: MessageNode[] }) => {
-      for (const node of items) {
-        if (node.attachments) {
-          for (let i = 0; i < node.attachments.length; i++) {
-            const att = node.attachments[i];
-            if (!att) continue;
-
-            const status = att.status;
-            switch (status) {
-            case 'persisted': {
-              const shard = this.getBinaryObjectShardPath({ id: att.binaryObjectId });
-              let index = shardCache.get(shard);
-              if (!index) {
-                index = await this.loadShardIndex({ shard: shard });
-                shardCache.set(shard, index);
-              }
-
-              const meta = index.objects[idToRaw({ id: att.binaryObjectId })];
-              if (meta) {
-                att.mimeType = meta.mimeType;
-                att.size = meta.size;
-                att.uploadedAt = meta.createdAt;
-              } else {
-                node.attachments[i] = {
-                  id: att.id,
-                  binaryObjectId: att.binaryObjectId,
-                  originalName: att.originalName,
-                  mimeType: att.mimeType,
-                  size: att.size,
-                  uploadedAt: att.uploadedAt,
-                  status: 'missing',
-                };
-              }
-              break;
-            }
-            case 'memory':
-            case 'missing':
-              break;
-            default: {
-              const _ex: never = status;
-              throw new Error(`Unhandled attachment status: ${_ex}`);
-            }
-            }
-          }
-        }
-        if (node.replies?.items) {
-          await processNodes({ items: node.replies.items });
-        }
-      }
-    };
-
-    await processNodes({ items: nodes });
-  }
-
-  // --- Internal Data Access ---
-
-  protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
-    try {
-      const dir = await this.getDir({ name: 'chat-metas' });
-      const dtos: ChatMetaDto[] = [];
-      for await (const entry of dir.values()) {
-        const kind = entry.kind;
-        switch (kind) {
-        case 'file': {
-          if (entry.name.endsWith('.json')) {
-            const file = await (entry as FileSystemFileHandle).getFile();
-            dtos.push(ChatMetaSchemaDto.parse(JSON.parse(await file.text())));
-          }
-          break;
-        }
-        case 'directory':
-          break;
-        default: {
-          const _ex: never = kind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
-        }
-        }
-      }
-      return dtos;
-    } catch {
-      return [];
-    }
-  }
-
-  protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
-    try {
-      const dir = await this.getDir({ name: 'chat-groups' });
-      const dtos: ChatGroupDto[] = [];
-      for await (const entry of dir.values()) {
-        const kind = entry.kind;
-        switch (kind) {
-        case 'file': {
-          if (entry.name.endsWith('.json')) {
-            const file = await (entry as FileSystemFileHandle).getFile();
-            dtos.push(ChatGroupSchemaDto.parse(JSON.parse(await file.text())));
-          }
-          break;
-        }
-        case 'directory':
-          break;
-        default: {
-          const _ex: never = kind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
-        }
-        }
-      }
-      return dtos;
-    } catch {
-      return [];
-    }
-  }
-
-  // --- Hierarchy Management ---
 
   async loadHierarchy(): Promise<HierarchyDto | null> {
-    await this.ensureRoot();
-    try {
-      const fileHandle = await this.root!.getFileHandle('hierarchy.json');
-      const file = await fileHandle.getFile();
-      return HierarchySchemaDto.parse(JSON.parse(await file.text()));
-    } catch {
-      // If file doesn't exist or is invalid, return empty hierarchy
-      return { items: [] };
-    }
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.loadHierarchy() });
   }
 
   async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
-    await this.ensureRoot();
-    const fileHandle = await this.root!.getFileHandle('hierarchy.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(hierarchy));
-    await writable.close();
+    await this.runWithBackend({ run: async ({ backend }) => await backend.saveHierarchy({ hierarchy }) });
   }
-
-  // --- Persistence Implementation ---
-
-  async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
-    const dto = chatMetaToDto({ domain: meta });
-    ChatMetaSchemaDto.parse(dto);
-    const dir = await this.getDir({ name: 'chat-metas' });
-    const fileHandle = await dir.getFileHandle(`${idToRaw({ id: meta.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
-    await writable.close();
-  }
-
-  async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
-    const dto = chatContentToDto({ domain: content });
-    ChatContentSchemaDto.parse(dto);
-    const dir = await this.getDir({ name: 'chat-contents' });
-    const fileHandle = await dir.getFileHandle(`${idToRaw({ id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
-    await writable.close();
-  }
-
-  async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
-    try {
-      const metaDir = await this.getDir({ name: 'chat-metas' });
-      const contentDir = await this.getDir({ name: 'chat-contents' });
-
-      const metaFile = await (await metaDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      const contentFile = await (await contentDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-
-      const meta = ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text()));
-      const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
-
-      const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
-
-      // Resolve groupId from hierarchy
-      const hierarchy = await this.loadHierarchy();
-      if (hierarchy) {
-        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-        if (group) chat.groupId = toChatGroupId({ raw: group.id });
-      }
-
-      // Hydrate attachments with metadata from BinaryObject indices
-      await this.hydrateAttachments({ nodes: chat.root.items });
-
-      return chat;
-    } catch {
-      return null;
-    }
-  }
-
-  async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
-    try {
-      const metaDir = await this.getDir({ name: 'chat-metas' });
-      const metaFile = await (await metaDir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text())) });
-
-      // Resolve groupId from hierarchy
-      const hierarchy = await this.loadHierarchy();
-      if (hierarchy) {
-        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
-        if (group) meta.groupId = toChatGroupId({ raw: group.id });
-      }
-
-      return meta;
-    } catch {
-      return null;
-    }
-  }
-
-  async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
-    const content = await this.loadUnhydratedChatContent({ id });
-    if (content === null) return null;
-
-    await this.hydrateAttachments({ nodes: content.root.items });
-    return content;
-  }
-
-  async loadChatContentWithoutAttachments({ id }: { id: ChatId }): Promise<ChatContent | null> {
-    return this.loadUnhydratedChatContent({ id });
-  }
-
-  async deleteChat({ id }: { id: ChatId }): Promise<void> {
-    try {
-      const metaDir = await this.getDir({ name: 'chat-metas' });
-      const contentDir = await this.getDir({ name: 'chat-contents' });
-      await metaDir.removeEntry(`${idToRaw({ id })}.json`);
-      await contentDir.removeEntry(`${idToRaw({ id })}.json`);
-    } catch { /* ignore */ }
-  }
-
-  async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
-    const dto = chatGroupToDto({ domain: chatGroup });
-    ChatGroupSchemaDto.parse(dto);
-    const dir = await this.getDir({ name: 'chat-groups' });
-    const fileHandle = await dir.getFileHandle(`${idToRaw({ id: chatGroup.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
-    await writable.close();
-  }
-
-  async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
-    try {
-      const dir = await this.getDir({ name: 'chat-groups' });
-      const file = await (await dir.getFileHandle(`${idToRaw({ id })}.json`)).getFile();
-      const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await file.text()));
-
-      const { hierarchy, allMetas } = await promiseAllKeyed({
-        hierarchy: this.loadHierarchy(),
-        allMetas: this.listChatMetasRaw(),
-      });
-
-      const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
-      const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
-      return chatGroupToDomain({ dto: groupDto, hierarchy: h, chatMetas });
-    } catch {
-      return null;
-    }
-  }
-
-  async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
-    try {
-      const dir = await this.getDir({ name: 'chat-groups' });
-      await dir.removeEntry(`${idToRaw({ id })}.json`);
-    } catch { /* ignore */ }
-  }
-
-  public override async getSidebarStructure(): Promise<SidebarItem[]> {
-    const { rawHierarchy, rawMetas, rawGroups } = await promiseAllKeyed({
-      rawHierarchy: this.loadHierarchy(),
-      rawMetas: this.listChatMetasRaw(),
-      rawGroups: this.listChatGroupsRaw(),
-    });
-
-    const hierarchy = hierarchyToDomain({ dto: rawHierarchy || { items: [] } });
-    const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
-    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
-
-    return buildSidebarItemsFromHierarchy({ hierarchy, chatMetas, chatGroups });
-  }
-
-  // --- Binary Object Storage ---
-
-  private async saveFileWithMetadata({ blob, binaryObjectId, name, mimeType, createdAt }: {
-    blob: Blob,
-    binaryObjectId: BinaryObjectId,
-    name: string,
-    mimeType: string | undefined,
-    createdAt: number,
-  }): Promise<void> {
-    const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-    const dir = await this.getShardDir({ shard: shard });
-
-    // 1. Write Blob
-    const binFileName = `${idToRaw({ id: binaryObjectId })}.bin`;
-    const fileHandle = await dir.getFileHandle(binFileName, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    // Convert blob to ArrayBuffer for compatibility
-    await writable.write(await blob.arrayBuffer());
-    await writable.close();
-
-    // 2. Write Marker
-    const markerName = `.${binFileName}.complete`;
-    await dir.getFileHandle(markerName, { create: true });
-
-    // 3. Update Index
-    const index = await this.loadShardIndex({ shard: shard });
-    index.objects[idToRaw({ id: binaryObjectId })] = {
-      id: idToRaw({ id: binaryObjectId }),
-      mimeType: mimeType ?? (blob.type || 'application/octet-stream'),
-      size: blob.size,
-      createdAt,
-      name,
-    };
-    await this.saveShardIndex({ shard: shard, index: index });
-  }
-
-  async saveFile({ blob, binaryObjectId, name, mimeType }: {
-    blob: Blob,
-    binaryObjectId: BinaryObjectId,
-    name: string,
-    mimeType?: string,
-  }): Promise<void> {
-    await this.saveFileWithMetadata({
-      blob,
-      binaryObjectId,
-      name,
-      mimeType,
-      createdAt: Date.now(),
-    });
-  }
-
-  async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
-    try {
-      const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-      const dir = await this.getShardDir({ shard: shard });
-      const rawId = idToRaw({ id: binaryObjectId });
-      const fileName = `${rawId}.bin`;
-      const markerName = `.${fileName}.complete`;
-
-      // Verify completion marker
-      await dir.getFileHandle(markerName);
-
-      const fileHandle = await dir.getFileHandle(fileName);
-      const { file, index } = await promiseAllKeyed({
-        file: fileHandle.getFile(),
-        index: this.loadShardIndex({ shard: shard }),
-      });
-      const mimeType = index.objects[rawId]?.mimeType;
-
-      return mimeType === undefined || mimeType === file.type
-        ? file
-        : file.slice(0, file.size, mimeType);
-    } catch (e) {
-      console.error('Failed to get file from OPFS storage:', e);
-      return null;
-    }
-  }
-
-  async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null> {
-    try {
-      const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-      const index = await this.loadShardIndex({ shard: shard });
-      const dto = index.objects[idToRaw({ id: binaryObjectId })];
-      return dto === undefined ? null : binaryObjectToDomain({ dto });
-    } catch (e) {
-      console.error('Failed to get binary object info:', e);
-      return null;
-    }
-  }
-
-  async hasAttachments(): Promise<boolean> {
-    try {
-      const baseDir = await this.getBinaryObjectsDir();
-      for await (const entry of baseDir.values()) {
-        const kind = entry.kind;
-        switch (kind) {
-        case 'directory': {
-          // Check if shard has any files other than index.json
-          for await (const shardEntry of (entry as FileSystemDirectoryHandle).values()) {
-            if (shardEntry.name !== 'index.json') return true;
-          }
-          break;
-        }
-        case 'file':
-          break;
-        default: {
-          const _ex: never = kind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
-        }
-        }
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  }
-
-  async *listBinaryObjects(): AsyncIterable<BinaryObject> {
-    await this.ensureRoot();
-    try {
-      const baseDir = await this.getBinaryObjectsDir();
-      for await (const shardEntry of baseDir.values()) {
-        const kind = shardEntry.kind;
-        switch (kind) {
-        case 'directory': {
-          const index = await this.loadShardIndex({ shard: shardEntry.name });
-          for (const obj of Object.values(index.objects)) {
-            yield binaryObjectToDomain({ dto: obj });
-          }
-          break;
-        }
-        case 'file':
-          break;
-        default: {
-          const _ex: never = kind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
-        }
-        }
-      }
-    } catch (e) {
-      console.error('[OPFSStorageProvider] Failed to list binary objects', e);
-    }
-  }
-
-  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
-    await this.ensureRoot();
-    const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
-    const dir = await this.getShardDir({ shard: shard });
-    const fileName = `${idToRaw({ id: binaryObjectId })}.bin`;
-    const markerName = `.${fileName}.complete`;
-
-    try {
-      await dir.removeEntry(fileName);
-    } catch { /* ignore */ }
-    try {
-      await dir.removeEntry(markerName);
-    } catch { /* ignore */ }
-
-    const index = await this.loadShardIndex({ shard: shard });
-    if (index.objects[idToRaw({ id: binaryObjectId })]) {
-      delete index.objects[idToRaw({ id: binaryObjectId })];
-      await this.saveShardIndex({ shard: shard, index: index });
-    }
-  }
-
-  async saveSettings({ settings }: { settings: Settings }): Promise<void> {
-    await this.ensureRoot();
-    const dto = settingsToDto({ domain: settings });
-    const validated = SettingsSchemaDto.parse(dto);
-    const fileHandle = await this.root!.getFileHandle('settings.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(validated));
-    await writable.close();
-  }
-
-  async loadSettings(): Promise<Settings | null> {
-    await this.ensureRoot();
-    try {
-      const fileHandle = await this.root!.getFileHandle('settings.json');
-      const file = await fileHandle.getFile();
-      return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(await file.text())) });
-    } catch {
-      return null;
-    }
-  }
-
-  async clearAll(): Promise<void> {
-    await this.ensureRoot();
-    for await (const key of this.root!.keys()) {
-      await this.root!.removeEntry(key, { recursive: true });
-    }
-  }
-
-  // --- Migration Implementation ---
 
   async dump(): Promise<StorageSnapshot> {
-    await this.ensureRoot();
-    const { settings, hierarchy, rawMetas, rawGroups } = await promiseAllKeyed({
-      settings: this.loadSettings(),
-      hierarchy: this.loadHierarchy(),
-      rawMetas: this.listChatMetasRaw(),
-      rawGroups: this.listChatGroupsRaw(),
-    });
-
-    const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
-    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy: h, chatMetas: [] }));
-    const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
-
-    const contentStream = async function* (this: OPFSStorageProvider): AsyncGenerator<MigrationChunkDto> {
-      // 1. Stream all chats
-      for (const meta of rawMetas) {
-        const chat = await this.loadChat({ id: toChatId({ raw: meta.id }) });
-        if (chat) {
-          yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
-        }
-      }
-
-      // 2. Stream all binary objects directly from storage (independent of chat references)
-      try {
-        const baseDir = await this.getBinaryObjectsDir();
-        for await (const shardEntry of baseDir.values()) {
-          const kind = shardEntry.kind;
-          switch (kind) {
-          case 'directory': {
-            const shard = shardEntry.name;
-            const index = await this.loadShardIndex({ shard: shard });
-            for (const bId of Object.keys(index.objects)) {
-              const meta = index.objects[bId]!;
-              const blob = await this.getFile({ binaryObjectId: toBinaryObjectId({ raw: bId }) });
-              if (blob) {
-                yield {
-                  type: 'binary_object' as const,
-                  id: bId,
-                  name: meta.name ?? 'file',
-                  mimeType: meta.mimeType,
-                  size: meta.size,
-                  createdAt: meta.createdAt,
-                  blob,
-                };
-              }
-            }
-            break;
-          }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = kind;
-            throw new Error(`Unhandled entry kind: ${_ex}`);
-          }
-          }
-        }
-      } catch (e) {
-        console.warn('[OPFSStorageProvider] Failed to dump some binary objects', e);
-      }
-    };
-
+    const snapshot = await this.runWithBackend({ run: async ({ backend }) => await backend.dump() });
     return {
-      structure: {
-        settings: settings || {
-          titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
-          providerProfiles: [],
-          mounts: [],
-          storageType: 'opfs',
-          endpoint: { type: 'openai', url: '' },
-        } satisfies Settings,
-        hierarchy: h,
-        chatMetas,
-        chatGroups,
-      },
-      contentStream: contentStream.call(this),
+      structure: snapshot.structure,
+      contentStream: this.storageSessionLock.iterate({
+        createSource: () => snapshot.contentStream,
+      }),
     };
   }
 
   async restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void> {
-    const { structure, contentStream } = snapshot;
-    await this.ensureRoot();
-
-    // 1. Restore Structural Metadata
-    if (structure.settings) await this.saveSettings({ settings: structure.settings });
-    if (structure.hierarchy) await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
-    if (structure.chatMetas) {
-      for (const meta of structure.chatMetas) await this.saveChatMeta({ meta });
-    }
-    if (structure.chatGroups) {
-      for (const group of structure.chatGroups) await this.saveChatGroup({ chatGroup: group });
-    }
-
-    // 2. Restore Heavy Content
-    for await (const chunk of contentStream) {
-      const type = chunk.type;
-      switch (type) {
-      case 'chat': {
-        const domainChat = chatToDomain({ dto: chunk.data });
-        await this.saveChatContent({ id: domainChat.id, content: domainChat });
-        await this.saveChatMeta({ meta: domainChat });
-        break;
-      }
-      case 'binary_object':
-        await this.saveFileWithMetadata({
-          blob: chunk.blob,
-          binaryObjectId: toBinaryObjectId({ raw: chunk.id }),
-          name: chunk.name,
-          mimeType: chunk.mimeType,
-          createdAt: chunk.createdAt,
-        });
-        break;
-      default: {
-        const _ex: never = type;
-        throw new Error(`Unknown chunk type: ${_ex}`);
-      }
-      }
-    }
+    await this.runWithBackend({ run: async ({ backend }) => await backend.restore({ snapshot }) });
   }
 
-  // --- Volume Management ---
-
-  private readonly hostVolumeDB = new HostVolumeDB();
-
-  private getVolumeShardPath({ id }: { id: VolumeId }): string {
-    return idToRaw({ id }).slice(-2).toLowerCase();
+  async getSidebarStructure(): Promise<SidebarItem[]> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.getSidebarStructure() });
   }
 
-  private async getVolumesBaseDir(): Promise<FileSystemDirectoryHandle> {
-    return await this.getDir({ name: 'volumes' });
+  async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.saveChatMeta({ meta }) });
   }
 
-  private async getVolumeShardDir({ shard }: { shard: string }): Promise<FileSystemDirectoryHandle> {
-    const baseDir = await this.getVolumesBaseDir();
-    return await this.getDir({ name: shard, parent: baseDir });
+  async saveChatContent({
+    id,
+    content,
+  }: {
+    id: ChatId,
+    content: ChatContent,
+  }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.saveChatContent({ id, content }) });
   }
 
-  private async loadVolumeShardIndex({ shard }: { shard: string }): Promise<VolumeIndexDto> {
+  async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.loadChat({ id }) });
+  }
+
+  async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.loadChatMeta({ id }) });
+  }
+
+  async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.loadChatContent({ id }) });
+  }
+
+  async loadChatContentWithoutAttachments({
+    id,
+  }: {
+    id: ChatId,
+  }): Promise<ChatContent | null> {
+    return await this.runWithBackend({
+      run: async ({ backend }) => await backend.loadChatContentWithoutAttachments({ id }),
+    });
+  }
+
+  async deleteChat({ id }: { id: ChatId }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.deleteChat({ id }) });
+  }
+
+  async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.saveChatGroup({ chatGroup }) });
+  }
+
+  async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.loadChatGroup({ id }) });
+  }
+
+  async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.deleteChatGroup({ id }) });
+  }
+
+  async saveSettings({ settings }: { settings: Settings }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.saveSettings({ settings }) });
+  }
+
+  async loadSettings(): Promise<Settings | null> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.loadSettings() });
+  }
+
+  async clearAll(): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.clearAll() });
+  }
+
+  async writeBinaryObject({
+    source,
+    binaryObjectId,
+    name,
+    mimeType,
+    size,
+    createdAt,
+    signal,
+  }: {
+    source: StorageBinaryObjectWriteSource,
+    binaryObjectId: BinaryObjectId,
+    name: string,
+    mimeType: string,
+    size: number,
+    createdAt: number,
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.writeBinaryObject({
+      source,
+      binaryObjectId,
+      name,
+      mimeType,
+      size,
+      createdAt,
+      signal,
+    }) });
+  }
+
+  async openBinaryObject({
+    binaryObjectId,
+  }: {
+    binaryObjectId: BinaryObjectId,
+  }): Promise<StorageBinaryObjectReadHandle | null> {
+    const release = this.storageSessionLock.acquireOperation();
     try {
-      const dir = await this.getVolumeShardDir({ shard });
-      const fileHandle = await dir.getFileHandle('index.json');
-      const file = await fileHandle.getFile();
-      return VolumeIndexSchemaDto.parse(JSON.parse(await file.text()));
-    } catch {
-      return { volumes: {} };
+      const handle = await this.requireBackend().openBinaryObject({ binaryObjectId });
+      if (handle === null) {
+        release();
+        return null;
+      }
+      return this.wrapBinaryObjectReadHandle({ handle, release });
+    } catch (error) {
+      release();
+      throw error;
     }
   }
 
-  private async saveVolumeShardIndex({ shard, index }: { shard: string, index: VolumeIndexDto }): Promise<void> {
-    const dir = await this.getVolumeShardDir({ shard });
-    const fileHandle = await dir.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
-    await writable.close();
+  async getBinaryObject({
+    binaryObjectId,
+  }: {
+    binaryObjectId: BinaryObjectId,
+  }): Promise<BinaryObject | null> {
+    return await this.runWithBackend({
+      run: async ({ backend }) => await backend.getBinaryObject({ binaryObjectId }),
+    });
   }
 
-  private async copyDirectory({ source, destination }: { source: FileSystemDirectoryHandle, destination: FileSystemDirectoryHandle }): Promise<void> {
-    for await (const entry of source.values()) {
-      switch (entry.kind) {
-      case 'file': {
-        const file = await (entry as FileSystemFileHandle).getFile();
-        const destFile = await destination.getFileHandle(entry.name, { create: true }) as FileSystemFileHandleWithWritable;
-        const writable = await destFile.createWritable();
-        await writable.write(await file.arrayBuffer());
-        await writable.close();
-        break;
-      }
-      case 'directory': {
-        const newDestSubDir = await destination.getDirectoryHandle(entry.name, { create: true });
-        await this.copyDirectory({ source: entry as FileSystemDirectoryHandle, destination: newDestSubDir });
-        break;
-      }
-      default: {
-        const _ex: never = entry;
-        throw new Error(`Unhandled entry kind: ${(_ex as { kind: string }).kind}`);
-      }
-      }
-    }
+  async hasAttachments(): Promise<boolean> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.hasAttachments() });
+  }
+
+  async *listBinaryObjects(): AsyncIterable<BinaryObject> {
+    yield* this.iterateWithBackend({
+      createSource: ({ backend }) => backend.listBinaryObjects(),
+    });
+  }
+
+  async deleteBinaryObject({
+    binaryObjectId,
+  }: {
+    binaryObjectId: BinaryObjectId,
+  }): Promise<void> {
+    await this.runWithBackend({
+      run: async ({ backend }) => await backend.deleteBinaryObject({ binaryObjectId }),
+    });
   }
 
   async *listVolumes(): AsyncIterable<Volume> {
-    await this.ensureRoot();
-    try {
-      const baseDir = await this.getVolumesBaseDir();
-      for await (const shardEntry of baseDir.values()) {
-        switch (shardEntry.kind) {
-        case 'directory': {
-          const index = await this.loadVolumeShardIndex({ shard: shardEntry.name });
-          for (const volDto of Object.values(index.volumes)) {
-            yield volumeToDomain({ dto: volDto });
-          }
-          break;
-        }
-        case 'file':
-          break;
-        default: {
-          throw new Error(`Unhandled entry kind: ${((shardEntry satisfies never) as { readonly kind: string }).kind}`);
-        }
-        }
-      }
-    } catch (e) {
-      console.error('[OPFSStorageProvider] Failed to list volumes', e);
-    }
+    yield* this.iterateWithBackend({ createSource: ({ backend }) => backend.listVolumes() });
   }
 
-  async createVolume({ name, type, sourceHandle }: {
+  async createVolume({
+    name,
+    type,
+    sourceHandle,
+  }: {
     name: string,
     type: VolumeType,
     sourceHandle: FileSystemDirectoryHandle,
   }): Promise<Volume> {
-    const id = generateId<VolumeId>();
-    const createdAt = Date.now();
-    const shard = this.getVolumeShardPath({ id });
-
-    let volumeDto: VolumeDto;
-
-    switch (type) {
-    case 'opfs': {
-      const shardDir = await this.getVolumeShardDir({ shard });
-      const volumeDir = await shardDir.getDirectoryHandle(idToRaw({ id }), { create: true });
-      await this.copyDirectory({ source: sourceHandle, destination: volumeDir });
-
-      volumeDto = {
-        type: 'opfs',
-        id: idToRaw({ id }),
-        name,
-        createdAt,
-      };
-      break;
-    }
-    case 'host': {
-      await this.hostVolumeDB.put({ id: idToRaw({ id }), handle: sourceHandle });
-      volumeDto = {
-        type: 'host',
-        id: idToRaw({ id }),
-        name,
-        createdAt,
-      };
-      break;
-    }
-    default: {
-      const _ex: never = type;
-      throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
-    }
-    }
-
-    const index = await this.loadVolumeShardIndex({ shard });
-    index.volumes[idToRaw({ id })] = volumeDto;
-    await this.saveVolumeShardIndex({ shard, index });
-
-    return volumeToDomain({ dto: volumeDto });
+    return await this.runWithBackend({
+      run: async ({ backend }) => await backend.createVolume({ name, type, sourceHandle }),
+    });
   }
 
-  async createVolumeFromFiles({ name, entries, onProgress, signal }: {
+  async createVolumeFromFiles({
+    name,
+    entries,
+    onProgress,
+    signal,
+  }: {
     name: string,
     entries: Array<{ file: File, relativePath: string }>,
     onProgress?: ({ processed, total }: { processed: number, total: number }) => void,
     signal?: AbortSignal,
   }): Promise<Volume> {
-    const id = generateId<VolumeId>();
-    const createdAt = Date.now();
-    const shard = this.getVolumeShardPath({ id });
-
-    const shardDir = await this.getVolumeShardDir({ shard });
-    const volumeDir = await shardDir.getDirectoryHandle(idToRaw({ id }), { create: true });
-
-    for (let i = 0; i < entries.length; i++) {
-      if (signal?.aborted) {
-        await shardDir.removeEntry(idToRaw({ id }), { recursive: true }).catch(() => {});
-        throw new DOMException('Cancelled by user', 'AbortError');
-      }
-
-      const entry = entries[i];
-      if (!entry) continue;
-      const { file, relativePath } = entry;
-      const pathParts = relativePath.split('/').filter(Boolean);
-
-      const fileName = pathParts.pop()!;
-      let currentDir = volumeDir;
-
-      for (const part of pathParts) {
-        currentDir = await currentDir.getDirectoryHandle(part, { create: true });
-      }
-
-      const fileHandle = await currentDir.getFileHandle(fileName, { create: true }) as FileSystemFileHandleWithWritable;
-      const writable = await fileHandle.createWritable();
-      await writable.write(await file.arrayBuffer());
-      await writable.close();
-
-      if (onProgress) {
-        onProgress({ processed: i + 1, total: entries.length });
-      }
-    }
-
-    const volumeDto: VolumeDto = {
-      type: 'opfs',
-      id: idToRaw({ id }),
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.createVolumeFromFiles({
       name,
-      createdAt,
-    };
-
-    const index = await this.loadVolumeShardIndex({ shard });
-    index.volumes[idToRaw({ id })] = volumeDto;
-    await this.saveVolumeShardIndex({ shard, index });
-
-    return volumeToDomain({ dto: volumeDto });
+      entries,
+      onProgress,
+      signal,
+    }) });
   }
 
-  async getVolumeDirectoryHandle({ volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle | null> {
-    try {
-      const shard = this.getVolumeShardPath({ id: volumeId });
-      const index = await this.loadVolumeShardIndex({ shard });
-      const volume = index.volumes[idToRaw({ id: volumeId })];
-
-      if (!volume) return null;
-
-      switch (volume.type) {
-      case 'opfs': {
-        const shardDir = await this.getVolumeShardDir({ shard });
-        return await shardDir.getDirectoryHandle(idToRaw({ id: volumeId }));
-      }
-      case 'host':
-        return await this.hostVolumeDB.get({ id: idToRaw({ id: volumeId }) }) || null;
-      default: {
-        const _ex: never = volume;
-        throw new Error(`Unhandled volume type: ${JSON.stringify(_ex)}`);
-      }
-      }
-    } catch (e) {
-      console.error('Failed to get volume directory handle:', e);
-      return null;
-    }
+  async openVolume({
+    volumeId,
+  }: {
+    volumeId: VolumeId,
+  }): Promise<StorageVolumeAccess | null> {
+    return await this.runWithBackend({ run: async ({ backend }) => await backend.openVolume({ volumeId }) });
   }
 
-  async renameVolume({ volumeId, name }: { volumeId: VolumeId, name: string }): Promise<void> {
-    const shard = this.getVolumeShardPath({ id: volumeId });
-    const index = await this.loadVolumeShardIndex({ shard });
-    const volume = index.volumes[idToRaw({ id: volumeId })];
-    if (!volume) throw new Error(`Volume not found: ${idToRaw({ id: volumeId })}`);
-    index.volumes[idToRaw({ id: volumeId })] = { ...volume, name };
-    await this.saveVolumeShardIndex({ shard, index });
+  async openSpecialFileSystemDirectory({
+    type,
+    path,
+    create,
+  }: {
+    type: OpfsSpecialFileSystemType,
+    path: string,
+    create: boolean,
+  }): Promise<StorageVolumeAccess | null> {
+    return await this.runWithBackend({ run: async ({ backend }) => {
+      if (!isOpfsSpecialFileSystemBackend(backend)) {
+        throw new Error('Active OPFS backend does not support special filesystems');
+      }
+      return await backend.openSpecialFileSystemDirectory({ type, path, create });
+    } });
+  }
+
+  async removeSpecialFileSystemEntry({
+    type,
+    path,
+    recursive,
+  }: {
+    type: OpfsSpecialFileSystemType,
+    path: string,
+    recursive: boolean,
+  }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => {
+      if (!isOpfsSpecialFileSystemBackend(backend)) {
+        throw new Error('Active OPFS backend does not support special filesystems');
+      }
+      await backend.removeSpecialFileSystemEntry({ type, path, recursive });
+    } });
+  }
+
+  async clearSpecialFileSystem({
+    type,
+  }: {
+    type: OpfsSpecialFileSystemType,
+  }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => {
+      if (!isOpfsTransitionStorageBackend(backend)) {
+        throw new Error('Active OPFS backend cannot clear special filesystems');
+      }
+      await backend.removeSpecialFileSystemForTransition({ type });
+    } });
   }
 
   async deleteVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
-    const shard = this.getVolumeShardPath({ id: volumeId });
+    await this.runWithBackend({ run: async ({ backend }) => await backend.deleteVolume({ volumeId }) });
+  }
 
+  async renameVolume({
+    volumeId,
+    name,
+  }: {
+    volumeId: VolumeId,
+    name: string,
+  }): Promise<void> {
+    await this.runWithBackend({ run: async ({ backend }) => await backend.renameVolume({ volumeId, name }) });
+  }
+
+  private async runTransition({
+    run,
+  }: {
+    run: () => Promise<EncryptionTransitionResult>,
+  }): Promise<EncryptionTransitionResult> {
+    await this.storageSessionLock.suspend();
     try {
-      const index = await this.loadVolumeShardIndex({ shard });
-      const volume = index.volumes[idToRaw({ id: volumeId })];
-
-      if (volume) {
-        switch (volume.type) {
-        case 'opfs': {
-          const shardDir = await this.getVolumeShardDir({ shard });
-          await shardDir.removeEntry(idToRaw({ id: volumeId }), { recursive: true });
-          break;
-        }
-        case 'host':
-          await this.hostVolumeDB.delete({ id: idToRaw({ id: volumeId }) });
-          break;
-        default: {
-          const _ex: never = volume;
-          throw new Error(`Unhandled volume type: ${JSON.stringify(_ex)}`);
-        }
-        }
-
-        delete index.volumes[idToRaw({ id: volumeId })];
-        await this.saveVolumeShardIndex({ shard, index });
+      const result = await run();
+      this.applyTransitionResult({ result });
+      await this.storageSessionLock.acquire();
+      return result;
+    } catch (error) {
+      try {
+        await this.recoverAfterFailedTransition();
+      } catch (recoveryError) {
+        console.error('Failed to restore OPFS provider after encryption transition failure:', recoveryError);
       }
-    } catch (e) {
-      console.error('Failed to delete volume:', e);
+      throw error;
     }
   }
-}
 
-class HostVolumeDB {
-  private readonly DB_NAME = 'naidan-volumes';
-  private readonly STORE_NAME = 'handles';
+  private async recoverAfterFailedTransition(): Promise<void> {
+    const previousSession = this.unlockedEncryptionSession;
+    const inspection = await this.inspectEncryption();
+    switch (inspection.type) {
+    case 'plain': {
+      this.clearEncryptionSession();
+      const backend = new PlainOPFSStorageBackend();
+      await this.storageSessionLock.acquire();
+      try {
+        await this.storageSessionLock.run({ run: async () => await backend.init() });
+      } catch (error) {
+        await this.storageSessionLock.suspend();
+        throw error;
+      }
+      this.backend = backend;
+      return;
+    }
+    case 'encrypted':
+      if (
+        previousSession !== undefined
+        && previousSession.state.activeEncryptedStoreId
+          === inspection.state.activeEncryptedStoreId
+      ) {
+        this.backend = previousSession.backend;
+        await this.storageSessionLock.acquire();
+        return;
+      }
+      this.clearEncryptionSession();
+      this.backend = undefined;
+      return;
+    case 'transitioning':
+    case 'recovery_required':
+      this.clearEncryptionSession();
+      this.backend = undefined;
+      return;
+    default: {
+      const _ex: never = inspection;
+      throw new Error(`Unhandled OPFS encryption inspection: ${String(_ex)}`);
+    }
+    }
+  }
 
-  async put({ id, handle }: { id: string, handle: FileSystemDirectoryHandle }): Promise<void> {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.STORE_NAME, 'readwrite');
-      const store = tx.objectStore(this.STORE_NAME);
-      const req = store.put(handle, id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+  private applyTransitionResult({
+    result,
+  }: {
+    result: EncryptionTransitionResult,
+  }): void {
+    const previousSession = this.unlockedEncryptionSession;
+    switch (result.type) {
+    case 'encrypted':
+      if (
+        previousSession !== undefined
+        && previousSession.storageUnlockKey !== result.session.storageUnlockKey
+      ) {
+        previousSession.storageUnlockKey.fill(0);
+      }
+      this.unlockedEncryptionSession = result.session;
+      this.backend = result.session.backend;
+      break;
+    case 'plain':
+      previousSession?.storageUnlockKey.fill(0);
+      this.unlockedEncryptionSession = undefined;
+      this.backend = result.backend;
+      break;
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled OPFS transition result: ${String(_ex)}`);
+    }
+    }
+  }
+
+  private clearEncryptionSession(): void {
+    this.unlockedEncryptionSession?.storageUnlockKey.fill(0);
+    this.unlockedEncryptionSession = undefined;
+  }
+
+  private async runWithBackend<T>({
+    run,
+  }: {
+    run: ({ backend }: { backend: IStorageProvider }) => Promise<T>,
+  }): Promise<T> {
+    return await this.storageSessionLock.run({
+      run: async () => await run({ backend: this.requireBackend() }),
     });
   }
 
-  async get({ id }: { id: string }): Promise<FileSystemDirectoryHandle | undefined> {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.STORE_NAME, 'readonly');
-      const store = tx.objectStore(this.STORE_NAME);
-      const req = store.get(id);
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+  private iterateWithBackend<T>({
+    createSource,
+  }: {
+    createSource: ({ backend }: { backend: IStorageProvider }) => AsyncIterable<T>,
+  }): AsyncGenerator<T> {
+    return this.storageSessionLock.iterate({
+      createSource: () => createSource({ backend: this.requireBackend() }),
     });
   }
 
-  async delete({ id }: { id: string }): Promise<void> {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.STORE_NAME, 'readwrite');
-      const store = tx.objectStore(this.STORE_NAME);
-      const req = store.delete(id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  private open(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.DB_NAME, 1);
-      req.onupgradeneeded = (e) => {
-        const db = (e.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
-          db.createObjectStore(this.STORE_NAME);
+  private wrapBinaryObjectReadHandle({
+    handle,
+    release,
+  }: {
+    handle: StorageBinaryObjectReadHandle,
+    release: () => void,
+  }): StorageBinaryObjectReadHandle {
+    let closed = false;
+    return {
+      size: handle.size,
+      mimeType: handle.mimeType,
+      backing: handle.backing,
+      async read({ buffer, offset, length, position, signal }) {
+        return await handle.read({ buffer, offset, length, position, signal });
+      },
+      stream({ start, end, signal }) {
+        return handle.stream({ start, end, signal });
+      },
+      async close() {
+        if (closed) {
+          return;
         }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
+        closed = true;
+        try {
+          await handle.close();
+        } finally {
+          release();
+        }
+      },
+    };
+  }
+
+  private requireUnlockedEncryptionSession(): UnlockedOpfsEncryptionSession {
+    if (this.unlockedEncryptionSession === undefined) {
+      throw new Error('OPFS encryption is not unlocked');
+    }
+    return this.unlockedEncryptionSession;
+  }
+
+  private requireBackend(): IStorageProvider {
+    if (this.backend === undefined) {
+      throw new Error('OPFS storage provider has not been initialized or unlocked');
+    }
+    return this.backend;
   }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  getOrCreateStorageRoot,
+  getStorageRootIfPresent,
+  hasEncryptionStateDirectory,
 };

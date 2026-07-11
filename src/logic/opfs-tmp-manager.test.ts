@@ -1,53 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OPFS_TMP_DIR, OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY } from '@/constants';
+import { OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY } from '@/constants';
 
-class MockFileSystemDirectoryHandle {
-  kind = 'directory' as const;
-  entries = new Map<string, MockFileSystemDirectoryHandle>();
+const mocks = vi.hoisted(() => ({
+  openOpfsSpecialFileSystemDirectory: vi.fn(),
+  removeOpfsSpecialFileSystemEntry: vi.fn(),
+}));
 
-  constructor(public name: string) {}
-
-  async getDirectoryHandle(name: string, options?: { create?: boolean }) {
-    if (!this.entries.has(name)) {
-      if (options?.create) {
-        this.entries.set(name, new MockFileSystemDirectoryHandle(name));
-      } else {
-        const error = new Error(`Directory not found: ${name}`);
-        error.name = 'NotFoundError';
-        throw error;
-      }
-    }
-
-    const entry = this.entries.get(name);
-    if (!entry) {
-      throw new Error(`Directory not found: ${name}`);
-    }
-    return entry;
-  }
-
-  async removeEntry(name: string, _options?: { recursive?: boolean }) {
-    if (!this.entries.has(name)) {
-      const error = new Error(`Directory not found: ${name}`);
-      error.name = 'NotFoundError';
-      throw error;
-    }
-    this.entries.delete(name);
-  }
-}
+vi.mock('@/00-storage/service', () => ({
+  storageService: {
+    openOpfsSpecialFileSystemDirectory: mocks.openOpfsSpecialFileSystemDirectory,
+    removeOpfsSpecialFileSystemEntry: mocks.removeOpfsSpecialFileSystemEntry,
+  },
+}));
 
 describe('OPFSTmpManager', () => {
-  const mockOpfsRoot = new MockFileSystemDirectoryHandle('opfs-root');
-
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     localStorage.clear();
-    mockOpfsRoot.entries.clear();
-    vi.stubGlobal('navigator', {
-      storage: {
-        getDirectory: vi.fn().mockResolvedValue(mockOpfsRoot),
-      },
+    mocks.openOpfsSpecialFileSystemDirectory.mockResolvedValue({
+      type: 'direct_directory',
+      handle: { name: 'tmp-directory' } as FileSystemDirectoryHandle,
     });
+    mocks.removeOpfsSpecialFileSystemEntry.mockResolvedValue(undefined);
   });
 
   it('creates tmp directories under an owner-scoped directory', async () => {
@@ -60,13 +35,17 @@ describe('OPFSTmpManager', () => {
     const { TEST_ONLY: { OPFSTmpManager } } = await import('./opfs-tmp-manager');
     const manager = new OPFSTmpManager();
 
-    const tmpHandle = await manager.createTmpDirectory({ prefix: 'chat-1' });
+    const access = await manager.createTmpDirectory({ prefix: 'chat-1' });
 
-    expect(tmpHandle.name).toBe('chat-1-tmp-dir-a');
-    const tmpRoot = mockOpfsRoot.entries.get(OPFS_TMP_DIR);
-    expect(tmpRoot?.entries.has('owner-scope-a')).toBe(true);
-    const ownerRoot = tmpRoot?.entries.get('owner-scope-a');
-    expect(ownerRoot?.entries.has('chat-1-tmp-dir-a')).toBe(true);
+    expect(access).toMatchObject({
+      type: 'direct_directory',
+      handle: { name: 'tmp-directory' },
+    });
+    expect(mocks.openOpfsSpecialFileSystemDirectory).toHaveBeenCalledWith({
+      type: 'tmp',
+      path: '/owner-scope-a/chat-1-tmp-dir-a',
+      create: true,
+    });
 
     manager.dispose();
   });
@@ -92,8 +71,11 @@ describe('OPFSTmpManager', () => {
     const managerB = new OPFSTmpManager();
     await managerB.flushPendingScopeCleanups();
 
-    const tmpRoot = mockOpfsRoot.entries.get(OPFS_TMP_DIR);
-    expect(tmpRoot?.entries.has('owner-scope-a')).toBe(false);
+    expect(mocks.removeOpfsSpecialFileSystemEntry).toHaveBeenCalledWith({
+      type: 'tmp',
+      path: '/owner-scope-a',
+      recursive: true,
+    });
     expect(localStorage.getItem(OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY)).toBe(JSON.stringify({
       ownerScopeIds: [],
     }));

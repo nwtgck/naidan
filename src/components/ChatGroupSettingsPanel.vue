@@ -65,6 +65,7 @@ import {
   createSystemPromptSettingChange,
 } from '@/logic/scoped-setting-changes';
 import type { WeshMount } from '@/features/wesh/types';
+import { createWeshStorageMount } from '@/features/wesh/storage-mount';
 import PromptApiStatus from '@/features/prompt-api/components/PromptApiStatus.vue';
 import { endpointTypeLabel } from './endpoint-type-label';
 import { getPromptApiLanguageModel } from '@/features/prompt-api/api';
@@ -144,14 +145,13 @@ async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: Volume
 
   const workerMounts: WeshMount[] = [];
   for (const mount of mounts) {
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (handle === null) continue;
-    workerMounts.push({
-      type: 'directory',
+    const access = await storageService.openVolume({ volumeId: mount.volumeId });
+    if (access === null) continue;
+    workerMounts.push(createWeshStorageMount({
       path: mount.mountPath,
-      handle,
+      access,
       readOnly: mount.readOnly,
-    });
+    }));
   }
 
   const clickedMount = mounts.find(mount => mount.volumeId === volumeId);

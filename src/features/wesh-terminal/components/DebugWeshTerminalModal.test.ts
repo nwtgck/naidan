@@ -10,8 +10,11 @@ const mocks = vi.hoisted(() => ({
   disposeExecution: vi.fn().mockResolvedValue(undefined),
   dispose: vi.fn().mockResolvedValue(undefined),
   createClient: vi.fn(),
-  getVolumeDirectoryHandle: vi.fn().mockResolvedValue({} as FileSystemDirectoryHandle),
-  getDirectory: vi.fn(),
+  openVolume: vi.fn().mockResolvedValue({
+    type: 'direct_directory',
+    handle: {} as FileSystemDirectoryHandle,
+  }),
+  openOpfsSpecialFileSystemDirectory: vi.fn(),
   showConfirm: vi.fn(),
 }));
 
@@ -27,7 +30,8 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    openVolume: mocks.openVolume,
+    openOpfsSpecialFileSystemDirectory: mocks.openOpfsSpecialFileSystemDirectory,
   },
 }));
 
@@ -67,15 +71,9 @@ describe('DebugWeshTerminalModal', () => {
       dispose: mocks.dispose,
     });
     const globalRoot = createDirectoryHandleMock({ name: 'global-root' });
-    const debugRoot = createDirectoryHandleMock({ name: 'naidan-debug-wesh' });
-    vi.mocked(debugRoot.getDirectoryHandle).mockResolvedValue(globalRoot);
-    mocks.getDirectory.mockResolvedValue({
-      getDirectoryHandle: vi.fn().mockResolvedValue(debugRoot),
-    });
-    vi.stubGlobal('navigator', {
-      storage: {
-        getDirectory: mocks.getDirectory,
-      },
+    mocks.openOpfsSpecialFileSystemDirectory.mockResolvedValue({
+      type: 'direct_directory',
+      handle: globalRoot,
     });
   });
 

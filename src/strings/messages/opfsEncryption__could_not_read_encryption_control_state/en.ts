@@ -1,0 +1,1 @@
+export const opfsEncryption__could_not_read_encryption_control_state = (): string => 'Naidan could not safely read the encryption control state. The raw OPFS explorer remains available for backup and inspection.';

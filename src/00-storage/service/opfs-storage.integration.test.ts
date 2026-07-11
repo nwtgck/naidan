@@ -96,6 +96,33 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     importExportService = new ImportExportService({ storage: storageService });
   });
 
+  it('opens and removes runtime special filesystem directories without changing the plain layout', async () => {
+    const access = await storageService.openOpfsSpecialFileSystemDirectory({
+      type: 'chat_wesh',
+      path: '/global/home/user',
+      create: true,
+    });
+
+    expect(access).toMatchObject({
+      type: 'direct_directory',
+      handle: { name: 'user' },
+    });
+    const chatWeshRoot = await mockRoot.getDirectoryHandle('naidan-chat-wesh');
+    const globalRoot = await chatWeshRoot.getDirectoryHandle('global');
+    const homeRoot = await globalRoot.getDirectoryHandle('home');
+    await expect(homeRoot.getDirectoryHandle('user')).resolves.toMatchObject({ name: 'user' });
+
+    await storageService.removeOpfsSpecialFileSystemEntry({
+      type: 'chat_wesh',
+      path: '/global/home',
+      recursive: true,
+    });
+
+    await expect(globalRoot.getDirectoryHandle('home')).rejects.toMatchObject({
+      name: 'NotFoundError',
+    });
+  });
+
   it('should maintain index integrity when multiple files are stored in the same shard', async () => {
     // Both UUIDs end in 'a1'
     const id1 = '00000000-0000-4000-a000-0000000000a1';

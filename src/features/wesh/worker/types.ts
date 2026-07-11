@@ -15,6 +15,16 @@ export const weshWorkerDirectoryMountSchema = z.object({
   readOnly: z.boolean(),
 });
 
+export const weshWorkerEncryptedDirectoryMountSchema = z.object({
+  type: z.literal('encrypted_directory'),
+  path: z.string().min(1),
+  storeDirectory: z.custom<FileSystemDirectoryHandle>(),
+  rootDirectoryId: z.string().min(1),
+  objectEncryptionKey: z.custom<CryptoKey>(),
+  objectAddressKey: z.custom<CryptoKey>(),
+  readOnly: z.boolean(),
+});
+
 export const weshWorkerNaidanSysfsMountSchema = z.object({
   type: z.literal('naidan_sysfs'),
   path: z.literal(NAIDAN_SYSFS_MOUNT_PATH),
@@ -36,6 +46,7 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
 
 export const weshWorkerMountSchema = resolveMissingAsUndefined(z.discriminatedUnion('type', [
   weshWorkerDirectoryMountSchema,
+  weshWorkerEncryptedDirectoryMountSchema,
   weshWorkerNaidanSysfsMountSchema,
 ]));
 
@@ -177,6 +188,16 @@ export function mapWeshMountsToWorkerMounts({ mounts }: {
         type: 'directory',
         path: mount.path,
         handle: mount.handle,
+        readOnly: mount.readOnly,
+      };
+    case 'encrypted_directory':
+      return {
+        type: 'encrypted_directory',
+        path: mount.path,
+        storeDirectory: mount.storeDirectory,
+        rootDirectoryId: mount.rootDirectoryId,
+        objectEncryptionKey: mount.objectEncryptionKey,
+        objectAddressKey: mount.objectAddressKey,
         readOnly: mount.readOnly,
       };
     case 'naidan_sysfs':

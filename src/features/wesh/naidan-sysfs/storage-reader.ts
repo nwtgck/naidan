@@ -43,8 +43,10 @@ export function createNaidanSysfsRemoteReaderForMounts({
   mounts: Array<WeshMount | WeshWorkerMount>,
 }): NaidanSysfsRemoteReader | undefined {
   for (const mount of mounts) {
-    switch (mount.type) {
+    const mountType = mount.type;
+    switch (mountType) {
     case 'directory':
+    case 'encrypted_directory':
       continue;
     case 'naidan_sysfs':
       switch (mount.storageType) {
@@ -59,7 +61,7 @@ export function createNaidanSysfsRemoteReaderForMounts({
       }
       }
     default: {
-      const _ex: never = mount;
+      const _ex: never = mountType;
       throw new Error(`Unhandled wesh mount type: ${String(_ex)}`);
     }
     }

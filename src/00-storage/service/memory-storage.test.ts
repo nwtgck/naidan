@@ -125,7 +125,7 @@ describe('MemoryStorageProvider', () => {
       mimeType: '',
       size: blob.size,
       createdAt,
-      blob,
+      source: { type: 'direct_blob', blob },
     } satisfies MigrationChunkDto;
 
     async function* contentStream() {

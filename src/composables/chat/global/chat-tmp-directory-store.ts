@@ -2,9 +2,10 @@ import { reactive } from 'vue';
 import { idToRaw } from '@/01-models/ids';
 import type { ChatId } from '@/01-models/ids';
 import { getOPFSTmpManager } from '@/logic/opfs-tmp-manager';
+import type { StorageVolumeAccess } from '@/00-storage/service/volume-access';
 
 export type ChatTmpDirectoryEntry = {
-  handle: FileSystemDirectoryHandle,
+  access: StorageVolumeAccess,
   mountPath: '/tmp',
 };
 
@@ -20,9 +21,9 @@ export async function ensureChatTmpDirectory({
     return existing;
   }
 
-  const handle = await getOPFSTmpManager().createTmpDirectory({ prefix: idToRaw({ id: chatId }) });
+  const access = await getOPFSTmpManager().createTmpDirectory({ prefix: idToRaw({ id: chatId }) });
   const created: ChatTmpDirectoryEntry = {
-    handle,
+    access,
     mountPath: '/tmp',
   };
   chatTmpDirectories.set(chatId, created);

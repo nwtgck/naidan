@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
   removeMountFromChatGroup: vi.fn().mockResolvedValue(undefined),
   updateChatGroupMount: vi.fn().mockResolvedValue(undefined),
-  getVolumeDirectoryHandle: vi.fn(),
+  openVolume: vi.fn(),
   updateChatGroup: vi.fn(),
   openFileExplorer: vi.fn(),
   fetchingModels: { value: false },
@@ -77,7 +77,7 @@ function expectLatestGroupUpdate({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    openVolume: mocks.openVolume,
     updateChatGroup: mocks.updateChatGroup,
   },
 }));
@@ -1339,7 +1339,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     it('opens file explorer with group mounts when mount path is clicked', async () => {
       const handle = { kind: 'directory', name: 'work' } as unknown as FileSystemDirectoryHandle;
-      mocks.getVolumeDirectoryHandle.mockResolvedValue(handle);
+      mocks.openVolume.mockResolvedValue({ type: 'direct_directory', handle });
       mockGroup.mounts = [
         { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/work', readOnly: false },
       ];
@@ -1349,7 +1349,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
       await flushPromises();
 
-      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
+      expect(mocks.openVolume).toHaveBeenCalledWith({ volumeId: 'vol-1' });
       expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
         kind: 'wesh-mounts',
         rootName: 'Files',
@@ -1360,7 +1360,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     it('opens explorer with correct initialPath derived from clicked mount', async () => {
       const handle = { kind: 'directory', name: 'docs' } as unknown as FileSystemDirectoryHandle;
-      mocks.getVolumeDirectoryHandle.mockResolvedValue(handle);
+      mocks.openVolume.mockResolvedValue({ type: 'direct_directory', handle });
       mockGroup.mounts = [
         { type: 'volume', volumeId: toVolumeId({ raw: 'vol-A' }), mountPath: '/home/user/alpha', readOnly: true },
         { type: 'volume', volumeId: toVolumeId({ raw: 'vol-B' }), mountPath: '/home/user/beta', readOnly: false },

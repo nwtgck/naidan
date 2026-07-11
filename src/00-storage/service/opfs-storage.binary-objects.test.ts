@@ -201,11 +201,17 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
       replies: { items: [] },
     }];
 
-    // Hydrate
-    // @ts-expect-error: Accessing private for test
-    await provider.hydrateAttachments({ nodes });
+    const chatId = toChatId({ raw: '00000000-0000-4000-a000-000000000001' });
+    await provider.saveChatContent({
+      id: chatId,
+      content: {
+        root: { items: nodes },
+        currentLeafId: undefined,
+      },
+    });
+    const content = await provider.loadChatContent({ id: chatId });
 
-    const atts = nodes[0]!.attachments!;
+    const atts = content!.root.items[0]!.attachments!;
     expect(atts[0]!.mimeType).toBe('image/png');
     expect(atts[0]!.size).toBe(1);
     expect(atts[1]!.mimeType).toBe('application/pdf');

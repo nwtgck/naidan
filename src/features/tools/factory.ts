@@ -5,6 +5,7 @@ import { createChoicesTool } from './choices';
 import type { RequestChoice } from '@/features/tools/choices/runtime';
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import type { NaidanSysfsAccessScope } from '@/features/wesh/types';
+import type { StorageVolumeAccess } from '@/00-storage/service/volume-access';
 import { createNaidanSysfsMount } from '@/features/wesh/naidan-sysfs/mount';
 import { createModuleLoader } from '@/utils/module-loader';
 
@@ -41,7 +42,7 @@ export async function getEnabledTools({
   chatId,
   chatGroupId,
   naidanSysfsAccessScope,
-  tmpHandle,
+  tmpAccess,
   requestChoice,
 }: {
   enabledNames: LmToolName[],
@@ -51,7 +52,7 @@ export async function getEnabledTools({
   chatId: ChatId | undefined,
   chatGroupId: ChatGroupId | undefined,
   naidanSysfsAccessScope: NaidanSysfsAccessScope,
-  tmpHandle: FileSystemDirectoryHandle | undefined,
+  tmpAccess: StorageVolumeAccess | undefined,
   requestChoice: RequestChoice | undefined,
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
@@ -61,7 +62,7 @@ export async function getEnabledTools({
     chatId,
     chatGroupId,
     naidanSysfsAccessScope,
-    tmpHandle,
+    tmpAccess,
   });
 
   for (const name of enabledNames) {
@@ -109,7 +110,7 @@ export async function getEnabledTools({
         chatId,
         chatGroupId,
         naidanSysfsAccessScope,
-        tmpHandle,
+        tmpAccess,
       });
       if (tool !== undefined) {
         tools.push(tool);
@@ -149,13 +150,13 @@ export async function prefetchEnabledToolModules({ enabledNames }: {
 
 function canCreateShellTool({
   settings,
-  tmpHandle,
+  tmpAccess,
 }: {
   settings: Settings,
-  tmpHandle: FileSystemDirectoryHandle | undefined,
+  tmpAccess: StorageVolumeAccess | undefined,
 }): boolean {
   const shouldMountTmp = shouldIncludeWritableTmpMount({ storageType: settings.storageType });
-  if (shouldMountTmp && tmpHandle === undefined) {
+  if (shouldMountTmp && tmpAccess === undefined) {
     return false;
   }
   return true;
@@ -198,19 +199,19 @@ function canExposeWikipediaToolsForGeneration({
   chatId,
   chatGroupId,
   naidanSysfsAccessScope,
-  tmpHandle,
+  tmpAccess,
 }: {
   enabledNames: LmToolName[],
   settings: Settings,
   chatId: ChatId | undefined,
   chatGroupId: ChatGroupId | undefined,
   naidanSysfsAccessScope: NaidanSysfsAccessScope,
-  tmpHandle: FileSystemDirectoryHandle | undefined,
+  tmpAccess: StorageVolumeAccess | undefined,
 }): boolean {
   if (!enabledNames.includes('shell_execute')) {
     return false;
   }
-  if (!canCreateShellTool({ settings, tmpHandle })) {
+  if (!canCreateShellTool({ settings, tmpAccess })) {
     return false;
   }
   if (!hasEnabledNaidanSysfsMount({

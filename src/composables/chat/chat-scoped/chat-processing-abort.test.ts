@@ -9,6 +9,9 @@ const {
   mockHasExternalGeneration,
   mockGetActiveContextCompaction,
   mockActiveGenerations,
+  mockActiveTitleGenerations,
+  mockExternalGenerations,
+  mockActiveContextCompactions,
 } = vi.hoisted(() => ({
   mockNotify: vi.fn(),
   mockAbortTitleGeneration: vi.fn(),
@@ -16,7 +19,10 @@ const {
   mockDeleteActiveGeneration: vi.fn(),
   mockHasExternalGeneration: vi.fn(),
   mockGetActiveContextCompaction: vi.fn(),
-  mockActiveGenerations: new Map<string, unknown>(),
+  mockActiveGenerations: new Map<unknown, unknown>(),
+  mockActiveTitleGenerations: new Map<unknown, unknown>(),
+  mockExternalGenerations: new Set<unknown>(),
+  mockActiveContextCompactions: new Map<unknown, unknown>(),
 }));
 
 vi.mock('@/00-storage/service', () => ({
@@ -28,11 +34,14 @@ vi.mock('@/00-storage/service', () => ({
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   chatRuntimeStore: {
     activeGenerations: mockActiveGenerations,
+    activeTitleGenerations: mockActiveTitleGenerations,
+    externalGenerations: mockExternalGenerations,
     getActiveGeneration: mockGetActiveGeneration,
     deleteActiveGeneration: mockDeleteActiveGeneration,
     hasExternalGeneration: mockHasExternalGeneration,
   },
   contextCompactRuntime: {
+    activeContextCompactions: mockActiveContextCompactions,
     getActiveContextCompaction: mockGetActiveContextCompaction,
   },
 }));
@@ -41,13 +50,19 @@ vi.mock('@/composables/chat/chat-scoped/chat-title-flow', () => ({
   abortTitleGenerationForChat: mockAbortTitleGeneration,
 }));
 
-import { abortProcessingForChat } from './chat-processing-abort';
+import {
+  abortAllChatProcessingForStorageTransition,
+  abortProcessingForChat,
+} from './chat-processing-abort';
 
 describe('abortProcessingForChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     mockActiveGenerations.clear();
+    mockActiveTitleGenerations.clear();
+    mockExternalGenerations.clear();
+    mockActiveContextCompactions.clear();
     mockGetActiveGeneration.mockReturnValue(undefined);
     mockHasExternalGeneration.mockReturnValue(false);
     mockGetActiveContextCompaction.mockReturnValue(undefined);
@@ -112,4 +127,23 @@ describe('abortProcessingForChat', () => {
       chatId: toChatId({ raw: 'chat-2' }),
     });
   });
+  it('aborts every chat with active work before a storage transition', () => {
+    const chat1 = toChatId({ raw: 'chat-1' });
+    const chat2 = toChatId({ raw: 'chat-2' });
+    const chat3 = toChatId({ raw: 'chat-3' });
+    const chat4 = toChatId({ raw: 'chat-4' });
+    mockActiveGenerations.set(chat1, {});
+    mockActiveTitleGenerations.set(chat2, {});
+    mockExternalGenerations.add(chat3);
+    mockActiveContextCompactions.set(chat4, {});
+
+    abortAllChatProcessingForStorageTransition();
+
+    expect(mockGetActiveGeneration).toHaveBeenCalledWith({ chatId: chat1 });
+    expect(mockGetActiveGeneration).toHaveBeenCalledWith({ chatId: chat2 });
+    expect(mockGetActiveGeneration).toHaveBeenCalledWith({ chatId: chat3 });
+    expect(mockGetActiveGeneration).toHaveBeenCalledWith({ chatId: chat4 });
+    expect(mockAbortTitleGeneration).toHaveBeenCalledTimes(4);
+  });
+
 });

@@ -5,7 +5,7 @@ import { buildWorkerMountsForChat } from '@/features/wesh/chat-worker-mounts';
 import type { NaidanSysfsAccessScope } from '@/features/wesh/types';
 
 const store = createWeshTerminalSessions({
-  opfsRootName: 'naidan-chat-wesh',
+  fileSystemType: 'chat_wesh',
   user: 'user',
   initialEnv: { HOME: '/home/user', TMPDIR: '/tmp' },
   initialCwd: '/home/user',

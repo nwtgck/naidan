@@ -4,6 +4,8 @@ import type { Mount, Settings } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
 import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import type { NaidanSysfsAccessScope, WeshMount } from '@/features/wesh/types';
+import type { StorageVolumeAccess } from '@/00-storage/service/volume-access';
+import { createWeshStorageMount } from '@/features/wesh/storage-mount';
 import { createNaidanSysfsMount } from '@/features/wesh/naidan-sysfs/mount';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/features/wesh/worker/client';
 import { createWeshTool } from '@/features/tools/wesh';
@@ -22,7 +24,7 @@ export async function createShellExecuteTool({
   chatId,
   chatGroupId,
   naidanSysfsAccessScope,
-  tmpHandle,
+  tmpAccess,
 }: {
   settings: Settings,
   chatGroupMounts: Mount[] | undefined,
@@ -30,16 +32,16 @@ export async function createShellExecuteTool({
   chatId: ChatId | undefined,
   chatGroupId: ChatGroupId | undefined,
   naidanSysfsAccessScope: NaidanSysfsAccessScope,
-  tmpHandle: FileSystemDirectoryHandle | undefined,
+  tmpAccess: StorageVolumeAccess | undefined,
 }): Promise<Tool | undefined> {
   const shouldMountTmp = shouldIncludeWritableTmpMount({ storageType: settings.storageType });
   const allMounts = [...settings.mounts, ...(chatGroupMounts ?? []), ...(chatMounts ?? [])];
   const resolvedMounts: WeshMount[] = [];
   if (shouldMountTmp) {
-    if (tmpHandle === undefined) {
+    if (tmpAccess === undefined) {
       return undefined;
     }
-    resolvedMounts.push({ type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false });
+    resolvedMounts.push(createWeshStorageMount({ path: '/tmp', access: tmpAccess, readOnly: false }));
   }
   switch (naidanSysfsAccessScope) {
   case 'none':
@@ -67,15 +69,25 @@ export async function createShellExecuteTool({
 
   const volumeHandles = new Map<VolumeId, FileSystemDirectoryHandle>();
   for (const mount of allMounts) {
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-    if (handle !== undefined && handle !== null) {
-      resolvedMounts.push({
-        type: 'directory',
-        path: mount.mountPath,
-        handle,
-        readOnly: mount.readOnly,
-      });
-      volumeHandles.set(mount.volumeId, handle);
+    const access = await storageService.openVolume({ volumeId: mount.volumeId });
+    if (access === null) {
+      continue;
+    }
+    resolvedMounts.push(createWeshStorageMount({
+      path: mount.mountPath,
+      access,
+      readOnly: mount.readOnly,
+    }));
+    switch (access.type) {
+    case 'direct_directory':
+      volumeHandles.set(mount.volumeId, access.handle);
+      break;
+    case 'encrypted_directory':
+      break;
+    default: {
+      const _ex: never = access;
+      throw new Error(`Unhandled storage volume access: ${((_ex satisfies never) as { readonly type: string }).type}`);
+    }
     }
   }
 

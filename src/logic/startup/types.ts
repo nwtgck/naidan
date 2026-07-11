@@ -1,8 +1,13 @@
 import type { Component } from 'vue';
+import type { OpfsEncryptionStartupGate } from './opfs-encryption-startup-gate';
 
 export type StartupState =
   | {
     kind: 'initializing-foundation',
+  }
+  | {
+    kind: 'opfs-encryption-required',
+    gate: OpfsEncryptionStartupGate,
   }
   | {
     kind: 'starting-main',

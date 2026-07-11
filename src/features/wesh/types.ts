@@ -312,6 +312,16 @@ export interface WeshDirectoryMount {
   readOnly: boolean,
 }
 
+export interface WeshEncryptedDirectoryMount {
+  type: 'encrypted_directory',
+  path: string,
+  storeDirectory: FileSystemDirectoryHandle,
+  rootDirectoryId: string,
+  objectEncryptionKey: CryptoKey,
+  objectAddressKey: CryptoKey,
+  readOnly: boolean,
+}
+
 export interface WeshNaidanSysfsMount {
   type: 'naidan_sysfs',
   path: typeof NAIDAN_SYSFS_MOUNT_PATH,
@@ -323,7 +333,7 @@ export interface WeshNaidanSysfsMount {
   currentChatGroupId: ChatGroupId | undefined,
 }
 
-export type WeshMount = WeshDirectoryMount | WeshNaidanSysfsMount;
+export type WeshMount = WeshDirectoryMount | WeshEncryptedDirectoryMount | WeshNaidanSysfsMount;
 
 export type WeshVirtualEntryRef =
   | {
@@ -369,6 +379,11 @@ export interface WeshVirtualMountProvider {
   lstat({ path }: { path: string }): Promise<WeshStat>,
   readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry>,
   readlink({ path }: { path: string }): Promise<string>,
+  mkdir?({ path, recursive }: { path: string, recursive: boolean }): Promise<void>,
+  symlink?({ path, targetPath }: { path: string, targetPath: string }): Promise<void>,
+  unlink?({ path }: { path: string }): Promise<void>,
+  rmdir?({ path }: { path: string }): Promise<void>,
+  rename?({ oldPath, newPath }: { oldPath: string, newPath: string }): Promise<void>,
 }
 
 export const WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED = Symbol('WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED');

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
 
 const mockCreateClient = vi.fn();
-const mockGetVolumeDirectoryHandle = vi.fn();
+const mockOpenVolume = vi.fn();
 const mockAbortOngoingScans = vi.fn();
 const mockGetVolumeExtensions = vi.fn();
 const mockIsVolumeScanned = vi.fn();
@@ -14,7 +14,7 @@ vi.mock('@/features/wesh/worker/client', () => ({
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
+    openVolume: mockOpenVolume,
   },
 }));
 
@@ -25,12 +25,24 @@ vi.mock('./wesh/volume-extension-cache', () => ({
   startVolumeExtensionScan: mockStartVolumeExtensionScan,
 }));
 
+
+function createDirectDirectoryAccess({
+  handle,
+}: {
+  handle: FileSystemDirectoryHandle,
+}) {
+  return {
+    type: 'direct_directory' as const,
+    handle,
+  };
+}
+
 function setupStandardMocks({
   volumeHandle,
 }: {
   volumeHandle: FileSystemDirectoryHandle,
 }) {
-  mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle);
+  mockOpenVolume.mockResolvedValueOnce({ type: 'direct_directory', handle: volumeHandle });
   mockCreateClient.mockResolvedValue({
     startExecution: vi.fn(),
     awaitExecution: vi.fn(),
@@ -56,9 +68,9 @@ describe('getEnabledTools shell_execute', () => {
     const volumeHandleA = { kind: 'directory', name: 'vol-a' } as FileSystemDirectoryHandle;
     const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle;
 
-    mockGetVolumeDirectoryHandle
-      .mockResolvedValueOnce(volumeHandleA)
-      .mockResolvedValueOnce(volumeHandleB);
+    mockOpenVolume
+      .mockResolvedValueOnce({ type: 'direct_directory', handle: volumeHandleA })
+      .mockResolvedValueOnce({ type: 'direct_directory', handle: volumeHandleB });
     mockCreateClient.mockResolvedValue({
       startExecution: vi.fn(),
       awaitExecution: vi.fn(),
@@ -74,7 +86,7 @@ describe('getEnabledTools shell_execute', () => {
 
     const [toolA] = await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle: tmpHandleA,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandleA }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
@@ -86,7 +98,7 @@ describe('getEnabledTools shell_execute', () => {
     });
     const [toolB] = await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle: tmpHandleB,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandleB }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-2' }),
       chatGroupId: undefined,
@@ -165,7 +177,7 @@ Mounted directories:
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandle }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
@@ -187,7 +199,7 @@ Mounted directories:
     const { getEnabledTools } = await import('./factory');
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle: undefined,
+      tmpAccess: undefined,
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
@@ -226,7 +238,7 @@ Mounted directories:
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandle }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
@@ -250,7 +262,7 @@ Mounted directories:
 
     const tools = await getEnabledTools({
       enabledNames: ['wikipedia_search', 'wikipedia_get_page'],
-      tmpHandle: { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle,
+      tmpAccess: createDirectDirectoryAccess({ handle: { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
@@ -270,7 +282,7 @@ Mounted directories:
 
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
-      tmpHandle,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandle }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
@@ -289,7 +301,7 @@ Mounted directories:
 
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
-      tmpHandle: undefined,
+      tmpAccess: undefined,
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
@@ -319,7 +331,7 @@ Mounted directories:
 
     const tools = await getEnabledTools({
       enabledNames: ['wikipedia_search', 'shell_execute', 'wikipedia_get_page'],
-      tmpHandle,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandle }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
@@ -346,7 +358,7 @@ Mounted directories:
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle: undefined,
+      tmpAccess: undefined,
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
@@ -385,7 +397,7 @@ Mounted directories:
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandle }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
@@ -413,7 +425,7 @@ Mounted directories:
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandle }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
@@ -438,7 +450,7 @@ Mounted directories:
 
     const [tool] = await getEnabledTools({
       enabledNames: ['shell_execute'],
-      tmpHandle,
+      tmpAccess: createDirectDirectoryAccess({ handle: tmpHandle }),
       requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,

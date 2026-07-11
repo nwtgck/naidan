@@ -1,0 +1,1 @@
+export const opfsEncryption__understand_experimental_storage_risk = (): string => 'I understand that this is an experimental storage format and that losing both the passphrase and recovery key makes the data unreadable.';

@@ -1,3 +1,5 @@
+import { storageService } from '@/00-storage/service';
+import type { OpfsSpecialFileSystemType } from '@/00-storage/service/opfs/opfs-special-file-system';
 import {
   FEATURE_FLAGS_STORAGE_KEY,
 } from '@/01-models/feature-flags';
@@ -21,6 +23,7 @@ export type DataDeletionSelector =
   | { kind: 'localStorageKey', key: string }
   | { kind: 'localStorageUnknownNaidanKeys' }
   | { kind: 'opfsPath', path: string }
+  | { kind: 'opfsSpecialFileSystem', type: OpfsSpecialFileSystemType }
   | { kind: 'opfsRemoteModels' }
   | { kind: 'indexedDbDatabase', name: string }
   | { kind: 'indexedDbUnknownNaidanDatabases' }
@@ -254,7 +257,7 @@ export const DATA_DELETION_OPTIONS = [
     group: 'opfs',
     label: 'OPFS: /naidan-tmp',
     description: 'Temporary working directories.',
-    selector: { kind: 'opfsPath', path: `/${OPFS_TMP_DIR}` },
+    selector: { kind: 'opfsSpecialFileSystem', type: 'tmp' },
     advanced: false,
   },
   {
@@ -347,6 +350,7 @@ export function getDataDeletionOptionSupport({ option }: { option: DataDeletionO
       ? { status: 'unavailable', message: LOCAL_STORAGE_UNAVAILABLE_MESSAGE }
       : { status: 'available' };
   case 'opfsPath':
+  case 'opfsSpecialFileSystem':
   case 'opfsRemoteModels':
     return isOpfsSupported()
       ? { status: 'available' }
@@ -455,6 +459,7 @@ function selectorIncludes({ parent, child }: { parent: DataDeletionSelector, chi
     case 'localStorageUnknownNaidanKeys':
       return STORAGE_KEY_PREFIX.startsWith(parent.prefix);
     case 'opfsPath':
+    case 'opfsSpecialFileSystem':
     case 'opfsRemoteModels':
     case 'indexedDbDatabase':
     case 'indexedDbUnknownNaidanDatabases':
@@ -475,6 +480,7 @@ function selectorIncludes({ parent, child }: { parent: DataDeletionSelector, chi
     case 'localStoragePrefix':
     case 'localStorageKey':
     case 'localStorageUnknownNaidanKeys':
+    case 'opfsSpecialFileSystem':
     case 'indexedDbDatabase':
     case 'indexedDbUnknownNaidanDatabases':
     case 'cacheStorageAll':
@@ -485,6 +491,9 @@ function selectorIncludes({ parent, child }: { parent: DataDeletionSelector, chi
       return _ex;
     }
     }
+  case 'opfsSpecialFileSystem':
+    return child.kind === 'opfsSpecialFileSystem'
+      && child.type === parent.type;
   case 'cacheStorageAll':
     return child.kind === 'cacheStorageNameIncludes';
   case 'localStorageKey':
@@ -517,6 +526,8 @@ async function previewSelector({ selector }: { selector: DataDeletionSelector })
     return previewLocalStorageKeys({ keys: getUnknownLocalStorageNaidanKeys() });
   case 'opfsPath':
     return previewOpfsPathSelector({ path: selector.path });
+  case 'opfsSpecialFileSystem':
+    return await previewOpfsSpecialFileSystem({ type: selector.type });
   case 'opfsRemoteModels':
     return previewRemoteModelsSelector();
   case 'indexedDbDatabase':
@@ -544,6 +555,8 @@ async function deleteSelector({ selector }: { selector: DataDeletionSelector }):
     return deleteLocalStorageKeys({ keys: getUnknownLocalStorageNaidanKeys() });
   case 'opfsPath':
     return await deleteOpfsPath({ path: selector.path });
+  case 'opfsSpecialFileSystem':
+    return await deleteOpfsSpecialFileSystem({ type: selector.type });
   case 'opfsRemoteModels':
     return await deleteRemoteModelDirectories();
   case 'indexedDbDatabase':
@@ -666,6 +679,69 @@ async function getOpfsRoot(): Promise<FileSystemDirectoryHandle | undefined> {
   } catch {
     return undefined;
   }
+}
+
+function getOpfsSpecialFileSystemDisplayPath({
+  type,
+}: {
+  type: OpfsSpecialFileSystemType,
+}): string {
+  switch (type) {
+  case 'chat_wesh':
+    return '/naidan-chat-wesh';
+  case 'debug_wesh':
+    return '/naidan-debug-wesh';
+  case 'tmp':
+    return `/${OPFS_TMP_DIR}`;
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled OPFS special filesystem type: ${String(_ex)}`);
+  }
+  }
+}
+
+async function previewOpfsSpecialFileSystem({
+  type,
+}: {
+  type: OpfsSpecialFileSystemType,
+}): Promise<{
+  entries: readonly DataDeletionPreviewEntry[],
+  notes: readonly string[],
+}> {
+  if (!isOpfsSupported()) {
+    return {
+      entries: [],
+      notes: [OPFS_UNAVAILABLE_MESSAGE],
+    };
+  }
+  const path = getOpfsSpecialFileSystemDisplayPath({ type });
+  const access = await storageService.openOpfsSpecialFileSystemDirectory({
+    type,
+    path: '/',
+    create: false,
+  });
+  if (access === null) {
+    return {
+      entries: [],
+      notes: [`OPFS filesystem not found: ${path}`],
+    };
+  }
+  return {
+    entries: [{ path, location: 'OPFS' }],
+    notes: [],
+  };
+}
+
+async function deleteOpfsSpecialFileSystem({
+  type,
+}: {
+  type: OpfsSpecialFileSystemType,
+}): Promise<DeleteSelectorResult> {
+  if (!isOpfsSupported()) {
+    return { status: 'skipped', message: OPFS_UNAVAILABLE_MESSAGE };
+  }
+  await storageService.clearOpfsSpecialFileSystem({ type });
+  return { status: 'deleted' };
 }
 
 async function previewOpfsPathSelector({ path }: { path: string }): Promise<{ entries: readonly DataDeletionPreviewEntry[], notes: readonly string[] }> {

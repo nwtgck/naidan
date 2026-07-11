@@ -2,6 +2,7 @@ import { ensureStrings } from '@/strings';
 import { ref, computed } from 'vue';
 import type { InjectionKey } from 'vue';
 import { createFileExplorerWorkerClient } from '@/features/file-explorer/worker/client';
+import { registerFileExplorerWorkerClient } from '@/features/file-explorer/worker/client-registry';
 import type {
   FileExplorerEntry,
   FileExplorerContext,
@@ -43,7 +44,9 @@ export async function useFileExplorer({
   initialPath: string[] | undefined,
   initialLocked: boolean,
 }) {
-  const client = await createFileExplorerWorkerClient({ root });
+  const client = registerFileExplorerWorkerClient({
+    client: await createFileExplorerWorkerClient({ root }),
+  });
   const { addToast } = useToast();
   const { showPrompt } = usePrompt();
 

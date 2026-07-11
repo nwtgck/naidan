@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/01-models/types';
+import { storageService } from '@/00-storage/service';
 import type { StartupState } from '@/logic/startup/types';
 import { createInitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { startApp } from './app-startup';
@@ -35,12 +36,13 @@ vi.mock('@/features/file-protocol-standalone/debug/startup', () => ({
 }));
 
 type SettingsStore = ReturnType<typeof useSettings>;
+type SettingsInitOptions = Parameters<SettingsStore['init']>[0];
 
 function createSettingsStore({ onboardingDismissed }: {
   onboardingDismissed: boolean,
 }) {
   const isOnboardingDismissed = ref(onboardingDismissed);
-  const init = vi.fn(async () => {});
+  const init = vi.fn(async (_options: SettingsInitOptions) => {});
   const save = vi.fn(async ({ patch }: {
     patch: Partial<Settings>,
   }) => {
@@ -158,6 +160,62 @@ describe('app startup', () => {
     dispose();
   });
 
+  it('waits at the OPFS encryption gate before loading chats or the main app', async () => {
+    const settings = createSettingsStore({ onboardingDismissed: true });
+    const harness = createStartupHarness();
+    const unlock = vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase')
+      .mockResolvedValue(undefined);
+    settings.init.mockImplementationOnce(async ({ onOpfsEncryptionAccessRequired }) => {
+      if (onOpfsEncryptionAccessRequired === undefined) {
+        throw new Error('Expected OPFS encryption startup callback');
+      }
+      await onOpfsEncryptionAccessRequired({
+        inspection: {
+          type: 'encrypted',
+          state: {
+            formatVersion: 1,
+            sequence: 1,
+            state: 'encrypted',
+            keySlots: [],
+            activeEncryptedStoreId: 'encrypted-store',
+          },
+        },
+      });
+    });
+
+    const startup = startApp({
+      startupState: harness.startupState,
+      settingsStore: settings.settingsStore,
+      router: harness.router,
+      navigationGate: harness.navigationGate,
+      window: harness.window,
+    });
+    await flushPromises();
+
+    const state = harness.startupState.value;
+    expect(state.kind).toBe('opfs-encryption-required');
+    expect(loadChatsForAppStartup).not.toHaveBeenCalled();
+    expect(harness.loadRouteComponent).not.toHaveBeenCalled();
+    if (state.kind !== 'opfs-encryption-required') {
+      throw new Error(`Unexpected startup state: ${state.kind}`);
+    }
+
+    await state.gate.unlockWithPassphrase({ passphrase: 'correct horse battery staple' });
+    await flushPromises();
+
+    expect(unlock).toHaveBeenCalledWith({
+      passphrase: 'correct horse battery staple',
+    });
+    expect(loadChatsForAppStartup).toHaveBeenCalledOnce();
+    expect(harness.startupState.value.kind).toBe('rendering-main');
+
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    const dispose = await startup;
+    expect(harness.startupState.value.kind).toBe('ready');
+    dispose();
+    unlock.mockRestore();
+  });
+
   it('gives onboarding one paint and then renders the real app before dismissal', async () => {
     const settings = createSettingsStore({ onboardingDismissed: false });
     const harness = createStartupHarness();
@@ -223,6 +281,7 @@ describe('app startup', () => {
     expect(settings.init).toHaveBeenCalledWith({
       storageTypeOverride: 'opfs',
       dataZipBase64: 'encoded-state',
+      onOpfsEncryptionAccessRequired: expect.any(Function),
     });
     expect(harness.router.currentRoute.value.query['data-zip']).toBeUndefined();
     expect(harness.router.currentRoute.value.query['storage-type']).toBe('opfs');

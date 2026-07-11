@@ -1,0 +1,1 @@
+export const opfsEncryption__copying_and_verifying_complete_opfs_storage = (): string => 'Naidan is copying and verifying the complete OPFS storage. All app functions are temporarily locked in every open tab.';

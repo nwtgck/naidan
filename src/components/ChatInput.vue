@@ -378,8 +378,23 @@ async function finishMount({ volumeId, name }: { volumeId: VolumeId, name: strin
     mount: { type: 'volume', volumeId, mountPath, readOnly: true },
   });
   setToolEnabled({ name: 'shell_execute', enabled: true });
-  void storageService.getVolumeDirectoryHandle({ volumeId }).then(handle => {
-    if (handle) startVolumeExtensionScan({ volumeId, handle });
+  void storageService.openVolume({ volumeId }).then(access => {
+    if (access === null) {
+      return;
+    }
+    switch (access.type) {
+    case 'direct_directory':
+      startVolumeExtensionScan({ volumeId, handle: access.handle });
+      break;
+    case 'encrypted_directory':
+      break;
+    default: {
+      const _ex: never = access;
+      throw new Error(
+        `Unhandled volume access type: ${((_ex satisfies never) as { readonly type: string }).type}`,
+      );
+    }
+    }
   });
 }
 
@@ -643,15 +658,19 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: Vol
 
   switch (volumeType) {
   case 'host': {
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId });
-    if (handle && !readOnly) {
+    const access = await storageService.openVolume({ volumeId });
+    if (access === null || readOnly) {
+      break;
+    }
+    switch (access.type) {
+    case 'direct_directory': {
       // Enabling writes: request write permission from the browser.
       // The handle was obtained with mode:'read', so writes will fail unless explicitly upgraded.
       type FSHandleWithPermission = FileSystemDirectoryHandle & {
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this signature mirrors the File System Access API requestPermission contract.
         requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>,
       };
-      const result = await (handle as FSHandleWithPermission).requestPermission({ mode: 'readwrite' });
+      const result = await (access.handle as FSHandleWithPermission).requestPermission({ mode: 'readwrite' });
       // Note: downgrading back to read-only cannot be enforced at the browser level.
       // requestPermission({ mode: 'read' }) on a readwrite handle just returns 'granted' immediately —
       // the browser has no API to revoke a previously granted write permission.
@@ -667,6 +686,14 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: Vol
         throw new Error(`Unhandled permission state: ${_ex}`);
       }
       }
+      break;
+    }
+    case 'encrypted_directory':
+      throw new Error('A host volume cannot use encrypted OPFS directory access');
+    default: {
+      const _ex: never = access;
+      throw new Error(`Unhandled storage volume access: ${String(_ex)}`);
+    }
     }
     break;
   }

@@ -18,7 +18,7 @@ describe('getEnabledTools choices', () => {
       chatId: toChatId({ raw: 'chat-a' }),
       chatGroupId: undefined,
       naidanSysfsAccessScope: 'none',
-      tmpHandle: undefined,
+      tmpAccess: undefined,
       requestChoice,
     });
 
@@ -49,7 +49,7 @@ describe('getEnabledTools choices', () => {
       chatId: undefined,
       chatGroupId: undefined,
       naidanSysfsAccessScope: 'none',
-      tmpHandle: undefined,
+      tmpAccess: undefined,
       requestChoice: vi.fn(),
     });
     const withoutHandler = await getEnabledTools({
@@ -60,7 +60,7 @@ describe('getEnabledTools choices', () => {
       chatId: toChatId({ raw: 'chat-a' }),
       chatGroupId: undefined,
       naidanSysfsAccessScope: 'none',
-      tmpHandle: undefined,
+      tmpAccess: undefined,
       requestChoice: undefined,
     });
 

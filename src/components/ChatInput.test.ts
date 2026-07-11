@@ -111,7 +111,7 @@ vi.mock('../00-storage/service', () => ({
     getVolume: vi.fn(),
     createVolumeFromFiles: vi.fn(),
     createVolume: vi.fn(),
-    getVolumeDirectoryHandle: vi.fn(),
+    openVolume: vi.fn(),
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     listVolumes: vi.fn(),
   },
@@ -156,8 +156,8 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
       if (mount.volumeId === undefined) {
         continue;
       }
-      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
-      if (handle !== undefined) {
+      const access = await storageService.openVolume({ volumeId: mount.volumeId });
+      if (access !== null) {
         mounts.push({ type: 'directory', path: mount.mountPath, readOnly: mount.readOnly });
       }
     }
@@ -169,8 +169,8 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
       if (mount.volumeId === undefined) {
         continue;
       }
-      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: toVolumeId({ raw: mount.volumeId }) });
-      if (handle === undefined) {
+      const access = await storageService.openVolume({ volumeId: toVolumeId({ raw: mount.volumeId }) });
+      if (access === null) {
         continue;
       }
       const existingIndex = mounts.findIndex(({ path }) => path === mount.mountPath);
@@ -189,8 +189,8 @@ vi.mock('@/features/wesh/chat-worker-mounts', () => ({
       if (mount.volumeId === undefined) {
         continue;
       }
-      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: toVolumeId({ raw: mount.volumeId }) });
-      if (handle === undefined) {
+      const access = await storageService.openVolume({ volumeId: toVolumeId({ raw: mount.volumeId }) });
+      if (access === null) {
         continue;
       }
       const existingIndex = mounts.findIndex(({ path }) => path === mount.mountPath);
@@ -603,7 +603,10 @@ describe('ChatInput Integration', () => {
     };
 
     const { storageService } = await import('@/00-storage/service');
-    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
+    vi.mocked(storageService.openVolume).mockResolvedValue({
+      type: 'direct_directory',
+      handle: { kind: 'directory', name: 'work' } as FileSystemDirectoryHandle,
+    });
 
     const wrapper = getWrapper();
     await nextTick();
@@ -632,7 +635,10 @@ describe('ChatInput Integration', () => {
     };
 
     const { storageService } = await import('@/00-storage/service');
-    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
+    vi.mocked(storageService.openVolume).mockResolvedValue({
+      type: 'direct_directory',
+      handle: { kind: 'directory', name: 'work' } as FileSystemDirectoryHandle,
+    });
 
     const wrapper = getWrapper();
     await nextTick();
@@ -660,7 +666,10 @@ describe('ChatInput Integration', () => {
     };
 
     const { storageService } = await import('@/00-storage/service');
-    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
+    vi.mocked(storageService.openVolume).mockResolvedValue({
+      type: 'direct_directory',
+      handle: { kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle,
+    });
 
     const wrapper = getWrapper();
     await nextTick();
@@ -669,8 +678,8 @@ describe('ChatInput Integration', () => {
     await flushPromises();
 
     // Called once for chat mount and once for global mount
-    expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-chat' });
-    expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
+    expect(vi.mocked(storageService.openVolume)).toHaveBeenCalledWith({ volumeId: 'vol-chat' });
+    expect(vi.mocked(storageService.openVolume)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
     expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
@@ -696,7 +705,10 @@ describe('ChatInput Integration', () => {
     mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
 
     const { storageService } = await import('@/00-storage/service');
-    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
+    vi.mocked(storageService.openVolume).mockResolvedValue({
+      type: 'direct_directory',
+      handle: { kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle,
+    });
 
     const wrapper = getWrapper();
     await nextTick();

@@ -9,6 +9,7 @@ import {
 import { debugRecordFileProtocolStandaloneStartupCheckpoint } from '@/features/file-protocol-standalone/debug/startup';
 import type { InitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { waitForPresentationPaint } from '@/logic/startup/presentation-frame';
+import { createOpfsEncryptionStartupGate } from './opfs-encryption-startup-gate';
 import {
   readFirstQueryValue,
   resolveInitialRoute,
@@ -42,6 +43,14 @@ export async function startApp({ startupState, settingsStore, router, navigation
   await settingsStore.init({
     storageTypeOverride,
     dataZipBase64,
+    onOpfsEncryptionAccessRequired: async ({ inspection }) => {
+      const gate = createOpfsEncryptionStartupGate({ inspection });
+      startupState.value = {
+        kind: 'opfs-encryption-required',
+        gate,
+      };
+      await gate.wait();
+    },
   });
   dataZipBase64 = undefined;
 

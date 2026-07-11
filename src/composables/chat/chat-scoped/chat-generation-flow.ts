@@ -1218,7 +1218,7 @@ async function getEnabledToolsForChat({
     chatId: chat.id,
     chatGroupId: chat.groupId ?? undefined,
     naidanSysfsAccessScope: weshToolConfig?.naidanSysfs.accessScope ?? 'none',
-    tmpHandle: chatTmpDirectory?.handle,
+    tmpAccess: chatTmpDirectory?.access,
     requestChoice,
   });
 }

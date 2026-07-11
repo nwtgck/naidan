@@ -1,5 +1,8 @@
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
-import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/00-storage/00-dto/dto';
+import type { ChatMetaDto, ChatGroupDto, HierarchyDto, StorageBinaryObjectWriteSource } from '@/00-storage/00-dto/dto';
+import type { StorageBinaryObjectReadHandle } from './binary-object-io';
+import type { StorageVolumeAccess } from './volume-access';
+import { materializeStorageBinaryObjectAsBlob } from './binary-object-io';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 
 export type { ChatSummary };
@@ -10,6 +13,14 @@ export type { ChatSummary };
  */
 export abstract class IStorageProvider {
   abstract init(): Promise<void>;
+
+  /**
+   * Releases provider-lifetime resources after the provider is replaced.
+   *
+   * The provider must not be used again after this method resolves. Providers
+   * without lifetime resources intentionally inherit this no-op implementation.
+   */
+  async dispose(): Promise<void> {}
 
   /**
    * Whether this provider supports efficient binary persistence (e.g. OPFS).
@@ -34,9 +45,32 @@ export abstract class IStorageProvider {
     signal?: AbortSignal,
   }): Promise<Volume>;
 
-  abstract getVolumeDirectoryHandle({ volumeId }: {
+  abstract openVolume({ volumeId }: {
     volumeId: VolumeId,
-  }): Promise<FileSystemDirectoryHandle | null>;
+  }): Promise<StorageVolumeAccess | null>;
+
+  /**
+   * TODO(storage-volume-access): Migrate remaining callers to openVolume().
+   * Encrypted OPFS volumes do not expose a native FileSystemDirectoryHandle.
+   */
+  async getVolumeDirectoryHandle({ volumeId }: {
+    volumeId: VolumeId,
+  }): Promise<FileSystemDirectoryHandle | null> {
+    const access = await this.openVolume({ volumeId });
+    if (access === null) {
+      return null;
+    }
+    switch (access.type) {
+    case 'direct_directory':
+      return access.handle;
+    case 'encrypted_directory':
+      return null;
+    default: {
+      const _ex: never = access;
+      throw new Error(`Unhandled storage volume access: ${String(_ex)}`);
+    }
+    }
+  }
 
   abstract deleteVolume({ volumeId }: {
     volumeId: VolumeId,
@@ -48,8 +82,8 @@ export abstract class IStorageProvider {
   }): Promise<void>;
 
   // --- Data Access Methods ---
-  protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
-  protected abstract listChatGroupsRaw(): Promise<ChatGroupDto[]>;
+  abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
+  abstract listChatGroupsRaw(): Promise<ChatGroupDto[]>;
 
   // --- Hierarchy Management ---
   abstract loadHierarchy(): Promise<HierarchyDto | null>;
@@ -133,13 +167,61 @@ export abstract class IStorageProvider {
   abstract clearAll(): Promise<void>;
 
   // --- File Storage ---
-  abstract saveFile({ blob, binaryObjectId, name, mimeType }: {
+  abstract writeBinaryObject({ source, binaryObjectId, name, mimeType, size, createdAt, signal }: {
+    source: StorageBinaryObjectWriteSource,
+    binaryObjectId: BinaryObjectId,
+    name: string,
+    mimeType: string,
+    size: number,
+    createdAt: number,
+    signal: AbortSignal | undefined,
+  }): Promise<void>;
+
+  abstract openBinaryObject({ binaryObjectId }: {
+    binaryObjectId: BinaryObjectId,
+  }): Promise<StorageBinaryObjectReadHandle | null>;
+
+  /**
+   * TODO(storage-binary-io): Migrate remaining callers to
+   * writeBinaryObject(). This compatibility API must not be used by storage
+   * migration, encryption transitions, volumes, or Wesh.
+   */
+  async saveFile({ blob, binaryObjectId, name, mimeType }: {
     blob: Blob,
     binaryObjectId: BinaryObjectId,
     name: string,
     mimeType?: string,
-  }): Promise<void>;
-  abstract getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null>;
+  }): Promise<void> {
+    const resolvedMimeType = mimeType ?? (blob.type || 'application/octet-stream');
+    await this.writeBinaryObject({
+      source: { type: 'direct_blob', blob },
+      binaryObjectId,
+      name,
+      mimeType: resolvedMimeType,
+      size: blob.size,
+      createdAt: Date.now(),
+      signal: undefined,
+    });
+  }
+
+  /**
+   * TODO(storage-binary-io): Migrate remaining callers to
+   * openBinaryObject(). Reader-only payloads require complete materialization
+   * through this compatibility API.
+   */
+  async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
+    const handle = await this.openBinaryObject({ binaryObjectId });
+    if (handle === null) {
+      return null;
+    }
+
+    try {
+      return await materializeStorageBinaryObjectAsBlob({ handle });
+    } finally {
+      await handle.close();
+    }
+  }
+
   abstract getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null>;
   abstract hasAttachments(): Promise<boolean>;
   abstract listBinaryObjects(): AsyncIterable<BinaryObject>;

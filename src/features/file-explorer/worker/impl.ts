@@ -225,7 +225,8 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
   case 'wesh-mounts': {
     const vfs = new WeshVFS({ rootHandle: undefined });
     for (const mount of root.mounts) {
-      switch (mount.type) {
+      const mountType = mount.type;
+      switch (mountType) {
       case 'directory':
         await vfs.mount({
           path: mount.path,
@@ -233,6 +234,26 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
           readOnly: mount.readOnly,
         });
         break;
+      case 'encrypted_directory': {
+        const { EncryptedDirectoryWeshProvider } = await import(
+          '@/features/wesh/encrypted-directory-provider'
+        );
+        vfs.mountVirtual({
+          path: mount.path,
+          readOnly: mount.readOnly,
+          provider: new EncryptedDirectoryWeshProvider({
+            access: {
+              type: 'encrypted_directory',
+              storeDirectory: mount.storeDirectory,
+              rootDirectoryId: mount.rootDirectoryId,
+              objectEncryptionKey: mount.objectEncryptionKey,
+              objectAddressKey: mount.objectAddressKey,
+            },
+            mountPath: mount.path,
+          }),
+        });
+        break;
+      }
       case 'naidan_sysfs': {
         const reader = await (() => {
           switch (mount.storageType) {
@@ -267,7 +288,7 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
         break;
       }
       default: {
-        const _exhaustiveCheck: never = mount;
+        const _exhaustiveCheck: never = mountType;
         throw new Error(`Unhandled wesh mount: ${String(_exhaustiveCheck)}`);
       }
       }

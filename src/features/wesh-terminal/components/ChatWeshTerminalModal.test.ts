@@ -11,8 +11,11 @@ const mocks = vi.hoisted(() => ({
   disposeExecution: vi.fn().mockResolvedValue(undefined),
   dispose: vi.fn().mockResolvedValue(undefined),
   createClient: vi.fn(),
-  getVolumeDirectoryHandle: vi.fn().mockResolvedValue({} as FileSystemDirectoryHandle),
-  getDirectory: vi.fn(),
+  openVolume: vi.fn().mockResolvedValue({
+    type: 'direct_directory',
+    handle: {} as FileSystemDirectoryHandle,
+  }),
+  openOpfsSpecialFileSystemDirectory: vi.fn(),
   subscribeToChanges: vi.fn(),
   showConfirm: vi.fn(),
   ensureChatTmpDirectory: vi.fn(),
@@ -30,7 +33,8 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    openVolume: mocks.openVolume,
+    openOpfsSpecialFileSystemDirectory: mocks.openOpfsSpecialFileSystemDirectory,
     subscribeToChanges: mocks.subscribeToChanges,
   },
 }));
@@ -75,7 +79,10 @@ describe('ChatWeshTerminalModal', () => {
       { type: 'volume', volumeId: toVolumeId({ raw: 'global-vol' }), mountPath: '/home/user/global', readOnly: true },
     ];
     mocks.showConfirm.mockResolvedValue(true);
-    mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
+    mocks.ensureChatTmpDirectory.mockResolvedValue({
+      access: { type: 'direct_directory', handle: tmpHandle },
+      mountPath: '/tmp',
+    });
     mocks.createClient.mockResolvedValue({
       startExecution: mocks.startExecution,
       awaitExecution: mocks.awaitExecution,
@@ -84,15 +91,9 @@ describe('ChatWeshTerminalModal', () => {
       dispose: mocks.dispose,
     });
     const globalRoot = createDirectoryHandleMock({ name: 'global-root' });
-    const terminalRoot = createDirectoryHandleMock({ name: 'naidan-chat-wesh' });
-    vi.mocked(terminalRoot.getDirectoryHandle).mockResolvedValue(globalRoot);
-    mocks.getDirectory.mockResolvedValue({
-      getDirectoryHandle: vi.fn().mockResolvedValue(terminalRoot),
-    });
-    vi.stubGlobal('navigator', {
-      storage: {
-        getDirectory: mocks.getDirectory,
-      },
+    mocks.openOpfsSpecialFileSystemDirectory.mockResolvedValue({
+      type: 'direct_directory',
+      handle: globalRoot,
     });
   });
 

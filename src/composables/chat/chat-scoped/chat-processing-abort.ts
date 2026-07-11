@@ -40,6 +40,20 @@ export function abortProcessingForChat({
   abortTitleGenerationForChat({ chatId });
 }
 
+
+export function abortAllChatProcessingForStorageTransition(): void {
+  const chatIds = new Set<ChatId>([
+    ...chatRuntimeStore.activeGenerations.keys(),
+    ...chatRuntimeStore.activeTitleGenerations.keys(),
+    ...chatRuntimeStore.externalGenerations.values(),
+    ...contextCompactRuntime.activeContextCompactions.keys(),
+  ]);
+
+  for (const chatId of chatIds) {
+    abortProcessingForChat({ chatId });
+  }
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {

@@ -65,6 +65,7 @@ function createAppPresentation({
     const state = startupState.value;
     switch (state.kind) {
     case 'initializing-foundation':
+    case 'opfs-encryption-required':
     case 'starting-main':
     case 'rendering-main':
       return 'blocked-by-startup';

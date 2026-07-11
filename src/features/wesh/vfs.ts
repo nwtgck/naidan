@@ -1807,8 +1807,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async mkdir({ path, mode: _mode, recursive }: { path: string, mode?: number, recursive?: boolean }): Promise<void> {
     const normalized = this.normalizePath({ path: path });
-    if (this.findVirtualMount({ path: normalized }) !== undefined) {
-      throw new Error(`Read-only filesystem: ${normalized}`);
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      if (virtualMount.readOnly || virtualMount.provider.mkdir === undefined) {
+        throw new Error(`Read-only filesystem: ${normalized}`);
+      }
+      await virtualMount.provider.mkdir({ path: normalized, recursive: recursive ?? false });
+      return;
     }
     const parts = normalized.split('/').filter(p => p);
 
@@ -1861,8 +1866,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async symlink({ path, targetPath, mode }: { path: string, targetPath: string, mode?: number }): Promise<void> {
     const normalized = this.normalizePath({ path: path });
-    if (this.findVirtualMount({ path: normalized }) !== undefined) {
-      throw new Error(`Read-only filesystem: ${normalized}`);
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      if (virtualMount.readOnly || virtualMount.provider.symlink === undefined) {
+        throw new Error(`Read-only filesystem: ${normalized}`);
+      }
+      await virtualMount.provider.symlink({ path: normalized, targetPath });
+      return;
     }
     const mount = this.findMount({ path: normalized });
     switch (mount?.type) {
@@ -1909,8 +1919,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async unlink({ path }: { path: string }): Promise<void> {
     const normalized = this.normalizePath({ path: path });
-    if (this.findVirtualMount({ path: normalized }) !== undefined) {
-      throw new Error(`Read-only filesystem: ${normalized}`);
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      if (virtualMount.readOnly || virtualMount.provider.unlink === undefined) {
+        throw new Error(`Read-only filesystem: ${normalized}`);
+      }
+      await virtualMount.provider.unlink({ path: normalized });
+      return;
     }
     if (this.isMountPoint({ path: normalized })) {
       throw new Error(`Cannot unlink mount point: ${normalized}`);
@@ -1967,8 +1982,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
   async rmdir({ path }: { path: string }): Promise<void> {
     const normalized = this.normalizePath({ path: path });
-    if (this.findVirtualMount({ path: normalized }) !== undefined) {
-      throw new Error(`Read-only filesystem: ${normalized}`);
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      if (virtualMount.readOnly || virtualMount.provider.rmdir === undefined) {
+        throw new Error(`Read-only filesystem: ${normalized}`);
+      }
+      await virtualMount.provider.rmdir({ path: normalized });
+      return;
     }
     if (this.isMountPoint({ path: normalized })) {
       throw new Error(`Cannot remove mount point: ${normalized}`);
@@ -2066,6 +2086,23 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const oldNormalized = this.normalizePath({ path: oldPath });
     const newNormalized = this.normalizePath({ path: newPath });
     if (oldNormalized === newNormalized) {
+      return;
+    }
+    const oldVirtualMount = this.findVirtualMount({ path: oldNormalized });
+    const newVirtualMount = this.findVirtualMount({ path: newNormalized });
+    if (oldVirtualMount !== undefined || newVirtualMount !== undefined) {
+      if (
+        oldVirtualMount === undefined
+        || newVirtualMount !== oldVirtualMount
+        || oldVirtualMount.readOnly
+        || oldVirtualMount.provider.rename === undefined
+      ) {
+        throw new Error('Cannot rename across filesystems or a read-only filesystem');
+      }
+      await oldVirtualMount.provider.rename({
+        oldPath: oldNormalized,
+        newPath: newNormalized,
+      });
       return;
     }
     if (this.isMountPoint({ path: oldNormalized }) || this.isMountPoint({ path: newNormalized })) {

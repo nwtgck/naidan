@@ -17,6 +17,18 @@ import { createInitialNavigationGate } from './logic/startup/initial-navigation-
 import {
   debugRecordFileProtocolStandaloneStartupCheckpoint,
 } from './features/file-protocol-standalone/debug/startup';
+import {
+  registerOpfsStorageTransitionPreparation,
+} from './00-storage/service/opfs/opfs-storage-transition-preparation';
+
+registerOpfsStorageTransitionPreparation({
+  prepare: async () => {
+    const transitionPreparation = await import(
+      './features/opfs-encryption/prepare-for-storage-transition'
+    );
+    await transitionPreparation.prepareForOpfsEncryptionTransition();
+  },
+});
 
 async function bootstrapApp(): Promise<void> {
   debugRecordFileProtocolStandaloneStartupCheckpoint({
@@ -79,6 +91,7 @@ async function bootstrapApp(): Promise<void> {
     const state = startupState.value;
     switch (state.kind) {
     case 'initializing-foundation':
+    case 'opfs-encryption-required':
       startupState.value = {
         kind: 'foundation-failed',
         error,

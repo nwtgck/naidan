@@ -30,6 +30,11 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
     type: z.literal('migration'),
     timestamp: z.number(),
   }),
+  z.object({
+    type: z.literal('opfs_encryption'),
+    status: z.enum(['transition_started', 'transition_completed', 'transition_failed']),
+    timestamp: z.number(),
+  }),
 ]);
 
 export type StorageChangeEvent = z.infer<typeof StorageChangeEventSchema>;

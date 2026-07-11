@@ -5,6 +5,7 @@ import {
   type ChatGroupDto,
   type HierarchyDto,
   type ChatContentDto,
+  type StorageBinaryObjectWriteSource,
   ChatMetaSchemaDto,
   ChatGroupSchemaDto,
   SettingsSchemaDto,
@@ -26,6 +27,9 @@ import {
   buildSidebarItemsFromHierarchy,
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from './interface';
+import { createBlobStorageBinaryObjectReadHandle, materializeStorageBinaryObjectWriteSourceAsBlob } from './binary-object-io';
+import type { StorageBinaryObjectReadHandle } from './binary-object-io';
+import type { StorageVolumeAccess } from './volume-access';
 import { idToRaw, toBinaryObjectId, toChatGroupId } from '@/01-models/ids';
 
 /**
@@ -87,11 +91,11 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   // --- Internal Data Access ---
 
-  protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
+  async listChatMetasRaw(): Promise<ChatMetaDto[]> {
     return Array.from(this.chatMetas.values());
   }
 
-  protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
+  async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
     return Array.from(this.chatGroups.values());
   }
 
@@ -250,9 +254,9 @@ export class MemoryStorageProvider extends IStorageProvider {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
-  async getVolumeDirectoryHandle({ volumeId: _volumeId }: {
+  async openVolume({ volumeId: _volumeId }: {
     volumeId: VolumeId,
-  }): Promise<FileSystemDirectoryHandle | null> {
+  }): Promise<StorageVolumeAccess | null> {
     return null;
   }
 
@@ -271,17 +275,26 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
 
-  private async saveFileWithMetadata({ blob, binaryObjectId, name, mimeType, createdAt }: {
-    blob: Blob,
+  async writeBinaryObject({ source, binaryObjectId, name, mimeType, size, createdAt, signal }: {
+    source: StorageBinaryObjectWriteSource,
     binaryObjectId: BinaryObjectId,
     name: string,
-    mimeType: string | undefined,
+    mimeType: string,
+    size: number,
     createdAt: number,
+    signal: AbortSignal | undefined,
   }): Promise<void> {
+    signal?.throwIfAborted();
+    const blob = await materializeStorageBinaryObjectWriteSourceAsBlob({ source, mimeType });
+    signal?.throwIfAborted();
+    if (blob.size !== size) {
+      throw new Error(`Binary object size mismatch: expected ${size}, received ${blob.size}`);
+    }
+
     const meta: BinaryObject = {
       id: binaryObjectId,
-      mimeType: mimeType ?? (blob.type || 'application/octet-stream'),
-      size: blob.size,
+      mimeType,
+      size,
       createdAt,
       name,
     };
@@ -289,23 +302,18 @@ export class MemoryStorageProvider extends IStorageProvider {
     this.binaryObjects.set(binaryObjectId, { blob, meta });
   }
 
-  async saveFile({ blob, binaryObjectId, name, mimeType }: {
-    blob: Blob,
+  async openBinaryObject({ binaryObjectId }: {
     binaryObjectId: BinaryObjectId,
-    name: string,
-    mimeType?: string,
-  }): Promise<void> {
-    await this.saveFileWithMetadata({
-      blob,
-      binaryObjectId,
-      name,
-      mimeType,
-      createdAt: Date.now(),
-    });
-  }
+  }): Promise<StorageBinaryObjectReadHandle | null> {
+    const stored = this.binaryObjects.get(binaryObjectId);
+    if (stored === undefined) {
+      return null;
+    }
 
-  async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
-    return this.binaryObjects.get(binaryObjectId)?.blob || null;
+    return createBlobStorageBinaryObjectReadHandle({
+      blob: stored.blob,
+      mimeType: stored.meta.mimeType,
+    });
   }
 
   async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null> {
@@ -360,7 +368,7 @@ export class MemoryStorageProvider extends IStorageProvider {
           mimeType: meta.mimeType,
           size: meta.size,
           createdAt: meta.createdAt,
-          blob,
+          source: { type: 'direct_blob' as const, blob },
         };
       }
     };
@@ -404,12 +412,14 @@ export class MemoryStorageProvider extends IStorageProvider {
         break;
       }
       case 'binary_object':
-        await this.saveFileWithMetadata({
-          blob: chunk.blob,
+        await this.writeBinaryObject({
+          source: chunk.source,
           binaryObjectId: toBinaryObjectId({ raw: chunk.id }),
           name: chunk.name,
           mimeType: chunk.mimeType,
+          size: chunk.size,
           createdAt: chunk.createdAt,
+          signal: undefined,
         });
         break;
       default: {

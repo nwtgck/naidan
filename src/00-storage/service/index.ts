@@ -4,6 +4,12 @@ import { ensureStrings } from '@/strings';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
+import { PlainOPFSStorageBackend } from './opfs/plain-opfs-storage-backend';
+import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
+import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
+import {
+  prepareRegisteredOpfsStorageTransition,
+} from './opfs/opfs-storage-transition-preparation';
 import { MemoryStorageProvider } from './memory-storage';
 import { checkOPFSSupport } from '@/utils/opfs-detection';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the application event dependency with a storage service event API.
@@ -33,6 +39,49 @@ export class StorageService {
 
   constructor() {
     this.synchronizer = new StorageSynchronizer();
+    this.synchronizer.subscribe({ listener: ({ event }) => {
+      const eventType = event.type;
+      switch (eventType) {
+      case 'opfs_encryption': {
+        const status = event.status;
+        switch (status) {
+        case 'transition_started':
+          void this.suspendOpfsStorageForExternalTransition();
+          return;
+        case 'transition_completed':
+        case 'transition_failed':
+          return;
+        default: {
+          const _ex: never = status;
+          throw new Error(`Unhandled OPFS encryption transition status: ${String(_ex)}`);
+        }
+        }
+      }
+      case 'chat_meta_and_chat_group':
+      case 'chat_content':
+      case 'chat_content_generation':
+      case 'settings':
+      case 'binary_objects':
+      case 'migration':
+        return;
+      default: {
+        const _ex: never = eventType;
+        throw new Error(`Unhandled storage change event type: ${String(_ex)}`);
+      }
+      }
+    } });
+  }
+
+  private async suspendOpfsStorageForExternalTransition(): Promise<void> {
+    if (this.currentType !== 'opfs' || !(this.provider instanceof OPFSStorageProvider)) {
+      return;
+    }
+    try {
+      await prepareRegisteredOpfsStorageTransition();
+      await this.provider.suspendStorageSession();
+    } catch (error) {
+      console.error('Failed to suspend OPFS storage for an external encryption transition:', error);
+    }
   }
 
   /**
@@ -43,6 +92,58 @@ export class StorageService {
       throw new Error('StorageService not initialized. Call init() first.');
     }
     return this.provider;
+  }
+
+
+  private getOpfsProvider(): OPFSStorageProvider {
+    const provider = this.getProvider();
+    if (!(provider instanceof OPFSStorageProvider)) {
+      throw new Error('The current storage provider is not OPFS.');
+    }
+    return provider;
+  }
+
+  private async runOpfsEncryptionTransition<T>({
+    run,
+  }: {
+    run: () => Promise<T>,
+  }): Promise<T> {
+    this.notify({
+      event: {
+        type: 'opfs_encryption',
+        status: 'transition_started',
+        timestamp: Date.now(),
+      },
+    });
+
+    try {
+      const result = await this.synchronizer.withLock({
+        fn: run,
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({
+          source: 'opfsEncryptionTransition',
+          custom: { notifyLockWaitAfterMs: 5000 },
+        }),
+      });
+
+      this.notify({
+        event: {
+          type: 'opfs_encryption',
+          status: 'transition_completed',
+          timestamp: Date.now(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.notify({
+        event: {
+          type: 'opfs_encryption',
+          status: 'transition_failed',
+          timestamp: Date.now(),
+        },
+      });
+      throw error;
+    }
   }
 
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
@@ -94,6 +195,115 @@ export class StorageService {
 
   notify({ event }: { event: StorageChangeEvent }): void {
     this.synchronizer.notify({ event });
+  }
+
+  async inspectOpfsEncryption(): Promise<OpfsEncryptionInspection> {
+    const currentType = this.getCurrentType();
+    switch (currentType) {
+    case 'local':
+    case 'memory':
+      return { type: 'plain' };
+    case 'opfs':
+      return await this.getOpfsProvider().inspectEncryption();
+    default: {
+      const _ex: never = currentType;
+      throw new Error(`Unhandled storage type: ${String(_ex)}`);
+    }
+    }
+  }
+
+  async unlockOpfsEncryptionWithPassphrase({
+    passphrase,
+  }: {
+    passphrase: string,
+  }): Promise<void> {
+    await this.getOpfsProvider().unlockWithPassphrase({ passphrase });
+  }
+
+  async unlockOpfsEncryptionWithRecoveryKey({
+    recoveryKey,
+  }: {
+    recoveryKey: string,
+  }): Promise<void> {
+    await this.getOpfsProvider().unlockWithRecoveryKey({ recoveryKey });
+  }
+
+  async lockOpfsEncryption(): Promise<void> {
+    await this.getOpfsProvider().lockEncryption();
+  }
+
+  async enableOpfsEncryption({
+    passphrase,
+    signal,
+  }: {
+    passphrase: string,
+    signal: AbortSignal | undefined,
+  }): Promise<{ readonly recoveryKey: string }> {
+    return await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().enableEncryption({ passphrase, signal }),
+    });
+  }
+
+  async changeOpfsEncryptionPassphrase({
+    passphrase,
+  }: {
+    passphrase: string,
+  }): Promise<void> {
+    await this.synchronizer.withLock({
+      fn: async () => await this.getOpfsProvider().changePassphrase({ passphrase }),
+      lockKey: SYNC_LOCK_KEY,
+      ...this.getLockOptions({ source: 'changeOpfsEncryptionPassphrase' }),
+    });
+  }
+
+  async disableOpfsEncryption({
+    signal,
+  }: {
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().disableEncryption({ signal }),
+    });
+  }
+
+  async reencryptOpfsEncryption({
+    signal,
+  }: {
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().reencrypt({ signal }),
+    });
+  }
+
+  async resumeOpfsEncryptionTransitionWithPassphrase({
+    passphrase,
+    signal,
+  }: {
+    passphrase: string,
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().resumeTransitionWithPassphrase({
+        passphrase,
+        signal,
+      }),
+    });
+  }
+
+  async resumeOpfsEncryptionTransitionWithRecoveryKey({
+    recoveryKey,
+    signal,
+  }: {
+    recoveryKey: string,
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().resumeTransitionWithRecoveryKey({
+        recoveryKey,
+        signal,
+      }),
+    });
   }
 
   // --- Hierarchy Management (Atomic) ---
@@ -329,8 +539,72 @@ export class StorageService {
     return this.getProvider().createVolumeFromFiles({ name, entries, onProgress, signal });
   }
 
+  async openVolume({ volumeId }: { volumeId: VolumeId }) {
+    return await this.getProvider().openVolume({ volumeId });
+  }
+
+  async openOpfsSpecialFileSystemDirectory({
+    type,
+    path,
+    create,
+  }: {
+    type: OpfsSpecialFileSystemType,
+    path: string,
+    create: boolean,
+  }) {
+    const provider = this.getProvider();
+    if (provider instanceof OPFSStorageProvider) {
+      return await provider.openSpecialFileSystemDirectory({ type, path, create });
+    }
+    return await new PlainOPFSStorageBackend().openSpecialFileSystemDirectory({
+      type,
+      path,
+      create,
+    });
+  }
+
+  async removeOpfsSpecialFileSystemEntry({
+    type,
+    path,
+    recursive,
+  }: {
+    type: OpfsSpecialFileSystemType,
+    path: string,
+    recursive: boolean,
+  }): Promise<void> {
+    const provider = this.getProvider();
+    if (provider instanceof OPFSStorageProvider) {
+      await provider.removeSpecialFileSystemEntry({ type, path, recursive });
+      return;
+    }
+    await new PlainOPFSStorageBackend().removeSpecialFileSystemEntry({
+      type,
+      path,
+      recursive,
+    });
+  }
+
+  async clearOpfsSpecialFileSystem({
+    type,
+  }: {
+    type: OpfsSpecialFileSystemType,
+  }): Promise<void> {
+    const provider = this.getProvider();
+    if (provider instanceof OPFSStorageProvider) {
+      await provider.clearSpecialFileSystem({ type });
+      return;
+    }
+    await new PlainOPFSStorageBackend().removeSpecialFileSystemForTransition({
+      type,
+    });
+  }
+
+  /**
+   * TODO(storage-volume-access): Migrate remaining native-handle-only callers
+   * to openVolume(). Encrypted OPFS volumes do not expose a native handle.
+   */
   async getVolumeDirectoryHandle({ volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle | null> {
-    return this.getProvider().getVolumeDirectoryHandle({ volumeId });
+    return await this.getProvider().getVolumeDirectoryHandle({ volumeId });
   }
 
   async deleteVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
@@ -432,7 +706,8 @@ export class StorageService {
     try {
       await this.synchronizer.withLock({ fn: async () => {
         const activeProvider = this.getProvider();
-        if (this.currentType === type) return;
+        const oldType = this.getCurrentType();
+        if (oldType === type) return;
 
         const oldProvider = activeProvider;
         const snapshot = await oldProvider.dump();
@@ -454,10 +729,6 @@ export class StorageService {
         })();
 
         await newProvider.init();
-
-        const oldType = this.currentType;
-        this.provider = newProvider;
-        this.currentType = type;
 
         // Wrap content stream to rescue memory blobs
         const migrationStream = async function* (): AsyncGenerator<MigrationChunkDto> {
@@ -485,10 +756,10 @@ export class StorageService {
                               type: 'binary_object',
                               id: idToRaw({ id: att.binaryObjectId }),
                               name: att.originalName,
-                              mimeType: att.mimeType,
-                              size: att.size,
+                              mimeType: att.blob.type || att.mimeType,
+                              size: att.blob.size,
                               createdAt: att.uploadedAt,
-                              blob: att.blob,
+                              source: { type: 'direct_blob', blob: att.blob },
                             });
                             node.attachments[i] = { ...att, status: 'persisted' as const };
                           }
@@ -524,20 +795,37 @@ export class StorageService {
           }
         };
 
+        let bootstrapTypeUpdated = false;
         try {
           await newProvider.restore({ snapshot: {
             structure: snapshot.structure,
             contentStream: migrationStream(),
           } });
-        } catch (e) {
-          this.provider = oldProvider;
-          this.currentType = oldType;
-          throw e;
+
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
+            bootstrapTypeUpdated = true;
+          }
+
+          await oldProvider.dispose();
+        } catch (error) {
+          if (bootstrapTypeUpdated && typeof localStorage !== 'undefined') {
+            localStorage.setItem(STORAGE_BOOTSTRAP_KEY, oldType);
+          }
+
+          try {
+            await newProvider.dispose();
+          } catch (disposeError) {
+            throw new AggregateError(
+              [error, disposeError],
+              'Storage provider switch failed and the replacement provider could not be disposed',
+            );
+          }
+          throw error;
         }
 
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
-        }
+        this.provider = newProvider;
+        this.currentType = type;
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }) });
 
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });

@@ -6,6 +6,7 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
     init: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
+    dispose: vi.fn().mockResolvedValue(undefined),
     loadChat: vi.fn().mockResolvedValue(null),
     listChats: vi.fn().mockResolvedValue([]),
     clearAll: vi.fn().mockResolvedValue(undefined),
@@ -17,6 +18,7 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
     init: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
+    dispose: vi.fn().mockResolvedValue(undefined),
     loadChat: vi.fn().mockResolvedValue(null),
     clearAll: vi.fn().mockResolvedValue(undefined),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -135,6 +137,8 @@ describe('StorageService Migration', () => {
     // Assert
     expect(mockLocalProvider.dump).toHaveBeenCalled();
     expect(mockOpfsProvider.restore).toHaveBeenCalled();
+    expect(mockLocalProvider.dispose).toHaveBeenCalledOnce();
+    expect(mockOpfsProvider.dispose).not.toHaveBeenCalled();
     expect(storageService.getCurrentType()).toBe('opfs');
   });
 
@@ -176,6 +180,38 @@ describe('StorageService Migration', () => {
     }));
 
     // Should stay as 'local' because migration failed
+    expect(storageService.getCurrentType()).toBe('local');
+    expect(mockLocalProvider.dispose).not.toHaveBeenCalled();
+    expect(mockOpfsProvider.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('should dispose the old OPFS provider after switching away from OPFS', async () => {
+    const service = storageService as unknown as {
+      currentType: string,
+      provider: unknown,
+    };
+    service.currentType = 'opfs';
+    service.provider = mockOpfsProvider;
+
+    mockOpfsProvider.dump.mockResolvedValue({
+      structure: {
+        settings: {} as any,
+        hierarchy: { items: [] },
+        chatMetas: [],
+        chatGroups: [],
+      },
+      contentStream: (async function* () {})(),
+    });
+    mockLocalProvider.restore.mockImplementation(async ({ snapshot }) => {
+      for await (const _chunk of snapshot.contentStream) {
+        // Consume the migration stream.
+      }
+    });
+
+    await storageService.switchProvider({ type: 'local' });
+
+    expect(mockOpfsProvider.dispose).toHaveBeenCalledOnce();
+    expect(mockLocalProvider.dispose).not.toHaveBeenCalled();
     expect(storageService.getCurrentType()).toBe('local');
   });
 
@@ -228,7 +264,10 @@ describe('StorageService Migration', () => {
     const binaryChunk = receivedChunks.find(c => c.type === 'binary_object');
     expect(binaryChunk).toBeDefined();
     expect(binaryChunk.id).toBe('bin-1');
-    expect(binaryChunk.blob).toBe(mockBlob);
+    expect(binaryChunk.source).toEqual({
+      type: 'direct_blob',
+      blob: mockBlob,
+    });
 
     // Chat chunk should have been updated to 'persisted' status
     const chatChunk = receivedChunks.find(c => c.type === 'chat');

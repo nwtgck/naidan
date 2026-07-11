@@ -1,0 +1,1 @@
+export const opfsEncryption__source_remains_until_verified = (): string => 'The original source remains available until the new storage has been completely verified. An interrupted operation resumes on the next startup.';

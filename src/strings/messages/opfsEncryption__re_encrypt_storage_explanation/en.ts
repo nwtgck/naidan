@@ -1,0 +1,1 @@
+export const opfsEncryption__re_encrypt_storage_explanation = (): string => 'Naidan will create a new encrypted store with a new root key, verify every object and file, then remove the previous store. This may temporarily require about twice the current storage space.';

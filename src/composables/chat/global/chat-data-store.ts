@@ -595,7 +595,8 @@ export function createChatDataStore({
     }
     case 'chat_content_generation': {
       const chatId = toChatId({ raw: event.id });
-      switch (event.status) {
+      const status = event.status;
+      switch (status) {
       case 'started':
         if (!hasActiveGeneration({ chatId })) {
           onExternalGenerationStarted({ chatId });
@@ -608,8 +609,8 @@ export function createChatDataStore({
         onExternalGenerationAbortRequest({ chatId });
         break;
       default: {
-        const _ex: never = event.status;
-        throw new Error(`Unhandled status: ${_ex}`);
+        const _exhaustiveCheck: never = status;
+        throw new Error(`Unhandled chat generation status: ${String(_exhaustiveCheck)}`);
       }
       }
       break;
@@ -640,6 +641,7 @@ export function createChatDataStore({
     }
     case 'binary_objects':
     case 'settings':
+    case 'opfs_encryption':
       break;
     default: {
       const _ex: never = event;
