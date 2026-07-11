@@ -28,6 +28,9 @@ registerOpfsStorageTransitionPreparation({
     );
     await transitionPreparation.prepareForOpfsEncryptionTransition();
   },
+  externalTransitionPrepared: () => {
+    window.location.reload();
+  },
 });
 
 async function bootstrapApp(): Promise<void> {

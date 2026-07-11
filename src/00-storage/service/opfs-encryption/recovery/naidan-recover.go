@@ -36,7 +36,6 @@ import (
 
 var (
 	wrappedKeyAAD            = []byte("naidan/opfs-encryption/wrapped-key/v1")
-	recoveryHKDFInfo         = []byte("naidan/opfs-encryption/recovery-key/v1")
 	objectEncryptionHKDFInfo = []byte("naidan/opfs-encryption/object-encryption-key/v1")
 	objectAddressHKDFInfo    = []byte("naidan/opfs-encryption/object-address-key/v1")
 	magic                    = []byte("NAIDAN01")
@@ -48,13 +47,11 @@ type wrappedKey struct {
 	Ciphertext string `json:"ciphertext"`
 }
 
-type keySlot struct {
-	Type string `json:"type"`
-	KDF  struct {
-		Type       string `json:"type"`
+type passphraseKeySlot struct {
+	PBKDF2 struct {
 		Salt       string `json:"salt"`
 		Iterations int    `json:"iterations"`
-	} `json:"kdf"`
+	} `json:"pbkdf2"`
 	WrappedStorageUnlockKey wrappedKey `json:"wrappedStorageUnlockKey"`
 }
 
@@ -66,12 +63,12 @@ type operation struct {
 }
 
 type encryptionState struct {
-	FormatVersion          int        `json:"formatVersion"`
-	Sequence               int        `json:"sequence"`
-	State                  string     `json:"state"`
-	KeySlots               []keySlot  `json:"keySlots"`
-	ActiveEncryptedStoreID string     `json:"activeEncryptedStoreId"`
-	Operation              *operation `json:"operation"`
+	FormatVersion          int               `json:"formatVersion"`
+	Sequence               int               `json:"sequence"`
+	State                  string            `json:"state"`
+	PassphraseKeySlot      passphraseKeySlot `json:"passphraseKeySlot"`
+	ActiveEncryptedStoreID string            `json:"activeEncryptedStoreId"`
+	Operation              *operation        `json:"operation"`
 }
 
 type storeHeader struct {
@@ -337,58 +334,24 @@ func selectStoreID(state *encryptionState, explicit string) (string, error) {
 	}
 }
 
-func deriveStorageUnlockKey(state *encryptionState, passphrase, recoveryKey string) ([]byte, error) {
-	if passphrase != "" && recoveryKey != "" {
-		return nil, errors.New("specify either -passphrase or -recovery-key, not both")
+func deriveStorageUnlockKey(state *encryptionState, passphrase string) ([]byte, error) {
+	slot := state.PassphraseKeySlot
+	salt, err := decodeBase64URL(slot.PBKDF2.Salt)
+	if err != nil {
+		return nil, fmt.Errorf("invalid passphrase PBKDF2 salt: %w", err)
 	}
-	var lastErr error
-	for _, slot := range state.KeySlots {
-		salt, err := decodeBase64URL(slot.KDF.Salt)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		var wrappingKey []byte
-		switch {
-		case passphrase != "" && slot.Type == "passphrase":
-			if slot.KDF.Type != "pbkdf2_sha256" {
-				lastErr = fmt.Errorf("unsupported passphrase KDF: %s", slot.KDF.Type)
-				continue
-			}
-			wrappingKey, err = pbkdf2SHA256(passphrase, salt, slot.KDF.Iterations, 32)
-		case recoveryKey != "" && slot.Type == "recovery_key":
-			if slot.KDF.Type != "hkdf_sha256" {
-				lastErr = fmt.Errorf("unsupported recovery KDF: %s", slot.KDF.Type)
-				continue
-			}
-			var recoveryBytes []byte
-			recoveryBytes, err = decodeBase64URL(recoveryKey)
-			if err == nil && len(recoveryBytes) != 32 {
-				err = fmt.Errorf("recovery key has %d bytes instead of 32", len(recoveryBytes))
-			}
-			if err == nil {
-				wrappingKey, err = hkdfSHA256(recoveryBytes, salt, recoveryHKDFInfo, 32)
-			}
-		default:
-			continue
-		}
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		key, err := unwrap(slot.WrappedStorageUnlockKey, wrappingKey)
-		for index := range wrappingKey {
-			wrappingKey[index] = 0
-		}
-		if err == nil {
-			return key, nil
-		}
-		lastErr = err
+	wrappingKey, err := pbkdf2SHA256(passphrase, salt, slot.PBKDF2.Iterations, 32)
+	if err != nil {
+		return nil, err
 	}
-	if lastErr == nil {
-		lastErr = errors.New("no matching key slot")
+	key, unwrapErr := unwrap(slot.WrappedStorageUnlockKey, wrappingKey)
+	for index := range wrappingKey {
+		wrappingKey[index] = 0
 	}
-	return nil, fmt.Errorf("secret did not unlock any key slot: %w", lastErr)
+	if unwrapErr != nil {
+		return nil, fmt.Errorf("passphrase did not unlock storage: %w", unwrapErr)
+	}
+	return key, nil
 }
 
 func canonicalLocator(namespace, key string) []byte {
@@ -840,12 +803,11 @@ func run() error {
 	namespace := flag.String("namespace", "", "optional logical object namespace")
 	key := flag.String("key", "", "optional logical object key")
 	passphrase := flag.String("passphrase", "", "exact passphrase; boundary spaces are significant")
-	recoveryKey := flag.String("recovery-key", "", "Base64URL recovery key")
 	storeIDFlag := flag.String("store-id", "", "override encrypted store ID")
 	flag.Parse()
-	if *input == "" || *output == "" || (*passphrase == "" && *recoveryKey == "") {
+	if *input == "" || *output == "" || *passphrase == "" {
 		flag.Usage()
-		return errors.New("input, output, and one unlock secret are required")
+		return errors.New("input, output, and passphrase are required")
 	}
 	if (*namespace == "") != (*key == "") {
 		return errors.New("-namespace and -key must be specified together")
@@ -884,7 +846,7 @@ func run() error {
 	if header.EncryptedStoreID != storeID {
 		return fmt.Errorf("encrypted-store header ID does not match directory: %s", storeID)
 	}
-	storageUnlockKey, err := deriveStorageUnlockKey(state, *passphrase, *recoveryKey)
+	storageUnlockKey, err := deriveStorageUnlockKey(state, *passphrase)
 	if err != nil {
 		return err
 	}

@@ -1,78 +1,47 @@
-import { readonly, ref } from 'vue';
-import { storageService } from '@/00-storage/service';
+import {
+  defineAsyncComponent,
+  readonly,
+  ref,
+} from 'vue';
+import { showGlobalBlockingOverlay } from '@/composables/useGlobalBlockingOverlay';
+
+const OpfsEncryptionTransitionView = defineAsyncComponent(
+  () => import('@/features/opfs-encryption/components/OpfsEncryptionTransitionView.vue'),
+);
 
 const active = ref(false);
-const localOperation = ref(false);
 const failed = ref(false);
-let subscribed = false;
-
-function ensureSubscribed(): void {
-  if (subscribed) {
-    return;
-  }
-  subscribed = true;
-  storageService.subscribeToChanges({ listener: ({ event }) => {
-    switch (event.type) {
-    case 'chat_meta_and_chat_group':
-    case 'chat_content':
-    case 'chat_content_generation':
-    case 'settings':
-    case 'binary_objects':
-    case 'migration':
-      return;
-    case 'opfs_encryption':
-      break;
-    default: {
-      const _ex: never = event;
-      throw new Error(`Unhandled storage change event: ${((_ex satisfies never) as { readonly type: string }).type}`);
-    }
-    }
-
-    const status = event.status;
-    switch (status) {
-    case 'transition_started':
-      active.value = true;
-      failed.value = false;
-      if (!localOperation.value && typeof window !== 'undefined') {
-        window.location.reload();
-      }
-      break;
-    case 'transition_completed':
-      active.value = false;
-      failed.value = false;
-      if (!localOperation.value && typeof window !== 'undefined') {
-        window.location.reload();
-      }
-      break;
-    case 'transition_failed':
-      active.value = true;
-      failed.value = true;
-      if (!localOperation.value && typeof window !== 'undefined') {
-        window.location.reload();
-      }
-      break;
-    default: {
-      const _ex: never = status;
-      throw new Error(`Unhandled OPFS encryption transition status: ${String(_ex)}`);
-    }
-    }
-  } });
-}
+let closeOverlay: (() => void) | undefined;
 
 export function useOpfsEncryptionTransition() {
-  ensureSubscribed();
-
   function beginLocalOperation(): void {
-    localOperation.value = true;
+    if (closeOverlay !== undefined) {
+      throw new Error('An OPFS encryption transition is already active');
+    }
     active.value = true;
     failed.value = false;
+    closeOverlay = showGlobalBlockingOverlay({
+      operation: 'storage_transition',
+      component: OpfsEncryptionTransitionView,
+    });
   }
 
   function finishLocalOperation({ success }: { success: boolean }): void {
-    localOperation.value = false;
-    active.value = !success;
-    failed.value = !success;
-    if (!success && typeof window !== 'undefined') {
+    if (success) {
+      const close = closeOverlay;
+      closeOverlay = undefined;
+      close?.();
+      active.value = false;
+      failed.value = false;
+      return;
+    }
+
+    // Keep the app inert and the transition overlay visible until the reload
+    // begins. If navigation is delayed or rejected, exposing the old backend
+    // again would allow writes against an uncertain storage state.
+    active.value = true;
+    failed.value = true;
+    if (typeof window !== 'undefined') {
       window.location.reload();
     }
   }
@@ -93,4 +62,10 @@ export function useOpfsEncryptionTransition() {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  reset(): void {
+    closeOverlay?.();
+    closeOverlay = undefined;
+    active.value = false;
+    failed.value = false;
+  },
 };

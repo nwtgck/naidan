@@ -130,7 +130,7 @@ async function createRawEncryptedOpfs({
       formatVersion: 1,
       sequence: 0,
       state: 'encrypted',
-      keySlots: material.keySlots,
+      passphraseKeySlot: material.passphraseKeySlot,
       activeEncryptedStoreId: encryptedStoreId,
     },
   });

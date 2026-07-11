@@ -127,6 +127,8 @@ vi.mock('../00-storage/service', () => ({
     getCurrentType: vi.fn(),
     switchProvider: vi.fn().mockResolvedValue(undefined),
     hasAttachments: vi.fn().mockResolvedValue(false),
+    openOpfsSpecialFileSystemDirectory: vi.fn().mockResolvedValue(null),
+    clearOpfsSpecialFileSystem: vi.fn().mockResolvedValue(undefined),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),

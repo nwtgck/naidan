@@ -2,9 +2,8 @@
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import {
   AlertTriangleIcon,
-  CheckIcon,
-  ClipboardIcon,
-  DownloadIcon,
+  EyeIcon,
+  EyeOffIcon,
   KeyRoundIcon,
   Loader2Icon,
   LockKeyholeIcon,
@@ -40,8 +39,10 @@ const passphrase = ref('');
 const confirmPassphrase = ref('');
 const newPassphrase = ref('');
 const confirmNewPassphrase = ref('');
-const recoveryKey = ref<string>();
-const copiedRecoveryKey = ref(false);
+const showPassphrase = ref(false);
+const showConfirmPassphrase = ref(false);
+const showNewPassphrase = ref(false);
+const showConfirmNewPassphrase = ref(false);
 const errorMessage = ref<string>();
 const experimentalAccepted = ref(false);
 
@@ -179,14 +180,13 @@ async function enableEncryption(): Promise<void> {
   beginLocalOperation();
   try {
     await prepareForStorageTransition();
-    const result = await storageService.enableOpfsEncryption({
+    await storageService.enableOpfsEncryption({
       passphrase: passphrase.value,
       signal: undefined,
     });
     finishLocalOperation({ success: true });
-    recoveryKey.value = result.recoveryKey;
     setupOpen.value = false;
-    inspection.value = await storageService.inspectOpfsEncryption();
+    window.location.reload();
   } catch (error) {
     finishLocalOperation({ success: false });
     errorMessage.value = error instanceof Error ? error.message : String(error);
@@ -243,33 +243,6 @@ async function reencrypt(): Promise<void> {
   }
 }
 
-async function copyRecoveryKey(): Promise<void> {
-  if (recoveryKey.value === undefined) {
-    return;
-  }
-  await navigator.clipboard.writeText(recoveryKey.value);
-  copiedRecoveryKey.value = true;
-}
-
-function saveRecoveryKey(): void {
-  if (recoveryKey.value === undefined) {
-    return;
-  }
-  const blob = new Blob([`${recoveryKey.value}\n`], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = 'naidan-opfs-recovery-key.txt';
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function finishRecoveryKeyStep(): void {
-  recoveryKey.value = undefined;
-  copiedRecoveryKey.value = false;
-  resetSetup();
-  window.location.reload();
-}
 
 watch(() => props.storageType, () => {
   void refreshInspection();
@@ -381,115 +354,113 @@ defineExpose({
     <OpfsEncryptionRecoverySourceViewer v-if="recoverySourceOpen" />
   </div>
 
-  <div v-if="setupOpen" tw-class="fixed inset-0 z-[110] bg-gray-950/60 backdrop-blur-sm flex items-center justify-center p-4" @click.self="resetSetup">
-    <section tw-class="w-full max-w-lg rounded-[2rem] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
-      <header tw-class="px-7 py-6 border-b border-gray-100 dark:border-gray-800">
-        <h2 tw-class="text-lg font-extrabold text-gray-900 dark:text-white">{{ lazyStrings.opfsEncryption__enable_opfs_encryption() }}</h2>
-        <p tw-class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-          {{ lazyStrings.opfsEncryption__build_and_verify_separate_encrypted_store() }}
-        </p>
-      </header>
-      <div tw-class="px-7 py-6 space-y-4">
-        <div tw-class="rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 p-4 text-xs leading-relaxed text-amber-900 dark:text-amber-300 flex gap-2.5">
-          <AlertTriangleIcon tw-class="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{{ lazyStrings.opfsEncryption__experimental_format_may_change_incompatibly() }}</span>
-        </div>
-        <label tw-class="block space-y-1.5">
-          <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__passphrase() }}</span>
-          <input v-model="passphrase" data-testid="opfs-encryption-passphrase" type="password" autocomplete="new-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
-        </label>
-        <p v-if="boundaryWhitespaceWarning" tw-class="text-xs text-amber-700 dark:text-amber-400">
-          {{ lazyStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase() }}
-        </p>
-        <p v-if="passphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">
-          {{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}
-        </p>
-        <label tw-class="block space-y-1.5">
-          <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__confirm_passphrase() }}</span>
-          <input v-model="confirmPassphrase" data-testid="opfs-encryption-passphrase-confirmation" type="password" autocomplete="new-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
-        </label>
-        <p v-if="confirmPassphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}</p>
-        <p v-else-if="confirmPassphrase.length > 0 && passphrase !== confirmPassphrase" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_do_not_match() }}</p>
-        <label tw-class="flex items-start gap-3 cursor-pointer rounded-xl border border-gray-100 dark:border-gray-800 p-3">
-          <input v-model="experimentalAccepted" data-testid="opfs-encryption-experimental-accepted" type="checkbox" tw-class="mt-0.5" />
-          <span tw-class="text-xs leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__understand_experimental_storage_risk() }}</span>
-        </label>
-        <p v-if="errorMessage" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ errorMessage }}</p>
-      </div>
-      <footer tw-class="px-7 py-5 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3">
-        <button type="button" tw-class="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" @click="resetSetup">{{ lazyStrings.opfsEncryption__cancel() }}</button>
-        <button type="button" data-testid="opfs-encryption-enable" :disabled="!setupCanSubmit" tw-class="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white flex items-center gap-2" @click="enableEncryption">
-          <Loader2Icon v-if="loading" tw-class="w-4 h-4 animate-spin" />
-          {{ lazyStrings.opfsEncryption__encrypt_storage() }}
-        </button>
-      </footer>
-    </section>
-  </div>
-
-  <div v-if="passphraseChangeOpen" tw-class="fixed inset-0 z-[112] bg-gray-950/60 backdrop-blur-sm flex items-center justify-center p-4" @click.self="resetPassphraseChange">
-    <section tw-class="w-full max-w-lg rounded-[2rem] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
-      <header tw-class="px-7 py-6 border-b border-gray-100 dark:border-gray-800">
-        <h2 tw-class="text-lg font-extrabold text-gray-900 dark:text-white">{{ lazyStrings.opfsEncryption__change_opfs_passphrase() }}</h2>
-        <p tw-class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-          {{ lazyStrings.opfsEncryption__only_passphrase_keyslot_is_replaced() }}
-        </p>
-      </header>
-      <div tw-class="px-7 py-6 space-y-4">
-        <label tw-class="block space-y-1.5">
-          <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__new_passphrase() }}</span>
-          <input v-model="newPassphrase" data-testid="opfs-encryption-new-passphrase" type="password" autocomplete="new-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
-        </label>
-        <p v-if="newPassphraseValidation.type === 'boundary_whitespace'" tw-class="text-xs text-amber-700 dark:text-amber-400">
-          {{ lazyStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase() }}
-        </p>
-        <p v-if="newPassphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}</p>
-        <label tw-class="block space-y-1.5">
-          <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__confirm_new_passphrase() }}</span>
-          <input v-model="confirmNewPassphrase" data-testid="opfs-encryption-new-passphrase-confirmation" type="password" autocomplete="new-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
-        </label>
-        <p v-if="confirmNewPassphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}</p>
-        <p v-else-if="confirmNewPassphrase.length > 0 && newPassphrase !== confirmNewPassphrase" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_do_not_match() }}</p>
-        <p v-if="errorMessage" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ errorMessage }}</p>
-      </div>
-      <footer tw-class="px-7 py-5 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3">
-        <button type="button" tw-class="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" @click="resetPassphraseChange">{{ lazyStrings.opfsEncryption__cancel() }}</button>
-        <button type="button" data-testid="opfs-encryption-change-passphrase-submit" :disabled="!passphraseChangeCanSubmit" tw-class="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white flex items-center gap-2" @click="changePassphrase">
-          <Loader2Icon v-if="loading" tw-class="w-4 h-4 animate-spin" />
-          {{ lazyStrings.opfsEncryption__change_passphrase() }}
-        </button>
-      </footer>
-    </section>
-  </div>
-
-  <div v-if="recoveryKey !== undefined" tw-class="fixed inset-0 z-[115] bg-gray-950/65 backdrop-blur-sm flex items-center justify-center p-4">
-    <section tw-class="w-full max-w-xl rounded-[2rem] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
-      <header tw-class="px-7 py-6 border-b border-gray-100 dark:border-gray-800">
-        <div tw-class="flex items-center gap-3">
-          <div tw-class="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-950/40 text-green-600 dark:text-green-400 flex items-center justify-center"><CheckIcon tw-class="w-5 h-5" /></div>
-          <div>
-            <h2 tw-class="text-lg font-extrabold text-gray-900 dark:text-white">{{ lazyStrings.opfsEncryption__encryption_enabled() }}</h2>
-            <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.opfsEncryption__save_recovery_key_before_continuing() }}</p>
+  <Teleport to="body">
+    <div v-if="setupOpen" data-testid="opfs-encryption-setup-dialog" tw-class="fixed inset-0 z-[110] overflow-y-auto bg-gray-950/60 backdrop-blur-sm flex items-center justify-center p-4" @click.self="resetSetup">
+      <section tw-class="my-auto w-full max-w-lg max-h-[calc(100dvh-2rem)] rounded-[2rem] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden flex flex-col">
+        <header tw-class="shrink-0 px-7 py-6 border-b border-gray-100 dark:border-gray-800">
+          <h2 tw-class="text-lg font-extrabold text-gray-900 dark:text-white">{{ lazyStrings.opfsEncryption__enable_opfs_encryption() }}</h2>
+          <p tw-class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+            {{ lazyStrings.opfsEncryption__build_and_verify_separate_encrypted_store() }}
+          </p>
+        </header>
+        <div tw-class="min-h-0 overflow-y-auto px-7 py-6 space-y-4">
+          <div tw-class="rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 p-4 text-xs leading-relaxed text-amber-900 dark:text-amber-300 flex gap-2.5">
+            <AlertTriangleIcon tw-class="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{{ lazyStrings.opfsEncryption__experimental_format_may_change_incompatibly() }}</span>
           </div>
+          <label tw-class="block space-y-1.5">
+            <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__passphrase() }}</span>
+            <div tw-class="relative">
+              <input v-model="passphrase" data-testid="opfs-encryption-passphrase" :type="showPassphrase ? 'text' : 'password'" autocomplete="new-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 pl-4 pr-12 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
+              <button type="button" data-testid="opfs-encryption-passphrase-visibility" tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" :title="showPassphrase ? lazyStrings.opfsEncryption__hide_passphrase() : lazyStrings.opfsEncryption__show_passphrase()" @click="showPassphrase = !showPassphrase">
+                <EyeOffIcon v-if="showPassphrase" tw-class="w-4 h-4" />
+                <EyeIcon v-else tw-class="w-4 h-4" />
+              </button>
+            </div>
+          </label>
+          <p v-if="boundaryWhitespaceWarning" tw-class="text-xs text-amber-700 dark:text-amber-400">
+            {{ lazyStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase() }}
+          </p>
+          <p v-if="passphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">
+            {{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}
+          </p>
+          <label tw-class="block space-y-1.5">
+            <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__confirm_passphrase() }}</span>
+            <div tw-class="relative">
+              <input v-model="confirmPassphrase" data-testid="opfs-encryption-passphrase-confirmation" :type="showConfirmPassphrase ? 'text' : 'password'" autocomplete="new-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 pl-4 pr-12 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
+              <button type="button" data-testid="opfs-encryption-passphrase-confirmation-visibility" tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" :title="showConfirmPassphrase ? lazyStrings.opfsEncryption__hide_passphrase() : lazyStrings.opfsEncryption__show_passphrase()" @click="showConfirmPassphrase = !showConfirmPassphrase">
+                <EyeOffIcon v-if="showConfirmPassphrase" tw-class="w-4 h-4" />
+                <EyeIcon v-else tw-class="w-4 h-4" />
+              </button>
+            </div>
+          </label>
+          <p v-if="confirmPassphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}</p>
+          <p v-else-if="confirmPassphrase.length > 0 && passphrase !== confirmPassphrase" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_do_not_match() }}</p>
+          <label tw-class="flex items-start gap-3 cursor-pointer rounded-xl border border-gray-100 dark:border-gray-800 p-3">
+            <input v-model="experimentalAccepted" data-testid="opfs-encryption-experimental-accepted" type="checkbox" tw-class="mt-0.5" />
+            <span tw-class="text-xs leading-relaxed text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__understand_experimental_storage_risk() }}</span>
+          </label>
+          <p v-if="errorMessage" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ errorMessage }}</p>
         </div>
-      </header>
-      <div tw-class="px-7 py-6 space-y-4">
-        <code tw-class="block rounded-2xl bg-gray-950 text-green-300 p-4 text-xs leading-relaxed break-all select-all">{{ recoveryKey }}</code>
-        <div tw-class="flex flex-wrap gap-2">
-          <button type="button" tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2.5 text-xs font-bold" @click="copyRecoveryKey">
-            <CheckIcon v-if="copiedRecoveryKey" tw-class="w-4 h-4" />
-            <ClipboardIcon v-else tw-class="w-4 h-4" />
-            {{ copiedRecoveryKey ? lazyStrings.opfsEncryption__copied() : lazyStrings.opfsEncryption__copy() }}
+        <footer tw-class="shrink-0 px-7 py-5 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3">
+          <button type="button" tw-class="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" @click="resetSetup">{{ lazyStrings.opfsEncryption__cancel() }}</button>
+          <button type="button" data-testid="opfs-encryption-enable" :disabled="!setupCanSubmit" tw-class="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white flex items-center gap-2" @click="enableEncryption">
+            <Loader2Icon v-if="loading" tw-class="w-4 h-4 animate-spin" />
+            {{ lazyStrings.opfsEncryption__encrypt_storage() }}
           </button>
-          <button type="button" tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2.5 text-xs font-bold" @click="saveRecoveryKey">
-            <DownloadIcon tw-class="w-4 h-4" />
-            {{ lazyStrings.opfsEncryption__save_file() }}
-          </button>
+        </footer>
+      </section>
+    </div>
+
+  </Teleport>
+
+  <Teleport to="body">
+    <div v-if="passphraseChangeOpen" data-testid="opfs-encryption-passphrase-change-dialog" tw-class="fixed inset-0 z-[112] overflow-y-auto bg-gray-950/60 backdrop-blur-sm flex items-center justify-center p-4" @click.self="resetPassphraseChange">
+      <section tw-class="my-auto w-full max-w-lg max-h-[calc(100dvh-2rem)] rounded-[2rem] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden flex flex-col">
+        <header tw-class="shrink-0 px-7 py-6 border-b border-gray-100 dark:border-gray-800">
+          <h2 tw-class="text-lg font-extrabold text-gray-900 dark:text-white">{{ lazyStrings.opfsEncryption__change_opfs_passphrase() }}</h2>
+          <p tw-class="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+            {{ lazyStrings.opfsEncryption__only_passphrase_keyslot_is_replaced() }}
+          </p>
+        </header>
+        <div tw-class="min-h-0 overflow-y-auto px-7 py-6 space-y-4">
+          <label tw-class="block space-y-1.5">
+            <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__new_passphrase() }}</span>
+            <div tw-class="relative">
+              <input v-model="newPassphrase" data-testid="opfs-encryption-new-passphrase" :type="showNewPassphrase ? 'text' : 'password'" autocomplete="new-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 pl-4 pr-12 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
+              <button type="button" data-testid="opfs-encryption-new-passphrase-visibility" tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" :title="showNewPassphrase ? lazyStrings.opfsEncryption__hide_passphrase() : lazyStrings.opfsEncryption__show_passphrase()" @click="showNewPassphrase = !showNewPassphrase">
+                <EyeOffIcon v-if="showNewPassphrase" tw-class="w-4 h-4" />
+                <EyeIcon v-else tw-class="w-4 h-4" />
+              </button>
+            </div>
+          </label>
+          <p v-if="newPassphraseValidation.type === 'boundary_whitespace'" tw-class="text-xs text-amber-700 dark:text-amber-400">
+            {{ lazyStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase() }}
+          </p>
+          <p v-if="newPassphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}</p>
+          <label tw-class="block space-y-1.5">
+            <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__confirm_new_passphrase() }}</span>
+            <div tw-class="relative">
+              <input v-model="confirmNewPassphrase" data-testid="opfs-encryption-new-passphrase-confirmation" :type="showConfirmNewPassphrase ? 'text' : 'password'" autocomplete="new-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 pl-4 pr-12 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
+              <button type="button" data-testid="opfs-encryption-new-passphrase-confirmation-visibility" tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" :title="showConfirmNewPassphrase ? lazyStrings.opfsEncryption__hide_passphrase() : lazyStrings.opfsEncryption__show_passphrase()" @click="showConfirmNewPassphrase = !showConfirmNewPassphrase">
+                <EyeOffIcon v-if="showConfirmNewPassphrase" tw-class="w-4 h-4" />
+                <EyeIcon v-else tw-class="w-4 h-4" />
+              </button>
+            </div>
+          </label>
+          <p v-if="confirmNewPassphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}</p>
+          <p v-else-if="confirmNewPassphrase.length > 0 && newPassphrase !== confirmNewPassphrase" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_do_not_match() }}</p>
+          <p v-if="errorMessage" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ errorMessage }}</p>
         </div>
-        <p tw-class="text-xs leading-relaxed text-amber-700 dark:text-amber-400">{{ lazyStrings.opfsEncryption__plaintext_recovery_key_is_not_stored() }}</p>
-      </div>
-      <footer tw-class="px-7 py-5 border-t border-gray-100 dark:border-gray-800 flex justify-end">
-        <button type="button" tw-class="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white" @click="finishRecoveryKeyStep">{{ lazyStrings.opfsEncryption__i_saved_the_recovery_key() }}</button>
-      </footer>
-    </section>
-  </div>
+        <footer tw-class="shrink-0 px-7 py-5 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3">
+          <button type="button" tw-class="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" @click="resetPassphraseChange">{{ lazyStrings.opfsEncryption__cancel() }}</button>
+          <button type="button" data-testid="opfs-encryption-change-passphrase-submit" :disabled="!passphraseChangeCanSubmit" tw-class="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white flex items-center gap-2" @click="changePassphrase">
+            <Loader2Icon v-if="loading" tw-class="w-4 h-4 animate-spin" />
+            {{ lazyStrings.opfsEncryption__change_passphrase() }}
+          </button>
+        </footer>
+      </section>
+    </div>
+
+  </Teleport>
 </template>

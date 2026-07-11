@@ -1,6 +1,12 @@
 type OpfsStorageTransitionPreparation = () => Promise<void>;
+type OpfsExternalTransitionPrepared = () => void;
 
-const preparations = new Set<OpfsStorageTransitionPreparation>();
+interface OpfsStorageTransitionRegistration {
+  readonly prepare: OpfsStorageTransitionPreparation,
+  readonly externalTransitionPrepared: OpfsExternalTransitionPrepared,
+}
+
+const registrations = new Set<OpfsStorageTransitionRegistration>();
 
 /**
  * Registers application-owned cleanup that must finish before an OPFS storage
@@ -8,28 +14,40 @@ const preparations = new Set<OpfsStorageTransitionPreparation>();
  *
  * The storage layer owns the synchronization point but does not import Wesh,
  * File Explorer, chat processing, or other application features. Callers may
- * keep those features code-split by registering a callback that imports them
+ * keep those features code-split by registering callbacks that import them
  * only when a transition is requested.
  */
 export function registerOpfsStorageTransitionPreparation({
   prepare,
+  externalTransitionPrepared,
 }: {
   prepare: OpfsStorageTransitionPreparation,
+  externalTransitionPrepared: OpfsExternalTransitionPrepared,
 }): () => void {
-  preparations.add(prepare);
+  const registration = {
+    prepare,
+    externalTransitionPrepared,
+  };
+  registrations.add(registration);
   return () => {
-    preparations.delete(prepare);
+    registrations.delete(registration);
   };
 }
 
 export async function prepareRegisteredOpfsStorageTransition(): Promise<void> {
-  for (const prepare of preparations) {
-    await prepare();
+  for (const registration of registrations) {
+    await registration.prepare();
+  }
+}
+
+export function notifyRegisteredOpfsExternalTransitionPrepared(): void {
+  for (const registration of registrations) {
+    registration.externalTransitionPrepared();
   }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  preparations,
+  registrations,
 };

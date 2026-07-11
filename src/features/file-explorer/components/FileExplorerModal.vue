@@ -56,7 +56,7 @@ defineExpose({
 <template>
   <Teleport to="body">
     <div
-      tw-class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      tw-class="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       data-testid="file-explorer-modal"
       @click.self="closeFileExplorer()"
     >

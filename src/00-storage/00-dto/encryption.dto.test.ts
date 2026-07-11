@@ -12,11 +12,8 @@ describe('encryption DTO schemas', () => {
       formatVersion: 1,
       sequence: 4,
       state: 'encrypted',
-      keySlots: [{
-        id: 'passphrase-slot',
-        type: 'passphrase',
-        kdf: {
-          type: 'pbkdf2_sha256',
+      passphraseKeySlot: {
+        pbkdf2: {
           salt: 'salt',
           iterations: 600_000,
         },
@@ -24,7 +21,7 @@ describe('encryption DTO schemas', () => {
           nonce: 'nonce',
           ciphertext: 'ciphertext',
         },
-      }],
+      },
       activeEncryptedStoreId: 'store-id',
     } as const;
 

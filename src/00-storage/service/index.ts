@@ -8,6 +8,7 @@ import { PlainOPFSStorageBackend } from './opfs/plain-opfs-storage-backend';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
 import {
+  notifyRegisteredOpfsExternalTransitionPrepared,
   prepareRegisteredOpfsStorageTransition,
 } from './opfs/opfs-storage-transition-preparation';
 import { MemoryStorageProvider } from './memory-storage';
@@ -79,6 +80,7 @@ export class StorageService {
     try {
       await prepareRegisteredOpfsStorageTransition();
       await this.provider.suspendStorageSession();
+      notifyRegisteredOpfsExternalTransitionPrepared();
     } catch (error) {
       console.error('Failed to suspend OPFS storage for an external encryption transition:', error);
     }
@@ -220,13 +222,6 @@ export class StorageService {
     await this.getOpfsProvider().unlockWithPassphrase({ passphrase });
   }
 
-  async unlockOpfsEncryptionWithRecoveryKey({
-    recoveryKey,
-  }: {
-    recoveryKey: string,
-  }): Promise<void> {
-    await this.getOpfsProvider().unlockWithRecoveryKey({ recoveryKey });
-  }
 
   async lockOpfsEncryption(): Promise<void> {
     await this.getOpfsProvider().lockEncryption();
@@ -238,8 +233,8 @@ export class StorageService {
   }: {
     passphrase: string,
     signal: AbortSignal | undefined,
-  }): Promise<{ readonly recoveryKey: string }> {
-    return await this.runOpfsEncryptionTransition({
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
       run: async () => await this.getOpfsProvider().enableEncryption({ passphrase, signal }),
     });
   }
@@ -291,20 +286,6 @@ export class StorageService {
     });
   }
 
-  async resumeOpfsEncryptionTransitionWithRecoveryKey({
-    recoveryKey,
-    signal,
-  }: {
-    recoveryKey: string,
-    signal: AbortSignal | undefined,
-  }): Promise<void> {
-    await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().resumeTransitionWithRecoveryKey({
-        recoveryKey,
-        signal,
-      }),
-    });
-  }
 
   // --- Hierarchy Management (Atomic) ---
 

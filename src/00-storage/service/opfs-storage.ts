@@ -244,35 +244,6 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async unlockWithRecoveryKey({
-    recoveryKey,
-  }: {
-    recoveryKey: string,
-  }): Promise<void> {
-    await this.storageSessionLock.acquire();
-    try {
-      await this.storageSessionLock.run({ run: async () => {
-        const storageRoot = await getStorageRootIfPresent();
-        if (storageRoot === undefined) {
-          throw new Error('OPFS storage root does not exist');
-        }
-        const encryptionModule = await import('./opfs-encryption/bootstrap');
-        const inspection = requireEncryptedInspection({
-          inspection: await encryptionModule.inspectOpfsEncryption({ storageRoot }),
-        });
-        const session = await encryptionModule.unlockOpfsEncryptionWithRecoveryKey({
-          storageRoot,
-          state: inspection.state,
-          recoveryKey,
-        });
-        this.unlockedEncryptionSession = session;
-        this.backend = session.backend;
-      } });
-    } catch (error) {
-      await this.storageSessionLock.suspend();
-      throw error;
-    }
-  }
 
   async lockEncryption(): Promise<void> {
     await this.storageSessionLock.suspend();
@@ -296,7 +267,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }: {
     passphrase: string,
     signal: AbortSignal | undefined,
-  }): Promise<{ readonly recoveryKey: string }> {
+  }): Promise<void> {
     const result = await this.runTransition({ run: async () => {
       const inspection = await this.inspectEncryption();
       requirePlainInspection({ inspection });
@@ -308,10 +279,18 @@ export class OPFSStorageProvider extends IStorageProvider {
         storageRoot,
       }).enableEncryption({ passphrase, signal });
     } });
-    if (result.type !== 'encrypted' || result.recoveryKey === undefined) {
-      throw new Error('Enabling OPFS encryption did not return a recovery key');
+    switch (result.type) {
+    case 'encrypted':
+      return;
+    case 'plain':
+      throw new Error('Enabling OPFS encryption produced a plain storage backend');
+    default: {
+      const _ex: never = result;
+      throw new Error(
+        `Unhandled encryption transition result: ${((_ex satisfies never) as { readonly type: string }).type}`,
+      );
     }
-    return { recoveryKey: result.recoveryKey };
+    }
   }
 
   async changePassphrase({
@@ -327,8 +306,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const state = {
         ...session.state,
         sequence: session.state.sequence + 1,
-        keySlots: await keyManager.replacePassphraseEncryptionKeySlots({
-          keySlots: session.state.keySlots,
+        passphraseKeySlot: await keyManager.replacePassphraseEncryptionKeySlot({
           storageUnlockKey: session.storageUnlockKey,
           passphrase,
           pbkdf2Iterations: keyManager.DEFAULT_PBKDF2_ITERATIONS,
@@ -397,26 +375,6 @@ export class OPFSStorageProvider extends IStorageProvider {
     } });
   }
 
-  async resumeTransitionWithRecoveryKey({
-    recoveryKey,
-    signal,
-  }: {
-    recoveryKey: string,
-    signal: AbortSignal | undefined,
-  }): Promise<void> {
-    await this.runTransition({ run: async () => {
-      const inspection = requireTransitioningInspection({
-        inspection: await this.inspectEncryption(),
-      });
-      const storageRoot = await getOrCreateStorageRoot();
-      const transitionModule = await import(
-        './opfs-encryption/encryption-transition-coordinator'
-      );
-      return await new transitionModule.EncryptionTransitionCoordinator({
-        storageRoot,
-      }).resumeWithRecoveryKey({ state: inspection.state, recoveryKey, signal });
-    } });
-  }
 
   async listChatMetasRaw(): Promise<ChatMetaDto[]> {
     return await this.runWithBackend({ run: async ({ backend }) => await backend.listChatMetasRaw() });

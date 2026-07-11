@@ -23,7 +23,6 @@ function createGate({
   return {
     inspection: shallowRef(inspection),
     unlockWithPassphrase: vi.fn(async () => {}),
-    unlockWithRecoveryKey: vi.fn(async () => {}),
     retryInspection: vi.fn(async () => {}),
     wait: vi.fn(async () => {}),
   };
@@ -36,7 +35,16 @@ function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 
       formatVersion: 1,
       sequence: 1,
       state: 'encrypted',
-      keySlots: [],
+      passphraseKeySlot: {
+        pbkdf2: {
+          salt: 'salt',
+          iterations: 10,
+        },
+        wrappedStorageUnlockKey: {
+          nonce: 'nonce',
+          ciphertext: 'ciphertext',
+        },
+      },
       activeEncryptedStoreId: 'encrypted-store',
     },
   };
@@ -47,7 +55,8 @@ beforeEach(async () => {
   await Promise.all([
     ensureStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase(),
     ensureStrings.opfsEncryption__passphrases_cannot_contain_line_breaks(),
-    ensureStrings.opfsEncryption__raw_opfs_access_disabled_during_transition(),
+    ensureStrings.opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery(),
+    ensureStrings.opfsEncryption__resume_opfs_encryption(),
     ensureStrings.opfsEncryption__open_raw_opfs_explorer(),
   ]);
 });
@@ -68,6 +77,20 @@ describe('OpfsEncryptionUnlockView', () => {
     expect(gate.unlockWithPassphrase).toHaveBeenCalledWith({
       passphrase: ' secret phrase ',
     });
+  });
+
+  it('toggles passphrase visibility without changing its value', async () => {
+    const gate = createGate({ inspection: createEncryptedInspection() });
+    const wrapper = shallowMount(OpfsEncryptionUnlockView, {
+      props: { gate },
+    });
+    const input = wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]');
+    await input.setValue('visible secret');
+
+    expect(input.attributes('type')).toBe('password');
+    await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase-visibility"]').trigger('click');
+    expect(input.attributes('type')).toBe('text');
+    expect((input.element as HTMLInputElement).value).toBe('visible secret');
   });
 
   it('rejects line breaks before calling the unlock operation', async () => {
@@ -99,7 +122,7 @@ second line`,
     expect(gate.unlockWithPassphrase).not.toHaveBeenCalled();
   });
 
-  it('does not expose the raw OPFS explorer while a transition is active', () => {
+  it('keeps the raw OPFS explorer available while warning during a transition', async () => {
     const operation = {
       type: 'encrypting' as const,
       phase: 'building_target' as const,
@@ -112,7 +135,16 @@ second line`,
           formatVersion: 1,
           sequence: 1,
           state: 'transitioning',
-          keySlots: [],
+          passphraseKeySlot: {
+            pbkdf2: {
+              salt: 'salt',
+              iterations: 10,
+            },
+            wrappedStorageUnlockKey: {
+              nonce: 'nonce',
+              ciphertext: 'ciphertext',
+            },
+          },
           operation,
         },
         operation,
@@ -122,9 +154,19 @@ second line`,
       props: { gate },
     });
 
+    expect(wrapper.text()).toContain('Resume OPFS encryption');
     expect(wrapper.text()).toContain(
-      'Raw OPFS access is disabled until the interrupted transition has finished.',
+      'Changing raw OPFS data while the interrupted operation is active can make recovery impossible. Back it up before making destructive changes.',
     );
-    expect(wrapper.text()).not.toContain('Open raw OPFS explorer');
+    const button = wrapper.findAll('button').find(
+      candidate => candidate.text().includes('Open raw OPFS explorer'),
+    );
+    if (button === undefined) {
+      throw new Error('Expected raw OPFS explorer button');
+    }
+    await button.trigger('click');
+    expect(openFileExplorer).toHaveBeenCalledWith({
+      options: { kind: 'opfs-root' },
+    });
   });
 });

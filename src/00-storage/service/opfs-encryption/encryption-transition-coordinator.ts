@@ -30,7 +30,6 @@ import {
   DEFAULT_PBKDF2_ITERATIONS,
   deriveEncryptedStoreRuntimeKeys,
   unlockStorageUnlockKeyWithPassphrase,
-  unlockStorageUnlockKeyWithRecoveryKey,
   unwrapStoreRootKey,
   wrapStoreRootKey,
 } from './encryption-key-manager';
@@ -61,7 +60,6 @@ export type EncryptionTransitionResult =
   | {
       readonly type: 'encrypted',
       readonly session: UnlockedOpfsEncryptionSession,
-      readonly recoveryKey?: string,
     }
   | {
       readonly type: 'plain',
@@ -513,7 +511,7 @@ export class EncryptionTransitionCoordinator {
           formatVersion: 1,
           sequence: 0,
           state: 'transitioning',
-          keySlots: material.keySlots,
+          passphraseKeySlot: material.passphraseKeySlot,
           operation: {
             type: 'encrypting',
             phase: 'building_target',
@@ -534,7 +532,6 @@ export class EncryptionTransitionCoordinator {
             storageUnlockKey: material.storageUnlockKey,
             backend: target,
           },
-          recoveryKey: material.recoveryKey,
         };
       },
     });
@@ -560,7 +557,7 @@ export class EncryptionTransitionCoordinator {
           formatVersion: 1,
           sequence: session.state.sequence + 1,
           state: 'transitioning',
-          keySlots: session.state.keySlots,
+          passphraseKeySlot: session.state.passphraseKeySlot,
           operation: {
             type: 'decrypting',
             phase: 'building_target',
@@ -611,7 +608,7 @@ export class EncryptionTransitionCoordinator {
           formatVersion: 1,
           sequence: session.state.sequence + 1,
           state: 'transitioning',
-          keySlots: session.state.keySlots,
+          passphraseKeySlot: session.state.passphraseKeySlot,
           operation: {
             type: 'reencrypting',
             phase: 'building_target',
@@ -653,27 +650,12 @@ export class EncryptionTransitionCoordinator {
     signal: AbortSignal | undefined,
   }): Promise<EncryptionTransitionResult> {
     const storageUnlockKey = await unlockStorageUnlockKeyWithPassphrase({
-      keySlots: state.keySlots,
+      passphraseKeySlot: state.passphraseKeySlot,
       passphrase,
     });
     return await this.resume({ state, storageUnlockKey, signal });
   }
 
-  async resumeWithRecoveryKey({
-    state,
-    recoveryKey,
-    signal,
-  }: {
-    state: TransitioningEncryptionState,
-    recoveryKey: string,
-    signal: AbortSignal | undefined,
-  }): Promise<EncryptionTransitionResult> {
-    const storageUnlockKey = await unlockStorageUnlockKeyWithRecoveryKey({
-      keySlots: state.keySlots,
-      recoveryKey,
-    });
-    return await this.resume({ state, storageUnlockKey, signal });
-  }
 
   private async resume({
     state,
@@ -883,7 +865,7 @@ export class EncryptionTransitionCoordinator {
       formatVersion: 1,
       sequence: previousState.sequence + 1,
       state: 'encrypted',
-      keySlots: previousState.keySlots,
+      passphraseKeySlot: previousState.passphraseKeySlot,
       activeEncryptedStoreId,
     };
     await this.stateStore.writeState({ state: stableState });

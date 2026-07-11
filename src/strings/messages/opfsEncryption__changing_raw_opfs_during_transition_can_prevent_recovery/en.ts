@@ -1,0 +1,1 @@
+export const opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery = (): string => 'Changing raw OPFS data while the interrupted operation is active can make recovery impossible. Back it up before making destructive changes.';

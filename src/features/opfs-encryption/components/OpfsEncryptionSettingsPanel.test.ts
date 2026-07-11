@@ -1,5 +1,5 @@
-import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
 import { ensureStrings } from '@/strings';
 import { prepareForOpfsEncryptionTransition } from '@/features/opfs-encryption/prepare-for-storage-transition';
@@ -43,10 +43,28 @@ function createEncryptedInspection() {
       formatVersion: 1 as const,
       sequence: 0,
       state: 'encrypted' as const,
-      keySlots: [],
+      passphraseKeySlot: {
+        pbkdf2: {
+          salt: 'salt',
+          iterations: 10,
+        },
+        wrappedStorageUnlockKey: {
+          nonce: 'nonce',
+          ciphertext: 'ciphertext',
+        },
+      },
       activeEncryptedStoreId: 'store-id',
     },
   };
+}
+
+
+function getTeleportedElement(selector: string): DOMWrapper<HTMLElement> {
+  const element = document.body.querySelector(selector);
+  if (!(element instanceof HTMLElement)) {
+    throw new Error(`Unable to find teleported element: ${selector}`);
+  }
+  return new DOMWrapper(element);
 }
 
 async function prepareVisibleStrings(): Promise<void> {
@@ -65,18 +83,21 @@ async function mountPanel({
 }) {
   await prepareVisibleStrings();
   const wrapper = mount(OpfsEncryptionSettingsPanel, {
+    attachTo: document.body,
     props: { storageType },
   });
   await flushPromises();
   return wrapper;
 }
 
+afterEach(() => {
+  document.body.innerHTML = '';
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue({ type: 'plain' });
-  vi.mocked(storageService.enableOpfsEncryption).mockResolvedValue({
-    recoveryKey: 'recovery-key',
-  });
+  vi.mocked(storageService.enableOpfsEncryption).mockResolvedValue(undefined);
   vi.mocked(prepareForOpfsEncryptionTransition).mockResolvedValue(undefined);
 });
 
@@ -93,19 +114,39 @@ describe('OpfsEncryptionSettingsPanel', () => {
     },
   );
 
+  it('teleports the setup dialog and toggles passphrase visibility', async () => {
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+
+    const dialog = getTeleportedElement('[data-testid="opfs-encryption-setup-dialog"]');
+    expect(document.body.contains(dialog.element)).toBe(true);
+    expect(wrapper.element.contains(dialog.element)).toBe(false);
+
+    const passphraseInput = getTeleportedElement('[data-testid="opfs-encryption-passphrase"]');
+    const confirmationInput = getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]');
+    expect(passphraseInput.attributes('type')).toBe('password');
+    expect(confirmationInput.attributes('type')).toBe('password');
+
+    await getTeleportedElement('[data-testid="opfs-encryption-passphrase-visibility"]').trigger('click');
+    await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation-visibility"]').trigger('click');
+
+    expect(passphraseInput.attributes('type')).toBe('text');
+    expect(confirmationInput.attributes('type')).toBe('text');
+  });
+
   it('preserves boundary whitespace when enabling encryption and shows a warning', async () => {
     const wrapper = await mountPanel({ storageType: 'opfs' });
     await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
 
     const passphrase = ' exact passphrase ';
-    await wrapper.get('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
-    await wrapper.get('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
-    await wrapper.get('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
+    await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
+    await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
+    await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
 
-    expect(wrapper.text()).toContain(
+    expect(document.body.textContent).toContain(
       'Leading or trailing whitespace is part of the passphrase and will not be removed.',
     );
-    await wrapper.get('[data-testid="opfs-encryption-enable"]').trigger('click');
+    await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
     await flushPromises();
 
     expect(prepareForOpfsEncryptionTransition).toHaveBeenCalledOnce();
@@ -115,13 +156,12 @@ describe('OpfsEncryptionSettingsPanel', () => {
     });
     expect(mockBeginLocalOperation).toHaveBeenCalledOnce();
     expect(mockFinishLocalOperation).toHaveBeenCalledWith({ success: true });
-    expect(wrapper.text()).toContain('recovery-key');
   });
 
   it('rejects pasted line breaks rather than silently changing the passphrase', async () => {
     const wrapper = await mountPanel({ storageType: 'opfs' });
     await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
-    const input = wrapper.get('[data-testid="opfs-encryption-passphrase"]');
+    const input = getTeleportedElement('[data-testid="opfs-encryption-passphrase"]');
     const event = new Event('paste', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'clipboardData', {
       value: {
@@ -135,7 +175,7 @@ line two`,
     await flushPromises();
 
     expect(event.defaultPrevented).toBe(true);
-    expect(wrapper.text()).toContain('Passphrases cannot contain line breaks.');
+    expect(document.body.textContent).toContain('Passphrases cannot contain line breaks.');
     expect(storageService.enableOpfsEncryption).not.toHaveBeenCalled();
   });
 
@@ -147,9 +187,9 @@ line two`,
     await wrapper.get('[data-testid="opfs-encryption-change-passphrase"]').trigger('click');
 
     const passphrase = ' new exact passphrase ';
-    await wrapper.get('[data-testid="opfs-encryption-new-passphrase"]').setValue(passphrase);
-    await wrapper.get('[data-testid="opfs-encryption-new-passphrase-confirmation"]').setValue(passphrase);
-    await wrapper.get('[data-testid="opfs-encryption-change-passphrase-submit"]').trigger('click');
+    await getTeleportedElement('[data-testid="opfs-encryption-new-passphrase"]').setValue(passphrase);
+    await getTeleportedElement('[data-testid="opfs-encryption-new-passphrase-confirmation"]').setValue(passphrase);
+    await getTeleportedElement('[data-testid="opfs-encryption-change-passphrase-submit"]').trigger('click');
     await flushPromises();
 
     expect(storageService.changeOpfsEncryptionPassphrase).toHaveBeenCalledWith({
@@ -157,6 +197,25 @@ line two`,
     });
     expect(prepareForOpfsEncryptionTransition).not.toHaveBeenCalled();
     expect(mockBeginLocalOperation).not.toHaveBeenCalled();
+  });
+
+  it('toggles visibility for a changed passphrase', async () => {
+    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
+      createEncryptedInspection(),
+    );
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+    await wrapper.get('[data-testid="opfs-encryption-change-passphrase"]').trigger('click');
+
+    const passphraseInput = getTeleportedElement('[data-testid="opfs-encryption-new-passphrase"]');
+    const confirmationInput = getTeleportedElement('[data-testid="opfs-encryption-new-passphrase-confirmation"]');
+    expect(passphraseInput.attributes('type')).toBe('password');
+    expect(confirmationInput.attributes('type')).toBe('password');
+
+    await getTeleportedElement('[data-testid="opfs-encryption-new-passphrase-visibility"]').trigger('click');
+    await getTeleportedElement('[data-testid="opfs-encryption-new-passphrase-confirmation-visibility"]').trigger('click');
+
+    expect(passphraseInput.attributes('type')).toBe('text');
+    expect(confirmationInput.attributes('type')).toBe('text');
   });
 
   it('requires confirmation before decrypting or re-encrypting storage', async () => {

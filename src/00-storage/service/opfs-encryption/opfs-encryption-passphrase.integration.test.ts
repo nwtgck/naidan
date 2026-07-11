@@ -4,7 +4,6 @@ import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
 import { EncryptionStateStore } from './encryption-state-store';
 import {
   createEncryptionMaterial,
-  unlockStorageUnlockKeyWithRecoveryKey,
 } from './encryption-key-manager';
 import {
   EncryptionTransitionCoordinator,
@@ -82,7 +81,7 @@ afterEach(() => {
 });
 
 describe('OPFS encryption passphrase changes', () => {
-  it('rewrites only key slots and preserves the encrypted store bytes', async () => {
+  it('rewrites only the passphrase key slot and preserves the encrypted store bytes', async () => {
     const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
     installOpfsRoot({ opfsRoot });
     const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
@@ -105,7 +104,7 @@ describe('OPFS encryption passphrase changes', () => {
         formatVersion: 1,
         sequence: 0,
         state: 'encrypted',
-        keySlots: material.keySlots,
+        passphraseKeySlot: material.passphraseKeySlot,
         activeEncryptedStoreId: encryptedStoreId,
       },
     });
@@ -125,10 +124,7 @@ describe('OPFS encryption passphrase changes', () => {
       throw new Error('Expected stable encrypted state');
     }
     expect(inspection.state.sequence).toBe(1);
-    await expect(unlockStorageUnlockKeyWithRecoveryKey({
-      keySlots: inspection.state.keySlots,
-      recoveryKey: material.recoveryKey,
-    })).resolves.toEqual(material.storageUnlockKey);
+    expect(inspection.state.passphraseKeySlot.pbkdf2.iterations).toBeGreaterThan(0);
 
     await provider.lockEncryption();
     await expect(provider.unlockWithPassphrase({

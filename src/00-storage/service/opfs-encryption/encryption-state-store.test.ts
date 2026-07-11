@@ -16,11 +16,8 @@ function createState({
     formatVersion: 1,
     sequence,
     state: 'encrypted',
-    keySlots: [{
-      id: 'passphrase-slot',
-      type: 'passphrase',
-      kdf: {
-        type: 'pbkdf2_sha256',
+    passphraseKeySlot: {
+      pbkdf2: {
         salt: 'salt',
         iterations: 10,
       },
@@ -28,7 +25,7 @@ function createState({
         nonce: 'nonce',
         ciphertext: 'ciphertext',
       },
-    }],
+    },
     activeEncryptedStoreId: encryptedStoreId,
   };
 }

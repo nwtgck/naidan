@@ -7,6 +7,7 @@ import {
   type Ref,
   type ShallowRef,
 } from 'vue';
+import { useAppBlockingOperation } from '@/composables/useAppBlockingOperation';
 import { useSettings } from '@/composables/useSettings';
 import type { StartupState } from '@/logic/startup/types';
 
@@ -17,6 +18,7 @@ export type OnboardingPresentation =
 export type AppInteraction =
   | 'blocked-by-startup'
   | 'blocked-by-onboarding'
+  | 'blocked-by-operation'
   | 'enabled';
 
 type AppPresentation = Readonly<{
@@ -32,6 +34,7 @@ export function isAppInteractionEnabled({ interaction }: {
   switch (interaction) {
   case 'blocked-by-startup':
   case 'blocked-by-onboarding':
+  case 'blocked-by-operation':
     return false;
   case 'enabled':
     return true;
@@ -46,10 +49,12 @@ function createAppPresentation({
   startupState,
   settingsInitialized,
   isOnboardingDismissed,
+  blockingOperationActive,
 }: {
   startupState: ShallowRef<StartupState>,
   settingsInitialized: Readonly<Ref<boolean>>,
   isOnboardingDismissed: Readonly<Ref<boolean>>,
+  blockingOperationActive: Readonly<Ref<boolean>>,
 }): AppPresentation {
   const onboardingPresentation = computed<OnboardingPresentation>(() => {
     if (!settingsInitialized.value) {
@@ -79,6 +84,10 @@ function createAppPresentation({
     }
     }
 
+    if (blockingOperationActive.value) {
+      return 'blocked-by-operation';
+    }
+
     const presentation = onboardingPresentation.value;
     switch (presentation) {
     case 'hidden':
@@ -102,10 +111,12 @@ export function provideAppPresentation({ startupState }: {
   startupState: ShallowRef<StartupState>,
 }): AppPresentation {
   const settingsStore = useSettings();
+  const blockingOperation = useAppBlockingOperation();
   const presentation = createAppPresentation({
     startupState,
     settingsInitialized: settingsStore.initialized,
     isOnboardingDismissed: settingsStore.isOnboardingDismissed,
+    blockingOperationActive: blockingOperation.active,
   });
   provide(appPresentationKey, presentation);
   return presentation;

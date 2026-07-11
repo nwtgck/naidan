@@ -5,6 +5,7 @@ import { TEST_ONLY } from './useAppPresentation';
 
 const settingsInitialized = ref(false);
 const isOnboardingDismissed = ref(false);
+const blockingOperationActive = ref(false);
 const MainApp = defineComponent({
   template: '<div />',
 });
@@ -17,6 +18,7 @@ describe('app presentation', () => {
   beforeEach(() => {
     settingsInitialized.value = false;
     isOnboardingDismissed.value = false;
+    blockingOperationActive.value = false;
     startupState.value = {
       kind: 'initializing-foundation',
     };
@@ -27,6 +29,7 @@ describe('app presentation', () => {
       startupState,
       settingsInitialized,
       isOnboardingDismissed,
+      blockingOperationActive,
     });
   }
 
@@ -54,6 +57,22 @@ describe('app presentation', () => {
     expect(appInteraction.value).toBe('enabled');
   });
 
+
+  it('blocks interaction while a generic operation is active', () => {
+    const { appInteraction } = createPresentation();
+
+    settingsInitialized.value = true;
+    isOnboardingDismissed.value = true;
+    startupState.value = {
+      kind: 'ready',
+      mainApp: MainApp,
+    };
+    expect(appInteraction.value).toBe('enabled');
+
+    blockingOperationActive.value = true;
+    expect(appInteraction.value).toBe('blocked-by-operation');
+  });
+
   it('allows an error view to be used when onboarding is hidden', () => {
     const {
       onboardingPresentation,
@@ -76,6 +95,7 @@ describe('app presentation', () => {
 
     settingsInitialized.value = true;
     isOnboardingDismissed.value = false;
+    blockingOperationActive.value = false;
     startupState.value = {
       kind: 'foundation-failed',
       error: new Error('failed'),

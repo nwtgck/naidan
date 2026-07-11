@@ -1475,6 +1475,7 @@ import { opfsEncryption__build_and_verify_separate_encrypted_store } from '@/str
 import { opfsEncryption__cancel } from '@/strings/messages/opfsEncryption__cancel/ja';
 import { opfsEncryption__change_opfs_passphrase } from '@/strings/messages/opfsEncryption__change_opfs_passphrase/ja';
 import { opfsEncryption__change_passphrase } from '@/strings/messages/opfsEncryption__change_passphrase/ja';
+import { opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery } from '@/strings/messages/opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery/ja';
 import { opfsEncryption__confirm_new_passphrase } from '@/strings/messages/opfsEncryption__confirm_new_passphrase/ja';
 import { opfsEncryption__confirm_passphrase } from '@/strings/messages/opfsEncryption__confirm_passphrase/ja';
 import { opfsEncryption__copied } from '@/strings/messages/opfsEncryption__copied/ja';
@@ -1491,11 +1492,10 @@ import { opfsEncryption__encryption_control_state_cannot_be_read_safely } from '
 import { opfsEncryption__encryption_enabled } from '@/strings/messages/opfsEncryption__encryption_enabled/ja';
 import { opfsEncryption__encryption_state_is_unreadable } from '@/strings/messages/opfsEncryption__encryption_state_is_unreadable/ja';
 import { opfsEncryption__encryption_transition_must_finish_before_changing_this_setting } from '@/strings/messages/opfsEncryption__encryption_transition_must_finish_before_changing_this_setting/ja';
-import { opfsEncryption__enter_passphrase_or_recovery_key } from '@/strings/messages/opfsEncryption__enter_passphrase_or_recovery_key/ja';
+import { opfsEncryption__enter_passphrase_for_opfs_storage } from '@/strings/messages/opfsEncryption__enter_passphrase_for_opfs_storage/ja';
 import { opfsEncryption__experimental } from '@/strings/messages/opfsEncryption__experimental/ja';
 import { opfsEncryption__experimental_format_may_change_incompatibly } from '@/strings/messages/opfsEncryption__experimental_format_may_change_incompatibly/ja';
-import { opfsEncryption__finish_encrypted_storage_update } from '@/strings/messages/opfsEncryption__finish_encrypted_storage_update/ja';
-import { opfsEncryption__i_saved_the_recovery_key } from '@/strings/messages/opfsEncryption__i_saved_the_recovery_key/ja';
+import { opfsEncryption__hide_passphrase } from '@/strings/messages/opfsEncryption__hide_passphrase/ja';
 import { opfsEncryption__interrupted_encryption_operation } from '@/strings/messages/opfsEncryption__interrupted_encryption_operation/ja';
 import { opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase } from '@/strings/messages/opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase/ja';
 import { opfsEncryption__loading_recovery_source } from '@/strings/messages/opfsEncryption__loading_recovery_source/ja';
@@ -1506,25 +1506,25 @@ import { opfsEncryption__opfs_encryption } from '@/strings/messages/opfsEncrypti
 import { opfsEncryption__passphrase } from '@/strings/messages/opfsEncryption__passphrase/ja';
 import { opfsEncryption__passphrases_cannot_contain_line_breaks } from '@/strings/messages/opfsEncryption__passphrases_cannot_contain_line_breaks/ja';
 import { opfsEncryption__passphrases_do_not_match } from '@/strings/messages/opfsEncryption__passphrases_do_not_match/ja';
-import { opfsEncryption__plaintext_recovery_key_is_not_stored } from '@/strings/messages/opfsEncryption__plaintext_recovery_key_is_not_stored/ja';
-import { opfsEncryption__raw_opfs_access_disabled_during_transition } from '@/strings/messages/opfsEncryption__raw_opfs_access_disabled_during_transition/ja';
 import { opfsEncryption__raw_opfs_access_does_not_decrypt } from '@/strings/messages/opfsEncryption__raw_opfs_access_does_not_decrypt/ja';
 import { opfsEncryption__re_encrypt } from '@/strings/messages/opfsEncryption__re_encrypt/ja';
 import { opfsEncryption__re_encrypt_opfs_storage } from '@/strings/messages/opfsEncryption__re_encrypt_opfs_storage/ja';
 import { opfsEncryption__re_encrypt_storage } from '@/strings/messages/opfsEncryption__re_encrypt_storage/ja';
 import { opfsEncryption__re_encrypt_storage_explanation } from '@/strings/messages/opfsEncryption__re_encrypt_storage_explanation/ja';
-import { opfsEncryption__recovery_key } from '@/strings/messages/opfsEncryption__recovery_key/ja';
 import { opfsEncryption__recovery_source } from '@/strings/messages/opfsEncryption__recovery_source/ja';
+import { opfsEncryption__resume_opfs_decryption } from '@/strings/messages/opfsEncryption__resume_opfs_decryption/ja';
+import { opfsEncryption__resume_opfs_encryption } from '@/strings/messages/opfsEncryption__resume_opfs_encryption/ja';
+import { opfsEncryption__resume_opfs_reencryption } from '@/strings/messages/opfsEncryption__resume_opfs_reencryption/ja';
 import { opfsEncryption__retry_after_recovery } from '@/strings/messages/opfsEncryption__retry_after_recovery/ja';
 import { opfsEncryption__save_file } from '@/strings/messages/opfsEncryption__save_file/ja';
-import { opfsEncryption__save_recovery_key_before_continuing } from '@/strings/messages/opfsEncryption__save_recovery_key_before_continuing/ja';
 import { opfsEncryption__save_source } from '@/strings/messages/opfsEncryption__save_source/ja';
 import { opfsEncryption__select_opfs_as_active_storage_to_enable_encryption } from '@/strings/messages/opfsEncryption__select_opfs_as_active_storage_to_enable_encryption/ja';
+import { opfsEncryption__show_passphrase } from '@/strings/messages/opfsEncryption__show_passphrase/ja';
 import { opfsEncryption__source_remains_until_verified } from '@/strings/messages/opfsEncryption__source_remains_until_verified/ja';
 import { opfsEncryption__transparently_encrypt_naidan_opfs_data } from '@/strings/messages/opfsEncryption__transparently_encrypt_naidan_opfs_data/ja';
 import { opfsEncryption__turn_off_opfs_encryption } from '@/strings/messages/opfsEncryption__turn_off_opfs_encryption/ja';
 import { opfsEncryption__understand_experimental_storage_risk } from '@/strings/messages/opfsEncryption__understand_experimental_storage_risk/ja';
-import { opfsEncryption__unlock_and_finish } from '@/strings/messages/opfsEncryption__unlock_and_finish/ja';
+import { opfsEncryption__unlock_and_resume } from '@/strings/messages/opfsEncryption__unlock_and_resume/ja';
 import { opfsEncryption__unlock_encrypted_storage } from '@/strings/messages/opfsEncryption__unlock_encrypted_storage/ja';
 import { opfsEncryption__unlock_storage } from '@/strings/messages/opfsEncryption__unlock_storage/ja';
 import { opfsEncryption__updating_encrypted_storage } from '@/strings/messages/opfsEncryption__updating_encrypted_storage/ja';
@@ -3095,6 +3095,7 @@ export const ja = {
   opfsEncryption__cancel,
   opfsEncryption__change_opfs_passphrase,
   opfsEncryption__change_passphrase,
+  opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery,
   opfsEncryption__confirm_new_passphrase,
   opfsEncryption__confirm_passphrase,
   opfsEncryption__copied,
@@ -3111,11 +3112,10 @@ export const ja = {
   opfsEncryption__encryption_enabled,
   opfsEncryption__encryption_state_is_unreadable,
   opfsEncryption__encryption_transition_must_finish_before_changing_this_setting,
-  opfsEncryption__enter_passphrase_or_recovery_key,
+  opfsEncryption__enter_passphrase_for_opfs_storage,
   opfsEncryption__experimental,
   opfsEncryption__experimental_format_may_change_incompatibly,
-  opfsEncryption__finish_encrypted_storage_update,
-  opfsEncryption__i_saved_the_recovery_key,
+  opfsEncryption__hide_passphrase,
   opfsEncryption__interrupted_encryption_operation,
   opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase,
   opfsEncryption__loading_recovery_source,
@@ -3126,25 +3126,25 @@ export const ja = {
   opfsEncryption__passphrase,
   opfsEncryption__passphrases_cannot_contain_line_breaks,
   opfsEncryption__passphrases_do_not_match,
-  opfsEncryption__plaintext_recovery_key_is_not_stored,
-  opfsEncryption__raw_opfs_access_disabled_during_transition,
   opfsEncryption__raw_opfs_access_does_not_decrypt,
   opfsEncryption__re_encrypt,
   opfsEncryption__re_encrypt_opfs_storage,
   opfsEncryption__re_encrypt_storage,
   opfsEncryption__re_encrypt_storage_explanation,
-  opfsEncryption__recovery_key,
   opfsEncryption__recovery_source,
+  opfsEncryption__resume_opfs_decryption,
+  opfsEncryption__resume_opfs_encryption,
+  opfsEncryption__resume_opfs_reencryption,
   opfsEncryption__retry_after_recovery,
   opfsEncryption__save_file,
-  opfsEncryption__save_recovery_key_before_continuing,
   opfsEncryption__save_source,
   opfsEncryption__select_opfs_as_active_storage_to_enable_encryption,
+  opfsEncryption__show_passphrase,
   opfsEncryption__source_remains_until_verified,
   opfsEncryption__transparently_encrypt_naidan_opfs_data,
   opfsEncryption__turn_off_opfs_encryption,
   opfsEncryption__understand_experimental_storage_risk,
-  opfsEncryption__unlock_and_finish,
+  opfsEncryption__unlock_and_resume,
   opfsEncryption__unlock_encrypted_storage,
   opfsEncryption__unlock_storage,
   opfsEncryption__updating_encrypted_storage,

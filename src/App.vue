@@ -1,16 +1,12 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, type ShallowRef } from 'vue';
+import GlobalBlockingOverlayHost from '@/components/GlobalBlockingOverlayHost.vue';
 import GlobalDialogHost from '@/components/GlobalDialogHost.vue';
 import OnboardingModal from '@/components/OnboardingModal.vue';
 import ToastContainer from '@/components/ToastContainer.vue';
 import StartupErrorView from '@/components/startup/StartupErrorView.vue';
 import { provideAppPresentation } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
-import { useOpfsEncryptionTransition } from '@/features/opfs-encryption/composables/useOpfsEncryptionTransition';
-
-const OpfsEncryptionTransitionView = defineAsyncComponent(
-  () => import('@/features/opfs-encryption/components/OpfsEncryptionTransitionView.vue'),
-);
 const OpfsEncryptionUnlockView = defineAsyncComponent(
   () => import('@/features/opfs-encryption/components/OpfsEncryptionUnlockView.vue'),
 );
@@ -20,20 +16,17 @@ const props = defineProps<{
 }>();
 
 const startup = computed(() => props.startupState.value);
-const { active: opfsEncryptionTransitionActive } = useOpfsEncryptionTransition();
 const {
   onboardingPresentation,
   appInteraction,
 } = provideAppPresentation({ startupState: props.startupState });
 
 const appContentInert = computed(() => {
-  if (opfsEncryptionTransitionActive.value) {
-    return true;
-  }
   const interaction = appInteraction.value;
   switch (interaction) {
   case 'blocked-by-startup':
   case 'blocked-by-onboarding':
+  case 'blocked-by-operation':
     return true;
   case 'enabled':
     return undefined;
@@ -96,7 +89,7 @@ defineExpose({
     />
   </div>
 
-  <OpfsEncryptionTransitionView v-if="opfsEncryptionTransitionActive" />
+  <GlobalBlockingOverlayHost />
 
   <OpfsEncryptionUnlockView
     v-if="startup.kind === 'opfs-encryption-required'"

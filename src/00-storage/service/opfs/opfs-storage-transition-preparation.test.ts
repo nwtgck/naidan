@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  notifyRegisteredOpfsExternalTransitionPrepared,
   prepareRegisteredOpfsStorageTransition,
   registerOpfsStorageTransitionPreparation,
   TEST_ONLY,
 } from './opfs-storage-transition-preparation';
 
 afterEach(() => {
-  TEST_ONLY.preparations.clear();
+  TEST_ONLY.registrations.clear();
   vi.restoreAllMocks();
 });
 
@@ -20,6 +21,7 @@ describe('OPFS storage transition preparation registry', () => {
         await first.promise;
         events.push('finished');
       },
+      externalTransitionPrepared: () => {},
     });
 
     const preparation = prepareRegisteredOpfsStorageTransition();
@@ -33,11 +35,26 @@ describe('OPFS storage transition preparation registry', () => {
 
   it('does not call an unregistered preparation', async () => {
     const prepare = vi.fn(async () => {});
-    const unregister = registerOpfsStorageTransitionPreparation({ prepare });
+    const unregister = registerOpfsStorageTransitionPreparation({
+      prepare,
+      externalTransitionPrepared: () => {},
+    });
     unregister();
 
     await prepareRegisteredOpfsStorageTransition();
 
     expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('notifies registered application code after external preparation', () => {
+    const externalTransitionPrepared = vi.fn();
+    registerOpfsStorageTransitionPreparation({
+      prepare: async () => {},
+      externalTransitionPrepared,
+    });
+
+    notifyRegisteredOpfsExternalTransitionPrepared();
+
+    expect(externalTransitionPrepared).toHaveBeenCalledOnce();
   });
 });

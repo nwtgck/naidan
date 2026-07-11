@@ -16,6 +16,7 @@ const postStartupFeatures = computed(() => {
   switch (interaction) {
   case 'blocked-by-startup':
   case 'blocked-by-onboarding':
+  case 'blocked-by-operation':
     return 'inactive' as const;
   case 'enabled':
     return 'active' as const;

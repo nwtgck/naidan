@@ -4,7 +4,6 @@ import { EncryptedStoreHeaderStore } from './encrypted-store-header-store';
 import {
   deriveEncryptedStoreRuntimeKeys,
   unlockStorageUnlockKeyWithPassphrase,
-  unlockStorageUnlockKeyWithRecoveryKey,
   unwrapStoreRootKey,
 } from './encryption-key-manager';
 import { EncryptionStateStore } from './encryption-state-store';
@@ -115,27 +114,12 @@ export async function unlockOpfsEncryptionWithPassphrase({
   passphrase: string,
 }): Promise<UnlockedOpfsEncryptionSession> {
   const storageUnlockKey = await unlockStorageUnlockKeyWithPassphrase({
-    keySlots: state.keySlots,
+    passphraseKeySlot: state.passphraseKeySlot,
     passphrase,
   });
   return await createUnlockedSession({ storageRoot, state, storageUnlockKey });
 }
 
-export async function unlockOpfsEncryptionWithRecoveryKey({
-  storageRoot,
-  state,
-  recoveryKey,
-}: {
-  storageRoot: FileSystemDirectoryHandle,
-  state: Extract<EncryptionStateDto, { state: 'encrypted' }>,
-  recoveryKey: string,
-}): Promise<UnlockedOpfsEncryptionSession> {
-  const storageUnlockKey = await unlockStorageUnlockKeyWithRecoveryKey({
-    keySlots: state.keySlots,
-    recoveryKey,
-  });
-  return await createUnlockedSession({ storageRoot, state, storageUnlockKey });
-}
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

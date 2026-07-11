@@ -5,7 +5,6 @@ import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encrypt
 export interface OpfsEncryptionStartupGate {
   readonly inspection: ShallowRef<Exclude<OpfsEncryptionInspection, { type: 'plain' }>>,
   unlockWithPassphrase({ passphrase }: { passphrase: string }): Promise<void>,
-  unlockWithRecoveryKey({ recoveryKey }: { recoveryKey: string }): Promise<void>,
   retryInspection(): Promise<void>,
   wait(): Promise<void>,
 }
@@ -54,32 +53,6 @@ export function createOpfsEncryptionStartupGate({
     }
   }
 
-  async function unlockWithRecoveryKey({
-    recoveryKey,
-  }: {
-    recoveryKey: string,
-  }): Promise<void> {
-    const value = currentInspection.value;
-    switch (value.type) {
-    case 'encrypted':
-      await storageService.unlockOpfsEncryptionWithRecoveryKey({ recoveryKey });
-      complete();
-      return;
-    case 'transitioning':
-      await storageService.resumeOpfsEncryptionTransitionWithRecoveryKey({
-        recoveryKey,
-        signal: undefined,
-      });
-      complete();
-      return;
-    case 'recovery_required':
-      throw new Error('The OPFS encryption state must be recovered before it can be unlocked');
-    default: {
-      const _ex: never = value;
-      throw new Error(`Unhandled OPFS encryption startup state: ${String(_ex)}`);
-    }
-    }
-  }
 
   async function retryInspection(): Promise<void> {
     const value = await storageService.inspectOpfsEncryption();
@@ -102,7 +75,6 @@ export function createOpfsEncryptionStartupGate({
   return {
     inspection: currentInspection,
     unlockWithPassphrase,
-    unlockWithRecoveryKey,
     retryInspection,
     wait: async () => await completion.promise,
   };

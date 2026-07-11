@@ -23,14 +23,13 @@ const MAGIC = Buffer.from('NAIDAN01');
 const PAYLOAD_MAGIC = Buffer.from('NPAYLD01');
 const PAYLOAD_HEADER_BYTE_LENGTH = 17;
 const WRAPPED_KEY_AAD = Buffer.from('naidan/opfs-encryption/wrapped-key/v1');
-const RECOVERY_HKDF_INFO = Buffer.from('naidan/opfs-encryption/recovery-key/v1');
 const OBJECT_ENCRYPTION_HKDF_INFO = Buffer.from('naidan/opfs-encryption/object-encryption-key/v1');
 const OBJECT_ADDRESS_HKDF_INFO = Buffer.from('naidan/opfs-encryption/object-address-key/v1');
 
 function usage() {
   console.error(`Usage:
   node naidan-recover.mjs <raw-opfs-or-naidan-storage> <output-directory>
-    [--passphrase <value> | --recovery-key <base64url>]
+    [--passphrase <value>]
     [--store-id <encrypted-store-id>]
 
 The input may be either a raw OPFS export root containing naidan-storage/ or
@@ -63,7 +62,6 @@ function parseArgs(argv) {
     input: resolve(positional[0]),
     output: resolve(positional[1]),
     passphrase: options.get('--passphrase'),
-    recoveryKey: options.get('--recovery-key'),
     storeId: options.get('--store-id'),
   };
 }
@@ -195,44 +193,23 @@ function selectStoreId({ state, explicitStoreId }) {
   }
 }
 
-async function unlockStorageUnlockKey({ state, passphrase, recoveryKey }) {
-  if (passphrase !== undefined && recoveryKey !== undefined) {
-    throw new Error('Specify either --passphrase or --recovery-key, not both');
+async function unlockStorageUnlockKey({ state, passphrase }) {
+  const suppliedPassphrase = passphrase ?? await promptSecret('Passphrase: ');
+  const slot = state.passphraseKeySlot;
+  try {
+    const wrappingKey = pbkdf2Sync(
+      Buffer.from(suppliedPassphrase, 'utf8'),
+      decodeBase64Url(slot.pbkdf2.salt),
+      slot.pbkdf2.iterations,
+      32,
+      'sha256',
+    );
+    return unwrapKey({ wrappedKey: slot.wrappedStorageUnlockKey, wrappingKey });
+  } catch (error) {
+    throw new Error('The supplied passphrase did not unlock the key slot', {
+      cause: error,
+    });
   }
-  let suppliedPassphrase = passphrase;
-  if (suppliedPassphrase === undefined && recoveryKey === undefined) {
-    suppliedPassphrase = await promptSecret('Passphrase: ');
-  }
-
-  let lastError;
-  for (const slot of state.keySlots) {
-    try {
-      if (suppliedPassphrase !== undefined && slot.type === 'passphrase') {
-        const salt = decodeBase64Url(slot.kdf.salt);
-        const wrappingKey = pbkdf2Sync(
-          Buffer.from(suppliedPassphrase, 'utf8'),
-          salt,
-          slot.kdf.iterations,
-          32,
-          'sha256',
-        );
-        return unwrapKey({ wrappedKey: slot.wrappedStorageUnlockKey, wrappingKey });
-      }
-      if (recoveryKey !== undefined && slot.type === 'recovery_key') {
-        const wrappingKey = Buffer.from(hkdfSync(
-          'sha256',
-          decodeBase64Url(recoveryKey),
-          decodeBase64Url(slot.kdf.salt),
-          RECOVERY_HKDF_INFO,
-          32,
-        ));
-        return unwrapKey({ wrappedKey: slot.wrappedStorageUnlockKey, wrappingKey });
-      }
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw new Error('The supplied secret did not unlock any key slot', { cause: lastError });
 }
 
 function encodeLocator(namespace, key) {
@@ -524,7 +501,6 @@ async function main() {
   const storageUnlockKey = await unlockStorageUnlockKey({
     state,
     passphrase: args.passphrase,
-    recoveryKey: args.recoveryKey,
   });
   const storeRootKey = unwrapKey({
     wrappedKey: header.wrappedStoreRootKey,

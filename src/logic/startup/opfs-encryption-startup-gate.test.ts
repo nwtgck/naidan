@@ -10,7 +10,16 @@ function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 
       formatVersion: 1,
       sequence: 1,
       state: 'encrypted',
-      keySlots: [],
+      passphraseKeySlot: {
+        pbkdf2: {
+          salt: 'salt',
+          iterations: 10,
+        },
+        wrappedStorageUnlockKey: {
+          nonce: 'nonce',
+          ciphertext: 'ciphertext',
+        },
+      },
       activeEncryptedStoreId: 'encrypted-store',
     },
   };
@@ -29,7 +38,16 @@ function createTransitioningInspection(): Extract<OpfsEncryptionInspection, { ty
       formatVersion: 1,
       sequence: 2,
       state: 'transitioning',
-      keySlots: [],
+      passphraseKeySlot: {
+        pbkdf2: {
+          salt: 'salt',
+          iterations: 10,
+        },
+        wrappedStorageUnlockKey: {
+          nonce: 'nonce',
+          ciphertext: 'ciphertext',
+        },
+      },
       operation,
     },
     operation,
@@ -54,19 +72,6 @@ describe('createOpfsEncryptionStartupGate', () => {
     expect(unlock).toHaveBeenCalledWith({
       passphrase: 'correct horse battery staple',
     });
-  });
-
-  it('unlocks encrypted storage with a recovery key', async () => {
-    const unlock = vi.spyOn(storageService, 'unlockOpfsEncryptionWithRecoveryKey')
-      .mockResolvedValue(undefined);
-    const gate = createOpfsEncryptionStartupGate({
-      inspection: createEncryptedInspection(),
-    });
-
-    await gate.unlockWithRecoveryKey({ recoveryKey: 'recovery-key' });
-    await gate.wait();
-
-    expect(unlock).toHaveBeenCalledWith({ recoveryKey: 'recovery-key' });
   });
 
   it('resumes an interrupted transition before completing the gate', async () => {

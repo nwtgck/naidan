@@ -2,31 +2,25 @@ import { describe, expect, it } from 'vitest';
 import {
   createEncryptionMaterial,
   deriveEncryptedStoreRuntimeKeys,
-  replacePassphraseEncryptionKeySlots,
+  replacePassphraseEncryptionKeySlot,
   unlockStorageUnlockKeyWithPassphrase,
-  unlockStorageUnlockKeyWithRecoveryKey,
   unwrapStoreRootKey,
   wrapStoreRootKey,
 } from './encryption-key-manager';
 
 describe('encryption key manager', () => {
-  it('unlocks the same storage key using passphrase and recovery slots', async () => {
+  it('unlocks the storage key using its passphrase slot', async () => {
     const material = await createEncryptionMaterial({
       passphrase: 'correct horse battery staple',
       pbkdf2Iterations: 10,
     });
 
     const fromPassphrase = await unlockStorageUnlockKeyWithPassphrase({
-      keySlots: material.keySlots,
+      passphraseKeySlot: material.passphraseKeySlot,
       passphrase: 'correct horse battery staple',
     });
-    const fromRecovery = await unlockStorageUnlockKeyWithRecoveryKey({
-      keySlots: material.keySlots,
-      recoveryKey: material.recoveryKey,
-    });
-
     expect(fromPassphrase).toEqual(material.storageUnlockKey);
-    expect(fromRecovery).toEqual(material.storageUnlockKey);
+    expect(material.passphraseKeySlot.pbkdf2.iterations).toBe(10);
   });
 
   it('keeps the store root key separately wrapped by the storage unlock key', async () => {
@@ -59,30 +53,26 @@ describe('encryption key manager', () => {
     });
   });
 
-  it('replaces passphrase slots without changing the storage unlock key or recovery slot', async () => {
+  it('replaces the passphrase slot without changing the storage unlock key', async () => {
     const material = await createEncryptionMaterial({
       passphrase: 'old passphrase',
       pbkdf2Iterations: 10,
     });
-    const keySlots = await replacePassphraseEncryptionKeySlots({
-      keySlots: material.keySlots,
+    const passphraseKeySlot = await replacePassphraseEncryptionKeySlot({
       storageUnlockKey: material.storageUnlockKey,
       passphrase: 'new passphrase',
       pbkdf2Iterations: 10,
     });
 
     await expect(unlockStorageUnlockKeyWithPassphrase({
-      keySlots,
+      passphraseKeySlot,
       passphrase: 'new passphrase',
     })).resolves.toEqual(material.storageUnlockKey);
     await expect(unlockStorageUnlockKeyWithPassphrase({
-      keySlots,
+      passphraseKeySlot,
       passphrase: 'old passphrase',
     })).rejects.toThrow('did not unlock');
-    await expect(unlockStorageUnlockKeyWithRecoveryKey({
-      keySlots,
-      recoveryKey: material.recoveryKey,
-    })).resolves.toEqual(material.storageUnlockKey);
+    expect(passphraseKeySlot.pbkdf2.iterations).toBe(10);
   });
 
   it('does not unlock with a different passphrase', async () => {
@@ -92,7 +82,7 @@ describe('encryption key manager', () => {
     });
 
     await expect(unlockStorageUnlockKeyWithPassphrase({
-      keySlots: material.keySlots,
+      passphraseKeySlot: material.passphraseKeySlot,
       passphrase: 'incorrect passphrase',
     })).rejects.toThrow('did not unlock');
   });

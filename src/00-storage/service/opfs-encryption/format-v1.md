@@ -49,14 +49,11 @@ are valid and significant, but the UI warns the user before encryption begins.
 
 1. PBKDF2-HMAC-SHA-256 derives a 32-byte key-encryption key from a passphrase,
    its persisted 32-byte salt, and the persisted iteration count.
-2. A random 32-byte recovery key derives a 32-byte key-encryption key with
-   HKDF-SHA-256, its persisted 32-byte salt, and info
-   `naidan/opfs-encryption/recovery-key/v1`.
-3. Every key slot AES-256-GCM encrypts the same random 32-byte Storage Unlock
+2. The passphrase key slot AES-256-GCM encrypts a random 32-byte Storage Unlock
    Key.
-4. Every encrypted-store header AES-256-GCM encrypts that store's random
+3. Every encrypted-store header AES-256-GCM encrypts that store's random
    32-byte root key with the Storage Unlock Key.
-5. The store root key derives separate AES-GCM object-encryption and
+4. The store root key derives separate AES-GCM object-encryption and
    HMAC-SHA-256 object-address keys through HKDF-SHA-256. The UTF-8 store ID is
    the HKDF salt. Info strings are:
    - `naidan/opfs-encryption/object-encryption-key/v1`

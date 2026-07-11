@@ -63,19 +63,16 @@ function createTransitionState({
     formatVersion: 1,
     sequence: 4,
     state: 'transitioning',
-    keySlots: [{
-      id: 'passphrase-slot',
-      type: 'passphrase',
-      kdf: {
-        type: 'pbkdf2_sha256',
+    passphraseKeySlot: {
+      pbkdf2: {
         salt: 'salt',
-        iterations: 1,
+        iterations: 10,
       },
       wrappedStorageUnlockKey: {
         nonce: 'nonce',
         ciphertext: 'ciphertext',
       },
-    }],
+    },
     operation,
   };
 }

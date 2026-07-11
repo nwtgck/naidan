@@ -1,10 +1,7 @@
 import { z } from 'zod';
 
 export const PassphraseEncryptionKeySlotSchemaDto = z.object({
-  id: z.string(),
-  type: z.literal('passphrase'),
-  kdf: z.object({
-    type: z.literal('pbkdf2_sha256'),
+  pbkdf2: z.object({
     salt: z.string(),
     iterations: z.number(),
   }),
@@ -13,27 +10,9 @@ export const PassphraseEncryptionKeySlotSchemaDto = z.object({
     ciphertext: z.string(),
   }),
 });
-export type PassphraseEncryptionKeySlotDto = z.infer<typeof PassphraseEncryptionKeySlotSchemaDto>;
-
-export const RecoveryKeyEncryptionKeySlotSchemaDto = z.object({
-  id: z.string(),
-  type: z.literal('recovery_key'),
-  kdf: z.object({
-    type: z.literal('hkdf_sha256'),
-    salt: z.string(),
-  }),
-  wrappedStorageUnlockKey: z.object({
-    nonce: z.string(),
-    ciphertext: z.string(),
-  }),
-});
-export type RecoveryKeyEncryptionKeySlotDto = z.infer<typeof RecoveryKeyEncryptionKeySlotSchemaDto>;
-
-export const EncryptionKeySlotSchemaDto = z.discriminatedUnion('type', [
-  PassphraseEncryptionKeySlotSchemaDto,
-  RecoveryKeyEncryptionKeySlotSchemaDto,
-]);
-export type EncryptionKeySlotDto = z.infer<typeof EncryptionKeySlotSchemaDto>;
+export type PassphraseEncryptionKeySlotDto = z.infer<
+  typeof PassphraseEncryptionKeySlotSchemaDto
+>;
 
 export const EncryptionOperationPhaseSchemaDto = z.enum([
   'building_target',
@@ -67,14 +46,14 @@ export const EncryptionStateSchemaDto = z.discriminatedUnion('state', [
     formatVersion: z.literal(1),
     sequence: z.number(),
     state: z.literal('encrypted'),
-    keySlots: z.array(EncryptionKeySlotSchemaDto),
+    passphraseKeySlot: PassphraseEncryptionKeySlotSchemaDto,
     activeEncryptedStoreId: z.string(),
   }),
   z.object({
     formatVersion: z.literal(1),
     sequence: z.number(),
     state: z.literal('transitioning'),
-    keySlots: z.array(EncryptionKeySlotSchemaDto),
+    passphraseKeySlot: PassphraseEncryptionKeySlotSchemaDto,
     operation: EncryptionOperationSchemaDto,
   }),
 ]);

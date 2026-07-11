@@ -1,23 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { StorageChangeEvent } from '@/00-storage/service/synchronizer';
-
-const testState = vi.hoisted(() => ({
-  listener: undefined as undefined | (({ event }: { event: StorageChangeEvent }) => void),
-}));
-
-vi.mock('@/00-storage/service', () => ({
-  storageService: {
-    subscribeToChanges: vi.fn(({ listener }) => {
-      testState.listener = listener;
-      return () => {};
-    }),
-  },
-}));
-
-import { useOpfsEncryptionTransition } from './useOpfsEncryptionTransition';
+import { TEST_ONLY as appBlockingTestOnly } from '@/composables/useAppBlockingOperation';
+import { TEST_ONLY as overlayTestOnly } from '@/composables/useGlobalBlockingOverlay';
+import {
+  TEST_ONLY,
+  useOpfsEncryptionTransition,
+} from './useOpfsEncryptionTransition';
 
 afterEach(() => {
-  useOpfsEncryptionTransition().finishLocalOperation({ success: true });
+  TEST_ONLY.reset();
+  overlayTestOnly.reset();
+  appBlockingTestOnly.activeOperations.clear();
   vi.unstubAllGlobals();
 });
 
@@ -34,25 +26,18 @@ describe('useOpfsEncryptionTransition', () => {
     expect(transition.failed.value).toBe(false);
   });
 
-  it('reloads another tab immediately when a transition starts', () => {
+  it('keeps the local app blocked while reloading after a failed operation', () => {
     const reload = vi.fn();
     vi.stubGlobal('window', {
       location: { reload },
     });
     const transition = useOpfsEncryptionTransition();
-    if (testState.listener === undefined) {
-      throw new Error('Expected storage change subscription');
-    }
 
-    testState.listener({
-      event: {
-        type: 'opfs_encryption',
-        status: 'transition_started',
-        timestamp: expect.any(Number),
-      },
-    });
+    transition.beginLocalOperation();
+    transition.finishLocalOperation({ success: false });
 
     expect(transition.active.value).toBe(true);
+    expect(transition.failed.value).toBe(true);
     expect(reload).toHaveBeenCalledOnce();
   });
 });

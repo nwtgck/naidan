@@ -176,7 +176,16 @@ describe('app startup', () => {
             formatVersion: 1,
             sequence: 1,
             state: 'encrypted',
-            keySlots: [],
+            passphraseKeySlot: {
+              pbkdf2: {
+                salt: 'salt',
+                iterations: 10,
+              },
+              wrappedStorageUnlockKey: {
+                nonce: 'nonce',
+                ciphertext: 'ciphertext',
+              },
+            },
             activeEncryptedStoreId: 'encrypted-store',
           },
         },

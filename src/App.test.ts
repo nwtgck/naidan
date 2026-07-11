@@ -122,6 +122,33 @@ describe('App', () => {
     expect(mounted).toHaveBeenCalledOnce();
   });
 
+  it('keeps the ready app mounted and inert while a generic operation blocks interaction', async () => {
+    const mounted = vi.fn();
+    const MainApp = defineComponent({
+      setup() {
+        onMounted(mounted);
+        return {};
+      },
+      template: '<div data-testid="main-app" />',
+    });
+    onboardingPresentation.value = 'hidden';
+    appInteraction.value = 'enabled';
+    const { wrapper } = mountApp({
+      state: {
+        kind: 'ready',
+        mainApp: MainApp,
+      },
+    });
+
+    appInteraction.value = 'blocked-by-operation';
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="main-app"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="app-content-host"]').attributes('inert')).toBeDefined();
+    expect(wrapper.find('[data-testid="app-content-host"]').attributes('aria-hidden')).toBe('true');
+    expect(mounted).toHaveBeenCalledOnce();
+  });
+
   it('supports runtime onboarding without remounting the ready app', async () => {
     const mounted = vi.fn();
     const MainApp = defineComponent({

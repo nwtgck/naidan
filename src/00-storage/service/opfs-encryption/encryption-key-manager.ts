@@ -1,8 +1,6 @@
 import type {
   EncryptedStoreHeaderDto,
-  EncryptionKeySlotDto,
   PassphraseEncryptionKeySlotDto,
-  RecoveryKeyEncryptionKeySlotDto,
 } from '@/00-storage/00-dto/encryption.dto';
 import { decodeBase64UrlWithLength, encodeBase64Url } from './base64-url';
 import { assertEncryptionPassphraseCanBeUsed } from './passphrase';
@@ -13,7 +11,6 @@ export const DEFAULT_PBKDF2_ITERATIONS = 600_000;
 
 const UTF8 = new TextEncoder();
 const WRAPPED_KEY_AAD = UTF8.encode('naidan/opfs-encryption/wrapped-key/v1');
-const RECOVERY_HKDF_INFO = UTF8.encode('naidan/opfs-encryption/recovery-key/v1');
 const OBJECT_ENCRYPTION_HKDF_INFO = UTF8.encode('naidan/opfs-encryption/object-encryption-key/v1');
 const OBJECT_ADDRESS_HKDF_INFO = UTF8.encode('naidan/opfs-encryption/object-address-key/v1');
 
@@ -71,34 +68,6 @@ async function derivePassphraseWrappingKey({
       hash: 'SHA-256',
       salt: toExactArrayBuffer({ bytes: salt }),
       iterations,
-    },
-    material,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt'],
-  );
-}
-
-async function deriveRecoveryWrappingKey({
-  recoveryKey,
-  salt,
-}: {
-  recoveryKey: Uint8Array,
-  salt: Uint8Array,
-}): Promise<CryptoKey> {
-  const material = await crypto.subtle.importKey(
-    'raw',
-    toExactArrayBuffer({ bytes: recoveryKey }),
-    'HKDF',
-    false,
-    ['deriveKey'],
-  );
-  return await crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: toExactArrayBuffer({ bytes: salt }),
-      info: toExactArrayBuffer({ bytes: RECOVERY_HKDF_INFO }),
     },
     material,
     { name: 'AES-GCM', length: 256 },
@@ -186,10 +155,7 @@ export async function createPassphraseEncryptionKeySlot({
       iterations: pbkdf2Iterations,
     });
     return {
-      id: createEncryptionOpaqueId(),
-      type: 'passphrase',
-      kdf: {
-        type: 'pbkdf2_sha256',
+      pbkdf2: {
         salt: encodeBase64Url({ bytes: salt }),
         iterations: pbkdf2Iterations,
       },
@@ -203,39 +169,20 @@ export async function createPassphraseEncryptionKeySlot({
   }
 }
 
-export async function replacePassphraseEncryptionKeySlots({
-  keySlots,
+export async function replacePassphraseEncryptionKeySlot({
   storageUnlockKey,
   passphrase,
   pbkdf2Iterations,
 }: {
-  keySlots: EncryptionKeySlotDto[],
   storageUnlockKey: Uint8Array,
   passphrase: string,
   pbkdf2Iterations: number,
-}): Promise<EncryptionKeySlotDto[]> {
-  const passphraseSlot = await createPassphraseEncryptionKeySlot({
+}): Promise<PassphraseEncryptionKeySlotDto> {
+  return await createPassphraseEncryptionKeySlot({
     storageUnlockKey,
     passphrase,
     pbkdf2Iterations,
   });
-  const retainedSlots: EncryptionKeySlotDto[] = [];
-  for (const keySlot of keySlots) {
-    switch (keySlot.type) {
-    case 'passphrase':
-      continue;
-    case 'recovery_key':
-      retainedSlots.push(keySlot);
-      break;
-    default: {
-      const _ex: never = keySlot;
-      throw new Error(
-        `Unhandled encryption key slot: ${((_ex satisfies never) as { readonly type: string }).type}`,
-      );
-    }
-    }
-  }
-  return [passphraseSlot, ...retainedSlots];
 }
 
 export async function createEncryptionMaterial({
@@ -248,147 +195,50 @@ export async function createEncryptionMaterial({
   assertEncryptionPassphraseCanBeUsed({ passphrase });
   const storageUnlockKey = randomBytes({ byteLength: 32 });
   const storeRootKey = randomBytes({ byteLength: 32 });
-  const recoveryKeyBytes = randomBytes({ byteLength: 32 });
-  const recoverySalt = randomBytes({ byteLength: 32 });
-  const recoveryWrappingKey = await deriveRecoveryWrappingKey({
-    recoveryKey: recoveryKeyBytes,
-    salt: recoverySalt,
-  });
-
   const passphraseSlot = await createPassphraseEncryptionKeySlot({
     storageUnlockKey,
     passphrase,
     pbkdf2Iterations,
   });
-  const recoverySlot: RecoveryKeyEncryptionKeySlotDto = {
-    id: createEncryptionOpaqueId(),
-    type: 'recovery_key',
-    kdf: {
-      type: 'hkdf_sha256',
-      salt: encodeBase64Url({ bytes: recoverySalt }),
-    },
-    wrappedStorageUnlockKey: await wrapRawKey({
-      rawKey: storageUnlockKey,
-      wrappingKey: recoveryWrappingKey,
-    }),
-  };
-
-  const recoveryKey = encodeBase64Url({ bytes: recoveryKeyBytes });
-  recoveryKeyBytes.fill(0);
-  recoverySalt.fill(0);
 
   return {
     storageUnlockKey,
     storeRootKey,
-    recoveryKey,
-    keySlots: [passphraseSlot, recoverySlot],
+    passphraseKeySlot: passphraseSlot,
   };
 }
 
 export async function unlockStorageUnlockKeyWithPassphrase({
-  keySlots,
+  passphraseKeySlot,
   passphrase,
 }: {
-  keySlots: EncryptionKeySlotDto[],
+  passphraseKeySlot: PassphraseEncryptionKeySlotDto,
   passphrase: string,
 }): Promise<Uint8Array> {
   assertEncryptionPassphraseCanBeUsed({ passphrase });
-  let lastError: unknown;
-
-  for (const keySlot of keySlots) {
-    switch (keySlot.type) {
-    case 'recovery_key':
-      continue;
-    case 'passphrase':
-      break;
-    default: {
-      const _ex: never = keySlot;
-      throw new Error(`Unhandled encryption key slot: ${((_ex satisfies never) as { readonly type: string }).type}`);
-    }
-    }
-    try {
-      const salt = decodeBase64UrlWithLength({
-        value: keySlot.kdf.salt,
-        expectedByteLength: 32,
-        fieldName: 'Passphrase KDF salt',
-      });
-      try {
-        const wrappingKey = await derivePassphraseWrappingKey({
-          passphrase,
-          salt,
-          iterations: keySlot.kdf.iterations,
-        });
-        return await unwrapRawKey({
-          wrappedKey: keySlot.wrappedStorageUnlockKey,
-          wrappingKey,
-        });
-      } finally {
-        salt.fill(0);
-      }
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw new Error('Passphrase did not unlock any encryption key slot', {
-    cause: lastError,
-  });
-}
-
-export async function unlockStorageUnlockKeyWithRecoveryKey({
-  keySlots,
-  recoveryKey,
-}: {
-  keySlots: EncryptionKeySlotDto[],
-  recoveryKey: string,
-}): Promise<Uint8Array> {
-  const recoveryKeyBytes = decodeBase64UrlWithLength({
-    value: recoveryKey,
-    expectedByteLength: 32,
-    fieldName: 'Recovery key',
-  });
-  let lastError: unknown;
-
   try {
-    for (const keySlot of keySlots) {
-      switch (keySlot.type) {
-      case 'passphrase':
-        continue;
-      case 'recovery_key':
-        break;
-      default: {
-        const _ex: never = keySlot;
-        throw new Error(`Unhandled encryption key slot: ${((_ex satisfies never) as { readonly type: string }).type}`);
-      }
-      }
-      try {
-        const salt = decodeBase64UrlWithLength({
-          value: keySlot.kdf.salt,
-          expectedByteLength: 32,
-          fieldName: 'Recovery KDF salt',
-        });
-        try {
-          const wrappingKey = await deriveRecoveryWrappingKey({
-            recoveryKey: recoveryKeyBytes,
-            salt,
-          });
-          return await unwrapRawKey({
-            wrappedKey: keySlot.wrappedStorageUnlockKey,
-            wrappingKey,
-          });
-        } finally {
-          salt.fill(0);
-        }
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw new Error('Recovery key did not unlock any encryption key slot', {
-      cause: lastError,
+    const salt = decodeBase64UrlWithLength({
+      value: passphraseKeySlot.pbkdf2.salt,
+      expectedByteLength: 32,
+      fieldName: 'Passphrase KDF salt',
     });
-  } finally {
-    recoveryKeyBytes.fill(0);
+    try {
+      const wrappingKey = await derivePassphraseWrappingKey({
+        passphrase,
+        salt,
+        iterations: passphraseKeySlot.pbkdf2.iterations,
+      });
+      return await unwrapRawKey({
+        wrappedKey: passphraseKeySlot.wrappedStorageUnlockKey,
+        wrappingKey,
+      });
+    } finally {
+      salt.fill(0);
+    }
+  } catch (error) {
+    throw new Error('Passphrase did not unlock the encryption key slot', {
+      cause: error,
+    });
   }
 }
 
@@ -472,7 +322,6 @@ export async function deriveEncryptedStoreRuntimeKeys({
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   derivePassphraseWrappingKey,
-  deriveRecoveryWrappingKey,
   unwrapRawKey,
   wrapRawKey,
 };

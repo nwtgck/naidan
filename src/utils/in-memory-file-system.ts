@@ -1,5 +1,5 @@
 function createNotFoundError({ message }: { message: string }): Error {
-  const error = new Error(message);
+  const error = new Error(`NotFoundError: ${message}`);
   error.name = 'NotFoundError';
   return error;
 }

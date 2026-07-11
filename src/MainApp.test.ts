@@ -6,6 +6,7 @@ import MainApp from './MainApp.vue';
 const appInteraction = ref<
   | 'blocked-by-startup'
   | 'blocked-by-onboarding'
+  | 'blocked-by-operation'
   | 'enabled'
 >('enabled');
 
@@ -54,6 +55,16 @@ describe('MainApp', () => {
     expect(wrapper.get('[data-testid="main-app-surface"]').attributes('data-post-startup-features')).toBe('active');
     expect(wrapper.find('[data-testid="app-command-runtime"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="app-auxiliary-ui"]').exists()).toBe(true);
+  });
+
+  it('keeps post-startup features inactive during a generic blocking operation', async () => {
+    appInteraction.value = 'blocked-by-operation';
+    const wrapper = mountMainApp();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="main-app-surface"]').attributes('data-post-startup-features')).toBe('inactive');
+    expect(wrapper.find('[data-testid="app-command-runtime"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="app-auxiliary-ui"]').exists()).toBe(false);
   });
 
   it('keeps the main app surface rendered while onboarding blocks post-startup features', async () => {
