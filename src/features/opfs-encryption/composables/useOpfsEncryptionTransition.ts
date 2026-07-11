@@ -9,47 +9,111 @@ const OpfsEncryptionTransitionView = defineAsyncComponent(
   () => import('@/features/opfs-encryption/components/OpfsEncryptionTransitionView.vue'),
 );
 
+export type OpfsEncryptionTransitionOutcome =
+  | 'completed'
+  | 'rolled_back'
+  | 'recovery_required';
+
 const active = ref(false);
 const failed = ref(false);
+const failureMessage = ref<string>();
 let closeOverlay: (() => void) | undefined;
+let operationOwner: 'local' | 'external' | undefined;
+
+function closeLocalOverlay(): void {
+  const close = closeOverlay;
+  closeOverlay = undefined;
+  operationOwner = undefined;
+  close?.();
+  active.value = false;
+  failed.value = false;
+  failureMessage.value = undefined;
+}
 
 export function useOpfsEncryptionTransition() {
-  function beginLocalOperation(): void {
+  function beginOperation(): void {
     if (closeOverlay !== undefined) {
       throw new Error('An OPFS encryption transition is already active');
     }
     active.value = true;
     failed.value = false;
+    failureMessage.value = undefined;
     closeOverlay = showGlobalBlockingOverlay({
       operation: 'storage_transition',
       component: OpfsEncryptionTransitionView,
     });
   }
 
-  function finishLocalOperation({ success }: { success: boolean }): void {
-    if (success) {
-      const close = closeOverlay;
-      closeOverlay = undefined;
-      close?.();
-      active.value = false;
+  function beginLocalOperation(): void {
+    beginOperation();
+    operationOwner = 'local';
+  }
+
+  function beginExternalOperation(): void {
+    if (closeOverlay !== undefined) {
+      // Two tabs may request a transition at nearly the same time. The tab
+      // that loses the global storage lock already has its local overlay open
+      // when it receives the winner's external-start notification. Reuse that
+      // presentation so external preparation can continue and release the
+      // shared OPFS session lock instead of failing into a cross-tab deadlock.
+      active.value = true;
       failed.value = false;
+      failureMessage.value = undefined;
+      operationOwner = 'external';
       return;
     }
+    beginOperation();
+    operationOwner = 'external';
+  }
 
-    // Keep the app inert and the transition overlay visible until the reload
-    // begins. If navigation is delayed or rejected, exposing the old backend
-    // again would allow writes against an uncertain storage state.
-    active.value = true;
-    failed.value = true;
-    if (typeof window !== 'undefined') {
-      window.location.reload();
+  function finishLocalOperation({
+    outcome,
+    errorMessage,
+  }: {
+    outcome: OpfsEncryptionTransitionOutcome,
+    errorMessage: string | undefined,
+  }): void {
+    const owner = operationOwner;
+    switch (owner) {
+    case 'local':
+      break;
+    case 'external':
+    case undefined:
+      // A competing tab may have won the global lock and taken ownership of
+      // this overlay. Ignore the stale local completion so the suspended app
+      // stays covered until the external settlement reload completes.
+      return;
+    default: {
+      const _ex: never = owner;
+      return _ex;
+    }
+    }
+    switch (outcome) {
+    case 'completed':
+    case 'rolled_back':
+      closeLocalOverlay();
+      return;
+    case 'recovery_required':
+      // The provider could not prove that a normal backend is safe to expose.
+      // Keep the application inert and preserve the raw OPFS recovery path
+      // instead of reloading into an equally uncertain startup state.
+      active.value = true;
+      failed.value = true;
+      failureMessage.value = errorMessage;
+      return;
+    default: {
+      const _ex: never = outcome;
+      return _ex;
+    }
     }
   }
 
   return {
     active: readonly(active),
     failed: readonly(failed),
+    failureMessage: readonly(failureMessage),
     beginLocalOperation,
+    beginExternalOperation,
     finishLocalOperation,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
@@ -63,9 +127,6 @@ export function useOpfsEncryptionTransition() {
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   reset(): void {
-    closeOverlay?.();
-    closeOverlay = undefined;
-    active.value = false;
-    failed.value = false;
+    closeLocalOverlay();
   },
 };

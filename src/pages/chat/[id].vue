@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { watch, onMounted, computed } from 'vue';
+import { watch, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import CurrentChatPane from '@/components/CurrentChatPane.vue';
 import { toChatId, toMessageId } from '@/01-models/ids';
+import {
+  useInitialRouteRenderReadinessClaim,
+} from '@/logic/startup/initial-route-render-readiness';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
 const chatNavigation = useChatNavigation();
+const initialRouteRenderReadiness = useInitialRouteRenderReadinessClaim();
 
 const chatId = computed(() => {
   const params = currentRoute.value?.params;
@@ -47,7 +51,22 @@ function handleAutoSent() {
   router.replace({ query });
 }
 
-onMounted(syncChat);
+onMounted(async () => {
+  try {
+    await syncChat();
+    // openChat updates CurrentChatPane reactively. Wait for that DOM update so
+    // encrypted startup removes its lock only after the real ChatPane exists,
+    // not when this route wrapper happened to mount.
+    await nextTick();
+    initialRouteRenderReadiness.reportReady();
+  } catch (error) {
+    initialRouteRenderReadiness.reportFailure({ error });
+    throw error;
+  }
+});
+onUnmounted(() => {
+  initialRouteRenderReadiness.cancel();
+});
 watch([chatId, leafId, messageId], syncChat);
 
 

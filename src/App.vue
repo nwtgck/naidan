@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, type ShallowRef } from 'vue';
+import { computed, defineAsyncComponent, type Component, type ShallowRef } from 'vue';
 import GlobalBlockingOverlayHost from '@/components/GlobalBlockingOverlayHost.vue';
 import GlobalDialogHost from '@/components/GlobalDialogHost.vue';
 import OnboardingModal from '@/components/OnboardingModal.vue';
@@ -16,6 +16,110 @@ const props = defineProps<{
 }>();
 
 const startup = computed(() => props.startupState.value);
+
+/**
+ * WHY: During encrypted startup, MainApp is mounted only after the passphrase
+ * has unlocked storage, but the lock presentation intentionally remains in
+ * front. Keeping the real app mounted and inert behind that presentation lets
+ * Sidebar, ChatPane, and the current route finish their first render before
+ * the user sees them, without making normal components support locked storage.
+ */
+const mainApp = computed<Component | undefined>(() => {
+  const state = startup.value;
+  switch (state.kind) {
+  case 'rendering-main':
+  case 'rendering-main-after-opfs-unlock':
+  case 'ready':
+    return state.mainApp;
+  case 'opfs-encryption-main-failed':
+    return state.mainApp;
+  case 'initializing-foundation':
+  case 'opfs-encryption-required':
+  case 'starting-main-after-opfs-unlock':
+  case 'starting-main':
+  case 'foundation-failed':
+  case 'main-failed':
+    return undefined;
+  default: {
+    const _ex: never = state;
+    return _ex;
+  }
+  }
+});
+function reportMainAppInitialShellRendered(): void {
+  const state = startup.value;
+  switch (state.kind) {
+  case 'rendering-main-after-opfs-unlock':
+    state.renderGate.reportInitialRender();
+    return;
+  case 'rendering-main':
+  case 'ready':
+  case 'opfs-encryption-main-failed':
+    return;
+  case 'initializing-foundation':
+  case 'opfs-encryption-required':
+  case 'starting-main-after-opfs-unlock':
+  case 'starting-main':
+  case 'foundation-failed':
+  case 'main-failed':
+    throw new Error(`MainApp reported its initial shell from invalid startup state: ${state.kind}`);
+  default: {
+    const _ex: never = state;
+    return _ex;
+  }
+  }
+}
+
+function reportMainAppInitialShellRenderFailed({ error }: { error: unknown }): void {
+  const state = startup.value;
+  switch (state.kind) {
+  case 'rendering-main-after-opfs-unlock':
+    state.renderGate.reportInitialRenderFailure({ error });
+    return;
+  case 'rendering-main':
+  case 'ready':
+  case 'opfs-encryption-main-failed':
+    // The route itself also reports this error through Vue's normal lifecycle
+    // error handling. Only encrypted startup has a lock presentation waiting
+    // on this explicit gate, so plain/ready states need no second transition.
+    return;
+  case 'initializing-foundation':
+  case 'opfs-encryption-required':
+  case 'starting-main-after-opfs-unlock':
+  case 'starting-main':
+  case 'foundation-failed':
+  case 'main-failed':
+    throw new Error(`MainApp reported an initial shell failure from invalid startup state: ${state.kind}`, {
+      cause: error,
+    });
+  default: {
+    const _ex: never = state;
+    return _ex;
+  }
+  }
+}
+
+const opfsEncryptionStartupGate = computed(() => {
+  const state = startup.value;
+  switch (state.kind) {
+  case 'opfs-encryption-required':
+  case 'starting-main-after-opfs-unlock':
+  case 'rendering-main-after-opfs-unlock':
+  case 'opfs-encryption-main-failed':
+    return state.gate;
+  case 'initializing-foundation':
+  case 'starting-main':
+  case 'rendering-main':
+  case 'ready':
+  case 'foundation-failed':
+  case 'main-failed':
+    return undefined;
+  default: {
+    const _ex: never = state;
+    return _ex;
+  }
+  }
+});
 const {
   onboardingPresentation,
   appInteraction,
@@ -73,8 +177,10 @@ defineExpose({
     :aria-hidden="appContentAriaHidden"
   >
     <component
-      :is="startup.mainApp"
-      v-if="startup.kind === 'rendering-main' || startup.kind === 'ready'"
+      :is="mainApp"
+      v-if="mainApp !== undefined"
+      @initial-shell-rendered="reportMainAppInitialShellRendered"
+      @initial-shell-render-failed="reportMainAppInitialShellRenderFailed"
     />
 
     <StartupErrorView
@@ -92,8 +198,8 @@ defineExpose({
   <GlobalBlockingOverlayHost />
 
   <OpfsEncryptionUnlockView
-    v-if="startup.kind === 'opfs-encryption-required'"
-    :gate="startup.gate"
+    v-if="opfsEncryptionStartupGate !== undefined"
+    :gate="opfsEncryptionStartupGate"
   />
 
   <Transition name="modal">

@@ -1,9 +1,25 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
-import { onMounted } from 'vue';
+import {
+  useInitialRouteRenderReadinessClaim,
+} from '@/logic/startup/initial-route-render-readiness';
+import { onMounted, onUnmounted } from 'vue';
 const router = useRouter();
-onMounted(() => {
-  router.replace('/settings/connection');
+const initialRouteRenderReadiness = useInitialRouteRenderReadinessClaim();
+
+onMounted(async () => {
+  try {
+    // This component is only a redirect and must never release the encrypted
+    // startup lock while its blank placeholder is mounted. The destination
+    // route owns readiness after navigation replaces this component.
+    await router.replace('/settings/connection');
+  } catch (error) {
+    initialRouteRenderReadiness.reportFailure({ error });
+    throw error;
+  }
+});
+onUnmounted(() => {
+  initialRouteRenderReadiness.cancel();
 });
 
 

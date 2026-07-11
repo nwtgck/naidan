@@ -80,17 +80,19 @@ const passphraseChangeCanSubmit = computed(() => (
   && !loading.value
 ));
 
-async function refreshInspection(): Promise<void> {
+async function refreshInspection(): Promise<'updated' | 'failed'> {
   if (!available.value) {
     inspection.value = { type: 'plain' };
-    return;
+    return 'updated';
   }
   loading.value = true;
   errorMessage.value = undefined;
   try {
     inspection.value = await storageService.inspectOpfsEncryption();
+    return 'updated';
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
+    return 'failed';
   } finally {
     loading.value = false;
   }
@@ -140,14 +142,81 @@ async function refreshInspectionAfterOperationError({
   error,
 }: {
   error: unknown,
-}): Promise<void> {
+}): Promise<{
+  errorMessage: string,
+  inspectionRefresh: 'updated' | 'failed',
+}> {
   const operationErrorMessage = error instanceof Error ? error.message : String(error);
-  await refreshInspection();
+  const inspectionRefresh = await refreshInspection();
   const inspectionErrorMessage = errorMessage.value;
-  errorMessage.value = inspectionErrorMessage === undefined
+  const combinedErrorMessage = inspectionErrorMessage === undefined
     ? operationErrorMessage
     : `${operationErrorMessage}
 ${inspectionErrorMessage}`;
+  errorMessage.value = combinedErrorMessage;
+  return {
+    errorMessage: combinedErrorMessage,
+    inspectionRefresh,
+  };
+}
+
+function finishFailedLocalOperation({
+  operationFailure,
+}: {
+  operationFailure: {
+    errorMessage: string,
+    inspectionRefresh: 'updated' | 'failed',
+  },
+}): void {
+  switch (operationFailure.inspectionRefresh) {
+  case 'failed':
+    finishLocalOperation({
+      outcome: 'recovery_required',
+      errorMessage: operationFailure.errorMessage,
+    });
+    return;
+  case 'updated':
+    break;
+  default: {
+    const _ex: never = operationFailure.inspectionRefresh;
+    throw new Error(`Unhandled inspection refresh result: ${String(_ex)}`);
+  }
+  }
+  const currentInspection = inspection.value;
+  switch (currentInspection.type) {
+  case 'plain':
+  case 'encrypted':
+    finishLocalOperation({
+      outcome: 'rolled_back',
+      errorMessage: operationFailure.errorMessage,
+    });
+    return;
+  case 'transitioning':
+  case 'recovery_required':
+    finishLocalOperation({
+      outcome: 'recovery_required',
+      errorMessage: operationFailure.errorMessage,
+    });
+    return;
+  default: {
+    const _ex: never = currentInspection;
+    throw new Error(`Unhandled OPFS encryption inspection: ${String(_ex)}`);
+  }
+  }
+}
+
+async function refreshExpectedInspection({
+  expectedType,
+}: {
+  expectedType: 'plain' | 'encrypted',
+}): Promise<void> {
+  const nextInspection = await storageService.inspectOpfsEncryption();
+  inspection.value = nextInspection;
+  if (nextInspection.type !== expectedType) {
+    throw new Error(
+      `OPFS encryption transition completed with unexpected state: ${nextInspection.type}`,
+    );
+  }
 }
 
 async function handleToggle(): Promise<void> {
@@ -174,11 +243,11 @@ async function handleToggle(): Promise<void> {
   try {
     await prepareForStorageTransition();
     await storageService.disableOpfsEncryption({ signal: undefined });
-    finishLocalOperation({ success: true });
-    window.location.reload();
+    await refreshExpectedInspection({ expectedType: 'plain' });
+    finishLocalOperation({ outcome: 'completed', errorMessage: undefined });
   } catch (error) {
-    finishLocalOperation({ success: false });
-    await refreshInspectionAfterOperationError({ error });
+    const operationFailure = await refreshInspectionAfterOperationError({ error });
+    finishFailedLocalOperation({ operationFailure });
   } finally {
     loading.value = false;
   }
@@ -197,12 +266,12 @@ async function enableEncryption(): Promise<void> {
       passphrase: passphrase.value,
       signal: undefined,
     });
-    finishLocalOperation({ success: true });
-    setupOpen.value = false;
-    window.location.reload();
+    await refreshExpectedInspection({ expectedType: 'encrypted' });
+    resetSetup();
+    finishLocalOperation({ outcome: 'completed', errorMessage: undefined });
   } catch (error) {
-    finishLocalOperation({ success: false });
-    await refreshInspectionAfterOperationError({ error });
+    const operationFailure = await refreshInspectionAfterOperationError({ error });
+    finishFailedLocalOperation({ operationFailure });
   } finally {
     loading.value = false;
   }
@@ -244,11 +313,11 @@ async function reencrypt(): Promise<void> {
   try {
     await prepareForStorageTransition();
     await storageService.reencryptOpfsEncryption({ signal: undefined });
-    finishLocalOperation({ success: true });
-    window.location.reload();
+    await refreshExpectedInspection({ expectedType: 'encrypted' });
+    finishLocalOperation({ outcome: 'completed', errorMessage: undefined });
   } catch (error) {
-    finishLocalOperation({ success: false });
-    await refreshInspectionAfterOperationError({ error });
+    const operationFailure = await refreshInspectionAfterOperationError({ error });
+    finishFailedLocalOperation({ operationFailure });
   } finally {
     loading.value = false;
   }

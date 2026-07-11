@@ -1,4 +1,5 @@
 import type { Component } from 'vue';
+import type { ApplicationShellRenderGate } from './application-shell-render-gate';
 import type { OpfsEncryptionStartupGate } from './opfs-encryption-startup-gate';
 
 export type StartupState =
@@ -10,11 +11,27 @@ export type StartupState =
     gate: OpfsEncryptionStartupGate,
   }
   | {
+    kind: 'starting-main-after-opfs-unlock',
+    gate: OpfsEncryptionStartupGate,
+  }
+  | {
     kind: 'starting-main',
+  }
+  | {
+    kind: 'rendering-main-after-opfs-unlock',
+    gate: OpfsEncryptionStartupGate,
+    mainApp: Component,
+    renderGate: ApplicationShellRenderGate,
   }
   | {
     kind: 'rendering-main',
     mainApp: Component,
+  }
+  | {
+    kind: 'opfs-encryption-main-failed',
+    gate: OpfsEncryptionStartupGate,
+    error: unknown,
+    mainApp: Component | undefined,
   }
   | {
     kind: 'ready',

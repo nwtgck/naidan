@@ -160,8 +160,8 @@ describe('app startup', () => {
     dispose();
   });
 
-  it('waits at the OPFS encryption gate before loading chats or the main app', async () => {
-    const settings = createSettingsStore({ onboardingDismissed: true });
+  it('waits at the OPFS encryption gate, then prepares the app without mounting onboarding behind it', async () => {
+    const settings = createSettingsStore({ onboardingDismissed: false });
     const harness = createStartupHarness();
     const unlock = vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase')
       .mockResolvedValue(undefined);
@@ -216,12 +216,94 @@ describe('app startup', () => {
       passphrase: 'correct horse battery staple',
     });
     expect(loadChatsForAppStartup).toHaveBeenCalledOnce();
-    expect(harness.startupState.value.kind).toBe('rendering-main');
+    expect(state.gate.phase.value).toBe('preparing_application');
+    expect(harness.startupState.value).toEqual({
+      kind: 'rendering-main-after-opfs-unlock',
+      gate: state.gate,
+      mainApp: MainApp,
+      renderGate: expect.any(Object),
+    });
 
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    await flushPromises();
+    const renderingState = harness.startupState.value;
+    expect(renderingState.kind).toBe('rendering-main-after-opfs-unlock');
+    if (renderingState.kind !== 'rendering-main-after-opfs-unlock') {
+      throw new Error(`Unexpected startup state: ${renderingState.kind}`);
+    }
+
+    // MainApp reports only after Sidebar and the initial route component mount.
+    // The final paint then reveals the completed shell by removing the lock.
+    renderingState.renderGate.reportInitialRender();
+    await flushPromises();
     flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
     const dispose = await startup;
     expect(harness.startupState.value.kind).toBe('ready');
     dispose();
+    unlock.mockRestore();
+  });
+
+  it('propagates an initial route preparation failure while encrypted startup still owns the lock', async () => {
+    const settings = createSettingsStore({ onboardingDismissed: true });
+    const harness = createStartupHarness({
+      path: '/chat/chat-1',
+    });
+    const unlock = vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase')
+      .mockResolvedValue(undefined);
+    settings.init.mockImplementationOnce(async ({ onOpfsEncryptionAccessRequired }) => {
+      if (onOpfsEncryptionAccessRequired === undefined) {
+        throw new Error('Expected OPFS encryption startup callback');
+      }
+      await onOpfsEncryptionAccessRequired({
+        inspection: {
+          type: 'encrypted',
+          state: {
+            formatVersion: 1,
+            sequence: 1,
+            state: 'encrypted',
+            passphraseKeySlot: {
+              pbkdf2: {
+                salt: 'salt',
+                iterations: 10,
+              },
+              wrappedStorageUnlockKey: {
+                nonce: 'nonce',
+                ciphertext: 'ciphertext',
+              },
+            },
+            activeEncryptedStoreId: 'encrypted-store',
+          },
+        },
+      });
+    });
+
+    const startup = startApp({
+      startupState: harness.startupState,
+      settingsStore: settings.settingsStore,
+      router: harness.router,
+      navigationGate: harness.navigationGate,
+      window: harness.window,
+    });
+    await flushPromises();
+    const lockedState = harness.startupState.value;
+    if (lockedState.kind !== 'opfs-encryption-required') {
+      throw new Error(`Unexpected startup state: ${lockedState.kind}`);
+    }
+
+    await lockedState.gate.unlockWithPassphrase({ passphrase: 'q' });
+    await flushPromises();
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    await flushPromises();
+
+    const renderingState = harness.startupState.value;
+    if (renderingState.kind !== 'rendering-main-after-opfs-unlock') {
+      throw new Error(`Unexpected startup state: ${renderingState.kind}`);
+    }
+    const error = new Error('initial chat failed');
+    renderingState.renderGate.reportInitialRenderFailure({ error });
+
+    await expect(startup).rejects.toBe(error);
+    expect(harness.startupState.value.kind).toBe('rendering-main-after-opfs-unlock');
     unlock.mockRestore();
   });
 

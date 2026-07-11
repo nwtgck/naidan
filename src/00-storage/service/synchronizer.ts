@@ -33,6 +33,8 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('opfs_encryption'),
     status: z.enum(['transition_started', 'transition_completed', 'transition_failed']),
+    operationId: z.string(),
+    initiatorTabId: z.string(),
     timestamp: z.number(),
   }),
 ]);

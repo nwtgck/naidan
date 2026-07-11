@@ -1,0 +1,1 @@
+export const opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading = (): string => 'Storage was unlocked, but Naidan could not finish loading. This screen remains in place instead of exposing a partially initialized app.';

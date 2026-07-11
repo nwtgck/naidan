@@ -1506,6 +1506,8 @@ import { opfsEncryption__opfs_encryption } from '@/strings/messages/opfsEncrypti
 import { opfsEncryption__passphrase } from '@/strings/messages/opfsEncryption__passphrase/ja';
 import { opfsEncryption__passphrases_cannot_contain_line_breaks } from '@/strings/messages/opfsEncryption__passphrases_cannot_contain_line_breaks/ja';
 import { opfsEncryption__passphrases_do_not_match } from '@/strings/messages/opfsEncryption__passphrases_do_not_match/ja';
+import { opfsEncryption__naidan_could_not_finish_loading } from '@/strings/messages/opfsEncryption__naidan_could_not_finish_loading/ja';
+import { opfsEncryption__preparing_naidan } from '@/strings/messages/opfsEncryption__preparing_naidan/ja';
 import { opfsEncryption__raw_opfs_access_does_not_decrypt } from '@/strings/messages/opfsEncryption__raw_opfs_access_does_not_decrypt/ja';
 import { opfsEncryption__re_encrypt } from '@/strings/messages/opfsEncryption__re_encrypt/ja';
 import { opfsEncryption__re_encrypt_opfs_storage } from '@/strings/messages/opfsEncryption__re_encrypt_opfs_storage/ja';
@@ -1521,6 +1523,8 @@ import { opfsEncryption__save_source } from '@/strings/messages/opfsEncryption__
 import { opfsEncryption__select_opfs_as_active_storage_to_enable_encryption } from '@/strings/messages/opfsEncryption__select_opfs_as_active_storage_to_enable_encryption/ja';
 import { opfsEncryption__show_passphrase } from '@/strings/messages/opfsEncryption__show_passphrase/ja';
 import { opfsEncryption__source_remains_until_verified } from '@/strings/messages/opfsEncryption__source_remains_until_verified/ja';
+import { opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading } from '@/strings/messages/opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading/ja';
+import { opfsEncryption__storage_unlocked_preparing_application } from '@/strings/messages/opfsEncryption__storage_unlocked_preparing_application/ja';
 import { opfsEncryption__transparently_encrypt_naidan_opfs_data } from '@/strings/messages/opfsEncryption__transparently_encrypt_naidan_opfs_data/ja';
 import { opfsEncryption__turn_off_opfs_encryption } from '@/strings/messages/opfsEncryption__turn_off_opfs_encryption/ja';
 import { opfsEncryption__understand_experimental_storage_risk } from '@/strings/messages/opfsEncryption__understand_experimental_storage_risk/ja';
@@ -3126,6 +3130,8 @@ export const ja = {
   opfsEncryption__passphrase,
   opfsEncryption__passphrases_cannot_contain_line_breaks,
   opfsEncryption__passphrases_do_not_match,
+  opfsEncryption__naidan_could_not_finish_loading,
+  opfsEncryption__preparing_naidan,
   opfsEncryption__raw_opfs_access_does_not_decrypt,
   opfsEncryption__re_encrypt,
   opfsEncryption__re_encrypt_opfs_storage,
@@ -3141,6 +3147,8 @@ export const ja = {
   opfsEncryption__select_opfs_as_active_storage_to_enable_encryption,
   opfsEncryption__show_passphrase,
   opfsEncryption__source_remains_until_verified,
+  opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading,
+  opfsEncryption__storage_unlocked_preparing_application,
   opfsEncryption__transparently_encrypt_naidan_opfs_data,
   opfsEncryption__turn_off_opfs_encryption,
   opfsEncryption__understand_experimental_storage_risk,

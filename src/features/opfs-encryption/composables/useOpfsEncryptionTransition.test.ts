@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TEST_ONLY as appBlockingTestOnly } from '@/composables/useAppBlockingOperation';
-import { TEST_ONLY as overlayTestOnly } from '@/composables/useGlobalBlockingOverlay';
+import {
+  TEST_ONLY as overlayTestOnly,
+  useGlobalBlockingOverlay,
+} from '@/composables/useGlobalBlockingOverlay';
 import {
   TEST_ONLY,
   useOpfsEncryptionTransition,
@@ -21,23 +24,57 @@ describe('useOpfsEncryptionTransition', () => {
     expect(transition.active.value).toBe(true);
     expect(transition.failed.value).toBe(false);
 
-    transition.finishLocalOperation({ success: true });
+    transition.finishLocalOperation({
+      outcome: 'completed',
+      errorMessage: undefined,
+    });
     expect(transition.active.value).toBe(false);
     expect(transition.failed.value).toBe(false);
   });
 
-  it('keeps the local app blocked while reloading after a failed operation', () => {
-    const reload = vi.fn();
-    vi.stubGlobal('window', {
-      location: { reload },
-    });
+  it('unblocks the local app after a failed operation rolls back safely', () => {
     const transition = useOpfsEncryptionTransition();
 
     transition.beginLocalOperation();
-    transition.finishLocalOperation({ success: false });
+    transition.finishLocalOperation({
+      outcome: 'rolled_back',
+      errorMessage: 'copy failed',
+    });
+
+    expect(transition.active.value).toBe(false);
+    expect(transition.failed.value).toBe(false);
+  });
+
+  it('reuses a pending local overlay when another tab wins the transition lock', () => {
+    const transition = useOpfsEncryptionTransition();
+
+    transition.beginLocalOperation();
+    const globalOverlay = useGlobalBlockingOverlay().overlay;
+    const overlayBeforeExternalStart = globalOverlay.value;
+
+    expect(() => transition.beginExternalOperation()).not.toThrow();
+    expect(transition.active.value).toBe(true);
+    expect(globalOverlay.value).toBe(overlayBeforeExternalStart);
+
+    transition.finishLocalOperation({
+      outcome: 'rolled_back',
+      errorMessage: 'the local attempt lost the transition lock',
+    });
+    expect(transition.active.value).toBe(true);
+    expect(globalOverlay.value).toBe(overlayBeforeExternalStart);
+  });
+
+  it('keeps the local app blocked when the provider cannot prove a stable backend', () => {
+    const transition = useOpfsEncryptionTransition();
+
+    transition.beginLocalOperation();
+    transition.finishLocalOperation({
+      outcome: 'recovery_required',
+      errorMessage: 'storage state is uncertain',
+    });
 
     expect(transition.active.value).toBe(true);
     expect(transition.failed.value).toBe(true);
-    expect(reload).toHaveBeenCalledOnce();
+    expect(transition.failureMessage.value).toBe('storage state is uncertain');
   });
 });

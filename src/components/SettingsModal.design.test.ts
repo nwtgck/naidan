@@ -72,7 +72,7 @@ describe('SettingsModal Design Specifications', () => {
     (useRoute as Mock).mockReturnValue(currentRoute);
 
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: ref({ endpoint: { type: 'openai', url: '' }, providerProfiles: [] }),
+      settings: ref({ endpoint: { type: 'openai', url: '' }, providerProfiles: [], storageType: 'local' }),
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: vi.fn(),
@@ -94,6 +94,37 @@ describe('SettingsModal Design Specifications', () => {
     (useSampleChat as unknown as Mock).mockReturnValue({
       createSampleChat: vi.fn(),
     });
+  });
+
+  it('reports when the default settings content has completed its initial render', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    expect(wrapper.emitted('initial-content-rendered')).toHaveLength(1);
+  });
+
+  it('waits for the route-selected lazy storage tab before reporting initial content', async () => {
+    currentRoute.query = { settings: 'storage' };
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
+
+    expect(wrapper.emitted('initial-content-rendered')).toBeUndefined();
+
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    await flushPromises();
+
+    expect(wrapper.findComponent({ name: 'StorageTab' }).exists()).toBe(true);
+    expect(wrapper.emitted('initial-content-rendered')).toHaveLength(1);
+  });
+
+  it('falls back to connection content for an unknown settings route', async () => {
+    currentRoute.query = { settings: 'unknown-tab' };
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(wrapper.findComponent({ name: 'ConnectionTab' }).exists()).toBe(true);
+    expect(wrapper.emitted('initial-content-rendered')).toHaveLength(1);
   });
 
   it('uses a layered sidebar with bg-gray-50/50 for contrast', async () => {

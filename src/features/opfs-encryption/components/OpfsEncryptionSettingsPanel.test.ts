@@ -68,12 +68,10 @@ function getTeleportedElement(selector: string): DOMWrapper<HTMLElement> {
 }
 
 async function prepareVisibleStrings(): Promise<void> {
-  await Promise.all([
-    ensureStrings.opfsEncryption__opfs_encryption(),
-    ensureStrings.opfsEncryption__select_opfs_as_active_storage_to_enable_encryption(),
-    ensureStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase(),
-    ensureStrings.opfsEncryption__passphrases_cannot_contain_line_breaks(),
-  ]);
+  await ensureStrings.opfsEncryption__opfs_encryption();
+  await ensureStrings.opfsEncryption__select_opfs_as_active_storage_to_enable_encryption();
+  await ensureStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase();
+  await ensureStrings.opfsEncryption__passphrases_cannot_contain_line_breaks();
 }
 
 async function mountPanel({
@@ -92,10 +90,12 @@ async function mountPanel({
 
 afterEach(() => {
   document.body.innerHTML = '';
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal('location', { reload: vi.fn() });
   vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue({ type: 'plain' });
   vi.mocked(storageService.enableOpfsEncryption).mockResolvedValue(undefined);
   vi.mocked(prepareForOpfsEncryptionTransition).mockResolvedValue(undefined);
@@ -142,6 +142,9 @@ describe('OpfsEncryptionSettingsPanel', () => {
     await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
     await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
     await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
+    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce(
+      createEncryptedInspection(),
+    );
 
     expect(document.body.textContent).toContain(
       'Leading or trailing whitespace is part of the passphrase and will not be removed.',
@@ -155,7 +158,13 @@ describe('OpfsEncryptionSettingsPanel', () => {
       signal: undefined,
     });
     expect(mockBeginLocalOperation).toHaveBeenCalledOnce();
-    expect(mockFinishLocalOperation).toHaveBeenCalledWith({ success: true });
+    expect(mockFinishLocalOperation).toHaveBeenCalledWith({
+      outcome: 'completed',
+      errorMessage: undefined,
+    });
+    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
+    expect(document.body.querySelector('[data-testid="opfs-encryption-setup-dialog"]')).toBeNull();
+    expect(location.reload).not.toHaveBeenCalled();
   });
 
   it.each(['q', '1'])(
@@ -166,6 +175,9 @@ describe('OpfsEncryptionSettingsPanel', () => {
       await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
       await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
       await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
+      vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce(
+        createEncryptedInspection(),
+      );
 
       await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
       await flushPromises();
@@ -174,11 +186,18 @@ describe('OpfsEncryptionSettingsPanel', () => {
         passphrase,
         signal: undefined,
       });
-      expect(mockFinishLocalOperation).toHaveBeenCalledWith({ success: true });
+      expect(mockFinishLocalOperation).toHaveBeenCalledWith({
+        outcome: 'completed',
+        errorMessage: undefined,
+      });
+      expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
     },
   );
 
   it('refreshes the stable inspection after an encryption transition fails', async () => {
+    vi.mocked(storageService.inspectOpfsEncryption)
+      .mockReset()
+      .mockResolvedValue({ type: 'plain' });
     vi.mocked(storageService.enableOpfsEncryption).mockRejectedValueOnce(
       new Error('Transferred settings do not match their source'),
     );
@@ -191,7 +210,10 @@ describe('OpfsEncryptionSettingsPanel', () => {
     await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
     await flushPromises();
 
-    expect(mockFinishLocalOperation).toHaveBeenCalledWith({ success: false });
+    expect(mockFinishLocalOperation).toHaveBeenCalledWith({
+      outcome: 'rolled_back',
+      errorMessage: 'Transferred settings do not match their source',
+    });
     expect(storageService.inspectOpfsEncryption).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).toContain(
       'Transferred settings do not match their source',
@@ -256,6 +278,54 @@ line two`,
 
     expect(passphraseInput.attributes('type')).toBe('text');
     expect(confirmationInput.attributes('type')).toBe('text');
+  });
+
+  it('disables encryption in place without reloading the initiating tab', async () => {
+    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
+      createEncryptedInspection(),
+    );
+    vi.mocked(storageService.disableOpfsEncryption).mockResolvedValue(undefined);
+    mockShowConfirm.mockResolvedValue(true);
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce({ type: 'plain' });
+
+    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+    await flushPromises();
+
+    expect(storageService.disableOpfsEncryption).toHaveBeenCalledWith({
+      signal: undefined,
+    });
+    expect(mockFinishLocalOperation).toHaveBeenCalledWith({
+      outcome: 'completed',
+      errorMessage: undefined,
+    });
+    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('false');
+    expect(location.reload).not.toHaveBeenCalled();
+  });
+
+  it('re-encrypts in place without reloading the initiating tab', async () => {
+    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
+      createEncryptedInspection(),
+    );
+    vi.mocked(storageService.reencryptOpfsEncryption).mockResolvedValue(undefined);
+    mockShowConfirm.mockResolvedValue(true);
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce(
+      createEncryptedInspection(),
+    );
+
+    await wrapper.get('[data-testid="opfs-encryption-reencrypt"]').trigger('click');
+    await flushPromises();
+
+    expect(storageService.reencryptOpfsEncryption).toHaveBeenCalledWith({
+      signal: undefined,
+    });
+    expect(mockFinishLocalOperation).toHaveBeenCalledWith({
+      outcome: 'completed',
+      errorMessage: undefined,
+    });
+    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
+    expect(location.reload).not.toHaveBeenCalled();
   });
 
   it('requires confirmation before decrypting or re-encrypting storage', async () => {

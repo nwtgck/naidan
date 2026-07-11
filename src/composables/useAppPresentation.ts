@@ -61,6 +61,29 @@ function createAppPresentation({
       return 'hidden';
     }
 
+    const state = startupState.value;
+    switch (state.kind) {
+    case 'opfs-encryption-required':
+    case 'starting-main-after-opfs-unlock':
+    case 'rendering-main-after-opfs-unlock':
+    case 'opfs-encryption-main-failed':
+      // The encrypted startup screen is the sole presentation boundary. Keep
+      // onboarding out of the accessibility tree while MainApp renders inert
+      // behind the lock, then present it normally after startup reaches ready.
+      return 'hidden';
+    case 'initializing-foundation':
+    case 'starting-main':
+    case 'rendering-main':
+    case 'ready':
+    case 'foundation-failed':
+    case 'main-failed':
+      break;
+    default: {
+      const _ex: never = state;
+      return _ex;
+    }
+    }
+
     return isOnboardingDismissed.value
       ? 'hidden'
       : 'visible';
@@ -71,8 +94,11 @@ function createAppPresentation({
     switch (state.kind) {
     case 'initializing-foundation':
     case 'opfs-encryption-required':
+    case 'starting-main-after-opfs-unlock':
     case 'starting-main':
+    case 'rendering-main-after-opfs-unlock':
     case 'rendering-main':
+    case 'opfs-encryption-main-failed':
       return 'blocked-by-startup';
     case 'ready':
     case 'foundation-failed':

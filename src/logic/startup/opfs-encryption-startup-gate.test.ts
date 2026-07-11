@@ -66,12 +66,14 @@ describe('createOpfsEncryptionStartupGate', () => {
       inspection: createEncryptedInspection(),
     });
 
+    expect(gate.phase.value).toBe('locked');
     await gate.unlockWithPassphrase({ passphrase: 'correct horse battery staple' });
     await gate.wait();
 
     expect(unlock).toHaveBeenCalledWith({
       passphrase: 'correct horse battery staple',
     });
+    expect(gate.phase.value).toBe('preparing_application');
   });
 
   it('resumes an interrupted transition before completing the gate', async () => {
@@ -88,6 +90,20 @@ describe('createOpfsEncryptionStartupGate', () => {
       passphrase: 'transition passphrase',
       signal: undefined,
     });
+    expect(gate.phase.value).toBe('preparing_application');
+  });
+
+  it('returns to the locked phase when passphrase unlock fails', async () => {
+    vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase')
+      .mockRejectedValue(new Error('incorrect passphrase'));
+    const gate = createOpfsEncryptionStartupGate({
+      inspection: createEncryptedInspection(),
+    });
+
+    await expect(gate.unlockWithPassphrase({ passphrase: 'wrong' }))
+      .rejects.toThrow('incorrect passphrase');
+
+    expect(gate.phase.value).toBe('locked');
   });
 
   it('keeps a recovery-required state blocked', async () => {
@@ -102,9 +118,13 @@ describe('createOpfsEncryptionStartupGate', () => {
       .rejects.toThrow('must be recovered');
   });
 
-  it('completes when retrying inspection finds plain storage', async () => {
+  it('initializes the repaired plain backend before completing the gate', async () => {
     vi.spyOn(storageService, 'inspectOpfsEncryption')
       .mockResolvedValue({ type: 'plain' });
+    const retryPlainInitialization = vi.spyOn(
+      storageService,
+      'retryPlainOpfsInitializationAfterEncryptionRecovery',
+    ).mockResolvedValue(undefined);
     const gate = createOpfsEncryptionStartupGate({
       inspection: {
         type: 'recovery_required',
@@ -114,5 +134,20 @@ describe('createOpfsEncryptionStartupGate', () => {
 
     await gate.retryInspection();
     await gate.wait();
+
+    expect(retryPlainInitialization).toHaveBeenCalledOnce();
+    expect(gate.phase.value).toBe('preparing_application');
+  });
+
+  it('keeps the startup gate visible when application preparation fails', () => {
+    const gate = createOpfsEncryptionStartupGate({
+      inspection: createEncryptedInspection(),
+    });
+    const error = new Error('main application failed');
+
+    gate.reportApplicationFailure({ error });
+
+    expect(gate.phase.value).toBe('application_failed');
+    expect(gate.applicationError.value).toBe(error);
   });
 });

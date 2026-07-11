@@ -1,10 +1,13 @@
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import ChatPage from './[id].vue';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useRouter } from 'vue-router';
+import {
+  useInitialRouteRenderReadinessClaim,
+} from '@/logic/startup/initial-route-render-readiness';
 
 vi.mock('../../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: vi.fn(),
@@ -12,6 +15,10 @@ vi.mock('../../composables/chat/ui/useChatNavigation', () => ({
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
+}));
+
+vi.mock('../../logic/startup/initial-route-render-readiness', () => ({
+  useInitialRouteRenderReadinessClaim: vi.fn(),
 }));
 
 vi.mock('../../components/CurrentChatPane.vue', () => ({
@@ -25,6 +32,9 @@ vi.mock('../../components/CurrentChatPane.vue', () => ({
 describe('ChatPage', () => {
   const mockOpenChat = vi.fn();
   const mockOpenChatAtMessage = vi.fn();
+  const reportInitialRouteReady = vi.fn();
+  const reportInitialRouteFailure = vi.fn();
+  const cancelInitialRouteReadiness = vi.fn();
   const mockRouter = {
     currentRoute: ref({
       params: { id: 'chat-123' },
@@ -40,6 +50,11 @@ describe('ChatPage', () => {
       openChatAtMessage: mockOpenChatAtMessage,
     });
     (useRouter as unknown as Mock).mockReturnValue(mockRouter);
+    (useInitialRouteRenderReadinessClaim as unknown as Mock).mockReturnValue({
+      reportReady: reportInitialRouteReady,
+      reportFailure: reportInitialRouteFailure,
+      cancel: cancelInitialRouteReadiness,
+    });
   });
 
   it('calls openChat on mount with id from route', () => {
@@ -113,6 +128,24 @@ describe('ChatPage', () => {
     const wrapper = mount(ChatPage);
 
     expect(wrapper.findComponent({ name: 'CurrentChatPane' }).props('targetMessageId')).toBe('message-1');
+  });
+
+  it('does not report the initial route ready until openChat and its DOM update finish', async () => {
+    let resolveOpenChat: (() => void) | undefined;
+    mockOpenChat.mockReturnValue(new Promise<void>((resolve) => {
+      resolveOpenChat = resolve;
+    }));
+
+    mount(ChatPage);
+    await nextTick();
+
+    expect(reportInitialRouteReady).not.toHaveBeenCalled();
+
+    resolveOpenChat?.();
+    await flushPromises();
+    await nextTick();
+
+    expect(reportInitialRouteReady).toHaveBeenCalledOnce();
   });
 
   it('prefers message-id over leaf when both query parameters are present', () => {

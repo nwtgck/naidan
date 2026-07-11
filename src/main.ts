@@ -14,6 +14,7 @@ import {
 } from './logic/startup/app-startup-failure';
 import { startApp } from './logic/startup/app-startup';
 import { createInitialNavigationGate } from './logic/startup/initial-navigation-gate';
+import { resolveStartupFailureState } from './logic/startup/startup-failure-state';
 import {
   debugRecordFileProtocolStandaloneStartupCheckpoint,
 } from './features/file-protocol-standalone/debug/startup';
@@ -22,13 +23,29 @@ import {
 } from './00-storage/service/opfs/opfs-storage-transition-preparation';
 
 registerOpfsStorageTransitionPreparation({
+  externalTransitionStarting: async () => {
+    const transitionPresentation = await import(
+      './features/opfs-encryption/composables/useOpfsEncryptionTransition'
+    );
+    transitionPresentation.useOpfsEncryptionTransition().beginExternalOperation();
+  },
   prepare: async () => {
     const transitionPreparation = await import(
       './features/opfs-encryption/prepare-for-storage-transition'
     );
     await transitionPreparation.prepareForOpfsEncryptionTransition();
   },
-  externalTransitionPrepared: () => {
+  externalTransitionSettled: ({ settlement }) => {
+    // StorageService invokes this callback only for a different tab's
+    // operation. The initiating tab switches its backend in place and must
+    // never take this reload path. A follower has suspended its provider, so
+    // reloading after settlement is the simplest way to install the winner's
+    // stable plain or encrypted backend.
+    console.info('[opfs-encryption]', {
+      event: 'external_transition_settled',
+      settlement,
+      action: 'reload',
+    });
     window.location.reload();
   },
 });
@@ -91,31 +108,10 @@ async function bootstrapApp(): Promise<void> {
     });
   } catch (error) {
     recordAppStartupFailure({ error });
-    const state = startupState.value;
-    switch (state.kind) {
-    case 'initializing-foundation':
-    case 'opfs-encryption-required':
-      startupState.value = {
-        kind: 'foundation-failed',
-        error,
-      };
-      break;
-    case 'starting-main':
-    case 'rendering-main':
-    case 'ready':
-      startupState.value = {
-        kind: 'main-failed',
-        error,
-      };
-      break;
-    case 'foundation-failed':
-    case 'main-failed':
-      break;
-    default: {
-      const _ex: never = state;
-      throw new Error(`Unhandled startup state: ${JSON.stringify(_ex)}`);
-    }
-    }
+    startupState.value = resolveStartupFailureState({
+      state: startupState.value,
+      error,
+    });
     return;
   }
 

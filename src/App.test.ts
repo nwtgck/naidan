@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, onMounted, ref, shallowRef } from 'vue';
 import type {
   AppInteraction,
   OnboardingPresentation,
 } from '@/composables/useAppPresentation';
 import type { StartupState } from '@/logic/startup/types';
+import type { OpfsEncryptionStartupGate } from '@/logic/startup/opfs-encryption-startup-gate';
 import App from './App.vue';
 
 const onboardingPresentation = ref<OnboardingPresentation>('visible');
@@ -43,6 +44,21 @@ vi.mock('@/components/startup/StartupErrorView.vue', () => ({
   },
 }));
 
+function createStartupGate(): OpfsEncryptionStartupGate {
+  return {
+    inspection: shallowRef({
+      type: 'recovery_required',
+      error: new Error('test gate'),
+    }),
+    phase: shallowRef('preparing_application'),
+    applicationError: shallowRef(undefined),
+    unlockWithPassphrase: vi.fn(async () => {}),
+    retryInspection: vi.fn(async () => {}),
+    reportApplicationFailure: vi.fn(),
+    wait: vi.fn(async () => {}),
+  };
+}
+
 describe('App', () => {
   beforeEach(() => {
     onboardingPresentation.value = 'visible';
@@ -60,6 +76,11 @@ describe('App', () => {
         global: {
           stubs: {
             transition: false,
+            OpfsEncryptionUnlockView: defineComponent({
+              name: 'OpfsEncryptionUnlockViewStub',
+              props: ['gate'],
+              template: '<div data-testid="opfs-encryption-unlock-view" />',
+            }),
           },
         },
       }),
@@ -92,6 +113,69 @@ describe('App', () => {
     expect(wrapper.find('[data-testid="main-app"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="app-content-host"]').attributes('aria-hidden')).toBe('true');
+  });
+
+  it('keeps the unlock view in front until the real app reports its initial shell render', async () => {
+    const MainApp = defineComponent({
+      emits: ['initialShellRendered'],
+      template: '<button data-testid="main-app" @click="$emit(\'initialShellRendered\')" />',
+    });
+    onboardingPresentation.value = 'hidden';
+    appInteraction.value = 'blocked-by-startup';
+    const gate = createStartupGate();
+    const reportInitialRender = vi.fn();
+    const { wrapper } = mountApp({
+      state: {
+        kind: 'rendering-main-after-opfs-unlock',
+        gate,
+        mainApp: MainApp,
+        renderGate: {
+          reportInitialRender,
+          reportInitialRenderFailure: vi.fn(),
+          waitForInitialRender: vi.fn(async () => {}),
+        },
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="main-app"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="opfs-encryption-unlock-view"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="app-content-host"]').attributes('inert')).toBeDefined();
+
+    await wrapper.get('[data-testid="main-app"]').trigger('click');
+    expect(reportInitialRender).toHaveBeenCalledOnce();
+  });
+
+  it('reports initial route preparation failures to the encrypted render gate', async () => {
+    const error = new Error('chat could not open');
+    const MainApp = defineComponent({
+      emits: ['initialShellRenderFailed'],
+      setup(_, { emit }) {
+        onMounted(() => {
+          emit('initialShellRenderFailed', { error });
+        });
+        return {};
+      },
+      template: '<div data-testid="main-app" />',
+    });
+    onboardingPresentation.value = 'hidden';
+    appInteraction.value = 'blocked-by-startup';
+    const reportInitialRenderFailure = vi.fn();
+    mountApp({
+      state: {
+        kind: 'rendering-main-after-opfs-unlock',
+        gate: createStartupGate(),
+        mainApp: MainApp,
+        renderGate: {
+          reportInitialRender: vi.fn(),
+          reportInitialRenderFailure,
+          waitForInitialRender: vi.fn(async () => {}),
+        },
+      },
+    });
+    await flushPromises();
+
+    expect(reportInitialRenderFailure).toHaveBeenCalledWith({ error });
   });
 
   it('removes only the onboarding presentation and interaction barrier on dismissal', async () => {

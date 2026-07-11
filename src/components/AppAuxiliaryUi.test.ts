@@ -49,23 +49,24 @@ vi.mock('@/components/SettingsModal.vue', () => ({
   default: {
     name: 'SettingsModal',
     props: ['isOpen'],
-    template: '<div v-if="isOpen" data-testid="settings-modal" />',
+    emits: ['initialContentRendered'],
+    template: '<div v-if="isOpen" data-testid="settings-modal"><button data-testid="settings-modal-ready" @click="$emit(\'initialContentRendered\')" /></div>',
   },
 }));
 vi.mock('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
-  default: { template: '<div />' },
+  default: { template: '<div data-testid="wesh-modal" />' },
 }));
 vi.mock('@/features/global-search/components/GlobalSearchModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
-  default: { template: '<div />' },
+  default: { template: '<div data-testid="global-search-modal" />' },
 }));
 vi.mock('@/components/RecentChatsModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
-  default: { template: '<div />' },
+  default: { template: '<div data-testid="recent-chats-modal" />' },
 }));
 vi.mock('@/features/file-explorer/components/FileExplorerModal.vue', () => ({
   __esModule: true,
@@ -93,18 +94,23 @@ describe('AppAuxiliaryUi', () => {
     path: '/',
     fullPath: '/',
     query: {} as Record<string, string>,
+    params: {} as Record<string, string>,
   });
   const push = vi.fn();
+  const isReady = vi.fn(async () => {});
 
   beforeEach(() => {
     route.path = '/';
     route.fullPath = '/';
     route.query = {};
+    route.params = {};
     push.mockClear();
+    isReady.mockReset();
+    isReady.mockResolvedValue(undefined);
     isSearchOpen.value = false;
     isRecentOpen.value = false;
     vi.mocked(useRoute).mockReturnValue(route as ReturnType<typeof useRoute>);
-    vi.mocked(useRouter).mockReturnValue({ push } as unknown as ReturnType<typeof useRouter>);
+    vi.mocked(useRouter).mockReturnValue({ push, isReady } as unknown as ReturnType<typeof useRouter>);
   });
 
   it('does not mount closed auxiliary overlays', async () => {
@@ -114,9 +120,58 @@ describe('AppAuxiliaryUi', () => {
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
   });
 
-  it('opens settings after post-startup UI is activated', async () => {
-    route.query = { settings: '1' };
+  it('reports initial presentation after the no-modal frame is rendered', async () => {
     const wrapper = mount(AppAuxiliaryUi);
+    await flushPromises();
+
+    expect(wrapper.emitted('initialPresentationRendered')).toHaveLength(1);
+  });
+
+  it('waits for route-driven settings content before reporting initial presentation', async () => {
+    route.query = { settings: 'storage' };
+    const wrapper = mount(AppAuxiliaryUi, {
+      props: { mode: 'preparing' },
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
+    expect(wrapper.emitted('initialPresentationRendered')).toBeUndefined();
+
+    await wrapper.get('[data-testid="settings-modal-ready"]').trigger('click');
+    expect(wrapper.emitted('initialPresentationRendered')).toHaveLength(1);
+  });
+
+  it('does not treat START_LOCATION as ready before an initial settings navigation settles', async () => {
+    const routerReady = Promise.withResolvers<void>();
+    isReady.mockReturnValueOnce(routerReady.promise);
+    const wrapper = mount(AppAuxiliaryUi, {
+      props: { mode: 'preparing' },
+    });
+    await flushPromises();
+
+    expect(wrapper.emitted('initialPresentationRendered')).toBeUndefined();
+
+    route.path = '/settings/storage';
+    route.fullPath = '/settings/storage';
+    route.query = {};
+    route.params = { tab: 'storage' };
+    routerReady.resolve();
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
+    expect(wrapper.emitted('initialPresentationRendered')).toBeUndefined();
+
+    await wrapper.get('[data-testid="settings-modal-ready"]').trigger('click');
+    expect(wrapper.emitted('initialPresentationRendered')).toHaveLength(1);
+  });
+
+  it('keeps route-driven settings mounted in active operation mode', async () => {
+    route.query = { settings: '1' };
+    const wrapper = mount(AppAuxiliaryUi, {
+      props: { mode: 'active' },
+    });
     await flushPromises();
 
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);

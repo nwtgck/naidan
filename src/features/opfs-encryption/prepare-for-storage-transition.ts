@@ -5,8 +5,10 @@ import { promiseAllKeyed } from '@/utils/promise';
  * Stops same-tab work that may retain native OPFS handles or schedule storage
  * writes after the provider session has been suspended.
  *
- * Other tabs receive the transition event and reload. This preflight is only
- * for the tab that is about to execute the transition itself.
+ * Other tabs run the same preflight after receiving the transition-started
+ * event, release their shared OPFS session lock, and remain blocked until the
+ * initiator reports completion or rollback. The initiating tab calls this
+ * function directly before requesting the exclusive transition.
  */
 export async function prepareForOpfsEncryptionTransition(): Promise<void> {
   const {

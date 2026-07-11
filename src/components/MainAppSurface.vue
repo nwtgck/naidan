@@ -1,14 +1,56 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue';
+import { computed, defineAsyncComponent, nextTick } from 'vue';
 import Sidebar from '@/components/Sidebar.vue';
 import MainLayoutFrame from '@/components/layout/MainLayoutFrame.vue';
 import { useLayout } from '@/composables/useLayout';
+import {
+  provideInitialRouteRenderReadiness,
+} from '@/logic/startup/initial-route-render-readiness';
 
 type PostStartupFeatureActivation = 'inactive' | 'active';
 
 const props = defineProps<{
   postStartupFeatures: PostStartupFeatureActivation,
 }>();
+const emit = defineEmits<{
+  initialShellRendered: [],
+  initialShellRenderFailed: [payload: { error: unknown }],
+}>();
+
+let sidebarMounted = false;
+let initialRouteReady = false;
+let initialShellReported = false;
+
+function reportInitialShellWhenReady(): void {
+  if (initialShellReported || !sidebarMounted || !initialRouteReady) {
+    return;
+  }
+  initialShellReported = true;
+  void nextTick().then(() => {
+    emit('initialShellRendered');
+  });
+}
+
+function reportSidebarMounted(): void {
+  sidebarMounted = true;
+  reportInitialShellWhenReady();
+}
+
+function reportInitialRouteReady(): void {
+  initialRouteReady = true;
+  reportInitialShellWhenReady();
+}
+
+const initialRouteRenderReadiness = provideInitialRouteRenderReadiness({
+  onReady: reportInitialRouteReady,
+  onFailure: ({ error }) => {
+    emit('initialShellRenderFailed', { error });
+  },
+});
+
+function reportInitialRouteMounted({ routeKey }: { routeKey: string }): void {
+  initialRouteRenderReadiness.reportRouteMounted({ routeKey });
+}
 
 const DebugPanel = defineAsyncComponent(() => import('@/components/DebugPanel.vue'));
 
@@ -43,13 +85,16 @@ defineExpose({
 <template>
   <MainLayoutFrame :sidebar-width="sidebarWidth">
     <template #sidebar>
-      <Sidebar />
+      <Sidebar @vue:mounted="reportSidebarMounted" />
     </template>
 
     <template #main>
       <div tw-class="flex-1 relative min-h-0">
-        <router-view v-slot="{ Component }">
-          <component :is="Component" />
+        <router-view v-slot="{ Component, route }">
+          <component
+            :is="Component"
+            @vue:mounted="reportInitialRouteMounted({ routeKey: route.fullPath })"
+          />
         </router-view>
       </div>
       <Transition name="debug-panel">

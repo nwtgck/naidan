@@ -8,8 +8,12 @@ import {
 } from '@/logic/settings/global-settings-query';
 import { debugRecordFileProtocolStandaloneStartupCheckpoint } from '@/features/file-protocol-standalone/debug/startup';
 import type { InitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
+import { createApplicationShellRenderGate } from './application-shell-render-gate';
 import { waitForPresentationPaint } from '@/logic/startup/presentation-frame';
-import { createOpfsEncryptionStartupGate } from './opfs-encryption-startup-gate';
+import {
+  createOpfsEncryptionStartupGate,
+  type OpfsEncryptionStartupGate,
+} from './opfs-encryption-startup-gate';
 import {
   readFirstQueryValue,
   resolveInitialRoute,
@@ -32,6 +36,7 @@ export async function startApp({ startupState, settingsStore, router, navigation
   let dataZipBase64 = readFirstQueryValue({
     value: initialRoute.query['data-zip'],
   });
+  let opfsEncryptionStartupGate: OpfsEncryptionStartupGate | undefined;
 
   debugRecordFileProtocolStandaloneStartupCheckpoint({
     checkpoint: 'initializing-settings',
@@ -45,6 +50,7 @@ export async function startApp({ startupState, settingsStore, router, navigation
     dataZipBase64,
     onOpfsEncryptionAccessRequired: async ({ inspection }) => {
       const gate = createOpfsEncryptionStartupGate({ inspection });
+      opfsEncryptionStartupGate = gate;
       startupState.value = {
         kind: 'opfs-encryption-required',
         gate,
@@ -59,20 +65,30 @@ export async function startApp({ startupState, settingsStore, router, navigation
     settingsStore,
   });
 
-  startupState.value = {
-    kind: 'starting-main',
-  };
+  startupState.value = opfsEncryptionStartupGate === undefined
+    ? {
+      kind: 'starting-main',
+    }
+    : {
+      kind: 'starting-main-after-opfs-unlock',
+      gate: opfsEncryptionStartupGate,
+    };
 
-  if (!settingsStore.isOnboardingDismissed.value) {
+  if (
+    opfsEncryptionStartupGate === undefined
+    && !settingsStore.isOnboardingDismissed.value
+  ) {
     debugRecordFileProtocolStandaloneStartupCheckpoint({
       checkpoint: 'painting-onboarding',
       details: undefined,
     });
 
     /**
-     * WHY: Onboarding is a presentation interruption, not a startup gate. Give
-     * its DOM one paint of priority, then continue the exact same main startup
-     * path while the modal remains visible.
+     * WHY: Plain first-run onboarding is latency-sensitive. Give its DOM one
+     * paint of priority as soon as the plain Settings absence is known, then
+     * continue loading the rest of the app in the background. Encrypted
+     * startup intentionally skips this pause because the lock screen remains
+     * the sole presentation until MainApp is ready.
      */
     await nextTick();
     await waitForPresentationPaint({ window });
@@ -91,11 +107,22 @@ export async function startApp({ startupState, settingsStore, router, navigation
   });
   const mainAppModule = await import('@/MainApp.vue');
   const mainApp = markRaw(mainAppModule.default);
+  let applicationShellRenderGate: ReturnType<typeof createApplicationShellRenderGate> | undefined;
 
-  startupState.value = {
-    kind: 'rendering-main',
-    mainApp,
-  };
+  if (opfsEncryptionStartupGate === undefined) {
+    startupState.value = {
+      kind: 'rendering-main',
+      mainApp,
+    };
+  } else {
+    applicationShellRenderGate = createApplicationShellRenderGate();
+    startupState.value = {
+      kind: 'rendering-main-after-opfs-unlock',
+      gate: opfsEncryptionStartupGate,
+      mainApp,
+      renderGate: applicationShellRenderGate,
+    };
+  }
 
   /**
    * WHY: Mount the real main app before releasing route navigation so the
@@ -112,6 +139,20 @@ export async function startApp({ startupState, settingsStore, router, navigation
     details: undefined,
   });
   await router.isReady();
+
+  if (applicationShellRenderGate !== undefined) {
+    /**
+     * WHY: A successful passphrase check does not mean the application is
+     * visually ready. MainApp explicitly reports after Sidebar, the initial
+     * route's asynchronous preparation, and route-driven auxiliary UI such as
+     * Settings Modal have completed their real first render. Only then do we
+     * wait for a presentation paint and remove the lock. This avoids relying
+     * on arbitrary frame counts while lazy components are still assembling.
+     */
+    await applicationShellRenderGate.waitForInitialRender();
+    await nextTick();
+    await waitForPresentationPaint({ window });
+  }
 
   const disposeGlobalSettingsQuerySync = installGlobalSettingsQuerySync({
     router,

@@ -46,7 +46,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void,
+  (e: 'initial-content-rendered'): void,
 }>();
+
+let initialContentReported = false;
+function reportInitialContentRendered(): void {
+  if (initialContentReported) {
+    return;
+  }
+  initialContentReported = true;
+  emit('initial-content-rendered');
+}
 
 const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
 const availableModels = computed(() => naturalSort({ values: Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : [] }));
@@ -112,23 +122,44 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string, ma
 // Tab State
 type Tab = 'connection' | 'tools' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'binary_objects' | 'volumes' | 'developer' | 'about';
 const isVolumesFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'volume' }));
+
+function resolveTab({ raw }: { raw: unknown }): Tab {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  switch (value) {
+  case undefined:
+  case null:
+  case '':
+  case 'connection':
+    return 'connection';
+  case 'tools':
+  case 'recipes':
+  case 'storage':
+  case 'developer':
+  case 'about':
+    return value;
+  case 'profiles':
+  case 'provider-profiles':
+    return 'profiles';
+  case 'transformers_js':
+  case 'transformers-js':
+    return 'transformers_js';
+  case 'binary_objects':
+  case 'binary-objects':
+    return 'binary_objects';
+  case 'volumes':
+    return isVolumesFeatureEnabled.value ? 'volumes' : 'connection';
+  default:
+    // Route input is not trusted. Falling back to real synchronous content
+    // also guarantees encrypted startup cannot wait forever on a tab that has
+    // no component to resolve behind the lock presentation.
+    return 'connection';
+  }
+}
+
 const activeTab = computed({
-  get: () => {
-    const queryTab = route.query.settings as string;
-    if (queryTab) {
-      if (queryTab === 'provider-profiles') return 'profiles';
-      if (queryTab === 'transformers-js') return 'transformers_js';
-      if (queryTab === 'binary-objects') return 'binary_objects';
-      if (queryTab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
-      return (queryTab as Tab);
-    }
-    const tab = (route.params as { tab?: string }).tab;
-    if (tab === 'provider-profiles') return 'profiles';
-    if (tab === 'transformers-js') return 'transformers_js';
-    if (tab === 'binary-objects') return 'binary_objects';
-    if (tab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
-    return (tab as Tab) || 'connection';
-  },
+  get: () => resolveTab({
+    raw: route.query.settings ?? (route.params as { tab?: unknown }).tab,
+  }),
   set: (val) => {
     const pathMap: Record<string, string> = {
       profiles: 'provider-profiles',
@@ -321,66 +352,79 @@ defineExpose({
 
         <!-- Main Content Area -->
         <main data-settings-main tw-class="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-gray-900 relative">
-          <ConnectionTab
-            v-if="activeTab === 'connection'"
-            ref="connectionTabRef"
-            v-model="form"
-            :available-models="availableModels"
-            :is-fetching-models="isFetchingModels"
-            :has-unsaved-changes="hasUnsavedConnectionChanges"
-            @save="initialFormState = JSON.stringify(pickConnectionFields({ settings: form }))"
-            @go-to-profiles="activeTab = 'profiles'"
-            @go-to-transformers-js="activeTab = 'transformers_js'"
-          />
-          <div v-else tw-class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-            <div tw-class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
-
-              <!-- Global Tools Tab -->
-              <GlobalToolsSettings v-if="activeTab === 'tools'" />
-
-              <!-- Provider Profiles Tab -->
-              <ProviderProfilesTab
-                v-if="activeTab === 'profiles'"
-                v-model:profiles="form.providerProfiles"
-                @go-to-connection="activeTab = 'connection'"
-              />
-
-              <!-- Transformers.js Tab -->
-              <div v-if="activeTab === 'transformers_js'" tw-class="max-w-4xl mx-auto">
-                <TransformersJsManager />
-              </div>
-
-              <!-- Recipes Tab -->
-              <RecipeImportTab
-                v-if="activeTab === 'recipes'"
+          <!--
+            WHY: An async-component wrapper can mount before its real tab has
+            loaded. Suspense resolves only after the selected tab's async
+            dependency and resulting subtree are ready, which lets encrypted
+            startup keep the lock presentation visible until the Settings UI
+            underneath it is genuinely complete.
+          -->
+          <Suspense @resolve="reportInitialContentRendered">
+            <template #default>
+              <ConnectionTab
+                v-if="activeTab === 'connection'"
+                ref="connectionTabRef"
+                v-model="form"
                 :available-models="availableModels"
-                @import="handleImportRecipes({ recipes: $event })"
-                @toast="(msg: string, dur?: number) => addToast({ message: msg, duration: dur })"
+                :is-fetching-models="isFetchingModels"
+                :has-unsaved-changes="hasUnsavedConnectionChanges"
+                @save="initialFormState = JSON.stringify(pickConnectionFields({ settings: form }))"
+                @go-to-profiles="activeTab = 'profiles'"
+                @go-to-transformers-js="activeTab = 'transformers_js'"
               />
+              <div v-else tw-class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
+                <div tw-class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
 
-              <!-- Storage Tab -->
-              <StorageTab
-                v-if="activeTab === 'storage'"
-                v-model:storage-type="form.storageType"
-                @close="emit('close')"
-              />
+                  <!-- Global Tools Tab -->
+                  <GlobalToolsSettings v-if="activeTab === 'tools'" />
 
-              <!-- Binary Objects Tab -->
-              <BinaryObjectsTab v-if="activeTab === 'binary_objects'" />
+                  <!-- Provider Profiles Tab -->
+                  <ProviderProfilesTab
+                    v-if="activeTab === 'profiles'"
+                    v-model:profiles="form.providerProfiles"
+                    @go-to-connection="activeTab = 'connection'"
+                  />
 
-              <!-- Volume Settings Tab -->
-              <VolumeSettingsTab v-if="activeTab === 'volumes' && isVolumesFeatureEnabled" />
+                  <!-- Transformers.js Tab -->
+                  <div v-if="activeTab === 'transformers_js'" tw-class="max-w-4xl mx-auto">
+                    <TransformersJsManager />
+                  </div>
 
-              <!-- Developer Tab -->
-              <DeveloperTab
-                v-if="activeTab === 'developer'"
-                :storage-type="form.storageType"
-              />
+                  <!-- Recipes Tab -->
+                  <RecipeImportTab
+                    v-if="activeTab === 'recipes'"
+                    :available-models="availableModels"
+                    @import="handleImportRecipes({ recipes: $event })"
+                    @toast="(msg: string, dur?: number) => addToast({ message: msg, duration: dur })"
+                  />
 
-              <!-- About Tab -->
-              <AboutTab v-if="activeTab === 'about'" />
-            </div>
-          </div>
+                  <!-- Storage Tab -->
+                  <StorageTab
+                    v-if="activeTab === 'storage'"
+                    v-model:storage-type="form.storageType"
+                    @close="emit('close')"
+                  />
+
+                  <!-- Binary Objects Tab -->
+                  <BinaryObjectsTab v-if="activeTab === 'binary_objects'" />
+
+                  <!-- Volume Settings Tab -->
+                  <VolumeSettingsTab
+                    v-if="activeTab === 'volumes' && isVolumesFeatureEnabled"
+                  />
+
+                  <!-- Developer Tab -->
+                  <DeveloperTab
+                    v-if="activeTab === 'developer'"
+                    :storage-type="form.storageType"
+                  />
+
+                  <!-- About Tab -->
+                  <AboutTab v-if="activeTab === 'about'" />
+                </div>
+              </div>
+            </template>
+          </Suspense>
         </main>
       </div>
     </div>

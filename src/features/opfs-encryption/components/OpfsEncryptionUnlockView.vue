@@ -30,8 +30,11 @@ const errorMessage = ref<string>();
 const { isFileExplorerOpen, openFileExplorer } = useFileExplorerModal();
 
 const inspection = computed(() => props.gate.inspection.value);
+const gatePhase = computed(() => props.gate.phase.value);
 const isRecoveryRequired = computed(() => inspection.value.type === 'recovery_required');
 const isTransitioning = computed(() => inspection.value.type === 'transitioning');
+const isPreparingApplication = computed(() => gatePhase.value === 'preparing_application');
+const isApplicationFailed = computed(() => gatePhase.value === 'application_failed');
 const passphraseValidation = computed(() => validateEncryptionPassphrase({
   passphrase: passphrase.value,
 }));
@@ -56,6 +59,12 @@ const transitionOperation = computed(() => {
   }
 });
 const title = computed(() => {
+  if (isApplicationFailed.value) {
+    return lazyStrings.opfsEncryption__naidan_could_not_finish_loading();
+  }
+  if (isPreparingApplication.value) {
+    return lazyStrings.opfsEncryption__preparing_naidan();
+  }
   if (isRecoveryRequired.value) {
     return lazyStrings.opfsEncryption__encrypted_storage_needs_recovery();
   }
@@ -77,7 +86,12 @@ const title = computed(() => {
 });
 
 async function submitPassphrase(): Promise<void> {
-  if (working.value || passphrase.value.length === 0 || hasLineBreak.value) {
+  if (
+    working.value
+    || gatePhase.value !== 'locked'
+    || passphrase.value.length === 0
+    || hasLineBreak.value
+  ) {
     return;
   }
   working.value = true;
@@ -92,7 +106,7 @@ async function submitPassphrase(): Promise<void> {
 }
 
 async function retryInspection(): Promise<void> {
-  if (working.value) {
+  if (working.value || gatePhase.value !== 'locked') {
     return;
   }
   working.value = true;
@@ -156,7 +170,13 @@ defineExpose({
               </span>
             </div>
             <p tw-class="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-              <template v-if="isRecoveryRequired">
+              <template v-if="isApplicationFailed">
+                {{ lazyStrings.opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading() }}
+              </template>
+              <template v-else-if="isPreparingApplication">
+                {{ lazyStrings.opfsEncryption__storage_unlocked_preparing_application() }}
+              </template>
+              <template v-else-if="isRecoveryRequired">
                 {{ lazyStrings.opfsEncryption__could_not_read_encryption_control_state() }}
               </template>
               <template v-else-if="isTransitioning">
@@ -171,7 +191,26 @@ defineExpose({
       </div>
 
       <div tw-class="px-7 py-7 sm:px-9 space-y-6">
-        <form v-if="!isRecoveryRequired" tw-class="space-y-3" @submit.prevent="submitPassphrase">
+        <div
+          v-if="isPreparingApplication"
+          data-testid="opfs-encryption-preparing-application"
+          tw-class="rounded-2xl border border-blue-100 dark:border-blue-900/50 bg-blue-50/80 dark:bg-blue-950/20 px-5 py-6 text-sm text-blue-800 dark:text-blue-300 flex items-center gap-3"
+        >
+          <Loader2Icon tw-class="w-5 h-5 shrink-0 animate-spin" />
+          {{ lazyStrings.opfsEncryption__storage_unlocked_preparing_application() }}
+        </div>
+
+        <div
+          v-else-if="isApplicationFailed"
+          data-testid="opfs-encryption-application-failed"
+          tw-class="space-y-3"
+        >
+          <div tw-class="rounded-2xl border border-red-200 dark:border-red-900/60 bg-red-50/80 dark:bg-red-950/20 p-4 text-sm text-red-800 dark:text-red-300 break-words">
+            {{ gate.applicationError.value instanceof Error ? gate.applicationError.value.message : String(gate.applicationError.value) }}
+          </div>
+        </div>
+
+        <form v-else-if="!isRecoveryRequired" tw-class="space-y-3" @submit.prevent="submitPassphrase">
           <label tw-class="block text-xs font-bold text-gray-600 dark:text-gray-300">
             {{ lazyStrings.opfsEncryption__passphrase() }}
           </label>

@@ -365,6 +365,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
+      await flushPromises();
+      await vi.dynamicImportSettled();
+      await flushPromises();
 
       // Clear values first to see placeholders/None
       const vm = wrapper.vm as any;
