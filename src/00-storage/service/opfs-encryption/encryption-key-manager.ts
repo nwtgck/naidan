@@ -1,6 +1,6 @@
 import type {
   EncryptedStoreHeaderDto,
-  PassphraseEncryptionKeySlotDto,
+  EncryptionKeySlotDto,
 } from '@/00-storage/00-dto/encryption.dto';
 import { decodeBase64UrlWithLength, encodeBase64Url } from './base64-url';
 import { assertEncryptionPassphraseCanBeUsed } from './passphrase';
@@ -8,9 +8,10 @@ import { toExactArrayBuffer } from './array-buffer';
 import type { CreatedEncryptionMaterial, EncryptedStoreRuntimeKeys } from './types';
 
 export const DEFAULT_PBKDF2_ITERATIONS = 600_000;
+export const MAX_PBKDF2_ITERATIONS = 10_000_000;
+export const MAX_ENCRYPTION_KEY_SLOTS = 32;
 
 const UTF8 = new TextEncoder();
-const WRAPPED_KEY_AAD = UTF8.encode('naidan/opfs-encryption/wrapped-key/v1');
 const OBJECT_ENCRYPTION_HKDF_INFO = UTF8.encode('naidan/opfs-encryption/object-encryption-key/v1');
 const OBJECT_ADDRESS_HKDF_INFO = UTF8.encode('naidan/opfs-encryption/object-address-key/v1');
 
@@ -20,6 +21,28 @@ function randomBytes({ byteLength }: { byteLength: number }): Uint8Array {
 
 export function createEncryptionOpaqueId(): string {
   return encodeBase64Url({ bytes: randomBytes({ byteLength: 16 }) });
+}
+
+function createWrappedKeyAad({
+  purpose,
+  bindingId,
+}: {
+  purpose: 'storage_unlock_key' | 'store_root_key',
+  bindingId: string,
+}): Uint8Array {
+  const role = (() => {
+    switch (purpose) {
+    case 'storage_unlock_key':
+      return 'storage-unlock-key';
+    case 'store_root_key':
+      return 'store-root-key';
+    default: {
+      const _ex: never = purpose;
+      throw new Error(`Unhandled wrapped key purpose: ${String(_ex)}`);
+    }
+    }
+  })();
+  return UTF8.encode(`naidan/opfs-encryption/${role}/v1/${bindingId}`);
 }
 
 async function importAesGcmKey({ rawKey, usages }: {
@@ -35,33 +58,31 @@ async function importAesGcmKey({ rawKey, usages }: {
   );
 }
 
-async function derivePassphraseWrappingKey({
-  passphrase,
+async function deriveSecretWrappingKey({
+  secret,
   salt,
   iterations,
 }: {
-  passphrase: string,
+  secret: Uint8Array,
   salt: Uint8Array,
   iterations: number,
 }): Promise<CryptoKey> {
-  assertEncryptionPassphraseCanBeUsed({ passphrase });
-  if (!Number.isSafeInteger(iterations) || iterations <= 0) {
-    throw new Error('PBKDF2 iteration count must be a positive safe integer');
-  }
-
-  const passphraseBytes = UTF8.encode(passphrase);
-  let material: CryptoKey;
-  try {
-    material = await crypto.subtle.importKey(
-      'raw',
-      toExactArrayBuffer({ bytes: passphraseBytes }),
-      'PBKDF2',
-      false,
-      ['deriveKey'],
+  if (
+    !Number.isSafeInteger(iterations)
+    || iterations <= 0
+    || iterations > MAX_PBKDF2_ITERATIONS
+  ) {
+    throw new Error(
+      `PBKDF2 iteration count must be between 1 and ${MAX_PBKDF2_ITERATIONS}`,
     );
-  } finally {
-    passphraseBytes.fill(0);
   }
+  const material = await crypto.subtle.importKey(
+    'raw',
+    toExactArrayBuffer({ bytes: secret }),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  );
   return await crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
@@ -79,9 +100,11 @@ async function derivePassphraseWrappingKey({
 async function wrapRawKey({
   rawKey,
   wrappingKey,
+  additionalData,
 }: {
   rawKey: Uint8Array,
   wrappingKey: CryptoKey,
+  additionalData: Uint8Array,
 }): Promise<{ nonce: string, ciphertext: string }> {
   if (rawKey.byteLength !== 32) {
     throw new Error('Wrapped key plaintext must contain exactly 32 bytes');
@@ -91,7 +114,7 @@ async function wrapRawKey({
     {
       name: 'AES-GCM',
       iv: toExactArrayBuffer({ bytes: nonce }),
-      additionalData: toExactArrayBuffer({ bytes: WRAPPED_KEY_AAD }),
+      additionalData: toExactArrayBuffer({ bytes: additionalData }),
       tagLength: 128,
     },
     wrappingKey,
@@ -106,9 +129,11 @@ async function wrapRawKey({
 async function unwrapRawKey({
   wrappedKey,
   wrappingKey,
+  additionalData,
 }: {
   wrappedKey: { nonce: string, ciphertext: string },
   wrappingKey: CryptoKey,
+  additionalData: Uint8Array,
 }): Promise<Uint8Array> {
   const nonce = decodeBase64UrlWithLength({
     value: wrappedKey.nonce,
@@ -124,7 +149,7 @@ async function unwrapRawKey({
     {
       name: 'AES-GCM',
       iv: toExactArrayBuffer({ bytes: nonce }),
-      additionalData: toExactArrayBuffer({ bytes: WRAPPED_KEY_AAD }),
+      additionalData: toExactArrayBuffer({ bytes: additionalData }),
       tagLength: 128,
     },
     wrappingKey,
@@ -137,31 +162,38 @@ async function unwrapRawKey({
   return rawKey;
 }
 
-export async function createPassphraseEncryptionKeySlot({
+export async function createEncryptionKeySlotFromSecret({
   storageUnlockKey,
-  passphrase,
+  secret,
+  keySlotId,
   pbkdf2Iterations,
 }: {
   storageUnlockKey: Uint8Array,
-  passphrase: string,
+  secret: Uint8Array,
+  keySlotId: string,
   pbkdf2Iterations: number,
-}): Promise<PassphraseEncryptionKeySlotDto> {
-  assertEncryptionPassphraseCanBeUsed({ passphrase });
+}): Promise<EncryptionKeySlotDto> {
   const salt = randomBytes({ byteLength: 32 });
   try {
-    const wrappingKey = await derivePassphraseWrappingKey({
-      passphrase,
+    const wrappingKey = await deriveSecretWrappingKey({
+      secret,
       salt,
       iterations: pbkdf2Iterations,
     });
     return {
-      pbkdf2: {
+      id: keySlotId,
+      keyDerivation: {
+        type: 'pbkdf2_sha256',
         salt: encodeBase64Url({ bytes: salt }),
         iterations: pbkdf2Iterations,
       },
       wrappedStorageUnlockKey: await wrapRawKey({
         rawKey: storageUnlockKey,
         wrappingKey,
+        additionalData: createWrappedKeyAad({
+          purpose: 'storage_unlock_key',
+          bindingId: keySlotId,
+        }),
       }),
     };
   } finally {
@@ -169,20 +201,55 @@ export async function createPassphraseEncryptionKeySlot({
   }
 }
 
-export async function replacePassphraseEncryptionKeySlot({
+export async function createPassphraseEncryptionKeySlot({
   storageUnlockKey,
   passphrase,
+  keySlotId,
   pbkdf2Iterations,
 }: {
   storageUnlockKey: Uint8Array,
   passphrase: string,
+  keySlotId: string,
   pbkdf2Iterations: number,
-}): Promise<PassphraseEncryptionKeySlotDto> {
-  return await createPassphraseEncryptionKeySlot({
+}): Promise<EncryptionKeySlotDto> {
+  assertEncryptionPassphraseCanBeUsed({ passphrase });
+  const passphraseBytes = UTF8.encode(passphrase);
+  try {
+    return await createEncryptionKeySlotFromSecret({
+      storageUnlockKey,
+      secret: passphraseBytes,
+      keySlotId,
+      pbkdf2Iterations,
+    });
+  } finally {
+    passphraseBytes.fill(0);
+  }
+}
+
+export async function replacePassphraseEncryptionKeySlot({
+  storageUnlockKey,
+  keySlots,
+  keySlotId,
+  passphrase,
+  pbkdf2Iterations,
+}: {
+  storageUnlockKey: Uint8Array,
+  keySlots: EncryptionKeySlotDto[],
+  keySlotId: string,
+  passphrase: string,
+  pbkdf2Iterations: number,
+}): Promise<EncryptionKeySlotDto[]> {
+  const replacement = await createPassphraseEncryptionKeySlot({
     storageUnlockKey,
     passphrase,
+    keySlotId,
     pbkdf2Iterations,
   });
+  const nextSlots = keySlots.map(slot => slot.id === keySlotId ? replacement : slot);
+  if (!nextSlots.some(slot => slot.id === keySlotId)) {
+    throw new Error(`Encryption key slot does not exist: ${keySlotId}`);
+  }
+  return nextSlots;
 }
 
 export async function createEncryptionMaterial({
@@ -195,65 +262,104 @@ export async function createEncryptionMaterial({
   assertEncryptionPassphraseCanBeUsed({ passphrase });
   const storageUnlockKey = randomBytes({ byteLength: 32 });
   const storeRootKey = randomBytes({ byteLength: 32 });
-  const passphraseSlot = await createPassphraseEncryptionKeySlot({
-    storageUnlockKey,
-    passphrase,
-    pbkdf2Iterations,
-  });
-
-  return {
-    storageUnlockKey,
-    storeRootKey,
-    passphraseKeySlot: passphraseSlot,
-  };
+  try {
+    const keySlotId = createEncryptionOpaqueId();
+    const keySlot = await createPassphraseEncryptionKeySlot({
+      storageUnlockKey,
+      passphrase,
+      keySlotId,
+      pbkdf2Iterations,
+    });
+    return {
+      storageUnlockKey,
+      storeRootKey,
+      keySlots: [keySlot],
+    };
+  } catch (error) {
+    storageUnlockKey.fill(0);
+    storeRootKey.fill(0);
+    throw error;
+  }
 }
 
 export async function unlockStorageUnlockKeyWithPassphrase({
-  passphraseKeySlot,
+  keySlots,
   passphrase,
 }: {
-  passphraseKeySlot: PassphraseEncryptionKeySlotDto,
+  keySlots: EncryptionKeySlotDto[],
   passphrase: string,
-}): Promise<Uint8Array> {
+}): Promise<{ storageUnlockKey: Uint8Array, keySlotId: string }> {
   assertEncryptionPassphraseCanBeUsed({ passphrase });
-  try {
-    const salt = decodeBase64UrlWithLength({
-      value: passphraseKeySlot.pbkdf2.salt,
-      expectedByteLength: 32,
-      fieldName: 'Passphrase KDF salt',
-    });
-    try {
-      const wrappingKey = await derivePassphraseWrappingKey({
-        passphrase,
-        salt,
-        iterations: passphraseKeySlot.pbkdf2.iterations,
-      });
-      return await unwrapRawKey({
-        wrappedKey: passphraseKeySlot.wrappedStorageUnlockKey,
-        wrappingKey,
-      });
-    } finally {
-      salt.fill(0);
-    }
-  } catch (error) {
-    throw new Error('Passphrase did not unlock the encryption key slot', {
-      cause: error,
-    });
+  if (keySlots.length === 0 || keySlots.length > MAX_ENCRYPTION_KEY_SLOTS) {
+    throw new Error(
+      `Encryption state must contain between 1 and ${MAX_ENCRYPTION_KEY_SLOTS} key slots`,
+    );
   }
+  const passphraseBytes = UTF8.encode(passphrase);
+  try {
+    for (const keySlot of keySlots) {
+      switch (keySlot.keyDerivation.type) {
+      case 'pbkdf2_sha256': {
+        const salt = decodeBase64UrlWithLength({
+          value: keySlot.keyDerivation.salt,
+          expectedByteLength: 32,
+          fieldName: 'Encryption key slot KDF salt',
+        });
+        try {
+          const wrappingKey = await deriveSecretWrappingKey({
+            secret: passphraseBytes,
+            salt,
+            iterations: keySlot.keyDerivation.iterations,
+          });
+          try {
+            return {
+              storageUnlockKey: await unwrapRawKey({
+                wrappedKey: keySlot.wrappedStorageUnlockKey,
+                wrappingKey,
+                additionalData: createWrappedKeyAad({
+                  purpose: 'storage_unlock_key',
+                  bindingId: keySlot.id,
+                }),
+              }),
+              keySlotId: keySlot.id,
+            };
+          } catch {
+            // Another slot may have been created from this passphrase.
+          }
+        } finally {
+          salt.fill(0);
+        }
+        break;
+      }
+      }
+    }
+  } finally {
+    passphraseBytes.fill(0);
+  }
+  throw new Error('Passphrase did not unlock any encryption key slot');
 }
 
 export async function wrapStoreRootKey({
   storageUnlockKey,
   storeRootKey,
+  encryptedStoreId,
 }: {
   storageUnlockKey: Uint8Array,
   storeRootKey: Uint8Array,
+  encryptedStoreId: string,
 }): Promise<EncryptedStoreHeaderDto['wrappedStoreRootKey']> {
   const wrappingKey = await importAesGcmKey({
     rawKey: storageUnlockKey,
     usages: ['encrypt'],
   });
-  return await wrapRawKey({ rawKey: storeRootKey, wrappingKey });
+  return await wrapRawKey({
+    rawKey: storeRootKey,
+    wrappingKey,
+    additionalData: createWrappedKeyAad({
+      purpose: 'store_root_key',
+      bindingId: encryptedStoreId,
+    }),
+  });
 }
 
 export async function unwrapStoreRootKey({
@@ -270,6 +376,10 @@ export async function unwrapStoreRootKey({
   return await unwrapRawKey({
     wrappedKey: header.wrappedStoreRootKey,
     wrappingKey,
+    additionalData: createWrappedKeyAad({
+      purpose: 'store_root_key',
+      bindingId: header.encryptedStoreId,
+    }),
   });
 }
 
@@ -321,7 +431,8 @@ export async function deriveEncryptedStoreRuntimeKeys({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  derivePassphraseWrappingKey,
+  createWrappedKeyAad,
+  deriveSecretWrappingKey,
   unwrapRawKey,
   wrapRawKey,
 };

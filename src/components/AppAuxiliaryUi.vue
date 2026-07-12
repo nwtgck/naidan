@@ -6,6 +6,7 @@ import { useGlobalSearch } from '@/features/global-search/composables/useGlobalS
 import { useLayout } from '@/composables/useLayout';
 import { usePrint } from '@/composables/usePrint';
 import { useRecentChats } from '@/composables/useRecentChats';
+import { useDebugEncryptedStorageInspector } from '@/features/debug-encrypted-storage/composables/useDebugEncryptedStorageInspector';
 
 
 type AppAuxiliaryUiMode = 'preparing' | 'active';
@@ -27,6 +28,7 @@ const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/features/wes
 const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-search/components/GlobalSearchModal.vue'));
 const RecentChatsModal = defineAsyncComponent(() => import('@/components/RecentChatsModal.vue'));
 const FileExplorerModal = defineAsyncComponent(() => import('@/features/file-explorer/components/FileExplorerModal.vue'));
+const DebugEncryptedStorageInspectorModal = defineAsyncComponent(() => import('@/features/debug-encrypted-storage/components/DebugEncryptedStorageInspectorModal.vue'));
 const PWAManager = __BUILD_MODE_IS_HOSTED__
   ? defineAsyncComponent(() => import('@/components/PWAManager.vue'))
   : undefined;
@@ -37,6 +39,7 @@ const { isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
 const { isFileExplorerOpen } = useFileExplorerModal();
 const { isSearchOpen } = useGlobalSearch();
 const { isRecentOpen } = useRecentChats();
+const { isDebugEncryptedStorageInspectorOpen } = useDebugEncryptedStorageInspector();
 const { activePrintMode } = usePrint();
 const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
 const renderPostStartupAuxiliaryUi = computed(() => {
@@ -188,6 +191,7 @@ defineExpose({
   <RecentChatsModal v-if="renderPostStartupAuxiliaryUi && isRecentOpen" />
   <PWAManager v-if="renderPostStartupAuxiliaryUi && PWAManager" />
   <FileExplorerModal v-if="renderPostStartupAuxiliaryUi && isFileExplorerOpen" />
+  <DebugEncryptedStorageInspectorModal v-if="renderPostStartupAuxiliaryUi && isDebugEncryptedStorageInspectorOpen" />
 
   <PrintView v-if="renderPostStartupAuxiliaryUi && activePrintMode !== undefined">
     <ChatPrintContent v-if="activePrintMode === 'chat'" />

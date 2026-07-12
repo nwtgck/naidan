@@ -4,7 +4,11 @@ import {
 } from '@/00-storage/00-dto/encryption.dto';
 import { DualSlotJsonStore } from './dual-slot-json-store';
 import { ENCRYPTED_STORES_DIRECTORY_NAME } from './encryption-state-store';
-import { isNotFoundError } from './opfs-json-file';
+import { isNotFoundError, removeDirectoryEntryIfPresent } from './opfs-json-file';
+import {
+  assertEncryptedStoreHeaderCanBeUsed,
+  assertSafeOpfsPathSegment,
+} from './encryption-semantic-validation';
 
 export class EncryptedStoreHeaderStore {
   constructor({ storageRoot }: { storageRoot: FileSystemDirectoryHandle }) {
@@ -20,6 +24,7 @@ export class EncryptedStoreHeaderStore {
     encryptedStoreId: string,
     create: boolean,
   }): Promise<FileSystemDirectoryHandle> {
+    assertSafeOpfsPathSegment({ value: encryptedStoreId, fieldName: 'Encrypted store ID' });
     const storesDirectory = await this.storageRoot.getDirectoryHandle(
       ENCRYPTED_STORES_DIRECTORY_NAME,
       { create },
@@ -30,14 +35,19 @@ export class EncryptedStoreHeaderStore {
   async read({ encryptedStoreId }: { encryptedStoreId: string }): Promise<EncryptedStoreHeaderDto | undefined> {
     const storeDirectory = await this.getStoreDirectory({ encryptedStoreId, create: false });
     const headerDirectory = await storeDirectory.getDirectoryHandle('header');
-    return await new DualSlotJsonStore({
+    const header = await new DualSlotJsonStore({
       directory: headerDirectory,
       filePrefix: 'header',
       schema: EncryptedStoreHeaderSchemaDto,
     }).read();
+    if (header !== undefined) {
+      assertEncryptedStoreHeaderCanBeUsed({ header });
+    }
+    return header;
   }
 
   async write({ header }: { header: EncryptedStoreHeaderDto }): Promise<void> {
+    assertEncryptedStoreHeaderCanBeUsed({ header });
     const storeDirectory = await this.getStoreDirectory({
       encryptedStoreId: header.encryptedStoreId,
       create: true,
@@ -51,16 +61,22 @@ export class EncryptedStoreHeaderStore {
   }
 
   async removeStore({ encryptedStoreId }: { encryptedStoreId: string }): Promise<void> {
+    assertSafeOpfsPathSegment({ value: encryptedStoreId, fieldName: 'Encrypted store ID' });
+    let storesDirectory: FileSystemDirectoryHandle;
     try {
-      const storesDirectory = await this.storageRoot.getDirectoryHandle(
+      storesDirectory = await this.storageRoot.getDirectoryHandle(
         ENCRYPTED_STORES_DIRECTORY_NAME,
       );
-      await storesDirectory.removeEntry(encryptedStoreId, { recursive: true });
     } catch (error) {
-      if (!isNotFoundError({ error })) {
-        throw error;
+      if (isNotFoundError({ error })) {
+        return;
       }
+      throw error;
     }
+    await removeDirectoryEntryIfPresent({
+      directory: storesDirectory,
+      name: encryptedStoreId,
+    });
   }
 }
 

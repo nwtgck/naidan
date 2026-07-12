@@ -1,3 +1,4 @@
+import { createDebugEncryptedStorageWorker } from '@/features/debug-encrypted-storage/worker/impl';
 import * as Comlink from 'comlink';
 
 import { createAdvancedTextEditorV3Worker } from '@/features/advanced-text-editor-v3/worker/impl';
@@ -9,6 +10,7 @@ import { createWeshWorker } from '@/features/wesh/worker/impl';
 
 export function createStandaloneWorkerHub(): IWorkerHub {
   return {
+    debugEncryptedStorage: Comlink.proxy(createDebugEncryptedStorageWorker()),
     wesh: Comlink.proxy(createWeshWorker()),
     globalSearch: Comlink.proxy(createGlobalSearchWorker()),
     fileExplorer: Comlink.proxy(createFileExplorerWorker()),

@@ -6,6 +6,7 @@ import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import { PlainOPFSStorageBackend } from './opfs/plain-opfs-storage-backend';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
+import type { EncryptedStorageDebugCapability } from './opfs-encryption/debug/encrypted-storage-debug-types';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
 import {
   notifyRegisteredOpfsExternalTransitionSettled,
@@ -474,6 +475,11 @@ export class StorageService {
     passphrase: string,
   }): Promise<void> {
     await this.getOpfsProvider().unlockWithPassphrase({ passphrase });
+  }
+
+
+  async createEncryptedStorageDebugCapability(): Promise<EncryptedStorageDebugCapability> {
+    return await this.getOpfsProvider().createEncryptedStorageDebugCapability();
   }
 
   async retryPlainOpfsInitializationAfterEncryptionRecovery(): Promise<void> {

@@ -201,6 +201,9 @@ export function createWeshWorker(): IWeshWorker {
               access: {
                 type: 'encrypted_directory',
                 storeDirectory: mount.storeDirectory,
+                encryptedStoreId: mount.encryptedStoreId,
+                fileSystemId: mount.fileSystemId,
+                physicalArea: mount.physicalArea,
                 rootDirectoryId: mount.rootDirectoryId,
                 objectEncryptionKey: mount.objectEncryptionKey,
                 objectAddressKey: mount.objectAddressKey,

@@ -1,7 +1,8 @@
 import type { ZodType } from 'zod';
-import { readJsonFileIfPresent, writeJsonFile } from './opfs-json-file';
+import { readJsonValueIfPresent, writeJsonFile } from './opfs-json-file';
 
 export interface SequencedValue {
+  readonly formatVersion: number,
   readonly sequence: number,
 }
 
@@ -25,29 +26,61 @@ export class DualSlotJsonStore<T extends SequencedValue> {
   private readonly schema: ZodType<T>;
 
   async read(): Promise<T | undefined> {
-    const values: T[] = [];
+    const candidates: Array<{
+      readonly sequence: number,
+      readonly value: T | undefined,
+      readonly parseError: unknown | undefined,
+    }> = [];
+
     for (const slot of [0, 1] as const) {
+      let raw: unknown;
       try {
-        const value = await readJsonFileIfPresent({
+        raw = await readJsonValueIfPresent({
           directory: this.directory,
           name: `${this.filePrefix}-${slot}.json`,
-          schema: this.schema,
         });
-        if (value !== undefined) {
-          values.push(value);
-        }
       } catch {
-        // The other slot may still be valid after an interrupted write.
+        // A partially written JSON document is not a committed slot. The other
+        // slot remains eligible, but a complete newer envelope must never be
+        // silently downgraded merely because this client cannot parse it.
+        continue;
       }
+      if (raw === undefined || typeof raw !== 'object' || raw === null) {
+        continue;
+      }
+      const sequence = (raw as { sequence?: unknown }).sequence;
+      const formatVersion = (raw as { formatVersion?: unknown }).formatVersion;
+      if (
+        !Number.isSafeInteger(sequence)
+        || (sequence as number) < 0
+        || !Number.isSafeInteger(formatVersion)
+        || (formatVersion as number) < 1
+      ) {
+        continue;
+      }
+      const parsed = this.schema.safeParse(raw);
+      candidates.push({
+        sequence: sequence as number,
+        value: parsed.success ? parsed.data : undefined,
+        parseError: parsed.success ? undefined : parsed.error,
+      });
     }
 
-    values.sort((left, right) => right.sequence - left.sequence);
-    if (values.length === 2 && values[0]?.sequence === values[1]?.sequence) {
+    candidates.sort((left, right) => right.sequence - left.sequence);
+    if (candidates.length >= 2 && candidates[0]?.sequence === candidates[1]?.sequence) {
+      throw new Error(`Dual-slot ${this.filePrefix} values have the same sequence`);
+    }
+    const newest = candidates[0];
+    if (newest === undefined) {
+      return undefined;
+    }
+    if (newest.value === undefined) {
       throw new Error(
-        `Dual-slot ${this.filePrefix} values have the same sequence`,
+        `Newest dual-slot ${this.filePrefix} value is not supported or is structurally invalid`,
+        { cause: newest.parseError },
       );
     }
-    return values[0];
+    return newest.value;
   }
 
   async write({ value }: { value: T }): Promise<void> {

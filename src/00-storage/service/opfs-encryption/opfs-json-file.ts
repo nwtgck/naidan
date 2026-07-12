@@ -4,6 +4,25 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
 }
 
+export async function readJsonValueIfPresent({
+  directory,
+  name,
+}: {
+  directory: FileSystemDirectoryHandle,
+  name: string,
+}): Promise<unknown | undefined> {
+  try {
+    const handle = await directory.getFileHandle(name);
+    const file = await handle.getFile();
+    return JSON.parse(await file.text()) as unknown;
+  } catch (error) {
+    if (isNotFoundError({ error })) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 export async function readJsonFileIfPresent<T>({
   directory,
   name,
@@ -13,16 +32,8 @@ export async function readJsonFileIfPresent<T>({
   name: string,
   schema: ZodType<T>,
 }): Promise<T | undefined> {
-  try {
-    const handle = await directory.getFileHandle(name);
-    const file = await handle.getFile();
-    return schema.parse(JSON.parse(await file.text()));
-  } catch (error) {
-    if (isNotFoundError({ error })) {
-      return undefined;
-    }
-    throw error;
-  }
+  const value = await readJsonValueIfPresent({ directory, name });
+  return value === undefined ? undefined : schema.parse(value);
 }
 
 export async function writeJsonFile({
@@ -34,16 +45,56 @@ export async function writeJsonFile({
   name: string,
   value: unknown,
 }): Promise<void> {
+  const serialized = JSON.stringify(value);
   const handle = await directory.getFileHandle(name, { create: true }) as FileSystemFileHandleWithWritable;
   const writable = await handle.createWritable();
   try {
-    await writable.write(JSON.stringify(value));
+    await writable.write(serialized);
     await writable.close();
   } catch (error) {
     try {
       await writable.abort(error);
     } catch {
       // Preserve the original serialization or write error.
+    }
+    try {
+      if (await (await handle.getFile()).text() === serialized) {
+        // Treat an exact durable read-back as success even when close reported
+        // an error. This prevents state/header writers from rolling back after
+        // OPFS already committed the requested slot replacement.
+        return;
+      }
+    } catch {
+      // Preserve the original write error when durable completion cannot be
+      // proven by an exact read-back.
+    }
+    throw error;
+  }
+}
+
+
+export async function removeDirectoryEntryIfPresent({
+  directory,
+  name,
+}: {
+  directory: FileSystemDirectoryHandle,
+  name: string,
+}): Promise<void> {
+  try {
+    await directory.removeEntry(name, { recursive: true });
+  } catch (error) {
+    if (isNotFoundError({ error })) {
+      return;
+    }
+    try {
+      await directory.getDirectoryHandle(name);
+    } catch (verificationError) {
+      if (isNotFoundError({ error: verificationError })) {
+        // A recursive directory removal may be durable even when its Promise
+        // rejects. The absent postcondition is authoritative for idempotent
+        // transition cleanup and prevents reporting failure after commit.
+        return;
+      }
     }
     throw error;
   }

@@ -9,6 +9,8 @@ import type {
 export type { OpfsSpecialFileSystemType } from './opfs-special-file-system';
 
 export interface OpfsTransitionStorageBackend extends IStorageProvider, OpfsSpecialFileSystemBackend {
+  removeSettingsForTransition(): Promise<void>;
+
   importVolumeForTransition({
     volume,
     sourceAccess,

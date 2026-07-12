@@ -5,7 +5,9 @@ import { useLayout } from '@/composables/useLayout';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon } from 'lucide-vue-next';
+import { useDebugEncryptedStorageInspector } from '@/features/debug-encrypted-storage/composables/useDebugEncryptedStorageInspector';
+import { storageService } from '@/00-storage/service';
+import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon, DatabaseIcon } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 
 defineProps<{
@@ -16,12 +18,50 @@ const { isDebugOpen, toggleDebug, toggleWeshTerminal } = useLayout();
 const { errorCount } = useGlobalEvents();
 const { openFileExplorer } = useFileExplorerModal();
 const { openRecent } = useRecentChats();
+const { openDebugEncryptedStorageInspector } = useDebugEncryptedStorageInspector();
 
 const showOpfsMenu = ref(false);
 const opfsTriggerRef = ref<HTMLElement | null>(null);
+const encryptedInspectorAvailable = ref(false);
+const checkingEncryptedInspector = ref(false);
+let encryptionInspectionRequestId = 0;
 
 function handleOpenRecent() {
   openRecent();
+  showOpfsMenu.value = false;
+}
+
+async function toggleOpfsMenu(): Promise<void> {
+  if (showOpfsMenu.value) {
+    showOpfsMenu.value = false;
+    encryptionInspectionRequestId += 1;
+    return;
+  }
+  showOpfsMenu.value = true;
+  encryptedInspectorAvailable.value = false;
+  checkingEncryptedInspector.value = true;
+  const requestId = ++encryptionInspectionRequestId;
+  try {
+    const inspection = await storageService.inspectOpfsEncryption();
+    if (showOpfsMenu.value && requestId === encryptionInspectionRequestId) {
+      encryptedInspectorAvailable.value = inspection.type === 'encrypted';
+    }
+  } catch {
+    if (requestId === encryptionInspectionRequestId) {
+      encryptedInspectorAvailable.value = false;
+    }
+  } finally {
+    if (requestId === encryptionInspectionRequestId) {
+      checkingEncryptedInspector.value = false;
+    }
+  }
+}
+
+function handleOpenEncryptedStorageInspector(): void {
+  if (!encryptedInspectorAvailable.value) {
+    return;
+  }
+  openDebugEncryptedStorageInspector();
   showOpfsMenu.value = false;
 }
 
@@ -55,7 +95,7 @@ defineExpose({
     <div tw-class="relative flex items-center">
       <button
         ref="opfsTriggerRef"
-        @click="showOpfsMenu = !showOpfsMenu"
+        @click="toggleOpfsMenu"
         :tw-class="['p-2 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm', { 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-inner': showOpfsMenu }]"
         :title="lazyStrings.SidebarDebugControls__more_actions()"
         data-testid="sidebar-opfs-menu-button"
@@ -92,6 +132,16 @@ defineExpose({
           >
             <FolderSearchIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.SidebarDebugControls__file_explorer() }}</span>
+          </button>
+          <button
+            :disabled="!encryptedInspectorAvailable"
+            :title="checkingEncryptedInspector ? 'Checking encrypted storage state' : encryptedInspectorAvailable ? 'Inspect decrypted encrypted storage' : 'Available after encrypted OPFS is unlocked'"
+            @click="handleOpenEncryptedStorageInspector"
+            tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            data-testid="sidebar-encrypted-storage-inspector-button"
+          >
+            <DatabaseIcon tw-class="w-4 h-4" />
+            <span>Encrypted Storage Inspector</span>
           </button>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"

@@ -33,6 +33,7 @@ import {
   type OpfsSpecialFileSystemType,
 } from './opfs/opfs-special-file-system';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
+import type { EncryptedStorageDebugCapability } from './opfs-encryption/debug/encrypted-storage-debug-types';
 import type {
   EncryptionTransitionResult,
   UnlockedOpfsEncryptionSession,
@@ -245,6 +246,15 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
 
+
+  async createEncryptedStorageDebugCapability(): Promise<EncryptedStorageDebugCapability> {
+    return await this.storageSessionLock.run({ run: async () => {
+      const session = this.requireUnlockedEncryptionSession();
+      const storageRoot = await getOrCreateStorageRoot();
+      return session.backend.createDebugCapability({ storageRoot });
+    } });
+  }
+
   async lockEncryption(): Promise<void> {
     await this.storageSessionLock.suspend();
     this.clearEncryptionSession();
@@ -303,20 +313,39 @@ export class OPFSStorageProvider extends IStorageProvider {
       const storageRoot = await getOrCreateStorageRoot();
       const keyManager = await import('./opfs-encryption/encryption-key-manager');
       const stateModule = await import('./opfs-encryption/encryption-state-store');
-      const state = {
-        ...session.state,
-        sequence: session.state.sequence + 1,
-        passphraseKeySlot: await keyManager.replacePassphraseEncryptionKeySlot({
-          storageUnlockKey: session.storageUnlockKey,
-          passphrase,
-          pbkdf2Iterations: keyManager.DEFAULT_PBKDF2_ITERATIONS,
-        }),
-      };
-      await new stateModule.EncryptionStateStore({ storageRoot }).writeState({ state });
-      this.unlockedEncryptionSession = {
-        ...session,
-        state,
-      };
+      if (typeof navigator === 'undefined' || navigator.locks?.request === undefined) {
+        throw new Error('Changing the OPFS encryption passphrase requires the Web Locks API');
+      }
+      await navigator.locks.request(
+        'naidan:sync:lock:opfs_encryption_state_update',
+        { mode: 'exclusive' },
+        async () => {
+          const stateStore = new stateModule.EncryptionStateStore({ storageRoot });
+          const inspection = await stateStore.inspect();
+          if (inspection.type !== 'encrypted' || inspection.state.state !== 'encrypted') {
+            throw new Error('Encrypted storage state changed in another tab');
+          }
+          if (inspection.state.activeEncryptedStoreId !== session.state.activeEncryptedStoreId) {
+            throw new Error('Active encrypted store changed in another tab');
+          }
+          const state = {
+            ...inspection.state,
+            sequence: inspection.state.sequence + 1,
+            keySlots: await keyManager.replacePassphraseEncryptionKeySlot({
+              storageUnlockKey: session.storageUnlockKey,
+              keySlots: inspection.state.keySlots,
+              keySlotId: session.unlockedKeySlotId,
+              passphrase,
+              pbkdf2Iterations: keyManager.DEFAULT_PBKDF2_ITERATIONS,
+            }),
+          };
+          await stateStore.writeState({ state });
+          this.unlockedEncryptionSession = {
+            ...session,
+            state,
+          };
+        },
+      );
     } });
   }
 

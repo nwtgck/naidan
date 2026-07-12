@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
 import { EncryptionStateStore } from './encryption-state-store';
@@ -25,6 +25,7 @@ interface TestEncryptionTransitionCoordinator {
 }
 
 const navigatorStorageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage');
+const navigatorLocksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks');
 
 function installOpfsRoot({ opfsRoot }: { opfsRoot: FileSystemDirectoryHandle }): void {
   Object.defineProperty(navigator, 'storage', {
@@ -32,6 +33,22 @@ function installOpfsRoot({ opfsRoot }: { opfsRoot: FileSystemDirectoryHandle }):
     value: {
       getDirectory: async () => opfsRoot,
     } satisfies Partial<StorageManager>,
+  });
+}
+
+function installUncontendedWebLocks(): void {
+  const request = vi.fn(async (
+    name: string,
+    options: LockOptions,
+    callback: LockGrantedCallback<unknown>,
+  ) => await callback({
+    name,
+    mode: options.mode ?? 'exclusive',
+  } as Lock));
+
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: { request } as unknown as LockManager,
   });
 }
 
@@ -75,9 +92,14 @@ async function snapshotDirectory({
 afterEach(() => {
   if (navigatorStorageDescriptor === undefined) {
     Reflect.deleteProperty(navigator, 'storage');
-    return;
+  } else {
+    Object.defineProperty(navigator, 'storage', navigatorStorageDescriptor);
   }
-  Object.defineProperty(navigator, 'storage', navigatorStorageDescriptor);
+  if (navigatorLocksDescriptor === undefined) {
+    Reflect.deleteProperty(navigator, 'locks');
+  } else {
+    Object.defineProperty(navigator, 'locks', navigatorLocksDescriptor);
+  }
 });
 
 describe('OPFS encryption passphrase changes', () => {
@@ -104,7 +126,7 @@ describe('OPFS encryption passphrase changes', () => {
         formatVersion: 1,
         sequence: 0,
         state: 'encrypted',
-        passphraseKeySlot: material.passphraseKeySlot,
+        keySlots: material.keySlots,
         activeEncryptedStoreId: encryptedStoreId,
       },
     });
@@ -113,6 +135,8 @@ describe('OPFS encryption passphrase changes', () => {
     const before = await snapshotDirectory({ directory: storesDirectory });
     const provider = new OPFSStorageProvider();
     await provider.unlockWithPassphrase({ passphrase: 'old passphrase' });
+    // The provider deliberately requires cross-tab exclusion for the state rewrite.
+    installUncontendedWebLocks();
     await provider.changePassphrase({ passphrase: 'new passphrase' });
     const after = await snapshotDirectory({ directory: storesDirectory });
 
@@ -124,7 +148,7 @@ describe('OPFS encryption passphrase changes', () => {
       throw new Error('Expected stable encrypted state');
     }
     expect(inspection.state.sequence).toBe(1);
-    expect(inspection.state.passphraseKeySlot.pbkdf2.iterations).toBeGreaterThan(0);
+    expect(inspection.state.keySlots[0]?.keyDerivation.iterations).toBeGreaterThan(0);
 
     await provider.lockEncryption();
     await expect(provider.unlockWithPassphrase({

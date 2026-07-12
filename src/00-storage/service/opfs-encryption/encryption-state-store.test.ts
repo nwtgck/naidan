@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { EncryptionStateDto } from '@/00-storage/00-dto/encryption.dto';
 import {
   MockFileSystemDirectoryHandle,
 } from '@/utils/in-memory-file-system';
+import { encodeBase64Url } from './base64-url';
 import { EncryptionStateStore } from './encryption-state-store';
 
 function createState({
@@ -16,16 +17,18 @@ function createState({
     formatVersion: 1,
     sequence,
     state: 'encrypted',
-    passphraseKeySlot: {
-      pbkdf2: {
-        salt: 'salt',
+    keySlots: [{
+      id: 'slot-id',
+      keyDerivation: {
+        type: 'pbkdf2_sha256',
+        salt: encodeBase64Url({ bytes: new Uint8Array(32).fill(1) }),
         iterations: 10,
       },
       wrappedStorageUnlockKey: {
-        nonce: 'nonce',
-        ciphertext: 'ciphertext',
+        nonce: encodeBase64Url({ bytes: new Uint8Array(12).fill(2) }),
+        ciphertext: encodeBase64Url({ bytes: new Uint8Array(48).fill(3) }),
       },
-    },
+    }],
     activeEncryptedStoreId: encryptedStoreId,
   };
 }
@@ -61,6 +64,22 @@ describe('EncryptionStateStore', () => {
       type: 'encrypted',
       state: first,
     });
+  });
+
+  it('accepts a durable state-directory removal when removeEntry reports an error', async () => {
+    const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
+    const store = new EncryptionStateStore({ storageRoot });
+    await store.writeState({
+      state: createState({ sequence: 0, encryptedStoreId: 'store-0' }),
+    });
+    const removeEntry = storageRoot.removeEntry.bind(storageRoot);
+    vi.spyOn(storageRoot, 'removeEntry').mockImplementation(async (name, options) => {
+      await removeEntry(name, options);
+      throw new Error('simulated remove error after durable deletion');
+    });
+
+    await expect(store.removeAll()).resolves.toBeUndefined();
+    await expect(store.inspect()).resolves.toEqual({ type: 'plain' });
   });
 
   it('returns to the legacy plain representation by removing all state', async () => {

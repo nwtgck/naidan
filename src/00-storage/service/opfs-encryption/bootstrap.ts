@@ -63,10 +63,12 @@ async function createUnlockedSession({
   storageRoot,
   state,
   storageUnlockKey,
+  unlockedKeySlotId,
 }: {
   storageRoot: FileSystemDirectoryHandle,
   state: Extract<EncryptionStateDto, { state: 'encrypted' }>,
   storageUnlockKey: Uint8Array,
+  unlockedKeySlotId: string,
 }): Promise<UnlockedOpfsEncryptionSession> {
   const headerStore = new EncryptedStoreHeaderStore({ storageRoot });
   const header = await headerStore.read({
@@ -95,11 +97,16 @@ async function createUnlockedSession({
     encryptedStoreId: state.activeEncryptedStoreId,
     create: false,
   });
-  const backend = new EncryptedOPFSStorageBackend({ storeDirectory, keys });
+  const backend = new EncryptedOPFSStorageBackend({
+    encryptedStoreId: state.activeEncryptedStoreId,
+    storeDirectory,
+    keys,
+  });
   await backend.init();
   return {
     state,
     storageUnlockKey,
+    unlockedKeySlotId,
     backend,
   };
 }
@@ -113,11 +120,21 @@ export async function unlockOpfsEncryptionWithPassphrase({
   state: Extract<EncryptionStateDto, { state: 'encrypted' }>,
   passphrase: string,
 }): Promise<UnlockedOpfsEncryptionSession> {
-  const storageUnlockKey = await unlockStorageUnlockKeyWithPassphrase({
-    passphraseKeySlot: state.passphraseKeySlot,
+  const { storageUnlockKey, keySlotId } = await unlockStorageUnlockKeyWithPassphrase({
+    keySlots: state.keySlots,
     passphrase,
   });
-  return await createUnlockedSession({ storageRoot, state, storageUnlockKey });
+  try {
+    return await createUnlockedSession({
+      storageRoot,
+      state,
+      storageUnlockKey,
+      unlockedKeySlotId: keySlotId,
+    });
+  } catch (error) {
+    storageUnlockKey.fill(0);
+    throw error;
+  }
 }
 
 

@@ -747,6 +747,20 @@ export class PlainOPFSStorageBackend extends IStorageProvider {
     }
   }
 
+  async removeSettingsForTransition(): Promise<void> {
+    await this.ensureRoot();
+    try {
+      await this.root!.removeEntry('settings.json');
+    } catch (error) {
+      const isNotFound = error instanceof DOMException
+        ? error.name === 'NotFoundError'
+        : error instanceof Error && error.name === 'NotFoundError';
+      if (!isNotFound) {
+        throw error;
+      }
+    }
+  }
+
   async clearAll(): Promise<void> {
     await this.ensureRoot();
     for await (const key of this.root!.keys()) {

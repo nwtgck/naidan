@@ -191,25 +191,25 @@ function createStat({
 
 class EncryptedDirectoryFileHandle implements WeshFileHandle {
   constructor({
-    store,
-    rootDirectoryId,
-    path,
+    fileStore,
+    fileId,
+    displayPath,
     append,
   }: {
-    store: EncryptedFileSystemStore,
-    rootDirectoryId: string,
-    path: string,
+    fileStore: EncryptedFileStore,
+    fileId: string,
+    displayPath: string,
     append: boolean,
   }) {
-    this.store = store;
-    this.rootDirectoryId = rootDirectoryId;
-    this.path = path;
+    this.fileStore = fileStore;
+    this.fileId = fileId;
+    this.displayPath = displayPath;
     this.append = append;
   }
 
-  private readonly store: EncryptedFileSystemStore;
-  private readonly rootDirectoryId: string;
-  private readonly path: string;
+  private readonly fileStore: EncryptedFileStore;
+  private readonly fileId: string;
+  private readonly displayPath: string;
   private readonly append: boolean;
   private cursor = 0;
 
@@ -227,12 +227,12 @@ class EncryptedDirectoryFileHandle implements WeshFileHandle {
     const offset = requestedOffset ?? 0;
     const length = requestedLength ?? buffer.byteLength - offset;
     const readPosition = position ?? this.cursor;
-    const reader = await this.store.openFile({
-      rootDirectoryId: this.rootDirectoryId,
-      path: this.path,
+    const reader = await this.fileStore.open({
+      fileId: this.fileId,
+      mimeType: 'application/octet-stream',
     });
     if (reader === null) {
-      throw new Error(`Encrypted filesystem file is missing: ${this.path}`);
+      throw new Error(`Encrypted filesystem file is missing: ${this.displayPath}`);
     }
     try {
       const result = await reader.read({
@@ -264,17 +264,16 @@ class EncryptedDirectoryFileHandle implements WeshFileHandle {
   }): Promise<WeshWriteResult> {
     const offset = requestedOffset ?? 0;
     const length = requestedLength ?? buffer.byteLength - offset;
-    const manifest = await this.store.getFileManifest({
-      rootDirectoryId: this.rootDirectoryId,
-      path: this.path,
-    });
+    const manifest = await this.fileStore.readManifest({ fileId: this.fileId });
+    if (manifest === undefined) {
+      throw new Error(`Encrypted filesystem file is missing: ${this.displayPath}`);
+    }
     const writePosition = this.append
-      ? manifest.logicalSize
+      ? manifest.size
       : position ?? this.cursor;
     const bytes = buffer.slice(offset, offset + length);
-    await this.store.writeFileRange({
-      rootDirectoryId: this.rootDirectoryId,
-      path: this.path,
+    await this.fileStore.writeRange({
+      fileId: this.fileId,
       bytes,
       position: writePosition,
       modifiedAt: Date.now(),
@@ -289,22 +288,21 @@ class EncryptedDirectoryFileHandle implements WeshFileHandle {
   async close(): Promise<void> {}
 
   async stat(): Promise<WeshStat> {
-    const manifest = await this.store.getFileManifest({
-      rootDirectoryId: this.rootDirectoryId,
-      path: this.path,
-    });
+    const manifest = await this.fileStore.readManifest({ fileId: this.fileId });
+    if (manifest === undefined) {
+      throw new Error(`Encrypted filesystem file is missing: ${this.displayPath}`);
+    }
     return createStat({
       type: 'file',
-      size: manifest.logicalSize,
+      size: manifest.size,
       mtime: manifest.modifiedAt,
     });
   }
 
   async truncate({ size }: { size: number }): Promise<void> {
-    await this.store.truncateFile({
-      rootDirectoryId: this.rootDirectoryId,
-      path: this.path,
-      logicalSize: size,
+    await this.fileStore.truncate({
+      fileId: this.fileId,
+      size,
       modifiedAt: Date.now(),
     });
     this.cursor = Math.min(this.cursor, size);
@@ -329,14 +327,17 @@ export class EncryptedDirectoryWeshProvider implements WeshVirtualMountProvider 
         objectEncryptionKey: access.objectEncryptionKey,
         objectAddressKey: access.objectAddressKey,
       },
+      area: access.physicalArea,
     });
     const fileStore = new EncryptedFileStore({ objectStore });
+    this.fileStore = fileStore;
     this.store = new EncryptedFileSystemStore({ objectStore, fileStore });
     this.rootDirectoryId = access.rootDirectoryId;
     this.mountPath = normalizePath({ path: mountPath });
   }
 
   private readonly store: EncryptedFileSystemStore;
+  private readonly fileStore: EncryptedFileStore;
   private readonly rootDirectoryId: string;
   private readonly mountPath: string;
 
@@ -349,15 +350,42 @@ export class EncryptedDirectoryWeshProvider implements WeshVirtualMountProvider 
     mode?: number,
   }): Promise<WeshFileHandle> {
     const relativePath = this.toRelativePath({ path });
-    const existing = await this.store.tryResolve({
+    const requestedEntry = await this.store.tryResolve({
       rootDirectoryId: this.rootDirectoryId,
       path: relativePath,
     });
+    const shouldFollowRequestedEntry = (() => {
+      const entry = requestedEntry?.entry;
+      if (entry === undefined) {
+        return false;
+      }
+      switch (entry.type) {
+      case 'file':
+      case 'directory':
+        return false;
+      case 'symlink':
+        return true;
+      default: {
+        const _ex: never = entry;
+        throw new Error(`Unhandled encrypted filesystem entry: ${String(_ex)}`);
+      }
+      }
+    })();
+    const resolvedPath = shouldFollowRequestedEntry
+      ? (await this.resolveFollowingSymlinks({ path: relativePath })).path
+      : relativePath;
+    const existing = resolvedPath === relativePath
+      ? requestedEntry
+      : await this.store.tryResolve({
+        rootDirectoryId: this.rootDirectoryId,
+        path: resolvedPath,
+      });
+    let fileId: string;
     if (existing === undefined) {
       switch (flags.creation) {
       case 'always':
       case 'if-needed':
-        await this.store.createFile({
+        fileId = await this.store.createFile({
           rootDirectoryId: this.rootDirectoryId,
           path: relativePath,
           overwrite: false,
@@ -372,7 +400,7 @@ export class EncryptedDirectoryWeshProvider implements WeshVirtualMountProvider 
       }
       }
     } else {
-      requireFileEntry({ entry: existing.entry, path });
+      fileId = requireFileEntry({ entry: existing.entry, path }).fileId;
       switch (flags.creation) {
       case 'always':
         throw new Error(`Encrypted filesystem file already exists: ${path}`);
@@ -387,10 +415,9 @@ export class EncryptedDirectoryWeshProvider implements WeshVirtualMountProvider 
     }
     switch (flags.truncate) {
     case 'truncate':
-      await this.store.truncateFile({
-        rootDirectoryId: this.rootDirectoryId,
-        path: relativePath,
-        logicalSize: 0,
+      await this.fileStore.truncate({
+        fileId,
+        size: 0,
         modifiedAt: Date.now(),
       });
       break;
@@ -402,9 +429,9 @@ export class EncryptedDirectoryWeshProvider implements WeshVirtualMountProvider 
     }
     }
     return new EncryptedDirectoryFileHandle({
-      store: this.store,
-      rootDirectoryId: this.rootDirectoryId,
-      path: relativePath,
+      fileStore: this.fileStore,
+      fileId,
+      displayPath: path,
       append: shouldAppend({ append: flags.append }),
     });
   }
@@ -432,7 +459,10 @@ export class EncryptedDirectoryWeshProvider implements WeshVirtualMountProvider 
       rootDirectoryId: this.rootDirectoryId,
       path,
     });
-    for await (const entry of this.store.readDirectory({ directoryId })) {
+    for await (const entry of this.store.readDirectory({
+      rootDirectoryId: this.rootDirectoryId,
+      directoryId,
+    })) {
       yield {
         name: entry.name,
         type: entry.type,
@@ -552,7 +582,15 @@ export class EncryptedDirectoryWeshProvider implements WeshVirtualMountProvider 
     entry: Awaited<ReturnType<EncryptedFileSystemStore['resolve']>>['entry'],
   }): Promise<WeshStat> {
     if (entry === undefined) {
-      return createStat({ type: 'directory', size: 0, mtime: 0 });
+      const manifest = await this.store.getDirectoryManifest({
+        rootDirectoryId: this.rootDirectoryId,
+        directoryId: this.rootDirectoryId,
+      });
+      return createStat({
+        type: 'directory',
+        size: 0,
+        mtime: manifest.modifiedAt,
+      });
     }
     switch (entry.type) {
     case 'file': {
@@ -562,12 +600,21 @@ export class EncryptedDirectoryWeshProvider implements WeshVirtualMountProvider 
       });
       return createStat({
         type: 'file',
-        size: manifest.logicalSize,
+        size: manifest.size,
         mtime: manifest.modifiedAt,
       });
     }
-    case 'directory':
-      return createStat({ type: 'directory', size: 0, mtime: 0 });
+    case 'directory': {
+      const manifest = await this.store.getDirectoryManifest({
+        rootDirectoryId: this.rootDirectoryId,
+        directoryId: entry.directoryId,
+      });
+      return createStat({
+        type: 'directory',
+        size: 0,
+        mtime: manifest.modifiedAt,
+      });
+    }
     case 'symlink':
       return createStat({
         type: 'symlink',

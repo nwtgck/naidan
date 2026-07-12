@@ -3,7 +3,8 @@ import {
   type EncryptionStateDto,
 } from '@/00-storage/00-dto/encryption.dto';
 import { DualSlotJsonStore } from './dual-slot-json-store';
-import { isNotFoundError } from './opfs-json-file';
+import { isNotFoundError, removeDirectoryEntryIfPresent } from './opfs-json-file';
+import { assertEncryptionStateCanBeUsed } from './encryption-semantic-validation';
 
 export const ENCRYPTION_STATE_DIRECTORY_NAME = 'encryption-state';
 export const ENCRYPTED_STORES_DIRECTORY_NAME = 'encrypted-stores';
@@ -43,6 +44,7 @@ export class EncryptionStateStore {
           error: new Error('Encryption state directory contains no valid state slot'),
         };
       }
+      assertEncryptionStateCanBeUsed({ state });
       return { type: 'encrypted', state };
     } catch (error) {
       return { type: 'invalid', error };
@@ -50,6 +52,7 @@ export class EncryptionStateStore {
   }
 
   async writeState({ state }: { state: EncryptionStateDto }): Promise<void> {
+    assertEncryptionStateCanBeUsed({ state });
     const directory = await this.storageRoot.getDirectoryHandle(
       ENCRYPTION_STATE_DIRECTORY_NAME,
       { create: true },
@@ -62,13 +65,10 @@ export class EncryptionStateStore {
   }
 
   async removeAll(): Promise<void> {
-    try {
-      await this.storageRoot.removeEntry(ENCRYPTION_STATE_DIRECTORY_NAME, { recursive: true });
-    } catch (error) {
-      if (!isNotFoundError({ error })) {
-        throw error;
-      }
-    }
+    await removeDirectoryEntryIfPresent({
+      directory: this.storageRoot,
+      name: ENCRYPTION_STATE_DIRECTORY_NAME,
+    });
   }
 }
 

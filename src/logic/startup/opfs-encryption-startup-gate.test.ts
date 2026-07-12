@@ -10,8 +10,10 @@ function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 
       formatVersion: 1,
       sequence: 1,
       state: 'encrypted',
-      passphraseKeySlot: {
-        pbkdf2: {
+      keySlots: [{
+        id: 'slot-id',
+        keyDerivation: {
+          type: 'pbkdf2_sha256',
           salt: 'salt',
           iterations: 10,
         },
@@ -19,7 +21,7 @@ function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 
           nonce: 'nonce',
           ciphertext: 'ciphertext',
         },
-      },
+      }],
       activeEncryptedStoreId: 'encrypted-store',
     },
   };
@@ -38,8 +40,10 @@ function createTransitioningInspection(): Extract<OpfsEncryptionInspection, { ty
       formatVersion: 1,
       sequence: 2,
       state: 'transitioning',
-      passphraseKeySlot: {
-        pbkdf2: {
+      keySlots: [{
+        id: 'slot-id',
+        keyDerivation: {
+          type: 'pbkdf2_sha256',
           salt: 'salt',
           iterations: 10,
         },
@@ -47,7 +51,7 @@ function createTransitioningInspection(): Extract<OpfsEncryptionInspection, { ty
           nonce: 'nonce',
           ciphertext: 'ciphertext',
         },
-      },
+      }],
       operation,
     },
     operation,

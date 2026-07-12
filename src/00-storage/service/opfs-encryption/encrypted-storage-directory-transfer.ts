@@ -22,6 +22,7 @@ function createStores({ access }: { access: EncryptedDirectoryAccess }): {
       objectEncryptionKey: access.objectEncryptionKey,
       objectAddressKey: access.objectAddressKey,
     },
+    area: access.physicalArea,
   });
   const fileStore = new EncryptedFileStore({ objectStore });
   return {
@@ -66,7 +67,10 @@ export function createEncryptedStorageDirectoryTransferSource({
       if (directoryId === undefined) {
         throw new Error(`Encrypted transfer path is not a directory: ${path}`);
       }
-      for await (const entry of fileSystemStore.readDirectory({ directoryId })) {
+      for await (const entry of fileSystemStore.readDirectory({
+        rootDirectoryId: access.rootDirectoryId,
+        directoryId,
+      })) {
         switch (entry.type) {
         case 'directory':
           yield { type: 'directory', name: entry.name };
@@ -87,7 +91,7 @@ export function createEncryptedStorageDirectoryTransferSource({
           yield {
             type: 'file',
             name: entry.name,
-            size: manifest.logicalSize,
+            size: manifest.size,
             modifiedAt: manifest.modifiedAt,
             open: async () => {
               const handle = await fileStore.open({
@@ -150,6 +154,7 @@ export function createEncryptedStorageDirectoryTransferTarget({
         rootDirectoryId: access.rootDirectoryId,
         path,
         recursive: true,
+        createdAt: null,
       });
     },
     async writeFile({ path, size, modifiedAt, source, signal }) {
@@ -159,12 +164,14 @@ export function createEncryptedStorageDirectoryTransferTarget({
         rootDirectoryId: access.rootDirectoryId,
         path: `/${parts.join('/')}`,
         recursive: true,
+        createdAt: null,
       });
       await fileSystemStore.writeFile({
         rootDirectoryId: access.rootDirectoryId,
         path,
         source,
-        logicalSize: size,
+        size,
+        createdAt: null,
         modifiedAt,
         signal,
       });
@@ -174,6 +181,7 @@ export function createEncryptedStorageDirectoryTransferTarget({
         rootDirectoryId: access.rootDirectoryId,
         path,
         targetPath,
+        createdAt: null,
         modifiedAt,
       });
     },

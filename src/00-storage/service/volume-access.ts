@@ -6,6 +6,9 @@ export type StorageVolumeAccess =
   | {
       readonly type: 'encrypted_directory',
       readonly storeDirectory: FileSystemDirectoryHandle,
+      readonly encryptedStoreId: string,
+      readonly fileSystemId: string,
+      readonly physicalArea: 'durable' | 'temporary',
       readonly rootDirectoryId: string,
       readonly objectEncryptionKey: CryptoKey,
       readonly objectAddressKey: CryptoKey,

@@ -1,6 +1,7 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
+import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
 import { ensureStrings } from '@/strings';
 import { prepareForOpfsEncryptionTransition } from '@/features/opfs-encryption/prepare-for-storage-transition';
 import OpfsEncryptionSettingsPanel from './OpfsEncryptionSettingsPanel.vue';
@@ -36,15 +37,17 @@ vi.mock('@/features/opfs-encryption/prepare-for-storage-transition', () => ({
   prepareForOpfsEncryptionTransition: vi.fn(),
 }));
 
-function createEncryptedInspection() {
+function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 'encrypted' }> {
   return {
     type: 'encrypted' as const,
     state: {
       formatVersion: 1 as const,
       sequence: 0,
       state: 'encrypted' as const,
-      passphraseKeySlot: {
-        pbkdf2: {
+      keySlots: [{
+        id: 'slot-id',
+        keyDerivation: {
+          type: 'pbkdf2_sha256',
           salt: 'salt',
           iterations: 10,
         },
@@ -52,7 +55,7 @@ function createEncryptedInspection() {
           nonce: 'nonce',
           ciphertext: 'ciphertext',
         },
-      },
+      }],
       activeEncryptedStoreId: 'store-id',
     },
   };

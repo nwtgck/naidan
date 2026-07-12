@@ -1,4 +1,4 @@
-import type { PassphraseEncryptionKeySlotDto } from '@/00-storage/00-dto/encryption.dto';
+import type { EncryptionKeySlotDto } from '@/00-storage/00-dto/encryption.dto';
 
 export interface EncryptedStoreRuntimeKeys {
   readonly objectEncryptionKey: CryptoKey,
@@ -8,11 +8,12 @@ export interface EncryptedStoreRuntimeKeys {
 export interface CreatedEncryptionMaterial {
   readonly storageUnlockKey: Uint8Array,
   readonly storeRootKey: Uint8Array,
-  readonly passphraseKeySlot: PassphraseEncryptionKeySlotDto,
+  readonly keySlots: EncryptionKeySlotDto[],
 }
 
 export interface UnlockedEncryptionState {
   readonly storageUnlockKey: Uint8Array,
+  readonly unlockedKeySlotId: string,
   readonly storeRootKey: Uint8Array,
   readonly storeKeys: EncryptedStoreRuntimeKeys,
 }

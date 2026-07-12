@@ -37,13 +37,17 @@ import {
   ENCRYPTED_STORES_DIRECTORY_NAME,
   EncryptionStateStore,
 } from './encryption-state-store';
-import { isNotFoundError } from './opfs-json-file';
+import { isNotFoundError, removeDirectoryEntryIfPresent } from './opfs-json-file';
 import type { EncryptedStoreRuntimeKeys } from './types';
 
 
-const SPECIAL_FILE_SYSTEM_TYPES: readonly OpfsSpecialFileSystemType[] = [
+const DURABLE_SPECIAL_FILE_SYSTEM_TYPES: readonly OpfsSpecialFileSystemType[] = [
   'chat_wesh',
   'debug_wesh',
+];
+
+const ALL_SPECIAL_FILE_SYSTEM_TYPES: readonly OpfsSpecialFileSystemType[] = [
+  ...DURABLE_SPECIAL_FILE_SYSTEM_TYPES,
   'tmp',
 ];
 
@@ -53,6 +57,7 @@ type TransitioningEncryptionState = Extract<EncryptionStateDto, { state: 'transi
 export interface UnlockedOpfsEncryptionSession {
   readonly state: StableEncryptionState,
   readonly storageUnlockKey: Uint8Array,
+  readonly unlockedKeySlotId: string,
   readonly backend: EncryptedOPFSStorageBackend,
 }
 
@@ -506,7 +511,7 @@ async function verifyProviderCopy({
     });
   }
 
-  for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
+  for (const type of DURABLE_SPECIAL_FILE_SYSTEM_TYPES) {
     const { sourceAccess, targetAccess } = await promiseAllKeyed({
       sourceAccess: source.openSpecialFileSystemForTransition({ type, create: false }),
       targetAccess: target.openSpecialFileSystemForTransition({ type, create: false }),
@@ -534,7 +539,15 @@ async function copyProviderData({
   signal: AbortSignal | undefined,
 }): Promise<void> {
   signal?.throwIfAborted();
+  const sourceSettings = await source.loadSettings();
   await target.restore({ snapshot: await source.dump() });
+  if (sourceSettings === null) {
+    // StorageSnapshot requires Settings and dump() therefore supplies migration
+    // defaults when settings.json does not exist. A transition must preserve the
+    // absence itself so an unfinished first-run onboarding is not converted into
+    // a persisted, apparently completed configuration.
+    await target.removeSettingsForTransition();
+  }
 
   for await (const volume of source.listVolumes()) {
     signal?.throwIfAborted();
@@ -549,7 +562,7 @@ async function copyProviderData({
     });
   }
 
-  for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
+  for (const type of DURABLE_SPECIAL_FILE_SYSTEM_TYPES) {
     signal?.throwIfAborted();
     const sourceAccess = await source.openSpecialFileSystemForTransition({ type, create: false });
     if (sourceAccess === null) {
@@ -625,7 +638,7 @@ export class EncryptionTransitionCoordinator {
             formatVersion: 1,
             sequence: 0,
             state: 'transitioning',
-            passphraseKeySlot: material.passphraseKeySlot,
+            keySlots: material.keySlots,
             operation: {
               type: 'encrypting',
               phase: 'building_target',
@@ -645,6 +658,9 @@ export class EncryptionTransitionCoordinator {
             session: {
               state: stableState,
               storageUnlockKey: material.storageUnlockKey,
+              unlockedKeySlotId: material.keySlots[0]?.id ?? (() => {
+                throw new Error('Created encryption material has no keyslot');
+              })(),
               backend: target,
             },
           };
@@ -675,22 +691,23 @@ export class EncryptionTransitionCoordinator {
   }): Promise<EncryptionTransitionResult> {
     return await this.withExclusiveTransitionLock({
       run: async () => {
+        const latestState = await this.requireLatestStableStateForSession({ session });
         const target = new PlainOPFSStorageBackend();
         await target.init();
         await target.assertEncryptionTransitionSupported();
         await target.clearPlainDataForTransition();
-        for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
+        for (const type of ALL_SPECIAL_FILE_SYSTEM_TYPES) {
           await target.removeSpecialFileSystemForTransition({ type });
         }
         const transitionState: TransitioningEncryptionState = {
           formatVersion: 1,
-          sequence: session.state.sequence + 1,
+          sequence: latestState.sequence + 1,
           state: 'transitioning',
-          passphraseKeySlot: session.state.passphraseKeySlot,
+          keySlots: latestState.keySlots,
           operation: {
             type: 'decrypting',
             phase: 'building_target',
-            sourceEncryptedStoreId: session.state.activeEncryptedStoreId,
+            sourceEncryptedStoreId: latestState.activeEncryptedStoreId,
           },
         };
         try {
@@ -699,7 +716,7 @@ export class EncryptionTransitionCoordinator {
           await verifyProviderCopy({ source: session.backend, target });
           await this.updateTransitionPhase({ state: transitionState, phase: 'cleaning_up_source' });
           await this.headerStore.removeStore({
-            encryptedStoreId: session.state.activeEncryptedStoreId,
+            encryptedStoreId: latestState.activeEncryptedStoreId,
           });
           await this.removeEncryptedStoresDirectory();
           await this.stateStore.removeAll();
@@ -727,8 +744,9 @@ export class EncryptionTransitionCoordinator {
   }): Promise<EncryptionTransitionResult> {
     return await this.withExclusiveTransitionLock({
       run: async () => {
+        const latestState = await this.requireLatestStableStateForSession({ session });
         await this.removeEncryptedStoresExcept({
-          retainedStoreIds: new Set([session.state.activeEncryptedStoreId]),
+          retainedStoreIds: new Set([latestState.activeEncryptedStoreId]),
         });
         const targetEncryptedStoreId = createEncryptionOpaqueId();
         const targetStoreRootKey = crypto.getRandomValues(new Uint8Array(32));
@@ -756,13 +774,13 @@ export class EncryptionTransitionCoordinator {
         }
         const transitionState: TransitioningEncryptionState = {
           formatVersion: 1,
-          sequence: session.state.sequence + 1,
+          sequence: latestState.sequence + 1,
           state: 'transitioning',
-          passphraseKeySlot: session.state.passphraseKeySlot,
+          keySlots: latestState.keySlots,
           operation: {
             type: 'reencrypting',
             phase: 'building_target',
-            sourceEncryptedStoreId: session.state.activeEncryptedStoreId,
+            sourceEncryptedStoreId: latestState.activeEncryptedStoreId,
             targetEncryptedStoreId,
           },
         };
@@ -772,7 +790,7 @@ export class EncryptionTransitionCoordinator {
           await verifyProviderCopy({ source: session.backend, target });
           await this.updateTransitionPhase({ state: transitionState, phase: 'cleaning_up_source' });
           await this.headerStore.removeStore({
-            encryptedStoreId: session.state.activeEncryptedStoreId,
+            encryptedStoreId: latestState.activeEncryptedStoreId,
           });
           const stableState = await this.writeStableState({
             previousState: transitionState,
@@ -783,6 +801,7 @@ export class EncryptionTransitionCoordinator {
             session: {
               state: stableState,
               storageUnlockKey: session.storageUnlockKey,
+              unlockedKeySlotId: session.unlockedKeySlotId,
               backend: target,
             },
           };
@@ -808,13 +827,18 @@ export class EncryptionTransitionCoordinator {
     passphrase: string,
     signal: AbortSignal | undefined,
   }): Promise<EncryptionTransitionResult> {
-    const storageUnlockKey = await unlockStorageUnlockKeyWithPassphrase({
-      passphraseKeySlot: state.passphraseKeySlot,
+    const { storageUnlockKey, keySlotId } = await unlockStorageUnlockKeyWithPassphrase({
+      keySlots: state.keySlots,
       passphrase,
     });
     let retainedByEncryptedSession = false;
     try {
-      const result = await this.resume({ state, storageUnlockKey, signal });
+      const result = await this.resume({
+        state,
+        storageUnlockKey,
+        unlockedKeySlotId: keySlotId,
+        signal,
+      });
       retainedByEncryptedSession = result.type === 'encrypted';
       return result;
     } finally {
@@ -828,10 +852,12 @@ export class EncryptionTransitionCoordinator {
   private async resume({
     state,
     storageUnlockKey,
+    unlockedKeySlotId,
     signal,
   }: {
     state: TransitioningEncryptionState,
     storageUnlockKey: Uint8Array,
+    unlockedKeySlotId: string,
     signal: AbortSignal | undefined,
   }): Promise<EncryptionTransitionResult> {
     return await this.withExclusiveTransitionLock({
@@ -852,6 +878,7 @@ export class EncryptionTransitionCoordinator {
               session: {
                 state: stableState,
                 storageUnlockKey,
+                unlockedKeySlotId,
                 backend: target,
               },
             };
@@ -878,7 +905,7 @@ export class EncryptionTransitionCoordinator {
               });
               await target.assertEncryptionTransitionSupported();
               await target.clearPlainDataForTransition();
-              for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
+              for (const type of ALL_SPECIAL_FILE_SYSTEM_TYPES) {
                 await target.removeSpecialFileSystemForTransition({ type });
               }
               await copyProviderData({ source, target, signal });
@@ -948,6 +975,7 @@ export class EncryptionTransitionCoordinator {
               session: {
                 state: stableState,
                 storageUnlockKey,
+                unlockedKeySlotId,
                 backend: target,
               },
             };
@@ -1009,7 +1037,7 @@ export class EncryptionTransitionCoordinator {
     }
     }
     await source.clearPlainDataForTransition();
-    for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
+    for (const type of ALL_SPECIAL_FILE_SYSTEM_TYPES) {
       await source.removeSpecialFileSystemForTransition({ type });
     }
     return await this.writeStableState({
@@ -1049,7 +1077,7 @@ export class EncryptionTransitionCoordinator {
       formatVersion: 1,
       sequence: previousState.sequence + 1,
       state: 'encrypted',
-      passphraseKeySlot: previousState.passphraseKeySlot,
+      keySlots: previousState.keySlots,
       activeEncryptedStoreId,
     };
     await this.stateStore.writeState({ state: stableState });
@@ -1101,7 +1129,7 @@ export class EncryptionTransitionCoordinator {
       originalError,
       rollback: async () => {
         await target.clearPlainDataForTransition();
-        for (const type of SPECIAL_FILE_SYSTEM_TYPES) {
+        for (const type of ALL_SPECIAL_FILE_SYSTEM_TYPES) {
           await target.removeSpecialFileSystemForTransition({ type });
         }
         await this.writeStableState({
@@ -1233,10 +1261,10 @@ export class EncryptionTransitionCoordinator {
         formatVersion: 1,
         sequence: 0,
         encryptedStoreId,
-        encryptionSuite: 'aes_256_gcm_chunked_v1',
         wrappedStoreRootKey: await wrapStoreRootKey({
           storageUnlockKey,
           storeRootKey,
+          encryptedStoreId,
         }),
       },
     });
@@ -1248,7 +1276,7 @@ export class EncryptionTransitionCoordinator {
       encryptedStoreId,
       create: false,
     });
-    const backend = new EncryptedOPFSStorageBackend({ storeDirectory, keys });
+    const backend = new EncryptedOPFSStorageBackend({ encryptedStoreId, storeDirectory, keys });
     await backend.initializeNewStore();
     return backend;
   }
@@ -1278,7 +1306,7 @@ export class EncryptionTransitionCoordinator {
       encryptedStoreId,
       create: false,
     });
-    const backend = new EncryptedOPFSStorageBackend({ storeDirectory, keys });
+    const backend = new EncryptedOPFSStorageBackend({ encryptedStoreId, storeDirectory, keys });
     await backend.init();
     return backend;
   }
@@ -1304,18 +1332,33 @@ export class EncryptionTransitionCoordinator {
       if (retainedStoreIds.has(entry.name)) {
         continue;
       }
-      await storesDirectory.removeEntry(entry.name, { recursive: true });
+      await removeDirectoryEntryIfPresent({
+        directory: storesDirectory,
+        name: entry.name,
+      });
     }
   }
 
   private async removeEncryptedStoresDirectory(): Promise<void> {
-    try {
-      await this.storageRoot.removeEntry(ENCRYPTED_STORES_DIRECTORY_NAME, { recursive: true });
-    } catch (error) {
-      if (!isNotFoundError({ error })) {
-        throw error;
-      }
+    await removeDirectoryEntryIfPresent({
+      directory: this.storageRoot,
+      name: ENCRYPTED_STORES_DIRECTORY_NAME,
+    });
+  }
+
+  private async requireLatestStableStateForSession({
+    session,
+  }: {
+    session: UnlockedOpfsEncryptionSession,
+  }): Promise<StableEncryptionState> {
+    const inspection = await this.stateStore.inspect();
+    if (inspection.type !== 'encrypted' || inspection.state.state !== 'encrypted') {
+      throw new Error('Encrypted storage state changed in another tab');
     }
+    if (inspection.state.activeEncryptedStoreId !== session.state.activeEncryptedStoreId) {
+      throw new Error('Active encrypted store changed in another tab');
+    }
+    return inspection.state;
   }
 
   private async withExclusiveTransitionLock<T>({
