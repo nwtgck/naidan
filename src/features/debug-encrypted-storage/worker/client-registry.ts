@@ -12,6 +12,9 @@ export function trackDebugEncryptedStorageWorkerClient({
     async loadNode({ ref }) {
       return await client.loadNode({ ref });
     },
+    async loadPersistedJson({ ref }) {
+      return await client.loadPersistedJson({ ref });
+    },
     async search({ query }) {
       return await client.search({ query });
     },

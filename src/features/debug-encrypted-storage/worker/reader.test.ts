@@ -8,7 +8,7 @@ import {
   deriveEncryptedStoreRuntimeKeys,
 } from '@/00-storage/service/opfs-encryption/encryption-key-manager';
 import { EncryptedObjectStore } from '@/00-storage/service/opfs-encryption/encrypted-object-store';
-import { EncryptedStorageDebugReader } from './encrypted-storage-debug-reader';
+import { EncryptedStorageDebugReader } from './reader';
 
 function streamBytes({ bytes }: { bytes: Uint8Array }): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
@@ -156,6 +156,39 @@ describe('EncryptedStorageDebugReader', () => {
       largeText: expect.stringContaining('characters omitted'),
     });
     expect(JSON.stringify(node.value).length).toBeLessThan(JSON.stringify(value).length);
+
+    const stored = await reader.loadPersistedJson({
+      ref: {
+        type: 'logical_object',
+        area: 'durable',
+        namespace: 'debug_large_json',
+        key: 'large',
+      },
+    });
+    expect(stored).toEqual({
+      json: JSON.stringify(value),
+      parseStatus: 'valid',
+      source: 'decrypted_persisted_bytes',
+    });
+    expect(stored?.json).not.toContain('$debugInspectorTruncated');
+  });
+
+
+  it('does not present binary file chunks as persisted JSON DTOs', async () => {
+    const { reader, objectStore } = await createContext();
+    await objectStore.write({
+      locator: { namespace: 'file_chunk', key: 'binary-chunk' },
+      plaintext: new Uint8Array([0, 1, 2, 255]),
+    });
+
+    await expect(reader.loadPersistedJson({
+      ref: {
+        type: 'logical_object',
+        area: 'durable',
+        namespace: 'file_chunk',
+        key: 'binary-chunk',
+      },
+    })).resolves.toBeUndefined();
   });
 
   it('supports explicit temporary locators and reverse navigation from physical objects', async () => {

@@ -44,6 +44,11 @@ function createClient({
         ref: cloneEncryptedStorageDebugNodeRef({ ref }),
       });
     },
+    async loadPersistedJson({ ref }) {
+      return await remote.loadPersistedJson({
+        ref: cloneEncryptedStorageDebugNodeRef({ ref }),
+      });
+    },
     async search({ query }) {
       return await remote.search({ query });
     },

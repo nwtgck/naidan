@@ -1,5 +1,5 @@
-import { EncryptedStorageDebugReader } from '@/00-storage/service/opfs-encryption/debug/encrypted-storage-debug-reader';
-import type { EncryptedStorageDebugCapability } from '@/00-storage/service/opfs-encryption/debug/encrypted-storage-debug-types';
+import type { EncryptedStorageDebugCapability } from '@/00-storage/service/opfs-encryption/encrypted-storage-debug-capability';
+import { EncryptedStorageDebugReader } from './reader';
 import type { IDebugEncryptedStorageWorker } from './types';
 
 export function createDebugEncryptedStorageWorker(): IDebugEncryptedStorageWorker {
@@ -26,6 +26,10 @@ export function createDebugEncryptedStorageWorker(): IDebugEncryptedStorageWorke
 
     async loadNode({ ref }) {
       return await requireReader().loadNode({ ref });
+    },
+
+    async loadPersistedJson({ ref }) {
+      return await requireReader().loadPersistedJson({ ref });
     },
 
     async search({ query }) {

@@ -33,7 +33,7 @@ import {
   type OpfsSpecialFileSystemType,
 } from './opfs/opfs-special-file-system';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
-import type { EncryptedStorageDebugCapability } from './opfs-encryption/debug/encrypted-storage-debug-types';
+import type { EncryptedStorageDebugCapability } from './opfs-encryption/encrypted-storage-debug-capability';
 import type {
   EncryptionTransitionResult,
   UnlockedOpfsEncryptionSession,

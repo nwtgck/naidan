@@ -1,3 +1,10 @@
+/* eslint-disable local-rules/enforce-dependency-directions --
+ * Encrypted Storage Inspector is an intentional persistence-debugging exception.
+ * It imports storage DTO schemas and low-level encrypted-store readers directly
+ * so the UI can show the exact persisted structures instead of a storage-layer
+ * projection that could hide, rename, or normalize fields. Keep this exception
+ * confined to this read-only debug reader.
+ */
 import {
   EncryptedBinaryShardIndexSchemaDto,
   EncryptedChatGroupShardIndexSchemaDto,
@@ -27,16 +34,17 @@ import {
   EncryptionStateStore,
   type EncryptionStateInspection,
 } from '@/00-storage/service/opfs-encryption/encryption-state-store';
+import type { EncryptedStorageDebugCapability } from '@/00-storage/service/opfs-encryption/encrypted-storage-debug-capability';
 import type {
-  EncryptedStorageDebugCapability,
   EncryptedStorageDebugField,
   EncryptedStorageDebugIntegrityFinding,
   EncryptedStorageDebugIntegrityReport,
   EncryptedStorageDebugNode,
   EncryptedStorageDebugNodeRef,
+  EncryptedStorageDebugPersistedJson,
   EncryptedStorageDebugReference,
   EncryptedStorageDebugSearchResult,
-} from './encrypted-storage-debug-types';
+} from './types';
 
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
 const KNOWN_FILE_SYSTEMS = [
@@ -190,6 +198,47 @@ function parseJsonBytes({ bytes }: { bytes: Uint8Array }): unknown {
   return JSON.parse(UTF8_DECODER.decode(bytes));
 }
 
+function decodePersistedJsonBytes({
+  bytes,
+}: {
+  bytes: Uint8Array,
+}): EncryptedStorageDebugPersistedJson | undefined {
+  let json: string;
+  try {
+    json = UTF8_DECODER.decode(bytes);
+  } catch {
+    return undefined;
+  }
+  let parseStatus: EncryptedStorageDebugPersistedJson['parseStatus'];
+  try {
+    JSON.parse(json);
+    parseStatus = 'valid';
+  } catch {
+    parseStatus = 'invalid';
+  }
+  return {
+    json,
+    parseStatus,
+    source: 'decrypted_persisted_bytes',
+  };
+}
+
+function createSelectedPersistedDtoJson({
+  value,
+}: {
+  value: unknown,
+}): EncryptedStorageDebugPersistedJson {
+  const json = JSON.stringify(value);
+  if (json === undefined) {
+    throw new Error('Encrypted Storage Inspector could not serialize the selected persisted DTO');
+  }
+  return {
+    json,
+    parseStatus: 'valid',
+    source: 'selected_persisted_dto',
+  };
+}
+
 function tryParseJsonBytes({ bytes }: { bytes: Uint8Array }): unknown {
   try {
     return parseJsonBytes({ bytes });
@@ -207,6 +256,11 @@ const DEBUG_PREVIEW_MAX_NODES = 5_000;
 const DEBUG_PREVIEW_MAX_STRING_LENGTH = 16_384;
 const DEBUG_DIRECTORY_CHILD_REFERENCE_LIMIT = 500;
 
+/**
+ * Builds a bounded runtime-only presentation model for summaries and derived
+ * details. This representation is never the persisted DTO and must not be
+ * displayed as though its synthetic fields were stored by Naidan.
+ */
 function createDebugValuePreview({ value }: { value: unknown }): {
   readonly value: unknown,
   readonly truncated: boolean,
@@ -245,7 +299,7 @@ function createDebugValuePreview({ value }: { value: unknown }): {
         truncated = true;
       }
       return {
-        type: 'Uint8Array',
+        $debugInspectorRuntimeType: 'Uint8Array',
         byteLength: current.byteLength,
         hexPreview: [...current.subarray(0, previewLength)]
           .map(byte => byte.toString(16).padStart(2, '0'))
@@ -353,6 +407,122 @@ export class EncryptedStorageDebugReader {
       return this.loadDirectoryNode({ ref });
     case 'file':
       return this.loadFileNode({ ref });
+    default: {
+      const _ex: never = ref;
+      throw new Error(`Unhandled encrypted storage debug node: ${String(_ex)}`);
+    }
+    }
+  }
+
+  /**
+   * Loads the persisted JSON independently from the runtime node preview.
+   *
+   * The Inspector is a persistence and protocol debugging tool. Exact stored
+   * DTO structure is therefore preferred over derived summaries. Runtime-only
+   * values such as Uint8Array previews remain available on the node, but never
+   * replace this persisted representation.
+   */
+  async loadPersistedJson({
+    ref,
+  }: {
+    ref: EncryptedStorageDebugNodeRef,
+  }): Promise<EncryptedStorageDebugPersistedJson | undefined> {
+    switch (ref.type) {
+    case 'root':
+      return undefined;
+    case 'control_state': {
+      const inspection = await new EncryptionStateStore({
+        storageRoot: this.capability.storageRoot,
+      }).inspect();
+      switch (inspection.type) {
+      case 'plain':
+      case 'invalid':
+        return undefined;
+      case 'encrypted':
+        return createSelectedPersistedDtoJson({ value: inspection.state });
+      default: {
+        const _ex: never = inspection;
+        throw new Error(`Unhandled encryption state inspection: ${String(_ex)}`);
+      }
+      }
+    }
+    case 'store_header': {
+      const header = await new EncryptedStoreHeaderStore({
+        storageRoot: this.capability.storageRoot,
+      }).read({ encryptedStoreId: this.capability.encryptedStoreId });
+      return header === undefined
+        ? undefined
+        : createSelectedPersistedDtoJson({ value: header });
+    }
+    case 'store_manifest': {
+      const bytes = await this.durableObjectStore.read({
+        locator: { namespace: 'singleton', key: 'store_manifest' },
+      });
+      return bytes === undefined ? undefined : decodePersistedJsonBytes({ bytes });
+    }
+    case 'collection': {
+      const manifest = await this.readManifest();
+      const type = NaidanEncryptedStoreManifestSchemaDto.shape.collections.element.shape.type.parse(ref.collectionType);
+      return createSelectedPersistedDtoJson({ value: getCollection({ manifest, type }) });
+    }
+    case 'logical_object': {
+      if (ref.namespace === 'file_chunk') {
+        return undefined;
+      }
+      const bytes = await this.getObjectStore({ area: ref.area }).read({
+        locator: { namespace: ref.namespace, key: ref.key },
+      });
+      return bytes === undefined ? undefined : decodePersistedJsonBytes({ bytes });
+    }
+    case 'physical_object': {
+      const store = this.getObjectStore({ area: ref.area });
+      const address: EncryptedObjectAddress = {
+        area: ref.area,
+        objectId: ref.objectId,
+        shardId: ref.shardId,
+        path: `${getPhysicalAreaDirectoryName({ area: ref.area })}/${ref.shardId}/${ref.objectId}.enc`,
+      };
+      const physical = await store.readPhysical({ address });
+      if (physical === undefined) {
+        return undefined;
+      }
+      const plaintext = await store.decryptPhysical({ address, physical });
+      if (plaintext === undefined) {
+        return undefined;
+      }
+      const persisted = decodePersistedJsonBytes({ bytes: plaintext });
+      if (persisted === undefined) {
+        return undefined;
+      }
+      switch (persisted.parseStatus) {
+      case 'valid':
+        return persisted;
+      case 'invalid':
+        return undefined;
+      default: {
+        const _ex: never = persisted.parseStatus;
+        throw new Error(`Unhandled persisted JSON parse status: ${String(_ex)}`);
+      }
+      }
+    }
+    case 'file_system': {
+      const bytes = await this.getObjectStore({ area: ref.area }).read({
+        locator: { namespace: 'file_system_descriptor', key: ref.fileSystemId },
+      });
+      return bytes === undefined ? undefined : decodePersistedJsonBytes({ bytes });
+    }
+    case 'directory': {
+      const bytes = await this.getObjectStore({ area: ref.area }).read({
+        locator: { namespace: 'directory_manifest', key: ref.directoryId },
+      });
+      return bytes === undefined ? undefined : decodePersistedJsonBytes({ bytes });
+    }
+    case 'file': {
+      const bytes = await this.getObjectStore({ area: ref.area }).read({
+        locator: { namespace: 'file_manifest', key: ref.fileId },
+      });
+      return bytes === undefined ? undefined : decodePersistedJsonBytes({ bytes });
+    }
     default: {
       const _ex: never = ref;
       throw new Error(`Unhandled encrypted storage debug node: ${String(_ex)}`);

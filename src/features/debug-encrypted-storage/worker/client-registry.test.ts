@@ -9,6 +9,7 @@ import type { DebugEncryptedStorageWorkerClient } from './types';
 function createClient(): DebugEncryptedStorageWorkerClient {
   return {
     loadNode: vi.fn(),
+    loadPersistedJson: vi.fn(),
     search: vi.fn(),
     scanIntegrity: vi.fn(),
     dispose: vi.fn(async () => undefined),

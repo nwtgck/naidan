@@ -6,7 +6,7 @@ import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import { PlainOPFSStorageBackend } from './opfs/plain-opfs-storage-backend';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
-import type { EncryptedStorageDebugCapability } from './opfs-encryption/debug/encrypted-storage-debug-types';
+import type { EncryptedStorageDebugCapability } from './opfs-encryption/encrypted-storage-debug-capability';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
 import {
   notifyRegisteredOpfsExternalTransitionSettled,

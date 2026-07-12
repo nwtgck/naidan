@@ -20,6 +20,7 @@ function createResources() {
         warnings: [],
       };
     }),
+    loadPersistedJson: vi.fn(async () => undefined),
     search: vi.fn(async () => []),
     scanIntegrity: vi.fn(async () => ({
       scannedPhysicalObjects: 0,

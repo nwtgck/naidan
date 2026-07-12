@@ -19,8 +19,14 @@ describe('hosted debug encrypted storage Worker client', () => {
         warnings: [],
       };
     });
+    const loadPersistedJson = vi.fn(async ({ ref }) => {
+      expect(isProxy(ref)).toBe(false);
+      expect(() => structuredClone(ref)).not.toThrow();
+      return undefined;
+    });
     const remote = {
       loadNode,
+      loadPersistedJson,
     } as unknown as Comlink.Remote<IDebugEncryptedStorageWorker>;
     const client = TEST_ONLY.createClient({
       remote,
@@ -34,7 +40,9 @@ describe('hosted debug encrypted storage Worker client', () => {
     });
 
     await client.loadNode({ ref });
+    await client.loadPersistedJson({ ref });
 
     expect(loadNode).toHaveBeenCalledOnce();
+    expect(loadPersistedJson).toHaveBeenCalledOnce();
   });
 });

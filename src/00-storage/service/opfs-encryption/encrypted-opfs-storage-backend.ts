@@ -94,7 +94,7 @@ import { EncryptedFileSystemStore } from './encrypted-file-system-store';
 import { createEncryptedStorageDirectoryTransferTarget } from './encrypted-storage-directory-transfer';
 import { createEncryptionOpaqueId } from './encryption-key-manager';
 import type { EncryptedStoreRuntimeKeys } from './types';
-import type { EncryptedStorageDebugCapability } from './debug/encrypted-storage-debug-types';
+import type { EncryptedStorageDebugCapability } from './encrypted-storage-debug-capability';
 
 const UTF8 = new TextEncoder();
 
