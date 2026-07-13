@@ -42,8 +42,8 @@ import {
 } from './opfs/opfs-special-file-system';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
 import {
-  createEncryptedStorageDebugSession,
-  type EncryptedStorageDebugSession,
+  createOpfsEncryptionDebugSession,
+  type OpfsEncryptionDebugSession,
 } from './opfs-encryption/inspection';
 import type {
   EncryptionTransitionResult,
@@ -280,11 +280,11 @@ export class OPFSStorageProvider extends IStorageProvider {
 
 
 
-  async createEncryptedStorageDebugSession(): Promise<EncryptedStorageDebugSession> {
+  async createOpfsEncryptionDebugSession(): Promise<OpfsEncryptionDebugSession> {
     return await this.storageSessionLock.run({ run: async () => {
       const session = this.requireUnlockedEncryptionSession();
       const storageRoot = await getOrCreateStorageRoot();
-      return await createEncryptedStorageDebugSession({ storageRoot, session });
+      return await createOpfsEncryptionDebugSession({ storageRoot, session });
     } });
   }
 

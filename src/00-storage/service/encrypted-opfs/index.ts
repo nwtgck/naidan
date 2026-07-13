@@ -5,6 +5,15 @@ export {
   readEncryptedOpfsFileSystemId,
 } from './api';
 export type { EncryptedOpfsInspection } from './api';
+export { createEncryptedOpfsInspectionReader } from './inspection';
+export type {
+  EncryptedOpfsInspectionOverview,
+  EncryptedOpfsInspectionReader,
+  EncryptedOpfsInspectedObject,
+  EncryptedOpfsPhysicalObjectEntry,
+  EncryptedOpfsPhysicalObjectPage,
+  EncryptedOpfsSuperblockSlotInspection,
+} from './inspection';
 export { collectEncryptedOpfsGarbage } from './garbage-collector';
 export type { EncryptedOpfsGarbageCollectionResult } from './garbage-collector';
 

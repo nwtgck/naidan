@@ -2,19 +2,19 @@ import { ref } from 'vue';
 
 const isOpen = ref(false);
 
-export function useDebugEncryptedStorageInspector() {
-  function openDebugEncryptedStorageInspector(): void {
+export function useDebugEncryptedOpfsInspector() {
+  function openDebugEncryptedOpfsInspector(): void {
     isOpen.value = true;
   }
 
-  function closeDebugEncryptedStorageInspector(): void {
+  function closeDebugEncryptedOpfsInspector(): void {
     isOpen.value = false;
   }
 
   return {
-    isDebugEncryptedStorageInspectorOpen: isOpen,
-    openDebugEncryptedStorageInspector,
-    closeDebugEncryptedStorageInspector,
+    isDebugEncryptedOpfsInspectorOpen: isOpen,
+    openDebugEncryptedOpfsInspector,
+    closeDebugEncryptedOpfsInspector,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.

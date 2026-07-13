@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   abortAllChatProcessingForStorageTransition: vi.fn(),
-  closeDebugEncryptedStorageInspector: vi.fn(),
+  closeDebugEncryptedOpfsInspector: vi.fn(),
+  closeDebugOpfsEncryptionInspector: vi.fn(),
   closeFileExplorer: vi.fn(),
   disposeFileExplorerClients: vi.fn<() => Promise<void>>(),
   disposeWeshClients: vi.fn<() => Promise<void>>(),
@@ -13,9 +14,15 @@ vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
   abortAllChatProcessingForStorageTransition: mocks.abortAllChatProcessingForStorageTransition,
 }));
 
-vi.mock('@/features/debug-encrypted-storage/composables/useDebugEncryptedStorageInspector', () => ({
-  useDebugEncryptedStorageInspector: () => ({
-    closeDebugEncryptedStorageInspector: mocks.closeDebugEncryptedStorageInspector,
+vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector', () => ({
+  useDebugEncryptedOpfsInspector: () => ({
+    closeDebugEncryptedOpfsInspector: mocks.closeDebugEncryptedOpfsInspector,
+  }),
+}));
+
+vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector', () => ({
+  useDebugOpfsEncryptionInspector: () => ({
+    closeDebugOpfsEncryptionInspector: mocks.closeDebugOpfsEncryptionInspector,
   }),
 }));
 
@@ -41,8 +48,11 @@ beforeEach(() => {
   mocks.abortAllChatProcessingForStorageTransition.mockImplementation(() => {
     mocks.calls.push('abort-chat');
   });
-  mocks.closeDebugEncryptedStorageInspector.mockImplementation(() => {
-    mocks.calls.push('close-inspector');
+  mocks.closeDebugEncryptedOpfsInspector.mockImplementation(() => {
+    mocks.calls.push('close-encrypted-opfs-inspector');
+  });
+  mocks.closeDebugOpfsEncryptionInspector.mockImplementation(() => {
+    mocks.calls.push('close-opfs-encryption-inspector');
   });
   mocks.closeFileExplorer.mockImplementation(() => {
     mocks.calls.push('close-file-explorer');
@@ -60,7 +70,8 @@ describe('prepareForOpfsEncryptionTransition', () => {
     await prepareForOpfsEncryptionTransition();
 
     expect(mocks.abortAllChatProcessingForStorageTransition).toHaveBeenCalledOnce();
-    expect(mocks.closeDebugEncryptedStorageInspector).toHaveBeenCalledOnce();
+    expect(mocks.closeDebugEncryptedOpfsInspector).toHaveBeenCalledOnce();
+    expect(mocks.closeDebugOpfsEncryptionInspector).toHaveBeenCalledOnce();
     expect(mocks.closeFileExplorer).toHaveBeenCalledOnce();
     expect(mocks.disposeFileExplorerClients).toHaveBeenCalledOnce();
     expect(mocks.disposeWeshClients).toHaveBeenCalledOnce();

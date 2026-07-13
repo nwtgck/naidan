@@ -8,7 +8,7 @@ import { NaidanOpfsStorageBackend } from './naidan-opfs/backend';
 import { HostVolumeDB } from './opfs/host-volume-db';
 import { createNativeOpfsFileSystemSession } from './storage-file-system/native-opfs';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
-import type { EncryptedStorageDebugSession } from './opfs-encryption/inspection';
+import type { OpfsEncryptionDebugSession } from './opfs-encryption/inspection';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
 import {
   notifyRegisteredOpfsExternalTransitionSettled,
@@ -480,8 +480,8 @@ export class StorageService {
   }
 
 
-  async createEncryptedStorageDebugSession(): Promise<EncryptedStorageDebugSession> {
-    return await this.getOpfsProvider().createEncryptedStorageDebugSession();
+  async createOpfsEncryptionDebugSession(): Promise<OpfsEncryptionDebugSession> {
+    return await this.getOpfsProvider().createOpfsEncryptionDebugSession();
   }
 
   async retryPlainOpfsInitializationAfterEncryptionRecovery(): Promise<void> {

@@ -225,6 +225,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       expect.objectContaining({
         storageType: 'local',
       }),
+      undefined,
     );
     expect(init.mock.calls[0]?.[0]).not.toHaveProperty('naidanSysfsRemoteReader');
 

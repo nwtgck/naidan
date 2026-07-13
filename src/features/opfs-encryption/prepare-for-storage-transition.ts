@@ -13,20 +13,23 @@ import { promiseAllKeyed } from '@/utils/promise';
 export async function prepareForOpfsEncryptionTransition(): Promise<void> {
   const {
     chatProcessing,
-    debugEncryptedStorage,
+    debugEncryptedOpfs,
+    debugOpfsEncryption,
     fileExplorer,
     fileExplorerClients,
     weshClients,
   } = await promiseAllKeyed({
     chatProcessing: import('@/composables/chat/chat-scoped/chat-processing-abort'),
-    debugEncryptedStorage: import('@/features/debug-encrypted-storage/composables/useDebugEncryptedStorageInspector'),
+    debugEncryptedOpfs: import('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector'),
+    debugOpfsEncryption: import('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector'),
     fileExplorer: import('@/features/file-explorer/composables/useFileExplorerModal'),
     fileExplorerClients: import('@/features/file-explorer/worker/client-registry'),
     weshClients: import('@/features/wesh/worker/client-registry'),
   });
 
   chatProcessing.abortAllChatProcessingForStorageTransition();
-  debugEncryptedStorage.useDebugEncryptedStorageInspector().closeDebugEncryptedStorageInspector();
+  debugEncryptedOpfs.useDebugEncryptedOpfsInspector().closeDebugEncryptedOpfsInspector();
+  debugOpfsEncryption.useDebugOpfsEncryptionInspector().closeDebugOpfsEncryptionInspector();
   fileExplorer.useFileExplorerModal().closeFileExplorer();
   await nextTick();
   await promiseAllKeyed({

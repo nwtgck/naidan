@@ -30,6 +30,8 @@ vi.mock('@/composables/usePrint', () => ({
 
 const isSearchOpen = ref(false);
 const isRecentOpen = ref(false);
+const isDebugEncryptedOpfsInspectorOpen = ref(false);
+const isDebugOpfsEncryptionInspectorOpen = ref(false);
 
 vi.mock('@/features/global-search/composables/useGlobalSearch', () => ({
   useGlobalSearch: () => ({
@@ -40,6 +42,18 @@ vi.mock('@/features/global-search/composables/useGlobalSearch', () => ({
 vi.mock('@/composables/useRecentChats', () => ({
   useRecentChats: () => ({
     isRecentOpen,
+  }),
+}));
+
+vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector', () => ({
+  useDebugEncryptedOpfsInspector: () => ({
+    isDebugEncryptedOpfsInspectorOpen,
+  }),
+}));
+
+vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector', () => ({
+  useDebugOpfsEncryptionInspector: () => ({
+    isDebugOpfsEncryptionInspectorOpen,
   }),
 }));
 
@@ -72,6 +86,16 @@ vi.mock('@/features/file-explorer/components/FileExplorerModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
   default: { template: '<div />' },
+}));
+vi.mock('@/features/debug-encrypted-opfs/components/EncryptedOpfsInspectorModal.vue', () => ({
+  __esModule: true,
+  __isTeleport: false,
+  default: { template: '<div data-testid="encrypted-opfs-inspector" />' },
+}));
+vi.mock('@/features/debug-opfs-encryption/components/OpfsEncryptionInspectorModal.vue', () => ({
+  __esModule: true,
+  __isTeleport: false,
+  default: { template: '<div data-testid="opfs-encryption-inspector" />' },
 }));
 vi.mock('@/components/PWAManager.vue', () => ({
   __esModule: true,
@@ -109,6 +133,8 @@ describe('AppAuxiliaryUi', () => {
     isReady.mockResolvedValue(undefined);
     isSearchOpen.value = false;
     isRecentOpen.value = false;
+    isDebugEncryptedOpfsInspectorOpen.value = false;
+    isDebugOpfsEncryptionInspectorOpen.value = false;
     vi.mocked(useRoute).mockReturnValue(route as ReturnType<typeof useRoute>);
     vi.mocked(useRouter).mockReturnValue({ push, isReady } as unknown as ReturnType<typeof useRouter>);
   });

@@ -20,8 +20,8 @@ export const STANDALONE_FACADES = [
     standalonePath: 'src/features/wesh/worker/client-standalone.ts',
   },
   {
-    facadePath: '@/features/debug-encrypted-storage/worker/client',
-    standalonePath: 'src/features/debug-encrypted-storage/worker/client-standalone.ts',
+    facadePath: '@/features/debug-encrypted-opfs/worker/client',
+    standalonePath: 'src/features/debug-encrypted-opfs/worker/client-standalone.ts',
   },
   {
     facadePath: '@/features/global-search/worker/client',
@@ -53,7 +53,7 @@ export const STANDALONE_WORKER_CLIENT_FACADES = [
   '@/features/advanced-text-editor-v3/worker/client',
   '@/features/highlight/worker/client',
   '@/features/wesh/worker/client',
-  '@/features/debug-encrypted-storage/worker/client',
+  '@/features/debug-encrypted-opfs/worker/client',
   '@/features/global-search/worker/client',
   '@/features/file-explorer/worker/client',
   '@/features/transformers-js/worker/client',
