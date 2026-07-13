@@ -8,6 +8,8 @@ import {
   encryptedOpfsNamespaceResultSchema,
   encryptedOpfsPhysicalObjectPageSchema,
   encryptedOpfsResolvedNodeSchema,
+  encryptedOpfsResolvedPathSchema,
+  encryptedOpfsSuperblockSlotSchema,
   type EncryptedOpfsInspectionWorkerClient,
   type IEncryptedOpfsInspectionWorker,
 } from './types';
@@ -63,10 +65,22 @@ function createClient({
       const result = await remoteWorker.inspectObject({ objectId, binaryPreviewByteLength });
       return result === undefined ? undefined : encryptedOpfsInspectedObjectViewSchema.parse(result);
     },
+    async inspectSuperblockSlot({ slot, binaryPreviewByteLength }) {
+      return encryptedOpfsSuperblockSlotSchema.parse(
+        await remoteWorker.inspectSuperblockSlot({ slot, binaryPreviewByteLength }),
+      );
+    },
     async readNode({ commitObjectId, nodeId, logicalPath, maximumDirectoryEntryCount }) {
       return encryptedOpfsResolvedNodeSchema.parse(await remoteWorker.readNode({
         commitObjectId,
         nodeId,
+        logicalPath,
+        maximumDirectoryEntryCount,
+      }));
+    },
+    async readPath({ commitObjectId, logicalPath, maximumDirectoryEntryCount }) {
+      return encryptedOpfsResolvedPathSchema.parse(await remoteWorker.readPath({
+        commitObjectId,
         logicalPath,
         maximumDirectoryEntryCount,
       }));

@@ -1,4 +1,4 @@
-import { defineComponent, h, Suspense } from 'vue';
+import { defineComponent, h, reactive, Suspense } from 'vue';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
@@ -506,6 +506,40 @@ describe('FileExplorer.vue', () => {
     expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('mydir');
   });
 
+  it('reveals a controlled file path in column view', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128);
+    const wrapper = tracked(mountExplorer(root, {
+      initialViewMode: 'column',
+      revealPath: '/docs/settings.json',
+    }));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('docs');
+    expect(wrapper.find('[data-testid="entry-item-settings.json"]').exists()).toBe(true);
+  });
+
+  it('reports a failed controlled reveal and recovers on the next valid path', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128);
+    const controlledProps = reactive({
+      initialViewMode: 'column',
+      revealPath: '/docs/missing.json',
+    });
+    const wrapper = tracked(mountExplorer(root, controlledProps));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="file-explorer-controlled-error"]').text())
+      .toContain('File Explorer path does not exist: /docs/missing.json');
+
+    controlledProps.revealPath = '/docs/settings.json';
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="file-explorer-controlled-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('docs');
+    expect(wrapper.find('[data-testid="entry-item-settings.json"]').exists()).toBe(true);
+  });
+
   it('back button navigates up', async () => {
     const sub = root.addDir('subdir');
     sub.addFile('nested.txt');
@@ -743,6 +777,35 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
 
     expect(document.body.querySelector('[data-testid="context-menu"]')).toBeNull();
+  });
+
+  it('emits a generic entry context action for the selected file', async () => {
+    root.addFile('inspect-me.txt', 32);
+    const onEntryContextAction = vi.fn();
+    const wrapper = tracked(mountExplorer(root, {
+      entryContextActionLabel: 'Inspect EncryptedOpfs records',
+      onEntryContextAction,
+    }));
+    await flushPromises();
+
+    await wrapper.find('[data-testid="entry-item-inspect-me.txt"]').trigger('contextmenu', {
+      clientX: 50,
+      clientY: 50,
+    });
+    await flushPromises();
+    const action = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-testid="context-menu"] button'))
+      .find(button => button.textContent?.includes('Inspect EncryptedOpfs records'));
+    if (action === undefined) throw new Error('Custom context action was not rendered');
+    action.click();
+    await flushPromises();
+
+    expect(onEntryContextAction).toHaveBeenCalledWith({
+      entry: expect.objectContaining({
+        path: '/inspect-me.txt',
+        name: 'inspect-me.txt',
+        kind: 'file',
+      }),
+    });
   });
 
   it('opens the directory download dialog with the selected directory name', async () => {

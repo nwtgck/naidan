@@ -14,8 +14,13 @@ import {
   EncryptedOpfsSymlinkInodeSchemaDto,
 } from '@/00-storage/00-dto/encrypted-opfs.dto';
 import type {
+  EncryptedOpfsBinaryRecordInspection,
+  EncryptedOpfsBinarySlice,
+  EncryptedOpfsDecodedBinaryField,
+  EncryptedOpfsInspectionOverview,
   EncryptedOpfsInspectionReader,
   EncryptedOpfsInspectedObject,
+  EncryptedOpfsSuperblockSlotInspection,
 } from '@/00-storage/service/encrypted-opfs';
 
 const physicalPathSchema = z.array(z.string());
@@ -56,14 +61,14 @@ const binaryRecordInspectionSchema = z.object({
     headerFields: z.array(decodedBinaryFieldSchema),
     metadataJson: z.object({
       bytes: binarySliceSchema,
-      utf8Text: z.string(),
+      utf8Text: z.union([z.string(), z.undefined()]),
     }),
     binaryPayload: binarySliceSchema,
   }),
 });
 
 
-const superblockSlotSchema = z.discriminatedUnion('status', [
+export const encryptedOpfsSuperblockSlotSchema = z.discriminatedUnion('status', [
   z.object({
     slot: z.union([z.literal(0), z.literal(1)]),
     status: z.literal('missing'),
@@ -92,7 +97,7 @@ const superblockSlotSchema = z.discriminatedUnion('status', [
 export const encryptedOpfsInspectionOverviewSchema = z.object({
   descriptor: EncryptedOpfsDescriptorSchemaDto,
   persistedDescriptorDto: z.unknown(),
-  superblockSlots: z.array(superblockSlotSchema),
+  superblockSlots: z.array(encryptedOpfsSuperblockSlotSchema),
   activeSuperblock: EncryptedOpfsSuperblockSchemaDto,
   activeCommitObjectId: z.string(),
   activeCommit: EncryptedOpfsCommitSchemaDto,
@@ -209,6 +214,8 @@ export const encryptedOpfsResolvedNodeSchema = z.object({
   ]),
 });
 
+export const encryptedOpfsResolvedPathSchema = z.array(encryptedOpfsResolvedNodeSchema);
+
 export const encryptedOpfsIntegrityScanResultSchema = z.object({
   activeCommitObjectId: z.string(),
   activeReachableObjectCount: z.number().int().nonnegative(),
@@ -223,14 +230,19 @@ export const encryptedOpfsIntegrityScanResultSchema = z.object({
   issues: z.array(z.string()),
 });
 
-export type EncryptedOpfsBinarySliceView = z.infer<typeof binarySliceSchema>;
-export type EncryptedOpfsBinaryRecordInspectionView = z.infer<typeof binaryRecordInspectionSchema>;
-export type EncryptedOpfsDecodedBinaryFieldView = z.infer<typeof decodedBinaryFieldSchema>;
-export type EncryptedOpfsInspectionOverviewView = z.infer<typeof encryptedOpfsInspectionOverviewSchema>;
+export type EncryptedOpfsBinarySliceView = EncryptedOpfsBinarySlice;
+export type EncryptedOpfsBinaryRecordInspectionView = EncryptedOpfsBinaryRecordInspection;
+export type EncryptedOpfsDecodedBinaryFieldView = EncryptedOpfsDecodedBinaryField;
+export type EncryptedOpfsInspectionOverviewView = EncryptedOpfsInspectionOverview;
+export type EncryptedOpfsSuperblockSlotView = EncryptedOpfsSuperblockSlotInspection;
 export type EncryptedOpfsPhysicalObjectPageView = z.infer<typeof encryptedOpfsPhysicalObjectPageSchema>;
-export type EncryptedOpfsInspectedObjectView = z.infer<typeof encryptedOpfsInspectedObjectViewSchema>;
+type ParsedEncryptedOpfsInspectedObjectView = z.infer<typeof encryptedOpfsInspectedObjectViewSchema>;
+export type EncryptedOpfsInspectedObjectView = Omit<ParsedEncryptedOpfsInspectedObjectView, 'object'> & {
+  readonly object: EncryptedOpfsInspectedObject;
+};
 export type EncryptedOpfsNamespaceResult = z.infer<typeof encryptedOpfsNamespaceResultSchema>;
 export type EncryptedOpfsResolvedNodeView = z.infer<typeof encryptedOpfsResolvedNodeSchema>;
+export type EncryptedOpfsResolvedPathView = z.infer<typeof encryptedOpfsResolvedPathSchema>;
 export type EncryptedOpfsIntegrityScanResult = z.infer<typeof encryptedOpfsIntegrityScanResultSchema>;
 
 export interface IEncryptedOpfsInspectionWorker {
@@ -250,12 +262,23 @@ export interface IEncryptedOpfsInspectionWorker {
     binaryPreviewByteLength: number;
   }): Promise<EncryptedOpfsInspectedObjectView | undefined>;
 
+  inspectSuperblockSlot({ slot, binaryPreviewByteLength }: {
+    slot: 0 | 1;
+    binaryPreviewByteLength: number;
+  }): Promise<EncryptedOpfsSuperblockSlotInspection>;
+
   readNode({ commitObjectId, nodeId, logicalPath, maximumDirectoryEntryCount }: {
     commitObjectId: string;
     nodeId: string;
     logicalPath: string;
     maximumDirectoryEntryCount: number;
   }): Promise<EncryptedOpfsResolvedNodeView>;
+
+  readPath({ commitObjectId, logicalPath, maximumDirectoryEntryCount }: {
+    commitObjectId: string;
+    logicalPath: string;
+    maximumDirectoryEntryCount: number;
+  }): Promise<EncryptedOpfsResolvedPathView>;
 
   readNamespace({ maximumEntryCount }: {
     maximumEntryCount: number;
@@ -276,12 +299,21 @@ export interface EncryptedOpfsInspectionWorkerClient {
     objectId: string;
     binaryPreviewByteLength: number;
   }): Promise<EncryptedOpfsInspectedObjectView | undefined>;
+  inspectSuperblockSlot({ slot, binaryPreviewByteLength }: {
+    slot: 0 | 1;
+    binaryPreviewByteLength: number;
+  }): Promise<EncryptedOpfsSuperblockSlotView>;
   readNode({ commitObjectId, nodeId, logicalPath, maximumDirectoryEntryCount }: {
     commitObjectId: string;
     nodeId: string;
     logicalPath: string;
     maximumDirectoryEntryCount: number;
   }): Promise<EncryptedOpfsResolvedNodeView>;
+  readPath({ commitObjectId, logicalPath, maximumDirectoryEntryCount }: {
+    commitObjectId: string;
+    logicalPath: string;
+    maximumDirectoryEntryCount: number;
+  }): Promise<EncryptedOpfsResolvedPathView>;
   readNamespace({ maximumEntryCount }: {
     maximumEntryCount: number;
   }): Promise<EncryptedOpfsNamespaceResult>;

@@ -53,7 +53,7 @@ export type EncryptedOpfsBinaryRecordInspection = {
     readonly headerFields: readonly EncryptedOpfsDecodedBinaryField[];
     readonly metadataJson: {
       readonly bytes: EncryptedOpfsBinarySlice;
-      readonly utf8Text: string;
+      readonly utf8Text: string | undefined;
     };
     readonly binaryPayload: EncryptedOpfsBinarySlice;
   };
@@ -131,6 +131,11 @@ export interface EncryptedOpfsInspectionReader {
     binaryPreviewByteLength: number;
   }): Promise<EncryptedOpfsInspectedObject | undefined>;
 
+  inspectSuperblockSlot({ slot, binaryPreviewByteLength }: {
+    slot: 0 | 1;
+    binaryPreviewByteLength: number;
+  }): Promise<EncryptedOpfsSuperblockSlotInspection>;
+
   dispose(): Promise<void>;
 }
 
@@ -173,6 +178,7 @@ export async function createEncryptedOpfsInspectionReader({
           rootKey,
           fileSystemId: descriptor.fileSystemId,
           selectedSuperblock: activeState.superblock,
+          binaryPreviewByteLength: 0,
         });
         const activeCommitRecord = await runtime.objectStore.read({
           objectId: activeState.commitObjectId,
@@ -231,6 +237,20 @@ export async function createEncryptedOpfsInspectionReader({
             binaryPayloadByteLength: inspected.record.binaryPayload.byteLength,
           },
         };
+      },
+
+      async inspectSuperblockSlot({ slot, binaryPreviewByteLength }) {
+        assertOpen();
+        assertBinaryPreviewByteLength({ binaryPreviewByteLength });
+        const activeState = await runtime.core.loadActiveState();
+        return await inspectSuperblockSlot({
+          backingStore,
+          rootKey,
+          fileSystemId: descriptor.fileSystemId,
+          selectedSuperblock: activeState.superblock,
+          slot,
+          binaryPreviewByteLength,
+        });
       },
 
       async dispose() {
@@ -426,9 +446,11 @@ async function inspectEncryptedRecordBinary({
             source: plaintext,
             offset: metadataOffset,
             regionByteLength: metadataByteLength,
-            previewByteLength: metadataByteLength,
+            previewByteLength: binaryPreviewByteLength,
           }),
-          utf8Text: metadataUtf8Text,
+          utf8Text: binaryPreviewByteLength >= metadataByteLength
+            ? metadataUtf8Text
+            : undefined,
         },
         binaryPayload: createBinarySlice({
           source: plaintext,
@@ -491,95 +513,121 @@ async function inspectSuperblockSlots({
   rootKey,
   fileSystemId,
   selectedSuperblock,
+  binaryPreviewByteLength,
 }: {
   backingStore: NativeOpfsEncryptedOpfsBackingStore;
   rootKey: CryptoKey;
   fileSystemId: string;
   selectedSuperblock: EncryptedOpfsSuperblockDto;
+  binaryPreviewByteLength: number;
 }): Promise<readonly EncryptedOpfsSuperblockSlotInspection[]> {
   const inspections: EncryptedOpfsSuperblockSlotInspection[] = [];
   for (const slot of [0, 1] as const) {
-    const physicalPath = [`superblock-${String(slot)}.eopfs`] as const;
-    const physical = await backingStore.read({ path: physicalPath });
-    if (physical === undefined) {
-      inspections.push({ slot, status: 'missing', selected: false, physicalPath });
-      continue;
-    }
-    try {
-      const inspected = await inspectEncryptedRecordBinary({
-        physical,
-        rootKey,
-        fileSystemId,
-        objectIdentity: `superblock-${String(slot)}`,
-        area: 'superblock',
-        binaryPreviewByteLength: 1024,
-      });
-      const { record } = inspected;
-      switch (record.kind) {
-      case 'superblock':
-        break;
-      case 'commit':
-      case 'inode_index_page':
-      case 'file_inode':
-      case 'directory_inode':
-      case 'symlink_inode':
-      case 'directory_index_page':
-      case 'file_extent_page':
-      case 'file_chunk':
-        throw new EncryptedOpfsUnsupportedFormatError({
-          message: `EncryptedOpfs superblock slot ${String(slot)} has an unsupported record kind`,
-        });
-      default: {
-        const _ex: never = record.kind;
-        throw new Error(`Unhandled EncryptedOpfs record kind: ${String(_ex)}`);
-      }
-      }
-      if (record.recordVersion !== 1) {
-        throw new EncryptedOpfsUnsupportedFormatError({
-          message: `EncryptedOpfs superblock record version is unsupported: ${String(record.recordVersion)}`,
-        });
-      }
-      if (record.binaryPayload.byteLength !== 0) {
-        throw new EncryptedOpfsCorruptionError({
-          message: 'EncryptedOpfs superblock contains an unexpected binary payload',
-          cause: undefined,
-        });
-      }
-      const value = EncryptedOpfsSuperblockSchemaDto.parse(record.metadata);
-      if (value.fileSystemId !== fileSystemId) {
-        throw new EncryptedOpfsCorruptionError({
-          message: 'EncryptedOpfs superblock fileSystemId does not match its descriptor',
-          cause: undefined,
-        });
-      }
-      const selected = value.sequence === selectedSuperblock.sequence
-        && value.activeCommitObjectId === selectedSuperblock.activeCommitObjectId;
-      inspections.push({
-        slot,
-        status: 'valid',
-        selected,
-        physicalPath,
-        value,
-        persistedDto: record.metadata,
-        binary: inspected.binary,
-      });
-    } catch (error) {
-      inspections.push({
-        slot,
-        status: error instanceof EncryptedOpfsUnsupportedFormatError ? 'unsupported' : 'invalid',
-        selected: false,
-        physicalPath,
-        physicalBytes: createBinarySlice({
-          source: physical,
-          offset: 0,
-          regionByteLength: physical.byteLength,
-          previewByteLength: Math.min(1024, physical.byteLength),
-        }),
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-    }
+    inspections.push(await inspectSuperblockSlot({
+      backingStore,
+      rootKey,
+      fileSystemId,
+      selectedSuperblock,
+      slot,
+      binaryPreviewByteLength,
+    }));
   }
   return inspections;
+}
+
+async function inspectSuperblockSlot({
+  backingStore,
+  rootKey,
+  fileSystemId,
+  selectedSuperblock,
+  slot,
+  binaryPreviewByteLength,
+}: {
+  backingStore: NativeOpfsEncryptedOpfsBackingStore;
+  rootKey: CryptoKey;
+  fileSystemId: string;
+  selectedSuperblock: EncryptedOpfsSuperblockDto;
+  slot: 0 | 1;
+  binaryPreviewByteLength: number;
+}): Promise<EncryptedOpfsSuperblockSlotInspection> {
+  const physicalPath = [`superblock-${String(slot)}.eopfs`] as const;
+  const physical = await backingStore.read({ path: physicalPath });
+  if (physical === undefined) {
+    return { slot, status: 'missing', selected: false, physicalPath };
+  }
+  try {
+    const inspected = await inspectEncryptedRecordBinary({
+      physical,
+      rootKey,
+      fileSystemId,
+      objectIdentity: `superblock-${String(slot)}`,
+      area: 'superblock',
+      binaryPreviewByteLength,
+    });
+    const { record } = inspected;
+    switch (record.kind) {
+    case 'superblock':
+      break;
+    case 'commit':
+    case 'inode_index_page':
+    case 'file_inode':
+    case 'directory_inode':
+    case 'symlink_inode':
+    case 'directory_index_page':
+    case 'file_extent_page':
+    case 'file_chunk':
+      throw new EncryptedOpfsUnsupportedFormatError({
+        message: `EncryptedOpfs superblock slot ${String(slot)} has an unsupported record kind`,
+      });
+    default: {
+      const _ex: never = record.kind;
+      throw new Error(`Unhandled EncryptedOpfs record kind: ${String(_ex)}`);
+    }
+    }
+    if (record.recordVersion !== 1) {
+      throw new EncryptedOpfsUnsupportedFormatError({
+        message: `EncryptedOpfs superblock record version is unsupported: ${String(record.recordVersion)}`,
+      });
+    }
+    if (record.binaryPayload.byteLength !== 0) {
+      throw new EncryptedOpfsCorruptionError({
+        message: 'EncryptedOpfs superblock contains an unexpected binary payload',
+        cause: undefined,
+      });
+    }
+    const value = EncryptedOpfsSuperblockSchemaDto.parse(record.metadata);
+    if (value.fileSystemId !== fileSystemId) {
+      throw new EncryptedOpfsCorruptionError({
+        message: 'EncryptedOpfs superblock fileSystemId does not match its descriptor',
+        cause: undefined,
+      });
+    }
+    const selected = value.sequence === selectedSuperblock.sequence
+      && value.activeCommitObjectId === selectedSuperblock.activeCommitObjectId;
+    return {
+      slot,
+      status: 'valid',
+      selected,
+      physicalPath,
+      value,
+      persistedDto: record.metadata,
+      binary: inspected.binary,
+    };
+  } catch (error) {
+    return {
+      slot,
+      status: error instanceof EncryptedOpfsUnsupportedFormatError ? 'unsupported' : 'invalid',
+      selected: false,
+      physicalPath,
+      physicalBytes: createBinarySlice({
+        source: physical,
+        offset: 0,
+        regionByteLength: physical.byteLength,
+        previewByteLength: Math.min(Math.max(32, binaryPreviewByteLength), physical.byteLength),
+      }),
+      errorMessage: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 

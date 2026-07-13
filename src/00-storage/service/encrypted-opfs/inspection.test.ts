@@ -42,6 +42,20 @@ describe('EncryptedOpfs inspection reader', () => {
       status: 'valid',
       selected: true,
     }));
+    const selectedSuperblockSlot = overview.superblockSlots.find(slot => slot.status === 'valid' && slot.selected);
+    if (selectedSuperblockSlot === undefined || selectedSuperblockSlot.status !== 'valid') {
+      throw new Error('Selected superblock fixture was missing');
+    }
+    expect(selectedSuperblockSlot.binary.decryptedRecord.metadataJson.utf8Text).toBeUndefined();
+    const detailedSuperblockSlot = await reader.inspectSuperblockSlot({
+      slot: selectedSuperblockSlot.slot,
+      binaryPreviewByteLength: 64 * 1024,
+    });
+    expect(detailedSuperblockSlot.status).toBe('valid');
+    if (detailedSuperblockSlot.status !== 'valid') throw new Error('Detailed superblock was not valid');
+    expect(detailedSuperblockSlot.binary.decryptedRecord.metadataJson.utf8Text).toBe(
+      JSON.stringify(detailedSuperblockSlot.persistedDto),
+    );
 
     const page = await reader.listPhysicalObjects({ cursor: undefined, limit: 100 });
     expect(page.entries.length).toBeGreaterThan(0);
@@ -67,8 +81,13 @@ describe('EncryptedOpfs inspection reader', () => {
     expect(inspected?.binary.decryptedRecord.bytes.bytes.slice(0, 2)).toEqual(
       new Uint8Array([1, 0]),
     );
-    expect(inspected?.binary.decryptedRecord.metadataJson.utf8Text).toBe(
-      JSON.stringify(inspected?.record.metadata),
+    expect(inspected?.binary.decryptedRecord.metadataJson.utf8Text).toBeUndefined();
+    const inspectedWithBinaryDetails = await reader.inspectObject({
+      objectId: overview.activeCommitObjectId,
+      binaryPreviewByteLength: 64 * 1024,
+    });
+    expect(inspectedWithBinaryDetails?.binary.decryptedRecord.metadataJson.utf8Text).toBe(
+      JSON.stringify(inspectedWithBinaryDetails?.record.metadata),
     );
     expect(inspected?.binary.decryptedRecord.binaryPayload.bytes).toBeInstanceOf(Uint8Array);
     expect(inspected?.binary.decryptedRecord.binaryPayload.regionByteLength).toBe(0);

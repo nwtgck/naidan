@@ -43,6 +43,7 @@ function createContext({
     navigateUp: async () => undefined,
     jumpToBreadcrumb: async () => undefined,
     refresh: async () => undefined,
+    revealPath: async () => undefined,
     entries: [],
     sortedFilteredEntries: [],
     isLoading: false,
@@ -124,6 +125,7 @@ function createContext({
     showContextMenu: () => undefined,
     hideContextMenu: () => undefined,
     executeContextAction: async () => undefined,
+    entryContextActionLabel: undefined,
     directoryDownload: {
       TEST_ONLY: {},
       state: {

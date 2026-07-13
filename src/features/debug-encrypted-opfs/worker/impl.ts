@@ -18,6 +18,7 @@ import {
   type EncryptedOpfsIntegrityScanResult,
   type EncryptedOpfsNamespaceResult,
   type EncryptedOpfsResolvedNodeView,
+  type EncryptedOpfsResolvedPathView,
   type IEncryptedOpfsInspectionWorker,
 } from './types';
 
@@ -347,6 +348,174 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
     }
   }
 
+  async function resolveDirectoryEntryForTraversal({
+    inode,
+    directoryInodeObjectId,
+    name,
+  }: {
+    inode: EncryptedOpfsDirectoryInodeDto;
+    directoryInodeObjectId: string;
+    name: string;
+  }): Promise<NonNullable<EncryptedOpfsResolvedNodeView['directory']>['entries'][number]> {
+    switch (inode.storage.type) {
+    case 'inline': {
+      const entry = inode.storage.entries.find(candidate => compareEncryptedOpfsStrings({
+        left: candidate.name,
+        right: name,
+      }) === 0);
+      if (entry === undefined) {
+        throw new Error(`EncryptedOpfs directory entry is missing: ${name}`);
+      }
+      return {
+        entry,
+        source: {
+          type: 'inline',
+          directoryInodeObjectId,
+        },
+      };
+    }
+    case 'indexed': {
+      const visited = new Set<string>();
+      let pageObjectId = inode.storage.directoryIndexRootObjectId;
+      while (true) {
+        if (visited.has(pageObjectId)) {
+          throw new Error('EncryptedOpfs directory index contains a page cycle');
+        }
+        visited.add(pageObjectId);
+        const object = await requireReader().inspectObject({
+          objectId: pageObjectId,
+          binaryPreviewByteLength: 0,
+        });
+        if (object === undefined) {
+          throw new Error(`EncryptedOpfs directory index page is missing: ${pageObjectId}`);
+        }
+        if (object.record.kind !== 'directory_index_page') {
+          throw new Error(`Expected directory index page, received ${object.record.kind}: ${pageObjectId}`);
+        }
+        const page = persistedDtoSchemasByRecordKind.directory_index_page.parse(object.record.metadata);
+        switch (page.type) {
+        case 'leaf': {
+          const entry = page.entries.find(candidate => compareEncryptedOpfsStrings({
+            left: candidate.name,
+            right: name,
+          }) === 0);
+          if (entry === undefined) {
+            throw new Error(`EncryptedOpfs directory entry is missing: ${name}`);
+          }
+          return {
+            entry,
+            source: {
+              type: 'indexed',
+              directoryIndexPageObjectId: pageObjectId,
+            },
+          };
+        }
+        case 'branch': {
+          const child = page.children.find(candidate => compareEncryptedOpfsStrings({
+            left: name,
+            right: candidate.upperBoundName,
+          }) <= 0);
+          if (child === undefined) {
+            throw new Error(`EncryptedOpfs directory index branch does not cover entry: ${name}`);
+          }
+          pageObjectId = child.childPageObjectId;
+          break;
+        }
+        default: {
+          const _ex: never = page;
+          throw new Error(`Unhandled directory index page: ${String(_ex)}`);
+        }
+        }
+      }
+    }
+    default: {
+      const _ex: never = inode.storage;
+      throw new Error(`Unhandled directory storage: ${String(_ex)}`);
+    }
+    }
+  }
+
+  /**
+   * Resolves a decrypted File Explorer path through persisted directory
+   * entries rather than searching a truncated directory listing. The selected
+   * entry is retained in the parent node view even when it lies beyond the
+   * display page, so the reconstructed Workbench chain remains exact without
+   * forcing an unbounded directory scan.
+   */
+  async function readResolvedPath({
+    commitObjectId,
+    logicalPath,
+    maximumDirectoryEntryCount,
+  }: {
+    commitObjectId: string;
+    logicalPath: string;
+    maximumDirectoryEntryCount: number;
+  }): Promise<EncryptedOpfsResolvedPathView> {
+    if (!logicalPath.startsWith('/')) {
+      throw new Error('EncryptedOpfs logical path must be absolute');
+    }
+    const pathSegments = logicalPath === '/'
+      ? []
+      : logicalPath.slice(1).split('/');
+    if (pathSegments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) {
+      throw new Error(`EncryptedOpfs logical path is not normalized: ${logicalPath}`);
+    }
+
+    const commitObject = await requireReader().inspectObject({
+      objectId: commitObjectId,
+      binaryPreviewByteLength: 0,
+    });
+    if (commitObject === undefined) {
+      throw new Error(`EncryptedOpfs commit object is missing: ${commitObjectId}`);
+    }
+    if (commitObject.record.kind !== 'commit') {
+      throw new Error(`Expected commit record, received ${commitObject.record.kind}: ${commitObjectId}`);
+    }
+    const commit = persistedDtoSchemasByRecordKind.commit.parse(commitObject.record.metadata);
+
+    const resolvedNodes: EncryptedOpfsResolvedPathView[number][] = [];
+    let nodeId = commit.rootDirectoryNodeId;
+    let currentPath = '/';
+    for (let index = 0; index <= pathSegments.length; index += 1) {
+      let resolved = await readResolvedNode({
+        commitObjectId,
+        nodeId,
+        logicalPath: currentPath,
+        maximumDirectoryEntryCount,
+      });
+      const segment = pathSegments[index];
+      if (segment === undefined) {
+        resolvedNodes.push(resolved);
+        break;
+      }
+      if (resolved.inodeKind !== 'directory' || resolved.directory === undefined) {
+        throw new Error(`EncryptedOpfs path enters a non-directory node: ${currentPath}`);
+      }
+      const inode = persistedDtoSchemasByRecordKind.directory_inode.parse(resolved.inodePersistedDto);
+      const selectedEntry = await resolveDirectoryEntryForTraversal({
+        inode,
+        directoryInodeObjectId: resolved.inodeObjectId,
+        name: segment,
+      });
+      if (!resolved.directory.entries.some(candidate => compareEncryptedOpfsStrings({
+        left: candidate.entry.name,
+        right: segment,
+      }) === 0)) {
+        resolved = {
+          ...resolved,
+          directory: {
+            ...resolved.directory,
+            entries: [...resolved.directory.entries, selectedEntry],
+          },
+        };
+      }
+      resolvedNodes.push(resolved);
+      nodeId = selectedEntry.entry.nodeId;
+      currentPath = currentPath === '/' ? `/${segment}` : `${currentPath}/${segment}`;
+    }
+    return resolvedNodes;
+  }
+
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the positional Comlink boundary declared by IEncryptedOpfsInspectionWorker.
     async configure(nextReader) {
@@ -365,7 +534,13 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
 
     inspectObject: inspectValidatedObject,
 
+    async inspectSuperblockSlot({ slot, binaryPreviewByteLength }) {
+      return await requireReader().inspectSuperblockSlot({ slot, binaryPreviewByteLength });
+    },
+
     readNode: readResolvedNode,
+
+    readPath: readResolvedPath,
 
     async readNamespace({ maximumEntryCount }) {
       if (!Number.isSafeInteger(maximumEntryCount) || maximumEntryCount < 1 || maximumEntryCount > 100_000) {

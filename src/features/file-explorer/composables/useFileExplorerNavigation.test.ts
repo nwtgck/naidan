@@ -377,6 +377,31 @@ describe('useFileExplorerNavigation', () => {
     expect(entries.value.some(e => e.name === 'new.txt')).toBe(true);
   });
 
+  it('reveals a file path by opening its parent hierarchy and selecting the final entry', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128);
+    const { currentDirectoryPath, columnPanes, revealPath } = makeNav(root);
+    await flushPromises();
+
+    const revealed = await revealPath({ path: '/docs/settings.json' });
+
+    expect(revealed?.path).toBe('/docs/settings.json');
+    expect(currentDirectoryPath.value).toBe('/docs');
+    expect(columnPanes.value.at(-1)?.selectedEntryName).toBe('settings.json');
+    expect(columnPanes.value.map(pane => pane.path)).toEqual(['/', '/docs']);
+  });
+
+  it('reveals a directory by navigating into it', async () => {
+    root.addDir('docs');
+    const { currentDirectoryPath, revealPath } = makeNav(root);
+    await flushPromises();
+
+    const revealed = await revealPath({ path: '/docs' });
+
+    expect(revealed?.kind).toBe('directory');
+    expect(currentDirectoryPath.value).toBe('/docs');
+  });
+
   it('shows a clearer message when the directory is no longer accessible', async () => {
     const client = makeClient();
     client.readDirectory = vi.fn(async () => {

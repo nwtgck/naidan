@@ -174,6 +174,60 @@ function createBinaryRecordInspection({
   };
 }
 
+
+function limitBinaryPreview({
+  binary,
+  binaryPreviewByteLength,
+}: {
+  binary: EncryptedOpfsBinaryRecordInspectionView;
+  binaryPreviewByteLength: number;
+}): EncryptedOpfsBinaryRecordInspectionView {
+  function sliceRegion({
+    region,
+    previewByteLength,
+  }: {
+    region: EncryptedOpfsBinaryRecordInspectionView["persistedObject"]["bytes"];
+    previewByteLength: number;
+  }) {
+    const bytes = region.bytes.slice(0, Math.min(region.regionByteLength, previewByteLength));
+    return {
+      ...region,
+      bytes,
+      truncatedAfter: bytes.byteLength < region.regionByteLength,
+    };
+  }
+
+  return {
+    persistedObject: {
+      ...binary.persistedObject,
+      bytes: sliceRegion({
+        region: binary.persistedObject.bytes,
+        previewByteLength: Math.max(32, binaryPreviewByteLength),
+      }),
+    },
+    decryptedRecord: {
+      ...binary.decryptedRecord,
+      bytes: sliceRegion({
+        region: binary.decryptedRecord.bytes,
+        previewByteLength: Math.max(16, binaryPreviewByteLength),
+      }),
+      metadataJson: {
+        bytes: sliceRegion({
+          region: binary.decryptedRecord.metadataJson.bytes,
+          previewByteLength: binaryPreviewByteLength,
+        }),
+        utf8Text: binaryPreviewByteLength >= binary.decryptedRecord.metadataJson.bytes.regionByteLength
+          ? binary.decryptedRecord.metadataJson.utf8Text
+          : undefined,
+      },
+      binaryPayload: sliceRegion({
+        region: binary.decryptedRecord.binaryPayload,
+        previewByteLength: binaryPreviewByteLength,
+      }),
+    },
+  };
+}
+
 const mocks = vi.hoisted(() => ({
   closeWorkbench: vi.fn(),
   createClient: vi.fn(),
@@ -222,9 +276,29 @@ vi.mock("@/features/file-explorer/composables/useFileExplorerModal", () => ({
 
 vi.mock("@/features/file-explorer/components/FileExplorer.vue", () => ({
   default: {
-    props: ["root", "initialLocked"],
-    template:
-      '<div data-testid="embedded-file-explorer">{{ root.kind }}:{{ root.rootName }}:{{ String(initialLocked) }}</div>',
+    props: ["root", "initialLocked", "revealPath", "entryContextActionLabel"],
+    emits: ["entry-context-action"],
+    setup(_: unknown, { emit }: { emit: (event: string, payload: unknown) => void }) {
+      return {
+        inspectDocs() {
+          emit("entry-context-action", {
+            entry: {
+              path: "/docs",
+              name: "docs",
+              kind: "directory",
+              size: undefined,
+              lastModified: undefined,
+              extension: "",
+              mimeCategory: "binary",
+              readOnly: true,
+              canNavigate: true,
+              canMutate: false,
+            },
+          });
+        },
+      };
+    },
+    template: '<div data-testid="embedded-file-explorer">{{ root.kind }}:{{ root.rootName }}:{{ String(initialLocked) }}:{{ revealPath ?? "" }}:{{ entryContextActionLabel ?? "" }}<button type="button" data-testid="mock-inspect-encrypted-opfs-records" @click="inspectDocs">Inspect</button></div>',
   },
 }));
 
@@ -299,6 +373,18 @@ function createClient({
     rootDirectoryNodeId: "root-a",
     inodeIndexRootObjectId: "inode-index-a",
   };
+  const fullSuperblockBinary = createBinaryRecordInspection({
+    recordKindId: 9,
+    recordKind: "superblock",
+    metadata: superblockMetadata,
+    binaryPayload: new Uint8Array(),
+  });
+  const fullObjectBinary = createBinaryRecordInspection({
+    recordKindId: 1,
+    recordKind: "commit",
+    metadata: commitMetadata,
+    binaryPayload: new Uint8Array([0xde, 0xad, 0xbe, 0xef]),
+  });
   const overview: OverviewResult = {
     descriptor: { formatVersion: 1, fileSystemId },
     persistedDescriptorDto: {
@@ -314,11 +400,9 @@ function createClient({
         physicalPath: ["superblock-0.eopfs"],
         value: superblockMetadata,
         persistedDto: superblockMetadata,
-        binary: createBinaryRecordInspection({
-          recordKindId: 9,
-          recordKind: "superblock",
-          metadata: superblockMetadata,
-          binaryPayload: new Uint8Array(),
+        binary: limitBinaryPreview({
+          binary: fullSuperblockBinary,
+          binaryPreviewByteLength: 0,
         }),
       },
       {
@@ -347,11 +431,9 @@ function createClient({
       objectId: "object-a",
       physicalPath: ["objects", "00", "object-a.eopfs"],
       physicalByteLength: 64,
-      binary: createBinaryRecordInspection({
-        recordKindId: 1,
-        recordKind: "commit",
-        metadata: commitMetadata,
-        binaryPayload: new Uint8Array([0xde, 0xad, 0xbe, 0xef]),
+      binary: limitBinaryPreview({
+        binary: fullObjectBinary,
+        binaryPreviewByteLength: 0,
       }),
       record: {
         kind: "commit",
@@ -475,8 +557,31 @@ function createClient({
       nextCursor: undefined,
       ignoredPhysicalPaths: [],
     })),
-    inspectObject: vi.fn(async () => inspectedObject),
+    inspectObject: vi.fn(async ({ binaryPreviewByteLength }) => ({
+      ...inspectedObject,
+      object: {
+        ...inspectedObject.object,
+        binary: limitBinaryPreview({
+          binary: fullObjectBinary,
+          binaryPreviewByteLength,
+        }),
+      },
+    })),
+    inspectSuperblockSlot: vi.fn(async ({ slot, binaryPreviewByteLength }) => {
+      const inspected = overview.superblockSlots.find(candidate => candidate.slot === slot);
+      if (inspected === undefined) throw new Error(`Missing mock superblock slot: ${String(slot)}`);
+      return inspected.status === "valid"
+        ? {
+          ...inspected,
+          binary: limitBinaryPreview({
+            binary: fullSuperblockBinary,
+            binaryPreviewByteLength,
+          }),
+        }
+        : inspected;
+    }),
     readNode: vi.fn(async ({ nodeId }) => nodeId === "root-a" ? resolvedRoot : resolvedDocs),
+    readPath: vi.fn(async ({ logicalPath }) => logicalPath === "/" ? [resolvedRoot] : [resolvedRoot, resolvedDocs]),
     readNamespace: vi.fn(async () => namespace),
     runIntegrityScan: vi.fn(async () => integrity),
     cancelCurrentOperation: vi.fn(async () => {}),
@@ -606,7 +711,52 @@ describe("EncryptedOpfsWorkbenchModal", () => {
     wrapper.unmount();
   });
 
-  it("renders persisted and decrypted binary as hex while limiting Raw DTO to metadata JSON", async () => {
+  it("keeps superblock DTO and references immediate while loading its binary representation on demand", async () => {
+    const client = createClient({ fileSystemId: "filesystem-a" });
+    mocks.createClient.mockResolvedValue(client);
+    const wrapper = mount(EncryptedOpfsWorkbenchModal, {
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="encrypted-opfs-open-superblocks"]',
+      )
+      ?.click();
+    await flushPromises();
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="encrypted-opfs-superblock-slot"]',
+      )
+      ?.click();
+    await flushPromises();
+
+    expect(client.inspectSuperblockSlot).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('"activeCommitObjectId": "commit-a"');
+    expect(document.body.textContent).toContain("Persisted references");
+    expect(document.body.textContent).toContain("activeCommitObjectId");
+    expect(document.body.textContent).not.toContain("Decoded object envelope fields");
+
+    const binaryDetails = document.body.querySelector<HTMLDetailsElement>(
+      '[data-testid="encrypted-opfs-binary-representation-details"]',
+    );
+    if (binaryDetails === null) throw new Error("Superblock binary details were missing");
+    binaryDetails.open = true;
+    binaryDetails.dispatchEvent(new Event("toggle"));
+    await flushPromises();
+
+    expect(client.inspectSuperblockSlot).toHaveBeenCalledWith({
+      slot: 0,
+      binaryPreviewByteLength: 64 * 1024,
+    });
+    expect(document.body.textContent).toContain("Decoded object envelope fields");
+    expect(document.body.textContent).toContain("45 4e 43 4f 50 46 53 00");
+
+    wrapper.unmount();
+  });
+
+  it("prioritizes the record header, Raw DTO, and references before lazily loading binary details", async () => {
     const client = createClient({ fileSystemId: "filesystem-a" });
     mocks.createClient.mockResolvedValue(client);
     const wrapper = mount(EncryptedOpfsWorkbenchModal, {
@@ -629,19 +779,49 @@ describe("EncryptedOpfsWorkbenchModal", () => {
 
     expect(client.inspectObject).toHaveBeenCalledWith({
       objectId: "object-a",
-      binaryPreviewByteLength: 1024,
+      binaryPreviewByteLength: 0,
     });
-    expect(document.body.textContent).toContain("Persisted object bytes");
-    expect(document.body.textContent).toContain("45 4e 43 4f 50 46 53 00");
-    expect(document.body.textContent).toContain("Decoded object envelope fields");
-    expect(document.body.textContent).toContain("Decrypted record bytes");
-    expect(document.body.textContent).toContain("Decoded record header fields");
-    expect(document.body.textContent).toContain("Metadata JSON bytes");
+    expect(document.body.textContent).toContain("Record header · decrypted binary framing");
     expect(document.body.textContent).toContain(
       "Raw DTO · parsed only from the actual metadata JSON range",
     );
     expect(document.body.textContent).toContain('"revision": 5');
-    expect(document.body.textContent).toContain("Binary payload bytes");
+    expect(document.body.textContent).toContain("Persisted references · continue traversal");
+    expect(document.body.textContent).toContain("inode index root");
+    expect(document.body.textContent).not.toContain("Decoded object envelope fields");
+    expect(document.body.textContent).not.toContain("45 4e 43 4f 50 46 53 00");
+
+    const objectColumnText = document.body.textContent ?? "";
+    expect(objectColumnText.indexOf("Record header · decrypted binary framing"))
+      .toBeLessThan(objectColumnText.indexOf("Raw DTO · parsed only from the actual metadata JSON range"));
+    expect(objectColumnText.indexOf("Raw DTO · parsed only from the actual metadata JSON range"))
+      .toBeLessThan(objectColumnText.indexOf("Persisted references · continue traversal"));
+    expect(objectColumnText.indexOf("Persisted references · continue traversal"))
+      .toBeLessThan(objectColumnText.indexOf("Binary representation · 64 persisted bytes · lazy"));
+
+    const binaryDetails = document.body.querySelector<HTMLDetailsElement>(
+      '[data-testid="encrypted-opfs-binary-representation-details"]',
+    );
+    if (binaryDetails === null) throw new Error("Binary representation details were missing");
+    binaryDetails.open = true;
+    binaryDetails.dispatchEvent(new Event("toggle"));
+    await flushPromises();
+
+    expect(client.inspectObject).toHaveBeenLastCalledWith({
+      objectId: "object-a",
+      binaryPreviewByteLength: 64 * 1024,
+    });
+    expect(document.body.textContent).toContain("Decoded object envelope fields");
+    expect(document.body.textContent).toContain("45 4e 43 4f 50 46 53 00");
+    expect(document.body.textContent).toContain("Metadata JSON encoding");
+
+    const payloadDetails = document.body.querySelector<HTMLDetailsElement>(
+      '[data-testid="encrypted-opfs-binary-payload-details"]',
+    );
+    if (payloadDetails === null) throw new Error("Binary payload details were missing");
+    payloadDetails.open = true;
+    payloadDetails.dispatchEvent(new Event("toggle"));
+    await flushPromises();
     expect(document.body.textContent).toContain("de ad be ef");
     expect(document.body.textContent).not.toContain("nonceBytes");
 
@@ -769,6 +949,69 @@ describe("EncryptedOpfsWorkbenchModal", () => {
     wrapper.unmount();
   });
 
+  it("lazily opens a decrypted companion Explorer, follows low-level traversal, and can reopen records from a selected entry", async () => {
+    const client = createClient({ fileSystemId: "filesystem-a" });
+    mocks.createClient.mockResolvedValue(client);
+    const wrapper = mount(EncryptedOpfsWorkbenchModal, {
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    expect(document.body.querySelector('[data-testid="embedded-file-explorer"]')).toBeNull();
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="encrypted-opfs-toggle-companion-explorer"]',
+      )
+      ?.click();
+    await flushPromises();
+
+    let companion = document.body.querySelector<HTMLElement>(
+      '[data-testid="embedded-file-explorer"]',
+    );
+    if (companion === null) throw new Error("Companion File Explorer did not mount lazily");
+    expect(companion.textContent).toContain("Inspect EncryptedOpfs records");
+
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="encrypted-opfs-open-root-directory"]',
+      )
+      ?.click();
+    await flushPromises();
+    companion = document.body.querySelector<HTMLElement>(
+      '[data-testid="embedded-file-explorer"]',
+    );
+    expect(companion?.textContent).toContain("true:/:Inspect EncryptedOpfs records");
+
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="encrypted-opfs-open-child-node"]',
+      )
+      ?.click();
+    await flushPromises();
+    companion = document.body.querySelector<HTMLElement>(
+      '[data-testid="embedded-file-explorer"]',
+    );
+    expect(companion?.textContent).toContain("true:/docs:Inspect EncryptedOpfs records");
+
+    vi.mocked(client.readPath).mockClear();
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="mock-inspect-encrypted-opfs-records"]',
+      )
+      ?.click();
+    await flushPromises();
+
+    expect(client.readPath).toHaveBeenCalledWith({
+      commitObjectId: "commit-a",
+      logicalPath: "/docs",
+      maximumDirectoryEntryCount: 1_000,
+    });
+    expect(document.body.textContent).toContain("Raw DTO · exact inode metadata");
+    expect(document.body.textContent).toContain("Persisted reference chain · continue traversal");
+
+    wrapper.unmount();
+  });
+
   it("creates an ephemeral workspace without requiring an active encrypted Naidan store", async () => {
     mocks.listSources.mockResolvedValue([]);
     const wrapper = mount(EncryptedOpfsWorkbenchModal, {
@@ -788,6 +1031,40 @@ describe("EncryptedOpfsWorkbenchModal", () => {
 
     expect(mocks.createWorkspace).toHaveBeenCalledOnce();
     expect(mocks.listSources).toHaveBeenCalledTimes(2);
+
+    wrapper.unmount();
+  });
+
+  it("reinitializes the lazy companion Explorer only after a different source is expanded", async () => {
+    const wrapper = mount(EncryptedOpfsWorkbenchModal, {
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="encrypted-opfs-toggle-companion-explorer"]',
+      )
+      ?.click();
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="embedded-file-explorer"]')).not.toBeNull();
+
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-source-id="debug-workspace:workspace-a"]',
+      )
+      ?.click();
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="embedded-file-explorer"]')).toBeNull();
+
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="encrypted-opfs-toggle-companion-explorer"]',
+      )
+      ?.click();
+    await flushPromises();
+    expect(document.body.querySelector('[data-testid="embedded-file-explorer"]')?.textContent)
+      .toContain('false::Inspect EncryptedOpfs records');
 
     wrapper.unmount();
   });

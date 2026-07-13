@@ -135,6 +135,26 @@ describe('EncryptedOpfs inspection worker', () => {
       truncated: true,
     });
     expect(limitedDocs.directory?.entries).toHaveLength(5);
+    const resolvedPath = await worker.readPath({
+      commitObjectId: root.commitObjectId,
+      logicalPath: '/docs/readme.txt',
+      maximumDirectoryEntryCount: 5,
+    });
+    expect(resolvedPath.map(node => node.logicalPath)).toEqual([
+      '/',
+      '/docs',
+      '/docs/readme.txt',
+    ]);
+    expect(resolvedPath[1]?.directory).toMatchObject({
+      storageType: 'indexed',
+      truncated: true,
+    });
+    expect(resolvedPath[1]?.directory?.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        entry: expect.objectContaining({ name: 'readme.txt', kind: 'file' }),
+        source: expect.objectContaining({ type: 'indexed' }),
+      }),
+    ]));
     const readme = await worker.readNode({
       commitObjectId: root.commitObjectId,
       nodeId: readmeEntry.entry.nodeId,

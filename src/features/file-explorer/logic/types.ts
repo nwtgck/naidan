@@ -191,6 +191,7 @@ export type ContextMenuAction =
   | 'newFile'
   | 'newFolder'
   | 'getInfo'
+  | 'entryContextAction'
   | 'selectAll';
 
 export interface StatusBarInfo {
@@ -213,6 +214,7 @@ export interface FileExplorerContext {
   navigateUp: () => Promise<void>,
   jumpToBreadcrumb: ({ index }: { index: number }) => Promise<void>,
   refresh: () => Promise<void>,
+  revealPath: ({ path }: { path: string }) => Promise<void>,
 
   entries: FileExplorerEntry[],
   sortedFilteredEntries: FileExplorerEntry[],
@@ -258,6 +260,7 @@ export interface FileExplorerContext {
   showContextMenu: ({ event, target }: { event: MouseEvent, target: ContextMenuTarget }) => void,
   hideContextMenu: () => void,
   executeContextAction: ({ action }: { action: ContextMenuAction }) => Promise<void>,
+  entryContextActionLabel: string | undefined,
 
   clipboardState: ClipboardState,
   clipboardCut: ({ entries }: { entries: FileExplorerEntry[] }) => void,
