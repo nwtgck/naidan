@@ -31,6 +31,12 @@ import {
   type EncryptedOpfsWorkbenchSource,
   type EncryptedOpfsWorkbenchSourceSession,
 } from '@/features/debug-encrypted-opfs/logic/workbench-sources';
+import {
+  ENCRYPTED_OPFS_COMPREHENSIVE_FIXTURE_ROOT_PATH,
+  generateEncryptedOpfsComprehensiveFixture,
+  type EncryptedOpfsComprehensiveFixtureProgress,
+  type EncryptedOpfsComprehensiveFixtureResult,
+} from '@/features/debug-encrypted-opfs/logic/comprehensive-fixture';
 import { createEncryptedOpfsInspectionWorkerClient } from '@/features/debug-encrypted-opfs/worker/client';
 import type {
   EncryptedOpfsBinaryRecordInspectionView,
@@ -145,6 +151,11 @@ const columns = ref<WorkbenchDetailColumn[]>([]);
 const loadingSources = ref(true);
 const loadingSource = ref(false);
 const creatingWorkspace = ref(false);
+const fixturePanelVisibility = ref<'closed' | 'open'>('closed');
+const generatingComprehensiveFixture = ref(false);
+const comprehensiveFixtureProgress = ref<EncryptedOpfsComprehensiveFixtureProgress>();
+const comprehensiveFixtureResult = ref<EncryptedOpfsComprehensiveFixtureResult>();
+const comprehensiveFixtureErrorMessage = ref<string>();
 const errorMessage = ref<string>();
 
 const namespaceLoading = ref(false);
@@ -369,6 +380,7 @@ async function selectSource({ source, force = false }: {
     companionExplorerVisibility.value = 'collapsed';
     companionExplorerInitialized.value = false;
     companionFollowMode.value = 'following';
+    resetComprehensiveFixtureUiState();
   }
   selectedSource.value = source;
   columns.value = [];
@@ -405,6 +417,69 @@ async function refreshSelectedInstance(): Promise<void> {
   const source = selectedSource.value;
   if (source === undefined || source.type === 'stale_debug_workspace') return;
   await selectSource({ source, force: true });
+}
+
+function openComprehensiveFixturePanel(): void {
+  fixturePanelVisibility.value = 'open';
+  comprehensiveFixtureErrorMessage.value = undefined;
+}
+
+function closeComprehensiveFixturePanel(): void {
+  if (generatingComprehensiveFixture.value) return;
+  fixturePanelVisibility.value = 'closed';
+}
+
+/**
+ * The fixture is generated through the decrypted filesystem capability rather
+ * than by writing persistence records directly. That preserves its value as an
+ * implementation audit: every covered inode, index page, chunk, commit, and
+ * superblock transition must be produced by normal EncryptedOpfs operations.
+ */
+async function generateComprehensiveFixture(): Promise<void> {
+  const source = selectedSource.value;
+  const session = sourceSession.value;
+  if (
+    source?.type !== 'ephemeral_debug_workspace'
+    || session === undefined
+    || generatingComprehensiveFixture.value
+  ) {
+    return;
+  }
+
+  const targetSourceId = source.sourceId;
+  generatingComprehensiveFixture.value = true;
+  comprehensiveFixtureProgress.value = undefined;
+  comprehensiveFixtureResult.value = undefined;
+  comprehensiveFixtureErrorMessage.value = undefined;
+  try {
+    const result = await generateEncryptedOpfsComprehensiveFixture({
+      root: session.decryptedRoot,
+      onProgress: ({ progress }) => {
+        comprehensiveFixtureProgress.value = progress;
+      },
+    });
+    comprehensiveFixtureResult.value = result;
+    if (selectedSource.value?.sourceId === targetSourceId) {
+      await refreshSelectedInstance();
+      if (selectedSource.value?.sourceId === targetSourceId) {
+        companionExplorerVisibility.value = 'expanded';
+        companionExplorerInitialized.value = true;
+        companionFollowMode.value = 'following';
+        await inspectLogicalPath({ logicalPath: result.rootPath });
+      }
+    }
+  } catch (error) {
+    comprehensiveFixtureErrorMessage.value = toErrorMessage({ error });
+  } finally {
+    generatingComprehensiveFixture.value = false;
+  }
+}
+
+function resetComprehensiveFixtureUiState(): void {
+  fixturePanelVisibility.value = 'closed';
+  comprehensiveFixtureProgress.value = undefined;
+  comprehensiveFixtureResult.value = undefined;
+  comprehensiveFixtureErrorMessage.value = undefined;
 }
 
 async function disposeSourceResources(): Promise<void> {
@@ -1029,6 +1104,10 @@ function toggleCompanionFollowMode(): void {
 }
 
 async function inspectFileExplorerEntry({ entry }: { entry: FileExplorerEntry }): Promise<void> {
+  await inspectLogicalPath({ logicalPath: entry.path });
+}
+
+async function inspectLogicalPath({ logicalPath }: { logicalPath: string }): Promise<void> {
   const currentClient = client.value;
   const currentOverview = overview.value;
   if (currentClient === undefined || currentOverview === undefined) return;
@@ -1036,7 +1115,7 @@ async function inspectFileExplorerEntry({ entry }: { entry: FileExplorerEntry })
   try {
     const resolvedNodes = await currentClient.readPath({
       commitObjectId: currentOverview.activeCommitObjectId,
-      logicalPath: entry.path,
+      logicalPath,
       maximumDirectoryEntryCount: 1_000,
     });
 
@@ -1111,7 +1190,7 @@ defineExpose({
           </div>
           <button type="button" tw-class="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openRawOpfs"><ExternalLinkIcon tw-class="mr-1 inline h-3.5 w-3.5" /> Raw OPFS</button>
           <button v-if="selectedSource?.type === 'naidan_active_store'" type="button" data-testid="encrypted-opfs-open-control-plane" tw-class="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openControlPlane">Naidan control plane</button>
-          <button type="button" aria-label="Refresh EncryptedOpfs instance" tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" :disabled="loadingSource" @click="refreshSelectedInstance"><RefreshCwIcon :tw-class="['h-4 w-4', loadingSource ? 'animate-spin' : '']" /></button>
+          <button type="button" aria-label="Refresh EncryptedOpfs instance" tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" :disabled="loadingSource || generatingComprehensiveFixture" @click="refreshSelectedInstance"><RefreshCwIcon :tw-class="['h-4 w-4', loadingSource ? 'animate-spin' : '']" /></button>
           <button type="button" aria-label="Close EncryptedOpfs Workbench" tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="closeDebugEncryptedOpfsWorkbench"><XIcon tw-class="h-5 w-5" /></button>
         </header>
 
@@ -1132,20 +1211,20 @@ defineExpose({
                 <div tw-class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Sources</div>
                 <div tw-class="text-[9px] text-gray-400">EncryptedOpfs instances</div>
               </div>
-              <button type="button" data-testid="encrypted-opfs-create-workspace" tw-class="rounded border border-emerald-300 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30" :disabled="creatingWorkspace" @click="createWorkspace"><PlusIcon tw-class="mr-1 inline h-3 w-3" />{{ creatingWorkspace ? 'Creating…' : 'Ephemeral' }}</button>
+              <button type="button" data-testid="encrypted-opfs-create-workspace" tw-class="rounded border border-emerald-300 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30" :disabled="creatingWorkspace || generatingComprehensiveFixture" @click="createWorkspace"><PlusIcon tw-class="mr-1 inline h-3 w-3" />{{ creatingWorkspace ? 'Creating…' : 'Ephemeral' }}</button>
             </div>
             <div v-if="loadingSources" tw-class="flex flex-1 items-center justify-center gap-2 text-xs text-gray-500"><LoaderCircleIcon tw-class="h-4 w-4 animate-spin" /> Loading sources…</div>
             <div v-else tw-class="min-h-0 flex-1 overflow-auto">
               <div v-if="sources.length === 0" tw-class="p-4 text-xs text-gray-500">No EncryptedOpfs instance is open. Create an ephemeral workspace to inspect the filesystem before enabling Naidan encryption.</div>
               <div v-for="source in sources" :key="source.sourceId" :tw-class="['group flex border-b border-gray-100 dark:border-gray-800', selectedSource?.sourceId === source.sourceId ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-white dark:bg-gray-900']">
-                <button type="button" data-testid="encrypted-opfs-source" :data-source-id="source.sourceId" tw-class="min-w-0 flex-1 px-3 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800" @click="selectSource({ source })">
+                <button type="button" data-testid="encrypted-opfs-source" :data-source-id="source.sourceId" tw-class="min-w-0 flex-1 px-3 py-3 text-left hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-gray-800" :disabled="generatingComprehensiveFixture" @click="selectSource({ source })">
                   <div tw-class="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{{ source.label }}</div>
                   <div tw-class="mt-1 flex items-center gap-2 font-mono text-[9px] text-gray-500 dark:text-gray-400">
                     <span>{{ source.type }}</span>
                     <span>{{ source.access }}</span>
                   </div>
                 </button>
-                <button v-if="source.type === 'ephemeral_debug_workspace' || source.type === 'stale_debug_workspace'" type="button" aria-label="Destroy debug workspace" tw-class="self-center rounded p-2 text-gray-400 opacity-70 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 dark:hover:bg-red-950/30" @click="destroyWorkspace({ source })"><Trash2Icon tw-class="h-3.5 w-3.5" /></button>
+                <button v-if="source.type === 'ephemeral_debug_workspace' || source.type === 'stale_debug_workspace'" type="button" aria-label="Destroy debug workspace" tw-class="self-center rounded p-2 text-gray-400 opacity-70 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 group-hover:opacity-100 dark:hover:bg-red-950/30" :disabled="generatingComprehensiveFixture" @click="destroyWorkspace({ source })"><Trash2Icon tw-class="h-3.5 w-3.5" /></button>
               </div>
             </div>
           </aside>
@@ -1179,6 +1258,32 @@ defineExpose({
                   </template>
                 </dl>
               </div>
+              <section v-if="selectedSource.type === 'ephemeral_debug_workspace'" tw-class="border-b border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/10">
+                <div tw-class="border-b border-amber-200 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:border-amber-900 dark:text-amber-300">Workspace actions</div>
+                <button type="button" data-testid="encrypted-opfs-open-comprehensive-fixture" tw-class="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-amber-100/70 disabled:opacity-50 dark:hover:bg-amber-950/30" :disabled="generatingComprehensiveFixture" @click="openComprehensiveFixturePanel">
+                  <DatabaseIcon tw-class="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Generate comprehensive fixture…</span><span tw-class="block text-[9px] text-amber-700/80 dark:text-amber-300/80">Create deterministic coverage for every current EncryptedOpfs record family</span></span>
+                  <ChevronRightIcon tw-class="h-3.5 w-3.5 text-amber-500" />
+                </button>
+                <div v-if="fixturePanelVisibility === 'open'" data-testid="encrypted-opfs-comprehensive-fixture-panel" tw-class="border-t border-amber-200 px-3 py-3 text-[10px] text-amber-950 dark:border-amber-900 dark:text-amber-100">
+                  <p>Creates a deterministic dataset under <code tw-class="font-mono">{{ ENCRYPTED_OPFS_COMPREHENSIVE_FIXTURE_ROOT_PATH }}</code> through the decrypted filesystem API.</p>
+                  <p tw-class="mt-2 text-[9px] text-amber-800 dark:text-amber-300">Includes inline and extent files, sparse ranges, leaf and branch index pages, symlinks, deep directories, Copy-on-Write history, moves, renames, truncation, and unreachable objects. The target path must not already exist.</p>
+                  <div v-if="comprehensiveFixtureProgress" data-testid="encrypted-opfs-comprehensive-fixture-progress" tw-class="mt-3 rounded border border-amber-300 bg-white/70 p-2 font-mono text-[9px] dark:border-amber-800 dark:bg-gray-950/50">
+                    <div tw-class="font-semibold uppercase">{{ comprehensiveFixtureProgress.phase }}</div>
+                    <div tw-class="mt-1">{{ comprehensiveFixtureProgress.detail }}</div>
+                    <div tw-class="mt-1 text-amber-700 dark:text-amber-300">{{ comprehensiveFixtureProgress.completedPhaseCount }} / {{ comprehensiveFixtureProgress.totalPhaseCount }} phases</div>
+                  </div>
+                  <div v-if="comprehensiveFixtureErrorMessage" data-testid="encrypted-opfs-comprehensive-fixture-error" tw-class="mt-3 rounded border border-red-300 bg-red-50 p-2 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ comprehensiveFixtureErrorMessage }}</div>
+                  <div v-if="comprehensiveFixtureResult" data-testid="encrypted-opfs-comprehensive-fixture-result" tw-class="mt-3 rounded border border-emerald-300 bg-emerald-50 p-2 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+                    Generated {{ comprehensiveFixtureResult.coverage.length }} coverage cases. The Workbench and decrypted File Explorer now follow the fixture root.
+                  </div>
+                  <div tw-class="mt-3 flex flex-wrap justify-end gap-2">
+                    <button v-if="comprehensiveFixtureResult" type="button" data-testid="encrypted-opfs-inspect-comprehensive-fixture-root" tw-class="rounded border border-emerald-400 px-2 py-1 font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40" @click="inspectLogicalPath({ logicalPath: comprehensiveFixtureResult.rootPath })">Inspect fixture root</button>
+                    <button type="button" tw-class="rounded border border-amber-300 px-2 py-1 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800 dark:hover:bg-amber-950/30" :disabled="generatingComprehensiveFixture" @click="closeComprehensiveFixturePanel">Close</button>
+                    <button type="button" data-testid="encrypted-opfs-generate-comprehensive-fixture" tw-class="rounded border border-amber-500 bg-amber-600 px-2 py-1 font-medium text-white hover:bg-amber-700 disabled:opacity-50" :disabled="generatingComprehensiveFixture || comprehensiveFixtureResult !== undefined" @click="generateComprehensiveFixture">{{ generatingComprehensiveFixture ? 'Generating…' : 'Generate' }}</button>
+                  </div>
+                </div>
+              </section>
               <button type="button" data-testid="encrypted-opfs-open-descriptor" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openDescriptor"><FileCode2Icon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Descriptor</span><span tw-class="block text-[9px] text-gray-400">RAW DTO · persisted plaintext</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>
               <button type="button" data-testid="encrypted-opfs-open-superblocks" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openSuperblockSlots"><HardDriveIcon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Superblock slots</span><span tw-class="block text-[9px] text-gray-400">PERSISTED RECORDS · A/B selection</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>
               <button type="button" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openActiveCommit"><DatabaseIcon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Active commit</span><span tw-class="block text-[9px] text-gray-400">RAW DTO · revision {{ overview.activeCommit.revision }}</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>

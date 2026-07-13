@@ -232,6 +232,7 @@ const mocks = vi.hoisted(() => ({
   closeWorkbench: vi.fn(),
   createClient: vi.fn(),
   createWorkspace: vi.fn(),
+  generateFixture: vi.fn(),
   destroyWorkspace: vi.fn(),
   listSources: vi.fn(),
   openControlPlane: vi.fn(),
@@ -262,6 +263,11 @@ vi.mock("@/features/debug-encrypted-opfs/logic/workbench-sources", () => ({
   createEncryptedOpfsWorkbenchWorkspace: mocks.createWorkspace,
   destroyEncryptedOpfsWorkbenchWorkspace: mocks.destroyWorkspace,
   openEncryptedOpfsWorkbenchSource: mocks.openSource,
+}));
+
+vi.mock("@/features/debug-encrypted-opfs/logic/comprehensive-fixture", () => ({
+  ENCRYPTED_OPFS_COMPREHENSIVE_FIXTURE_ROOT_PATH: "/__encrypted_opfs_fixture__",
+  generateEncryptedOpfsComprehensiveFixture: mocks.generateFixture,
 }));
 
 vi.mock("@/features/debug-encrypted-opfs/worker/client", () => ({
@@ -611,6 +617,28 @@ describe("EncryptedOpfsWorkbenchModal", () => {
       createClient({ fileSystemId: "filesystem-a" }),
     );
     mocks.createWorkspace.mockResolvedValue(workspaceSource);
+    mocks.generateFixture.mockImplementation(async ({ onProgress }) => {
+      onProgress({
+        progress: {
+          phase: "complete",
+          completedPhaseCount: 7,
+          totalPhaseCount: 7,
+          detail: "Comprehensive fixture generated",
+        },
+      });
+      return {
+        rootPath: "/__encrypted_opfs_fixture__",
+        manifestPath: "/__encrypted_opfs_fixture__/manifest.json",
+        coverage: [
+          {
+            id: "inline-file",
+            path: "/__encrypted_opfs_fixture__/files/inline-small.txt",
+            purpose: "Inline file inode",
+            expectedStructures: ["file_inode:inline"],
+          },
+        ],
+      };
+    });
   });
 
   afterEach(() => {
@@ -1032,6 +1060,55 @@ describe("EncryptedOpfsWorkbenchModal", () => {
 
     expect(mocks.createWorkspace).toHaveBeenCalledOnce();
     expect(mocks.listSources).toHaveBeenCalledTimes(2);
+
+    wrapper.unmount();
+  });
+
+  it("generates a comprehensive fixture only for an ephemeral workspace and follows its root", async () => {
+    const wrapper = mount(EncryptedOpfsWorkbenchModal, {
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    expect(document.body.querySelector('[data-testid="encrypted-opfs-open-comprehensive-fixture"]')).toBeNull();
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-source-id="debug-workspace:workspace-a"]',
+      )
+      ?.click();
+    await flushPromises();
+
+    const openButton = document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="encrypted-opfs-open-comprehensive-fixture"]',
+    );
+    expect(openButton?.textContent).toContain("Generate comprehensive fixture…");
+    openButton?.click();
+    await flushPromises();
+    expect(document.body.textContent).toContain("extent files");
+    expect(document.body.textContent).toContain("Copy-on-Write history");
+
+    document.body
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="encrypted-opfs-generate-comprehensive-fixture"]',
+      )
+      ?.click();
+    await flushPromises();
+
+    expect(mocks.generateFixture).toHaveBeenCalledWith({
+      root: expect.objectContaining({ kind: "directory" }),
+      onProgress: expect.any(Function),
+    });
+    expect(document.body.textContent).toContain("Generated 1 coverage cases");
+    expect(document.body.querySelector('[data-testid="embedded-file-explorer"]')).not.toBeNull();
+
+    const latestClient = vi.mocked(mocks.createClient).mock.results.at(-1)?.value;
+    expect(latestClient).toBeDefined();
+    const client = await latestClient;
+    expect(client.readPath).toHaveBeenCalledWith({
+      commitObjectId: "commit-a",
+      logicalPath: "/__encrypted_opfs_fixture__",
+      maximumDirectoryEntryCount: 1_000,
+    });
 
     wrapper.unmount();
   });

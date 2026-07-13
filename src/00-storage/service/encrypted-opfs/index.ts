@@ -17,6 +17,8 @@ export type {
   EncryptedOpfsPhysicalObjectPage,
   EncryptedOpfsSuperblockSlotInspection,
 } from './inspection';
+export { DEFAULT_ENCRYPTED_OPFS_POLICY } from './file-system/policy';
+export type { EncryptedOpfsPolicy } from './file-system/policy';
 export { collectEncryptedOpfsGarbage } from './garbage-collector';
 export type { EncryptedOpfsGarbageCollectionResult } from './garbage-collector';
 
