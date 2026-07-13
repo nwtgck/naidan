@@ -105,6 +105,7 @@ class MockExplorerDirectory implements ExplorerDirectory {
 // ---- Mocks ----
 
 let activeRoot: MockExplorerDirectory | undefined;
+let beforeReadDirectory: (({ path }: { path: string }) => Promise<void>) | undefined;
 
 function normalizePath(path: string): string {
   return path === '/' ? '/' : `/${path.split('/').filter(Boolean).join('/')}`;
@@ -195,6 +196,7 @@ async function listDirectory(path: string): Promise<{
 async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
   const client: FileExplorerWorkerClient = {
     async readDirectory({ path }) {
+      await beforeReadDirectory?.({ path });
       return listDirectory(path);
     },
     async readPreview({ path, mode }) {
@@ -423,6 +425,7 @@ describe('FileExplorer.vue', () => {
 
   beforeEach(() => {
     root = makeRoot();
+    beforeReadDirectory = undefined;
     mockShowConfirm.mockResolvedValue(true);
     mockShowPrompt.mockResolvedValue(undefined);
     mockAddToast.mockReset();
@@ -518,6 +521,35 @@ describe('FileExplorer.vue', () => {
 
     expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('docs');
     expect(wrapper.find('[data-testid="entry-item-settings.json"]').exists()).toBe(true);
+  });
+
+  it('keeps embedded column navigation local instead of flashing an enclosing workbench', async () => {
+    const subdir = root.addDir('subdir');
+    subdir.addFile('child.txt', 50);
+    const pendingDirectory = Promise.withResolvers<void>();
+    beforeReadDirectory = async ({ path }) => {
+      if (path === '/subdir') {
+        await pendingDirectory.promise;
+      }
+    };
+    const wrapper = tracked(mountExplorer(root, { initialViewMode: 'column' }));
+    await flushPromises();
+
+    const explorerElement = wrapper.get('[data-testid="file-explorer"]').element;
+    expect(wrapper.get('[data-testid="file-explorer-main-content"]').classes()).toContain('relative');
+
+    await wrapper.get('[data-testid="entry-item-subdir"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="file-explorer-loading-overlay"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="file-explorer-column-navigation-loading"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="file-explorer"]').element).toBe(explorerElement);
+
+    pendingDirectory.resolve();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="file-explorer-column-navigation-loading"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="file-explorer"]').element).toBe(explorerElement);
+    expect(wrapper.text()).toContain('child.txt');
   });
 
   it('loads the selected file preview when controlled reveal preview mode is load', async () => {

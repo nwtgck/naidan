@@ -150,10 +150,21 @@ onUnmounted(() => {
     <FileExplorerToolbar />
 
     <!-- Main content area -->
-    <div tw-class="flex flex-1 overflow-hidden">
-      <!-- Loading overlay -->
+    <!--
+      Absolute status layers must be positioned against the File Explorer,
+      not an enclosing modal. Without this positioning context, a directory
+      load in an embedded explorer can visually cover the whole Workbench.
+    -->
+    <div data-testid="file-explorer-main-content" tw-class="relative flex flex-1 overflow-hidden">
+      <!--
+        List and icon views replace one directory listing with another, so a
+        scoped overlay is useful. Column view preserves the existing trail and
+        renders its pending directory as a local column instead of flashing the
+        entire explorer.
+      -->
       <div
-        v-if="context.isLoading"
+        v-if="context.isLoading && context.viewMode !== 'column'"
+        data-testid="file-explorer-loading-overlay"
         tw-class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 z-10 pointer-events-none"
       >
         <Loader2Icon tw-class="w-5 h-5 text-gray-400 animate-spin" />

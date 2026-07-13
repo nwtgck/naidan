@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { inject, ref, watch, nextTick } from 'vue';
+import { Loader2Icon } from 'lucide-vue-next';
 import FileExplorerColumnPane from './FileExplorerColumnPane.vue';
 import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
@@ -42,6 +43,13 @@ defineExpose({
         :pane="pane"
         :pane-index="i"
       />
+      <div
+        v-if="ctx.isLoading"
+        data-testid="file-explorer-column-navigation-loading"
+        tw-class="flex w-52 shrink-0 items-center justify-center border-r border-gray-100 py-8 dark:border-gray-800"
+      >
+        <Loader2Icon tw-class="h-4 w-4 animate-spin text-gray-400" />
+      </div>
     </div>
 
     <!-- Preview panel (always visible in column view if there's a selection) -->
