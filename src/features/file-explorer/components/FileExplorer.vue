@@ -23,6 +23,8 @@ const props = defineProps<{
   /** When true, the explorer starts in locked mode (write operations disabled). */
   initialLocked: boolean,
   revealPath?: string | undefined,
+  /** Controls whether a controlled file reveal also loads its preview. */
+  revealFilePreview: 'load' | 'preserve',
   entryContextActionLabel?: string | undefined,
 }>();
 
@@ -73,6 +75,42 @@ watch(
         if (generation !== controlledRevealGeneration) return;
         try {
           await context.revealPath({ path });
+          /**
+           * A controlled reveal normally changes navigation and selection only.
+           * The Workbench companion explicitly opts into preview loading so the
+           * decrypted file represented by the low-level traversal is visible
+           * immediately while follow mode is active.
+           */
+          switch (props.revealFilePreview) {
+          case 'load': {
+            const selectedEntry = context.selectedEntries.length === 1
+              ? context.selectedEntries[0]
+              : undefined;
+            if (selectedEntry === undefined) {
+              context.clearPreview();
+              break;
+            }
+            switch (selectedEntry.kind) {
+            case 'file':
+              await context.loadPreview({ entry: selectedEntry });
+              break;
+            case 'directory':
+              context.clearPreview();
+              break;
+            default: {
+              const _ex: never = selectedEntry.kind;
+              throw new Error(`Unhandled revealed entry kind: ${_ex}`);
+            }
+            }
+            break;
+          }
+          case 'preserve':
+            break;
+          default: {
+            const _ex: never = props.revealFilePreview;
+            throw new Error(`Unhandled reveal file preview mode: ${_ex}`);
+          }
+          }
         } catch (error) {
           if (generation !== controlledRevealGeneration) return;
           controlledRevealError.value = error instanceof Error ? error.message : String(error);

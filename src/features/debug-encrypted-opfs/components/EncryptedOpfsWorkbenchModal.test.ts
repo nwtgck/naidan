@@ -276,7 +276,7 @@ vi.mock("@/features/file-explorer/composables/useFileExplorerModal", () => ({
 
 vi.mock("@/features/file-explorer/components/FileExplorer.vue", () => ({
   default: {
-    props: ["root", "initialLocked", "revealPath", "entryContextActionLabel"],
+    props: ["root", "initialLocked", "initialPreviewVisibility", "revealPath", "revealFilePreview", "entryContextActionLabel"],
     emits: ["entry-context-action"],
     setup(_: unknown, { emit }: { emit: (event: string, payload: unknown) => void }) {
       return {
@@ -298,7 +298,7 @@ vi.mock("@/features/file-explorer/components/FileExplorer.vue", () => ({
         },
       };
     },
-    template: '<div data-testid="embedded-file-explorer">{{ root.kind }}:{{ root.rootName }}:{{ String(initialLocked) }}:{{ revealPath ?? "" }}:{{ entryContextActionLabel ?? "" }}<button type="button" data-testid="mock-inspect-encrypted-opfs-records" @click="inspectDocs">Inspect</button></div>',
+    template: '<div data-testid="embedded-file-explorer">{{ root.kind }}:{{ root.rootName }}:{{ String(initialLocked) }}:{{ initialPreviewVisibility }}:{{ revealFilePreview }}:{{ revealPath ?? "" }}:{{ entryContextActionLabel ?? "" }}<button type="button" data-testid="mock-inspect-encrypted-opfs-records" @click="inspectDocs">Inspect</button></div>',
   },
 }));
 
@@ -969,7 +969,8 @@ describe("EncryptedOpfsWorkbenchModal", () => {
       '[data-testid="embedded-file-explorer"]',
     );
     if (companion === null) throw new Error("Companion File Explorer did not mount lazily");
-    expect(companion.textContent).toContain("Inspect EncryptedOpfs records");
+    expect(companion.textContent).toContain("visible:load::Inspect EncryptedOpfs records");
+    expect(document.body.querySelector('[data-testid="encrypted-opfs-companion-files-icon"]')).not.toBeNull();
 
     document.body
       .querySelector<HTMLButtonElement>(
@@ -980,7 +981,7 @@ describe("EncryptedOpfsWorkbenchModal", () => {
     companion = document.body.querySelector<HTMLElement>(
       '[data-testid="embedded-file-explorer"]',
     );
-    expect(companion?.textContent).toContain("true:/:Inspect EncryptedOpfs records");
+    expect(companion?.textContent).toContain("true:visible:load:/:Inspect EncryptedOpfs records");
 
     document.body
       .querySelector<HTMLButtonElement>(
@@ -991,7 +992,7 @@ describe("EncryptedOpfsWorkbenchModal", () => {
     companion = document.body.querySelector<HTMLElement>(
       '[data-testid="embedded-file-explorer"]',
     );
-    expect(companion?.textContent).toContain("true:/docs:Inspect EncryptedOpfs records");
+    expect(companion?.textContent).toContain("true:visible:load:/docs:Inspect EncryptedOpfs records");
 
     vi.mocked(client.readPath).mockClear();
     document.body
@@ -1064,7 +1065,7 @@ describe("EncryptedOpfsWorkbenchModal", () => {
       ?.click();
     await flushPromises();
     expect(document.body.querySelector('[data-testid="embedded-file-explorer"]')?.textContent)
-      .toContain('false::Inspect EncryptedOpfs records');
+      .toContain('false:visible:load::Inspect EncryptedOpfs records');
 
     wrapper.unmount();
   });

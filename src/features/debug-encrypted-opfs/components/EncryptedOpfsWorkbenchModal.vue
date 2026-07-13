@@ -10,6 +10,7 @@ import {
   ExternalLinkIcon,
   FileCode2Icon,
   FileSearchIcon,
+  FilesIcon,
   FolderRootIcon,
   FolderTreeIcon,
   HardDriveIcon,
@@ -1362,7 +1363,7 @@ defineExpose({
             <div v-else-if="column.kind === 'file_explorer'" tw-class="flex min-h-0 flex-1 flex-col">
               <div tw-class="shrink-0 border-b border-blue-200 bg-blue-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">Derived filesystem view · {{ selectedSource?.access }}</div>
               <Suspense v-if="fileExplorerRoot">
-                <FileExplorer :key="selectedSource?.sourceId" :root="fileExplorerRoot" initial-view-mode="column" initial-preview-visibility="visible" :initial-path="undefined" :initial-locked="selectedSource?.access === 'read_only'" entry-context-action-label="Inspect EncryptedOpfs records" @entry-context-action="inspectFileExplorerEntry" />
+                <FileExplorer :key="selectedSource?.sourceId" :root="fileExplorerRoot" initial-view-mode="column" initial-preview-visibility="visible" reveal-file-preview="preserve" :initial-path="undefined" :initial-locked="selectedSource?.access === 'read_only'" entry-context-action-label="Inspect EncryptedOpfs records" @entry-context-action="inspectFileExplorerEntry" />
                 <template #fallback><div tw-class="flex h-full items-center justify-center gap-2 text-xs text-gray-500"><LoaderCircleIcon tw-class="h-4 w-4 animate-spin" /> Opening decrypted root…</div></template>
               </Suspense>
             </div>
@@ -1386,6 +1387,7 @@ defineExpose({
             <button type="button" data-testid="encrypted-opfs-toggle-companion-explorer" tw-class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="toggleCompanionExplorer">
               <ChevronUpIcon v-if="companionExplorerVisibility === 'expanded'" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500" />
               <ChevronDownIcon v-else tw-class="h-3.5 w-3.5 shrink-0 text-blue-500" />
+              <FilesIcon data-testid="encrypted-opfs-companion-files-icon" tw-class="h-4 w-4 shrink-0 text-blue-500" />
               <span tw-class="min-w-0 flex-1">
                 <span tw-class="block text-[9px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-300">Derived decrypted filesystem view</span>
                 <span tw-class="block truncate font-mono text-[10px] text-gray-500 dark:text-gray-400">{{ companionExplorerStatus }}</span>
@@ -1400,7 +1402,8 @@ defineExpose({
                 :key="`companion:${selectedSource.sourceId}`"
                 :root="fileExplorerRoot"
                 initial-view-mode="column"
-                initial-preview-visibility="hidden"
+                initial-preview-visibility="visible"
+                reveal-file-preview="load"
                 :initial-path="undefined"
                 :initial-locked="selectedSource.access === 'read_only'"
                 :reveal-path="companionFollowMode === 'following' ? companionExplorerPath : undefined"

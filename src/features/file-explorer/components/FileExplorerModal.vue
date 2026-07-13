@@ -83,6 +83,7 @@ defineExpose({
               :initial-locked="initialLocked"
               initial-view-mode="list"
               initial-preview-visibility="visible"
+              reveal-file-preview="preserve"
               tw-class="h-full"
             />
           </Suspense>

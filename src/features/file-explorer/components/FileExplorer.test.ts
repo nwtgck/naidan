@@ -359,6 +359,7 @@ function mountExplorer(root: MockExplorerDirectory, overrides: Record<string, un
           root: { kind: 'native-directory', rootName: root.name, handle: {} as FileSystemDirectoryHandle, readOnly: root.readOnly },
           initialViewMode: 'list',
           initialPreviewVisibility: 'visible',
+          revealFilePreview: 'preserve',
           initialPath: undefined,
           initialLocked: false,
           ...overrides,
@@ -517,6 +518,40 @@ describe('FileExplorer.vue', () => {
 
     expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('docs');
     expect(wrapper.find('[data-testid="entry-item-settings.json"]').exists()).toBe(true);
+  });
+
+  it('loads the selected file preview when controlled reveal preview mode is load', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128, '{"preview":true}');
+    const wrapper = tracked(mountExplorer(root, {
+      initialViewMode: 'column',
+      revealPath: '/docs/settings.json',
+      revealFilePreview: 'load',
+    }));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="preview-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).toContain('settings.json');
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).not.toContain('Select a file');
+  });
+
+  it('clears a previously loaded preview when controlled follow reveals a directory', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128, '{"preview":true}');
+    const controlledProps = reactive({
+      initialViewMode: 'column',
+      revealPath: '/docs/settings.json',
+      revealFilePreview: 'load',
+    });
+    const wrapper = tracked(mountExplorer(root, controlledProps));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).toContain('settings.json');
+
+    controlledProps.revealPath = '/docs';
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).not.toContain('settings.json');
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).toContain('Select a file');
   });
 
   it('reports a failed controlled reveal and recovers on the next valid path', async () => {
