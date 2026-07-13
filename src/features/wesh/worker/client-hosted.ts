@@ -3,6 +3,7 @@ import * as Comlink from 'comlink';
 
 import { FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME } from '@/constants';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
+import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
   weshWorkerExecutionSummarySchema,
@@ -45,6 +46,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   });
 
   const createRuntime = async () => {
+    const storageDirectoryRemote = createWeshStorageDirectoryRemoteForMounts({ mounts });
     const worker = new Worker(
       new URL('./entry.ts', import.meta.url),
       {
@@ -60,18 +62,26 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       naidanSysfsRemoteReader
         ? Comlink.proxy(naidanSysfsRemoteReader)
         : undefined,
+      storageDirectoryRemote
+        ? Comlink.proxy(storageDirectoryRemote)
+        : undefined,
     );
-    return { worker, remote };
+    return { worker, remote, storageDirectoryRemote };
   };
 
-  const destroyRuntime = async ({ worker, remote }: {
+  const destroyRuntime = async ({ worker, remote, storageDirectoryRemote }: {
     worker: Worker,
     remote: Comlink.Remote<IWeshWorker>,
+    storageDirectoryRemote: ReturnType<typeof createWeshStorageDirectoryRemoteForMounts>,
   }) => {
     try {
-      await remote[Comlink.releaseProxy]();
+      await storageDirectoryRemote?.dispose();
     } finally {
-      worker.terminate();
+      try {
+        await remote[Comlink.releaseProxy]();
+      } finally {
+        worker.terminate();
+      }
     }
   };
 

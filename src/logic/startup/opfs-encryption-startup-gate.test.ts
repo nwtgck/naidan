@@ -13,7 +13,7 @@ function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 
       keySlots: [{
         id: 'slot-id',
         keyDerivation: {
-          type: 'pbkdf2_sha256',
+          type: 'pbkdf2_hmac_sha256',
           salt: 'salt',
           iterations: 10,
         },
@@ -43,7 +43,7 @@ function createTransitioningInspection(): Extract<OpfsEncryptionInspection, { ty
       keySlots: [{
         id: 'slot-id',
         keyDerivation: {
-          type: 'pbkdf2_sha256',
+          type: 'pbkdf2_hmac_sha256',
           salt: 'salt',
           iterations: 10,
         },

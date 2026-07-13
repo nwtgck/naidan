@@ -1,16 +1,9 @@
 import { ref } from 'vue';
-import type { EncryptedStorageDebugNodeRef } from '@/features/debug-encrypted-storage/worker/types';
 
 const isOpen = ref(false);
-const initialNode = ref<EncryptedStorageDebugNodeRef>({ type: 'root' });
 
 export function useDebugEncryptedStorageInspector() {
-  function openDebugEncryptedStorageInspector({
-    ref = { type: 'root' },
-  }: {
-    ref?: EncryptedStorageDebugNodeRef,
-  } = {}): void {
-    initialNode.value = ref;
+  function openDebugEncryptedStorageInspector(): void {
     isOpen.value = true;
   }
 
@@ -20,7 +13,6 @@ export function useDebugEncryptedStorageInspector() {
 
   return {
     isDebugEncryptedStorageInspectorOpen: isOpen,
-    debugEncryptedStorageInitialNode: initialNode,
     openDebugEncryptedStorageInspector,
     closeDebugEncryptedStorageInspector,
     ...((__BUILD_MODE_IS_TEST__ && {

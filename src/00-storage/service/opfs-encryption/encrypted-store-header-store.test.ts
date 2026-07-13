@@ -1,48 +1,84 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { EncryptedStoreHeaderDto } from '@/00-storage/00-dto/encryption.dto';
-import {
-  MockFileSystemDirectoryHandle,
-} from '@/utils/in-memory-file-system';
+import type { OpfsEncryptedStoreHeaderDto } from '@/00-storage/00-dto/opfs-encryption.dto';
+import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { encodeBase64Url } from './base64-url';
-import { EncryptedStoreHeaderStore } from './encrypted-store-header-store';
+import { EncryptedStoreHeaderStore, TEST_ONLY } from './encrypted-store-header-store';
 
 function createHeader({
-  sequence,
   encryptedStoreId,
+  fileSystemId = encodeBase64Url({ bytes: new Uint8Array(16).fill(7) }),
 }: {
-  sequence: number,
-  encryptedStoreId: string,
-}): EncryptedStoreHeaderDto {
+  encryptedStoreId: string;
+  fileSystemId?: string;
+}): OpfsEncryptedStoreHeaderDto {
   return {
     formatVersion: 1,
-    sequence,
     encryptedStoreId,
-    wrappedStoreRootKey: {
-      nonce: encodeBase64Url({ bytes: new Uint8Array(12).fill(sequence + 1) }),
-      ciphertext: encodeBase64Url({ bytes: new Uint8Array(48).fill(sequence + 2) }),
+    fileSystemId,
+    wrappedFileSystemRootKey: {
+      nonce: encodeBase64Url({ bytes: new Uint8Array(12).fill(1) }),
+      ciphertext: encodeBase64Url({ bytes: new Uint8Array(48).fill(2) }),
     },
   };
 }
 
 describe('EncryptedStoreHeaderStore', () => {
-  it('selects the newest valid header slot', async () => {
+  it('writes one immutable header beside a separate EncryptedOpfs data directory', async () => {
     const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
     const store = new EncryptedStoreHeaderStore({ storageRoot });
-    const first = createHeader({ sequence: 0, encryptedStoreId: 'store-id' });
-    const second = createHeader({ sequence: 1, encryptedStoreId: 'store-id' });
+    const header = createHeader({ encryptedStoreId: 'store-id' });
 
-    await store.write({ header: first });
-    await store.write({ header: second });
+    await store.write({ header });
+    await store.write({ header });
 
-    await expect(store.read({ encryptedStoreId: 'store-id' })).resolves.toEqual(second);
+    await expect(store.read({ encryptedStoreId: 'store-id' })).resolves.toEqual(header);
+    const storeDirectory = await store.getStoreDirectory({
+      encryptedStoreId: 'store-id',
+      create: false,
+    });
+    await expect(storeDirectory.getFileHandle(TEST_ONLY.HEADER_FILE_NAME)).resolves.toBeDefined();
+    await expect(store.getEncryptedOpfsBackingDirectory({
+      encryptedStoreId: 'store-id',
+      create: true,
+    })).resolves.toMatchObject({ name: TEST_ONLY.ENCRYPTED_OPFS_DATA_DIRECTORY_NAME });
+  });
+
+  it('treats property order as irrelevant when writing the same immutable header', async () => {
+    const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
+    const store = new EncryptedStoreHeaderStore({ storageRoot });
+    const header = createHeader({ encryptedStoreId: 'store-id' });
+    await store.write({ header });
+
+    const reorderedHeader: OpfsEncryptedStoreHeaderDto = {
+      wrappedFileSystemRootKey: {
+        ciphertext: header.wrappedFileSystemRootKey.ciphertext,
+        nonce: header.wrappedFileSystemRootKey.nonce,
+      },
+      fileSystemId: header.fileSystemId,
+      encryptedStoreId: header.encryptedStoreId,
+      formatVersion: header.formatVersion,
+    };
+
+    await expect(store.write({ header: reorderedHeader })).resolves.toBeUndefined();
+  });
+
+  it('rejects replacing an existing header with different contents', async () => {
+    const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
+    const store = new EncryptedStoreHeaderStore({ storageRoot });
+    await store.write({ header: createHeader({ encryptedStoreId: 'store-id' }) });
+
+    await expect(store.write({
+      header: createHeader({
+        encryptedStoreId: 'store-id',
+        fileSystemId: encodeBase64Url({ bytes: new Uint8Array(16).fill(8) }),
+      }),
+    })).rejects.toThrow('immutable');
   });
 
   it('accepts a durable encrypted-store removal when removeEntry reports an error', async () => {
     const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
     const store = new EncryptedStoreHeaderStore({ storageRoot });
-    await store.write({
-      header: createHeader({ sequence: 0, encryptedStoreId: 'store-id' }),
-    });
+    await store.write({ header: createHeader({ encryptedStoreId: 'store-id' }) });
     const storesDirectory = await storageRoot.getDirectoryHandle('encrypted-stores');
     const removeEntry = storesDirectory.removeEntry.bind(storesDirectory);
     vi.spyOn(storesDirectory, 'removeEntry').mockImplementation(async (name, options) => {
@@ -51,28 +87,20 @@ describe('EncryptedStoreHeaderStore', () => {
     });
 
     await expect(store.removeStore({ encryptedStoreId: 'store-id' })).resolves.toBeUndefined();
-    await expect(store.read({ encryptedStoreId: 'store-id' })).rejects.toMatchObject({
-      name: 'NotFoundError',
-    });
+    await expect(store.read({ encryptedStoreId: 'store-id' })).resolves.toBeUndefined();
   });
 
   it('removes only the requested encrypted store', async () => {
     const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
     const store = new EncryptedStoreHeaderStore({ storageRoot });
+    await store.write({ header: createHeader({ encryptedStoreId: 'store-a' }) });
+    await store.write({ header: createHeader({ encryptedStoreId: 'store-b' }) });
 
-    await store.write({
-      header: createHeader({ sequence: 0, encryptedStoreId: 'store-a' }),
-    });
-    await store.write({
-      header: createHeader({ sequence: 0, encryptedStoreId: 'store-b' }),
-    });
     await store.removeStore({ encryptedStoreId: 'store-a' });
 
     await expect(store.read({ encryptedStoreId: 'store-b' })).resolves.toMatchObject({
       encryptedStoreId: 'store-b',
     });
-    await expect(store.read({ encryptedStoreId: 'store-a' })).rejects.toMatchObject({
-      name: 'NotFoundError',
-    });
+    await expect(store.read({ encryptedStoreId: 'store-a' })).resolves.toBeUndefined();
   });
 });

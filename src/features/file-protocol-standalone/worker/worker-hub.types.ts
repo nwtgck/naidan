@@ -1,4 +1,3 @@
-import type { IDebugEncryptedStorageWorker } from '@/features/debug-encrypted-storage/worker/types';
 import type { IAdvancedTextEditorV3Worker } from '@/features/advanced-text-editor-v3/worker/types';
 import type * as Comlink from 'comlink';
 import type { IFileExplorerWorker } from '@/features/file-explorer/worker/types';
@@ -7,7 +6,6 @@ import type { IHighlightWorker } from '@/features/highlight/worker/types';
 import type { IWeshWorker } from '@/features/wesh/worker/types';
 
 export interface IWorkerHub {
-  debugEncryptedStorage: IDebugEncryptedStorageWorker & Comlink.ProxyMarked,
   wesh: IWeshWorker,
   globalSearch: IGlobalSearchWorker,
   fileExplorer: IFileExplorerWorker,

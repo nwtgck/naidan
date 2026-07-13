@@ -4,9 +4,11 @@ import { ensureStrings } from '@/strings';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
-import { PlainOPFSStorageBackend } from './opfs/plain-opfs-storage-backend';
+import { NaidanOpfsStorageBackend } from './naidan-opfs/backend';
+import { HostVolumeDB } from './opfs/host-volume-db';
+import { createNativeOpfsFileSystemSession } from './storage-file-system/native-opfs';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
-import type { EncryptedStorageDebugCapability } from './opfs-encryption/encrypted-storage-debug-capability';
+import type { EncryptedStorageDebugSession } from './opfs-encryption/inspection';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
 import {
   notifyRegisteredOpfsExternalTransitionSettled,
@@ -478,8 +480,8 @@ export class StorageService {
   }
 
 
-  async createEncryptedStorageDebugCapability(): Promise<EncryptedStorageDebugCapability> {
-    return await this.getOpfsProvider().createEncryptedStorageDebugCapability();
+  async createEncryptedStorageDebugSession(): Promise<EncryptedStorageDebugSession> {
+    return await this.getOpfsProvider().createEncryptedStorageDebugSession();
   }
 
   async retryPlainOpfsInitializationAfterEncryptionRecovery(): Promise<void> {
@@ -801,11 +803,8 @@ export class StorageService {
     if (provider instanceof OPFSStorageProvider) {
       return await provider.openSpecialFileSystemDirectory({ type, path, create });
     }
-    return await new PlainOPFSStorageBackend().openSpecialFileSystemDirectory({
-      type,
-      path,
-      create,
-    });
+    const backend = await this.createNativeNaidanOpfsBackend();
+    return await backend.openSpecialFileSystemDirectory({ type, path, create });
   }
 
   async removeOpfsSpecialFileSystemEntry({
@@ -822,11 +821,8 @@ export class StorageService {
       await provider.removeSpecialFileSystemEntry({ type, path, recursive });
       return;
     }
-    await new PlainOPFSStorageBackend().removeSpecialFileSystemEntry({
-      type,
-      path,
-      recursive,
-    });
+    const backend = await this.createNativeNaidanOpfsBackend();
+    await backend.removeSpecialFileSystemEntry({ type, path, recursive });
   }
 
   async clearOpfsSpecialFileSystem({
@@ -839,8 +835,17 @@ export class StorageService {
       await provider.clearSpecialFileSystem({ type });
       return;
     }
-    await new PlainOPFSStorageBackend().removeSpecialFileSystemForTransition({
-      type,
+    const backend = await this.createNativeNaidanOpfsBackend();
+    await backend.removeSpecialFileSystemForTransition({ type });
+  }
+
+  private async createNativeNaidanOpfsBackend(): Promise<NaidanOpfsStorageBackend> {
+    const fileSystemSession = createNativeOpfsFileSystemSession({
+      root: await navigator.storage.getDirectory(),
+    });
+    return new NaidanOpfsStorageBackend({
+      namespaceRoot: fileSystemSession.root,
+      hostVolumeDB: new HostVolumeDB(),
     });
   }
 
@@ -1004,7 +1009,7 @@ export class StorageService {
                               mimeType: att.blob.type || att.mimeType,
                               size: att.blob.size,
                               createdAt: att.uploadedAt,
-                              source: { type: 'direct_blob', blob: att.blob },
+                              blob: att.blob,
                             });
                             node.attachments[i] = { ...att, status: 'persisted' as const };
                           }

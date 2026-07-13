@@ -1,54 +1,72 @@
 #!/usr/bin/env node
 import { Buffer } from 'node:buffer';
+import { TextDecoder } from 'node:util';
 import console from 'node:console';
 import {
   createDecipheriv,
-  createHmac,
   hkdfSync,
   pbkdf2Sync,
 } from 'node:crypto';
 import {
+  lstat,
   mkdir,
   open,
   readFile,
+  rename,
   rm,
-  stat,
-  utimes,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import process, { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 
-const OBJECT_MAGIC = Buffer.from([0x4e, 0x41, 0x49, 0x4f, 0x42, 0x4a, 0x00, 0x00]);
-const OBJECT_FORMAT_VERSION = 1;
-const OBJECT_HEADER_BYTE_LENGTH = 24;
-const PAYLOAD_FRAME_VERSION = 1;
-const PAYLOAD_HEADER_BYTE_LENGTH = 10;
+const OBJECT_MAGIC = Buffer.from([0x45, 0x4e, 0x43, 0x4f, 0x50, 0x46, 0x53, 0x00]);
+const OBJECT_ENVELOPE_VERSION = 1;
+const OBJECT_HEADER_BYTE_LENGTH = 32;
+const RECORD_HEADER_BYTE_LENGTH = 16;
 const AES_GCM_TAG_BYTE_LENGTH = 16;
-const OBJECT_ENCRYPTION_HKDF_INFO = Buffer.from('naidan/opfs-encryption/object-encryption-key/v1');
-const OBJECT_ADDRESS_HKDF_INFO = Buffer.from('naidan/opfs-encryption/object-address-key/v1');
 const MAX_PBKDF2_ITERATIONS = 10_000_000;
 const MAX_ENCRYPTION_KEY_SLOTS = 32;
+const OBJECT_ID_BYTE_LENGTH = 32;
+const STABLE_ID_BYTE_LENGTH = 16;
+const RECORD_KINDS = new Map([
+  [1, 'commit'],
+  [2, 'inode_index_page'],
+  [3, 'file_inode'],
+  [4, 'directory_inode'],
+  [5, 'symlink_inode'],
+  [6, 'directory_index_page'],
+  [7, 'file_extent_page'],
+  [8, 'file_chunk'],
+  [9, 'superblock'],
+]);
+
+class UnsupportedFormatError extends Error {}
+class CorruptionError extends Error {}
 
 function usage() {
   console.error(`Usage:
   node naidan-recover.mjs <raw-opfs-or-naidan-storage> <output-directory>
     [--passphrase <value>]
     [--store-id <encrypted-store-id>]
-    [--namespace <namespace> --key <key> [--area durable|temporary]]
 
 The input may be a raw OPFS export root containing naidan-storage/ or the
-naidan-storage/ directory itself. Normal mode reconstructs the released plain
-Naidan layout and exports special virtual filesystems under
-recovered-filesystems/. Low-level object mode writes one decoded object to the
-requested output path.`);
+naidan-storage/ directory itself. The output directory must not already exist.`);
 }
 
 function parseArgs(argv) {
   const positional = [];
   const options = new Map();
-  for (let index = 0; index < argv.length; index++) {
+  for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (!value.startsWith('--')) {
       positional.push(value);
@@ -59,874 +77,747 @@ function parseArgs(argv) {
       throw new Error(`Missing value for ${value}`);
     }
     options.set(value, next);
-    index++;
+    index += 1;
   }
   if (positional.length !== 2) {
     usage();
-    process.exitCode = 2;
     return undefined;
-  }
-  const namespace = options.get('--namespace');
-  const key = options.get('--key');
-  if ((namespace === undefined) !== (key === undefined)) {
-    throw new Error('--namespace and --key must be supplied together');
-  }
-  const area = options.get('--area') ?? 'durable';
-  if (area !== 'durable' && area !== 'temporary') {
-    throw new Error(`Unsupported object area: ${area}`);
   }
   return {
     input: resolve(positional[0]),
     output: resolve(positional[1]),
     passphrase: options.get('--passphrase'),
     storeId: options.get('--store-id'),
-    namespace,
-    key,
-    area,
   };
 }
 
-function decodeBase64Url(value, expectedLength) {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]*$/u.test(value)) {
-    throw new Error('Invalid unpadded Base64URL value');
-  }
-  const decoded = Buffer.from(value, 'base64url');
-  if (decoded.toString('base64url') !== value) {
-    throw new Error('Non-canonical Base64URL value');
-  }
-  if (expectedLength !== undefined && decoded.length !== expectedLength) {
-    throw new Error(`Decoded value has ${decoded.length} bytes instead of ${expectedLength}`);
-  }
-  return decoded;
-}
-
-function decryptAesGcm({ key, nonce, ciphertext, aad }) {
-  if (key.length !== 32 || nonce.length !== 12 || ciphertext.length < AES_GCM_TAG_BYTE_LENGTH) {
-    throw new Error('Invalid AES-256-GCM key, nonce, or ciphertext length');
-  }
-  const encrypted = ciphertext.subarray(0, ciphertext.length - AES_GCM_TAG_BYTE_LENGTH);
-  const tag = ciphertext.subarray(ciphertext.length - AES_GCM_TAG_BYTE_LENGTH);
-  const decipher = createDecipheriv('aes-256-gcm', key, nonce);
-  decipher.setAAD(aad);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]);
-}
-
-function decodePayloadFrame(frame) {
-  if (frame.length < PAYLOAD_HEADER_BYTE_LENGTH) {
-    throw new Error('Encrypted object payload frame is truncated');
-  }
-  if (frame[0] !== PAYLOAD_FRAME_VERSION) {
-    throw new Error(`Unsupported encrypted object payload frame version: ${frame[0]}`);
-  }
-  if (frame[1] !== 0) {
-    throw new Error(`Unsupported encrypted object payload encoding: ${frame[1]}`);
-  }
-  const decodedSize = frame.readBigUInt64BE(2);
-  if (decodedSize > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error('Encrypted object decoded size exceeds the safe integer range');
-  }
-  const payload = frame.subarray(PAYLOAD_HEADER_BYTE_LENGTH);
-  if (payload.length !== Number(decodedSize)) {
-    throw new Error(`Encrypted object payload size mismatch: expected ${decodedSize}, received ${payload.length}`);
-  }
-  return payload;
-}
-
-function unwrapKey({ wrappedKey, wrappingKey, aad }) {
-  const key = decryptAesGcm({
-    key: wrappingKey,
-    nonce: decodeBase64Url(wrappedKey.nonce, 12),
-    ciphertext: decodeBase64Url(wrappedKey.ciphertext, 48),
-    aad,
-  });
-  if (key.length !== 32) {
-    throw new Error(`Unwrapped key has ${key.length} bytes instead of 32`);
-  }
-  return key;
-}
-
-async function promptSecret(label) {
-  const reader = createInterface({ input: stdin, output: stdout });
-  try {
-    return await reader.question(label);
-  } finally {
-    reader.close();
-  }
-}
-
-async function readJson(path) {
-  return JSON.parse(await readFile(path, 'utf8'));
-}
-
-async function readLatestSlot(directory, prefix) {
-  const complete = [];
-  for (const slot of [0, 1]) {
-    const path = join(directory, `${prefix}-${slot}.json`);
-    let raw;
-    try {
-      raw = await readJson(path);
-    } catch {
-      continue;
-    }
-    if (
-      raw === null
-      || typeof raw !== 'object'
-      || !Number.isSafeInteger(raw.sequence)
-      || raw.sequence < 0
-      || !Number.isSafeInteger(raw.formatVersion)
-      || raw.formatVersion < 1
-    ) {
-      continue;
-    }
-    complete.push({ raw, path });
-  }
-  complete.sort((left, right) => right.raw.sequence - left.raw.sequence);
-  if (complete.length === 0) {
-    throw new Error(`No complete ${prefix} slot exists in ${directory}`);
-  }
-  if (complete.length === 2 && complete[0].raw.sequence === complete[1].raw.sequence) {
-    throw new Error(`The ${prefix} slots have the same sequence in ${directory}`);
-  }
-  const selected = complete[0].raw;
-  if (selected.formatVersion !== 1) {
-    throw new Error(`Unsupported newest ${prefix} format version: ${selected.formatVersion}`);
-  }
-  return selected;
-}
-
-async function resolveStorageRoot(input) {
-  if (basename(input) === 'naidan-storage') {
-    return input;
-  }
-  const child = join(input, 'naidan-storage');
-  try {
-    if ((await stat(child)).isDirectory()) {
-      return child;
-    }
-  } catch {
-    // Fall through to the clear error below.
-  }
-  throw new Error(`Input does not contain naidan-storage/: ${input}`);
-}
-
-function selectStoreId({ state, explicitStoreId }) {
-  if (explicitStoreId !== undefined) {
-    return explicitStoreId;
-  }
-  if (state.state === 'encrypted') {
-    return state.activeEncryptedStoreId;
-  }
-  if (state.state !== 'transitioning' || state.operation === undefined) {
-    throw new Error(`Unsupported encryption state: ${JSON.stringify(state)}`);
-  }
-  const operation = state.operation;
-  switch (operation.type) {
-  case 'decrypting':
-    return operation.sourceEncryptedStoreId;
-  case 'reencrypting':
-    return operation.phase === 'cleaning_up_source'
-      ? operation.targetEncryptedStoreId
-      : operation.sourceEncryptedStoreId;
-  case 'encrypting':
-    if (operation.phase !== 'cleaning_up_source') {
-      throw new Error('The encrypted target is not authoritative; use the plaintext source or pass --store-id to inspect it explicitly.');
-    }
-    return operation.targetEncryptedStoreId;
-  default:
-    throw new Error(`Unsupported transition operation: ${operation.type}`);
-  }
-}
-
-async function unlockStorageUnlockKey({ state, passphrase }) {
-  const suppliedPassphrase = passphrase ?? await promptSecret('Passphrase: ');
-  if (
-    !Array.isArray(state.keySlots)
-    || state.keySlots.length === 0
-    || state.keySlots.length > MAX_ENCRYPTION_KEY_SLOTS
-  ) {
-    throw new Error(`Encryption state must contain between 1 and ${MAX_ENCRYPTION_KEY_SLOTS} key slots`);
-  }
-  const failures = [];
-  for (const slot of state.keySlots) {
-    try {
-      if (slot?.keyDerivation?.type !== 'pbkdf2_sha256') {
-        failures.push(new Error(`Unsupported key derivation for slot ${slot?.id}`));
-        continue;
-      }
-      const iterations = slot.keyDerivation.iterations;
-      if (
-        !Number.isSafeInteger(iterations)
-        || iterations <= 0
-        || iterations > MAX_PBKDF2_ITERATIONS
-      ) {
-        throw new Error(`Invalid PBKDF2 iteration count for slot ${slot.id}`);
-      }
-      const wrappingKey = pbkdf2Sync(
-        Buffer.from(suppliedPassphrase, 'utf8'),
-        decodeBase64Url(slot.keyDerivation.salt, 32),
-        iterations,
-        32,
-        'sha256',
-      );
-      try {
-        return unwrapKey({
-          wrappedKey: slot.wrappedStorageUnlockKey,
-          wrappingKey,
-          aad: Buffer.from(`naidan/opfs-encryption/storage-unlock-key/v1/${slot.id}`, 'utf8'),
-        });
-      } finally {
-        wrappingKey.fill(0);
-      }
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  throw new AggregateError(failures, 'The supplied passphrase did not unlock any key slot');
-}
-
-function encodeLocator(namespace, key) {
-  const namespaceBytes = Buffer.from(namespace, 'utf8');
-  const keyBytes = Buffer.from(key, 'utf8');
-  const result = Buffer.allocUnsafe(8 + namespaceBytes.length + keyBytes.length);
-  result.writeUInt32BE(namespaceBytes.length, 0);
-  namespaceBytes.copy(result, 4);
-  result.writeUInt32BE(keyBytes.length, 4 + namespaceBytes.length);
-  keyBytes.copy(result, 8 + namespaceBytes.length);
-  return result;
-}
-
-function objectAddressFor({ objectAddressKey, namespace, key, area }) {
-  const signature = createHmac('sha256', objectAddressKey)
-    .update(encodeLocator(namespace, key))
-    .digest();
-  return {
-    objectId: signature.toString('base64url'),
-    shardId: signature[0].toString(16).padStart(2, '0'),
-    area,
-  };
-}
-
-async function readPhysicalObject({
-  storeDirectory,
-  objectEncryptionKey,
-  objectAddressKey,
-  namespace,
-  key,
-  area = 'durable',
-}) {
-  const address = objectAddressFor({ objectAddressKey, namespace, key, area });
-  const areaDirectory = area === 'durable' ? 'objects' : 'temporary-objects';
-  const path = join(storeDirectory, areaDirectory, address.shardId, `${address.objectId}.enc`);
-  let physical;
-  try {
-    physical = await readFile(path);
-  } catch (error) {
-    if (error?.code === 'ENOENT') {
-      return undefined;
-    }
-    throw error;
-  }
-  if (physical.length < OBJECT_HEADER_BYTE_LENGTH + AES_GCM_TAG_BYTE_LENGTH) {
-    throw new Error(`Truncated encrypted object: ${address.objectId}`);
-  }
-  if (!physical.subarray(0, OBJECT_MAGIC.length).equals(OBJECT_MAGIC)) {
-    throw new Error(`Unsupported encrypted object magic: ${address.objectId}`);
-  }
-  const formatVersion = physical.readUInt16BE(OBJECT_MAGIC.length);
-  const headerLength = physical.readUInt16BE(OBJECT_MAGIC.length + 2);
-  if (formatVersion !== OBJECT_FORMAT_VERSION || headerLength !== OBJECT_HEADER_BYTE_LENGTH) {
-    throw new Error(`Unsupported encrypted object header: version=${formatVersion} length=${headerLength}`);
-  }
-  return decodePayloadFrame(decryptAesGcm({
-    key: objectEncryptionKey,
-    nonce: physical.subarray(12, 24),
-    ciphertext: physical.subarray(headerLength),
-    aad: Buffer.from(`naidan/opfs-encryption/object/v1/${area}/${address.objectId}`, 'utf8'),
-  }));
-}
-
-function parseTransaction({ bytes, scopeId }) {
-  const transaction = JSON.parse(bytes.toString('utf8'));
-  if (
-    transaction === null
-    || typeof transaction !== 'object'
-    || typeof transaction.id !== 'string'
-    || transaction.id.length === 0
-    || transaction.scopeId !== scopeId
-    || !Array.isArray(transaction.operations)
-  ) {
-    throw new Error(`Encrypted object transaction is invalid: ${scopeId}`);
-  }
-  for (const operation of transaction.operations) {
-    if (
-      operation === null
-      || typeof operation !== 'object'
-      || (operation.type !== 'write' && operation.type !== 'delete')
-      || typeof operation.namespace !== 'string'
-      || operation.namespace.length === 0
-      || typeof operation.key !== 'string'
-      || operation.key.length === 0
-      || (operation.type === 'write' && typeof operation.plaintextBase64Url !== 'string')
-    ) {
-      throw new Error(`Encrypted object transaction operation is invalid: ${scopeId}`);
-    }
-  }
-  return transaction;
-}
-
-async function withTransactionScope({ context, scopeId, area = 'durable' }) {
-  const existingScopes = context.transactionScopes ?? [];
-  if (existingScopes.some(scope => scope.area === area && scope.scopeId === scopeId)) {
-    return context;
-  }
-  const bytes = await readPhysicalObject({
-    ...context,
-    namespace: 'object_transaction_journal',
-    key: scopeId,
-    area,
-  });
-  if (bytes === undefined) {
-    return context;
-  }
-  return {
-    ...context,
-    transactionScopes: [
-      ...existingScopes,
-      {
-        area,
-        scopeId,
-        transaction: parseTransaction({ bytes, scopeId }),
-      },
-    ],
-  };
-}
-
-function readTransactionOverlay({ context, namespace, key, area }) {
-  const scopes = context.transactionScopes ?? [];
-  for (let scopeIndex = scopes.length - 1; scopeIndex >= 0; scopeIndex--) {
-    const scope = scopes[scopeIndex];
-    if (scope.area !== area) {
-      continue;
-    }
-    for (let operationIndex = scope.transaction.operations.length - 1; operationIndex >= 0; operationIndex--) {
-      const operation = scope.transaction.operations[operationIndex];
-      if (operation.namespace !== namespace || operation.key !== key) {
-        continue;
-      }
-      return operation.type === 'delete'
-        ? { matched: true, value: undefined }
-        : {
-            matched: true,
-            value: decodeBase64Url(operation.plaintextBase64Url),
-          };
-    }
-  }
-  return { matched: false, value: undefined };
-}
-
-async function readObject({
-  storeDirectory,
-  objectEncryptionKey,
-  objectAddressKey,
-  transactionScopes,
-  namespace,
-  key,
-  area = 'durable',
-}) {
-  if (namespace !== 'object_transaction_journal') {
-    const overlay = readTransactionOverlay({
-      context: { transactionScopes },
-      namespace,
-      key,
-      area,
-    });
-    if (overlay.matched) {
-      return overlay.value;
-    }
-  }
-  return await readPhysicalObject({
-    storeDirectory,
-    objectEncryptionKey,
-    objectAddressKey,
-    namespace,
-    key,
-    area,
-  });
-}
-
-async function readJsonObject(context, namespace, key, area = 'durable') {
-  const value = await readObject({ ...context, namespace, key, area });
-  return value === undefined ? undefined : JSON.parse(value.toString('utf8'));
-}
-
-async function ensureParent(path) {
-  await mkdir(dirname(path), { recursive: true });
-}
-
-async function writeJsonValue(path, value) {
-  if (value === undefined) {
-    return;
-  }
-  await ensureParent(path);
-  await writeFile(path, JSON.stringify(value));
-}
-
-async function writeAll({ output, chunk }) {
-  let offset = 0;
-  while (offset < chunk.length) {
-    const { bytesWritten } = await output.write(chunk, offset, chunk.length - offset);
-    if (bytesWritten === 0) {
-      throw new Error('Recovery output stopped accepting bytes');
-    }
-    offset += bytesWritten;
-  }
-}
-
-async function setRecoveredMtime({ path, modifiedAt }) {
-  if (!Number.isSafeInteger(modifiedAt) || modifiedAt < 0) {
-    return;
-  }
-  const date = new Date(modifiedAt);
-  await utimes(path, date, date).catch(() => undefined);
-}
-
-async function recoverEncryptedFile({ context, fileId, outputPath, area = 'durable' }) {
-  const fileContext = await withTransactionScope({
-    context,
-    scopeId: `file/${fileId}`,
-    area,
-  });
-  const manifest = await readJsonObject(fileContext, 'file_manifest', fileId, area);
-  if (manifest === undefined) {
-    throw new Error(`Encrypted file manifest is missing: ${fileId}`);
-  }
-  if (
-    !Number.isSafeInteger(manifest.size)
-    || manifest.size < 0
-    || !Number.isSafeInteger(manifest.chunkSize)
-    || manifest.chunkSize <= 0
-    || !Number.isSafeInteger(manifest.chunkMapPageSize)
-    || manifest.chunkMapPageSize <= 0
-    || !Array.isArray(manifest.chunkMapPageIds)
-  ) {
-    throw new Error(`Encrypted file manifest is invalid: ${fileId}`);
-  }
-  await ensureParent(outputPath);
-  const output = await open(outputPath, 'w', 0o600);
-  let completed = false;
-  try {
-    const chunkCount = manifest.size === 0 ? 0 : Math.ceil(manifest.size / manifest.chunkSize);
-    const expectedPageCount = chunkCount === 0 ? 0 : Math.ceil(chunkCount / manifest.chunkMapPageSize);
-    if (manifest.chunkMapPageIds.length !== expectedPageCount) {
-      throw new Error(`Encrypted file chunk-map page count mismatch: ${fileId}`);
-    }
-    let chunkIndex = 0;
-    for (let pageIndex = 0; pageIndex < manifest.chunkMapPageIds.length; pageIndex++) {
-      const pageId = manifest.chunkMapPageIds[pageIndex];
-      const page = await readJsonObject(fileContext, 'file_chunk_map_page', pageId, area);
-      if (
-        page === undefined
-        || page.pageId !== pageId
-        || page.fileId !== fileId
-        || page.pageIndex !== pageIndex
-        || !Array.isArray(page.chunkIds)
-      ) {
-        throw new Error(`Encrypted file chunk-map page is missing or invalid: ${pageId}`);
-      }
-      const expectedEntries = Math.min(manifest.chunkMapPageSize, chunkCount - chunkIndex);
-      if (page.chunkIds.length !== expectedEntries) {
-        throw new Error(`Encrypted file chunk-map page length mismatch: ${pageId}`);
-      }
-      for (const chunkId of page.chunkIds) {
-        const expectedLength = Math.min(manifest.chunkSize, manifest.size - chunkIndex * manifest.chunkSize);
-        const chunk = chunkId === null
-          ? Buffer.alloc(expectedLength)
-          : await readObject({ ...fileContext, namespace: 'file_chunk', key: chunkId, area });
-        if (chunk === undefined) {
-          throw new Error(`Encrypted file chunk is missing: ${chunkId}`);
-        }
-        if (chunk.length !== expectedLength) {
-          throw new Error(`Encrypted file chunk has an unexpected size: ${chunkId}`);
-        }
-        await writeAll({ output, chunk });
-        chunkIndex++;
-      }
-    }
-    if (chunkIndex !== chunkCount) {
-      throw new Error(`Encrypted file manifest does not cover its size: ${fileId}`);
-    }
-    completed = true;
-  } finally {
-    await output.close();
-    if (!completed) {
-      await rm(outputPath, { force: true });
-    }
-  }
-  await setRecoveredMtime({ path: outputPath, modifiedAt: manifest.modifiedAt });
-}
-
-function joinSafeEntryPath({ outputDirectory, name }) {
-  if (
-    typeof name !== 'string'
-    || name.length === 0
-    || name === '.'
-    || name === '..'
-    || name.includes('/')
-    || name.includes('\\')
-    || name.includes('\0')
-  ) {
-    throw new Error(`Encrypted filesystem entry has an unsafe name: ${JSON.stringify(name)}`);
-  }
-  return join(outputDirectory, name);
-}
-
-async function recoverFileSystem({ context, fileSystemId, outputDirectory, area = 'durable' }) {
-  const descriptorContext = await withTransactionScope({
-    context,
-    scopeId: `file-system-descriptor/${fileSystemId}`,
-    area,
-  });
-  const descriptor = await readJsonObject(
-    descriptorContext,
-    'file_system_descriptor',
-    fileSystemId,
-    area,
-  );
-  if (descriptor === undefined) {
-    return false;
-  }
-  if (descriptor.id !== fileSystemId || typeof descriptor.rootDirectoryId !== 'string') {
-    throw new Error(`Encrypted filesystem descriptor is invalid: ${fileSystemId}`);
-  }
-  const fileSystemContext = await withTransactionScope({
-    context: descriptorContext,
-    scopeId: `file-system/${descriptor.rootDirectoryId}`,
-    area,
-  });
-  await recoverDirectory({
-    context: fileSystemContext,
-    directoryId: descriptor.rootDirectoryId,
-    outputDirectory,
-    area,
-  });
-  return true;
-}
-
-async function recoverDirectory({
-  context,
-  directoryId,
-  outputDirectory,
-  area = 'durable',
-  ancestors = new Set(),
-}) {
-  if (ancestors.has(directoryId)) {
-    throw new Error(`Encrypted directory cycle detected: ${directoryId}`);
-  }
-  ancestors.add(directoryId);
-  try {
-    await mkdir(outputDirectory, { recursive: true });
-    const manifest = await readJsonObject(context, 'directory_manifest', directoryId, area);
-    if (manifest === undefined || manifest.directoryId !== directoryId || !Array.isArray(manifest.shards)) {
-      throw new Error(`Encrypted directory manifest is missing or invalid: ${directoryId}`);
-    }
-    const seenNames = new Set();
-    for (const shardReference of manifest.shards) {
-      const shard = await readJsonObject(context, 'directory_shard', shardReference.objectId, area);
-      if (
-        shard === undefined
-        || shard.objectId !== shardReference.objectId
-        || shard.directoryId !== directoryId
-        || shard.shardId !== shardReference.shardId
-        || shard.entries === null
-        || typeof shard.entries !== 'object'
-      ) {
-        throw new Error(`Encrypted directory shard is missing or invalid: ${directoryId}/${shardReference.shardId}`);
-      }
-      for (const entry of Object.values(shard.entries)) {
-        if (seenNames.has(entry.name)) {
-          throw new Error(`Duplicate encrypted directory entry: ${entry.name}`);
-        }
-        seenNames.add(entry.name);
-        const outputPath = joinSafeEntryPath({ outputDirectory, name: entry.name });
-        switch (entry.type) {
-        case 'file':
-          await recoverEncryptedFile({ context, fileId: entry.fileId, outputPath, area });
-          break;
-        case 'directory':
-          await recoverDirectory({
-            context,
-            directoryId: entry.directoryId,
-            outputDirectory: outputPath,
-            area,
-            ancestors,
-          });
-          break;
-        case 'symlink':
-          await writeFile(`${outputPath}.naidan-symlink.json`, JSON.stringify({
-            targetPath: entry.targetPath,
-            createdAt: entry.createdAt,
-            modifiedAt: entry.modifiedAt,
-          }));
-          break;
-        default:
-          throw new Error(`Unsupported encrypted filesystem entry: ${entry.type}`);
-        }
-      }
-    }
-    await setRecoveredMtime({ path: outputDirectory, modifiedAt: manifest.modifiedAt });
-  } finally {
-    ancestors.delete(directoryId);
-  }
-}
-
-const STORE_COLLECTION_TYPES = [
-  'chat_meta',
-  'chat_group',
-  'binary_object',
-  'volume',
-];
-
-function validateStoreManifest(manifest) {
-  if (manifest === undefined || !Array.isArray(manifest.collections)) {
-    throw new Error('Encrypted store manifest is missing or invalid');
-  }
-  const collections = new Map();
-  for (const value of manifest.collections) {
-    if (
-      value === null
-      || typeof value !== 'object'
-      || !STORE_COLLECTION_TYPES.includes(value.type)
-      || !Array.isArray(value.shardIds)
-      || collections.has(value.type)
-    ) {
-      throw new Error('Encrypted store manifest contains an invalid or duplicate collection');
-    }
-    const shardIds = new Set();
-    for (const shardId of value.shardIds) {
-      if (typeof shardId !== 'string' || !/^[0-9a-f]{2}$/u.test(shardId) || shardIds.has(shardId)) {
-        throw new Error(`Encrypted ${value.type} collection contains an invalid or duplicate shard ID`);
-      }
-      shardIds.add(shardId);
-    }
-    collections.set(value.type, value);
-  }
-  for (const type of STORE_COLLECTION_TYPES) {
-    if (!collections.has(type)) {
-      throw new Error(`Encrypted store manifest is missing collection: ${type}`);
-    }
-  }
-  return collections;
-}
-
-function requireJsonObject(value, message) {
-  if (value === undefined || value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(message);
+function assertObject(value, label) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new CorruptionError(`${label} must be an object`);
   }
   return value;
 }
 
-function assertSafeOutputIdentifier(value, fieldName) {
-  if (
-    typeof value !== 'string'
-    || value.length === 0
-    || value === '.'
-    || value === '..'
-    || value.includes('/')
-    || value.includes('\\')
-    || value.includes('\0')
-  ) {
-    throw new Error(`${fieldName} is unsafe for recovery output: ${JSON.stringify(value)}`);
+function assertString(value, label) {
+  if (typeof value !== 'string') {
+    throw new CorruptionError(`${label} must be a string`);
+  }
+  return value;
+}
+
+function assertArray(value, label) {
+  if (!Array.isArray(value)) {
+    throw new CorruptionError(`${label} must be an array`);
+  }
+  return value;
+}
+
+function assertNonNegativeSafeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new CorruptionError(`${label} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
+function assertPositiveSafeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new CorruptionError(`${label} must be a positive safe integer`);
+  }
+  return value;
+}
+
+function decodeBase64Url(value, expectedLength, label) {
+  const text = assertString(value, label);
+  if (!/^[A-Za-z0-9_-]*$/.test(text)) {
+    throw new CorruptionError(`${label} is not canonical Base64URL`);
+  }
+  const bytes = Buffer.from(text, 'base64url');
+  if (bytes.length !== expectedLength || bytes.toString('base64url') !== text) {
+    throw new CorruptionError(`${label} must contain exactly ${expectedLength} bytes`);
+  }
+  return bytes;
+}
+
+function assertObjectId(value, label) {
+  decodeBase64Url(value, OBJECT_ID_BYTE_LENGTH, label);
+  return value;
+}
+
+function assertStableId(value, label) {
+  decodeBase64Url(value, STABLE_ID_BYTE_LENGTH, label);
+  return value;
+}
+
+function assertEntryName(value) {
+  const name = assertString(value, 'Directory entry name');
+  if (name === '' || name === '.' || name === '..' || name.includes('/') || name.includes('\0')) {
+    throw new CorruptionError(`Invalid EncryptedOpfs directory entry name: ${JSON.stringify(name)}`);
+  }
+  return name;
+}
+
+async function readJson(path) {
+  let bytes;
+  try {
+    bytes = await readFile(path);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined;
+    throw error;
+  }
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch (error) {
+    throw new CorruptionError(`JSON file is not valid UTF-8: ${path}`, { cause: error });
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new CorruptionError(`JSON file is invalid: ${path}`, { cause: error });
   }
 }
 
-function legacyShard(id) {
-  return id.slice(-2).toLowerCase();
+async function findStorageRoot(input) {
+  if (basename(input) === 'naidan-storage') return input;
+  const nested = join(input, 'naidan-storage');
+  try {
+    if ((await lstat(nested)).isDirectory()) return nested;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  return input;
 }
 
-async function recoverStore({ context, output }) {
-  const storeContext = await withTransactionScope({
-    context,
-    scopeId: 'naidan-store',
+function parseState(value) {
+  const state = assertObject(value, 'Encryption state');
+  if (state.formatVersion !== 1) {
+    throw new UnsupportedFormatError(`Encryption state format is unsupported: ${String(state.formatVersion)}`);
+  }
+  assertNonNegativeSafeInteger(state.sequence, 'Encryption state sequence');
+  const keySlots = assertArray(state.keySlots, 'Encryption key slots');
+  if (keySlots.length < 1 || keySlots.length > MAX_ENCRYPTION_KEY_SLOTS) {
+    throw new CorruptionError(`Encryption state must contain between 1 and ${MAX_ENCRYPTION_KEY_SLOTS} key slots`);
+  }
+  if (state.state !== 'encrypted' && state.state !== 'transitioning') {
+    throw new UnsupportedFormatError(`Encryption state is unsupported: ${String(state.state)}`);
+  }
+  return state;
+}
+
+async function readEncryptionState(storageRoot) {
+  const candidates = [];
+  for (const slot of [0, 1]) {
+    const path = join(storageRoot, 'encryption-state', `state-${slot}.json`);
+    let raw;
+    try {
+      raw = await readJson(path);
+    } catch (error) {
+      if (error instanceof SyntaxError) continue;
+      throw error;
+    }
+    if (raw === undefined || typeof raw !== 'object' || raw === null) continue;
+    const sequence = raw.sequence;
+    const formatVersion = raw.formatVersion;
+    if (!Number.isSafeInteger(sequence) || sequence < 0 || !Number.isSafeInteger(formatVersion) || formatVersion < 1) {
+      continue;
+    }
+    candidates.push({ sequence, raw });
+  }
+  candidates.sort((left, right) => right.sequence - left.sequence);
+  if (candidates.length >= 2 && candidates[0].sequence === candidates[1].sequence) {
+    throw new CorruptionError('Encryption state slots have the same sequence');
+  }
+  if (candidates.length === 0) {
+    throw new CorruptionError('No valid encryption state slot exists');
+  }
+  return parseState(candidates[0].raw);
+}
+
+function chooseStoreId(state, explicitStoreId) {
+  if (explicitStoreId !== undefined) return explicitStoreId;
+  if (state.state === 'encrypted') {
+    return assertString(state.activeEncryptedStoreId, 'Active encrypted store ID');
+  }
+  const operation = assertObject(state.operation, 'Encryption operation');
+  const phase = operation.phase;
+  switch (operation.type) {
+  case 'encrypting':
+    if (phase !== 'cleaning_up_source') {
+      throw new Error('The encrypted target is not authoritative yet; pass --store-id only to inspect an explicitly chosen incomplete store');
+    }
+    return assertString(operation.targetEncryptedStoreId, 'Target encrypted store ID');
+  case 'decrypting':
+    return assertString(operation.sourceEncryptedStoreId, 'Source encrypted store ID');
+  case 'reencrypting':
+    return phase === 'cleaning_up_source'
+      ? assertString(operation.targetEncryptedStoreId, 'Target encrypted store ID')
+      : assertString(operation.sourceEncryptedStoreId, 'Source encrypted store ID');
+  default:
+    throw new UnsupportedFormatError(`Encryption operation is unsupported: ${String(operation.type)}`);
+  }
+}
+
+async function readStoreHeader(storageRoot, storeId) {
+  const header = assertObject(
+    await readJson(join(storageRoot, 'encrypted-stores', storeId, 'header.json')),
+    'Encrypted store header',
+  );
+  if (header.formatVersion !== 1) {
+    throw new UnsupportedFormatError(`Encrypted store header format is unsupported: ${String(header.formatVersion)}`);
+  }
+  if (header.encryptedStoreId !== storeId) {
+    throw new CorruptionError('Encrypted store header ID does not match its directory');
+  }
+  assertStableId(header.fileSystemId, 'Encrypted store fileSystemId');
+  assertObject(header.wrappedFileSystemRootKey, 'Wrapped file-system root key');
+  return header;
+}
+
+function decryptAesGcm({ key, nonce, ciphertext, aad }) {
+  if (nonce.length !== 12 || ciphertext.length < AES_GCM_TAG_BYTE_LENGTH) {
+    throw new CorruptionError('AES-GCM input has an invalid length');
+  }
+  const body = ciphertext.subarray(0, ciphertext.length - AES_GCM_TAG_BYTE_LENGTH);
+  const tag = ciphertext.subarray(ciphertext.length - AES_GCM_TAG_BYTE_LENGTH);
+  const decipher = createDecipheriv('aes-256-gcm', key, nonce);
+  decipher.setAAD(Buffer.from(aad));
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(body), decipher.final()]);
+}
+
+function unwrapStorageUnlockKey(state, passphrase) {
+  const slots = state.keySlots;
+  for (const rawSlot of slots) {
+    const slot = assertObject(rawSlot, 'Encryption key slot');
+    const slotId = assertString(slot.id, 'Encryption key slot ID');
+    const keyDerivation = assertObject(slot.keyDerivation, 'Encryption key derivation');
+    if (keyDerivation.type !== 'pbkdf2_hmac_sha256') {
+      throw new UnsupportedFormatError(`Key derivation is unsupported: ${String(keyDerivation.type)}`);
+    }
+    const iterations = assertPositiveSafeInteger(keyDerivation.iterations, 'PBKDF2 iteration count');
+    if (iterations > MAX_PBKDF2_ITERATIONS) {
+      throw new CorruptionError(`PBKDF2 iteration count exceeds ${MAX_PBKDF2_ITERATIONS}`);
+    }
+    const salt = decodeBase64Url(keyDerivation.salt, 32, 'PBKDF2 salt');
+    const wrapped = assertObject(slot.wrappedStorageUnlockKey, 'Wrapped Storage Unlock Key');
+    const nonce = decodeBase64Url(wrapped.nonce, 12, 'Wrapped Storage Unlock Key nonce');
+    const ciphertext = decodeBase64Url(wrapped.ciphertext, 48, 'Wrapped Storage Unlock Key ciphertext');
+    const wrappingKey = pbkdf2Sync(Buffer.from(passphrase, 'utf8'), salt, iterations, 32, 'sha256');
+    try {
+      const unwrapped = decryptAesGcm({
+        key: wrappingKey,
+        nonce,
+        ciphertext,
+        aad: Buffer.from(`naidan/opfs-encryption/storage-unlock-key/v1/${slotId}`, 'utf8'),
+      });
+      if (unwrapped.length === 32) return unwrapped;
+    } catch {
+      // Continue because a different key slot may use the supplied passphrase.
+    } finally {
+      wrappingKey.fill(0);
+    }
+  }
+  throw new Error('Passphrase did not unlock any encryption key slot');
+}
+
+function unwrapFileSystemRootKey(storageUnlockKey, header) {
+  const wrapped = assertObject(header.wrappedFileSystemRootKey, 'Wrapped file-system root key');
+  const nonce = decodeBase64Url(wrapped.nonce, 12, 'Wrapped file-system root key nonce');
+  const ciphertext = decodeBase64Url(wrapped.ciphertext, 48, 'Wrapped file-system root key ciphertext');
+  const rootKey = decryptAesGcm({
+    key: storageUnlockKey,
+    nonce,
+    ciphertext,
+    aad: Buffer.from(`naidan/opfs-encryption/store-root-key/v1/${header.encryptedStoreId}`, 'utf8'),
   });
-  const settings = await readJsonObject(storeContext, 'singleton', 'settings');
-  const hierarchy = await readJsonObject(storeContext, 'singleton', 'hierarchy') ?? { items: [] };
-  const storeManifest = await readJsonObject(storeContext, 'singleton', 'store_manifest');
-  const collections = validateStoreManifest(storeManifest);
-  await writeJsonValue(join(output, 'settings.json'), settings);
-  await writeJsonValue(join(output, 'hierarchy.json'), hierarchy);
+  if (rootKey.length !== 32) throw new CorruptionError('Unwrapped file-system root key has an invalid length');
+  return rootKey;
+}
 
-  const chatIds = new Set();
-  for (const shardId of collections.get('chat_meta').shardIds) {
-    const index = requireJsonObject(
-      await readJsonObject(storeContext, 'chat_meta_shard_index', shardId),
-      `Chat metadata shard index is missing or invalid: ${shardId}`,
-    );
-    if (!Array.isArray(index.chatIds)) {
-      throw new Error(`Chat metadata shard index is missing or invalid: ${shardId}`);
-    }
-    for (const chatId of index.chatIds) {
-      assertSafeOutputIdentifier(chatId, 'Chat ID');
-      chatIds.add(chatId);
-    }
+function decodeObjectEnvelope(physical) {
+  if (physical.length < OBJECT_HEADER_BYTE_LENGTH + AES_GCM_TAG_BYTE_LENGTH) {
+    throw new CorruptionError('EncryptedOpfs object is truncated');
   }
-  const groupIds = new Set();
-  for (const shardId of collections.get('chat_group').shardIds) {
-    const index = requireJsonObject(
-      await readJsonObject(storeContext, 'chat_group_shard_index', shardId),
-      `Chat group shard index is missing or invalid: ${shardId}`,
-    );
-    if (!Array.isArray(index.chatGroupIds)) {
-      throw new Error(`Chat group shard index is missing or invalid: ${shardId}`);
-    }
-    for (const groupId of index.chatGroupIds) {
-      assertSafeOutputIdentifier(groupId, 'Chat Group ID');
-      groupIds.add(groupId);
-    }
+  if (!physical.subarray(0, OBJECT_MAGIC.length).equals(OBJECT_MAGIC)) {
+    throw new CorruptionError('EncryptedOpfs object magic is invalid');
   }
-  for (const chatId of chatIds) {
-    await writeJsonValue(join(output, 'chat-metas', `${chatId}.json`), await readJsonObject(storeContext, 'chat_meta', chatId));
-    await writeJsonValue(join(output, 'chat-contents', `${chatId}.json`), await readJsonObject(storeContext, 'chat_content', chatId));
+  const version = physical.readUInt16BE(8);
+  if (version !== OBJECT_ENVELOPE_VERSION) {
+    throw new UnsupportedFormatError(`EncryptedOpfs object envelope version is unsupported: ${version}`);
   }
-  for (const groupId of groupIds) {
-    await writeJsonValue(join(output, 'chat-groups', `${groupId}.json`), await readJsonObject(storeContext, 'chat_group', groupId));
+  const headerLength = physical.readUInt16BE(10);
+  if (headerLength !== OBJECT_HEADER_BYTE_LENGTH) {
+    throw new UnsupportedFormatError(`EncryptedOpfs object header length is unsupported: ${headerLength}`);
+  }
+  const ciphertextLength = physical.readBigUInt64BE(24);
+  if (ciphertextLength > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new CorruptionError('EncryptedOpfs object ciphertext length exceeds the safe integer range');
+  }
+  if (physical.length !== OBJECT_HEADER_BYTE_LENGTH + Number(ciphertextLength)) {
+    throw new CorruptionError('EncryptedOpfs object ciphertext length does not match the envelope');
+  }
+  return {
+    nonce: physical.subarray(12, 24),
+    ciphertext: physical.subarray(OBJECT_HEADER_BYTE_LENGTH),
+  };
+}
+
+function decodeRecord(plaintext) {
+  if (plaintext.length < RECORD_HEADER_BYTE_LENGTH) {
+    throw new CorruptionError('EncryptedOpfs record is truncated');
+  }
+  const kind = RECORD_KINDS.get(plaintext[0]);
+  if (kind === undefined) {
+    throw new UnsupportedFormatError(`EncryptedOpfs record kind is unsupported: ${String(plaintext[0])}`);
+  }
+  if (plaintext[1] !== 0) {
+    throw new UnsupportedFormatError(`EncryptedOpfs payload encoding is unsupported: ${String(plaintext[1])}`);
+  }
+  const recordVersion = plaintext.readUInt16BE(2);
+  if (recordVersion !== 1) {
+    throw new UnsupportedFormatError(`EncryptedOpfs ${kind} record version is unsupported: ${recordVersion}`);
+  }
+  const metadataLength = plaintext.readUInt32BE(4);
+  const binaryLength = plaintext.readBigUInt64BE(8);
+  if (binaryLength > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new CorruptionError('EncryptedOpfs record binary length exceeds the safe integer range');
+  }
+  const expectedLength = RECORD_HEADER_BYTE_LENGTH + metadataLength + Number(binaryLength);
+  if (plaintext.length !== expectedLength) {
+    throw new CorruptionError('EncryptedOpfs record lengths do not match its plaintext');
+  }
+  let metadata;
+  try {
+    metadata = JSON.parse(plaintext.subarray(RECORD_HEADER_BYTE_LENGTH, RECORD_HEADER_BYTE_LENGTH + metadataLength).toString('utf8'));
+  } catch (error) {
+    throw new CorruptionError(`EncryptedOpfs record metadata is invalid JSON: ${error.message}`);
+  }
+  return {
+    kind,
+    metadata,
+    binary: plaintext.subarray(RECORD_HEADER_BYTE_LENGTH + metadataLength),
+  };
+}
+
+class EncryptedOpfsReader {
+  constructor({ dataDirectory, fileSystemId, rootKey }) {
+    this.dataDirectory = dataDirectory;
+    this.fileSystemId = fileSystemId;
+    this.rootKey = rootKey;
   }
 
-  const plainBinaryIndices = new Map();
-  for (const encryptedShardId of collections.get('binary_object').shardIds) {
-    const index = requireJsonObject(
-      await readJsonObject(storeContext, 'binary_shard_index', encryptedShardId),
-      `Binary-object shard index is missing or invalid: ${encryptedShardId}`,
-    );
-    const objects = requireJsonObject(
-      index.objects,
-      `Binary-object shard index is missing or invalid: ${encryptedShardId}`,
-    );
-    for (const [id, entry] of Object.entries(objects)) {
-      assertSafeOutputIdentifier(id, 'Binary Object ID');
-      const shard = legacyShard(id);
-      const plainIndex = plainBinaryIndices.get(shard) ?? { objects: {} };
-      plainIndex.objects[id] = entry.metadata;
-      plainBinaryIndices.set(shard, plainIndex);
-      const binaryPath = join(output, 'binary-objects', shard, `${id}.bin`);
-      await recoverEncryptedFile({ context: storeContext, fileId: entry.fileId, outputPath: binaryPath });
-      await writeFile(join(output, 'binary-objects', shard, `.${id}.bin.complete`), '');
-    }
-  }
-  for (const [shard, index] of plainBinaryIndices) {
-    await writeJsonValue(join(output, 'binary-objects', shard, 'index.json'), index);
+  async readObject(objectId) {
+    const idBytes = decodeBase64Url(objectId, OBJECT_ID_BYTE_LENGTH, 'EncryptedOpfs object ID');
+    const shard = idBytes[0].toString(16).padStart(2, '0');
+    return this.readEncryptedRecord({
+      path: join(this.dataDirectory, 'objects', shard, `${objectId}.eopfs`),
+      objectIdentity: objectId,
+      area: 'object',
+    });
   }
 
-  const plainVolumeIndices = new Map();
-  for (const encryptedShardId of collections.get('volume').shardIds) {
-    const index = requireJsonObject(
-      await readJsonObject(storeContext, 'volume_index', encryptedShardId),
-      `Volume shard index is missing or invalid: ${encryptedShardId}`,
-    );
-    const volumes = requireJsonObject(
-      index.volumes,
-      `Volume shard index is missing or invalid: ${encryptedShardId}`,
-    );
-    for (const [id, volume] of Object.entries(volumes)) {
-      assertSafeOutputIdentifier(id, 'Volume ID');
-      const shard = legacyShard(id);
-      const plainIndex = plainVolumeIndices.get(shard) ?? { volumes: {} };
-      plainIndex.volumes[id] = volume;
-      plainVolumeIndices.set(shard, plainIndex);
-      if (volume.type === 'opfs') {
-        await recoverFileSystem({
-          context: storeContext,
-          fileSystemId: `volume/${id}`,
-          outputDirectory: join(output, 'volumes', shard, id),
+  async readSuperblockSlot(slot) {
+    return this.readEncryptedRecord({
+      path: join(this.dataDirectory, `superblock-${slot}.eopfs`),
+      objectIdentity: `superblock-${slot}`,
+      area: 'superblock',
+      missingOk: true,
+    });
+  }
+
+  async readEncryptedRecord({ path, objectIdentity, area, missingOk = false }) {
+    let physical;
+    try {
+      physical = await readFile(path);
+    } catch (error) {
+      if (missingOk && error?.code === 'ENOENT') return undefined;
+      if (error?.code === 'ENOENT') throw new CorruptionError(`EncryptedOpfs object is missing: ${objectIdentity}`);
+      throw error;
+    }
+    const { nonce, ciphertext } = decodeObjectEnvelope(physical);
+    const key = Buffer.from(hkdfSync(
+      'sha256',
+      this.rootKey,
+      Buffer.from(`EncryptedOpfs/v1/filesystem/${this.fileSystemId}`, 'utf8'),
+      Buffer.from(`EncryptedOpfs/v1/${area}/${objectIdentity}`, 'utf8'),
+      32,
+    ));
+    try {
+      const plaintext = decryptAesGcm({
+        key,
+        nonce,
+        ciphertext,
+        aad: Buffer.from(`EncryptedOpfs/v1/${area}/${this.fileSystemId}/${objectIdentity}`, 'utf8'),
+      });
+      return decodeRecord(plaintext);
+    } finally {
+      key.fill(0);
+    }
+  }
+
+  async readActiveSuperblock() {
+    const candidates = [];
+    const corruptions = [];
+    for (const slot of [0, 1]) {
+      let record;
+      try {
+        record = await this.readSuperblockSlot(slot);
+      } catch (error) {
+        if (error instanceof UnsupportedFormatError) throw error;
+        corruptions.push(error);
+        continue;
+      }
+      if (record === undefined) continue;
+      if (record.kind !== 'superblock') {
+        throw new UnsupportedFormatError(`EncryptedOpfs superblock slot ${slot} has an unsupported record kind`);
+      }
+      if (record.binary.length !== 0) throw new CorruptionError('EncryptedOpfs superblock has a binary payload');
+      const value = assertObject(record.metadata, 'EncryptedOpfs superblock');
+      const sequence = assertNonNegativeSafeInteger(value.sequence, 'EncryptedOpfs superblock sequence');
+      if (value.fileSystemId !== this.fileSystemId) throw new CorruptionError('EncryptedOpfs superblock fileSystemId mismatch');
+      assertObjectId(value.activeCommitObjectId, 'EncryptedOpfs active commit object ID');
+      candidates.push({ sequence, value });
+    }
+    candidates.sort((left, right) => right.sequence - left.sequence);
+    if (candidates.length === 0) {
+      throw new CorruptionError(corruptions.length > 0
+        ? 'No valid EncryptedOpfs superblock slot remains'
+        : 'EncryptedOpfs superblock is missing');
+    }
+    if (candidates.length >= 2 && candidates[0].sequence === candidates[1].sequence) {
+      throw new CorruptionError('EncryptedOpfs superblock slots have the same sequence');
+    }
+    return candidates[0].value;
+  }
+}
+
+function parseIndexPage(record, expectedKind) {
+  if (record.kind !== expectedKind) throw new CorruptionError(`Expected ${expectedKind}, received ${record.kind}`);
+  if (record.binary.length !== 0) throw new CorruptionError(`${expectedKind} contains a binary payload`);
+  return assertObject(record.metadata, expectedKind);
+}
+
+async function loadInodeIndex(reader, rootObjectId) {
+  const result = new Map();
+  const visited = new Set();
+  async function visit(objectId) {
+    assertObjectId(objectId, 'Inode index page object ID');
+    if (visited.has(objectId)) throw new CorruptionError('Inode index contains a cycle or duplicate page reference');
+    visited.add(objectId);
+    const page = parseIndexPage(await reader.readObject(objectId), 'inode_index_page');
+    if (page.type === 'leaf') {
+      let previous;
+      for (const rawEntry of assertArray(page.entries, 'Inode index entries')) {
+        const entry = assertObject(rawEntry, 'Inode index entry');
+        const nodeId = assertStableId(entry.nodeId, 'Inode index node ID');
+        const inodeObjectId = assertObjectId(entry.inodeObjectId, 'Inode object ID');
+        if (previous !== undefined && previous >= nodeId) throw new CorruptionError('Inode index entries are not strictly sorted');
+        if (result.has(nodeId)) throw new CorruptionError(`Duplicate inode index node ID: ${nodeId}`);
+        result.set(nodeId, inodeObjectId);
+        previous = nodeId;
+      }
+      return;
+    }
+    if (page.type === 'branch') {
+      let previous;
+      for (const rawChild of assertArray(page.children, 'Inode index children')) {
+        const child = assertObject(rawChild, 'Inode index child');
+        const upperBound = assertStableId(child.upperBoundNodeId, 'Inode index upper bound');
+        if (previous !== undefined && previous >= upperBound) throw new CorruptionError('Inode index bounds are not strictly sorted');
+        await visit(assertObjectId(child.childPageObjectId, 'Inode index child object ID'));
+        previous = upperBound;
+      }
+      return;
+    }
+    throw new UnsupportedFormatError(`Inode index page type is unsupported: ${String(page.type)}`);
+  }
+  await visit(rootObjectId);
+  return result;
+}
+
+async function loadDirectoryEntries(reader, inode) {
+  const storage = assertObject(inode.storage, 'Directory storage');
+  if (storage.type === 'inline') return parseDirectoryEntries(storage.entries);
+  if (storage.type !== 'indexed') throw new UnsupportedFormatError(`Directory storage is unsupported: ${String(storage.type)}`);
+  const result = [];
+  const visited = new Set();
+  async function visit(objectId) {
+    assertObjectId(objectId, 'Directory index page object ID');
+    if (visited.has(objectId)) throw new CorruptionError('Directory index contains a cycle or duplicate page reference');
+    visited.add(objectId);
+    const page = parseIndexPage(await reader.readObject(objectId), 'directory_index_page');
+    if (page.type === 'leaf') {
+      result.push(...parseDirectoryEntries(page.entries));
+      return;
+    }
+    if (page.type === 'branch') {
+      let previous;
+      for (const rawChild of assertArray(page.children, 'Directory index children')) {
+        const child = assertObject(rawChild, 'Directory index child');
+        const upperBound = assertString(child.upperBoundName, 'Directory index upper bound');
+        if (previous !== undefined && previous >= upperBound) throw new CorruptionError('Directory index bounds are not strictly sorted');
+        await visit(assertObjectId(child.childPageObjectId, 'Directory index child object ID'));
+        previous = upperBound;
+      }
+      return;
+    }
+    throw new UnsupportedFormatError(`Directory index page type is unsupported: ${String(page.type)}`);
+  }
+  await visit(assertObjectId(storage.directoryIndexRootObjectId, 'Directory index root object ID'));
+  for (let index = 1; index < result.length; index += 1) {
+    if (result[index - 1].name >= result[index].name) throw new CorruptionError('Directory entries are not strictly sorted and unique');
+  }
+  return result;
+}
+
+function parseDirectoryEntries(value) {
+  const entries = [];
+  let previous;
+  for (const rawEntry of assertArray(value, 'Directory entries')) {
+    const entry = assertObject(rawEntry, 'Directory entry');
+    const name = assertEntryName(entry.name);
+    const kind = entry.kind;
+    if (kind !== 'file' && kind !== 'directory' && kind !== 'symlink') {
+      throw new UnsupportedFormatError(`Directory entry kind is unsupported: ${String(kind)}`);
+    }
+    const nodeId = assertStableId(entry.nodeId, 'Directory entry node ID');
+    if (previous !== undefined && previous >= name) throw new CorruptionError('Directory entries are not strictly sorted and unique');
+    entries.push({ name, kind, nodeId });
+    previous = name;
+  }
+  return entries;
+}
+
+async function loadExtents(reader, rootObjectId) {
+  const result = [];
+  const visited = new Set();
+  async function visit(objectId) {
+    assertObjectId(objectId, 'Extent page object ID');
+    if (visited.has(objectId)) throw new CorruptionError('Extent index contains a cycle or duplicate page reference');
+    visited.add(objectId);
+    const page = parseIndexPage(await reader.readObject(objectId), 'file_extent_page');
+    if (page.type === 'leaf') {
+      for (const rawExtent of assertArray(page.extents, 'File extents')) {
+        const extent = assertObject(rawExtent, 'File extent');
+        result.push({
+          chunkIndex: assertNonNegativeSafeInteger(extent.chunkIndex, 'File extent chunk index'),
+          chunkObjectId: assertObjectId(extent.chunkObjectId, 'File chunk object ID'),
         });
       }
+      return;
     }
+    if (page.type === 'branch') {
+      let previous;
+      for (const rawChild of assertArray(page.children, 'Extent index children')) {
+        const child = assertObject(rawChild, 'Extent index child');
+        const upperBound = assertNonNegativeSafeInteger(child.upperBoundChunkIndex, 'Extent upper bound');
+        if (previous !== undefined && previous >= upperBound) throw new CorruptionError('Extent index bounds are not strictly sorted');
+        await visit(assertObjectId(child.childPageObjectId, 'Extent child object ID'));
+        previous = upperBound;
+      }
+      return;
+    }
+    throw new UnsupportedFormatError(`Extent page type is unsupported: ${String(page.type)}`);
   }
-  for (const [shard, index] of plainVolumeIndices) {
-    await writeJsonValue(join(output, 'volumes', shard, 'index.json'), index);
+  await visit(rootObjectId);
+  for (let index = 1; index < result.length; index += 1) {
+    if (result[index - 1].chunkIndex >= result[index].chunkIndex) throw new CorruptionError('File extents are not strictly sorted and unique');
+  }
+  return result;
+}
+
+function ensurePathInside(root, path) {
+  const normalizedRoot = resolve(root);
+  const normalizedPath = resolve(path);
+  const rel = relative(normalizedRoot, normalizedPath);
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new CorruptionError(`Recovered path escapes the output directory: ${path}`);
+  }
+  return normalizedPath;
+}
+
+function createSafeSymlinkTarget({ outputRoot, linkPath, target }) {
+  if (target.includes('\0')) throw new CorruptionError('Symlink target contains a null character');
+  const virtualParent = relative(outputRoot, dirname(linkPath)).split(sep).filter(Boolean);
+  const targetParts = target.replaceAll('\\', '/').split('/');
+  const resolvedParts = target.startsWith('/') ? [] : [...virtualParent];
+  for (const part of targetParts) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      if (resolvedParts.length === 0) throw new CorruptionError(`Symlink target escapes the recovered root: ${target}`);
+      resolvedParts.pop();
+      continue;
+    }
+    resolvedParts.push(part);
+  }
+  const targetPath = ensurePathInside(outputRoot, join(outputRoot, ...resolvedParts));
+  return relative(dirname(linkPath), targetPath) || '.';
+}
+
+async function restoreFile({ reader, inode, outputPath }) {
+  const size = assertNonNegativeSafeInteger(inode.size, 'File size');
+  const storage = assertObject(inode.storage, 'File storage');
+  if (storage.type === 'inline') {
+    const record = await reader.readObject(inode.__objectId);
+    if (record.binary.length !== size) throw new CorruptionError('Inline file payload length does not match file size');
+    await writeFile(outputPath, record.binary);
+    return;
+  }
+  if (storage.type !== 'extents') throw new UnsupportedFormatError(`File storage is unsupported: ${String(storage.type)}`);
+  const chunkSize = assertPositiveSafeInteger(storage.chunkSize, 'File chunk size');
+  const extents = await loadExtents(reader, assertObjectId(storage.extentIndexRootObjectId, 'Extent index root object ID'));
+  const file = await open(outputPath, 'wx');
+  try {
+    for (const extent of extents) {
+      const offset = extent.chunkIndex * chunkSize;
+      if (!Number.isSafeInteger(offset) || offset >= size) throw new CorruptionError('File extent lies outside file size');
+      const record = await reader.readObject(extent.chunkObjectId);
+      if (record.kind !== 'file_chunk') throw new CorruptionError(`Expected file_chunk, received ${record.kind}`);
+      const metadata = assertObject(record.metadata, 'File chunk metadata');
+      if (metadata.nodeId !== inode.nodeId || metadata.chunkIndex !== extent.chunkIndex) {
+        throw new CorruptionError('File chunk identity does not match its extent');
+      }
+      if (record.binary.length < 1 || record.binary.length > chunkSize || offset + record.binary.length > size) {
+        throw new CorruptionError('File chunk payload length is invalid');
+      }
+      await file.write(record.binary, 0, record.binary.length, offset);
+    }
+    await file.truncate(size);
+  } finally {
+    await file.close();
+  }
+}
+
+async function restoreFileSystem({ reader, commit, outputRoot }) {
+  const inodeIndex = await loadInodeIndex(reader, assertObjectId(commit.inodeIndexRootObjectId, 'Inode index root object ID'));
+  const rootNodeId = assertStableId(commit.rootDirectoryNodeId, 'Root directory node ID');
+  const activeStack = new Set();
+  const restoredNodes = new Set();
+
+  async function readInode(nodeId, expectedKind) {
+    const objectId = inodeIndex.get(nodeId);
+    if (objectId === undefined) throw new CorruptionError(`Node is missing from inode index: ${nodeId}`);
+    const record = await reader.readObject(objectId);
+    const expectedRecordKind = `${expectedKind}_inode`;
+    if (record.kind !== expectedRecordKind) throw new CorruptionError(`Node kind mismatch: expected ${expectedRecordKind}, received ${record.kind}`);
+    const inode = assertObject(record.metadata, `${expectedKind} inode`);
+    if (inode.nodeId !== nodeId) throw new CorruptionError('Inode node ID does not match its index key');
+    assertStableId(inode.nodeId, 'Inode node ID');
+    assertNonNegativeSafeInteger(inode.revision, 'Inode revision');
+    return { ...inode, __objectId: objectId, __binary: record.binary };
   }
 
-  const recoveredFileSystems = join(output, 'recovered-filesystems');
-  await recoverFileSystem({
-    context: storeContext,
-    fileSystemId: 'system/chat-wesh',
-    outputDirectory: join(recoveredFileSystems, 'chat-wesh'),
-  });
-  await recoverFileSystem({
-    context: storeContext,
-    fileSystemId: 'system/debug-wesh',
-    outputDirectory: join(recoveredFileSystems, 'debug-wesh'),
-  });
-  await recoverFileSystem({
-    context: storeContext,
-    fileSystemId: 'system/tmp',
-    outputDirectory: join(recoveredFileSystems, 'tmp'),
-    area: 'temporary',
-  });
+  async function restoreDirectory(nodeId, outputPath) {
+    if (activeStack.has(nodeId)) throw new CorruptionError('Directory graph contains a cycle');
+    if (restoredNodes.has(nodeId)) throw new CorruptionError('Multiple directory entries reference the same node');
+    activeStack.add(nodeId);
+    restoredNodes.add(nodeId);
+    const inode = await readInode(nodeId, 'directory');
+    await mkdir(outputPath, { recursive: false });
+    for (const entry of await loadDirectoryEntries(reader, inode)) {
+      const childPath = ensurePathInside(outputRoot, join(outputPath, entry.name));
+      switch (entry.kind) {
+      case 'directory':
+        await restoreDirectory(entry.nodeId, childPath);
+        break;
+      case 'file': {
+        if (restoredNodes.has(entry.nodeId)) throw new CorruptionError('Multiple directory entries reference the same node');
+        restoredNodes.add(entry.nodeId);
+        const fileInode = await readInode(entry.nodeId, 'file');
+        fileInode.__objectId = inodeIndex.get(entry.nodeId);
+        await restoreFile({ reader, inode: fileInode, outputPath: childPath });
+        break;
+      }
+      case 'symlink': {
+        if (restoredNodes.has(entry.nodeId)) throw new CorruptionError('Multiple directory entries reference the same node');
+        restoredNodes.add(entry.nodeId);
+        const linkInode = await readInode(entry.nodeId, 'symlink');
+        const target = assertString(linkInode.target, 'Symlink target');
+        await symlink(createSafeSymlinkTarget({ outputRoot, linkPath: childPath, target }), childPath);
+        break;
+      }
+      default:
+        throw new UnsupportedFormatError(`Directory entry kind is unsupported: ${String(entry.kind)}`);
+      }
+    }
+    activeStack.delete(nodeId);
+  }
+
+  await restoreDirectory(rootNodeId, outputRoot);
+  if (restoredNodes.size !== inodeIndex.size) {
+    throw new CorruptionError('Inode index contains unreachable nodes');
+  }
+}
+
+async function promptPassphrase() {
+  if (!stdin.isTTY) throw new Error('Passphrase was not supplied and stdin is not a TTY');
+  const terminal = createInterface({ input: stdin, output: stdout, terminal: true });
+  try {
+    return await terminal.question('Passphrase: ');
+  } finally {
+    terminal.close();
+  }
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args === undefined) {
+    process.exitCode = 2;
     return;
   }
-  const storageRoot = await resolveStorageRoot(args.input);
-  const state = await readLatestSlot(join(storageRoot, 'encryption-state'), 'state');
-  const storeId = selectStoreId({ state, explicitStoreId: args.storeId });
-  const storeDirectory = join(storageRoot, 'encrypted-stores', storeId);
-  const header = await readLatestSlot(join(storeDirectory, 'header'), 'header');
-  if (header.encryptedStoreId !== storeId) {
-    throw new Error(`Encrypted-store header ID mismatch: ${header.encryptedStoreId}`);
-  }
-  const storageUnlockKey = await unlockStorageUnlockKey({ state, passphrase: args.passphrase });
-  let storeRootKey;
-  let objectEncryptionKey;
-  let objectAddressKey;
+  const passphrase = args.passphrase ?? await promptPassphrase();
+  const storageRoot = await findStorageRoot(args.input);
+  const state = await readEncryptionState(storageRoot);
+  const storeId = chooseStoreId(state, args.storeId);
+  const header = await readStoreHeader(storageRoot, storeId);
+  const storageUnlockKey = unwrapStorageUnlockKey(state, passphrase);
+  let fileSystemRootKey;
   try {
-    storeRootKey = unwrapKey({
-      wrappedKey: header.wrappedStoreRootKey,
-      wrappingKey: storageUnlockKey,
-      aad: Buffer.from(`naidan/opfs-encryption/store-root-key/v1/${storeId}`, 'utf8'),
-    });
-    objectEncryptionKey = Buffer.from(hkdfSync(
-      'sha256',
-      storeRootKey,
-      Buffer.from(storeId, 'utf8'),
-      OBJECT_ENCRYPTION_HKDF_INFO,
-      32,
-    ));
-    objectAddressKey = Buffer.from(hkdfSync(
-      'sha256',
-      storeRootKey,
-      Buffer.from(storeId, 'utf8'),
-      OBJECT_ADDRESS_HKDF_INFO,
-      32,
-    ));
-    const context = { storeDirectory, objectEncryptionKey, objectAddressKey, transactionScopes: [] };
-    if (args.namespace !== undefined) {
-      const decoded = await readObject({
-        ...context,
-        namespace: args.namespace,
-        key: args.key,
-        area: args.area,
-      });
-      if (decoded === undefined) {
-        throw new Error(`Encrypted object not found: ${args.namespace}:${args.key}`);
-      }
-      await ensureParent(args.output);
-      await writeFile(args.output, decoded);
-      console.log(`Recovered ${args.area} object ${args.namespace}:${args.key} to ${args.output}`);
-      return;
-    }
-    await mkdir(args.output, { recursive: true });
-    await recoverStore({ context, output: args.output });
-    console.log(`Recovered encrypted store ${storeId} to ${args.output}`);
+    fileSystemRootKey = unwrapFileSystemRootKey(storageUnlockKey, header);
   } finally {
     storageUnlockKey.fill(0);
-    storeRootKey?.fill(0);
-    objectEncryptionKey?.fill(0);
-    objectAddressKey?.fill(0);
   }
+
+  const dataDirectory = join(storageRoot, 'encrypted-stores', storeId, 'data');
+  const descriptor = assertObject(await readJson(join(dataDirectory, 'descriptor.json')), 'EncryptedOpfs descriptor');
+  if (descriptor.formatVersion !== 1) {
+    throw new UnsupportedFormatError(`EncryptedOpfs descriptor format is unsupported: ${String(descriptor.formatVersion)}`);
+  }
+  const fileSystemId = assertStableId(descriptor.fileSystemId, 'EncryptedOpfs fileSystemId');
+  if (fileSystemId !== header.fileSystemId) throw new CorruptionError('Encrypted store header and descriptor fileSystemId disagree');
+
+  const reader = new EncryptedOpfsReader({ dataDirectory, fileSystemId, rootKey: fileSystemRootKey });
+  try {
+    const superblock = await reader.readActiveSuperblock();
+    const commitRecord = await reader.readObject(superblock.activeCommitObjectId);
+    if (commitRecord.kind !== 'commit' || commitRecord.binary.length !== 0) {
+      throw new CorruptionError('Active commit object has an invalid kind or binary payload');
+    }
+    const commit = assertObject(commitRecord.metadata, 'EncryptedOpfs commit');
+    assertNonNegativeSafeInteger(commit.revision, 'EncryptedOpfs commit revision');
+
+    try {
+      await lstat(args.output);
+      throw new Error(`Output path already exists: ${args.output}`);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    const temporaryOutput = `${args.output}.partial-${process.pid}`;
+    await rm(temporaryOutput, { recursive: true, force: true });
+    try {
+      await restoreFileSystem({ reader, commit, outputRoot: temporaryOutput });
+      await rename(temporaryOutput, args.output);
+    } catch (error) {
+      await rm(temporaryOutput, { recursive: true, force: true });
+      throw error;
+    }
+  } finally {
+    fileSystemRootKey.fill(0);
+  }
+  console.log(`Recovered EncryptedOpfs to ${args.output}`);
 }
 
-await main();
+main().catch(error => {
+  console.error(`naidan-recover: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+});

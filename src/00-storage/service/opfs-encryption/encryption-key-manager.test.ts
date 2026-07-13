@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { encodeBase64Url } from './base64-url';
 import {
   createEncryptionKeySlotFromSecret,
   createEncryptionMaterial,
-  deriveEncryptedStoreRuntimeKeys,
   replacePassphraseEncryptionKeySlot,
   unlockStorageUnlockKeyWithPassphrase,
-  unwrapStoreRootKey,
-  wrapStoreRootKey,
+  unwrapFileSystemRootKey,
+  wrapFileSystemRootKey,
 } from './encryption-key-manager';
 
 describe('encryption key manager', () => {
@@ -18,13 +18,15 @@ describe('encryption key manager', () => {
         pbkdf2Iterations: 10,
       });
 
-      await expect(unlockStorageUnlockKeyWithPassphrase({
+      const unlocked = await unlockStorageUnlockKeyWithPassphrase({
         keySlots: material.keySlots,
         passphrase,
-      })).resolves.toEqual({
-        storageUnlockKey: material.storageUnlockKey,
-        keySlotId: material.keySlots[0]?.id,
       });
+      expect(unlocked.storageUnlockKey).toEqual(material.storageUnlockKey);
+      expect(unlocked.keySlotId).toBe(material.keySlots[0]?.id);
+      material.storageUnlockKey.fill(0);
+      material.fileSystemRootKey.fill(0);
+      unlocked.storageUnlockKey.fill(0);
     },
   );
 
@@ -48,9 +50,12 @@ describe('encryption key manager', () => {
     expect(unlocked.storageUnlockKey).toEqual(material.storageUnlockKey);
     expect(unlocked.keySlotId).toBe(material.keySlots[0]?.id);
     expect(material.keySlots[0]?.keyDerivation).toMatchObject({
-      type: 'pbkdf2_sha256',
+      type: 'pbkdf2_hmac_sha256',
       iterations: 10,
     });
+    material.storageUnlockKey.fill(0);
+    material.fileSystemRootKey.fill(0);
+    unlocked.storageUnlockKey.fill(0);
   });
 
   it('binds a wrapped storage unlock key to its stable slot ID', async () => {
@@ -67,40 +72,39 @@ describe('encryption key manager', () => {
       keySlots: [{ ...slot, id: 'different-slot-id' }],
       passphrase: 'correct horse battery staple',
     })).rejects.toThrow('did not unlock');
+    material.storageUnlockKey.fill(0);
+    material.fileSystemRootKey.fill(0);
   });
 
-  it('keeps the store root key separately wrapped and bound to the store ID', async () => {
+  it('wraps the file-system root key separately and binds it to the store ID', async () => {
     const material = await createEncryptionMaterial({
       passphrase: 'correct horse battery staple',
       pbkdf2Iterations: 10,
     });
-    const wrappedStoreRootKey = await wrapStoreRootKey({
+    const wrappedFileSystemRootKey = await wrapFileSystemRootKey({
       storageUnlockKey: material.storageUnlockKey,
-      storeRootKey: material.storeRootKey,
+      fileSystemRootKey: material.fileSystemRootKey,
       encryptedStoreId: 'store-id',
     });
     const header = {
-      formatVersion: 1,
-      sequence: 0,
+      formatVersion: 1 as const,
       encryptedStoreId: 'store-id',
-      wrappedStoreRootKey,
-    } as const;
+      fileSystemId: encodeBase64Url({ bytes: new Uint8Array(16).fill(7) }),
+      wrappedFileSystemRootKey,
+    };
 
-    expect(await unwrapStoreRootKey({
+    const unwrapped = await unwrapFileSystemRootKey({
       storageUnlockKey: material.storageUnlockKey,
       header,
-    })).toEqual(material.storeRootKey);
-    await expect(unwrapStoreRootKey({
+    });
+    expect(unwrapped).toEqual(material.fileSystemRootKey);
+    await expect(unwrapFileSystemRootKey({
       storageUnlockKey: material.storageUnlockKey,
       header: { ...header, encryptedStoreId: 'other-store-id' },
     })).rejects.toThrow();
-    await expect(deriveEncryptedStoreRuntimeKeys({
-      storeRootKey: material.storeRootKey,
-      encryptedStoreId: header.encryptedStoreId,
-    })).resolves.toMatchObject({
-      objectEncryptionKey: expect.any(Object),
-      objectAddressKey: expect.any(Object),
-    });
+    material.storageUnlockKey.fill(0);
+    material.fileSystemRootKey.fill(0);
+    unwrapped.fill(0);
   });
 
   it('replaces one passphrase slot without changing other slots or the storage unlock key', async () => {
@@ -127,10 +131,11 @@ describe('encryption key manager', () => {
     });
 
     expect(keySlots[1]).toEqual(otherSlot);
-    await expect(unlockStorageUnlockKeyWithPassphrase({
+    const unlocked = await unlockStorageUnlockKeyWithPassphrase({
       keySlots,
       passphrase: 'new passphrase',
-    })).resolves.toMatchObject({
+    });
+    expect(unlocked).toMatchObject({
       storageUnlockKey: material.storageUnlockKey,
       keySlotId: originalSlot.id,
     });
@@ -138,18 +143,9 @@ describe('encryption key manager', () => {
       keySlots,
       passphrase: 'old passphrase',
     })).rejects.toThrow('did not unlock');
-  });
-
-  it('does not unlock with a different passphrase', async () => {
-    const material = await createEncryptionMaterial({
-      passphrase: 'correct horse battery staple',
-      pbkdf2Iterations: 10,
-    });
-
-    await expect(unlockStorageUnlockKeyWithPassphrase({
-      keySlots: material.keySlots,
-      passphrase: 'incorrect passphrase',
-    })).rejects.toThrow('did not unlock');
+    material.storageUnlockKey.fill(0);
+    material.fileSystemRootKey.fill(0);
+    unlocked.storageUnlockKey.fill(0);
   });
 
   it('rejects an unbounded key-slot search before running any KDF', async () => {
@@ -167,5 +163,7 @@ describe('encryption key manager', () => {
       keySlots,
       passphrase: 'correct horse battery staple',
     })).rejects.toThrow('between 1 and 32 key slots');
+    material.storageUnlockKey.fill(0);
+    material.fileSystemRootKey.fill(0);
   });
 });

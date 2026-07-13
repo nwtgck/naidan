@@ -108,8 +108,8 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
           }
           break;
         }
-        case 'encrypted_directory':
-          throw new Error('A host volume cannot use encrypted OPFS directory access');
+        case 'storage_directory':
+          throw new Error('A host volume must expose a direct directory handle');
         default: {
           const _ex: never = access;
           throw new Error(`Unhandled storage volume access: ${String(_ex)}`);

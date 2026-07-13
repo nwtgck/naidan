@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
 import { createWeshTerminalSessions } from './useWeshTerminalSessions';
 
 const mocks = vi.hoisted(() => ({
@@ -25,15 +26,15 @@ describe('createWeshTerminalSessions', () => {
     });
   });
 
-  it('uses an encrypted directory capability as the writable Wesh root', async () => {
-    const encryptedRoot = {
-      type: 'encrypted_directory' as const,
-      storeDirectory: { name: 'encrypted-store' } as FileSystemDirectoryHandle,
-      rootDirectoryId: 'encrypted-global-root',
-      objectEncryptionKey: {} as CryptoKey,
-      objectAddressKey: {} as CryptoKey,
-    };
-    mocks.openOpfsSpecialFileSystemDirectory.mockResolvedValue(encryptedRoot);
+  it('uses a decrypted storage directory capability as the writable Wesh root', async () => {
+    const decryptedRoot = {
+      kind: 'directory',
+      name: 'global',
+    } as StorageDirectoryHandle;
+    mocks.openOpfsSpecialFileSystemDirectory.mockResolvedValue({
+      type: 'storage_directory',
+      handle: decryptedRoot,
+    });
     const sessions = createWeshTerminalSessions({
       fileSystemType: 'chat_wesh',
       user: 'user',
@@ -58,12 +59,9 @@ describe('createWeshTerminalSessions', () => {
     expect(mocks.createClient).toHaveBeenCalledWith({
       rootHandle: 'readonly',
       mounts: [{
-        type: 'encrypted_directory',
+        type: 'storage_directory',
         path: '/',
-        storeDirectory: encryptedRoot.storeDirectory,
-        rootDirectoryId: encryptedRoot.rootDirectoryId,
-        objectEncryptionKey: encryptedRoot.objectEncryptionKey,
-        objectAddressKey: encryptedRoot.objectAddressKey,
+        handle: decryptedRoot,
         readOnly: false,
       }],
       user: 'user',

@@ -178,7 +178,7 @@ describe('ImportExportService', () => {
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test 1', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
           yield { type: 'chat', data: { id: UUID_C2, title: 'Test 2', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
-          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, source: { type: 'direct_blob', blob: new Blob(['hello']) } };
+          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
         })(),
       });
 
@@ -230,7 +230,7 @@ describe('ImportExportService', () => {
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
-          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, source: { type: 'direct_blob', blob: new Blob(['hello']) } };
+          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
         })(),
       });
 
@@ -272,7 +272,7 @@ describe('ImportExportService', () => {
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
-          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, source: { type: 'direct_blob', blob: new Blob(['hello']) } };
+          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
         })(),
       });
 
@@ -334,7 +334,7 @@ describe('ImportExportService', () => {
               mimeType: 'application/octet-stream',
               size: 1,
               createdAt: 1000,
-              source: { type: 'direct_blob', blob: new Blob([id]) },
+              blob: new Blob([id]),
             };
           }
           yield {
@@ -482,7 +482,7 @@ ${JSON.stringify({
               mimeType: 'application/octet-stream',
               size: 1,
               createdAt: 1000,
-              source: { type: 'direct_blob', blob: new Blob([id]) },
+              blob: new Blob([id]),
             };
           }
 
@@ -653,7 +653,7 @@ ${JSON.stringify({
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
-          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, source: { type: 'direct_blob', blob: new Blob(['hello']) } };
+          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
         })(),
       });
 

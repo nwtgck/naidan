@@ -46,7 +46,7 @@ export function createNaidanSysfsRemoteReaderForMounts({
     const mountType = mount.type;
     switch (mountType) {
     case 'directory':
-    case 'encrypted_directory':
+    case 'storage_directory':
       continue;
     case 'naidan_sysfs':
       switch (mount.storageType) {

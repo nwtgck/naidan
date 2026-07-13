@@ -1,7 +1,11 @@
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
-import type { ChatMetaDto, ChatGroupDto, HierarchyDto, StorageBinaryObjectWriteSource } from '@/00-storage/00-dto/dto';
-import type { StorageBinaryObjectReadHandle } from './binary-object-io';
+import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/00-storage/00-dto/dto';
+import type {
+  StorageBinaryObjectReadHandle,
+  StorageBinaryObjectWriteSource,
+} from './binary-object-io';
 import type { StorageVolumeAccess } from './volume-access';
+import { unwrapNativeOpfsDirectoryHandle } from './storage-file-system/native-opfs';
 import { materializeStorageBinaryObjectAsBlob } from './binary-object-io';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 
@@ -63,8 +67,8 @@ export abstract class IStorageProvider {
     switch (access.type) {
     case 'direct_directory':
       return access.handle;
-    case 'encrypted_directory':
-      return null;
+    case 'storage_directory':
+      return unwrapNativeOpfsDirectoryHandle({ handle: access.handle }) ?? null;
     default: {
       const _ex: never = access;
       throw new Error(`Unhandled storage volume access: ${String(_ex)}`);

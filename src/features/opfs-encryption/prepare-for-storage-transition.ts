@@ -14,14 +14,12 @@ export async function prepareForOpfsEncryptionTransition(): Promise<void> {
   const {
     chatProcessing,
     debugEncryptedStorage,
-    debugEncryptedStorageClients,
     fileExplorer,
     fileExplorerClients,
     weshClients,
   } = await promiseAllKeyed({
     chatProcessing: import('@/composables/chat/chat-scoped/chat-processing-abort'),
     debugEncryptedStorage: import('@/features/debug-encrypted-storage/composables/useDebugEncryptedStorageInspector'),
-    debugEncryptedStorageClients: import('@/features/debug-encrypted-storage/worker/client-registry'),
     fileExplorer: import('@/features/file-explorer/composables/useFileExplorerModal'),
     fileExplorerClients: import('@/features/file-explorer/worker/client-registry'),
     weshClients: import('@/features/wesh/worker/client-registry'),
@@ -32,7 +30,6 @@ export async function prepareForOpfsEncryptionTransition(): Promise<void> {
   fileExplorer.useFileExplorerModal().closeFileExplorer();
   await nextTick();
   await promiseAllKeyed({
-    debugEncryptedStorageClients: debugEncryptedStorageClients.disposeAllDebugEncryptedStorageWorkerClientsForStorageTransition(),
     fileExplorerClients: fileExplorerClients.disposeAllFileExplorerWorkerClientsForStorageTransition(),
     weshClients: weshClients.disposeAllWeshWorkerClientsForStorageTransition(),
   });

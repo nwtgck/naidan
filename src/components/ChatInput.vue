@@ -386,7 +386,7 @@ async function finishMount({ volumeId, name }: { volumeId: VolumeId, name: strin
     case 'direct_directory':
       startVolumeExtensionScan({ volumeId, handle: access.handle });
       break;
-    case 'encrypted_directory':
+    case 'storage_directory':
       break;
     default: {
       const _ex: never = access;
@@ -688,8 +688,8 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: Vol
       }
       break;
     }
-    case 'encrypted_directory':
-      throw new Error('A host volume cannot use encrypted OPFS directory access');
+    case 'storage_directory':
+      throw new Error('A host volume must expose a direct directory handle');
     default: {
       const _ex: never = access;
       throw new Error(`Unhandled storage volume access: ${String(_ex)}`);

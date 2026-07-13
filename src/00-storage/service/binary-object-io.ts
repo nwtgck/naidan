@@ -1,4 +1,19 @@
-import type { StorageBinaryObjectWriteSource } from '@/00-storage/00-dto/dto';
+export type StorageBinaryObjectWriteSource =
+  | {
+      readonly type: 'direct_blob';
+
+      /**
+       * The Blob must already be directly available without reading,
+       * decrypting, decompressing, or copying the complete payload.
+       *
+       * A Blob materialized from a stream or reader must never use this branch.
+       */
+      readonly blob: Blob;
+    }
+  | {
+      readonly type: 'stream';
+      readonly stream: ReadableStream<Uint8Array>;
+    };
 
 const BLOB_STREAM_FALLBACK_CHUNK_SIZE = 1024 * 1024;
 

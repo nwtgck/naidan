@@ -1,5 +1,7 @@
 import type { StorageVolumeAccess } from './volume-access';
 import { writeReadableStreamToFileHandle } from '@/utils/file-system-stream';
+import type { StorageDirectoryHandle } from './storage-file-system/types';
+import { writeStorageReadableStream } from './storage-file-system/io';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
@@ -127,12 +129,8 @@ export async function createStorageDirectoryTransferSource({
   switch (access.type) {
   case 'direct_directory':
     return createDirectStorageDirectoryTransferSource({ root: access.handle });
-  case 'encrypted_directory': {
-    const { createEncryptedStorageDirectoryTransferSource } = await import(
-      './opfs-encryption/encrypted-storage-directory-transfer'
-    );
-    return createEncryptedStorageDirectoryTransferSource({ access });
-  }
+  case 'storage_directory':
+    return createStorageFileSystemDirectoryTransferSource({ root: access.handle });
   default: {
     const _ex: never = access;
     throw new Error(`Unhandled storage directory access: ${String(_ex)}`);
@@ -171,6 +169,147 @@ export function createDirectStorageDirectoryTransferTarget({
     },
     async createSymlink({ path }) {
       throw new Error(`Direct OPFS cannot represent symbolic link: ${path}`);
+    },
+  };
+}
+
+async function resolveStorageFileSystemDirectory({
+  root,
+  path,
+  create,
+}: {
+  root: StorageDirectoryHandle;
+  path: string;
+  create: boolean;
+}): Promise<StorageDirectoryHandle> {
+  let current = root;
+  for (const part of path.split('/').filter(Boolean)) {
+    current = await current.getDirectoryHandle({ name: part, create });
+  }
+  return current;
+}
+
+export function createStorageFileSystemDirectoryTransferSource({
+  root,
+}: {
+  root: StorageDirectoryHandle;
+}): StorageDirectoryTransferSource {
+  return {
+    async *readDirectory({ path }) {
+      const directory = await resolveStorageFileSystemDirectory({
+        root,
+        path,
+        create: false,
+      });
+      for await (const [name, entry] of directory.entries()) {
+        switch (entry.kind) {
+        case 'directory':
+          yield { type: 'directory', name };
+          break;
+        case 'file': {
+          const stat = await entry.stat();
+          yield {
+            type: 'file',
+            name,
+            size: stat.size,
+            modifiedAt: stat.modifiedAt ?? 0,
+            open: async () => {
+              const readable = await entry.openReadable({
+                mimeType: 'application/octet-stream',
+              });
+              const stream = readable.stream({
+                start: 0,
+                end: undefined,
+                signal: undefined,
+              });
+              return new ReadableStream<Uint8Array>({
+                start(controller) {
+                  const reader = stream.getReader();
+                  const pump = async (): Promise<void> => {
+                    try {
+                      while (true) {
+                        const result = await reader.read();
+                        if (result.done) {
+                          controller.close();
+                          await readable.close();
+                          return;
+                        }
+                        controller.enqueue(result.value);
+                      }
+                    } catch (error) {
+                      controller.error(error);
+                      await readable.close().catch(() => {});
+                    }
+                  };
+                  void pump();
+                },
+                async cancel(reason) {
+                  await readable.close();
+                  void reason;
+                },
+              });
+            },
+          };
+          break;
+        }
+        case 'symlink':
+          yield {
+            type: 'symlink',
+            name,
+            targetPath: await entry.readTarget(),
+            modifiedAt: 0,
+          };
+          break;
+        default: {
+          const _ex: never = entry;
+          throw new Error(`Unhandled storage filesystem entry: ${String(_ex)}`);
+        }
+        }
+      }
+    },
+  };
+}
+
+export function createStorageFileSystemDirectoryTransferTarget({
+  root,
+}: {
+  root: StorageDirectoryHandle;
+}): StorageDirectoryTransferTarget {
+  return {
+    async createDirectory({ path }) {
+      await resolveStorageFileSystemDirectory({ root, path, create: true });
+    },
+    async writeFile({ path, size, source, signal }) {
+      const parts = path.split('/').filter(Boolean);
+      const name = parts.pop();
+      if (name === undefined) {
+        throw new Error(`Storage filesystem transfer path has no file name: ${path}`);
+      }
+      const directory = await resolveStorageFileSystemDirectory({
+        root,
+        path: `/${parts.join('/')}`,
+        create: true,
+      });
+      const fileHandle = await directory.getFileHandle({ name, create: true });
+      await writeStorageReadableStream({
+        fileHandle,
+        source,
+        expectedSize: size,
+        signal,
+      });
+    },
+    async createSymlink({ path, targetPath }) {
+      const parts = path.split('/').filter(Boolean);
+      const name = parts.pop();
+      if (name === undefined) {
+        throw new Error(`Storage filesystem symlink path has no name: ${path}`);
+      }
+      const directory = await resolveStorageFileSystemDirectory({
+        root,
+        path: `/${parts.join('/')}`,
+        create: true,
+      });
+      await directory.createSymlink({ name, target: targetPath });
     },
   };
 }
@@ -232,4 +371,5 @@ export async function copyStorageDirectory({
 export const TEST_ONLY = {
   joinPath,
   resolveDirectDirectory,
+  resolveStorageFileSystemDirectory,
 };

@@ -8,6 +8,7 @@ import {
   createRemoteNaidanSysfsStorageReader,
 } from '@/features/wesh/naidan-sysfs/storage-reader';
 import { ReadonlyDirectoryHandle } from '@/features/wesh/readonly-directory-handle';
+import { RemoteStorageDirectoryWeshProvider } from '@/features/wesh/storage-directory/provider';
 import { createTestReadHandleFromText } from '@/features/wesh/utils/test-stream';
 import { createWriteHandleFromStream } from '@/features/wesh/utils/stream';
 import {
@@ -158,7 +159,7 @@ export function createWeshWorker(): IWeshWorker {
 
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-    async init(requestOrOptions, naidanSysfsRemoteReader) {
+    async init(requestOrOptions, naidanSysfsRemoteReader, storageDirectoryRemote) {
       const normalizedRequest = (() => {
         if (
           typeof requestOrOptions === 'object'
@@ -190,24 +191,15 @@ export function createWeshWorker(): IWeshWorker {
             readOnly: mount.readOnly,
           });
           break;
-        case 'encrypted_directory': {
-          const { EncryptedDirectoryWeshProvider } = await import(
-            '@/features/wesh/encrypted-directory-provider'
-          );
+        case 'storage_directory': {
+          if (storageDirectoryRemote === undefined) {
+            throw new Error('Storage directory remote is required for storage_directory mounts');
+          }
           wesh.vfs.mountVirtual({
             path: mount.path,
             readOnly: mount.readOnly,
-            provider: new EncryptedDirectoryWeshProvider({
-              access: {
-                type: 'encrypted_directory',
-                storeDirectory: mount.storeDirectory,
-                encryptedStoreId: mount.encryptedStoreId,
-                fileSystemId: mount.fileSystemId,
-                physicalArea: mount.physicalArea,
-                rootDirectoryId: mount.rootDirectoryId,
-                objectEncryptionKey: mount.objectEncryptionKey,
-                objectAddressKey: mount.objectAddressKey,
-              },
+            provider: new RemoteStorageDirectoryWeshProvider({
+              remote: storageDirectoryRemote,
               mountPath: mount.path,
             }),
           });
