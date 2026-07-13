@@ -6,7 +6,7 @@ import OpfsEncryptionInspectorModal from './OpfsEncryptionInspectorModal.vue';
 const mocks = vi.hoisted(() => ({
   closeInspector: vi.fn(),
   createSession: vi.fn(),
-  openEncryptedOpfsInspector: vi.fn(),
+  openEncryptedOpfsWorkbench: vi.fn(),
   openFileExplorer: vi.fn(),
 }));
 
@@ -22,9 +22,9 @@ vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInsp
   }),
 }));
 
-vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector', () => ({
-  useDebugEncryptedOpfsInspector: () => ({
-    openDebugEncryptedOpfsInspector: mocks.openEncryptedOpfsInspector,
+vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench', () => ({
+  useDebugEncryptedOpfsWorkbench: () => ({
+    openDebugEncryptedOpfsWorkbench: mocks.openEncryptedOpfsWorkbench,
   }),
 }));
 
@@ -75,6 +75,10 @@ function createSession(): OpfsEncryptionDebugSession {
         formatVersion: 1,
         fileSystemId: 'filesystem-a',
       },
+      persistedDescriptorDto: {
+        formatVersion: 1,
+        fileSystemId: 'filesystem-a',
+      },
       superblockSlots: [],
       activeSuperblock: {
         sequence: 10,
@@ -83,6 +87,11 @@ function createSession(): OpfsEncryptionDebugSession {
       },
       activeCommitObjectId: 'commit-a',
       activeCommit: {
+        revision: 11,
+        rootDirectoryNodeId: 'root-a',
+        inodeIndexRootObjectId: 'inode-index-a',
+      },
+      activeCommitPersistedDto: {
         revision: 11,
         rootDirectoryNodeId: 'root-a',
         inodeIndexRootObjectId: 'inode-index-a',
@@ -129,20 +138,16 @@ describe('OpfsEncryptionInspectorModal', () => {
 
     document.body.querySelector<HTMLButtonElement>('[data-testid="opfs-encryption-open-encrypted-opfs"]')?.click();
     expect(mocks.closeInspector).toHaveBeenCalledOnce();
-    expect(mocks.openEncryptedOpfsInspector).toHaveBeenCalledOnce();
+    expect(mocks.openEncryptedOpfsWorkbench).toHaveBeenCalledOnce();
 
     document.body.querySelector<HTMLButtonElement>('[data-testid="opfs-encryption-open-decrypted"]')?.click();
     expect(mocks.openFileExplorer).toHaveBeenCalledWith({
       options: {
-        kind: 'wesh-mounts',
+        kind: 'storage-directory',
         title: 'Decrypted EncryptedOpfs',
         rootName: 'EncryptedOpfs root',
-        mounts: [{
-          type: 'storage_directory',
-          path: '/',
-          handle: session.decryptedRoot,
-          readOnly: true,
-        }],
+        handle: session.decryptedRoot,
+        readOnly: true,
         initialPath: undefined,
       },
     });

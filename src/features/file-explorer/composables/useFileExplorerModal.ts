@@ -13,6 +13,14 @@ export type FileExplorerModalOptions =
     initialPath: string[] | undefined,
   }
   | {
+    kind: 'storage-directory',
+    title: string,
+    rootName: string,
+    handle: import('@/00-storage/service/storage-file-system/types').StorageDirectoryHandle,
+    readOnly: boolean,
+    initialPath: string[] | undefined,
+  }
+  | {
     kind: 'wesh-mounts',
     title: string,
     rootName: string,
@@ -35,6 +43,13 @@ export function mapFileExplorerModalOptionsToRootDescriptor({
   case 'native-directory':
     return {
       kind: 'native-directory',
+      rootName: options.rootName,
+      handle: options.handle,
+      readOnly: options.readOnly,
+    };
+  case 'storage-directory':
+    return {
+      kind: 'storage-directory',
       rootName: options.rootName,
       handle: options.handle,
       readOnly: options.readOnly,

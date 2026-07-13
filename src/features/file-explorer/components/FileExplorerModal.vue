@@ -15,6 +15,7 @@ const title = computed(() => {
   case 'opfs-root':
     return lazyStrings.fileExplorer__file_explorer_opfs();
   case 'native-directory':
+  case 'storage-directory':
   case 'wesh-mounts':
     return options.title;
   default: {
@@ -30,6 +31,7 @@ const initialPath = computed(() => {
   case 'opfs-root':
     return undefined;
   case 'native-directory':
+  case 'storage-directory':
   case 'wesh-mounts':
     return options.initialPath;
   default: {

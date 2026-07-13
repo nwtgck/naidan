@@ -20,7 +20,7 @@ export async function prepareForOpfsEncryptionTransition(): Promise<void> {
     weshClients,
   } = await promiseAllKeyed({
     chatProcessing: import('@/composables/chat/chat-scoped/chat-processing-abort'),
-    debugEncryptedOpfs: import('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector'),
+    debugEncryptedOpfs: import('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench'),
     debugOpfsEncryption: import('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector'),
     fileExplorer: import('@/features/file-explorer/composables/useFileExplorerModal'),
     fileExplorerClients: import('@/features/file-explorer/worker/client-registry'),
@@ -28,7 +28,7 @@ export async function prepareForOpfsEncryptionTransition(): Promise<void> {
   });
 
   chatProcessing.abortAllChatProcessingForStorageTransition();
-  debugEncryptedOpfs.useDebugEncryptedOpfsInspector().closeDebugEncryptedOpfsInspector();
+  debugEncryptedOpfs.useDebugEncryptedOpfsWorkbench().closeDebugEncryptedOpfsWorkbench();
   debugOpfsEncryption.useDebugOpfsEncryptionInspector().closeDebugOpfsEncryptionInspector();
   fileExplorer.useFileExplorerModal().closeFileExplorer();
   await nextTick();

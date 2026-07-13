@@ -232,6 +232,28 @@ async function createSessionFromRoot({
       rootHandle: root.handle,
       readOnly: root.readOnly,
     };
+  case 'storage-directory': {
+    if (storageDirectoryRemote === undefined) {
+      throw new Error('Storage directory remote is required for a storage-directory root');
+    }
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    // The File Explorer receives one StorageDirectoryHandle as its filesystem root.
+    // Keeping this as a distinct root kind prevents a direct root from being
+    // reinterpreted as a user-visible Wesh mount and preserves root-relative paths.
+    vfs.mountVirtual({
+      path: '/',
+      readOnly: root.readOnly,
+      provider: new RemoteStorageDirectoryWeshProvider({
+        remote: storageDirectoryRemote,
+        mountPath: '/',
+      }),
+    });
+    return {
+      kind: 'wesh-mounts',
+      rootName: root.rootName,
+      vfs,
+    };
+  }
   case 'wesh-mounts': {
     const vfs = new WeshVFS({ rootHandle: undefined });
     for (const mount of root.mounts) {

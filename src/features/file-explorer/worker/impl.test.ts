@@ -5,6 +5,8 @@ import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } fro
 import { createFileExplorerWorker } from './impl';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
+import { createEncryptedOpfs } from '@/00-storage/service/encrypted-opfs/api';
+import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 import { renderChatMetadataMarkdown } from '@/features/wesh/naidan-sysfs/render/metadata-markdown';
 import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
@@ -14,6 +16,61 @@ describe('file-explorer.worker.impl', () => {
 
   beforeEach(() => {
     worker = createFileExplorerWorker();
+  });
+
+  it('treats a decrypted StorageDirectoryHandle as the File Explorer root without Wesh mount path leakage', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'encrypted-backing' });
+    const encryptedSession = await createEncryptedOpfs({
+      backingDirectory: backing as unknown as FileSystemDirectoryHandle,
+      fileSystemRootKey: new Uint8Array(32).fill(0x42),
+    });
+    const naidanStorage = await encryptedSession.root.getDirectoryHandle({
+      name: 'naidan-storage',
+      create: true,
+    });
+    const settings = await naidanStorage.getFileHandle({
+      name: 'settings.json',
+      create: true,
+    });
+    const writable = await settings.createWritable({ keepExistingData: false });
+    await writable.write({
+      position: 0,
+      data: new TextEncoder().encode('{"formatVersion":1}'),
+    });
+    await writable.close();
+
+    const storageDirectoryRemote = createWeshStorageDirectoryRemoteForMounts({
+      mounts: [{
+        type: 'storage_directory',
+        path: '/',
+        handle: encryptedSession.root,
+        readOnly: false,
+      }],
+    });
+    if (storageDirectoryRemote === undefined) {
+      throw new Error('Expected root storage directory remote');
+    }
+
+    const { sessionId } = await worker.prepareSession({
+      root: {
+        kind: 'storage-directory',
+        rootName: 'EncryptedOpfs root',
+        readOnly: false,
+      },
+    }, undefined, storageDirectoryRemote);
+
+    const rootListing = await worker.readDirectory({
+      request: { sessionId, path: '/' },
+    });
+    expect(rootListing.entries.map(entry => entry.name)).toContain('naidan-storage');
+
+    const storageListing = await worker.readDirectory({
+      request: { sessionId, path: '/naidan-storage' },
+    });
+    expect(storageListing.entries.map(entry => entry.name)).toContain('settings.json');
+
+    await worker.disposeSession({ request: { sessionId } });
+    await encryptedSession.close();
   });
 
   it('lists native directory entries with metadata', async () => {

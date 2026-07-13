@@ -32,6 +32,7 @@ const superblockSlotSchema = z.discriminatedUnion('status', [
     selected: z.boolean(),
     physicalPath: physicalPathSchema,
     value: EncryptedOpfsSuperblockSchemaDto,
+    persistedDto: z.unknown(),
   }),
   z.object({
     slot: z.union([z.literal(0), z.literal(1)]),
@@ -44,10 +45,12 @@ const superblockSlotSchema = z.discriminatedUnion('status', [
 
 export const encryptedOpfsInspectionOverviewSchema = z.object({
   descriptor: EncryptedOpfsDescriptorSchemaDto,
+  persistedDescriptorDto: z.unknown(),
   superblockSlots: z.array(superblockSlotSchema),
   activeSuperblock: EncryptedOpfsSuperblockSchemaDto,
   activeCommitObjectId: z.string(),
   activeCommit: EncryptedOpfsCommitSchemaDto,
+  activeCommitPersistedDto: z.unknown(),
 });
 
 export const encryptedOpfsPhysicalObjectPageSchema = z.object({

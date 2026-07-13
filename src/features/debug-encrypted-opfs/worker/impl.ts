@@ -451,10 +451,29 @@ function parsePersistedDto({ object }: {
 } {
   try {
     const schema = getPersistedDtoSchema({ kind: object.record.kind });
-    const persistedDto = schema.parse(object.record.metadata);
+    const validation = schema.safeParse(object.record.metadata);
+    if (!validation.success) {
+      return {
+        validation: {
+          status: 'invalid',
+          errorMessage: validation.error.message,
+        },
+        references: [],
+      };
+    }
+    /**
+     * Keep the record metadata itself as the Raw DTO view. Zod object parsing
+     * may clone the value and strip unknown properties, which is appropriate
+     * for normal consumption but would make a storage audit diverge from the
+     * representation that was actually read from the encrypted record.
+     * Parsed data is used only for validated reference traversal.
+     */
     return {
-      validation: { status: 'valid', persistedDto },
-      references: deriveReferences({ kind: object.record.kind, persistedDto }),
+      validation: { status: 'valid', persistedDto: object.record.metadata },
+      references: deriveReferences({
+        kind: object.record.kind,
+        persistedDto: validation.data,
+      }),
     };
   } catch (error) {
     return {

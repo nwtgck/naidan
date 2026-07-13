@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import type { WeshStorageDirectoryRemote } from '@/features/wesh/storage-directory/types';
 import type { WeshMount } from '@/features/wesh/types';
@@ -30,6 +31,11 @@ export const fileExplorerRootDescriptorSchema = z.discriminatedUnion('kind', [
     readOnly: z.boolean(),
   }),
   z.object({
+    kind: z.literal('storage-directory'),
+    rootName: z.string().min(1),
+    readOnly: z.boolean(),
+  }),
+  z.object({
     kind: z.literal('wesh-mounts'),
     rootName: z.string().min(1),
     mounts: z.array(weshWorkerMountSchema),
@@ -45,6 +51,12 @@ export type FileExplorerRootDescriptor =
       readonly kind: 'native-directory';
       readonly rootName: string;
       readonly handle: FileSystemDirectoryHandle;
+      readonly readOnly: boolean;
+    }
+  | {
+      readonly kind: 'storage-directory';
+      readonly rootName: string;
+      readonly handle: StorageDirectoryHandle;
       readonly readOnly: boolean;
     }
   | {

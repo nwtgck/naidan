@@ -6,7 +6,7 @@ import { useGlobalSearch } from '@/features/global-search/composables/useGlobalS
 import { useLayout } from '@/composables/useLayout';
 import { usePrint } from '@/composables/usePrint';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { useDebugEncryptedOpfsInspector } from '@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector';
+import { useDebugEncryptedOpfsWorkbench } from '@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench';
 import { useDebugOpfsEncryptionInspector } from '@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector';
 
 
@@ -29,7 +29,7 @@ const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/features/wes
 const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-search/components/GlobalSearchModal.vue'));
 const RecentChatsModal = defineAsyncComponent(() => import('@/components/RecentChatsModal.vue'));
 const FileExplorerModal = defineAsyncComponent(() => import('@/features/file-explorer/components/FileExplorerModal.vue'));
-const EncryptedOpfsInspectorModal = defineAsyncComponent(() => import('@/features/debug-encrypted-opfs/components/EncryptedOpfsInspectorModal.vue'));
+const EncryptedOpfsWorkbenchModal = defineAsyncComponent(() => import('@/features/debug-encrypted-opfs/components/EncryptedOpfsWorkbenchModal.vue'));
 const OpfsEncryptionInspectorModal = defineAsyncComponent(() => import('@/features/debug-opfs-encryption/components/OpfsEncryptionInspectorModal.vue'));
 const PWAManager = __BUILD_MODE_IS_HOSTED__
   ? defineAsyncComponent(() => import('@/components/PWAManager.vue'))
@@ -41,7 +41,7 @@ const { isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
 const { isFileExplorerOpen } = useFileExplorerModal();
 const { isSearchOpen } = useGlobalSearch();
 const { isRecentOpen } = useRecentChats();
-const { isDebugEncryptedOpfsInspectorOpen } = useDebugEncryptedOpfsInspector();
+const { isDebugEncryptedOpfsWorkbenchOpen } = useDebugEncryptedOpfsWorkbench();
 const { isDebugOpfsEncryptionInspectorOpen } = useDebugOpfsEncryptionInspector();
 const { activePrintMode } = usePrint();
 const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
@@ -195,7 +195,7 @@ defineExpose({
   <PWAManager v-if="renderPostStartupAuxiliaryUi && PWAManager" />
   <FileExplorerModal v-if="renderPostStartupAuxiliaryUi && isFileExplorerOpen" />
   <OpfsEncryptionInspectorModal v-if="renderPostStartupAuxiliaryUi && isDebugOpfsEncryptionInspectorOpen" />
-  <EncryptedOpfsInspectorModal v-if="renderPostStartupAuxiliaryUi && isDebugEncryptedOpfsInspectorOpen" />
+  <EncryptedOpfsWorkbenchModal v-if="renderPostStartupAuxiliaryUi && isDebugEncryptedOpfsWorkbenchOpen" />
 
   <PrintView v-if="renderPostStartupAuxiliaryUi && activePrintMode !== undefined">
     <ChatPrintContent v-if="activePrintMode === 'chat'" />

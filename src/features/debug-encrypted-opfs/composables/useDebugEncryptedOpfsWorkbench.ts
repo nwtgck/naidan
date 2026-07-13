@@ -1,24 +1,23 @@
-import { ref } from 'vue';
+import { readonly, ref } from 'vue';
 
 const isOpen = ref(false);
 
-export function useDebugEncryptedOpfsInspector() {
-  function openDebugEncryptedOpfsInspector(): void {
+export function useDebugEncryptedOpfsWorkbench() {
+  function openDebugEncryptedOpfsWorkbench(): void {
     isOpen.value = true;
   }
 
-  function closeDebugEncryptedOpfsInspector(): void {
+  function closeDebugEncryptedOpfsWorkbench(): void {
     isOpen.value = false;
   }
 
   return {
-    isDebugEncryptedOpfsInspectorOpen: isOpen,
-    openDebugEncryptedOpfsInspector,
-    closeDebugEncryptedOpfsInspector,
+    isDebugEncryptedOpfsWorkbenchOpen: readonly(isOpen),
+    openDebugEncryptedOpfsWorkbench,
+    closeDebugEncryptedOpfsWorkbench,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.
-        // ESLint-required for useXxx return objects.
       },
     }) || {}),
   };

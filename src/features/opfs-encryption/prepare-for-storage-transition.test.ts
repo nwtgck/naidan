@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   abortAllChatProcessingForStorageTransition: vi.fn(),
-  closeDebugEncryptedOpfsInspector: vi.fn(),
+  closeDebugEncryptedOpfsWorkbench: vi.fn(),
   closeDebugOpfsEncryptionInspector: vi.fn(),
   closeFileExplorer: vi.fn(),
   disposeFileExplorerClients: vi.fn<() => Promise<void>>(),
@@ -14,9 +14,9 @@ vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
   abortAllChatProcessingForStorageTransition: mocks.abortAllChatProcessingForStorageTransition,
 }));
 
-vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector', () => ({
-  useDebugEncryptedOpfsInspector: () => ({
-    closeDebugEncryptedOpfsInspector: mocks.closeDebugEncryptedOpfsInspector,
+vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench', () => ({
+  useDebugEncryptedOpfsWorkbench: () => ({
+    closeDebugEncryptedOpfsWorkbench: mocks.closeDebugEncryptedOpfsWorkbench,
   }),
 }));
 
@@ -48,7 +48,7 @@ beforeEach(() => {
   mocks.abortAllChatProcessingForStorageTransition.mockImplementation(() => {
     mocks.calls.push('abort-chat');
   });
-  mocks.closeDebugEncryptedOpfsInspector.mockImplementation(() => {
+  mocks.closeDebugEncryptedOpfsWorkbench.mockImplementation(() => {
     mocks.calls.push('close-encrypted-opfs-inspector');
   });
   mocks.closeDebugOpfsEncryptionInspector.mockImplementation(() => {
@@ -70,7 +70,7 @@ describe('prepareForOpfsEncryptionTransition', () => {
     await prepareForOpfsEncryptionTransition();
 
     expect(mocks.abortAllChatProcessingForStorageTransition).toHaveBeenCalledOnce();
-    expect(mocks.closeDebugEncryptedOpfsInspector).toHaveBeenCalledOnce();
+    expect(mocks.closeDebugEncryptedOpfsWorkbench).toHaveBeenCalledOnce();
     expect(mocks.closeDebugOpfsEncryptionInspector).toHaveBeenCalledOnce();
     expect(mocks.closeFileExplorer).toHaveBeenCalledOnce();
     expect(mocks.disposeFileExplorerClients).toHaveBeenCalledOnce();

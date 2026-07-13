@@ -5,7 +5,7 @@ import SidebarDebugControls from './SidebarDebugControls.vue';
 
 const mocks = vi.hoisted(() => ({
   inspectOpfsEncryption: vi.fn(),
-  openEncryptedOpfsInspector: vi.fn(),
+  openEncryptedOpfsWorkbench: vi.fn(),
   openOpfsEncryptionInspector: vi.fn(),
   openFileExplorer: vi.fn(),
   openRecent: vi.fn(),
@@ -50,9 +50,9 @@ vi.mock('@/composables/useRecentChats', () => ({
   useRecentChats: () => ({ openRecent: mocks.openRecent }),
 }));
 
-vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector', () => ({
-  useDebugEncryptedOpfsInspector: () => ({
-    openDebugEncryptedOpfsInspector: mocks.openEncryptedOpfsInspector,
+vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench', () => ({
+  useDebugEncryptedOpfsWorkbench: () => ({
+    openDebugEncryptedOpfsWorkbench: mocks.openEncryptedOpfsWorkbench,
   }),
 }));
 
@@ -80,7 +80,7 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
     vi.clearAllMocks();
   });
 
-  it('keeps the Inspector disabled for plaintext storage', async () => {
+  it('keeps the Naidan control inspector disabled but exposes the Workbench for plaintext storage', async () => {
     mocks.inspectOpfsEncryption.mockResolvedValue({ type: 'plain' });
     const wrapper = mountControls();
 
@@ -88,16 +88,16 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
     await flushPromises();
 
     const controlInspectorButton = wrapper.get('[data-testid="sidebar-opfs-encryption-inspector-button"]');
-    const encryptedOpfsInspectorButton = wrapper.get('[data-testid="sidebar-encrypted-opfs-inspector-button"]');
+    const encryptedOpfsWorkbenchButton = wrapper.get('[data-testid="sidebar-encrypted-opfs-workbench-button"]');
     expect(controlInspectorButton.attributes('disabled')).toBeDefined();
-    expect(encryptedOpfsInspectorButton.attributes('disabled')).toBeDefined();
+    expect(encryptedOpfsWorkbenchButton.attributes('disabled')).toBeUndefined();
     await controlInspectorButton.trigger('click');
-    await encryptedOpfsInspectorButton.trigger('click');
+    await encryptedOpfsWorkbenchButton.trigger('click');
     expect(mocks.openOpfsEncryptionInspector).not.toHaveBeenCalled();
-    expect(mocks.openEncryptedOpfsInspector).not.toHaveBeenCalled();
+    expect(mocks.openEncryptedOpfsWorkbench).toHaveBeenCalledOnce();
   });
 
-  it('opens both inspectors after confirming encrypted OPFS is active', async () => {
+  it('opens the Naidan inspector and the independent EncryptedOpfs Workbench for encrypted storage', async () => {
     mocks.inspectOpfsEncryption.mockResolvedValue({
       type: 'encrypted',
       state: {},
@@ -108,16 +108,16 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
     await flushPromises();
 
     const controlInspectorButton = wrapper.get('[data-testid="sidebar-opfs-encryption-inspector-button"]');
-    const encryptedOpfsInspectorButton = wrapper.get('[data-testid="sidebar-encrypted-opfs-inspector-button"]');
+    const encryptedOpfsWorkbenchButton = wrapper.get('[data-testid="sidebar-encrypted-opfs-workbench-button"]');
     expect(controlInspectorButton.attributes('disabled')).toBeUndefined();
-    expect(encryptedOpfsInspectorButton.attributes('disabled')).toBeUndefined();
+    expect(encryptedOpfsWorkbenchButton.attributes('disabled')).toBeUndefined();
 
     await controlInspectorButton.trigger('click');
     expect(mocks.openOpfsEncryptionInspector).toHaveBeenCalledOnce();
 
     await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-testid="sidebar-encrypted-opfs-inspector-button"]').trigger('click');
-    expect(mocks.openEncryptedOpfsInspector).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="sidebar-encrypted-opfs-workbench-button"]').trigger('click');
+    expect(mocks.openEncryptedOpfsWorkbench).toHaveBeenCalledOnce();
   });
 });

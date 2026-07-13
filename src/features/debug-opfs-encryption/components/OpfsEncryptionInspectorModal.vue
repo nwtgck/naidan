@@ -18,12 +18,12 @@ import {
 import { storageService } from '@/00-storage/service';
 import type { OpfsEncryptionDebugSession } from '@/00-storage/service/opfs-encryption/inspection';
 import { useDebugOpfsEncryptionInspector } from '@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector';
-import { useDebugEncryptedOpfsInspector } from '@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsInspector';
+import { useDebugEncryptedOpfsWorkbench } from '@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { JsonCodeView } from '@/features/json-viewer';
 
 const { closeDebugOpfsEncryptionInspector } = useDebugOpfsEncryptionInspector();
-const { openDebugEncryptedOpfsInspector } = useDebugEncryptedOpfsInspector();
+const { openDebugEncryptedOpfsWorkbench } = useDebugEncryptedOpfsWorkbench();
 const { openFileExplorer } = useFileExplorerModal();
 
 const session = ref<OpfsEncryptionDebugSession>();
@@ -70,15 +70,11 @@ function openDecryptedFileSystem(): void {
   closeDebugOpfsEncryptionInspector();
   openFileExplorer({
     options: {
-      kind: 'wesh-mounts',
+      kind: 'storage-directory',
       title: 'Decrypted EncryptedOpfs',
       rootName: 'EncryptedOpfs root',
-      mounts: [{
-        type: 'storage_directory',
-        path: '/',
-        handle: activeSession.decryptedRoot,
-        readOnly: true,
-      }],
+      handle: activeSession.decryptedRoot,
+      readOnly: true,
       initialPath: undefined,
     },
   });
@@ -86,7 +82,7 @@ function openDecryptedFileSystem(): void {
 
 function openEncryptedOpfs(): void {
   closeDebugOpfsEncryptionInspector();
-  openDebugEncryptedOpfsInspector();
+  openDebugEncryptedOpfsWorkbench();
 }
 
 // Keep the exact DTO types referenced in this audit-only feature so future
@@ -156,7 +152,7 @@ defineExpose({
           <div tw-class="flex shrink-0 flex-wrap gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
             <button type="button" data-testid="opfs-encryption-open-encrypted-opfs" tw-class="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700" @click="openEncryptedOpfs">
               <HardDriveIcon tw-class="h-4 w-4" />
-              Inspect EncryptedOpfs internals
+              Open EncryptedOpfs Workbench
             </button>
             <button type="button" data-testid="opfs-encryption-open-decrypted" tw-class="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800" @click="openDecryptedFileSystem">
               <FolderOpenIcon tw-class="h-4 w-4" />

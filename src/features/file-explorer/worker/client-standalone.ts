@@ -45,6 +45,7 @@ export async function createFileExplorerWorkerClient({
     switch (root.kind) {
     case 'native-directory':
     case 'opfs-root':
+    case 'storage-directory':
       return undefined;
     case 'wesh-mounts':
       return createNaidanSysfsRemoteReaderForMounts({ mounts: root.mounts });
@@ -59,6 +60,15 @@ export async function createFileExplorerWorkerClient({
     case 'native-directory':
     case 'opfs-root':
       return undefined;
+    case 'storage-directory':
+      return createWeshStorageDirectoryRemoteForMounts({
+        mounts: [{
+          type: 'storage_directory',
+          path: '/',
+          handle: root.handle,
+          readOnly: root.readOnly,
+        }],
+      });
     case 'wesh-mounts':
       return createWeshStorageDirectoryRemoteForMounts({ mounts: root.mounts });
     default: {
@@ -75,6 +85,12 @@ export async function createFileExplorerWorkerClient({
     case 'native-directory':
     case 'opfs-root':
       return root;
+    case 'storage-directory':
+      return {
+        kind: 'storage-directory' as const,
+        rootName: root.rootName,
+        readOnly: root.readOnly,
+      };
     case 'wesh-mounts':
       return {
         kind: 'wesh-mounts' as const,

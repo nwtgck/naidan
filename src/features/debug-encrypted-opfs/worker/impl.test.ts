@@ -3,7 +3,7 @@ import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { writeStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import { createEncryptedOpfs } from '@/00-storage/service/encrypted-opfs/api';
 import { createEncryptedOpfsInspectionReader } from '@/00-storage/service/encrypted-opfs/inspection';
-import { createEncryptedOpfsInspectionWorker } from './impl';
+import { createEncryptedOpfsInspectionWorker, TEST_ONLY } from './impl';
 
 const ROOT_KEY = new Uint8Array(32).fill(29);
 
@@ -57,6 +57,44 @@ describe('EncryptedOpfs inspection worker', () => {
 
     await reader.dispose();
     await session.close();
+  });
+
+  it('keeps the exact record metadata for Raw DTO display while using parsed data for references', () => {
+    const metadata = {
+      revision: 7,
+      rootDirectoryNodeId: 'root-node',
+      inodeIndexRootObjectId: 'inode-index-root',
+      unknownPersistedField: 'must remain visible',
+    };
+    const result = TEST_ONLY.parsePersistedDto({
+      object: {
+        objectId: 'commit-object',
+        physicalPath: ['objects', '00', 'commit-object.eopfs'],
+        physicalByteLength: 1,
+        envelope: {
+          formatVersion: 1,
+          nonceBytes: new Array<number>(12).fill(0),
+          ciphertextByteLength: 1,
+        },
+        record: {
+          kind: 'commit',
+          recordVersion: 1,
+          metadata,
+          binaryPayloadByteLength: 0,
+          binaryPayloadPreviewBytes: [],
+          binaryPayloadPreviewTruncated: false,
+        },
+      },
+    });
+
+    expect(result.validation).toEqual({
+      status: 'valid',
+      persistedDto: metadata,
+    });
+    expect(result.references).toEqual([{
+      relation: 'inode index root',
+      objectId: 'inode-index-root',
+    }]);
   });
 
   it('protects objects referenced only by the valid fallback superblock generation', async () => {

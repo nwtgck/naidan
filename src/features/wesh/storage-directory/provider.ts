@@ -190,6 +190,9 @@ export class RemoteStorageDirectoryWeshProvider implements WeshVirtualMountProvi
   }
 
   private toRelativePath({ path }: { path: string }): string {
+    if (this.mountPath === '/') {
+      return path;
+    }
     if (path === this.mountPath) {
       return '/';
     }
@@ -201,6 +204,9 @@ export class RemoteStorageDirectoryWeshProvider implements WeshVirtualMountProvi
   }
 
   private toMountedPath({ relativePath }: { relativePath: string }): string {
+    if (this.mountPath === '/') {
+      return relativePath;
+    }
     return relativePath === '/'
       ? this.mountPath
       : `${this.mountPath}${relativePath}`;
