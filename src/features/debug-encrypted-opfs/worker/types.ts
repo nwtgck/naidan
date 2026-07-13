@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   EncryptedOpfsCommitSchemaDto,
   EncryptedOpfsDescriptorSchemaDto,
+  EncryptedOpfsDirectoryEntrySchemaDto,
   EncryptedOpfsDirectoryIndexPageSchemaDto,
   EncryptedOpfsDirectoryInodeSchemaDto,
   EncryptedOpfsFileChunkSchemaDto,
@@ -18,6 +19,49 @@ import type {
 } from '@/00-storage/service/encrypted-opfs';
 
 const physicalPathSchema = z.array(z.string());
+const uint8ArraySchema = z.instanceof(Uint8Array);
+
+const binarySliceSchema = z.object({
+  offset: z.number().int().nonnegative(),
+  regionByteLength: z.number().int().nonnegative(),
+  bytes: uint8ArraySchema,
+  truncatedAfter: z.boolean(),
+});
+
+const decodedBinaryFieldSchema = z.object({
+  name: z.string(),
+  offset: z.number().int().nonnegative(),
+  byteLength: z.number().int().nonnegative(),
+  rawBytes: uint8ArraySchema,
+  encoding: z.union([
+    z.literal('ascii'),
+    z.literal('bytes'),
+    z.literal('uint8'),
+    z.literal('uint16_be'),
+    z.literal('uint32_be'),
+    z.literal('uint64_be'),
+  ]),
+  interpretation: z.string(),
+});
+
+const binaryRecordInspectionSchema = z.object({
+  persistedObject: z.object({
+    bytes: binarySliceSchema,
+    headerFields: z.array(decodedBinaryFieldSchema),
+    ciphertextOffset: z.number().int().nonnegative(),
+    ciphertextByteLength: z.number().int().nonnegative(),
+  }),
+  decryptedRecord: z.object({
+    bytes: binarySliceSchema,
+    headerFields: z.array(decodedBinaryFieldSchema),
+    metadataJson: z.object({
+      bytes: binarySliceSchema,
+      utf8Text: z.string(),
+    }),
+    binaryPayload: binarySliceSchema,
+  }),
+});
+
 
 const superblockSlotSchema = z.discriminatedUnion('status', [
   z.object({
@@ -33,12 +77,14 @@ const superblockSlotSchema = z.discriminatedUnion('status', [
     physicalPath: physicalPathSchema,
     value: EncryptedOpfsSuperblockSchemaDto,
     persistedDto: z.unknown(),
+    binary: binaryRecordInspectionSchema,
   }),
   z.object({
     slot: z.union([z.literal(0), z.literal(1)]),
     status: z.union([z.literal('invalid'), z.literal('unsupported')]),
     selected: z.literal(false),
     physicalPath: physicalPathSchema,
+    physicalBytes: binarySliceSchema,
     errorMessage: z.string(),
   }),
 ]);
@@ -66,18 +112,12 @@ const inspectedObjectSchema = z.object({
   objectId: z.string(),
   physicalPath: physicalPathSchema,
   physicalByteLength: z.number().int().nonnegative(),
-  envelope: z.object({
-    formatVersion: z.number().int().nonnegative(),
-    nonceBytes: z.array(z.number().int().min(0).max(255)),
-    ciphertextByteLength: z.number().int().nonnegative(),
-  }),
+  binary: binaryRecordInspectionSchema,
   record: z.object({
     kind: z.string(),
     recordVersion: z.number().int().nonnegative(),
     metadata: z.unknown(),
     binaryPayloadByteLength: z.number().int().nonnegative(),
-    binaryPayloadPreviewBytes: z.array(z.number().int().min(0).max(255)),
-    binaryPayloadPreviewTruncated: z.boolean(),
   }),
 });
 
@@ -93,6 +133,15 @@ export const encryptedOpfsInspectedObjectViewSchema = z.object({
     z.object({ status: z.literal('invalid'), errorMessage: z.string() }),
   ]),
   references: z.array(encryptedOpfsObjectReferenceSchema),
+  rootDirectoryEntryPoint: z.union([
+    z.object({
+      commitObjectId: z.string(),
+      revision: z.number().int().nonnegative(),
+      rootDirectoryNodeId: z.string(),
+      inodeIndexRootObjectId: z.string(),
+    }),
+    z.undefined(),
+  ]),
 });
 
 export const encryptedOpfsNamespaceEntrySchema = z.object({
@@ -112,6 +161,54 @@ export const encryptedOpfsNamespaceResultSchema = z.object({
   issues: z.array(z.string()),
 });
 
+export const encryptedOpfsResolvedNodeSchema = z.object({
+  commitObjectId: z.string(),
+  commitRevision: z.number().int().nonnegative(),
+  rootDirectoryNodeId: z.string(),
+  inodeIndexRootObjectId: z.string(),
+  nodeId: z.string(),
+  logicalPath: z.string(),
+  inodeIndexLookup: z.array(z.discriminatedUnion('type', [
+    z.object({
+      type: z.literal('branch'),
+      pageObjectId: z.string(),
+      selectedChildPageObjectId: z.string(),
+      selectedUpperBoundNodeId: z.string(),
+    }),
+    z.object({
+      type: z.literal('leaf'),
+      pageObjectId: z.string(),
+      inodeObjectId: z.string(),
+    }),
+  ])),
+  inodeObjectId: z.string(),
+  inodeKind: z.union([z.literal('file'), z.literal('directory'), z.literal('symlink')]),
+  inodePersistedDto: z.unknown(),
+  binaryPayloadByteLength: z.number().int().nonnegative(),
+  directory: z.union([
+    z.object({
+      storageType: z.union([z.literal('inline'), z.literal('indexed')]),
+      directoryIndexRootObjectId: z.union([z.string(), z.undefined()]),
+      entries: z.array(z.object({
+        entry: EncryptedOpfsDirectoryEntrySchemaDto,
+        source: z.discriminatedUnion('type', [
+          z.object({
+            type: z.literal('inline'),
+            directoryInodeObjectId: z.string(),
+          }),
+          z.object({
+            type: z.literal('indexed'),
+            directoryIndexPageObjectId: z.string(),
+          }),
+        ]),
+      })),
+      truncated: z.boolean(),
+      issues: z.array(z.string()),
+    }),
+    z.undefined(),
+  ]),
+});
+
 export const encryptedOpfsIntegrityScanResultSchema = z.object({
   activeCommitObjectId: z.string(),
   activeReachableObjectCount: z.number().int().nonnegative(),
@@ -126,10 +223,14 @@ export const encryptedOpfsIntegrityScanResultSchema = z.object({
   issues: z.array(z.string()),
 });
 
+export type EncryptedOpfsBinarySliceView = z.infer<typeof binarySliceSchema>;
+export type EncryptedOpfsBinaryRecordInspectionView = z.infer<typeof binaryRecordInspectionSchema>;
+export type EncryptedOpfsDecodedBinaryFieldView = z.infer<typeof decodedBinaryFieldSchema>;
 export type EncryptedOpfsInspectionOverviewView = z.infer<typeof encryptedOpfsInspectionOverviewSchema>;
 export type EncryptedOpfsPhysicalObjectPageView = z.infer<typeof encryptedOpfsPhysicalObjectPageSchema>;
 export type EncryptedOpfsInspectedObjectView = z.infer<typeof encryptedOpfsInspectedObjectViewSchema>;
 export type EncryptedOpfsNamespaceResult = z.infer<typeof encryptedOpfsNamespaceResultSchema>;
+export type EncryptedOpfsResolvedNodeView = z.infer<typeof encryptedOpfsResolvedNodeSchema>;
 export type EncryptedOpfsIntegrityScanResult = z.infer<typeof encryptedOpfsIntegrityScanResultSchema>;
 
 export interface IEncryptedOpfsInspectionWorker {
@@ -144,10 +245,17 @@ export interface IEncryptedOpfsInspectionWorker {
     limit: number;
   }): Promise<EncryptedOpfsPhysicalObjectPageView>;
 
-  inspectObject({ objectId, binaryPayloadPreviewByteLength }: {
+  inspectObject({ objectId, binaryPreviewByteLength }: {
     objectId: string;
-    binaryPayloadPreviewByteLength: number;
+    binaryPreviewByteLength: number;
   }): Promise<EncryptedOpfsInspectedObjectView | undefined>;
+
+  readNode({ commitObjectId, nodeId, logicalPath, maximumDirectoryEntryCount }: {
+    commitObjectId: string;
+    nodeId: string;
+    logicalPath: string;
+    maximumDirectoryEntryCount: number;
+  }): Promise<EncryptedOpfsResolvedNodeView>;
 
   readNamespace({ maximumEntryCount }: {
     maximumEntryCount: number;
@@ -164,10 +272,16 @@ export interface EncryptedOpfsInspectionWorkerClient {
     cursor: string | undefined;
     limit: number;
   }): Promise<EncryptedOpfsPhysicalObjectPageView>;
-  inspectObject({ objectId, binaryPayloadPreviewByteLength }: {
+  inspectObject({ objectId, binaryPreviewByteLength }: {
     objectId: string;
-    binaryPayloadPreviewByteLength: number;
+    binaryPreviewByteLength: number;
   }): Promise<EncryptedOpfsInspectedObjectView | undefined>;
+  readNode({ commitObjectId, nodeId, logicalPath, maximumDirectoryEntryCount }: {
+    commitObjectId: string;
+    nodeId: string;
+    logicalPath: string;
+    maximumDirectoryEntryCount: number;
+  }): Promise<EncryptedOpfsResolvedNodeView>;
   readNamespace({ maximumEntryCount }: {
     maximumEntryCount: number;
   }): Promise<EncryptedOpfsNamespaceResult>;

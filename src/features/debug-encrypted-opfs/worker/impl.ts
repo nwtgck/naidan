@@ -9,6 +9,7 @@ import type {
   EncryptedOpfsInodeIndexPageDto,
 } from '@/00-storage/00-dto/encrypted-opfs.dto';
 import type { EncryptedOpfsInspectionReader } from '@/00-storage/service/encrypted-opfs';
+import { compareEncryptedOpfsStrings } from '@/00-storage/service/encrypted-opfs/file-system/ordering';
 import {
   encryptedOpfsInspectionOverviewSchema,
   encryptedOpfsPhysicalObjectPageSchema,
@@ -16,6 +17,7 @@ import {
   type EncryptedOpfsInspectedObjectView,
   type EncryptedOpfsIntegrityScanResult,
   type EncryptedOpfsNamespaceResult,
+  type EncryptedOpfsResolvedNodeView,
   type IEncryptedOpfsInspectionWorker,
 } from './types';
 
@@ -50,35 +52,299 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
 
   async function inspectValidatedObject({
     objectId,
-    binaryPayloadPreviewByteLength,
+    binaryPreviewByteLength,
   }: {
     objectId: string;
-    binaryPayloadPreviewByteLength: number;
+    binaryPreviewByteLength: number;
   }): Promise<EncryptedOpfsInspectedObjectView | undefined> {
     const object = await requireReader().inspectObject({
       objectId,
-      binaryPayloadPreviewByteLength,
+      binaryPreviewByteLength,
     });
     if (object === undefined) {
       return undefined;
     }
     const parsed = parsePersistedDto({ object });
     return {
-      object: {
-        ...object,
-        physicalPath: [...object.physicalPath],
-        envelope: {
-          ...object.envelope,
-          nonceBytes: [...object.envelope.nonceBytes],
-        },
-        record: {
-          ...object.record,
-          binaryPayloadPreviewBytes: [...object.record.binaryPayloadPreviewBytes],
-        },
-      },
+      object: cloneInspectedObject({ object }),
       validation: parsed.validation,
       references: parsed.references,
+      rootDirectoryEntryPoint: parsed.rootDirectoryEntryPoint,
     };
+  }
+
+  /**
+   * Resolves a node exactly as the selected commit does while retaining every
+   * persisted lookup page as navigation provenance. The Workbench may enter
+   * here through a shallow root shortcut, but no inode-index layer is collapsed
+   * into an invented high-level filesystem model.
+   */
+  async function readResolvedNode({
+    commitObjectId,
+    nodeId,
+    logicalPath,
+    maximumDirectoryEntryCount,
+  }: {
+    commitObjectId: string;
+    nodeId: string;
+    logicalPath: string;
+    maximumDirectoryEntryCount: number;
+  }): Promise<EncryptedOpfsResolvedNodeView> {
+    if (
+      !Number.isSafeInteger(maximumDirectoryEntryCount)
+      || maximumDirectoryEntryCount < 1
+      || maximumDirectoryEntryCount > 100_000
+    ) {
+      throw new Error('EncryptedOpfs directory traversal limit is invalid');
+    }
+    const commitObject = await requireReader().inspectObject({
+      objectId: commitObjectId,
+      binaryPreviewByteLength: 0,
+    });
+    if (commitObject === undefined) {
+      throw new Error(`EncryptedOpfs commit object is missing: ${commitObjectId}`);
+    }
+    if (commitObject.record.kind !== 'commit') {
+      throw new Error(`Expected commit record, received ${commitObject.record.kind}: ${commitObjectId}`);
+    }
+    const commit = persistedDtoSchemasByRecordKind.commit.parse(commitObject.record.metadata);
+    const lookup = await resolveInodeIndexLookup({
+      rootObjectId: commit.inodeIndexRootObjectId,
+      nodeId,
+    });
+    const inodeObject = await requireReader().inspectObject({
+      objectId: lookup.inodeObjectId,
+      binaryPreviewByteLength: 0,
+    });
+    if (inodeObject === undefined) {
+      throw new Error(`EncryptedOpfs inode object is missing: ${lookup.inodeObjectId}`);
+    }
+
+    let inodeKind: EncryptedOpfsResolvedNodeView['inodeKind'];
+    let inodePersistedDto: unknown;
+    let directory: EncryptedOpfsResolvedNodeView['directory'];
+    switch (inodeObject.record.kind) {
+    case 'file_inode': {
+      const inode = persistedDtoSchemasByRecordKind.file_inode.parse(inodeObject.record.metadata);
+      if (inode.nodeId !== nodeId) {
+        throw new Error(`EncryptedOpfs file inode nodeId does not match lookup: ${nodeId}`);
+      }
+      inodeKind = 'file';
+      inodePersistedDto = inodeObject.record.metadata;
+      directory = undefined;
+      break;
+    }
+    case 'directory_inode': {
+      const inode = persistedDtoSchemasByRecordKind.directory_inode.parse(inodeObject.record.metadata);
+      if (inode.nodeId !== nodeId) {
+        throw new Error(`EncryptedOpfs directory inode nodeId does not match lookup: ${nodeId}`);
+      }
+      inodeKind = 'directory';
+      inodePersistedDto = inodeObject.record.metadata;
+      directory = await readDirectoryEntriesForTraversal({
+        inode,
+        directoryInodeObjectId: lookup.inodeObjectId,
+        maximumDirectoryEntryCount,
+      });
+      break;
+    }
+    case 'symlink_inode': {
+      const inode = persistedDtoSchemasByRecordKind.symlink_inode.parse(inodeObject.record.metadata);
+      if (inode.nodeId !== nodeId) {
+        throw new Error(`EncryptedOpfs symlink inode nodeId does not match lookup: ${nodeId}`);
+      }
+      inodeKind = 'symlink';
+      inodePersistedDto = inodeObject.record.metadata;
+      directory = undefined;
+      break;
+    }
+    case 'commit':
+    case 'inode_index_page':
+    case 'directory_index_page':
+    case 'file_extent_page':
+    case 'file_chunk':
+    case 'superblock':
+      throw new Error(`Inode index resolved a non-inode record: ${inodeObject.record.kind}`);
+    default:
+      throw new Error(`Unhandled EncryptedOpfs record kind: ${inodeObject.record.kind}`);
+    }
+
+    return {
+      commitObjectId,
+      commitRevision: commit.revision,
+      rootDirectoryNodeId: commit.rootDirectoryNodeId,
+      inodeIndexRootObjectId: commit.inodeIndexRootObjectId,
+      nodeId,
+      logicalPath,
+      inodeIndexLookup: lookup.steps,
+      inodeObjectId: lookup.inodeObjectId,
+      inodeKind,
+      inodePersistedDto,
+      binaryPayloadByteLength: inodeObject.record.binaryPayloadByteLength,
+      directory,
+    };
+  }
+
+  async function resolveInodeIndexLookup({ rootObjectId, nodeId }: {
+    rootObjectId: string;
+    nodeId: string;
+  }): Promise<{
+    readonly inodeObjectId: string;
+    readonly steps: EncryptedOpfsResolvedNodeView['inodeIndexLookup'];
+  }> {
+    const steps: Array<EncryptedOpfsResolvedNodeView['inodeIndexLookup'][number]> = [];
+    const visited = new Set<string>();
+    let pageObjectId = rootObjectId;
+    while (true) {
+      if (visited.has(pageObjectId)) {
+        throw new Error('EncryptedOpfs inode index contains a page cycle');
+      }
+      visited.add(pageObjectId);
+      const object = await requireReader().inspectObject({
+        objectId: pageObjectId,
+        binaryPreviewByteLength: 0,
+      });
+      if (object === undefined) {
+        throw new Error(`EncryptedOpfs inode index page is missing: ${pageObjectId}`);
+      }
+      if (object.record.kind !== 'inode_index_page') {
+        throw new Error(`Expected inode index page, received ${object.record.kind}: ${pageObjectId}`);
+      }
+      const page = persistedDtoSchemasByRecordKind.inode_index_page.parse(object.record.metadata);
+      switch (page.type) {
+      case 'leaf': {
+        const entry = page.entries.find(candidate => compareEncryptedOpfsStrings({
+          left: candidate.nodeId,
+          right: nodeId,
+        }) === 0);
+        if (entry === undefined) {
+          throw new Error(`EncryptedOpfs inode index does not contain node: ${nodeId}`);
+        }
+        steps.push({
+          type: 'leaf',
+          pageObjectId,
+          inodeObjectId: entry.inodeObjectId,
+        });
+        return { inodeObjectId: entry.inodeObjectId, steps };
+      }
+      case 'branch': {
+        const child = page.children.find(candidate => compareEncryptedOpfsStrings({
+          left: nodeId,
+          right: candidate.upperBoundNodeId,
+        }) <= 0);
+        if (child === undefined) {
+          throw new Error(`EncryptedOpfs inode index branch does not cover node: ${nodeId}`);
+        }
+        steps.push({
+          type: 'branch',
+          pageObjectId,
+          selectedChildPageObjectId: child.childPageObjectId,
+          selectedUpperBoundNodeId: child.upperBoundNodeId,
+        });
+        pageObjectId = child.childPageObjectId;
+        break;
+      }
+      default: {
+        const _ex: never = page;
+        throw new Error(`Unhandled inode index page: ${String(_ex)}`);
+      }
+      }
+    }
+  }
+
+  async function readDirectoryEntriesForTraversal({
+    inode,
+    directoryInodeObjectId,
+    maximumDirectoryEntryCount,
+  }: {
+    inode: EncryptedOpfsDirectoryInodeDto;
+    directoryInodeObjectId: string;
+    maximumDirectoryEntryCount: number;
+  }): Promise<NonNullable<EncryptedOpfsResolvedNodeView['directory']>> {
+    switch (inode.storage.type) {
+    case 'inline': {
+      const entries = inode.storage.entries.slice(0, maximumDirectoryEntryCount).map(entry => ({
+        entry,
+        source: {
+          type: 'inline' as const,
+          directoryInodeObjectId,
+        },
+      }));
+      return {
+        storageType: 'inline',
+        directoryIndexRootObjectId: undefined,
+        entries,
+        truncated: entries.length < inode.storage.entries.length,
+        issues: [],
+      };
+    }
+    case 'indexed': {
+      const entries: NonNullable<EncryptedOpfsResolvedNodeView['directory']>['entries'][number][] = [];
+      const issues: string[] = [];
+      const visited = new Set<string>();
+      let truncated = false;
+      const visitPage = async ({ pageObjectId }: { pageObjectId: string }): Promise<void> => {
+        if (truncated) return;
+        if (visited.has(pageObjectId)) {
+          issues.push(`Directory index page cycle: ${pageObjectId}`);
+          return;
+        }
+        visited.add(pageObjectId);
+        const object = await requireReader().inspectObject({
+          objectId: pageObjectId,
+          binaryPreviewByteLength: 0,
+        });
+        if (object === undefined) {
+          issues.push(`Missing directory index page: ${pageObjectId}`);
+          return;
+        }
+        if (object.record.kind !== 'directory_index_page') {
+          issues.push(`Expected directory index page, received ${object.record.kind}: ${pageObjectId}`);
+          return;
+        }
+        const page = persistedDtoSchemasByRecordKind.directory_index_page.parse(object.record.metadata);
+        switch (page.type) {
+        case 'leaf':
+          for (const entry of page.entries) {
+            if (entries.length >= maximumDirectoryEntryCount) {
+              truncated = true;
+              break;
+            }
+            entries.push({
+              entry,
+              source: {
+                type: 'indexed',
+                directoryIndexPageObjectId: pageObjectId,
+              },
+            });
+          }
+          return;
+        case 'branch':
+          for (const child of page.children) {
+            await visitPage({ pageObjectId: child.childPageObjectId });
+            if (truncated) break;
+          }
+          return;
+        default: {
+          const _ex: never = page;
+          throw new Error(`Unhandled directory index page: ${String(_ex)}`);
+        }
+        }
+      };
+      await visitPage({ pageObjectId: inode.storage.directoryIndexRootObjectId });
+      return {
+        storageType: 'indexed',
+        directoryIndexRootObjectId: inode.storage.directoryIndexRootObjectId,
+        entries,
+        truncated,
+        issues,
+      };
+    }
+    default: {
+      const _ex: never = inode.storage;
+      throw new Error(`Unhandled directory storage: ${String(_ex)}`);
+    }
+    }
   }
 
   return {
@@ -99,6 +365,8 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
 
     inspectObject: inspectValidatedObject,
 
+    readNode: readResolvedNode,
+
     async readNamespace({ maximumEntryCount }) {
       if (!Number.isSafeInteger(maximumEntryCount) || maximumEntryCount < 1 || maximumEntryCount > 100_000) {
         throw new Error('EncryptedOpfs namespace inspection limit is invalid');
@@ -116,7 +384,7 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
         assertOperationActive(operation);
         const object = await requireReader().inspectObject({
           objectId: reference.inodeObjectId,
-          binaryPayloadPreviewByteLength: 0,
+          binaryPreviewByteLength: 0,
         });
         if (object === undefined) {
           issues.push(`Missing inode object ${reference.inodeObjectId} for node ${reference.nodeId}`);
@@ -237,7 +505,7 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
           if (!inspectedCache.has(objectId)) {
             inspected = await inspectValidatedObject({
               objectId,
-              binaryPayloadPreviewByteLength: 0,
+              binaryPreviewByteLength: 0,
             });
             inspectedCache.set(objectId, inspected);
           }
@@ -353,7 +621,7 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
       visited.add(objectId);
       const object = await requireReader().inspectObject({
         objectId,
-        binaryPayloadPreviewByteLength: 0,
+        binaryPreviewByteLength: 0,
       });
       if (object === undefined) {
         issues.push(`Missing inode index page: ${objectId}`);
@@ -408,7 +676,7 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
         visited.add(objectId);
         const object = await requireReader().inspectObject({
           objectId,
-          binaryPayloadPreviewByteLength: 0,
+          binaryPreviewByteLength: 0,
         });
         if (object === undefined) {
           issues.push(`Missing directory index page: ${objectId}`);
@@ -443,11 +711,49 @@ export function createEncryptedOpfsInspectionWorker(): IEncryptedOpfsInspectionW
   }
 }
 
+function cloneInspectedObject({ object }: { object: LoadedObject }): EncryptedOpfsInspectedObjectView['object'] {
+  const cloneSlice = ({ slice }: {
+    slice: LoadedObject['binary']['persistedObject']['bytes'];
+  }) => ({
+    ...slice,
+    bytes: slice.bytes.slice(),
+  });
+  const cloneFields = ({ fields }: {
+    fields: LoadedObject['binary']['persistedObject']['headerFields'];
+  }) => fields.map(field => ({
+    ...field,
+    rawBytes: field.rawBytes.slice(),
+  }));
+  return {
+    ...object,
+    physicalPath: [...object.physicalPath],
+    binary: {
+      persistedObject: {
+        ...object.binary.persistedObject,
+        bytes: cloneSlice({ slice: object.binary.persistedObject.bytes }),
+        headerFields: cloneFields({ fields: object.binary.persistedObject.headerFields }),
+      },
+      decryptedRecord: {
+        ...object.binary.decryptedRecord,
+        bytes: cloneSlice({ slice: object.binary.decryptedRecord.bytes }),
+        headerFields: cloneFields({ fields: object.binary.decryptedRecord.headerFields }),
+        metadataJson: {
+          ...object.binary.decryptedRecord.metadataJson,
+          bytes: cloneSlice({ slice: object.binary.decryptedRecord.metadataJson.bytes }),
+        },
+        binaryPayload: cloneSlice({ slice: object.binary.decryptedRecord.binaryPayload }),
+      },
+    },
+    record: { ...object.record },
+  };
+}
+
 function parsePersistedDto({ object }: {
   object: LoadedObject;
 }): {
   readonly validation: EncryptedOpfsInspectedObjectView['validation'];
   readonly references: EncryptedOpfsInspectedObjectView['references'];
+  readonly rootDirectoryEntryPoint: EncryptedOpfsInspectedObjectView['rootDirectoryEntryPoint'];
 } {
   try {
     const schema = getPersistedDtoSchema({ kind: object.record.kind });
@@ -459,6 +765,7 @@ function parsePersistedDto({ object }: {
           errorMessage: validation.error.message,
         },
         references: [],
+        rootDirectoryEntryPoint: undefined,
       };
     }
     /**
@@ -474,6 +781,14 @@ function parsePersistedDto({ object }: {
         kind: object.record.kind,
         persistedDto: validation.data,
       }),
+      rootDirectoryEntryPoint: object.record.kind === 'commit'
+        ? {
+          commitObjectId: object.objectId,
+          revision: (validation.data as EncryptedOpfsCommitDto).revision,
+          rootDirectoryNodeId: (validation.data as EncryptedOpfsCommitDto).rootDirectoryNodeId,
+          inodeIndexRootObjectId: (validation.data as EncryptedOpfsCommitDto).inodeIndexRootObjectId,
+        }
+        : undefined,
     };
   } catch (error) {
     return {
@@ -482,6 +797,7 @@ function parsePersistedDto({ object }: {
         errorMessage: error instanceof Error ? error.message : String(error),
       },
       references: [],
+      rootDirectoryEntryPoint: undefined,
     };
   }
 }

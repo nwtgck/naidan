@@ -6,7 +6,10 @@ import {
   type EncryptedOpfsSuperblockDto,
 } from '@/00-storage/00-dto/encrypted-opfs.dto';
 import { NativeOpfsEncryptedOpfsBackingStore } from './backing-store/native-opfs-backing-store';
-import { importEncryptedOpfsRootKey } from './crypto/object-crypto';
+import {
+  decryptEncryptedOpfsObject,
+  importEncryptedOpfsRootKey,
+} from './crypto/object-crypto';
 import {
   EncryptedOpfsCorruptionError,
   EncryptedOpfsUnsupportedFormatError,
@@ -16,10 +19,45 @@ import { acquireEncryptedOpfsSessionLease } from './file-system/maintenance-lock
 import { DEFAULT_ENCRYPTED_OPFS_POLICY } from './file-system/policy';
 import { validateEncryptedOpfsStableId } from './id';
 import { decodeEncryptedOpfsObjectEnvelope } from './format/object-envelope';
+import { decodeEncryptedOpfsRecord } from './format/record';
 import {
   decodeEncryptedOpfsObjectId,
   getEncryptedOpfsObjectShard,
 } from './object-store/object-id';
+
+export type EncryptedOpfsBinarySlice = {
+  readonly offset: number;
+  readonly regionByteLength: number;
+  readonly bytes: Uint8Array;
+  readonly truncatedAfter: boolean;
+};
+
+export type EncryptedOpfsDecodedBinaryField = {
+  readonly name: string;
+  readonly offset: number;
+  readonly byteLength: number;
+  readonly rawBytes: Uint8Array;
+  readonly encoding: 'ascii' | 'bytes' | 'uint8' | 'uint16_be' | 'uint32_be' | 'uint64_be';
+  readonly interpretation: string;
+};
+
+export type EncryptedOpfsBinaryRecordInspection = {
+  readonly persistedObject: {
+    readonly bytes: EncryptedOpfsBinarySlice;
+    readonly headerFields: readonly EncryptedOpfsDecodedBinaryField[];
+    readonly ciphertextOffset: number;
+    readonly ciphertextByteLength: number;
+  };
+  readonly decryptedRecord: {
+    readonly bytes: EncryptedOpfsBinarySlice;
+    readonly headerFields: readonly EncryptedOpfsDecodedBinaryField[];
+    readonly metadataJson: {
+      readonly bytes: EncryptedOpfsBinarySlice;
+      readonly utf8Text: string;
+    };
+    readonly binaryPayload: EncryptedOpfsBinarySlice;
+  };
+};
 
 export type EncryptedOpfsSuperblockSlotInspection =
   | {
@@ -35,12 +73,14 @@ export type EncryptedOpfsSuperblockSlotInspection =
       readonly physicalPath: readonly string[];
       readonly value: EncryptedOpfsSuperblockDto;
       readonly persistedDto: unknown;
+      readonly binary: EncryptedOpfsBinaryRecordInspection;
     }
   | {
       readonly slot: 0 | 1;
       readonly status: 'invalid' | 'unsupported';
       readonly selected: false;
       readonly physicalPath: readonly string[];
+      readonly physicalBytes: EncryptedOpfsBinarySlice;
       readonly errorMessage: string;
     };
 
@@ -69,18 +109,12 @@ export type EncryptedOpfsInspectedObject = {
   readonly objectId: string;
   readonly physicalPath: readonly string[];
   readonly physicalByteLength: number;
-  readonly envelope: {
-    readonly formatVersion: number;
-    readonly nonceBytes: readonly number[];
-    readonly ciphertextByteLength: number;
-  };
+  readonly binary: EncryptedOpfsBinaryRecordInspection;
   readonly record: {
     readonly kind: string;
     readonly recordVersion: number;
     readonly metadata: unknown;
     readonly binaryPayloadByteLength: number;
-    readonly binaryPayloadPreviewBytes: readonly number[];
-    readonly binaryPayloadPreviewTruncated: boolean;
   };
 };
 
@@ -92,9 +126,9 @@ export interface EncryptedOpfsInspectionReader {
     limit: number;
   }): Promise<EncryptedOpfsPhysicalObjectPage>;
 
-  inspectObject({ objectId, binaryPayloadPreviewByteLength }: {
+  inspectObject({ objectId, binaryPreviewByteLength }: {
     objectId: string;
-    binaryPayloadPreviewByteLength: number;
+    binaryPreviewByteLength: number;
   }): Promise<EncryptedOpfsInspectedObject | undefined>;
 
   dispose(): Promise<void>;
@@ -136,7 +170,7 @@ export async function createEncryptedOpfsInspectionReader({
         const activeState = await runtime.core.loadActiveState();
         const superblockSlots = await inspectSuperblockSlots({
           backingStore,
-          runtime,
+          rootKey,
           fileSystemId: descriptor.fileSystemId,
           selectedSuperblock: activeState.superblock,
         });
@@ -168,46 +202,33 @@ export async function createEncryptedOpfsInspectionReader({
         return await listPhysicalObjectPage({ backingStore, cursor, limit });
       },
 
-      async inspectObject({ objectId, binaryPayloadPreviewByteLength }) {
+      async inspectObject({ objectId, binaryPreviewByteLength }) {
         assertOpen();
         decodeEncryptedOpfsObjectId({ objectId });
-        if (
-          !Number.isSafeInteger(binaryPayloadPreviewByteLength)
-          || binaryPayloadPreviewByteLength < 0
-          || binaryPayloadPreviewByteLength > 64 * 1024
-        ) {
-          throw new Error('EncryptedOpfs inspection payload preview length is invalid');
-        }
+        assertBinaryPreviewByteLength({ binaryPreviewByteLength });
         const physicalPath = getObjectPhysicalPath({ objectId });
         const physical = await backingStore.read({ path: physicalPath });
         if (physical === undefined) {
           return undefined;
         }
-        const envelope = decodeEncryptedOpfsObjectEnvelope({ physical });
-        const record = await runtime.objectStore.read({ objectId });
-        if (record === undefined) {
-          throw new EncryptedOpfsCorruptionError({
-            message: `EncryptedOpfs object disappeared while being inspected: ${objectId}`,
-            cause: undefined,
-          });
-        }
-        const preview = record.binaryPayload.subarray(0, binaryPayloadPreviewByteLength);
+        const inspected = await inspectEncryptedRecordBinary({
+          physical,
+          rootKey,
+          fileSystemId: descriptor.fileSystemId,
+          objectIdentity: objectId,
+          area: 'object',
+          binaryPreviewByteLength,
+        });
         return {
           objectId,
           physicalPath,
           physicalByteLength: physical.byteLength,
-          envelope: {
-            formatVersion: envelope.formatVersion,
-            nonceBytes: Array.from(envelope.nonce),
-            ciphertextByteLength: envelope.ciphertext.byteLength,
-          },
+          binary: inspected.binary,
           record: {
-            kind: record.kind,
-            recordVersion: record.recordVersion,
-            metadata: record.metadata,
-            binaryPayloadByteLength: record.binaryPayload.byteLength,
-            binaryPayloadPreviewBytes: Array.from(preview),
-            binaryPayloadPreviewTruncated: preview.byteLength < record.binaryPayload.byteLength,
+            kind: inspected.record.kind,
+            recordVersion: inspected.record.recordVersion,
+            metadata: inspected.record.metadata,
+            binaryPayloadByteLength: inspected.record.binaryPayload.byteLength,
           },
         };
       },
@@ -226,14 +247,253 @@ export async function createEncryptedOpfsInspectionReader({
   }
 }
 
+
+function assertBinaryPreviewByteLength({ binaryPreviewByteLength }: {
+  binaryPreviewByteLength: number;
+}): void {
+  if (
+    !Number.isSafeInteger(binaryPreviewByteLength)
+    || binaryPreviewByteLength < 0
+    || binaryPreviewByteLength > 64 * 1024
+  ) {
+    throw new Error('EncryptedOpfs inspection binary preview length is invalid');
+  }
+}
+
+/**
+ * Binary data remains byte-oriented across the inspection boundary.
+ *
+ * Persisted and decrypted bytes are never converted into JSON-shaped number
+ * arrays because that would hide offsets, widths, endianness, and framing and
+ * could make an inspection convenience look like the stored format. Only the
+ * metadata range that is actually encoded as UTF-8 JSON is exposed separately
+ * as a DTO by the worker and Workbench.
+ */
+async function inspectEncryptedRecordBinary({
+  physical,
+  rootKey,
+  fileSystemId,
+  objectIdentity,
+  area,
+  binaryPreviewByteLength,
+}: {
+  physical: Uint8Array;
+  rootKey: CryptoKey;
+  fileSystemId: string;
+  objectIdentity: string;
+  area: 'object' | 'superblock';
+  binaryPreviewByteLength: number;
+}): Promise<{
+  readonly record: ReturnType<typeof decodeEncryptedOpfsRecord>;
+  readonly binary: EncryptedOpfsBinaryRecordInspection;
+}> {
+  assertBinaryPreviewByteLength({ binaryPreviewByteLength });
+  const envelope = decodeEncryptedOpfsObjectEnvelope({ physical });
+  let plaintext: Uint8Array;
+  try {
+    plaintext = await decryptEncryptedOpfsObject({
+      rootKey,
+      fileSystemId,
+      objectIdentity,
+      area,
+      nonce: envelope.nonce,
+      ciphertext: envelope.ciphertext,
+    });
+  } catch (error) {
+    throw new EncryptedOpfsCorruptionError({
+      message: `EncryptedOpfs ${area} authentication failed`,
+      cause: error,
+    });
+  }
+  const record = decodeEncryptedOpfsRecord({ plaintext });
+  const physicalView = new DataView(physical.buffer, physical.byteOffset, physical.byteLength);
+  const plaintextView = new DataView(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength);
+  const metadataByteLength = plaintextView.getUint32(4, false);
+  const binaryPayloadByteLength = Number(plaintextView.getBigUint64(8, false));
+  const metadataOffset = 16;
+  const binaryPayloadOffset = metadataOffset + metadataByteLength;
+  const metadataBytes = plaintext.slice(metadataOffset, binaryPayloadOffset);
+  const metadataUtf8Text = new TextDecoder('utf-8', { fatal: true }).decode(metadataBytes);
+  const persistedPreviewByteLength = Math.max(32, binaryPreviewByteLength);
+  const decryptedPreviewByteLength = Math.max(16, binaryPreviewByteLength);
+
+  return {
+    record,
+    binary: {
+      persistedObject: {
+        bytes: createBinarySlice({
+          source: physical,
+          offset: 0,
+          regionByteLength: physical.byteLength,
+          previewByteLength: persistedPreviewByteLength,
+        }),
+        headerFields: [
+          createDecodedBinaryField({
+            name: 'magic',
+            source: physical,
+            offset: 0,
+            byteLength: 8,
+            encoding: 'ascii',
+            interpretation: '"ENCOPFS\\0"',
+          }),
+          createDecodedBinaryField({
+            name: 'formatVersion',
+            source: physical,
+            offset: 8,
+            byteLength: 2,
+            encoding: 'uint16_be',
+            interpretation: String(envelope.formatVersion),
+          }),
+          createDecodedBinaryField({
+            name: 'headerByteLength',
+            source: physical,
+            offset: 10,
+            byteLength: 2,
+            encoding: 'uint16_be',
+            interpretation: `${String(physicalView.getUint16(10, false))} bytes`,
+          }),
+          createDecodedBinaryField({
+            name: 'nonce',
+            source: physical,
+            offset: 12,
+            byteLength: 12,
+            encoding: 'bytes',
+            interpretation: '12-byte AES-GCM nonce',
+          }),
+          createDecodedBinaryField({
+            name: 'ciphertextByteLength',
+            source: physical,
+            offset: 24,
+            byteLength: 8,
+            encoding: 'uint64_be',
+            interpretation: `${String(envelope.ciphertext.byteLength)} bytes including authentication tag`,
+          }),
+        ],
+        ciphertextOffset: 32,
+        ciphertextByteLength: envelope.ciphertext.byteLength,
+      },
+      decryptedRecord: {
+        bytes: createBinarySlice({
+          source: plaintext,
+          offset: 0,
+          regionByteLength: plaintext.byteLength,
+          previewByteLength: decryptedPreviewByteLength,
+        }),
+        headerFields: [
+          createDecodedBinaryField({
+            name: 'recordKind',
+            source: plaintext,
+            offset: 0,
+            byteLength: 1,
+            encoding: 'uint8',
+            interpretation: `${String(plaintext[0])} (${record.kind})`,
+          }),
+          createDecodedBinaryField({
+            name: 'payloadEncoding',
+            source: plaintext,
+            offset: 1,
+            byteLength: 1,
+            encoding: 'uint8',
+            interpretation: `${String(plaintext[1])} (identity)`,
+          }),
+          createDecodedBinaryField({
+            name: 'recordVersion',
+            source: plaintext,
+            offset: 2,
+            byteLength: 2,
+            encoding: 'uint16_be',
+            interpretation: String(record.recordVersion),
+          }),
+          createDecodedBinaryField({
+            name: 'metadataJsonByteLength',
+            source: plaintext,
+            offset: 4,
+            byteLength: 4,
+            encoding: 'uint32_be',
+            interpretation: `${String(metadataByteLength)} bytes`,
+          }),
+          createDecodedBinaryField({
+            name: 'binaryPayloadByteLength',
+            source: plaintext,
+            offset: 8,
+            byteLength: 8,
+            encoding: 'uint64_be',
+            interpretation: `${String(binaryPayloadByteLength)} bytes`,
+          }),
+        ],
+        metadataJson: {
+          bytes: createBinarySlice({
+            source: plaintext,
+            offset: metadataOffset,
+            regionByteLength: metadataByteLength,
+            previewByteLength: metadataByteLength,
+          }),
+          utf8Text: metadataUtf8Text,
+        },
+        binaryPayload: createBinarySlice({
+          source: plaintext,
+          offset: binaryPayloadOffset,
+          regionByteLength: binaryPayloadByteLength,
+          previewByteLength: binaryPreviewByteLength,
+        }),
+      },
+    },
+  };
+}
+
+function createBinarySlice({
+  source,
+  offset,
+  regionByteLength,
+  previewByteLength,
+}: {
+  source: Uint8Array;
+  offset: number;
+  regionByteLength: number;
+  previewByteLength: number;
+}): EncryptedOpfsBinarySlice {
+  const actualPreviewByteLength = Math.min(regionByteLength, previewByteLength);
+  return {
+    offset,
+    regionByteLength,
+    bytes: source.slice(offset, offset + actualPreviewByteLength),
+    truncatedAfter: actualPreviewByteLength < regionByteLength,
+  };
+}
+
+function createDecodedBinaryField({
+  name,
+  source,
+  offset,
+  byteLength,
+  encoding,
+  interpretation,
+}: {
+  name: string;
+  source: Uint8Array;
+  offset: number;
+  byteLength: number;
+  encoding: EncryptedOpfsDecodedBinaryField['encoding'];
+  interpretation: string;
+}): EncryptedOpfsDecodedBinaryField {
+  return {
+    name,
+    offset,
+    byteLength,
+    rawBytes: source.slice(offset, offset + byteLength),
+    encoding,
+    interpretation,
+  };
+}
+
 async function inspectSuperblockSlots({
   backingStore,
-  runtime,
+  rootKey,
   fileSystemId,
   selectedSuperblock,
 }: {
   backingStore: NativeOpfsEncryptedOpfsBackingStore;
-  runtime: ReturnType<typeof createEncryptedOpfsRuntime>;
+  rootKey: CryptoKey;
   fileSystemId: string;
   selectedSuperblock: EncryptedOpfsSuperblockDto;
 }): Promise<readonly EncryptedOpfsSuperblockSlotInspection[]> {
@@ -246,11 +506,15 @@ async function inspectSuperblockSlots({
       continue;
     }
     try {
-      const record = await runtime.objectStore.readSuperblock({ slot });
-      if (record === undefined) {
-        inspections.push({ slot, status: 'missing', selected: false, physicalPath });
-        continue;
-      }
+      const inspected = await inspectEncryptedRecordBinary({
+        physical,
+        rootKey,
+        fileSystemId,
+        objectIdentity: `superblock-${String(slot)}`,
+        area: 'superblock',
+        binaryPreviewByteLength: 1024,
+      });
+      const { record } = inspected;
       switch (record.kind) {
       case 'superblock':
         break;
@@ -297,6 +561,7 @@ async function inspectSuperblockSlots({
         physicalPath,
         value,
         persistedDto: record.metadata,
+        binary: inspected.binary,
       });
     } catch (error) {
       inspections.push({
@@ -304,6 +569,12 @@ async function inspectSuperblockSlots({
         status: error instanceof EncryptedOpfsUnsupportedFormatError ? 'unsupported' : 'invalid',
         selected: false,
         physicalPath,
+        physicalBytes: createBinarySlice({
+          source: physical,
+          offset: 0,
+          regionByteLength: physical.byteLength,
+          previewByteLength: Math.min(1024, physical.byteLength),
+        }),
         errorMessage: error instanceof Error ? error.message : String(error),
       });
     }

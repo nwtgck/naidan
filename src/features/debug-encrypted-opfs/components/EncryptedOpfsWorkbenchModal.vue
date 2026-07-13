@@ -8,6 +8,7 @@ import {
   ExternalLinkIcon,
   FileCode2Icon,
   FileSearchIcon,
+  FolderRootIcon,
   FolderTreeIcon,
   HardDriveIcon,
   LoaderCircleIcon,
@@ -29,17 +30,22 @@ import {
 } from '@/features/debug-encrypted-opfs/logic/workbench-sources';
 import { createEncryptedOpfsInspectionWorkerClient } from '@/features/debug-encrypted-opfs/worker/client';
 import type {
+  EncryptedOpfsBinaryRecordInspectionView,
+  EncryptedOpfsBinarySliceView,
   EncryptedOpfsInspectionOverviewView,
   EncryptedOpfsInspectionWorkerClient,
   EncryptedOpfsInspectedObjectView,
   EncryptedOpfsIntegrityScanResult,
   EncryptedOpfsNamespaceResult,
   EncryptedOpfsPhysicalObjectPageView,
+  EncryptedOpfsResolvedNodeView,
 } from '@/features/debug-encrypted-opfs/worker/types';
 import FileExplorer from '@/features/file-explorer/components/FileExplorer.vue';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
 import { JsonCodeView } from '@/features/json-viewer';
+import BinaryHexView from './BinaryHexView.vue';
+import BinaryRecordInspectionView from './BinaryRecordInspectionView.vue';
 
 const OBJECT_ROW_HEIGHT = 58;
 const OBJECT_OVERSCAN = 8;
@@ -84,6 +90,17 @@ type WorkbenchDetailColumn =
       readonly objectId: string;
       loading: boolean;
       value: EncryptedOpfsInspectedObjectView | undefined;
+      errorMessage: string | undefined;
+    }
+  | {
+      readonly kind: 'resolved_node';
+      readonly id: string;
+      readonly title: string;
+      readonly commitObjectId: string;
+      readonly nodeId: string;
+      readonly logicalPath: string;
+      loading: boolean;
+      value: EncryptedOpfsResolvedNodeView | undefined;
       errorMessage: string | undefined;
     }
   | {
@@ -345,6 +362,126 @@ function openActiveCommit(): void {
   });
 }
 
+/**
+ * Exposes the root directory as a shallow Workbench entry point so routine
+ * filesystem traversal does not require reopening the active superblock and
+ * commit chain every time. This does not invent a separate persisted root
+ * concept: the selected commit, rootDirectoryNodeId, every inode-index page,
+ * and the resolved inode object remain explicit navigation targets.
+ */
+async function openActiveRootDirectory({ afterIndex }: {
+  afterIndex: number;
+}): Promise<void> {
+  const currentOverview = overview.value;
+  if (currentOverview === undefined) return;
+  await openResolvedNode({
+    commitObjectId: currentOverview.activeCommitObjectId,
+    nodeId: currentOverview.activeCommit.rootDirectoryNodeId,
+    logicalPath: '/',
+    title: 'Root directory',
+    afterIndex,
+  });
+}
+
+async function openRootDirectoryEntryPoint({
+  entryPoint,
+  afterIndex,
+}: {
+  entryPoint: NonNullable<EncryptedOpfsInspectedObjectView['rootDirectoryEntryPoint']>;
+  afterIndex: number;
+}): Promise<void> {
+  await openResolvedNode({
+    commitObjectId: entryPoint.commitObjectId,
+    nodeId: entryPoint.rootDirectoryNodeId,
+    logicalPath: '/',
+    title: `Root directory · revision ${String(entryPoint.revision)}`,
+    afterIndex,
+  });
+}
+
+async function openResolvedNode({
+  commitObjectId,
+  nodeId,
+  logicalPath,
+  title,
+  afterIndex,
+}: {
+  commitObjectId: string;
+  nodeId: string;
+  logicalPath: string;
+  title: string;
+  afterIndex: number;
+}): Promise<void> {
+  const column = reactive<Extract<WorkbenchDetailColumn, { readonly kind: 'resolved_node' }>>({
+    kind: 'resolved_node',
+    id: `node:${commitObjectId}:${nodeId}:${String(Date.now())}`,
+    title,
+    commitObjectId,
+    nodeId,
+    logicalPath,
+    loading: true,
+    value: undefined,
+    errorMessage: undefined,
+  });
+  appendColumn({ afterIndex, column });
+  const currentClient = client.value;
+  if (currentClient === undefined) {
+    column.loading = false;
+    column.errorMessage = 'No EncryptedOpfs inspection worker is open';
+    return;
+  }
+  try {
+    column.value = await currentClient.readNode({
+      commitObjectId,
+      nodeId,
+      logicalPath,
+      maximumDirectoryEntryCount: 10_000,
+    });
+  } catch (error) {
+    column.errorMessage = toErrorMessage({ error });
+  } finally {
+    column.loading = false;
+  }
+}
+
+async function openChildNode({
+  parent,
+  entry,
+  afterIndex,
+}: {
+  parent: EncryptedOpfsResolvedNodeView;
+  entry: NonNullable<EncryptedOpfsResolvedNodeView['directory']>['entries'][number]['entry'];
+  afterIndex: number;
+}): Promise<void> {
+  const logicalPath = parent.logicalPath === '/'
+    ? `/${entry.name}`
+    : `${parent.logicalPath}/${entry.name}`;
+  await openResolvedNode({
+    commitObjectId: parent.commitObjectId,
+    nodeId: entry.nodeId,
+    logicalPath,
+    title: entry.name,
+    afterIndex,
+  });
+}
+
+function getDirectoryEntrySourceObjectId({
+  source,
+}: {
+  source: NonNullable<EncryptedOpfsResolvedNodeView['directory']>['entries'][number]['source'];
+}): string {
+  switch (source.type) {
+  case 'inline':
+    return source.directoryInodeObjectId;
+  case 'indexed':
+    return source.directoryIndexPageObjectId;
+  default: {
+    const _ex: never = source;
+    return _ex;
+  }
+  }
+}
+
 async function openObjectStore(): Promise<void> {
   appendColumn({
     afterIndex: -1,
@@ -408,7 +545,7 @@ async function openObject({ objectId, relation, afterIndex }: {
   try {
     column.value = await currentClient.inspectObject({
       objectId,
-      binaryPayloadPreviewByteLength: 512,
+      binaryPreviewByteLength: 1024,
     });
     if (column.value === undefined) {
       column.errorMessage = `Object not found: ${objectId}`;
@@ -533,16 +670,23 @@ async function cancelIntegrityScan(): Promise<void> {
   await client.value?.cancelCurrentOperation();
 }
 
-function getSuperblockSlotDisplayValue({ slotIndex }: { slotIndex: number }): unknown {
+function requireSuperblockSlot({ slotIndex }: { slotIndex: number }): EncryptedOpfsInspectionOverviewView['superblockSlots'][number] {
   const slot = overview.value?.superblockSlots[slotIndex];
-  if (slot === undefined) return null;
+  if (slot === undefined) {
+    throw new Error(`Superblock slot is unavailable: ${String(slotIndex)}`);
+  }
+  return slot;
+}
+
+function requireSuperblockPersistedDto({ slotIndex }: { slotIndex: number }): unknown {
+  const slot = requireSuperblockSlot({ slotIndex });
   switch (slot.status) {
   case 'valid':
     return slot.persistedDto;
   case 'missing':
   case 'invalid':
   case 'unsupported':
-    return slot;
+    throw new Error(`Superblock slot has no persisted DTO: ${String(slotIndex)}`);
   default: {
     const _ex: never = slot;
     return _ex;
@@ -550,8 +694,93 @@ function getSuperblockSlotDisplayValue({ slotIndex }: { slotIndex: number }): un
   }
 }
 
+function requireInvalidSuperblockErrorMessage({ slotIndex }: {
+  slotIndex: number;
+}): string {
+  const slot = requireSuperblockSlot({ slotIndex });
+  switch (slot.status) {
+  case 'invalid':
+  case 'unsupported':
+    return slot.errorMessage;
+  case 'missing':
+  case 'valid':
+    throw new Error(`Superblock slot has no decode error: ${String(slotIndex)}`);
+  default: {
+    const _ex: never = slot;
+    return _ex;
+  }
+  }
+}
+
+function getSuperblockSlotPhysicalPath({ slotIndex }: { slotIndex: number }): string {
+  return overview.value?.superblockSlots[slotIndex]?.physicalPath.join('/') ?? '(unknown)';
+}
+
 function isSuperblockSlotValid({ slotIndex }: { slotIndex: number }): boolean {
   return overview.value?.superblockSlots[slotIndex]?.status === 'valid';
+}
+
+function requireSuperblockSlotBinary({ slotIndex }: {
+  slotIndex: number;
+}): EncryptedOpfsBinaryRecordInspectionView {
+  const slot = requireSuperblockSlot({ slotIndex });
+  switch (slot.status) {
+  case 'valid':
+    return slot.binary;
+  case 'missing':
+  case 'invalid':
+  case 'unsupported':
+    throw new Error(`Superblock slot is not valid: ${String(slotIndex)}`);
+  default: {
+    const _ex: never = slot;
+    return _ex;
+  }
+  }
+}
+
+function requireInvalidSuperblockPhysicalBytes({ slotIndex }: {
+  slotIndex: number;
+}): EncryptedOpfsBinarySliceView {
+  const slot = requireSuperblockSlot({ slotIndex });
+  switch (slot.status) {
+  case 'invalid':
+  case 'unsupported':
+    return slot.physicalBytes;
+  case 'missing':
+  case 'valid':
+    throw new Error(`Superblock slot has no invalid physical bytes: ${String(slotIndex)}`);
+  default: {
+    const _ex: never = slot;
+    return _ex;
+  }
+  }
+}
+
+function isSuperblockSlotInvalid({ slotIndex }: { slotIndex: number }): boolean {
+  const status = overview.value?.superblockSlots[slotIndex]?.status;
+  return status === 'invalid' || status === 'unsupported';
+}
+
+function getObjectPersistedDto({ value }: {
+  value: EncryptedOpfsInspectedObjectView;
+}): unknown {
+  // Schema validation must never hide the JSON metadata that was actually decrypted.
+  return value.object.record.metadata;
+}
+
+function getObjectValidationError({ value }: {
+  value: EncryptedOpfsInspectedObjectView;
+}): string | undefined {
+  switch (value.validation.status) {
+  case 'valid':
+    return undefined;
+  case 'invalid':
+    return value.validation.errorMessage;
+  default: {
+    const _ex: never = value.validation;
+    return _ex;
+  }
+  }
 }
 
 function rawJson({ value }: { value: unknown }): string {
@@ -676,6 +905,8 @@ defineExpose({
               <button type="button" data-testid="encrypted-opfs-open-descriptor" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openDescriptor"><FileCode2Icon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Descriptor</span><span tw-class="block text-[9px] text-gray-400">RAW DTO · persisted plaintext</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>
               <button type="button" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openSuperblockSlots"><HardDriveIcon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Superblock slots</span><span tw-class="block text-[9px] text-gray-400">PERSISTED RECORDS · A/B selection</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>
               <button type="button" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openActiveCommit"><DatabaseIcon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Active commit</span><span tw-class="block text-[9px] text-gray-400">RAW DTO · revision {{ overview.activeCommit.revision }}</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>
+              <div tw-class="border-b border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:border-gray-700 dark:bg-gray-950">Resolved persisted entry points</div>
+              <button type="button" data-testid="encrypted-opfs-open-root-directory" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openActiveRootDirectory({ afterIndex: -1 })"><FolderRootIcon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Root directory</span><span tw-class="block text-[9px] text-gray-400">SHORTCUT · commit.rootDirectoryNodeId → inode index → inode</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>
               <button type="button" data-testid="encrypted-opfs-open-object-store" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openObjectStore"><BoxesIcon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Physical object store</span><span tw-class="block text-[9px] text-gray-400">PERSISTED OBJECTS · cursor paged</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>
               <button type="button" data-testid="encrypted-opfs-open-integrity" tw-class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800" @click="openIntegrity"><ShieldCheckIcon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Integrity and reachability</span><span tw-class="block text-[9px] text-gray-400">DERIVED FROM PERSISTED REFERENCES</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5 text-gray-400" /></button>
               <div tw-class="mt-3 border-y border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:border-gray-700 dark:bg-gray-950">Derived convenience views</div>
@@ -705,14 +936,38 @@ defineExpose({
             </div>
 
             <div v-else-if="column.kind === 'superblock_slot'" tw-class="min-h-0 flex-1 overflow-auto">
-              <div v-if="isSuperblockSlotValid({ slotIndex: column.slotIndex })" tw-class="border-b border-gray-200 bg-emerald-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-gray-700 dark:bg-emerald-950/20 dark:text-emerald-300">Raw DTO · decrypted persisted record</div>
-              <JsonCodeView :source="rawJson({ value: getSuperblockSlotDisplayValue({ slotIndex: column.slotIndex }) })" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
+              <template v-if="isSuperblockSlotValid({ slotIndex: column.slotIndex })">
+                <BinaryRecordInspectionView
+                  :binary="requireSuperblockSlotBinary({ slotIndex: column.slotIndex })"
+                  :persisted-dto="requireSuperblockPersistedDto({ slotIndex: column.slotIndex })"
+                  :dto-validation-error="undefined"
+                />
+              </template>
+              <template v-else-if="isSuperblockSlotInvalid({ slotIndex: column.slotIndex })">
+                <div tw-class="border-b border-red-200 bg-red-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-red-700 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300">Persisted bytes · record could not be decoded</div>
+                <BinaryHexView
+                  :bytes="requireInvalidSuperblockPhysicalBytes({ slotIndex: column.slotIndex }).bytes"
+                  :offset="requireInvalidSuperblockPhysicalBytes({ slotIndex: column.slotIndex }).offset"
+                  :region-byte-length="requireInvalidSuperblockPhysicalBytes({ slotIndex: column.slotIndex }).regionByteLength"
+                  :truncated-after="requireInvalidSuperblockPhysicalBytes({ slotIndex: column.slotIndex }).truncatedAfter"
+                />
+                <div tw-class="border-t border-red-200 bg-red-50 px-3 py-2 dark:border-red-900 dark:bg-red-950/20">
+                  <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-red-500">Validation · derived</div>
+                  <div tw-class="mt-1 break-all font-mono text-[10px] text-red-700 dark:text-red-300">{{ requireInvalidSuperblockErrorMessage({ slotIndex: column.slotIndex }) }}</div>
+                </div>
+              </template>
+              <div v-else tw-class="p-3 text-xs text-gray-500">
+                No bytes are persisted at <span tw-class="font-mono">{{ getSuperblockSlotPhysicalPath({ slotIndex: column.slotIndex }) }}</span>.
+              </div>
             </div>
 
             <div v-else-if="column.kind === 'active_commit'" tw-class="min-h-0 flex-1 overflow-auto">
               <div tw-class="border-b border-gray-200 bg-emerald-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-gray-700 dark:bg-emerald-950/20 dark:text-emerald-300">Raw DTO · exact persisted representation</div>
               <JsonCodeView :source="rawJson({ value: overview?.activeCommitPersistedDto ?? null })" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
-              <button v-if="overview" type="button" tw-class="m-3 flex w-[calc(100%-1.5rem)] items-center justify-between rounded border border-gray-300 px-3 py-2 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openObject({ objectId: overview.activeCommitObjectId, relation: 'Commit object', afterIndex: columnIndex })"><span>Inspect physical commit object</span><ChevronRightIcon tw-class="h-3.5 w-3.5" /></button>
+              <div v-if="overview" tw-class="m-3 space-y-2">
+                <button type="button" tw-class="flex w-full items-center justify-between rounded border border-gray-300 px-3 py-2 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openObject({ objectId: overview.activeCommitObjectId, relation: 'Commit object', afterIndex: columnIndex })"><span>Inspect physical commit object</span><ChevronRightIcon tw-class="h-3.5 w-3.5" /></button>
+                <button type="button" data-testid="encrypted-opfs-open-root-from-commit" tw-class="flex w-full items-center justify-between rounded border border-emerald-300 px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30" @click="openActiveRootDirectory({ afterIndex: columnIndex })"><span>Resolve commit.rootDirectoryNodeId</span><ChevronRightIcon tw-class="h-3.5 w-3.5" /></button>
+              </div>
             </div>
 
             <div v-else-if="column.kind === 'object_store'" tw-class="flex min-h-0 flex-1 flex-col">
@@ -732,33 +987,69 @@ defineExpose({
               <div v-if="column.loading" tw-class="flex h-full items-center justify-center gap-2 text-xs text-gray-500"><LoaderCircleIcon tw-class="h-4 w-4 animate-spin" /> Decrypting object…</div>
               <div v-else-if="column.errorMessage" tw-class="p-3 font-mono text-xs text-red-600">{{ column.errorMessage }}</div>
               <template v-else-if="column.value">
-                <div v-if="column.value.validation.status === 'valid'">
-                  <div tw-class="border-b border-gray-200 bg-emerald-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-gray-700 dark:bg-emerald-950/20 dark:text-emerald-300">Raw DTO · exact record metadata</div>
-                  <JsonCodeView :source="rawJson({ value: column.value.validation.persistedDto })" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
+                <dl tw-class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-gray-200 bg-gray-50 px-3 py-2 font-mono text-[9px] text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+                  <dt>object ID</dt><dd tw-class="break-all text-gray-700 dark:text-gray-200">{{ column.value.object.objectId }}</dd>
+                  <dt>physical path</dt><dd tw-class="break-all text-gray-700 dark:text-gray-200">{{ column.value.object.physicalPath.join('/') }}</dd>
+                  <dt>physical length</dt><dd tw-class="text-gray-700 dark:text-gray-200">{{ column.value.object.physicalByteLength }} bytes</dd>
+                  <dt>record kind</dt><dd tw-class="text-gray-700 dark:text-gray-200">{{ column.value.object.record.kind }}</dd>
+                </dl>
+                <BinaryRecordInspectionView
+                  :binary="column.value.object.binary"
+                  :persisted-dto="getObjectPersistedDto({ value: column.value })"
+                  :dto-validation-error="getObjectValidationError({ value: column.value })"
+                />
+                <div v-if="column.value.rootDirectoryEntryPoint" tw-class="border-t border-gray-200 p-3 dark:border-gray-700">
+                  <div tw-class="mb-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500">Resolved persisted entry point</div>
+                  <button type="button" data-testid="encrypted-opfs-open-root-from-object" tw-class="flex w-full items-center justify-between rounded border border-emerald-300 px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30" @click="openRootDirectoryEntryPoint({ entryPoint: column.value.rootDirectoryEntryPoint, afterIndex: columnIndex })"><span>Resolve rootDirectoryNodeId through inode index</span><ChevronRightIcon tw-class="h-3.5 w-3.5" /></button>
                 </div>
-                <div v-else tw-class="border-b border-red-200 bg-red-50 p-3 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300">{{ column.value.validation.errorMessage }}</div>
                 <div v-if="column.value.references.length > 0" tw-class="border-t border-gray-200 p-3 dark:border-gray-700">
-                  <div tw-class="mb-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500">Persisted outgoing references</div>
+                  <div tw-class="mb-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500">Persisted outgoing object references</div>
                   <button v-for="reference in column.value.references" :key="`${reference.relation}:${reference.objectId}`" type="button" tw-class="mb-1 flex w-full items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1.5 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800" @click="openObject({ objectId: reference.objectId, relation: reference.relation, afterIndex: columnIndex })"><span tw-class="text-[9px] text-gray-500">{{ reference.relation }}</span><span tw-class="min-w-0 truncate font-mono text-[9px]">{{ reference.objectId }}</span></button>
                 </div>
-                <details tw-class="border-t border-gray-200 dark:border-gray-700">
-                  <summary tw-class="cursor-pointer px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500">Parsed binary header</summary>
-                  <p tw-class="px-3 pb-2 text-[9px] text-gray-400">Derived interpretation of persisted envelope bytes; this is not a DTO.</p>
-                  <JsonCodeView :source="rawJson({ value: column.value.object.envelope })" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
-                </details>
-                <details tw-class="border-t border-gray-200 dark:border-gray-700">
-                  <summary tw-class="cursor-pointer px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500">Physical and binary metadata</summary>
-                  <JsonCodeView :source="rawJson({ value: {
-                    objectId: column.value.object.objectId,
-                    physicalPath: column.value.object.physicalPath,
-                    physicalByteLength: column.value.object.physicalByteLength,
-                    recordKind: column.value.object.record.kind,
-                    recordVersion: column.value.object.record.recordVersion,
-                    binaryPayloadByteLength: column.value.object.record.binaryPayloadByteLength,
-                    binaryPayloadPreviewBytes: column.value.object.record.binaryPayloadPreviewBytes,
-                    binaryPayloadPreviewTruncated: column.value.object.record.binaryPayloadPreviewTruncated,
-                  } })" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
-                </details>
+              </template>
+            </div>
+
+            <div v-else-if="column.kind === 'resolved_node'" tw-class="min-h-0 flex-1 overflow-auto">
+              <div v-if="column.loading" tw-class="flex h-full items-center justify-center gap-2 text-xs text-gray-500"><LoaderCircleIcon tw-class="h-4 w-4 animate-spin" /> Resolving persisted references…</div>
+              <div v-else-if="column.errorMessage" tw-class="p-3 font-mono text-xs text-red-600">{{ column.errorMessage }}</div>
+              <template v-else-if="column.value">
+                <div tw-class="border-b border-amber-200 bg-amber-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">Resolved navigation shortcut · every skipped persisted record remains inspectable</div>
+                <dl tw-class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-b border-gray-200 px-3 py-2 font-mono text-[9px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  <dt>logical path</dt><dd tw-class="break-all text-blue-600 dark:text-blue-300">{{ column.value.logicalPath }} · DERIVED</dd>
+                  <dt>commit</dt><dd tw-class="break-all text-gray-700 dark:text-gray-200">{{ column.value.commitObjectId }}</dd>
+                  <dt>revision</dt><dd tw-class="text-gray-700 dark:text-gray-200">{{ column.value.commitRevision }}</dd>
+                  <dt>node ID</dt><dd tw-class="break-all text-gray-700 dark:text-gray-200">{{ column.value.nodeId }}</dd>
+                  <dt>inode object</dt><dd tw-class="break-all text-gray-700 dark:text-gray-200">{{ column.value.inodeObjectId }}</dd>
+                  <dt>kind</dt><dd tw-class="text-gray-700 dark:text-gray-200">{{ column.value.inodeKind }}</dd>
+                </dl>
+                <div tw-class="border-b border-gray-200 p-3 dark:border-gray-700">
+                  <div tw-class="mb-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500">Persisted reference chain</div>
+                  <button type="button" tw-class="mb-1 flex w-full items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1.5 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800" @click="openObject({ objectId: column.value.commitObjectId, relation: 'Commit object', afterIndex: columnIndex })"><span tw-class="text-[9px]">commit.rootDirectoryNodeId</span><span tw-class="truncate font-mono text-[9px]">{{ column.value.rootDirectoryNodeId }}</span></button>
+                  <button type="button" tw-class="mb-1 flex w-full items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1.5 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800" @click="openObject({ objectId: column.value.inodeIndexRootObjectId, relation: 'Inode index root', afterIndex: columnIndex })"><span tw-class="text-[9px]">inodeIndexRootObjectId</span><span tw-class="truncate font-mono text-[9px]">{{ column.value.inodeIndexRootObjectId }}</span></button>
+                  <button v-for="(step, stepIndex) in column.value.inodeIndexLookup" :key="`${step.pageObjectId}:${String(stepIndex)}`" type="button" tw-class="mb-1 block w-full rounded border border-gray-200 px-2 py-1.5 text-left hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800" @click="openObject({ objectId: step.pageObjectId, relation: `Inode index ${step.type} page`, afterIndex: columnIndex })">
+                    <span tw-class="block font-mono text-[9px]">{{ step.pageObjectId }}</span>
+                    <span v-if="step.type === 'branch'" tw-class="mt-1 block text-[9px] text-gray-400">selected child {{ step.selectedChildPageObjectId }} · upper bound {{ step.selectedUpperBoundNodeId }}</span>
+                    <span v-else tw-class="mt-1 block text-[9px] text-gray-400">leaf entry → inode {{ step.inodeObjectId }}</span>
+                  </button>
+                  <button type="button" data-testid="encrypted-opfs-open-resolved-inode" tw-class="flex w-full items-center justify-between gap-2 rounded border border-emerald-300 px-2 py-1.5 text-left text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30" @click="openObject({ objectId: column.value.inodeObjectId, relation: `${column.value.inodeKind} inode`, afterIndex: columnIndex })"><span tw-class="text-[9px]">resolved inode object</span><span tw-class="truncate font-mono text-[9px]">{{ column.value.inodeObjectId }}</span></button>
+                </div>
+                <div tw-class="border-b border-gray-200 bg-emerald-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-gray-700 dark:bg-emerald-950/20 dark:text-emerald-300">Raw DTO · exact inode metadata</div>
+                <JsonCodeView :source="rawJson({ value: column.value.inodePersistedDto })" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
+                <template v-if="column.value.directory">
+                  <div v-if="column.value.directory.directoryIndexRootObjectId" tw-class="border-t border-gray-200 p-3 dark:border-gray-700">
+                    <button type="button" tw-class="flex w-full items-center justify-between rounded border border-gray-300 px-3 py-2 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openObject({ objectId: column.value.directory.directoryIndexRootObjectId, relation: 'Directory index root', afterIndex: columnIndex })"><span>Inspect directory index root</span><ChevronRightIcon tw-class="h-3.5 w-3.5" /></button>
+                  </div>
+                  <div tw-class="border-t border-gray-200 bg-gray-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-950">Persisted directory entries · {{ column.value.directory.storageType }}</div>
+                  <div v-for="resolvedEntry in column.value.directory.entries" :key="`${resolvedEntry.entry.nodeId}:${resolvedEntry.entry.name}`" tw-class="border-b border-gray-100 p-2 dark:border-gray-800">
+                    <button type="button" data-testid="encrypted-opfs-open-child-node" tw-class="block w-full rounded px-2 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800" @click="openChildNode({ parent: column.value, entry: resolvedEntry.entry, afterIndex: columnIndex })">
+                      <span tw-class="block truncate text-xs font-medium">{{ resolvedEntry.entry.name }}</span>
+                      <span tw-class="mt-1 block font-mono text-[9px] text-gray-500">{{ resolvedEntry.entry.kind }} · {{ resolvedEntry.entry.nodeId }}</span>
+                    </button>
+                    <button type="button" tw-class="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-left font-mono text-[9px] text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800" @click="openObject({ objectId: getDirectoryEntrySourceObjectId({ source: resolvedEntry.source }), relation: resolvedEntry.source.type === 'inline' ? 'Directory inode containing entry' : 'Directory index leaf containing entry', afterIndex: columnIndex })">source {{ resolvedEntry.source.type }} · {{ getDirectoryEntrySourceObjectId({ source: resolvedEntry.source }) }}</button>
+                  </div>
+                  <div v-if="column.value.directory.truncated" tw-class="border-t border-amber-200 bg-amber-50 px-3 py-2 text-[9px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">Directory entry list was truncated at the Workbench safety limit.</div>
+                  <div v-for="issue in column.value.directory.issues" :key="issue" tw-class="border-t border-red-200 bg-red-50 px-3 py-2 font-mono text-[9px] text-red-700 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300">{{ issue }}</div>
+                </template>
               </template>
             </div>
 

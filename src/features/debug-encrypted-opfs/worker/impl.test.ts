@@ -4,6 +4,10 @@ import { writeStorageFileText } from '@/00-storage/service/storage-file-system/i
 import { createEncryptedOpfs } from '@/00-storage/service/encrypted-opfs/api';
 import { createEncryptedOpfsInspectionReader } from '@/00-storage/service/encrypted-opfs/inspection';
 import { createEncryptedOpfsInspectionWorker, TEST_ONLY } from './impl';
+import {
+  encryptedOpfsInspectedObjectViewSchema,
+  encryptedOpfsResolvedNodeSchema,
+} from './types';
 
 const ROOT_KEY = new Uint8Array(32).fill(29);
 
@@ -20,6 +24,15 @@ describe('EncryptedOpfs inspection worker', () => {
       value: 'hello',
     });
     await directory.createSymlink({ name: 'latest', target: 'readme.txt' });
+    for (let index = 0; index < 31; index += 1) {
+      await writeStorageFileText({
+        fileHandle: await directory.getFileHandle({
+          name: `entry-${String(index).padStart(2, '0')}.txt`,
+          create: true,
+        }),
+        value: String(index),
+      });
+    }
 
     const reader = await createEncryptedOpfsInspectionReader({
       backingDirectory: backing,
@@ -48,11 +61,103 @@ describe('EncryptedOpfs inspection worker', () => {
     const overview = await worker.readOverview();
     const commit = await worker.inspectObject({
       objectId: overview.activeCommitObjectId,
-      binaryPayloadPreviewByteLength: 16,
+      binaryPreviewByteLength: 16,
     });
+    expect(encryptedOpfsInspectedObjectViewSchema.parse(commit)).toEqual(commit);
     expect(commit).toMatchObject({
       validation: { status: 'valid' },
       references: [{ relation: 'inode index root' }],
+      rootDirectoryEntryPoint: {
+        commitObjectId: overview.activeCommitObjectId,
+        rootDirectoryNodeId: overview.activeCommit.rootDirectoryNodeId,
+      },
+    });
+
+    const root = await worker.readNode({
+      commitObjectId: overview.activeCommitObjectId,
+      nodeId: overview.activeCommit.rootDirectoryNodeId,
+      logicalPath: '/',
+      maximumDirectoryEntryCount: 100,
+    });
+    expect(encryptedOpfsResolvedNodeSchema.parse(root)).toEqual(root);
+    expect(root).toMatchObject({
+      logicalPath: '/',
+      inodeKind: 'directory',
+      nodeId: overview.activeCommit.rootDirectoryNodeId,
+      commitObjectId: overview.activeCommitObjectId,
+      directory: {
+        storageType: 'inline',
+        truncated: false,
+        issues: [],
+      },
+    });
+    expect(root.inodeIndexLookup.length).toBeGreaterThan(0);
+    const docsEntry = root.directory?.entries.find(({ entry }) => entry.name === 'docs');
+    expect(docsEntry).toBeDefined();
+    if (docsEntry === undefined) throw new Error('Root directory did not contain docs');
+
+    const docs = await worker.readNode({
+      commitObjectId: root.commitObjectId,
+      nodeId: docsEntry.entry.nodeId,
+      logicalPath: '/docs',
+      maximumDirectoryEntryCount: 100,
+    });
+    expect(docs).toMatchObject({
+      logicalPath: '/docs',
+      inodeKind: 'directory',
+      directory: {
+        storageType: 'indexed',
+        truncated: false,
+        issues: [],
+      },
+    });
+    expect(docs.directory?.directoryIndexRootObjectId).toBeDefined();
+    expect(docs.directory?.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        entry: expect.objectContaining({ name: 'readme.txt', kind: 'file' }),
+      }),
+      expect.objectContaining({
+        entry: expect.objectContaining({ name: 'latest', kind: 'symlink' }),
+      }),
+    ]));
+
+    const readmeEntry = docs.directory?.entries.find(({ entry }) => entry.name === 'readme.txt');
+    if (readmeEntry === undefined) throw new Error('docs directory did not contain readme.txt');
+    expect(readmeEntry.source).toMatchObject({ type: 'indexed' });
+    const limitedDocs = await worker.readNode({
+      commitObjectId: root.commitObjectId,
+      nodeId: docsEntry.entry.nodeId,
+      logicalPath: '/docs',
+      maximumDirectoryEntryCount: 5,
+    });
+    expect(limitedDocs.directory).toMatchObject({
+      storageType: 'indexed',
+      truncated: true,
+    });
+    expect(limitedDocs.directory?.entries).toHaveLength(5);
+    const readme = await worker.readNode({
+      commitObjectId: root.commitObjectId,
+      nodeId: readmeEntry.entry.nodeId,
+      logicalPath: '/docs/readme.txt',
+      maximumDirectoryEntryCount: 100,
+    });
+    expect(readme).toMatchObject({
+      logicalPath: '/docs/readme.txt',
+      inodeKind: 'file',
+      binaryPayloadByteLength: 5,
+      directory: undefined,
+    });
+    const readmeObject = await reader.inspectObject({
+      objectId: readme.inodeObjectId,
+      binaryPreviewByteLength: 16,
+    });
+    expect(readmeObject).toBeDefined();
+    expect(Array.from(
+      readmeObject?.binary.decryptedRecord.binaryPayload.bytes ?? new Uint8Array(),
+    )).toEqual(Array.from(new TextEncoder().encode('hello')));
+    expect(readmeObject?.binary.decryptedRecord.binaryPayload).toMatchObject({
+      regionByteLength: 5,
+      truncatedAfter: false,
     });
 
     await reader.dispose();
@@ -70,19 +175,49 @@ describe('EncryptedOpfs inspection worker', () => {
       object: {
         objectId: 'commit-object',
         physicalPath: ['objects', '00', 'commit-object.eopfs'],
-        physicalByteLength: 1,
-        envelope: {
-          formatVersion: 1,
-          nonceBytes: new Array<number>(12).fill(0),
-          ciphertextByteLength: 1,
+        physicalByteLength: 64,
+        binary: {
+          persistedObject: {
+            bytes: {
+              offset: 0,
+              regionByteLength: 64,
+              bytes: new Uint8Array([0x45, 0x4e, 0x43, 0x4f, 0x50, 0x46, 0x53, 0x00]),
+              truncatedAfter: true,
+            },
+            headerFields: [],
+            ciphertextOffset: 32,
+            ciphertextByteLength: 32,
+          },
+          decryptedRecord: {
+            bytes: {
+              offset: 0,
+              regionByteLength: 16,
+              bytes: new Uint8Array(16),
+              truncatedAfter: false,
+            },
+            headerFields: [],
+            metadataJson: {
+              bytes: {
+                offset: 16,
+                regionByteLength: 0,
+                bytes: new Uint8Array(),
+                truncatedAfter: false,
+              },
+              utf8Text: JSON.stringify(metadata),
+            },
+            binaryPayload: {
+              offset: 16,
+              regionByteLength: 0,
+              bytes: new Uint8Array(),
+              truncatedAfter: false,
+            },
+          },
         },
         record: {
           kind: 'commit',
           recordVersion: 1,
           metadata,
           binaryPayloadByteLength: 0,
-          binaryPayloadPreviewBytes: [],
-          binaryPayloadPreviewTruncated: false,
         },
       },
     });

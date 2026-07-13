@@ -7,6 +7,9 @@ export {
 export type { EncryptedOpfsInspection } from './api';
 export { createEncryptedOpfsInspectionReader } from './inspection';
 export type {
+  EncryptedOpfsBinaryRecordInspection,
+  EncryptedOpfsBinarySlice,
+  EncryptedOpfsDecodedBinaryField,
   EncryptedOpfsInspectionOverview,
   EncryptedOpfsInspectionReader,
   EncryptedOpfsInspectedObject,

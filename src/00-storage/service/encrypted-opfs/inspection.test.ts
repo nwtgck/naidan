@@ -47,7 +47,7 @@ describe('EncryptedOpfs inspection reader', () => {
     expect(page.entries.length).toBeGreaterThan(0);
     const inspected = await reader.inspectObject({
       objectId: overview.activeCommitObjectId,
-      binaryPayloadPreviewByteLength: 32,
+      binaryPreviewByteLength: 32,
     });
     expect(inspected).toMatchObject({
       objectId: overview.activeCommitObjectId,
@@ -57,7 +57,21 @@ describe('EncryptedOpfs inspection reader', () => {
         binaryPayloadByteLength: 0,
       },
     });
-    expect(inspected?.envelope.nonceBytes).toHaveLength(12);
+    expect(inspected?.binary.persistedObject.bytes.bytes.slice(0, 8)).toEqual(
+      new Uint8Array([0x45, 0x4e, 0x43, 0x4f, 0x50, 0x46, 0x53, 0x00]),
+    );
+    expect(inspected?.binary.persistedObject.headerFields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'magic', offset: 0, byteLength: 8 }),
+      expect.objectContaining({ name: 'nonce', offset: 12, byteLength: 12 }),
+    ]));
+    expect(inspected?.binary.decryptedRecord.bytes.bytes.slice(0, 2)).toEqual(
+      new Uint8Array([1, 0]),
+    );
+    expect(inspected?.binary.decryptedRecord.metadataJson.utf8Text).toBe(
+      JSON.stringify(inspected?.record.metadata),
+    );
+    expect(inspected?.binary.decryptedRecord.binaryPayload.bytes).toBeInstanceOf(Uint8Array);
+    expect(inspected?.binary.decryptedRecord.binaryPayload.regionByteLength).toBe(0);
 
     await reader.dispose();
     await expect(reader.readOverview()).rejects.toThrow('inspection reader is closed');
@@ -92,6 +106,11 @@ describe('EncryptedOpfs inspection reader', () => {
       slot: 0,
       status: 'invalid',
       selected: false,
+      physicalBytes: expect.objectContaining({
+        offset: 0,
+        regionByteLength: 3,
+        bytes: new Uint8Array([1, 2, 3]),
+      }),
     }));
     expect(overview.superblockSlots).toContainEqual(expect.objectContaining({
       slot: 1,

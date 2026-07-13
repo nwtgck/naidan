@@ -8,6 +8,7 @@ import {
   encryptedOpfsIntegrityScanResultSchema,
   encryptedOpfsNamespaceResultSchema,
   encryptedOpfsPhysicalObjectPageSchema,
+  encryptedOpfsResolvedNodeSchema,
   type EncryptedOpfsInspectionWorkerClient,
   type IEncryptedOpfsInspectionWorker,
 } from './types';
@@ -41,9 +42,17 @@ export async function createEncryptedOpfsInspectionWorkerClient({
         await remoteWorker.listPhysicalObjects({ cursor, limit }),
       );
     },
-    async inspectObject({ objectId, binaryPayloadPreviewByteLength }) {
-      const result = await remoteWorker.inspectObject({ objectId, binaryPayloadPreviewByteLength });
+    async inspectObject({ objectId, binaryPreviewByteLength }) {
+      const result = await remoteWorker.inspectObject({ objectId, binaryPreviewByteLength });
       return result === undefined ? undefined : encryptedOpfsInspectedObjectViewSchema.parse(result);
+    },
+    async readNode({ commitObjectId, nodeId, logicalPath, maximumDirectoryEntryCount }) {
+      return encryptedOpfsResolvedNodeSchema.parse(await remoteWorker.readNode({
+        commitObjectId,
+        nodeId,
+        logicalPath,
+        maximumDirectoryEntryCount,
+      }));
     },
     async readNamespace({ maximumEntryCount }) {
       return encryptedOpfsNamespaceResultSchema.parse(
