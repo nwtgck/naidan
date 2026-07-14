@@ -1,6 +1,6 @@
-import { flushPromises, shallowMount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick, shallowRef } from 'vue';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
 import { ensureStrings } from '@/strings';
 import type {
@@ -34,7 +34,9 @@ function createGate({
     unlockWithPassphrase: vi.fn(async () => {}),
     retryInspection: vi.fn(async () => {}),
     reportApplicationFailure: vi.fn(),
+    reportUnlockPresentationReady: vi.fn(),
     wait: vi.fn(async () => {}),
+    waitForUnlockPresentation: vi.fn(async () => {}),
   };
 }
 
@@ -73,12 +75,137 @@ beforeEach(async () => {
   await ensureStrings.opfsEncryption__preparing_naidan();
   await ensureStrings.opfsEncryption__storage_unlocked_preparing_application();
   await ensureStrings.opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading();
+  await ensureStrings.opfsEncryption__unlock_storage();
+  await ensureStrings.opfsEncryption__unlocked();
+  vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('OpfsEncryptionUnlockView', () => {
+  it('waits for both authenticated unlock and the minimum still frame before seating', async () => {
+    vi.useFakeTimers();
+    const unlock = Promise.withResolvers<void>();
+    const gate = createGate({ inspection: createEncryptedInspection() });
+    gate.unlockWithPassphrase = vi.fn(async () => await unlock.promise);
+    const wrapper = mount(OpfsEncryptionUnlockView, {
+      props: { gate },
+    });
+
+    await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]')
+      .setValue('correct horse battery staple');
+    await wrapper.get('form').trigger('submit');
+
+    const button = wrapper.get('[data-testid="opfs-encryption-unlock-submit"]');
+    expect(button.attributes('data-state')).toBe('retracting');
+    expect(button.attributes('aria-label')).toBe('Unlock storage');
+
+    await vi.advanceTimersByTimeAsync(880);
+    expect(button.attributes('data-state')).toBe('retracting');
+
+    unlock.resolve();
+    await flushPromises();
+    expect(button.attributes('data-state')).toBe('seating');
+    expect(gate.reportUnlockPresentationReady).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(189);
+    await flushPromises();
+    expect(button.attributes('data-state')).toBe('seating');
+    expect(gate.reportUnlockPresentationReady).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(button.attributes('data-state')).toBe('unlocked');
+    expect(button.attributes('aria-label')).toBe('Unlocked');
+    expect(gate.reportUnlockPresentationReady).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(249);
+    expect(gate.reportUnlockPresentationReady).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(gate.reportUnlockPresentationReady).toHaveBeenCalledOnce();
+  });
+
+  it('preserves success coordination while reducing motion duration', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    const gate = createGate({ inspection: createEncryptedInspection() });
+    const wrapper = mount(OpfsEncryptionUnlockView, {
+      props: { gate },
+    });
+
+    await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]')
+      .setValue('reduced motion passphrase');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    const button = wrapper.get('[data-testid="opfs-encryption-unlock-submit"]');
+    expect(button.attributes('data-state')).toBe('retracting');
+
+    await vi.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(button.attributes('data-state')).toBe('seating');
+
+    await vi.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(button.attributes('data-state')).toBe('unlocked');
+    expect(gate.reportUnlockPresentationReady).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(249);
+    expect(gate.reportUnlockPresentationReady).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(gate.reportUnlockPresentationReady).toHaveBeenCalledOnce();
+  });
+
+  it('does not seat early when authentication finishes before the minimum still frame', async () => {
+    vi.useFakeTimers();
+    const gate = createGate({ inspection: createEncryptedInspection() });
+    const wrapper = mount(OpfsEncryptionUnlockView, {
+      props: { gate },
+    });
+
+    await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]')
+      .setValue('fast passphrase');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    const button = wrapper.get('[data-testid="opfs-encryption-unlock-submit"]');
+    await vi.advanceTimersByTimeAsync(879);
+    expect(button.attributes('data-state')).toBe('retracting');
+
+    await vi.advanceTimersByTimeAsync(1);
+    await flushPromises();
+    expect(button.attributes('data-state')).toBe('seating');
+  });
+
+  it('returns the mechanism to ready without showing success when unlock fails', async () => {
+    const gate = createGate({ inspection: createEncryptedInspection() });
+    gate.unlockWithPassphrase = vi.fn(async () => {
+      throw new Error('incorrect passphrase');
+    });
+    const wrapper = mount(OpfsEncryptionUnlockView, {
+      props: { gate },
+    });
+
+    await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]')
+      .setValue('wrong passphrase');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="opfs-encryption-unlock-submit"]')
+      .attributes('data-state')).toBe('ready');
+    expect(wrapper.text()).toContain('incorrect passphrase');
+    expect(gate.reportUnlockPresentationReady).not.toHaveBeenCalled();
+  });
   it('warns without trimming a passphrase with boundary whitespace', async () => {
     const gate = createGate({ inspection: createEncryptedInspection() });
-    const wrapper = shallowMount(OpfsEncryptionUnlockView, {
+    const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
 
@@ -95,7 +222,7 @@ describe('OpfsEncryptionUnlockView', () => {
 
   it('toggles passphrase visibility without changing its value', async () => {
     const gate = createGate({ inspection: createEncryptedInspection() });
-    const wrapper = shallowMount(OpfsEncryptionUnlockView, {
+    const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
     const input = wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]');
@@ -109,7 +236,7 @@ describe('OpfsEncryptionUnlockView', () => {
 
   it('rejects line breaks before calling the unlock operation', async () => {
     const gate = createGate({ inspection: createEncryptedInspection() });
-    const wrapper = shallowMount(OpfsEncryptionUnlockView, {
+    const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
 
@@ -166,7 +293,7 @@ second line`,
         operation,
       },
     });
-    const wrapper = shallowMount(OpfsEncryptionUnlockView, {
+    const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
 
@@ -191,13 +318,15 @@ second line`,
       inspection: createEncryptedInspection(),
       phase: 'preparing_application',
     });
-    const wrapper = shallowMount(OpfsEncryptionUnlockView, {
+    const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
 
     expect(wrapper.find('[data-testid="opfs-encryption-preparing-application"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('Preparing Naidan');
-    expect(wrapper.find('form').exists()).toBe(false);
+    expect(wrapper.find('form').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="opfs-encryption-unlock-submit"]')
+      .attributes('data-state')).toBe('unlocked');
   });
 
   it('keeps recovery access visible when application preparation fails after unlock', async () => {
@@ -206,7 +335,7 @@ second line`,
       phase: 'application_failed',
       applicationError: new Error('chat bootstrap failed'),
     });
-    const wrapper = shallowMount(OpfsEncryptionUnlockView, {
+    const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
 

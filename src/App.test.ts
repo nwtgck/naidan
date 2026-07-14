@@ -55,7 +55,9 @@ function createStartupGate(): OpfsEncryptionStartupGate {
     unlockWithPassphrase: vi.fn(async () => {}),
     retryInspection: vi.fn(async () => {}),
     reportApplicationFailure: vi.fn(),
+    reportUnlockPresentationReady: vi.fn(),
     wait: vi.fn(async () => {}),
+    waitForUnlockPresentation: vi.fn(async () => {}),
   };
 }
 

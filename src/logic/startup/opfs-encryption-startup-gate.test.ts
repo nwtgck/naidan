@@ -78,6 +78,17 @@ describe('createOpfsEncryptionStartupGate', () => {
       passphrase: 'correct horse battery staple',
     });
     expect(gate.phase.value).toBe('preparing_application');
+
+    let presentationReady = false;
+    const presentation = gate.waitForUnlockPresentation().then(() => {
+      presentationReady = true;
+    });
+    await Promise.resolve();
+    expect(presentationReady).toBe(false);
+
+    gate.reportUnlockPresentationReady();
+    await presentation;
+    expect(presentationReady).toBe(true);
   });
 
   it('resumes an interrupted transition before completing the gate', async () => {
@@ -138,6 +149,7 @@ describe('createOpfsEncryptionStartupGate', () => {
 
     await gate.retryInspection();
     await gate.wait();
+    await gate.waitForUnlockPresentation();
 
     expect(retryPlainInitialization).toHaveBeenCalledOnce();
     expect(gate.phase.value).toBe('preparing_application');

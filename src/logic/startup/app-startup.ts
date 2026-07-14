@@ -141,6 +141,10 @@ export async function startApp({ startupState, settingsStore, router, navigation
   await router.isReady();
 
   if (applicationShellRenderGate !== undefined) {
+    if (opfsEncryptionStartupGate === undefined) {
+      throw new Error('Encrypted application render gate exists without an OPFS encryption startup gate');
+    }
+
     /**
      * WHY: A successful passphrase check does not mean the application is
      * visually ready. MainApp explicitly reports after Sidebar, the initial
@@ -152,6 +156,15 @@ export async function startApp({ startupState, settingsStore, router, navigation
     await applicationShellRenderGate.waitForInitialRender();
     await nextTick();
     await waitForPresentationPaint({ window });
+
+    /**
+     * WHY: Application readiness and the unlock control's mechanical success
+     * sequence are independent. Wait for both so a very fast app render cannot
+     * remove the presentation halfway through the shutter's final seating
+     * motion, while a slow app render may continue behind an already unlocked
+     * control without adding an arbitrary delay.
+     */
+    await opfsEncryptionStartupGate.waitForUnlockPresentation();
   }
 
   const disposeGlobalSettingsQuerySync = installGlobalSettingsQuerySync({
