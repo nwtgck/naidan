@@ -2,9 +2,9 @@ import type { OpfsEncryptionStateDto } from '@/00-storage/00-dto/opfs-encryption
 import { NaidanOpfsStorageBackend } from '@/00-storage/service/naidan-opfs/backend';
 import { HostVolumeDB } from '@/00-storage/service/opfs/host-volume-db';
 import {
-  openEncryptedOpfs,
-  readEncryptedOpfsFileSystemId,
-} from '@/00-storage/service/encrypted-opfs';
+  openHizoFS,
+  readHizoFSFileSystemId,
+} from '@/00-storage/service/hizofs';
 import { EncryptedStoreHeaderStore } from './encrypted-store-header-store';
 import {
   unlockStorageUnlockKeyWithPassphrase,
@@ -87,15 +87,15 @@ export async function createUnlockedOpfsEncryptionSession({
     header,
   });
   try {
-    const backingDirectory = await headerStore.getEncryptedOpfsBackingDirectory({
+    const backingDirectory = await headerStore.getHizoFSBackingDirectory({
       encryptedStoreId: state.activeEncryptedStoreId,
       create: false,
     });
-    const fileSystemId = await readEncryptedOpfsFileSystemId({ backingDirectory });
+    const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
     if (fileSystemId !== header.fileSystemId) {
-      throw new Error('Encrypted store header file system ID does not match its EncryptedOpfs descriptor');
+      throw new Error('Encrypted store header file system ID does not match its HizoFS descriptor');
     }
-    const fileSystemSession = await openEncryptedOpfs({
+    const fileSystemSession = await openHizoFS({
       backingDirectory,
       fileSystemRootKey,
     });

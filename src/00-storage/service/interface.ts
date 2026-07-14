@@ -55,7 +55,7 @@ export abstract class IStorageProvider {
 
   /**
    * TODO(storage-volume-access): Migrate remaining callers to openVolume().
-   * Encrypted OPFS volumes do not expose a native FileSystemDirectoryHandle.
+   * HizoFS volumes do not expose a native FileSystemDirectoryHandle.
    */
   async getVolumeDirectoryHandle({ volumeId }: {
     volumeId: VolumeId,

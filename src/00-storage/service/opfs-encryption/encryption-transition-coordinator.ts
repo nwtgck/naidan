@@ -13,10 +13,10 @@ import type {
   StorageFileSystemSession,
 } from '@/00-storage/service/storage-file-system/types';
 import {
-  createEncryptedOpfs,
-  openEncryptedOpfs,
-  readEncryptedOpfsFileSystemId,
-} from '@/00-storage/service/encrypted-opfs';
+  createHizoFS,
+  openHizoFS,
+  readHizoFSFileSystemId,
+} from '@/00-storage/service/hizofs';
 import {
   clearNaidanPersistenceNamespace,
   copyNaidanPersistenceNamespace,
@@ -803,17 +803,17 @@ export class EncryptionTransitionCoordinator {
     if (replace) {
       await this.headerStore.removeStore({ encryptedStoreId });
     }
-    const backingDirectory = await this.headerStore.getEncryptedOpfsBackingDirectory({
+    const backingDirectory = await this.headerStore.getHizoFSBackingDirectory({
       encryptedStoreId,
       create: true,
     });
     let fileSystemSession: StorageFileSystemSession | undefined;
     try {
-      fileSystemSession = await createEncryptedOpfs({
+      fileSystemSession = await createHizoFS({
         backingDirectory,
         fileSystemRootKey,
       });
-      const fileSystemId = await readEncryptedOpfsFileSystemId({ backingDirectory });
+      const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
       await this.headerStore.write({
         header: {
           formatVersion: 1,
@@ -850,15 +850,15 @@ export class EncryptionTransitionCoordinator {
       header,
     });
     try {
-      const backingDirectory = await this.headerStore.getEncryptedOpfsBackingDirectory({
+      const backingDirectory = await this.headerStore.getHizoFSBackingDirectory({
         encryptedStoreId,
         create: false,
       });
-      const fileSystemId = await readEncryptedOpfsFileSystemId({ backingDirectory });
+      const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
       if (fileSystemId !== header.fileSystemId) {
-        throw new Error('Encrypted store header file system ID does not match its EncryptedOpfs descriptor');
+        throw new Error('Encrypted store header file system ID does not match its HizoFS descriptor');
       }
-      return await openEncryptedOpfs({ backingDirectory, fileSystemRootKey });
+      return await openHizoFS({ backingDirectory, fileSystemRootKey });
     } finally {
       fileSystemRootKey.fill(0);
     }

@@ -1,0 +1,132 @@
+import { describe, expect, it } from 'vitest';
+import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
+import { NativeOpfsHizoFSBackingStore } from '@/00-storage/service/hizofs/backing-store/native-opfs-backing-store';
+import { importHizoFSRootKey } from '@/00-storage/service/hizofs/crypto/object-crypto';
+import { createHizoFSStableId } from '@/00-storage/service/hizofs/id';
+import { HizoFSObjectStore } from '@/00-storage/service/hizofs/object-store/object-store';
+import { HizoFSDirectoryIndex } from './directory-index';
+import { HizoFSExtentIndex } from './extent-index';
+import { HizoFSInodeIndex } from './inode-index';
+import { HizoFSRecordStore } from './record-store';
+
+async function setup() {
+  const objectStore = new HizoFSObjectStore({
+    backingStore: new NativeOpfsHizoFSBackingStore({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+    }),
+    rootKey: await importHizoFSRootKey({
+      rawRootKey: new Uint8Array(32).fill(8),
+    }),
+    fileSystemId: createHizoFSStableId(),
+  });
+  const recordStore = new HizoFSRecordStore({ objectStore });
+  return { objectStore, recordStore };
+}
+
+async function createDummyObject({ objectStore, value }: {
+  objectStore: HizoFSObjectStore;
+  value: number;
+}): Promise<string> {
+  return objectStore.create({
+    record: {
+      kind: 'file_chunk',
+      recordVersion: 1,
+      metadata: { value },
+      binaryPayload: new Uint8Array([value]),
+    },
+  });
+}
+
+describe('HizoFS typed persistent indexes', () => {
+  it('persists an inode index without exposing node IDs as physical paths', async () => {
+    const { objectStore, recordStore } = await setup();
+    const index = new HizoFSInodeIndex({ recordStore, maxPageEntries: 3 });
+    const emptyRoot = await index.createEmpty();
+    let root = emptyRoot;
+    const expected = new Map<string, string>();
+
+    for (let number = 0; number < 12; number += 1) {
+      const nodeId = createHizoFSStableId();
+      const inodeObjectId = await createDummyObject({ objectStore, value: number });
+      expected.set(nodeId, inodeObjectId);
+      root = await index.set({
+        rootObjectId: root,
+        entry: { nodeId, inodeObjectId },
+      });
+    }
+
+    expect([...expected]).not.toEqual([]);
+    for (const [nodeId, inodeObjectId] of expected) {
+      await expect(index.get({ rootObjectId: root, nodeId })).resolves.toEqual({
+        nodeId,
+        inodeObjectId,
+      });
+    }
+    expect([...await collectInodeEntries({ index, rootObjectId: emptyRoot })]).toEqual([]);
+  });
+
+  it('keeps directory names sorted by canonical UTF-8 bytes across split pages', async () => {
+    const { recordStore } = await setup();
+    const index = new HizoFSDirectoryIndex({ recordStore, maxPageEntries: 2 });
+    let root = await index.createEmpty();
+    for (const name of ['z', 'あ', 'a', 'ä', 'A']) {
+      root = await index.set({
+        rootObjectId: root,
+        entry: {
+          name,
+          kind: 'file',
+          nodeId: createHizoFSStableId(),
+        },
+      });
+    }
+
+    const names: string[] = [];
+    for await (const entry of index.entries({ rootObjectId: root })) {
+      names.push(entry.name);
+    }
+    const encoded = new TextEncoder();
+    const expected = [...names].sort((left, right) => {
+      const leftBytes = encoded.encode(left);
+      const rightBytes = encoded.encode(right);
+      for (let index = 0; index < Math.min(leftBytes.length, rightBytes.length); index += 1) {
+        const difference = leftBytes[index]! - rightBytes[index]!;
+        if (difference !== 0) return difference;
+      }
+      return leftBytes.length - rightBytes.length;
+    });
+    expect(names).toEqual(expected);
+  });
+
+  it('stores sparse extents without entries for holes', async () => {
+    const { objectStore, recordStore } = await setup();
+    const index = new HizoFSExtentIndex({ recordStore, maxPageEntries: 2 });
+    let root = await index.createEmpty();
+    const chunk0 = await createDummyObject({ objectStore, value: 1 });
+    const chunk9 = await createDummyObject({ objectStore, value: 9 });
+    root = await index.set({
+      rootObjectId: root,
+      extent: { chunkIndex: 0, chunkObjectId: chunk0 },
+    });
+    root = await index.set({
+      rootObjectId: root,
+      extent: { chunkIndex: 9, chunkObjectId: chunk9 },
+    });
+
+    expect(await index.get({ rootObjectId: root, chunkIndex: 4 })).toBeUndefined();
+    expect(await index.get({ rootObjectId: root, chunkIndex: 9 })).toEqual({
+      chunkIndex: 9,
+      chunkObjectId: chunk9,
+    });
+  });
+});
+
+async function collectInodeEntries({ index, rootObjectId }: {
+  index: HizoFSInodeIndex;
+  rootObjectId: string;
+}) {
+  const entries = [];
+  for await (const entry of index.entries({ rootObjectId })) {
+    entries.push(entry);
+  }
+  return entries;
+}

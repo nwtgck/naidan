@@ -3,7 +3,7 @@ import type {
   OpfsEncryptionStateDto,
 } from '@/00-storage/00-dto/opfs-encryption.dto';
 import { decodeBase64UrlWithLength } from './base64-url';
-import { validateEncryptedOpfsStableId } from '@/00-storage/service/encrypted-opfs/id';
+import { validateHizoFSStableId } from '@/00-storage/service/hizofs/id';
 import {
   MAX_ENCRYPTION_KEY_SLOTS,
   MAX_PBKDF2_ITERATIONS,
@@ -37,7 +37,7 @@ function assertEncryptionOpaqueId({ value, fieldName }: {
   value: string;
   fieldName: string;
 }): void {
-  validateEncryptedOpfsStableId({ value, fieldName });
+  validateHizoFSStableId({ value, fieldName });
 }
 
 export function assertSafeOpfsPathSegment({

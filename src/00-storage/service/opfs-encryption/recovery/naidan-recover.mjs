@@ -29,7 +29,7 @@ import {
 import process, { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 
-const OBJECT_MAGIC = Buffer.from([0x45, 0x4e, 0x43, 0x4f, 0x50, 0x46, 0x53, 0x00]);
+const OBJECT_MAGIC = Buffer.from([0x48, 0x49, 0x5a, 0x4f, 0x46, 0x53, 0x00, 0x00]);
 const OBJECT_ENVELOPE_VERSION = 1;
 const OBJECT_HEADER_BYTE_LENGTH = 32;
 const RECORD_HEADER_BYTE_LENGTH = 16;
@@ -151,7 +151,7 @@ function assertStableId(value, label) {
 function assertEntryName(value) {
   const name = assertString(value, 'Directory entry name');
   if (name === '' || name === '.' || name === '..' || name.includes('/') || name.includes('\0')) {
-    throw new CorruptionError(`Invalid EncryptedOpfs directory entry name: ${JSON.stringify(name)}`);
+    throw new CorruptionError(`Invalid HizoFS directory entry name: ${JSON.stringify(name)}`);
   }
   return name;
 }
@@ -336,25 +336,25 @@ function unwrapFileSystemRootKey(storageUnlockKey, header) {
 
 function decodeObjectEnvelope(physical) {
   if (physical.length < OBJECT_HEADER_BYTE_LENGTH + AES_GCM_TAG_BYTE_LENGTH) {
-    throw new CorruptionError('EncryptedOpfs object is truncated');
+    throw new CorruptionError('HizoFS object is truncated');
   }
   if (!physical.subarray(0, OBJECT_MAGIC.length).equals(OBJECT_MAGIC)) {
-    throw new CorruptionError('EncryptedOpfs object magic is invalid');
+    throw new CorruptionError('HizoFS object magic is invalid');
   }
   const version = physical.readUInt16BE(8);
   if (version !== OBJECT_ENVELOPE_VERSION) {
-    throw new UnsupportedFormatError(`EncryptedOpfs object envelope version is unsupported: ${version}`);
+    throw new UnsupportedFormatError(`HizoFS object envelope version is unsupported: ${version}`);
   }
   const headerLength = physical.readUInt16BE(10);
   if (headerLength !== OBJECT_HEADER_BYTE_LENGTH) {
-    throw new UnsupportedFormatError(`EncryptedOpfs object header length is unsupported: ${headerLength}`);
+    throw new UnsupportedFormatError(`HizoFS object header length is unsupported: ${headerLength}`);
   }
   const ciphertextLength = physical.readBigUInt64BE(24);
   if (ciphertextLength > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new CorruptionError('EncryptedOpfs object ciphertext length exceeds the safe integer range');
+    throw new CorruptionError('HizoFS object ciphertext length exceeds the safe integer range');
   }
   if (physical.length !== OBJECT_HEADER_BYTE_LENGTH + Number(ciphertextLength)) {
-    throw new CorruptionError('EncryptedOpfs object ciphertext length does not match the envelope');
+    throw new CorruptionError('HizoFS object ciphertext length does not match the envelope');
   }
   return {
     nonce: physical.subarray(12, 24),
@@ -364,33 +364,33 @@ function decodeObjectEnvelope(physical) {
 
 function decodeRecord(plaintext) {
   if (plaintext.length < RECORD_HEADER_BYTE_LENGTH) {
-    throw new CorruptionError('EncryptedOpfs record is truncated');
+    throw new CorruptionError('HizoFS record is truncated');
   }
   const kind = RECORD_KINDS.get(plaintext[0]);
   if (kind === undefined) {
-    throw new UnsupportedFormatError(`EncryptedOpfs record kind is unsupported: ${String(plaintext[0])}`);
+    throw new UnsupportedFormatError(`HizoFS record kind is unsupported: ${String(plaintext[0])}`);
   }
   if (plaintext[1] !== 0) {
-    throw new UnsupportedFormatError(`EncryptedOpfs payload encoding is unsupported: ${String(plaintext[1])}`);
+    throw new UnsupportedFormatError(`HizoFS payload encoding is unsupported: ${String(plaintext[1])}`);
   }
   const recordVersion = plaintext.readUInt16BE(2);
   if (recordVersion !== 1) {
-    throw new UnsupportedFormatError(`EncryptedOpfs ${kind} record version is unsupported: ${recordVersion}`);
+    throw new UnsupportedFormatError(`HizoFS ${kind} record version is unsupported: ${recordVersion}`);
   }
   const metadataLength = plaintext.readUInt32BE(4);
   const binaryLength = plaintext.readBigUInt64BE(8);
   if (binaryLength > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new CorruptionError('EncryptedOpfs record binary length exceeds the safe integer range');
+    throw new CorruptionError('HizoFS record binary length exceeds the safe integer range');
   }
   const expectedLength = RECORD_HEADER_BYTE_LENGTH + metadataLength + Number(binaryLength);
   if (plaintext.length !== expectedLength) {
-    throw new CorruptionError('EncryptedOpfs record lengths do not match its plaintext');
+    throw new CorruptionError('HizoFS record lengths do not match its plaintext');
   }
   let metadata;
   try {
     metadata = JSON.parse(plaintext.subarray(RECORD_HEADER_BYTE_LENGTH, RECORD_HEADER_BYTE_LENGTH + metadataLength).toString('utf8'));
   } catch (error) {
-    throw new CorruptionError(`EncryptedOpfs record metadata is invalid JSON: ${error.message}`);
+    throw new CorruptionError(`HizoFS record metadata is invalid JSON: ${error.message}`);
   }
   return {
     kind,
@@ -399,7 +399,7 @@ function decodeRecord(plaintext) {
   };
 }
 
-class EncryptedOpfsReader {
+class HizoFSReader {
   constructor({ dataDirectory, fileSystemId, rootKey }) {
     this.dataDirectory = dataDirectory;
     this.fileSystemId = fileSystemId;
@@ -407,10 +407,10 @@ class EncryptedOpfsReader {
   }
 
   async readObject(objectId) {
-    const idBytes = decodeBase64Url(objectId, OBJECT_ID_BYTE_LENGTH, 'EncryptedOpfs object ID');
+    const idBytes = decodeBase64Url(objectId, OBJECT_ID_BYTE_LENGTH, 'HizoFS object ID');
     const shard = idBytes[0].toString(16).padStart(2, '0');
     return this.readEncryptedRecord({
-      path: join(this.dataDirectory, 'objects', shard, `${objectId}.eopfs`),
+      path: join(this.dataDirectory, 'objects', shard, `${objectId}.enc`),
       objectIdentity: objectId,
       area: 'object',
     });
@@ -418,7 +418,7 @@ class EncryptedOpfsReader {
 
   async readSuperblockSlot(slot) {
     return this.readEncryptedRecord({
-      path: join(this.dataDirectory, `superblock-${slot}.eopfs`),
+      path: join(this.dataDirectory, `superblock-${slot}.enc`),
       objectIdentity: `superblock-${slot}`,
       area: 'superblock',
       missingOk: true,
@@ -431,15 +431,15 @@ class EncryptedOpfsReader {
       physical = await readFile(path);
     } catch (error) {
       if (missingOk && error?.code === 'ENOENT') return undefined;
-      if (error?.code === 'ENOENT') throw new CorruptionError(`EncryptedOpfs object is missing: ${objectIdentity}`);
+      if (error?.code === 'ENOENT') throw new CorruptionError(`HizoFS object is missing: ${objectIdentity}`);
       throw error;
     }
     const { nonce, ciphertext } = decodeObjectEnvelope(physical);
     const key = Buffer.from(hkdfSync(
       'sha256',
       this.rootKey,
-      Buffer.from(`EncryptedOpfs/v1/filesystem/${this.fileSystemId}`, 'utf8'),
-      Buffer.from(`EncryptedOpfs/v1/${area}/${objectIdentity}`, 'utf8'),
+      Buffer.from(`HizoFS/v1/filesystem/${this.fileSystemId}`, 'utf8'),
+      Buffer.from(`HizoFS/v1/${area}/${objectIdentity}`, 'utf8'),
       32,
     ));
     try {
@@ -447,7 +447,7 @@ class EncryptedOpfsReader {
         key,
         nonce,
         ciphertext,
-        aad: Buffer.from(`EncryptedOpfs/v1/${area}/${this.fileSystemId}/${objectIdentity}`, 'utf8'),
+        aad: Buffer.from(`HizoFS/v1/${area}/${this.fileSystemId}/${objectIdentity}`, 'utf8'),
       });
       return decodeRecord(plaintext);
     } finally {
@@ -469,23 +469,23 @@ class EncryptedOpfsReader {
       }
       if (record === undefined) continue;
       if (record.kind !== 'superblock') {
-        throw new UnsupportedFormatError(`EncryptedOpfs superblock slot ${slot} has an unsupported record kind`);
+        throw new UnsupportedFormatError(`HizoFS superblock slot ${slot} has an unsupported record kind`);
       }
-      if (record.binary.length !== 0) throw new CorruptionError('EncryptedOpfs superblock has a binary payload');
-      const value = assertObject(record.metadata, 'EncryptedOpfs superblock');
-      const sequence = assertNonNegativeSafeInteger(value.sequence, 'EncryptedOpfs superblock sequence');
-      if (value.fileSystemId !== this.fileSystemId) throw new CorruptionError('EncryptedOpfs superblock fileSystemId mismatch');
-      assertObjectId(value.activeCommitObjectId, 'EncryptedOpfs active commit object ID');
+      if (record.binary.length !== 0) throw new CorruptionError('HizoFS superblock has a binary payload');
+      const value = assertObject(record.metadata, 'HizoFS superblock');
+      const sequence = assertNonNegativeSafeInteger(value.sequence, 'HizoFS superblock sequence');
+      if (value.fileSystemId !== this.fileSystemId) throw new CorruptionError('HizoFS superblock fileSystemId mismatch');
+      assertObjectId(value.activeCommitObjectId, 'HizoFS active commit object ID');
       candidates.push({ sequence, value });
     }
     candidates.sort((left, right) => right.sequence - left.sequence);
     if (candidates.length === 0) {
       throw new CorruptionError(corruptions.length > 0
-        ? 'No valid EncryptedOpfs superblock slot remains'
-        : 'EncryptedOpfs superblock is missing');
+        ? 'No valid HizoFS superblock slot remains'
+        : 'HizoFS superblock is missing');
     }
     if (candidates.length >= 2 && candidates[0].sequence === candidates[1].sequence) {
-      throw new CorruptionError('EncryptedOpfs superblock slots have the same sequence');
+      throw new CorruptionError('HizoFS superblock slots have the same sequence');
     }
     return candidates[0].value;
   }
@@ -778,23 +778,26 @@ async function main() {
     storageUnlockKey.fill(0);
   }
 
-  const dataDirectory = join(storageRoot, 'encrypted-stores', storeId, 'data');
-  const descriptor = assertObject(await readJson(join(dataDirectory, 'descriptor.json')), 'EncryptedOpfs descriptor');
-  if (descriptor.formatVersion !== 1) {
-    throw new UnsupportedFormatError(`EncryptedOpfs descriptor format is unsupported: ${String(descriptor.formatVersion)}`);
+  const dataDirectory = join(storageRoot, 'encrypted-stores', storeId, 'filesystem.hizofs');
+  const descriptor = assertObject(await readJson(join(dataDirectory, 'descriptor.json')), 'HizoFS descriptor');
+  if (descriptor.format !== 'hizofs') {
+    throw new UnsupportedFormatError(`HizoFS descriptor identifier is unsupported: ${String(descriptor.format)}`);
   }
-  const fileSystemId = assertStableId(descriptor.fileSystemId, 'EncryptedOpfs fileSystemId');
+  if (descriptor.formatVersion !== 1) {
+    throw new UnsupportedFormatError(`HizoFS descriptor format is unsupported: ${String(descriptor.formatVersion)}`);
+  }
+  const fileSystemId = assertStableId(descriptor.fileSystemId, 'HizoFS fileSystemId');
   if (fileSystemId !== header.fileSystemId) throw new CorruptionError('Encrypted store header and descriptor fileSystemId disagree');
 
-  const reader = new EncryptedOpfsReader({ dataDirectory, fileSystemId, rootKey: fileSystemRootKey });
+  const reader = new HizoFSReader({ dataDirectory, fileSystemId, rootKey: fileSystemRootKey });
   try {
     const superblock = await reader.readActiveSuperblock();
     const commitRecord = await reader.readObject(superblock.activeCommitObjectId);
     if (commitRecord.kind !== 'commit' || commitRecord.binary.length !== 0) {
       throw new CorruptionError('Active commit object has an invalid kind or binary payload');
     }
-    const commit = assertObject(commitRecord.metadata, 'EncryptedOpfs commit');
-    assertNonNegativeSafeInteger(commit.revision, 'EncryptedOpfs commit revision');
+    const commit = assertObject(commitRecord.metadata, 'HizoFS commit');
+    assertNonNegativeSafeInteger(commit.revision, 'HizoFS commit revision');
 
     try {
       await lstat(args.output);
@@ -814,7 +817,7 @@ async function main() {
   } finally {
     fileSystemRootKey.fill(0);
   }
-  console.log(`Recovered EncryptedOpfs to ${args.output}`);
+  console.log(`Recovered HizoFS to ${args.output}`);
 }
 
 main().catch(error => {

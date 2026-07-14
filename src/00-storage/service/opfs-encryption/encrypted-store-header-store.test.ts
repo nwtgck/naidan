@@ -23,7 +23,7 @@ function createHeader({
 }
 
 describe('EncryptedStoreHeaderStore', () => {
-  it('writes one immutable header beside a separate EncryptedOpfs data directory', async () => {
+  it('writes one immutable header beside a separate HizoFS data directory', async () => {
     const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
     const store = new EncryptedStoreHeaderStore({ storageRoot });
     const header = createHeader({ encryptedStoreId: 'store-id' });
@@ -37,10 +37,10 @@ describe('EncryptedStoreHeaderStore', () => {
       create: false,
     });
     await expect(storeDirectory.getFileHandle(TEST_ONLY.HEADER_FILE_NAME)).resolves.toBeDefined();
-    await expect(store.getEncryptedOpfsBackingDirectory({
+    await expect(store.getHizoFSBackingDirectory({
       encryptedStoreId: 'store-id',
       create: true,
-    })).resolves.toMatchObject({ name: TEST_ONLY.ENCRYPTED_OPFS_DATA_DIRECTORY_NAME });
+    })).resolves.toMatchObject({ name: TEST_ONLY.HIZOFS_BACKING_DIRECTORY_NAME });
   });
 
   it('treats property order as irrelevant when writing the same immutable header', async () => {

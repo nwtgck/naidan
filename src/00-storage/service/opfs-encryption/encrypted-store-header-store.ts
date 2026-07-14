@@ -15,8 +15,7 @@ import {
 } from './encryption-semantic-validation';
 
 const HEADER_FILE_NAME = 'header.json';
-const ENCRYPTED_OPFS_DATA_DIRECTORY_NAME = 'data';
-
+const HIZOFS_BACKING_DIRECTORY_NAME = 'filesystem.hizofs';
 
 function encryptedStoreHeadersEqual({ left, right }: {
   left: OpfsEncryptedStoreHeaderDto;
@@ -54,7 +53,7 @@ export class EncryptedStoreHeaderStore {
     return await storesDirectory.getDirectoryHandle(encryptedStoreId, { create });
   }
 
-  async getEncryptedOpfsBackingDirectory({
+  async getHizoFSBackingDirectory({
     encryptedStoreId,
     create,
   }: {
@@ -63,7 +62,7 @@ export class EncryptedStoreHeaderStore {
   }): Promise<FileSystemDirectoryHandle> {
     const storeDirectory = await this.getStoreDirectory({ encryptedStoreId, create });
     return await storeDirectory.getDirectoryHandle(
-      ENCRYPTED_OPFS_DATA_DIRECTORY_NAME,
+      HIZOFS_BACKING_DIRECTORY_NAME,
       { create },
     );
   }
@@ -142,6 +141,6 @@ export class EncryptedStoreHeaderStore {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  ENCRYPTED_OPFS_DATA_DIRECTORY_NAME,
+  HIZOFS_BACKING_DIRECTORY_NAME,
   HEADER_FILE_NAME,
 };

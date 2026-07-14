@@ -40,7 +40,7 @@ export const FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID = 'file-protocol-standalone-
 export const FILE_PROTOCOL_STANDALONE_WORKER_HUB_NAME = 'file-protocol-standalone-worker-hub';
 
 export const GLOBAL_SEARCH_WORKER_NAME = 'global-search-worker';
-export const ENCRYPTED_OPFS_INSPECTION_WORKER_NAME = 'encrypted-opfs-inspection-worker';
+export const HIZOFS_INSPECTION_WORKER_NAME = 'hizofs-inspection-worker';
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

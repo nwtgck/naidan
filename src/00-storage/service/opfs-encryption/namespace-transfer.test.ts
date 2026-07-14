@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
-import { createEncryptedOpfs } from '@/00-storage/service/encrypted-opfs';
+import { createHizoFS } from '@/00-storage/service/hizofs';
 import { createNativeOpfsFileSystemSession } from '@/00-storage/service/storage-file-system/native-opfs';
 import { readStorageFileText, writeStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import {
@@ -38,7 +38,7 @@ describe('Naidan persistence namespace transfer', () => {
     await writeText({ root: native.root, path: ['naidan-debug-wesh', 'home', 'value'], value: 'debug' });
     await writeText({ root: native.root, path: ['naidan-tmp', 'discard'], value: 'tmp' });
 
-    const encrypted = await createEncryptedOpfs({
+    const encrypted = await createHizoFS({
       backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
       fileSystemRootKey: new Uint8Array(32).fill(8),
     });

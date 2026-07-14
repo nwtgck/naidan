@@ -13,14 +13,14 @@ import { promiseAllKeyed } from '@/utils/promise';
 export async function prepareForOpfsEncryptionTransition(): Promise<void> {
   const {
     chatProcessing,
-    debugEncryptedOpfs,
+    debugHizoFS,
     debugOpfsEncryption,
     fileExplorer,
     fileExplorerClients,
     weshClients,
   } = await promiseAllKeyed({
     chatProcessing: import('@/composables/chat/chat-scoped/chat-processing-abort'),
-    debugEncryptedOpfs: import('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench'),
+    debugHizoFS: import('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench'),
     debugOpfsEncryption: import('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector'),
     fileExplorer: import('@/features/file-explorer/composables/useFileExplorerModal'),
     fileExplorerClients: import('@/features/file-explorer/worker/client-registry'),
@@ -28,7 +28,7 @@ export async function prepareForOpfsEncryptionTransition(): Promise<void> {
   });
 
   chatProcessing.abortAllChatProcessingForStorageTransition();
-  debugEncryptedOpfs.useDebugEncryptedOpfsWorkbench().closeDebugEncryptedOpfsWorkbench();
+  debugHizoFS.useDebugHizoFSWorkbench().closeDebugHizoFSWorkbench();
   debugOpfsEncryption.useDebugOpfsEncryptionInspector().closeDebugOpfsEncryptionInspector();
   fileExplorer.useFileExplorerModal().closeFileExplorer();
   await nextTick();

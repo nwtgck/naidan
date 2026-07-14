@@ -16,20 +16,20 @@ describe('standalone facade aliases', () => {
     expect(missingTargets).toEqual([]);
   });
 
-  it('routes EncryptedOpfs inspection through the standalone worker hub facade', () => {
-    const encryptedOpfsFacade = '@/features/debug-encrypted-opfs/worker/client';
-    expect(STANDALONE_WORKER_CLIENT_FACADES).toContain(encryptedOpfsFacade);
+  it('routes HizoFS inspection through the standalone worker hub facade', () => {
+    const hizoFSFacade = '@/features/debug-hizofs/worker/client';
+    expect(STANDALONE_WORKER_CLIENT_FACADES).toContain(hizoFSFacade);
 
     const aliases = createStandaloneFacadeAliases({
       resolvePath: relativePath => resolve(process.cwd(), relativePath),
     });
     const alias = aliases.find(({ find }) => (
-      find instanceof RegExp && find.test(encryptedOpfsFacade)
+      find instanceof RegExp && find.test(hizoFSFacade)
     ));
 
     expect(alias?.replacement).toBe(resolve(
       process.cwd(),
-      'src/features/debug-encrypted-opfs/worker/client-standalone.ts',
+      'src/features/debug-hizofs/worker/client-standalone.ts',
     ));
   });
 });

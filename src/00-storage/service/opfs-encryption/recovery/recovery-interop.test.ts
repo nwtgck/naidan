@@ -16,9 +16,9 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import {
-  createEncryptedOpfs,
-  readEncryptedOpfsFileSystemId,
-} from '@/00-storage/service/encrypted-opfs/api';
+  createHizoFS,
+  readHizoFSFileSystemId,
+} from '@/00-storage/service/hizofs/api';
 import type {
   StorageDirectoryHandle,
   StorageFileHandle,
@@ -103,7 +103,7 @@ async function writeText({
   return file;
 }
 
-async function createRawEncryptedOpfs({
+async function createRawHizoFS({
   outputDirectory,
   passphrase,
 }: {
@@ -117,7 +117,7 @@ async function createRawEncryptedOpfs({
   const encryptedStoreId = 'recovery-interop-store';
   const storeDirectory = await new EncryptedStoreHeaderStore({ storageRoot })
     .getStoreDirectory({ encryptedStoreId, create: true });
-  const backingDirectory = await storeDirectory.getDirectoryHandle('data', {
+  const backingDirectory = await storeDirectory.getDirectoryHandle('filesystem.hizofs', {
     create: true,
   });
   const material = await createEncryptionMaterial({
@@ -126,7 +126,7 @@ async function createRawEncryptedOpfs({
   });
 
   try {
-    const session = await createEncryptedOpfs({
+    const session = await createHizoFS({
       backingDirectory,
       fileSystemRootKey: material.fileSystemRootKey,
     });
@@ -172,7 +172,7 @@ async function createRawEncryptedOpfs({
     });
     await session.close();
 
-    const fileSystemId = await readEncryptedOpfsFileSystemId({ backingDirectory });
+    const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
     await new EncryptedStoreHeaderStore({ storageRoot }).write({
       header: {
         formatVersion: 1,
@@ -256,14 +256,14 @@ async function expectRecoveredFileSystem({
   )).resolves.toBe('symlink target\n');
 }
 
-describe('EncryptedOpfs recovery interoperability', () => {
-  it('recovers a TypeScript-generated EncryptedOpfs with the independent Node source', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'naidan-encrypted-opfs-recovery-'));
+describe('HizoFS recovery interoperability', () => {
+  it('recovers a TypeScript-generated HizoFS with the independent Node source', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-recovery-'));
     temporaryDirectories.push(root);
     const rawOpfs = join(root, 'raw-opfs');
     const output = join(root, 'recovered');
     const passphrase = ' exact recovery passphrase ';
-    await createRawEncryptedOpfs({ outputDirectory: rawOpfs, passphrase });
+    await createRawHizoFS({ outputDirectory: rawOpfs, passphrase });
 
     await execFile(process.execPath, [
       NODE_RECOVERY_SOURCE,
@@ -277,14 +277,14 @@ describe('EncryptedOpfs recovery interoperability', () => {
   });
 
   (goAvailable ? it : it.skip)(
-    'recovers the same TypeScript-generated EncryptedOpfs with the independent Go source',
+    'recovers the same TypeScript-generated HizoFS with the independent Go source',
     async () => {
-      const root = await mkdtemp(join(tmpdir(), 'naidan-encrypted-opfs-go-recovery-'));
+      const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-go-recovery-'));
       temporaryDirectories.push(root);
       const rawOpfs = join(root, 'raw-opfs');
       const output = join(root, 'recovered');
       const passphrase = 'go recovery passphrase';
-      await createRawEncryptedOpfs({ outputDirectory: rawOpfs, passphrase });
+      await createRawHizoFS({ outputDirectory: rawOpfs, passphrase });
 
       await execFile('go', [
         'run',
@@ -300,11 +300,11 @@ describe('EncryptedOpfs recovery interoperability', () => {
   );
 
   it('rejects an incorrect passphrase without leaving output or partial output', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'naidan-encrypted-opfs-wrong-passphrase-'));
+    const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-wrong-passphrase-'));
     temporaryDirectories.push(root);
     const rawOpfs = join(root, 'raw-opfs');
     const output = join(root, 'recovered');
-    await createRawEncryptedOpfs({ outputDirectory: rawOpfs, passphrase: 'correct' });
+    await createRawHizoFS({ outputDirectory: rawOpfs, passphrase: 'correct' });
 
     await expect(execFile(process.execPath, [
       NODE_RECOVERY_SOURCE,
@@ -320,11 +320,11 @@ describe('EncryptedOpfs recovery interoperability', () => {
   });
 
   it('rejects excessive PBKDF2 work before running the independent recovery KDF', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'naidan-encrypted-opfs-kdf-limit-'));
+    const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-kdf-limit-'));
     temporaryDirectories.push(root);
     const rawOpfs = join(root, 'raw-opfs');
     const output = join(root, 'recovered');
-    await createRawEncryptedOpfs({ outputDirectory: rawOpfs, passphrase: 'passphrase' });
+    await createRawHizoFS({ outputDirectory: rawOpfs, passphrase: 'passphrase' });
     await updateExportedState({
       rawOpfs,
       update: (state) => {
@@ -347,11 +347,11 @@ describe('EncryptedOpfs recovery interoperability', () => {
   });
 
   it('rejects an unbounded key-slot search', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'naidan-encrypted-opfs-slot-limit-'));
+    const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-slot-limit-'));
     temporaryDirectories.push(root);
     const rawOpfs = join(root, 'raw-opfs');
     const output = join(root, 'recovered');
-    await createRawEncryptedOpfs({ outputDirectory: rawOpfs, passphrase: 'passphrase' });
+    await createRawHizoFS({ outputDirectory: rawOpfs, passphrase: 'passphrase' });
     await updateExportedState({
       rawOpfs,
       update: (state) => {

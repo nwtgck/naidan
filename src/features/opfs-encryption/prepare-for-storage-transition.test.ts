@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   abortAllChatProcessingForStorageTransition: vi.fn(),
-  closeDebugEncryptedOpfsWorkbench: vi.fn(),
+  closeDebugHizoFSWorkbench: vi.fn(),
   closeDebugOpfsEncryptionInspector: vi.fn(),
   closeFileExplorer: vi.fn(),
   disposeFileExplorerClients: vi.fn<() => Promise<void>>(),
@@ -14,9 +14,9 @@ vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
   abortAllChatProcessingForStorageTransition: mocks.abortAllChatProcessingForStorageTransition,
 }));
 
-vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench', () => ({
-  useDebugEncryptedOpfsWorkbench: () => ({
-    closeDebugEncryptedOpfsWorkbench: mocks.closeDebugEncryptedOpfsWorkbench,
+vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
+  useDebugHizoFSWorkbench: () => ({
+    closeDebugHizoFSWorkbench: mocks.closeDebugHizoFSWorkbench,
   }),
 }));
 
@@ -48,8 +48,8 @@ beforeEach(() => {
   mocks.abortAllChatProcessingForStorageTransition.mockImplementation(() => {
     mocks.calls.push('abort-chat');
   });
-  mocks.closeDebugEncryptedOpfsWorkbench.mockImplementation(() => {
-    mocks.calls.push('close-encrypted-opfs-inspector');
+  mocks.closeDebugHizoFSWorkbench.mockImplementation(() => {
+    mocks.calls.push('close-hizofs-inspector');
   });
   mocks.closeDebugOpfsEncryptionInspector.mockImplementation(() => {
     mocks.calls.push('close-opfs-encryption-inspector');
@@ -70,7 +70,7 @@ describe('prepareForOpfsEncryptionTransition', () => {
     await prepareForOpfsEncryptionTransition();
 
     expect(mocks.abortAllChatProcessingForStorageTransition).toHaveBeenCalledOnce();
-    expect(mocks.closeDebugEncryptedOpfsWorkbench).toHaveBeenCalledOnce();
+    expect(mocks.closeDebugHizoFSWorkbench).toHaveBeenCalledOnce();
     expect(mocks.closeDebugOpfsEncryptionInspector).toHaveBeenCalledOnce();
     expect(mocks.closeFileExplorer).toHaveBeenCalledOnce();
     expect(mocks.disposeFileExplorerClients).toHaveBeenCalledOnce();

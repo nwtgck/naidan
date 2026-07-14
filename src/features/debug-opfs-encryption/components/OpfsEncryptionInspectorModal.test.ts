@@ -6,7 +6,7 @@ import OpfsEncryptionInspectorModal from './OpfsEncryptionInspectorModal.vue';
 const mocks = vi.hoisted(() => ({
   closeInspector: vi.fn(),
   createSession: vi.fn(),
-  openEncryptedOpfsWorkbench: vi.fn(),
+  openHizoFSWorkbench: vi.fn(),
   openFileExplorer: vi.fn(),
 }));
 
@@ -22,9 +22,9 @@ vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInsp
   }),
 }));
 
-vi.mock('@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench', () => ({
-  useDebugEncryptedOpfsWorkbench: () => ({
-    openDebugEncryptedOpfsWorkbench: mocks.openEncryptedOpfsWorkbench,
+vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
+  useDebugHizoFSWorkbench: () => ({
+    openDebugHizoFSWorkbench: mocks.openHizoFSWorkbench,
   }),
 }));
 
@@ -70,12 +70,14 @@ function createSession(): OpfsEncryptionDebugSession {
         ciphertext: 'root-ciphertext',
       },
     },
-    encryptedOpfs: {
+    hizoFS: {
       descriptor: {
+        format: 'hizofs',
         formatVersion: 1,
         fileSystemId: 'filesystem-a',
       },
       persistedDescriptorDto: {
+        format: 'hizofs',
         formatVersion: 1,
         fileSystemId: 'filesystem-a',
       },
@@ -97,12 +99,12 @@ function createSession(): OpfsEncryptionDebugSession {
         inodeIndexRootObjectId: 'inode-index-a',
       },
     },
-    encryptedOpfsReader: {} as OpfsEncryptionDebugSession['encryptedOpfsReader'],
+    hizoFSReader: {} as OpfsEncryptionDebugSession['hizoFSReader'],
     decryptedRoot: {
       kind: 'directory',
       name: '',
     } as OpfsEncryptionDebugSession['decryptedRoot'],
-    physicalPath: ['naidan-storage', 'encrypted-stores', 'store-a', 'data'],
+    physicalPath: ['naidan-storage', 'encrypted-stores', 'store-a', 'filesystem.hizofs'],
     dispose: vi.fn(async () => {}),
   };
 }
@@ -123,29 +125,29 @@ describe('OpfsEncryptionInspectorModal', () => {
 
     expect(document.body.textContent).toContain('OPFS Encryption Inspector');
     expect(document.body.textContent).toContain('store-a');
-    expect(document.body.textContent).toContain('naidan-storage/encrypted-stores/store-a/data');
+    expect(document.body.textContent).toContain('naidan-storage/encrypted-stores/store-a/filesystem.hizofs');
     expect(document.body.textContent).toContain('slot-a');
     expect(document.body.textContent).toContain('root-ciphertext');
 
     wrapper.unmount();
   });
 
-  it('opens EncryptedOpfs internals, decrypted File Explorer, and raw OPFS independently', async () => {
+  it('opens HizoFS internals, decrypted File Explorer, and raw OPFS independently', async () => {
     const session = createSession();
     mocks.createSession.mockResolvedValue(session);
     const wrapper = mount(OpfsEncryptionInspectorModal, { attachTo: document.body });
     await flushPromises();
 
-    document.body.querySelector<HTMLButtonElement>('[data-testid="opfs-encryption-open-encrypted-opfs"]')?.click();
+    document.body.querySelector<HTMLButtonElement>('[data-testid="opfs-encryption-open-hizofs"]')?.click();
     expect(mocks.closeInspector).toHaveBeenCalledOnce();
-    expect(mocks.openEncryptedOpfsWorkbench).toHaveBeenCalledOnce();
+    expect(mocks.openHizoFSWorkbench).toHaveBeenCalledOnce();
 
     document.body.querySelector<HTMLButtonElement>('[data-testid="opfs-encryption-open-decrypted"]')?.click();
     expect(mocks.openFileExplorer).toHaveBeenCalledWith({
       options: {
         kind: 'storage-directory',
-        title: 'Decrypted EncryptedOpfs',
-        rootName: 'EncryptedOpfs root',
+        title: 'Decrypted HizoFS',
+        rootName: 'HizoFS root',
         handle: session.decryptedRoot,
         readOnly: true,
         initialPath: undefined,

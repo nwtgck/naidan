@@ -3,10 +3,10 @@ import type {
   OpfsEncryptionStateDto,
 } from '@/00-storage/00-dto/opfs-encryption.dto';
 import {
-  createEncryptedOpfsInspectionReader,
-  type EncryptedOpfsInspectionOverview,
-  type EncryptedOpfsInspectionReader,
-} from '@/00-storage/service/encrypted-opfs';
+  createHizoFSInspectionReader,
+  type HizoFSInspectionOverview,
+  type HizoFSInspectionReader,
+} from '@/00-storage/service/hizofs';
 import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
 import { EncryptedStoreHeaderStore } from './encrypted-store-header-store';
 import { unwrapFileSystemRootKey } from './encryption-key-manager';
@@ -15,8 +15,8 @@ import type { UnlockedOpfsEncryptionSession } from './session';
 export interface OpfsEncryptionDebugSession {
   readonly state: Extract<OpfsEncryptionStateDto, { readonly state: 'encrypted' }>;
   readonly header: OpfsEncryptedStoreHeaderDto;
-  readonly encryptedOpfs: EncryptedOpfsInspectionOverview;
-  readonly encryptedOpfsReader: EncryptedOpfsInspectionReader;
+  readonly hizoFS: HizoFSInspectionOverview;
+  readonly hizoFSReader: HizoFSInspectionReader;
   readonly decryptedRoot: StorageDirectoryHandle;
   readonly physicalPath: readonly string[];
 
@@ -36,7 +36,7 @@ export async function createOpfsEncryptionDebugSession({
   if (header === undefined) {
     throw new Error(`Encrypted store header is missing: ${encryptedStoreId}`);
   }
-  const backingDirectory = await headerStore.getEncryptedOpfsBackingDirectory({
+  const backingDirectory = await headerStore.getHizoFSBackingDirectory({
     encryptedStoreId,
     create: false,
   });
@@ -44,37 +44,37 @@ export async function createOpfsEncryptionDebugSession({
     storageUnlockKey: session.storageUnlockKey,
     header,
   });
-  let encryptedOpfsReader: EncryptedOpfsInspectionReader | undefined;
+  let hizoFSReader: HizoFSInspectionReader | undefined;
   try {
-    encryptedOpfsReader = await createEncryptedOpfsInspectionReader({
+    hizoFSReader = await createHizoFSInspectionReader({
       backingDirectory,
       fileSystemRootKey,
     });
-    const encryptedOpfs = await encryptedOpfsReader.readOverview();
-    if (encryptedOpfs.descriptor.fileSystemId !== header.fileSystemId) {
-      throw new Error('Encrypted store header and EncryptedOpfs descriptor disagree');
+    const hizoFS = await hizoFSReader.readOverview();
+    if (hizoFS.descriptor.fileSystemId !== header.fileSystemId) {
+      throw new Error('Encrypted store header and HizoFS descriptor disagree');
     }
     let disposed = false;
     return {
       state: session.state,
       header,
-      encryptedOpfs,
-      encryptedOpfsReader,
+      hizoFS,
+      hizoFSReader,
       decryptedRoot: session.fileSystemSession.root,
       physicalPath: [
         'naidan-storage',
         'encrypted-stores',
         encryptedStoreId,
-        'data',
+        'filesystem.hizofs',
       ],
       async dispose() {
         if (disposed) return;
         disposed = true;
-        await encryptedOpfsReader?.dispose();
+        await hizoFSReader?.dispose();
       },
     };
   } catch (error) {
-    await encryptedOpfsReader?.dispose();
+    await hizoFSReader?.dispose();
     throw error;
   } finally {
     fileSystemRootKey.fill(0);

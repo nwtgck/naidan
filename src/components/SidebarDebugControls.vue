@@ -5,7 +5,7 @@ import { useLayout } from '@/composables/useLayout';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { useDebugEncryptedOpfsWorkbench } from '@/features/debug-encrypted-opfs/composables/useDebugEncryptedOpfsWorkbench';
+import { useDebugHizoFSWorkbench } from '@/features/debug-hizofs/composables/useDebugHizoFSWorkbench';
 import { useDebugOpfsEncryptionInspector } from '@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector';
 import { storageService } from '@/00-storage/service';
 import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon, DatabaseIcon } from 'lucide-vue-next';
@@ -19,7 +19,7 @@ const { isDebugOpen, toggleDebug, toggleWeshTerminal } = useLayout();
 const { errorCount } = useGlobalEvents();
 const { openFileExplorer } = useFileExplorerModal();
 const { openRecent } = useRecentChats();
-const { openDebugEncryptedOpfsWorkbench } = useDebugEncryptedOpfsWorkbench();
+const { openDebugHizoFSWorkbench } = useDebugHizoFSWorkbench();
 const { openDebugOpfsEncryptionInspector } = useDebugOpfsEncryptionInspector();
 
 const showOpfsMenu = ref(false);
@@ -67,8 +67,8 @@ function handleOpenOpfsEncryptionInspector(): void {
   showOpfsMenu.value = false;
 }
 
-function handleOpenEncryptedOpfsWorkbench(): void {
-  openDebugEncryptedOpfsWorkbench();
+function handleOpenHizoFSWorkbench(): void {
+  openDebugHizoFSWorkbench();
   showOpfsMenu.value = false;
 }
 
@@ -142,7 +142,7 @@ defineExpose({
           </button>
           <button
             :disabled="!encryptedInspectorAvailable"
-            :title="checkingEncryptedInspector ? 'Checking encrypted storage state' : encryptedInspectorAvailable ? 'Inspect Naidan OPFS encryption control state' : 'Available after encrypted OPFS is unlocked'"
+            :title="checkingEncryptedInspector ? 'Checking encrypted storage state' : encryptedInspectorAvailable ? 'Inspect Naidan OPFS encryption control state' : 'Available after OPFS encryption is unlocked'"
             @click="handleOpenOpfsEncryptionInspector"
             tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             data-testid="sidebar-opfs-encryption-inspector-button"
@@ -151,13 +151,13 @@ defineExpose({
             <span>OPFS Encryption Inspector</span>
           </button>
           <button
-            title="Open the low-level EncryptedOpfs development workbench"
-            @click="handleOpenEncryptedOpfsWorkbench"
+            title="Open the low-level HizoFS development workbench"
+            @click="handleOpenHizoFSWorkbench"
             tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
-            data-testid="sidebar-encrypted-opfs-workbench-button"
+            data-testid="sidebar-hizofs-workbench-button"
           >
             <FolderSearchIcon tw-class="w-4 h-4" />
-            <span>EncryptedOpfs Workbench</span>
+            <span>HizoFS Workbench</span>
           </button>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"

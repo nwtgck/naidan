@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createEncryptedOpfs,
-  inspectEncryptedOpfs,
-} from '@/00-storage/service/encrypted-opfs/api';
+  createHizoFS,
+  inspectHizoFS,
+} from '@/00-storage/service/hizofs/api';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import type { WeshOpenFlags } from '@/features/wesh/types';
 import { RemoteStorageDirectoryWeshProvider } from './provider';
@@ -25,11 +25,11 @@ const READ_WRITE_CREATE_FLAGS: WeshOpenFlags = {
   append: 'preserve',
 };
 
-async function createMountedEncryptedOpfs({ readOnly = false }: {
+async function createMountedHizoFS({ readOnly = false }: {
   readOnly?: boolean;
 } = {}) {
   const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
-  const session = await createEncryptedOpfs({
+  const session = await createHizoFS({
     backingDirectory: backing,
     fileSystemRootKey: ROOT_KEY,
   });
@@ -75,8 +75,8 @@ async function readAll({
 
 describe('Wesh StorageDirectoryHandle remote', () => {
   it('commits multiple Wesh writes only when the remote handle closes', async () => {
-    const { backing, provider, remote, session } = await createMountedEncryptedOpfs();
-    const beforeOpen = await inspectEncryptedOpfs({
+    const { backing, provider, remote, session } = await createMountedHizoFS();
+    const beforeOpen = await inspectHizoFS({
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
     });
@@ -84,7 +84,7 @@ describe('Wesh StorageDirectoryHandle remote', () => {
       path: `${MOUNT_PATH}/value.txt`,
       flags: READ_WRITE_CREATE_FLAGS,
     });
-    const afterOpen = await inspectEncryptedOpfs({
+    const afterOpen = await inspectHizoFS({
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
     });
@@ -100,7 +100,7 @@ describe('Wesh StorageDirectoryHandle remote', () => {
     });
     await handle.truncate({ size: 5 });
 
-    const beforeClose = await inspectEncryptedOpfs({
+    const beforeClose = await inspectHizoFS({
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
     });
@@ -112,7 +112,7 @@ describe('Wesh StorageDirectoryHandle remote', () => {
     expect(await handle.stat()).toMatchObject({ size: 5 });
 
     await handle.close();
-    const afterClose = await inspectEncryptedOpfs({
+    const afterClose = await inspectHizoFS({
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
     });
@@ -127,7 +127,7 @@ describe('Wesh StorageDirectoryHandle remote', () => {
   });
 
   it('supports recursive directories, cross-directory rename, and symbolic links', async () => {
-    const { provider, remote, session } = await createMountedEncryptedOpfs();
+    const { provider, remote, session } = await createMountedHizoFS();
     await provider.mkdir?.({
       path: `${MOUNT_PATH}/from/nested`,
       recursive: true,
@@ -185,7 +185,7 @@ describe('Wesh StorageDirectoryHandle remote', () => {
   });
 
   it('enforces read-only mounts for all mutation entry points', async () => {
-    const { provider, remote, session } = await createMountedEncryptedOpfs({ readOnly: true });
+    const { provider, remote, session } = await createMountedHizoFS({ readOnly: true });
     await expect(provider.open({
       path: `${MOUNT_PATH}/new.txt`,
       flags: READ_WRITE_CREATE_FLAGS,
@@ -204,7 +204,7 @@ describe('Wesh StorageDirectoryHandle remote', () => {
   });
 
   it('aborts uncommitted writers when the remote is disposed', async () => {
-    const { provider, remote, session } = await createMountedEncryptedOpfs();
+    const { provider, remote, session } = await createMountedHizoFS();
     const initial = await provider.open({
       path: `${MOUNT_PATH}/existing.txt`,
       flags: READ_WRITE_CREATE_FLAGS,

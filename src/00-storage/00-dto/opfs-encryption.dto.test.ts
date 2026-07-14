@@ -42,7 +42,7 @@ describe('OPFS encryption integration DTO schemas', () => {
     expect(state).not.toHaveProperty('authority');
   });
 
-  it('keeps key management outside the EncryptedOpfs descriptor', () => {
+  it('keeps key management outside the HizoFS descriptor', () => {
     expect(OpfsEncryptedStoreHeaderSchemaDto.parse({
       formatVersion: 1,
       encryptedStoreId: 'store-id',

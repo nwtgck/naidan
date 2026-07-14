@@ -5,7 +5,7 @@ import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } fro
 import { createFileExplorerWorker } from './impl';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
-import { createEncryptedOpfs } from '@/00-storage/service/encrypted-opfs/api';
+import { createHizoFS } from '@/00-storage/service/hizofs/api';
 import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 import { renderChatMetadataMarkdown } from '@/features/wesh/naidan-sysfs/render/metadata-markdown';
@@ -20,7 +20,7 @@ describe('file-explorer.worker.impl', () => {
 
   it('treats a decrypted StorageDirectoryHandle as the File Explorer root without Wesh mount path leakage', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'encrypted-backing' });
-    const encryptedSession = await createEncryptedOpfs({
+    const encryptedSession = await createHizoFS({
       backingDirectory: backing as unknown as FileSystemDirectoryHandle,
       fileSystemRootKey: new Uint8Array(32).fill(0x42),
     });
@@ -54,7 +54,7 @@ describe('file-explorer.worker.impl', () => {
     const { sessionId } = await worker.prepareSession({
       root: {
         kind: 'storage-directory',
-        rootName: 'EncryptedOpfs root',
+        rootName: 'HizoFS root',
         readOnly: false,
       },
     }, undefined, storageDirectoryRemote);

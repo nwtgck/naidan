@@ -1,4 +1,4 @@
-// Naidan EncryptedOpfs recovery source.
+// Naidan HizoFS recovery source.
 //
 // This standalone implementation uses only the Go standard library. It opens
 // an encrypted store from a raw OPFS export and restores the decrypted virtual
@@ -43,7 +43,7 @@ const (
 	maxSafeInteger         = int64(9_007_199_254_740_991)
 )
 
-var objectMagic = []byte{0x45, 0x4e, 0x43, 0x4f, 0x50, 0x46, 0x53, 0x00}
+var objectMagic = []byte{0x48, 0x49, 0x5a, 0x4f, 0x46, 0x53, 0x00, 0x00}
 
 var recordKinds = map[byte]string{
 	1: "commit",
@@ -102,6 +102,7 @@ type storeHeader struct {
 }
 
 type descriptor struct {
+	Format        string `json:"format"`
 	FormatVersion int64  `json:"formatVersion"`
 	FileSystemID  string `json:"fileSystemId"`
 }
@@ -210,7 +211,7 @@ type record struct {
 	Binary        []byte
 }
 
-type encryptedOpfsReader struct {
+type hizoFSReader struct {
 	dataDirectory string
 	fileSystemID  string
 	rootKey       []byte
@@ -252,7 +253,7 @@ func validateStableID(value, label string) error {
 
 func validateEntryName(value string) error {
 	if value == "" || value == "." || value == ".." || strings.Contains(value, "/") || strings.ContainsRune(value, 0) {
-		return fmt.Errorf("invalid EncryptedOpfs directory entry name: %q", value)
+		return fmt.Errorf("invalid HizoFS directory entry name: %q", value)
 	}
 	if !utf8.ValidString(value) {
 		return errors.New("directory entry name is not valid UTF-8")
@@ -538,78 +539,78 @@ func unwrapFileSystemRootKey(storageUnlockKey []byte, header *storeHeader) ([]by
 	)
 }
 
-func (reader *encryptedOpfsReader) deriveObjectKey(identity, area string) ([]byte, error) {
+func (reader *hizoFSReader) deriveObjectKey(identity, area string) ([]byte, error) {
 	return hkdfSHA256(
 		reader.rootKey,
-		[]byte("EncryptedOpfs/v1/filesystem/"+reader.fileSystemID),
-		[]byte("EncryptedOpfs/v1/"+area+"/"+identity),
+		[]byte("HizoFS/v1/filesystem/"+reader.fileSystemID),
+		[]byte("HizoFS/v1/"+area+"/"+identity),
 		32,
 	)
 }
 
-func (reader *encryptedOpfsReader) readPhysical(identity, area string) ([]byte, error) {
+func (reader *hizoFSReader) readPhysical(identity, area string) ([]byte, error) {
 	var path string
 	if area == "object" {
-		objectBytes, err := decodeBase64URL(identity, objectIDByteLength, "EncryptedOpfs object ID")
+		objectBytes, err := decodeBase64URL(identity, objectIDByteLength, "HizoFS object ID")
 		if err != nil {
 			return nil, err
 		}
-		path = filepath.Join(reader.dataDirectory, "objects", fmt.Sprintf("%02x", objectBytes[0]), identity+".eopfs")
+		path = filepath.Join(reader.dataDirectory, "objects", fmt.Sprintf("%02x", objectBytes[0]), identity+".enc")
 	} else if area == "superblock" {
 		if identity != "superblock-0" && identity != "superblock-1" {
-			return nil, errors.New("invalid EncryptedOpfs superblock identity")
+			return nil, errors.New("invalid HizoFS superblock identity")
 		}
-		path = filepath.Join(reader.dataDirectory, identity+".eopfs")
+		path = filepath.Join(reader.dataDirectory, identity+".enc")
 	} else {
-		return nil, unsupportedFormatError{message: fmt.Sprintf("unsupported EncryptedOpfs area: %s", area)}
+		return nil, unsupportedFormatError{message: fmt.Sprintf("unsupported HizoFS area: %s", area)}
 	}
 	return os.ReadFile(path)
 }
 
 func decodeEnvelope(physical []byte) (nonce, ciphertext []byte, err error) {
 	if len(physical) < objectHeaderByteLength+aesGCMTagByteLength {
-		return nil, nil, errors.New("EncryptedOpfs object is truncated")
+		return nil, nil, errors.New("HizoFS object is truncated")
 	}
 	if !bytes.Equal(physical[:len(objectMagic)], objectMagic) {
-		return nil, nil, errors.New("EncryptedOpfs object magic is invalid")
+		return nil, nil, errors.New("HizoFS object magic is invalid")
 	}
 	version := binary.BigEndian.Uint16(physical[8:10])
 	if version != objectEnvelopeVersion {
-		return nil, nil, unsupportedFormatError{message: fmt.Sprintf("EncryptedOpfs object envelope version is unsupported: %d", version)}
+		return nil, nil, unsupportedFormatError{message: fmt.Sprintf("HizoFS object envelope version is unsupported: %d", version)}
 	}
 	headerLength := binary.BigEndian.Uint16(physical[10:12])
 	if headerLength != objectHeaderByteLength {
-		return nil, nil, unsupportedFormatError{message: fmt.Sprintf("EncryptedOpfs object header length is unsupported: %d", headerLength)}
+		return nil, nil, unsupportedFormatError{message: fmt.Sprintf("HizoFS object header length is unsupported: %d", headerLength)}
 	}
 	ciphertextLength := binary.BigEndian.Uint64(physical[24:32])
 	if ciphertextLength > uint64(maxSafeInteger) || uint64(len(physical)) != uint64(objectHeaderByteLength)+ciphertextLength {
-		return nil, nil, errors.New("EncryptedOpfs object ciphertext length does not match the envelope")
+		return nil, nil, errors.New("HizoFS object ciphertext length does not match the envelope")
 	}
 	return physical[12:24], physical[objectHeaderByteLength:], nil
 }
 
 func decodeRecord(plaintext []byte) (*record, error) {
 	if len(plaintext) < recordHeaderByteLength {
-		return nil, errors.New("EncryptedOpfs record is truncated")
+		return nil, errors.New("HizoFS record is truncated")
 	}
 	kind, ok := recordKinds[plaintext[0]]
 	if !ok {
-		return nil, unsupportedFormatError{message: fmt.Sprintf("EncryptedOpfs record kind is unsupported: %d", plaintext[0])}
+		return nil, unsupportedFormatError{message: fmt.Sprintf("HizoFS record kind is unsupported: %d", plaintext[0])}
 	}
 	if plaintext[1] != 0 {
-		return nil, unsupportedFormatError{message: fmt.Sprintf("EncryptedOpfs record payload encoding is unsupported: %d", plaintext[1])}
+		return nil, unsupportedFormatError{message: fmt.Sprintf("HizoFS record payload encoding is unsupported: %d", plaintext[1])}
 	}
 	recordVersion := binary.BigEndian.Uint16(plaintext[2:4])
 	metadataLength := uint64(binary.BigEndian.Uint32(plaintext[4:8]))
 	binaryLength := binary.BigEndian.Uint64(plaintext[8:16])
 	if binaryLength > uint64(maxSafeInteger) || uint64(len(plaintext)) != uint64(recordHeaderByteLength)+metadataLength+binaryLength {
-		return nil, errors.New("EncryptedOpfs record lengths do not match the plaintext")
+		return nil, errors.New("HizoFS record lengths do not match the plaintext")
 	}
 	metadataStart := recordHeaderByteLength
 	metadataEnd := metadataStart + int(metadataLength)
 	metadata := append([]byte(nil), plaintext[metadataStart:metadataEnd]...)
 	if !utf8.Valid(metadata) || !json.Valid(metadata) {
-		return nil, errors.New("EncryptedOpfs record metadata is invalid UTF-8 JSON")
+		return nil, errors.New("HizoFS record metadata is invalid UTF-8 JSON")
 	}
 	return &record{
 		Kind:          kind,
@@ -619,7 +620,7 @@ func decodeRecord(plaintext []byte) (*record, error) {
 	}, nil
 }
 
-func (reader *encryptedOpfsReader) readRecord(identity, area string) (*record, error) {
+func (reader *hizoFSReader) readRecord(identity, area string) (*record, error) {
 	physical, err := reader.readPhysical(identity, area)
 	if err != nil {
 		return nil, err
@@ -637,23 +638,23 @@ func (reader *encryptedOpfsReader) readRecord(identity, area string) (*record, e
 		key,
 		nonce,
 		ciphertext,
-		[]byte("EncryptedOpfs/v1/"+area+"/"+reader.fileSystemID+"/"+identity),
+		[]byte("HizoFS/v1/"+area+"/"+reader.fileSystemID+"/"+identity),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("EncryptedOpfs %s authentication failed: %w", area, err)
+		return nil, fmt.Errorf("HizoFS %s authentication failed: %w", area, err)
 	}
 	defer zero(plaintext)
 	return decodeRecord(plaintext)
 }
 
-func (reader *encryptedOpfsReader) readObject(objectID string) (*record, error) {
-	if err := validateObjectID(objectID, "EncryptedOpfs object ID"); err != nil {
+func (reader *hizoFSReader) readObject(objectID string) (*record, error) {
+	if err := validateObjectID(objectID, "HizoFS object ID"); err != nil {
 		return nil, err
 	}
 	return reader.readRecord(objectID, "object")
 }
 
-func (reader *encryptedOpfsReader) readActiveSuperblock() (*superblock, error) {
+func (reader *hizoFSReader) readActiveSuperblock() (*superblock, error) {
 	type candidate struct {
 		value *superblock
 	}
@@ -674,13 +675,13 @@ func (reader *encryptedOpfsReader) readActiveSuperblock() (*superblock, error) {
 			continue
 		}
 		if record.Kind != "superblock" {
-			return nil, unsupportedFormatError{message: fmt.Sprintf("EncryptedOpfs superblock slot %d has an unsupported record kind", slot)}
+			return nil, unsupportedFormatError{message: fmt.Sprintf("HizoFS superblock slot %d has an unsupported record kind", slot)}
 		}
 		if record.RecordVersion != 1 {
-			return nil, unsupportedFormatError{message: fmt.Sprintf("EncryptedOpfs superblock record version is unsupported: %d", record.RecordVersion)}
+			return nil, unsupportedFormatError{message: fmt.Sprintf("HizoFS superblock record version is unsupported: %d", record.RecordVersion)}
 		}
 		if len(record.Binary) != 0 {
-			return nil, errors.New("EncryptedOpfs superblock contains an unexpected binary payload")
+			return nil, errors.New("HizoFS superblock contains an unexpected binary payload")
 		}
 		var value superblock
 		if err := json.Unmarshal(record.Metadata, &value); err != nil {
@@ -688,7 +689,7 @@ func (reader *encryptedOpfsReader) readActiveSuperblock() (*superblock, error) {
 			continue
 		}
 		if value.FileSystemID != reader.fileSystemID || !isSafeNonNegative(value.Sequence) {
-			corruptions = append(corruptions, errors.New("EncryptedOpfs superblock metadata is invalid"))
+			corruptions = append(corruptions, errors.New("HizoFS superblock metadata is invalid"))
 			continue
 		}
 		if err := validateObjectID(value.ActiveCommitObjectID, "active commit object ID"); err != nil {
@@ -699,18 +700,18 @@ func (reader *encryptedOpfsReader) readActiveSuperblock() (*superblock, error) {
 	}
 	sort.Slice(candidates, func(left, right int) bool { return candidates[left].value.Sequence > candidates[right].value.Sequence })
 	if len(candidates) >= 2 && candidates[0].value.Sequence == candidates[1].value.Sequence {
-		return nil, errors.New("EncryptedOpfs superblock slots have the same sequence")
+		return nil, errors.New("HizoFS superblock slots have the same sequence")
 	}
 	if len(candidates) == 0 {
 		if len(corruptions) > 0 {
-			return nil, fmt.Errorf("no valid EncryptedOpfs superblock slot remains: %w", errors.Join(corruptions...))
+			return nil, fmt.Errorf("no valid HizoFS superblock slot remains: %w", errors.Join(corruptions...))
 		}
-		return nil, errors.New("EncryptedOpfs superblock is missing")
+		return nil, errors.New("HizoFS superblock is missing")
 	}
 	return candidates[0].value, nil
 }
 
-func loadInodeIndex(reader *encryptedOpfsReader, rootObjectID string) (map[string]string, error) {
+func loadInodeIndex(reader *hizoFSReader, rootObjectID string) (map[string]string, error) {
 	result := make(map[string]string)
 	visiting := make(map[string]bool)
 	visited := make(map[string]bool)
@@ -783,7 +784,7 @@ func loadInodeIndex(reader *encryptedOpfsReader, rootObjectID string) (map[strin
 	return result, nil
 }
 
-func loadDirectoryEntries(reader *encryptedOpfsReader, inode *directoryInode) ([]directoryEntry, error) {
+func loadDirectoryEntries(reader *hizoFSReader, inode *directoryInode) ([]directoryEntry, error) {
 	var entries []directoryEntry
 	if inode.Storage.Type == "inline" {
 		entries = append(entries, inode.Storage.Entries...)
@@ -863,7 +864,7 @@ func loadDirectoryEntries(reader *encryptedOpfsReader, inode *directoryInode) ([
 	return entries, nil
 }
 
-func loadExtents(reader *encryptedOpfsReader, rootObjectID string) ([]extent, error) {
+func loadExtents(reader *hizoFSReader, rootObjectID string) ([]extent, error) {
 	if err := validateObjectID(rootObjectID, "extent index root object ID"); err != nil {
 		return nil, err
 	}
@@ -991,7 +992,7 @@ func safeSymlinkTarget(outputRoot, linkPath, target string) (string, error) {
 	return relativeTarget, nil
 }
 
-func readTypedInode(reader *encryptedOpfsReader, inodeIndex map[string]string, nodeID, expectedKind string, destination any) (string, *record, error) {
+func readTypedInode(reader *hizoFSReader, inodeIndex map[string]string, nodeID, expectedKind string, destination any) (string, *record, error) {
 	objectID, exists := inodeIndex[nodeID]
 	if !exists {
 		return "", nil, fmt.Errorf("node is missing from inode index: %s", nodeID)
@@ -1009,7 +1010,7 @@ func readTypedInode(reader *encryptedOpfsReader, inodeIndex map[string]string, n
 	return objectID, record, nil
 }
 
-func restoreFile(reader *encryptedOpfsReader, inode *fileInode, inodeRecord *record, outputPath string) (returnErr error) {
+func restoreFile(reader *hizoFSReader, inode *fileInode, inodeRecord *record, outputPath string) (returnErr error) {
 	if err := validateStableID(inode.NodeID, "file inode node ID"); err != nil {
 		return err
 	}
@@ -1071,9 +1072,9 @@ func restoreFile(reader *encryptedOpfsReader, inode *fileInode, inodeRecord *rec
 	}
 }
 
-func restoreFileSystem(reader *encryptedOpfsReader, activeCommit *commit, outputRoot string) error {
+func restoreFileSystem(reader *hizoFSReader, activeCommit *commit, outputRoot string) error {
 	if !isSafeNonNegative(activeCommit.Revision) {
-		return errors.New("EncryptedOpfs commit revision is invalid")
+		return errors.New("HizoFS commit revision is invalid")
 	}
 	if err := validateStableID(activeCommit.RootDirectoryNodeID, "root directory node ID"); err != nil {
 		return err
@@ -1204,21 +1205,24 @@ func run(input, output, passphrase, explicitStoreID string) error {
 	}
 	defer zero(fileSystemRootKey)
 
-	dataDirectory := filepath.Join(storageRoot, "encrypted-stores", storeID, "data")
+	dataDirectory := filepath.Join(storageRoot, "encrypted-stores", storeID, "filesystem.hizofs")
 	var descriptorValue descriptor
 	if err := readJSON(filepath.Join(dataDirectory, "descriptor.json"), &descriptorValue); err != nil {
 		return err
 	}
-	if descriptorValue.FormatVersion != 1 {
-		return unsupportedFormatError{message: fmt.Sprintf("EncryptedOpfs descriptor format is unsupported: %d", descriptorValue.FormatVersion)}
+	if descriptorValue.Format != "hizofs" {
+		return unsupportedFormatError{message: fmt.Sprintf("HizoFS descriptor identifier is unsupported: %s", descriptorValue.Format)}
 	}
-	if err := validateStableID(descriptorValue.FileSystemID, "EncryptedOpfs fileSystemId"); err != nil {
+	if descriptorValue.FormatVersion != 1 {
+		return unsupportedFormatError{message: fmt.Sprintf("HizoFS descriptor format is unsupported: %d", descriptorValue.FormatVersion)}
+	}
+	if err := validateStableID(descriptorValue.FileSystemID, "HizoFS fileSystemId"); err != nil {
 		return err
 	}
 	if descriptorValue.FileSystemID != header.FileSystemID {
 		return errors.New("encrypted store header and descriptor fileSystemId disagree")
 	}
-	reader := &encryptedOpfsReader{
+	reader := &hizoFSReader{
 		dataDirectory: dataDirectory,
 		fileSystemID:  descriptorValue.FileSystemID,
 		rootKey:       fileSystemRootKey,
@@ -1272,5 +1276,5 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stderr, "naidan-recover: %v\n", err)
 		os.Exit(1)
 	}
-	_, _ = fmt.Fprintf(os.Stdout, "Recovered EncryptedOpfs to %s\n", *output)
+	_, _ = fmt.Fprintf(os.Stdout, "Recovered HizoFS to %s\n", *output)
 }

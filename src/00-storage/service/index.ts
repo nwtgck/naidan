@@ -851,7 +851,7 @@ export class StorageService {
 
   /**
    * TODO(storage-volume-access): Migrate remaining native-handle-only callers
-   * to openVolume(). Encrypted OPFS volumes do not expose a native handle.
+   * to openVolume(). HizoFS volumes do not expose a native handle.
    */
   async getVolumeDirectoryHandle({ volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle | null> {
     return await this.getProvider().getVolumeDirectoryHandle({ volumeId });

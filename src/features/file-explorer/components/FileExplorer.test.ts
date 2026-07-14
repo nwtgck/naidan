@@ -850,7 +850,7 @@ describe('FileExplorer.vue', () => {
     root.addFile('inspect-me.txt', 32);
     const onEntryContextAction = vi.fn();
     const wrapper = tracked(mountExplorer(root, {
-      entryContextActionLabel: 'Inspect EncryptedOpfs records',
+      entryContextActionLabel: 'Inspect HizoFS records',
       onEntryContextAction,
     }));
     await flushPromises();
@@ -861,7 +861,7 @@ describe('FileExplorer.vue', () => {
     });
     await flushPromises();
     const action = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-testid="context-menu"] button'))
-      .find(button => button.textContent?.includes('Inspect EncryptedOpfs records'));
+      .find(button => button.textContent?.includes('Inspect HizoFS records'));
     if (action === undefined) throw new Error('Custom context action was not rendered');
     action.click();
     await flushPromises();

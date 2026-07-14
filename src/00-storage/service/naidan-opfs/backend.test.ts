@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toBinaryObjectId } from '@/01-models/ids';
 import type { Settings } from '@/01-models/types';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
-import { createEncryptedOpfs } from '@/00-storage/service/encrypted-opfs';
+import { createHizoFS } from '@/00-storage/service/hizofs';
 import { createNativeOpfsFileSystemSession } from '@/00-storage/service/storage-file-system/native-opfs';
 import type {
   StorageDirectoryHandle,
@@ -170,11 +170,11 @@ describe('Naidan OPFS layout backend', () => {
     vi.useRealTimers();
   });
 
-  it('produces the same released logical layout over native OPFS and EncryptedOpfs', async () => {
+  it('produces the same released logical layout over native OPFS and HizoFS', async () => {
     const nativeSession = createNativeOpfsFileSystemSession({
       root: new MockFileSystemDirectoryHandle({ name: 'native-root' }),
     });
-    const encryptedSession = await createEncryptedOpfs({
+    const encryptedSession = await createHizoFS({
       backingDirectory: new MockFileSystemDirectoryHandle({
         name: 'encrypted-backing',
       }),
