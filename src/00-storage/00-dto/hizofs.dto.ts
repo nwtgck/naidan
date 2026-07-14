@@ -287,15 +287,10 @@ export const HizoFSFileExtentPageSchemaDto: z.ZodType<HizoFSFileExtentPageDto> =
     }),
   ]);
 
-export type HizoFSFileChunkDto = {
-  readonly nodeId: string;
-  readonly chunkIndex: number;
-};
+export type HizoFSFileChunkDto = Record<string, never>;
 
-export const HizoFSFileChunkSchemaDto: z.ZodType<HizoFSFileChunkDto> = z.object({
-  nodeId: z.string(),
-  chunkIndex: z.number(),
-});
+export const HizoFSFileChunkSchemaDto: z.ZodType<HizoFSFileChunkDto> =
+  z.object({}).strict();
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

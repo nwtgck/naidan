@@ -6,7 +6,7 @@ import type {
   HizoFSSymlinkInodeDto,
 } from '@/00-storage/00-dto/hizofs.dto';
 import { validateHizoFSStableId } from '@/00-storage/service/hizofs/id';
-import { decodeHizoFSObjectId } from '@/00-storage/service/hizofs/object-store/object-id';
+import { validateHizoFSObjectId } from '@/00-storage/service/hizofs/object-store/object-id';
 import { compareHizoFSStrings } from './ordering';
 
 export function assertHizoFSNonNegativeSafeInteger({ value, fieldName }: {
@@ -32,7 +32,7 @@ export function assertHizoFSObjectId({ value, fieldName }: {
   fieldName: string;
 }): void {
   try {
-    decodeHizoFSObjectId({ objectId: value });
+    validateHizoFSObjectId({ objectId: value });
   } catch (error) {
     throw new Error(`${fieldName} is not a valid HizoFS object ID`, { cause: error });
   }
@@ -158,8 +158,8 @@ export function assertHizoFSFileChunk({ chunk, binaryPayload, chunkSize }: {
   binaryPayload: Uint8Array;
   chunkSize: number;
 }): void {
-  validateHizoFSStableId({ value: chunk.nodeId, fieldName: 'HizoFS chunk nodeId' });
-  assertHizoFSNonNegativeSafeInteger({ value: chunk.chunkIndex, fieldName: 'Chunk index' });
+  const { ...unhandledChunk } = chunk;
+  unhandledChunk satisfies Record<PropertyKey, never>;
   if (binaryPayload.byteLength === 0 || binaryPayload.byteLength > chunkSize) {
     throw new Error('HizoFS file chunk payload length is invalid');
   }

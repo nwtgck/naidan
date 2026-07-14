@@ -38,10 +38,12 @@ const (
 	aesGCMTagByteLength    = 16
 	maxPBKDF2Iterations    = 10_000_000
 	maxEncryptionKeySlots  = 32
-	objectIDByteLength     = 32
+	objectIDLength         = 21
 	stableIDByteLength     = 16
 	maxSafeInteger         = int64(9_007_199_254_740_991)
 )
+
+const objectIDAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 
 var objectMagic = []byte{0x48, 0x49, 0x5a, 0x4f, 0x46, 0x53, 0x00, 0x00}
 
@@ -199,11 +201,6 @@ type symlinkInode struct {
 	Target   string `json:"target"`
 }
 
-type fileChunkMetadata struct {
-	NodeID     string `json:"nodeId"`
-	ChunkIndex int64  `json:"chunkIndex"`
-}
-
 type record struct {
 	Kind          string
 	RecordVersion uint16
@@ -242,8 +239,25 @@ func decodeBase64URL(value string, expectedLength int, label string) ([]byte, er
 }
 
 func validateObjectID(value, label string) error {
-	_, err := decodeBase64URL(value, objectIDByteLength, label)
-	return err
+	if len(value) != objectIDLength {
+		return fmt.Errorf("%s must contain exactly %d characters", label, objectIDLength)
+	}
+	for _, character := range []byte(value) {
+		if !strings.ContainsRune(objectIDAlphabet, rune(character)) {
+			return fmt.Errorf("%s contains a character outside its canonical alphabet", label)
+		}
+	}
+	return nil
+}
+
+func objectShard(value string) (string, error) {
+	if err := validateObjectID(value, "HizoFS object ID"); err != nil {
+		return "", err
+	}
+	firstIndex := strings.IndexByte(objectIDAlphabet, value[0])
+	secondIndex := strings.IndexByte(objectIDAlphabet, value[1])
+	shard := (firstIndex << 2) | (secondIndex >> 4)
+	return fmt.Sprintf("%02x", shard), nil
 }
 
 func validateStableID(value, label string) error {
@@ -551,11 +565,11 @@ func (reader *hizoFSReader) deriveObjectKey(identity, area string) ([]byte, erro
 func (reader *hizoFSReader) readPhysical(identity, area string) ([]byte, error) {
 	var path string
 	if area == "object" {
-		objectBytes, err := decodeBase64URL(identity, objectIDByteLength, "HizoFS object ID")
+		shard, err := objectShard(identity)
 		if err != nil {
 			return nil, err
 		}
-		path = filepath.Join(reader.dataDirectory, "objects", fmt.Sprintf("%02x", objectBytes[0]), identity+".enc")
+		path = filepath.Join(reader.dataDirectory, "objects", shard, identity+".enc")
 	} else if area == "superblock" {
 		if identity != "superblock-0" && identity != "superblock-1" {
 			return nil, errors.New("invalid HizoFS superblock identity")
@@ -1052,12 +1066,12 @@ func restoreFile(reader *hizoFSReader, inode *fileInode, inodeRecord *record, ou
 			if chunkRecord.Kind != "file_chunk" || chunkRecord.RecordVersion != 1 {
 				return errors.New("file chunk has an invalid kind or record version")
 			}
-			var metadata fileChunkMetadata
+			var metadata map[string]json.RawMessage
 			if err := json.Unmarshal(chunkRecord.Metadata, &metadata); err != nil {
 				return err
 			}
-			if metadata.NodeID != inode.NodeID || metadata.ChunkIndex != item.ChunkIndex {
-				return errors.New("file chunk identity does not match its extent")
+			if metadata == nil || len(metadata) != 0 {
+				return errors.New("file chunk metadata must be an empty object")
 			}
 			if len(chunkRecord.Binary) < 1 || int64(len(chunkRecord.Binary)) > inode.Storage.ChunkSize || offset+int64(len(chunkRecord.Binary)) > inode.Size {
 				return errors.New("file chunk payload length is invalid")

@@ -22,6 +22,7 @@ import type { HizoFSActiveState } from './core';
 import type { HizoFSDirectoryChange } from './directory-storage';
 import { HizoFSFileReader } from './file-reader';
 import { HizoFSFileWriter } from './file-writer';
+import type { LoadedHizoFSFile } from './node-service';
 import type { HizoFSRuntime } from './runtime';
 import type { HizoFSMaintenanceLease } from './maintenance-lock';
 import { assertHizoFSEntryName } from './semantic-validation';
@@ -90,6 +91,72 @@ function isDirectoryEntry({ entry }: {
   }
 }
 
+function createClonedFileRecord({ source, nodeId, timestamp }: {
+  source: LoadedHizoFSFile;
+  nodeId: string;
+  timestamp: number;
+}): {
+  readonly inode: HizoFSFileInodeDto;
+  readonly binaryPayload: Uint8Array;
+} {
+  const {
+    nodeId: _sourceNodeId,
+    revision: _sourceRevision,
+    createdAt: _sourceCreatedAt,
+    modifiedAt: _sourceModifiedAt,
+    size,
+    storage,
+    ...unhandledInode
+  } = source.inode;
+  unhandledInode satisfies Record<PropertyKey, never>;
+
+  switch (storage.type) {
+  case 'inline': {
+    const { type, ...unhandledStorage } = storage;
+    unhandledStorage satisfies Record<PropertyKey, never>;
+    return {
+      inode: {
+        nodeId,
+        revision: 0,
+        createdAt: timestamp,
+        modifiedAt: timestamp,
+        size,
+        storage: { type },
+      },
+      binaryPayload: source.binaryPayload.slice(),
+    };
+  }
+  case 'extents': {
+    const {
+      type,
+      chunkSize,
+      extentIndexRootObjectId,
+      ...unhandledStorage
+    } = storage;
+    unhandledStorage satisfies Record<PropertyKey, never>;
+    return {
+      inode: {
+        nodeId,
+        revision: 0,
+        createdAt: timestamp,
+        modifiedAt: timestamp,
+        size,
+        storage: {
+          type,
+          chunkSize,
+          extentIndexRootObjectId,
+        },
+      },
+      binaryPayload: new Uint8Array(),
+    };
+  }
+  default: {
+    const _ex: never = storage;
+    throw new Error(`Unhandled HizoFS file storage: ${String(_ex)}`);
+  }
+  }
+}
+
 export class HizoFSSession implements StorageDirectoryWorkerMountSession {
   constructor({
     runtime,
@@ -117,6 +184,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     directBlob: 'unsupported' as const,
     symbolicLink: 'supported' as const,
     atomicMove: 'supported' as const,
+    wholeFileClone: 'supported' as const,
   };
   readonly root: StorageDirectoryHandle;
   readonly fileSystemId: string;
@@ -623,6 +691,131 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     });
   }
 
+  async cloneFile({ sourceDirectoryNodeId, name, destination, newName, replace }: {
+    sourceDirectoryNodeId: string;
+    name: string;
+    destination: StorageDirectoryHandle;
+    newName: string;
+    replace: boolean;
+  }): Promise<StorageFileHandle> {
+    this.assertOpen();
+    assertHizoFSEntryName({ name });
+    assertHizoFSEntryName({ name: newName });
+    if (!(destination instanceof HizoFSDirectoryHandle) || destination.session !== this) {
+      throw new Error('HizoFS whole-file clone requires a destination from the same session');
+    }
+    const destinationNodeId = destination.nodeId;
+    if (sourceDirectoryNodeId === destinationNodeId && name === newName) {
+      throw createNamedError({
+        name: 'InvalidModificationError',
+        message: 'A file cannot be cloned over itself',
+      });
+    }
+
+    const clonedNodeId = await this.runtime.core.mutate({
+      operation: async ({ state }) => {
+        const sourceDirectory = await this.runtime.nodeService.readDirectory({
+          state,
+          nodeId: sourceDirectoryNodeId,
+        });
+        const sourceEntry = await this.runtime.directoryStorage.getEntry({
+          inode: sourceDirectory.inode,
+          name,
+        });
+        if (sourceEntry === undefined) {
+          throw createStorageEntryNotFoundError({ message: `File '${name}' was not found` });
+        }
+        const sourceFileEntry = requireFileEntry({ entry: sourceEntry, name });
+        const sourceFile = await this.runtime.nodeService.readFile({
+          state,
+          nodeId: sourceFileEntry.nodeId,
+        });
+        const destinationDirectory = sourceDirectoryNodeId === destinationNodeId
+          ? sourceDirectory
+          : await this.runtime.nodeService.readDirectory({
+            state,
+            nodeId: destinationNodeId,
+          });
+        const destinationEntry = await this.runtime.directoryStorage.getEntry({
+          inode: destinationDirectory.inode,
+          name: newName,
+        });
+        if (destinationEntry !== undefined) {
+          if (!replace) {
+            throw createNamedError({
+              name: 'InvalidModificationError',
+              message: `Destination '${newName}' already exists`,
+            });
+          }
+          switch (destinationEntry.kind) {
+          case 'file':
+          case 'symlink':
+            break;
+          case 'directory':
+            throw createNamedError({
+              name: 'TypeMismatchError',
+              message: 'A file clone cannot replace a directory',
+            });
+          default: {
+            const _ex: never = destinationEntry.kind;
+            throw new Error(`Unhandled HizoFS destination entry kind: ${String(_ex)}`);
+          }
+          }
+          if (destinationEntry.nodeId === sourceFileEntry.nodeId) {
+            throw createNamedError({
+              name: 'InvalidModificationError',
+              message: 'A file cannot be cloned over another reference to itself',
+            });
+          }
+        }
+
+        const nodeId = createHizoFSStableId();
+        const timestamp = this.runtime.now();
+        const clonedFile = createClonedFileRecord({
+          source: sourceFile,
+          nodeId,
+          timestamp,
+        });
+        const inodeObjectId = await this.runtime.inodeStore.writeFile(clonedFile);
+        const directoryChanges: HizoFSDirectoryChange[] = [];
+        if (destinationEntry !== undefined) {
+          directoryChanges.push({ type: 'delete', name: newName });
+        }
+        directoryChanges.push({
+          type: 'set',
+          entry: { name: newName, kind: 'file', nodeId },
+        });
+        const changedDestination = await this.runtime.directoryStorage.writeChangedInode({
+          inode: destinationDirectory.inode,
+          changes: directoryChanges,
+          modifiedAt: timestamp,
+        });
+        let inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
+          inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+          nodeId,
+          inodeObjectId,
+        });
+        inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
+          inodeIndexRootObjectId,
+          nodeId: destinationNodeId,
+          inodeObjectId: changedDestination.inodeObjectId,
+        });
+        if (destinationEntry !== undefined) {
+          inodeIndexRootObjectId = await this.runtime.nodeService.deleteInode({
+            inodeIndexRootObjectId,
+            nodeId: destinationEntry.nodeId,
+          });
+        }
+        return {
+          changed: 'yes' as const,
+          inodeIndexRootObjectId,
+          result: nodeId,
+        };
+      },
+    });
+    return new HizoFSFileHandle({ session: this, nodeId: clonedNodeId, name: newName });
+  }
+
   async statDirectory({ nodeId }: {
     nodeId: string;
   }): Promise<StorageFileStat> {
@@ -863,6 +1056,21 @@ class HizoFSDirectoryHandle implements StorageDirectoryHandle {
     replace: boolean;
   }): Promise<void> {
     return this.session.moveEntry({
+      sourceDirectoryNodeId: this.nodeId,
+      name,
+      destination,
+      newName,
+      replace,
+    });
+  }
+
+  cloneFile({ name, destination, newName, replace }: {
+    name: string;
+    destination: StorageDirectoryHandle;
+    newName: string;
+    replace: boolean;
+  }): Promise<StorageFileHandle> {
+    return this.session.cloneFile({
       sourceDirectoryNodeId: this.nodeId,
       name,
       destination,

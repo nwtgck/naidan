@@ -1,37 +1,59 @@
-import { decodeBase64Url, encodeBase64Url } from '@/00-storage/service/hizofs/base64-url';
+import { customAlphabet } from 'nanoid';
 
-const OBJECT_ID_BYTE_LENGTH = 32;
+const HIZOFS_OBJECT_ID_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+const HIZOFS_OBJECT_ID_LENGTH = 21;
+const HIZOFS_OBJECT_SHARD_HEX_LENGTH = 2;
+const HIZOFS_OBJECT_SHARD_BIT_LENGTH = 8;
+const HIZOFS_OBJECT_ID_CHARACTER_BIT_LENGTH = 6;
+const createNanoId = customAlphabet(
+  HIZOFS_OBJECT_ID_ALPHABET,
+  HIZOFS_OBJECT_ID_LENGTH,
+);
 
 export function createHizoFSObjectId(): string {
-  return encodeBase64Url({
-    bytes: crypto.getRandomValues(new Uint8Array(OBJECT_ID_BYTE_LENGTH)),
-  });
+  return createNanoId();
 }
 
-export function decodeHizoFSObjectId({ objectId }: {
+export function validateHizoFSObjectId({ objectId }: {
   objectId: string;
-}): Uint8Array {
-  const bytes = decodeBase64Url({ value: objectId });
-  if (bytes.byteLength !== OBJECT_ID_BYTE_LENGTH) {
-    throw new Error('HizoFS object ID must contain exactly 32 bytes');
+}): void {
+  if (objectId.length !== HIZOFS_OBJECT_ID_LENGTH) {
+    throw new Error(
+      `HizoFS object ID must contain exactly ${String(HIZOFS_OBJECT_ID_LENGTH)} characters`,
+    );
   }
-  if (encodeBase64Url({ bytes }) !== objectId) {
-    throw new Error('HizoFS object ID is not canonical Base64URL');
+  for (const character of objectId) {
+    if (!HIZOFS_OBJECT_ID_ALPHABET.includes(character)) {
+      throw new Error('HizoFS object ID contains a character outside its canonical alphabet');
+    }
   }
-  return bytes;
 }
 
 export function getHizoFSObjectShard({ objectId }: {
   objectId: string;
 }): string {
-  const firstByte = decodeHizoFSObjectId({ objectId })[0];
-  if (firstByte === undefined) {
-    throw new Error('HizoFS object ID was empty');
+  validateHizoFSObjectId({ objectId });
+  const firstCharacter = objectId[0];
+  const secondCharacter = objectId[1];
+  if (firstCharacter === undefined || secondCharacter === undefined) {
+    throw new Error('HizoFS object ID is too short to select an object shard');
   }
-  return firstByte.toString(16).padStart(2, '0');
+  const firstIndex = HIZOFS_OBJECT_ID_ALPHABET.indexOf(firstCharacter);
+  const secondIndex = HIZOFS_OBJECT_ID_ALPHABET.indexOf(secondCharacter);
+  const combinedPrefix = (
+    firstIndex << HIZOFS_OBJECT_ID_CHARACTER_BIT_LENGTH
+  ) | secondIndex;
+  const shard = combinedPrefix >> (
+    (HIZOFS_OBJECT_ID_CHARACTER_BIT_LENGTH * 2)
+    - HIZOFS_OBJECT_SHARD_BIT_LENGTH
+  );
+  return shard.toString(16).padStart(HIZOFS_OBJECT_SHARD_HEX_LENGTH, '0');
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  HIZOFS_OBJECT_ID_ALPHABET,
+  HIZOFS_OBJECT_ID_LENGTH,
 };

@@ -57,11 +57,13 @@ The descriptor is immutable after creation. An unknown `format` or
 Stable node and file-system identifiers contain 16 random bytes encoded as
 canonical unpadded Base64URL.
 
-Immutable object identifiers contain 32 random bytes encoded the same way.
+Immutable object identifiers are 21-character Nano IDs generated from the
+fixed URL-safe alphabet `A-Z a-z 0-9 _ -`. This provides 126 random bits while
+remaining compact and independently generatable by every tab and Worker.
 Their physical path is:
 
 ```text
-objects/<first-object-id-byte-as-lowercase-hex>/<object-id>.enc
+objects/<first-eight-object-id-bits-as-lowercase-hex>/<object-id>.enc
 ```
 
 Paths and logical names never participate in physical object names.
@@ -204,9 +206,19 @@ The extent index is a persistent Copy-on-Write B+tree keyed by non-negative
 integer `chunkIndex`. Missing indices represent sparse zero-filled ranges.
 Each leaf extent references one immutable `file_chunk` object.
 
-Chunk metadata contains the owning `nodeId` and `chunkIndex`; both must match
-the extent and file inode. The raw binary payload may be shorter than
-`chunkSize` when trailing bytes are zero, but must never be longer.
+Chunk metadata is the empty JSON object. Ownership and logical position belong
+to the authenticated extent leaf that references the object, which allows two
+file inodes to share an extent tree for whole-file reflink. The raw binary
+payload may be shorter than `chunkSize` when trailing bytes are zero, but must
+never be longer.
+
+## Whole-file clone
+
+A whole-file clone always creates a new stable `nodeId` and a new file inode.
+An inline file copies its bytes into the new inode. An extent-backed file reuses
+the same immutable extent-index root, pages, and chunk objects. Later writes or
+truncates create replacement chunks and Copy-on-Write index pages only for the
+changed clone; the other file retains its original immutable graph.
 
 ## Directory inode and index
 
@@ -256,11 +268,14 @@ lease. Garbage collection obtains the exclusive maintenance lease and thus
 cannot run concurrently with any session snapshot.
 
 GC marks from every valid A/B superblock commit through all inode-index pages,
-inode objects, directory-index pages, extent pages, and chunks. Retaining both
-valid generations preserves fallback after corruption of the newest slot. It
-authenticates and validates all referenced objects before deleting anything. Only canonical object files
-in their correct shard are eligible for deletion. Unknown physical entries are
-left untouched and reported. Failure during mark performs no sweep.
+inode objects, directory-index pages, extent pages, and chunks. Shared extent
+pages and chunk objects are authenticated and traversed once by object ID even
+when many reflinked inodes reference the same graph. Retaining both valid
+generations preserves fallback after corruption of the newest slot. It
+authenticates and validates all referenced objects before deleting anything.
+Only canonical object files in their correct shard are eligible for deletion.
+Unknown physical entries are left untouched and reported. Failure during mark
+performs no sweep.
 
 Unreachable immutable objects are expected after successful Copy-on-Write
 updates, aborted writers, or crashes before the superblock switch; their

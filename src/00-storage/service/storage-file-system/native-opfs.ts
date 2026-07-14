@@ -252,6 +252,20 @@ class NativeStorageDirectoryHandle implements StorageDirectoryHandle {
   }): Promise<void> {
     throw new Error('The native OPFS adapter does not provide an atomic move operation');
   }
+
+  async cloneFile({
+    name: _name,
+    destination: _destination,
+    newName: _newName,
+    replace: _replace,
+  }: {
+    name: string;
+    destination: StorageDirectoryHandle;
+    newName: string;
+    replace: boolean;
+  }): Promise<StorageFileHandle> {
+    throw new Error('The native OPFS adapter does not provide a whole-file clone operation');
+  }
 }
 
 function wrapNativeEntry({ handle }: {
@@ -278,6 +292,7 @@ export function createNativeOpfsFileSystemSession({ root }: {
       directBlob: 'supported',
       symbolicLink: 'unsupported',
       atomicMove: 'unsupported',
+      wholeFileClone: 'unsupported',
     },
     async close() {},
   };

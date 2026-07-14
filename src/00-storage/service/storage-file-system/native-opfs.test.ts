@@ -66,6 +66,20 @@ describe('native OPFS storage file-system adapter', () => {
       directBlob: 'supported',
       symbolicLink: 'unsupported',
       atomicMove: 'unsupported',
+      wholeFileClone: 'unsupported',
     });
+  });
+
+  it('rejects whole-file clone because native OPFS exposes no clone primitive', async () => {
+    const nativeRoot = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const session = createNativeOpfsFileSystemSession({ root: nativeRoot });
+    await session.root.getFileHandle({ name: 'source.txt', create: true });
+
+    await expect(session.root.cloneFile({
+      name: 'source.txt',
+      destination: session.root,
+      newName: 'clone.txt',
+      replace: false,
+    })).rejects.toThrow('does not provide a whole-file clone operation');
   });
 });

@@ -14,11 +14,11 @@ export class HizoFSFileChunkStore {
 
   private readonly recordStore: HizoFSRecordStore;
 
-  async write({ chunk, binaryPayload, chunkSize }: {
-    chunk: HizoFSFileChunkDto;
+  async write({ binaryPayload, chunkSize }: {
     binaryPayload: Uint8Array;
     chunkSize: number;
   }): Promise<string> {
+    const chunk: HizoFSFileChunkDto = {};
     assertHizoFSFileChunk({ chunk, binaryPayload, chunkSize });
     return this.recordStore.write({
       kind: 'file_chunk',
@@ -27,10 +27,8 @@ export class HizoFSFileChunkStore {
     });
   }
 
-  async read({ objectId, expectedNodeId, expectedChunkIndex, chunkSize }: {
+  async read({ objectId, chunkSize }: {
     objectId: string;
-    expectedNodeId: string;
-    expectedChunkIndex: number;
     chunkSize: number;
   }): Promise<Uint8Array> {
     const { metadata, binaryPayload } = await this.recordStore.read({
@@ -40,9 +38,6 @@ export class HizoFSFileChunkStore {
       binaryPayload: 'allowed',
     });
     assertHizoFSFileChunk({ chunk: metadata, binaryPayload, chunkSize });
-    if (metadata.nodeId !== expectedNodeId || metadata.chunkIndex !== expectedChunkIndex) {
-      throw new Error('HizoFS file chunk identity does not match its extent reference');
-    }
     return binaryPayload;
   }
 }

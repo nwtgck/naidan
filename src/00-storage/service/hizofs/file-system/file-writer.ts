@@ -59,6 +59,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
       ? baseFile.inode.storage.chunkSize
       : policy.fileChunkSize;
     this.size = keepExistingData ? baseFile.inode.size : 0;
+    this.baseRetainedSize = this.size;
     this.dirty = keepExistingData ? 'no' : 'yes';
   }
 
@@ -74,6 +75,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
   private readonly onSettled: () => void;
   private readonly chunkSize: number;
   private readonly preparedChunks = new Map<number, string | undefined>();
+  private baseRetainedSize: number;
   private size: number;
   private dirty: 'yes' | 'no';
   private settled = false;
@@ -128,6 +130,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     }
 
     if (size < this.size) {
+      this.baseRetainedSize = Math.min(this.baseRetainedSize, size);
       const retainedChunkCount = Math.ceil(size / this.chunkSize);
       for (const chunkIndex of this.preparedChunks.keys()) {
         if (chunkIndex >= retainedChunkCount) {
@@ -263,6 +266,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     if (this.keepExistingData && this.baseFile.inode.storage.type === 'inline') {
       const retainedBaseByteLength = Math.min(
         this.baseFile.binaryPayload.byteLength,
+        this.baseRetainedSize,
         this.size,
       );
       const retainedBaseChunkCount = Math.ceil(retainedBaseByteLength / this.chunkSize);
@@ -287,7 +291,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     }
 
     if (this.keepExistingData && this.baseFile.inode.storage.type === 'extents') {
-      const retainedChunkCount = Math.ceil(this.size / this.chunkSize);
+      const retainedChunkCount = Math.ceil(this.baseRetainedSize / this.chunkSize);
       for await (const extent of this.extentIndex.entries({ rootObjectId })) {
         if (extent.chunkIndex >= retainedChunkCount) {
           rootObjectId = await this.extentIndex.delete({
@@ -322,7 +326,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     if (this.preparedChunks.has(chunkIndex)) {
       return preparedObjectId === undefined
         ? new Uint8Array(this.chunkSize)
-        : this.readChunkObject({ objectId: preparedObjectId, chunkIndex });
+        : this.readChunkObject({ objectId: preparedObjectId });
     }
     if (!this.keepExistingData) {
       return new Uint8Array(this.chunkSize);
@@ -332,19 +336,37 @@ export class HizoFSFileWriter implements StorageWritableFile {
     case 'inline': {
       const bytes = new Uint8Array(this.chunkSize);
       const start = chunkIndex * this.chunkSize;
-      if (start < this.baseFile.binaryPayload.byteLength) {
-        bytes.set(this.baseFile.binaryPayload.subarray(start, start + this.chunkSize));
+      const retainedEnd = Math.min(
+        start + this.chunkSize,
+        this.baseFile.binaryPayload.byteLength,
+        this.baseRetainedSize,
+      );
+      if (start < retainedEnd) {
+        bytes.set(this.baseFile.binaryPayload.subarray(start, retainedEnd));
       }
       return bytes;
     }
     case 'extents': {
+      const start = chunkIndex * this.chunkSize;
+      if (start >= this.baseRetainedSize) {
+        return new Uint8Array(this.chunkSize);
+      }
       const extent = await this.extentIndex.get({
         rootObjectId: this.baseFile.inode.storage.extentIndexRootObjectId,
         chunkIndex,
       });
-      return extent === undefined
-        ? new Uint8Array(this.chunkSize)
-        : this.readChunkObject({ objectId: extent.chunkObjectId, chunkIndex });
+      if (extent === undefined) {
+        return new Uint8Array(this.chunkSize);
+      }
+      const bytes = await this.readChunkObject({
+        objectId: extent.chunkObjectId,
+      });
+      const retainedLength = Math.min(
+        this.chunkSize,
+        this.baseRetainedSize - start,
+      );
+      bytes.fill(0, retainedLength);
+      return bytes;
     }
     default: {
       const _ex: never = this.baseFile.inode.storage;
@@ -353,14 +375,11 @@ export class HizoFSFileWriter implements StorageWritableFile {
     }
   }
 
-  private async readChunkObject({ objectId, chunkIndex }: {
+  private async readChunkObject({ objectId }: {
     objectId: string;
-    chunkIndex: number;
   }): Promise<Uint8Array> {
     const stored = await this.chunkStore.read({
       objectId,
-      expectedNodeId: this.baseFile.inode.nodeId,
-      expectedChunkIndex: chunkIndex,
       chunkSize: this.chunkSize,
     });
     const bytes = new Uint8Array(this.chunkSize);
@@ -382,10 +401,6 @@ export class HizoFSFileWriter implements StorageWritableFile {
       return;
     }
     const chunkObjectId = await this.chunkStore.write({
-      chunk: {
-        nodeId: this.baseFile.inode.nodeId,
-        chunkIndex,
-      },
       binaryPayload: bytes.slice(0, storedLength),
       chunkSize: this.chunkSize,
     });

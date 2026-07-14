@@ -184,8 +184,6 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
       } else {
         const chunk = await this.chunkStore.read({
           objectId: extent.chunkObjectId,
-          expectedNodeId: this.file.inode.nodeId,
-          expectedChunkIndex: chunkIndex,
           chunkSize: storage.chunkSize,
         });
         const available = Math.max(0, Math.min(copyLength, chunk.byteLength - offsetInChunk));

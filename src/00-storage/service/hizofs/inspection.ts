@@ -21,7 +21,7 @@ import { validateHizoFSStableId } from './id';
 import { decodeHizoFSObjectEnvelope } from './format/object-envelope';
 import { decodeHizoFSRecord } from './format/record';
 import {
-  decodeHizoFSObjectId,
+  validateHizoFSObjectId,
   getHizoFSObjectShard,
 } from './object-store/object-id';
 
@@ -210,7 +210,7 @@ export async function createHizoFSInspectionReader({
 
       async inspectObject({ objectId, binaryPreviewByteLength }) {
         assertOpen();
-        decodeHizoFSObjectId({ objectId });
+        validateHizoFSObjectId({ objectId });
         assertBinaryPreviewByteLength({ binaryPreviewByteLength });
         const physicalPath = getObjectPhysicalPath({ objectId });
         const physical = await backingStore.read({ path: physicalPath });
@@ -707,7 +707,7 @@ async function listPhysicalObjectPage({ backingStore, cursor, limit }: {
       }
       const objectId = objectEntry.name.slice(0, -'.enc'.length);
       try {
-        decodeHizoFSObjectId({ objectId });
+        validateHizoFSObjectId({ objectId });
         if (getHizoFSObjectShard({ objectId }) !== shard) {
           ignoredPhysicalPaths.push(objectPath);
           continue;
@@ -792,7 +792,7 @@ function parsePhysicalObjectCursor({ cursor }: { cursor: string }): {
   if (separator !== 2 || !/^[0-9a-f]{2}$/u.test(shard)) {
     throw new Error('HizoFS physical object cursor is invalid');
   }
-  decodeHizoFSObjectId({ objectId });
+  validateHizoFSObjectId({ objectId });
   if (getHizoFSObjectShard({ objectId }) !== shard) {
     throw new Error('HizoFS physical object cursor shard does not match its object ID');
   }

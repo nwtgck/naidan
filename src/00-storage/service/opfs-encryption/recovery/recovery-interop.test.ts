@@ -156,6 +156,12 @@ async function createRawHizoFS({
       data: new Uint8Array([0xaa, 0xbb, 0xcc]),
     });
     await sparseWriter.close();
+    await binaryDirectory.cloneFile({
+      name: 'sparse.bin',
+      destination: binaryDirectory,
+      newName: 'sparse-clone.bin',
+      replace: false,
+    });
 
     const debugWesh = await session.root.getDirectoryHandle({
       name: 'naidan-debug-wesh',
@@ -235,17 +241,19 @@ async function expectRecoveredFileSystem({
     'utf8',
   )).resolves.toBe('{"recovered":true}\n');
 
-  const recoveredSparse = join(
-    output,
-    'naidan-storage',
-    'binary-objects',
-    'sparse.bin',
-  );
-  await expect(stat(recoveredSparse).then(value => value.size)).resolves.toBe(300_003);
-  const sparseBytes = new Uint8Array(await readFile(recoveredSparse));
-  expect(sparseBytes[0]).toBe(0);
-  expect(sparseBytes[299_999]).toBe(0);
-  expect([...sparseBytes.slice(300_000)]).toEqual([0xaa, 0xbb, 0xcc]);
+  for (const name of ['sparse.bin', 'sparse-clone.bin']) {
+    const recoveredSparse = join(
+      output,
+      'naidan-storage',
+      'binary-objects',
+      name,
+    );
+    await expect(stat(recoveredSparse).then(value => value.size)).resolves.toBe(300_003);
+    const sparseBytes = new Uint8Array(await readFile(recoveredSparse));
+    expect(sparseBytes[0]).toBe(0);
+    expect(sparseBytes[299_999]).toBe(0);
+    expect([...sparseBytes.slice(300_000)]).toEqual([0xaa, 0xbb, 0xcc]);
+  }
 
   await expect(readlink(
     join(output, 'naidan-debug-wesh', 'target-link'),

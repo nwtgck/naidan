@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 import { urlImportExportLogic } from '@/features/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 vi.mock('@/features/import-export/url-logic', () => ({
   urlImportExportLogic: {
@@ -26,7 +27,8 @@ describe('DeveloperOpenStateLinks', () => {
   const openSpy = vi.fn();
   const writeText = vi.fn();
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
     (useToast as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ addToast });
     vi.stubGlobal('open', openSpy);

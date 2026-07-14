@@ -9,6 +9,7 @@ export type StorageFileSystemCapabilities = {
   readonly directBlob: 'supported' | 'unsupported';
   readonly symbolicLink: 'supported' | 'unsupported';
   readonly atomicMove: 'supported' | 'unsupported';
+  readonly wholeFileClone: 'supported' | 'unsupported';
 };
 
 
@@ -115,6 +116,18 @@ export interface StorageDirectoryHandle {
     newName: string;
     replace: boolean;
   }): Promise<void>;
+
+  /**
+   * Creates a new file whose initial bytes are a snapshot of one direct child.
+   * Implementations may share immutable physical storage while preserving
+   * independent file identity and copy-on-write behavior after the operation.
+   */
+  cloneFile({ name, destination, newName, replace }: {
+    name: string;
+    destination: StorageDirectoryHandle;
+    newName: string;
+    replace: boolean;
+  }): Promise<StorageFileHandle>;
 
   /**
    * Returns a structured-cloneable capability that lets a trusted Worker reopen

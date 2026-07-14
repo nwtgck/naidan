@@ -1,3 +1,8 @@
+import type {
+  HizoFSDirectoryInodeDto,
+  HizoFSFileInodeDto,
+  HizoFSSymlinkInodeDto,
+} from '@/00-storage/00-dto/hizofs.dto';
 import { HizoFSCorruptionError } from './errors';
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
 import { importHizoFSRootKey } from './crypto/object-crypto';
@@ -5,9 +10,10 @@ import { createHizoFSRuntime, type HizoFSRuntime } from './file-system/runtime';
 import { DEFAULT_HIZOFS_POLICY } from './file-system/policy';
 import { runWithHizoFSMaintenanceLock } from './file-system/maintenance-lock';
 import { readHizoFSDescriptor } from './format/descriptor-store';
+import type { HizoFSRecordKind } from './format/record';
 import {
-  decodeHizoFSObjectId,
   getHizoFSObjectShard,
+  validateHizoFSObjectId,
 } from './object-store/object-id';
 
 export type HizoFSGarbageCollectionResult = {
@@ -22,11 +28,28 @@ type ReferencedInode = {
   readonly objectId: string;
 };
 
-type ReferencedChunk = {
-  readonly nodeId: string;
-  readonly objectId: string;
-  readonly chunkIndex: number;
-  readonly chunkSize: number;
+type LoadedReferencedInode =
+  | {
+      readonly kind: 'file_inode';
+      readonly inode: HizoFSFileInodeDto;
+    }
+  | {
+      readonly kind: 'directory_inode';
+      readonly inode: HizoFSDirectoryInodeDto;
+    }
+  | {
+      readonly kind: 'symlink_inode';
+      readonly inode: HizoFSSymlinkInodeDto;
+    };
+
+type HizoFSMarkState = {
+  readonly reachableObjectIds: Set<string>;
+  readonly expectedKinds: Map<string, HizoFSRecordKind>;
+  readonly loadedInodes: Map<string, LoadedReferencedInode>;
+  readonly visitedDirectoryPageObjectIds: Set<string>;
+  readonly visitedExtentPageObjectIds: Set<string>;
+  readonly extentRootChunkSizes: Map<string, number>;
+  readonly chunkSizeLimits: Map<string, number>;
 };
 
 export async function collectHizoFSGarbage({
@@ -61,7 +84,15 @@ export async function collectHizoFSGarbage({
       });
       const activeState = await runtime.core.loadActiveState();
       const superblocks = await runtime.core.superblockStore.readCandidates();
-      const reachableObjectIds = new Set<string>();
+      const markState: HizoFSMarkState = {
+        reachableObjectIds: new Set<string>(),
+        expectedKinds: new Map<string, HizoFSRecordKind>(),
+        loadedInodes: new Map<string, LoadedReferencedInode>(),
+        visitedDirectoryPageObjectIds: new Set<string>(),
+        visitedExtentPageObjectIds: new Set<string>(),
+        extentRootChunkSizes: new Map<string, number>(),
+        chunkSizeLimits: new Map<string, number>(),
+      };
       const markedCommitIds = new Set<string>();
       for (const superblock of superblocks) {
         if (markedCommitIds.has(superblock.activeCommitObjectId)) continue;
@@ -69,7 +100,7 @@ export async function collectHizoFSGarbage({
         await markCommitGeneration({
           runtime,
           commitObjectId: superblock.activeCommitObjectId,
-          reachableObjectIds,
+          markState,
         });
       }
       if (!markedCommitIds.has(activeState.commitObjectId)) {
@@ -78,13 +109,16 @@ export async function collectHizoFSGarbage({
           cause: undefined,
         });
       }
+      for (const [objectId, chunkSize] of markState.chunkSizeLimits) {
+        await runtime.chunkStore.read({ objectId, chunkSize });
+      }
 
       const {
         canonicalObjectIds,
         ignoredPhysicalPaths,
       } = await listPhysicalHizoFSObjects({ backingStore });
       const unreachableObjectIds = [...canonicalObjectIds]
-        .filter(objectId => !reachableObjectIds.has(objectId))
+        .filter(objectId => !markState.reachableObjectIds.has(objectId))
         .sort();
 
       if (!dryRun) {
@@ -94,7 +128,7 @@ export async function collectHizoFSGarbage({
       }
 
       return {
-        reachableObjectCount: reachableObjectIds.size,
+        reachableObjectCount: markState.reachableObjectIds.size,
         unreachableObjectIds,
         removedObjectCount: dryRun ? 0 : unreachableObjectIds.length,
         ignoredPhysicalPaths,
@@ -103,95 +137,120 @@ export async function collectHizoFSGarbage({
   });
 }
 
-async function markCommitGeneration({ runtime, commitObjectId, reachableObjectIds }: {
+async function markCommitGeneration({ runtime, commitObjectId, markState }: {
   runtime: HizoFSRuntime;
   commitObjectId: string;
-  reachableObjectIds: Set<string>;
+  markState: HizoFSMarkState;
 }): Promise<void> {
-  reachableObjectIds.add(commitObjectId);
+  registerObjectReference({
+    markState,
+    objectId: commitObjectId,
+    expectedKind: 'commit',
+  });
   const commit = await runtime.commitStore.read({ objectId: commitObjectId });
   const referencedInodes: ReferencedInode[] = [];
   await runtime.inodeIndex.visitReferences({
     rootObjectId: commit.inodeIndexRootObjectId,
-    visitPageObjectId: ({ objectId }) => reachableObjectIds.add(objectId),
+    visitPageObjectId: ({ objectId }) => registerObjectReference({
+      markState,
+      objectId,
+      expectedKind: 'inode_index_page',
+    }),
     visitInodeObjectId: ({ objectId, nodeId }) => {
-      reachableObjectIds.add(objectId);
+      markState.reachableObjectIds.add(objectId);
       referencedInodes.push({ objectId, nodeId });
     },
+    visitedPageObjectIds: undefined,
   });
 
-  const referencedChunks: ReferencedChunk[] = [];
   let rootDirectoryFound = false;
   for (const reference of referencedInodes) {
-    const rawRecord = await runtime.objectStore.read({ objectId: reference.objectId });
-    if (rawRecord === undefined) {
-      throw new HizoFSCorruptionError({
-        message: `HizoFS inode object is missing: ${reference.objectId}`,
-        cause: undefined,
-      });
-    }
-    switch (rawRecord.kind) {
+    const loaded = await loadReferencedInode({ runtime, reference, markState });
+    switch (loaded.kind) {
     case 'file_inode': {
-      const { inode } = await runtime.inodeStore.readFile({ objectId: reference.objectId });
-      assertNodeIdentity({ expectedNodeId: reference.nodeId, actualNodeId: inode.nodeId });
       if (reference.nodeId === commit.rootDirectoryNodeId) {
         throw new HizoFSCorruptionError({
           message: 'HizoFS commit root points to a file inode',
           cause: undefined,
         });
       }
-      switch (inode.storage.type) {
+      const { storage } = loaded.inode;
+      switch (storage.type) {
       case 'inline':
         break;
       case 'extents': {
-        const { chunkSize, extentIndexRootObjectId } = inode.storage;
+        const previousChunkSize = markState.extentRootChunkSizes.get(
+          storage.extentIndexRootObjectId,
+        );
+        if (previousChunkSize !== undefined && previousChunkSize !== storage.chunkSize) {
+          throw new HizoFSCorruptionError({
+            message: 'A shared HizoFS extent root is referenced with inconsistent chunk sizes',
+            cause: undefined,
+          });
+        }
+        markState.extentRootChunkSizes.set(
+          storage.extentIndexRootObjectId,
+          storage.chunkSize,
+        );
         await runtime.extentIndex.visitReferences({
-          rootObjectId: extentIndexRootObjectId,
-          visitPageObjectId: ({ objectId }) => reachableObjectIds.add(objectId),
-          visitChunkObjectId: ({ objectId, chunkIndex }) => {
-            reachableObjectIds.add(objectId);
-            referencedChunks.push({
-              nodeId: inode.nodeId,
+          rootObjectId: storage.extentIndexRootObjectId,
+          visitPageObjectId: ({ objectId }) => registerObjectReference({
+            markState,
+            objectId,
+            expectedKind: 'file_extent_page',
+          }),
+          visitChunkObjectId: ({ objectId }) => {
+            registerObjectReference({
+              markState,
               objectId,
-              chunkIndex,
-              chunkSize,
+              expectedKind: 'file_chunk',
             });
+            const previousLimit = markState.chunkSizeLimits.get(objectId);
+            markState.chunkSizeLimits.set(
+              objectId,
+              previousLimit === undefined
+                ? storage.chunkSize
+                : Math.min(previousLimit, storage.chunkSize),
+            );
           },
+          visitedPageObjectIds: markState.visitedExtentPageObjectIds,
         });
         break;
       }
       default: {
-        const _ex: never = inode.storage;
+        const _ex: never = storage;
         throw new Error(`Unhandled HizoFS file storage: ${String(_ex)}`);
       }
       }
       break;
     }
     case 'directory_inode': {
-      const inode = await runtime.inodeStore.readDirectory({ objectId: reference.objectId });
-      assertNodeIdentity({ expectedNodeId: reference.nodeId, actualNodeId: inode.nodeId });
       if (reference.nodeId === commit.rootDirectoryNodeId) {
         rootDirectoryFound = true;
       }
-      switch (inode.storage.type) {
+      const { storage } = loaded.inode;
+      switch (storage.type) {
       case 'inline':
         break;
       case 'indexed':
         await runtime.directoryIndex.visitReferences({
-          rootObjectId: inode.storage.directoryIndexRootObjectId,
-          visitPageObjectId: ({ objectId }) => reachableObjectIds.add(objectId),
+          rootObjectId: storage.directoryIndexRootObjectId,
+          visitPageObjectId: ({ objectId }) => registerObjectReference({
+            markState,
+            objectId,
+            expectedKind: 'directory_index_page',
+          }),
+          visitedPageObjectIds: markState.visitedDirectoryPageObjectIds,
         });
         break;
       default: {
-        const _ex: never = inode.storage;
+        const _ex: never = storage;
         throw new Error(`Unhandled HizoFS directory storage: ${String(_ex)}`);
       }
       }
       break;
     }
-    case 'symlink_inode': {
-      const inode = await runtime.inodeStore.readSymlink({ objectId: reference.objectId });
-      assertNodeIdentity({ expectedNodeId: reference.nodeId, actualNodeId: inode.nodeId });
+    case 'symlink_inode':
       if (reference.nodeId === commit.rootDirectoryNodeId) {
         throw new HizoFSCorruptionError({
           message: 'HizoFS commit root points to a symlink inode',
@@ -199,12 +258,10 @@ async function markCommitGeneration({ runtime, commitObjectId, reachableObjectId
         });
       }
       break;
+    default: {
+      const _ex: never = loaded;
+      throw new Error(`Unhandled HizoFS loaded inode: ${String(_ex)}`);
     }
-    default:
-      throw new HizoFSCorruptionError({
-        message: `HizoFS inode index references a non-inode object: ${rawRecord.kind}`,
-        cause: undefined,
-      });
     }
   }
 
@@ -214,14 +271,91 @@ async function markCommitGeneration({ runtime, commitObjectId, reachableObjectId
       cause: undefined,
     });
   }
-  for (const chunk of referencedChunks) {
-    await runtime.chunkStore.read({
-      objectId: chunk.objectId,
-      expectedNodeId: chunk.nodeId,
-      expectedChunkIndex: chunk.chunkIndex,
-      chunkSize: chunk.chunkSize,
+}
+
+async function loadReferencedInode({ runtime, reference, markState }: {
+  runtime: HizoFSRuntime;
+  reference: ReferencedInode;
+  markState: HizoFSMarkState;
+}): Promise<LoadedReferencedInode> {
+  const cached = markState.loadedInodes.get(reference.objectId);
+  if (cached !== undefined) {
+    assertNodeIdentity({
+      expectedNodeId: reference.nodeId,
+      actualNodeId: cached.inode.nodeId,
+    });
+    return cached;
+  }
+
+  const rawRecord = await runtime.objectStore.read({ objectId: reference.objectId });
+  if (rawRecord === undefined) {
+    throw new HizoFSCorruptionError({
+      message: `HizoFS inode object is missing: ${reference.objectId}`,
+      cause: undefined,
     });
   }
+
+  let loaded: LoadedReferencedInode;
+  switch (rawRecord.kind) {
+  case 'file_inode': {
+    registerObjectReference({
+      markState,
+      objectId: reference.objectId,
+      expectedKind: rawRecord.kind,
+    });
+    const { inode } = await runtime.inodeStore.readFile({ objectId: reference.objectId });
+    loaded = { kind: rawRecord.kind, inode };
+    break;
+  }
+  case 'directory_inode': {
+    registerObjectReference({
+      markState,
+      objectId: reference.objectId,
+      expectedKind: rawRecord.kind,
+    });
+    const inode = await runtime.inodeStore.readDirectory({ objectId: reference.objectId });
+    loaded = { kind: rawRecord.kind, inode };
+    break;
+  }
+  case 'symlink_inode': {
+    registerObjectReference({
+      markState,
+      objectId: reference.objectId,
+      expectedKind: rawRecord.kind,
+    });
+    const inode = await runtime.inodeStore.readSymlink({ objectId: reference.objectId });
+    loaded = { kind: rawRecord.kind, inode };
+    break;
+  }
+  default:
+    throw new HizoFSCorruptionError({
+      message: `HizoFS inode index references a non-inode object: ${rawRecord.kind}`,
+      cause: undefined,
+    });
+  }
+
+  assertNodeIdentity({
+    expectedNodeId: reference.nodeId,
+    actualNodeId: loaded.inode.nodeId,
+  });
+  markState.loadedInodes.set(reference.objectId, loaded);
+  return loaded;
+}
+
+function registerObjectReference({ markState, objectId, expectedKind }: {
+  markState: HizoFSMarkState;
+  objectId: string;
+  expectedKind: HizoFSRecordKind;
+}): void {
+  const previousKind = markState.expectedKinds.get(objectId);
+  if (previousKind !== undefined && previousKind !== expectedKind) {
+    throw new HizoFSCorruptionError({
+      message: `HizoFS object is referenced as both ${previousKind} and ${expectedKind}: ${objectId}`,
+      cause: undefined,
+    });
+  }
+  markState.expectedKinds.set(objectId, expectedKind);
+  markState.reachableObjectIds.add(objectId);
 }
 
 function assertNodeIdentity({ expectedNodeId, actualNodeId }: {
@@ -261,7 +395,7 @@ async function listPhysicalHizoFSObjects({ backingStore }: {
       }
       const objectId = objectEntry.name.slice(0, -'.enc'.length);
       try {
-        decodeHizoFSObjectId({ objectId });
+        validateHizoFSObjectId({ objectId });
         if (getHizoFSObjectShard({ objectId }) !== shardEntry.name) {
           ignoredPhysicalPaths.push(objectPath);
           continue;

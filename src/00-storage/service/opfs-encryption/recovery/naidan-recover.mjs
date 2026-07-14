@@ -36,7 +36,8 @@ const RECORD_HEADER_BYTE_LENGTH = 16;
 const AES_GCM_TAG_BYTE_LENGTH = 16;
 const MAX_PBKDF2_ITERATIONS = 10_000_000;
 const MAX_ENCRYPTION_KEY_SLOTS = 32;
-const OBJECT_ID_BYTE_LENGTH = 32;
+const OBJECT_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+const OBJECT_ID_LENGTH = 21;
 const STABLE_ID_BYTE_LENGTH = 16;
 const RECORD_KINDS = new Map([
   [1, 'commit'],
@@ -139,8 +140,23 @@ function decodeBase64Url(value, expectedLength, label) {
 }
 
 function assertObjectId(value, label) {
-  decodeBase64Url(value, OBJECT_ID_BYTE_LENGTH, label);
-  return value;
+  const text = assertString(value, label);
+  if (text.length !== OBJECT_ID_LENGTH) {
+    throw new CorruptionError(`${label} must contain exactly ${OBJECT_ID_LENGTH} characters`);
+  }
+  for (const character of text) {
+    if (!OBJECT_ID_ALPHABET.includes(character)) {
+      throw new CorruptionError(`${label} contains a character outside its canonical alphabet`);
+    }
+  }
+  return text;
+}
+
+function getObjectShard(objectId) {
+  assertObjectId(objectId, 'HizoFS object ID');
+  const firstIndex = OBJECT_ID_ALPHABET.indexOf(objectId[0]);
+  const secondIndex = OBJECT_ID_ALPHABET.indexOf(objectId[1]);
+  return ((firstIndex << 2) | (secondIndex >>> 4)).toString(16).padStart(2, '0');
 }
 
 function assertStableId(value, label) {
@@ -407,8 +423,7 @@ class HizoFSReader {
   }
 
   async readObject(objectId) {
-    const idBytes = decodeBase64Url(objectId, OBJECT_ID_BYTE_LENGTH, 'HizoFS object ID');
-    const shard = idBytes[0].toString(16).padStart(2, '0');
+    const shard = getObjectShard(objectId);
     return this.readEncryptedRecord({
       path: join(this.dataDirectory, 'objects', shard, `${objectId}.enc`),
       objectIdentity: objectId,
@@ -674,8 +689,8 @@ async function restoreFile({ reader, inode, outputPath }) {
       const record = await reader.readObject(extent.chunkObjectId);
       if (record.kind !== 'file_chunk') throw new CorruptionError(`Expected file_chunk, received ${record.kind}`);
       const metadata = assertObject(record.metadata, 'File chunk metadata');
-      if (metadata.nodeId !== inode.nodeId || metadata.chunkIndex !== extent.chunkIndex) {
-        throw new CorruptionError('File chunk identity does not match its extent');
+      if (Object.keys(metadata).length !== 0) {
+        throw new CorruptionError('File chunk metadata must be empty');
       }
       if (record.binary.length < 1 || record.binary.length > chunkSize || offset + record.binary.length > size) {
         throw new CorruptionError('File chunk payload length is invalid');

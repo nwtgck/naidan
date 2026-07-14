@@ -167,38 +167,57 @@ export class HizoFSInodeIndex {
   >;
 
 
-  async visitReferences({ rootObjectId, visitPageObjectId, visitInodeObjectId }: {
+  async visitReferences({
+    rootObjectId,
+    visitPageObjectId,
+    visitInodeObjectId,
+    visitedPageObjectIds,
+  }: {
     rootObjectId: string;
     visitPageObjectId: ({ objectId }: { objectId: string }) => void;
     visitInodeObjectId: ({ objectId, nodeId }: { objectId: string; nodeId: string }) => void;
+    visitedPageObjectIds: Set<string> | undefined;
   }): Promise<void> {
-    const visited = new Set<string>();
+    const completed = visitedPageObjectIds ?? new Set<string>();
+    const visiting = new Set<string>();
+    const seenInThisTraversal = new Set<string>();
     const visitPage = async ({ objectId }: { objectId: string }): Promise<void> => {
-      if (visited.has(objectId)) {
+      visitPageObjectId({ objectId });
+      if (visiting.has(objectId)) {
         throw new Error('HizoFS inode index contains a page cycle');
       }
-      visited.add(objectId);
-      visitPageObjectId({ objectId });
-      const page = await this.pageStore.readPage({ objectId });
-      switch (page.type) {
-      case 'leaf':
-        for (const entry of page.entries) {
-          visitInodeObjectId({
-            objectId: entry.inodeObjectId,
-            nodeId: entry.nodeId,
-          });
-        }
-        return;
-      case 'branch':
-        for (const child of page.children) {
-          await visitPage({ objectId: child.childPageObjectId });
-        }
-        return;
-      default: {
-        const _ex: never = page;
-        throw new Error(`Unhandled inode index page: ${String(_ex)}`);
+      if (seenInThisTraversal.has(objectId)) {
+        throw new Error('HizoFS inode index contains a duplicate page reference');
       }
+      seenInThisTraversal.add(objectId);
+      if (completed.has(objectId)) return;
+
+      visiting.add(objectId);
+      try {
+        const page = await this.pageStore.readPage({ objectId });
+        switch (page.type) {
+        case 'leaf':
+          for (const entry of page.entries) {
+            visitInodeObjectId({
+              objectId: entry.inodeObjectId,
+              nodeId: entry.nodeId,
+            });
+          }
+          break;
+        case 'branch':
+          for (const child of page.children) {
+            await visitPage({ objectId: child.childPageObjectId });
+          }
+          break;
+        default: {
+          const _ex: never = page;
+          throw new Error(`Unhandled inode index page: ${String(_ex)}`);
+        }
+        }
+      } finally {
+        visiting.delete(objectId);
       }
+      completed.add(objectId);
     };
     await visitPage({ objectId: rootObjectId });
   }

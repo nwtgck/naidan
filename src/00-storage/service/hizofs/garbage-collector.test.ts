@@ -234,4 +234,67 @@ describe('HizoFS garbage collection', () => {
     expect(result.ignoredPhysicalPaths).toContain('objects/not-a-shard');
     await expect(unknownDirectory.getFileHandle('manual-backup')).resolves.toBeDefined();
   });
+
+  it('preserves shared reflink objects until both file identities are unreachable', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'shared-reflink-value' });
+    await session.root.cloneFile({
+      name: 'value.txt',
+      destination: session.root,
+      newName: 'clone.txt',
+      replace: false,
+    });
+    await session.root.removeEntry({ name: 'value.txt', recursive: false });
+    await session.close();
+
+    await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+    });
+    const cloneOnly = await openTiny({ backing });
+    expect(await readStorageFileText({
+      fileHandle: await cloneOnly.root.getFileHandle({ name: 'clone.txt', create: false }),
+    })).toBe('shared-reflink-value');
+    await cloneOnly.root.removeEntry({ name: 'clone.txt', recursive: false });
+    await cloneOnly.root.getFileHandle({ name: 'rotate-a', create: true });
+    await cloneOnly.root.getFileHandle({ name: 'rotate-b', create: true });
+    await cloneOnly.close();
+
+    const finalCollection = await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+    });
+    expect(finalCollection.removedObjectCount).toBeGreaterThan(0);
+    const reopened = await openTiny({ backing });
+    await expect(reopened.root.getFileHandle({
+      name: 'clone.txt',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await reopened.close();
+  });
+
+  it('marks one shared extent graph for one hundred whole-file clones', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'one-hundred-reflink-clones' });
+    for (let index = 0; index < 100; index += 1) {
+      await session.root.cloneFile({
+        name: 'value.txt',
+        destination: session.root,
+        newName: `clone-${String(index).padStart(3, '0')}`,
+        replace: false,
+      });
+    }
+    await session.close();
+
+    const result = await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: true,
+    });
+    expect(result.reachableObjectCount).toBeGreaterThan(100);
+  }, 30_000);
 });

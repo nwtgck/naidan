@@ -14,6 +14,10 @@ import {
 } from './api';
 import type { HizoFSPolicy } from './file-system/policy';
 import { createQueuedTestLockManager } from './test-lock-manager';
+import { HizoFSSession } from './file-system/session';
+import type { LoadedHizoFSFile } from './file-system/node-service';
+import { createHizoFSInspectionReader } from './inspection';
+import type { HizoFSRecordKind } from './format/record';
 
 const ROOT_KEY = new Uint8Array(32).fill(9);
 const TINY_POLICY: HizoFSPolicy = {
@@ -71,6 +75,84 @@ async function readBytes({ session, path }: {
   }
 }
 
+function requireHizoFSSession({ session }: {
+  session: StorageFileSystemSession;
+}): HizoFSSession {
+  if (!(session instanceof HizoFSSession)) {
+    throw new Error('Expected a HizoFS session');
+  }
+  return session;
+}
+
+async function readCurrentRootFile({ session, name }: {
+  session: StorageFileSystemSession;
+  name: string;
+}): Promise<LoadedHizoFSFile> {
+  const hizofs = requireHizoFSSession({ session });
+  const state = await hizofs.runtime.core.loadActiveState();
+  const root = await hizofs.runtime.nodeService.readDirectory({
+    state,
+    nodeId: state.commit.rootDirectoryNodeId,
+  });
+  const entry = await hizofs.runtime.directoryStorage.getEntry({
+    inode: root.inode,
+    name,
+  });
+  if (entry === undefined || entry.kind !== 'file') {
+    throw new Error(`Expected root file: ${name}`);
+  }
+  return await hizofs.runtime.nodeService.readFile({ state, nodeId: entry.nodeId });
+}
+
+async function readCurrentRootFileExtents({ session, name }: {
+  session: StorageFileSystemSession;
+  name: string;
+}): Promise<{
+  readonly inode: LoadedHizoFSFile['inode'];
+  readonly extents: ReadonlyMap<number, string>;
+}> {
+  const hizofs = requireHizoFSSession({ session });
+  const file = await readCurrentRootFile({ session, name });
+  if (file.inode.storage.type !== 'extents') {
+    throw new Error(`Expected an extent-backed file: ${name}`);
+  }
+  const extents = new Map<number, string>();
+  for await (const extent of hizofs.runtime.extentIndex.entries({
+    rootObjectId: file.inode.storage.extentIndexRootObjectId,
+  })) {
+    extents.set(extent.chunkIndex, extent.chunkObjectId);
+  }
+  return { inode: file.inode, extents };
+}
+
+async function countPhysicalObjectsByKind({ backing, kind }: {
+  backing: FileSystemDirectoryHandle;
+  kind: HizoFSRecordKind;
+}): Promise<number> {
+  const reader = await createHizoFSInspectionReader({
+    backingDirectory: backing,
+    fileSystemRootKey: ROOT_KEY,
+  });
+  try {
+    let count = 0;
+    let cursor: string | undefined;
+    do {
+      const page = await reader.listPhysicalObjects({ cursor, limit: 1000 });
+      for (const entry of page.entries) {
+        const object = await reader.inspectObject({
+          objectId: entry.objectId,
+          binaryPreviewByteLength: 0,
+        });
+        if (object?.record.kind === kind) count += 1;
+      }
+      cursor = page.nextCursor;
+    } while (cursor !== undefined);
+    return count;
+  } finally {
+    await reader.dispose();
+  }
+}
+
 async function copyNativeDirectory({ source, destination }: {
   source: FileSystemDirectoryHandle;
   destination: FileSystemDirectoryHandle;
@@ -120,6 +202,7 @@ describe('HizoFS public file-system API', () => {
       directBlob: 'unsupported',
       symbolicLink: 'supported',
       atomicMove: 'supported',
+      wholeFileClone: 'supported',
     });
   });
 
@@ -353,6 +436,334 @@ describe('HizoFS public file-system API', () => {
       path: ['inline-to-extents.bin'],
     }))).toBe('123456789ABC');
     await session.close();
+  });
+
+  it('whole-file clones an extent-backed file without creating new chunks', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 41 });
+    const source = await session.root.getFileHandle({ name: 'source.bin', create: true });
+    await writeStorageFileText({ fileHandle: source, value: 'abcdefghijklmnop' });
+    const chunksBefore = await countPhysicalObjectsByKind({
+      backing,
+      kind: 'file_chunk',
+    });
+
+    const clone = await session.root.cloneFile({
+      name: 'source.bin',
+      destination: session.root,
+      newName: 'clone.bin',
+      replace: false,
+    });
+
+    expect(await readStorageFileText({ fileHandle: clone })).toBe('abcdefghijklmnop');
+    const sourceFile = await readCurrentRootFile({ session, name: 'source.bin' });
+    const clonedFile = await readCurrentRootFile({ session, name: 'clone.bin' });
+    expect(clonedFile.inode.nodeId).not.toBe(sourceFile.inode.nodeId);
+    expect(clonedFile.inode.revision).toBe(0);
+    expect(clonedFile.inode.createdAt).toBe(41);
+    expect(sourceFile.inode.storage.type).toBe('extents');
+    expect(clonedFile.inode.storage.type).toBe('extents');
+    if (
+      sourceFile.inode.storage.type !== 'extents'
+      || clonedFile.inode.storage.type !== 'extents'
+    ) {
+      throw new Error('Expected extent-backed source and clone');
+    }
+    expect(clonedFile.inode.storage.extentIndexRootObjectId).toBe(
+      sourceFile.inode.storage.extentIndexRootObjectId,
+    );
+    expect(await countPhysicalObjectsByKind({
+      backing,
+      kind: 'file_chunk',
+    })).toBe(chunksBefore);
+    await session.close();
+
+    const reopened = await openTiny({ root: backing, now: () => 42 });
+    expect(await readStorageFileText({
+      fileHandle: await reopened.root.getFileHandle({ name: 'source.bin', create: false }),
+    })).toBe('abcdefghijklmnop');
+    expect(await readStorageFileText({
+      fileHandle: await reopened.root.getFileHandle({ name: 'clone.bin', create: false }),
+    })).toBe('abcdefghijklmnop');
+    await reopened.close();
+  });
+
+  it('copy-on-writes only changed clone chunks and preserves both directions', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const source = await session.root.getFileHandle({ name: 'source.bin', create: true });
+    await writeStorageFileText({ fileHandle: source, value: 'abcdefghijklmnop' });
+    const clone = await session.root.cloneFile({
+      name: 'source.bin',
+      destination: session.root,
+      newName: 'clone.bin',
+      replace: false,
+    });
+    const shared = await readCurrentRootFileExtents({ session, name: 'source.bin' });
+
+    const cloneWriter = await clone.createWritable({ keepExistingData: true });
+    await cloneWriter.write({
+      position: 5,
+      data: new TextEncoder().encode('Z'),
+    });
+    await cloneWriter.close();
+
+    const sourceAfterCloneWrite = await readCurrentRootFileExtents({
+      session,
+      name: 'source.bin',
+    });
+    const cloneAfterWrite = await readCurrentRootFileExtents({ session, name: 'clone.bin' });
+    expect(sourceAfterCloneWrite.inode.storage).toEqual(shared.inode.storage);
+    expect([...sourceAfterCloneWrite.extents]).toEqual([...shared.extents]);
+    expect(cloneAfterWrite.extents.get(1)).not.toBe(shared.extents.get(1));
+    expect(cloneAfterWrite.extents.get(0)).toBe(shared.extents.get(0));
+    expect(cloneAfterWrite.extents.get(2)).toBe(shared.extents.get(2));
+    expect(cloneAfterWrite.extents.get(3)).toBe(shared.extents.get(3));
+    expect(await readStorageFileText({ fileHandle: source })).toBe('abcdefghijklmnop');
+    expect(await readStorageFileText({ fileHandle: clone })).toBe('abcdeZghijklmnop');
+
+    const sourceWriter = await source.createWritable({ keepExistingData: true });
+    await sourceWriter.write({
+      position: 10,
+      data: new TextEncoder().encode('Q'),
+    });
+    await sourceWriter.close();
+    expect(await readStorageFileText({ fileHandle: source })).toBe('abcdefghijQlmnop');
+    expect(await readStorageFileText({ fileHandle: clone })).toBe('abcdeZghijklmnop');
+    await session.close();
+  });
+
+  it('copy-on-writes every touched chunk for a cross-boundary clone write', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const source = await session.root.getFileHandle({ name: 'source.bin', create: true });
+    await writeStorageFileText({ fileHandle: source, value: 'abcdefghijklmnop' });
+    const clone = await session.root.cloneFile({
+      name: 'source.bin',
+      destination: session.root,
+      newName: 'clone.bin',
+      replace: false,
+    });
+    const shared = await readCurrentRootFileExtents({ session, name: 'source.bin' });
+    const writer = await clone.createWritable({ keepExistingData: true });
+    await writer.write({
+      position: 3,
+      data: new TextEncoder().encode('123456789'),
+    });
+    await writer.close();
+
+    const changed = await readCurrentRootFileExtents({ session, name: 'clone.bin' });
+    for (const chunkIndex of [0, 1, 2]) {
+      expect(changed.extents.get(chunkIndex)).not.toBe(shared.extents.get(chunkIndex));
+    }
+    expect(changed.extents.get(3)).toBe(shared.extents.get(3));
+    expect(await readStorageFileText({ fileHandle: source })).toBe('abcdefghijklmnop');
+    expect(await readStorageFileText({ fileHandle: clone })).toBe('abc123456789mnop');
+    await session.close();
+  });
+
+  it('preserves clone independence across aligned overwrite, append, and truncate cycles', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const source = await session.root.getFileHandle({ name: 'source.bin', create: true });
+    await writeStorageFileText({ fileHandle: source, value: 'abcdefghijklmnop' });
+    const clone = await session.root.cloneFile({
+      name: 'source.bin',
+      destination: session.root,
+      newName: 'clone.bin',
+      replace: false,
+    });
+    const shared = await readCurrentRootFileExtents({ session, name: 'source.bin' });
+
+    const overwriteAndAppend = await clone.createWritable({ keepExistingData: true });
+    await overwriteAndAppend.write({
+      position: 4,
+      data: new TextEncoder().encode('WXYZ'),
+    });
+    await overwriteAndAppend.write({
+      position: 16,
+      data: new TextEncoder().encode('qrst'),
+    });
+    await overwriteAndAppend.close();
+
+    const appended = await readCurrentRootFileExtents({ session, name: 'clone.bin' });
+    expect(appended.extents.get(0)).toBe(shared.extents.get(0));
+    expect(appended.extents.get(1)).not.toBe(shared.extents.get(1));
+    expect(appended.extents.get(2)).toBe(shared.extents.get(2));
+    expect(appended.extents.get(3)).toBe(shared.extents.get(3));
+    expect(appended.extents.get(4)).toBeDefined();
+    expect(await readStorageFileText({ fileHandle: clone })).toBe('abcdWXYZijklmnopqrst');
+
+    const truncateAndExpand = await clone.createWritable({ keepExistingData: true });
+    await truncateAndExpand.truncate({ size: 10 });
+    await truncateAndExpand.truncate({ size: 20 });
+    await truncateAndExpand.write({ position: 18, data: new Uint8Array([33]) });
+    await truncateAndExpand.close();
+    expect([...await readBytes({ session, path: ['clone.bin'] })]).toEqual([
+      97, 98, 99, 100, 87, 88, 89, 90, 105, 106,
+      0, 0, 0, 0, 0, 0, 0, 0, 33, 0,
+    ]);
+
+    const truncateAtBoundary = await clone.createWritable({ keepExistingData: true });
+    await truncateAtBoundary.truncate({ size: 8 });
+    await truncateAtBoundary.truncate({ size: 12 });
+    await truncateAtBoundary.close();
+    expect([...await readBytes({ session, path: ['clone.bin'] })]).toEqual([
+      97, 98, 99, 100, 87, 88, 89, 90, 0, 0, 0, 0,
+    ]);
+
+    const truncateToZero = await clone.createWritable({ keepExistingData: true });
+    await truncateToZero.truncate({ size: 0 });
+    await truncateToZero.truncate({ size: 4 });
+    await truncateToZero.close();
+    expect([...await readBytes({ session, path: ['clone.bin'] })]).toEqual([0, 0, 0, 0]);
+    expect(await readStorageFileText({ fileHandle: source })).toBe('abcdefghijklmnop');
+    await session.close();
+  });
+
+  it('clones inline boundary files independently and preserves sparse truncate semantics', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    for (const [suffix, value] of [
+      ['empty', ''],
+      ['one', 'x'],
+      ['limit', '12345678'],
+    ] as const) {
+      const sourceName = `${suffix}-source`;
+      const cloneName = `${suffix}-clone`;
+      const source = await session.root.getFileHandle({ name: sourceName, create: true });
+      await writeStorageFileText({ fileHandle: source, value });
+      const clone = await session.root.cloneFile({
+        name: sourceName,
+        destination: session.root,
+        newName: cloneName,
+        replace: false,
+      });
+      const sourceRecord = await readCurrentRootFile({ session, name: sourceName });
+      const cloneRecord = await readCurrentRootFile({ session, name: cloneName });
+      expect(sourceRecord.inode.storage.type).toBe('inline');
+      expect(cloneRecord.inode.storage.type).toBe('inline');
+      expect(cloneRecord.inode.nodeId).not.toBe(sourceRecord.inode.nodeId);
+      expect(await readStorageFileText({ fileHandle: clone })).toBe(value);
+    }
+
+    const clone = await session.root.getFileHandle({ name: 'limit-clone', create: false });
+    const writer = await clone.createWritable({ keepExistingData: true });
+    await writer.truncate({ size: 3 });
+    await writer.truncate({ size: 12 });
+    await writer.write({ position: 10, data: new Uint8Array([90]) });
+    await writer.close();
+    expect([...await readBytes({ session, path: ['limit-clone'] })]).toEqual([
+      49, 50, 51, 0, 0, 0, 0, 0, 0, 0, 90, 0,
+    ]);
+    expect(await readStorageFileText({
+      fileHandle: await session.root.getFileHandle({ name: 'limit-source', create: false }),
+    })).toBe('12345678');
+    await session.close();
+  });
+
+  it('enforces whole-file clone destination and session semantics', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const source = await session.root.getFileHandle({ name: 'source', create: true });
+    await writeStorageFileText({ fileHandle: source, value: 'source-value' });
+    await writeStorageFileText({
+      fileHandle: await session.root.getFileHandle({ name: 'target', create: true }),
+      value: 'old-target',
+    });
+    await expect(session.root.cloneFile({
+      name: 'source',
+      destination: session.root,
+      newName: 'target',
+      replace: false,
+    })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    expect(await readStorageFileText({
+      fileHandle: await session.root.cloneFile({
+        name: 'source',
+        destination: session.root,
+        newName: 'target',
+        replace: true,
+      }),
+    })).toBe('source-value');
+
+    await session.root.createSymlink({ name: 'link-target', target: 'source' });
+    await expect(session.root.cloneFile({
+      name: 'source',
+      destination: session.root,
+      newName: 'link-target',
+      replace: true,
+    })).resolves.toMatchObject({ kind: 'file', name: 'link-target' });
+    await session.root.getDirectoryHandle({ name: 'directory-target', create: true });
+    await expect(session.root.cloneFile({
+      name: 'source',
+      destination: session.root,
+      newName: 'directory-target',
+      replace: true,
+    })).rejects.toMatchObject({ name: 'TypeMismatchError' });
+    await expect(session.root.cloneFile({
+      name: 'source',
+      destination: session.root,
+      newName: 'source',
+      replace: true,
+    })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    await session.root.getDirectoryHandle({ name: 'directory-source', create: true });
+    await expect(session.root.cloneFile({
+      name: 'directory-source',
+      destination: session.root,
+      newName: 'wrong-kind',
+      replace: false,
+    })).rejects.toMatchObject({ name: 'TypeMismatchError' });
+
+    const otherSession = await openTiny({ root: backing, now: () => 2 });
+    await expect(session.root.cloneFile({
+      name: 'source',
+      destination: otherSession.root,
+      newName: 'cross-session',
+      replace: false,
+    })).rejects.toThrow('same session');
+    await otherSession.close();
+    await session.close();
+  });
+
+  it('serializes whole-file clones from separate sessions without losing either entry', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const first = await createTiny({ root: backing, now: () => 1 });
+    const source = await first.root.getFileHandle({ name: 'source.bin', create: true });
+    await writeStorageFileText({ fileHandle: source, value: 'cross-session-reflink-value' });
+    const second = await openTiny({ root: backing, now: () => 2 });
+
+    await Promise.all([
+      first.root.cloneFile({
+        name: 'source.bin',
+        destination: first.root,
+        newName: 'clone-first.bin',
+        replace: false,
+      }),
+      second.root.cloneFile({
+        name: 'source.bin',
+        destination: second.root,
+        newName: 'clone-second.bin',
+        replace: false,
+      }),
+    ]);
+    await first.close();
+    await second.close();
+
+    const reopened = await openTiny({ root: backing, now: () => 3 });
+    for (const name of ['source.bin', 'clone-first.bin', 'clone-second.bin']) {
+      expect(await readStorageFileText({
+        fileHandle: await reopened.root.getFileHandle({ name, create: false }),
+      })).toBe('cross-session-reflink-value');
+    }
+    await reopened.close();
   });
 
   it('uses the persisted chunk size when a later implementation policy changes', async () => {

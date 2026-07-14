@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { NativeOpfsHizoFSBackingStore } from '@/00-storage/service/hizofs/backing-store/native-opfs-backing-store';
 import { importHizoFSRootKey } from '@/00-storage/service/hizofs/crypto/object-crypto';
@@ -117,6 +117,42 @@ describe('HizoFS typed persistent indexes', () => {
       chunkIndex: 9,
       chunkObjectId: chunk9,
     });
+  });
+
+  it('reads each shared extent page once across many reflink traversals', async () => {
+    const { objectStore, recordStore } = await setup();
+    const index = new HizoFSExtentIndex({ recordStore, maxPageEntries: 2 });
+    let root = await index.createEmpty();
+    for (let chunkIndex = 0; chunkIndex < 12; chunkIndex += 1) {
+      root = await index.set({
+        rootObjectId: root,
+        extent: {
+          chunkIndex,
+          chunkObjectId: await createDummyObject({
+            objectStore,
+            value: chunkIndex + 1,
+          }),
+        },
+      });
+    }
+
+    const readSpy = vi.spyOn(recordStore, 'read');
+    const visitedPageObjectIds = new Set<string>();
+    const visitedChunkObjectIds = new Set<string>();
+    for (let cloneIndex = 0; cloneIndex < 100; cloneIndex += 1) {
+      await index.visitReferences({
+        rootObjectId: root,
+        visitPageObjectId: () => {},
+        visitChunkObjectId: ({ objectId }) => visitedChunkObjectIds.add(objectId),
+        visitedPageObjectIds,
+      });
+    }
+
+    const extentPageReads = readSpy.mock.calls.filter(([request]) => (
+      request.expectedKind === 'file_extent_page'
+    ));
+    expect(extentPageReads).toHaveLength(visitedPageObjectIds.size);
+    expect(visitedChunkObjectIds.size).toBe(12);
   });
 });
 

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { NativeOpfsHizoFSBackingStore } from '@/00-storage/service/hizofs/backing-store/native-opfs-backing-store';
 import { importHizoFSRootKey } from '@/00-storage/service/hizofs/crypto/object-crypto';
-import { getHizoFSObjectShard } from './object-id';
+import {
+  getHizoFSObjectShard,
+  validateHizoFSObjectId,
+} from './object-id';
 import { HizoFSObjectStore } from './object-store';
 
 async function createStore({
@@ -40,16 +43,16 @@ describe('HizoFS immutable object store', () => {
       record: {
         kind: 'file_chunk',
         recordVersion: 1,
-        metadata: { nodeId: 'node', chunkIndex: 2 },
+        metadata: {},
         binaryPayload: new Uint8Array([1, 2, 3]),
       },
     });
 
-    expect(objectId).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(objectId).toMatch(/^[A-Za-z0-9_-]{21}$/u);
     expect(await store.read({ objectId })).toEqual({
       kind: 'file_chunk',
       recordVersion: 1,
-      metadata: { nodeId: 'node', chunkIndex: 2 },
+      metadata: {},
       binaryPayload: new Uint8Array([1, 2, 3]),
     });
   });
@@ -69,6 +72,22 @@ describe('HizoFS immutable object store', () => {
     const first = await store.create({ record });
     const second = await store.create({ record });
     expect(first).not.toBe(second);
+  });
+
+  it('uses the first eight Nano ID bits for canonical object sharding', () => {
+    expect(getHizoFSObjectShard({ objectId: 'AAAAAAAAAAAAAAAAAAAAA' })).toBe('00');
+    expect(getHizoFSObjectShard({ objectId: 'AQAAAAAAAAAAAAAAAAAAA' })).toBe('01');
+    expect(getHizoFSObjectShard({ objectId: '_AAAAAAAAAAAAAAAAAAAA' })).toBe('f8');
+    expect(getHizoFSObjectShard({ objectId: '---------------------' })).toBe('ff');
+  });
+
+  it('rejects non-canonical Nano ID lengths and characters', () => {
+    expect(() => validateHizoFSObjectId({
+      objectId: 'AAAAAAAAAAAAAAAAAAAA',
+    })).toThrow('exactly 21 characters');
+    expect(() => validateHizoFSObjectId({
+      objectId: 'AAAAAAAAAAAAAAAAAAAA!',
+    })).toThrow('canonical alphabet');
   });
 
   it('fails authentication with a different root key or filesystem ID', async () => {
@@ -122,7 +141,7 @@ describe('HizoFS immutable object store', () => {
     });
     expect(physical).toBeDefined();
 
-    const otherObjectId = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    const otherObjectId = 'AAAAAAAAAAAAAAAAAAAAA';
     await backingStore.write({
       path: [
         'objects',
