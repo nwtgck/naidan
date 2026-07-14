@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
+import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
+import type { WeshStorageDirectoryRemote } from '@/features/wesh/storage-directory/types';
+import type { WeshMount } from '@/features/wesh/types';
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
 
 const fileExplorerPathSchema = z.string().min(1);
@@ -28,12 +31,39 @@ export const fileExplorerRootDescriptorSchema = z.discriminatedUnion('kind', [
     readOnly: z.boolean(),
   }),
   z.object({
+    kind: z.literal('storage-directory'),
+    rootName: z.string().min(1),
+    readOnly: z.boolean(),
+  }),
+  z.object({
     kind: z.literal('wesh-mounts'),
     rootName: z.string().min(1),
     mounts: z.array(weshWorkerMountSchema),
-    naidanSysfsRemoteReader: z.custom<NaidanSysfsRemoteReader>().optional(),
   }),
 ]);
+
+export type FileExplorerRootDescriptor =
+  | {
+      readonly kind: 'opfs-root';
+      readonly rootName: string;
+    }
+  | {
+      readonly kind: 'native-directory';
+      readonly rootName: string;
+      readonly handle: FileSystemDirectoryHandle;
+      readonly readOnly: boolean;
+    }
+  | {
+      readonly kind: 'storage-directory';
+      readonly rootName: string;
+      readonly handle: StorageDirectoryHandle;
+      readonly readOnly: boolean;
+    }
+  | {
+      readonly kind: 'wesh-mounts';
+      readonly rootName: string;
+      readonly mounts: WeshMount[];
+    };
 
 export const fileExplorerEntryRecordSchema = z.object({
   path: fileExplorerPathSchema,
@@ -324,7 +354,7 @@ export const fileExplorerDisposeSessionRequestSchema = z.object({
   sessionId: z.string().min(1),
 });
 
-export type FileExplorerRootDescriptor = z.infer<typeof fileExplorerRootDescriptorSchema>;
+export type FileExplorerWorkerRootDescriptor = z.infer<typeof fileExplorerRootDescriptorSchema>;
 export type FileExplorerEntryRecord = z.infer<typeof fileExplorerEntryRecordSchema>;
 export type FileExplorerPathSegment = z.infer<typeof fileExplorerPathSegmentSchema>;
 export type FileExplorerPrepareSessionRequest = z.infer<typeof fileExplorerPrepareSessionRequestSchema>;
@@ -370,7 +400,12 @@ export type FileExplorerUploadFilesRequest = z.infer<typeof fileExplorerUploadFi
 export type FileExplorerDisposeSessionRequest = z.infer<typeof fileExplorerDisposeSessionRequestSchema>;
 
 export interface IFileExplorerWorker {
-  prepareSession({ request }: { request: FileExplorerPrepareSessionRequest }): Promise<FileExplorerPrepareSessionResponse>,
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy capabilities must remain top-level arguments.
+  prepareSession(
+    request: FileExplorerPrepareSessionRequest | { readonly request: FileExplorerPrepareSessionRequest },
+    naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
+    storageDirectoryRemote?: WeshStorageDirectoryRemote,
+  ): Promise<FileExplorerPrepareSessionResponse>,
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ request }: { request: FileExplorerReadFileRequest }): Promise<FileExplorerReadFileResponse>,

@@ -123,16 +123,19 @@ export function useFileExplorerNavigation({
   }
 
   function syncColumnPanesToPath(): void {
-    const nextPanes: ColumnPaneState[] = pathSegments.value.map(segment => {
+    const nextPanes: ColumnPaneState[] = pathSegments.value.map((segment, index) => {
       const existingPane = columnPanes.value.find(pane => pane.path === segment.path);
-      return existingPane ?? {
-        path: segment.path,
-        name: segment.name,
-        readOnly: true,
-        entries: [],
-        selectedEntryName: undefined,
-        isLoading: false,
-      };
+      const selectedEntryName = pathSegments.value[index + 1]?.name;
+      return existingPane === undefined
+        ? {
+          path: segment.path,
+          name: segment.name,
+          readOnly: true,
+          entries: [],
+          selectedEntryName,
+          isLoading: false,
+        }
+        : { ...existingPane, selectedEntryName };
     });
     columnPanes.value = nextPanes;
     for (let i = 0; i < nextPanes.length; i += 1) {
@@ -165,6 +168,43 @@ export function useFileExplorerNavigation({
   async function refresh(): Promise<void> {
     await loadDirectory({ path: currentDirectoryPath.value });
     syncColumnPanesToPath();
+  }
+
+  async function revealPath({ path }: { path: string }): Promise<FileExplorerEntry | undefined> {
+    const normalizedPath = normalizeExplorerPath({ path });
+    if (normalizedPath === '/') {
+      await navigateToDirectory({ path: '/' });
+      return undefined;
+    }
+
+    const parentPath = getParentPath({ path: normalizedPath });
+    const parentResponse = await client.readDirectory({ path: parentPath });
+    const name = normalizedPath.slice(normalizedPath.lastIndexOf('/') + 1);
+    const entry = parentResponse.entries.find(candidate => candidate.name === name);
+    if (entry === undefined) {
+      throw new Error(`File Explorer path does not exist: ${normalizedPath}`);
+    }
+
+    switch (entry.kind) {
+    case 'directory':
+      await navigateToDirectory({ path: normalizedPath });
+      break;
+    case 'file': {
+      await navigateToDirectory({ path: parentPath });
+      const panes = [...columnPanes.value];
+      const lastPane = panes.at(-1);
+      if (lastPane !== undefined) {
+        panes[panes.length - 1] = { ...lastPane, selectedEntryName: entry.name };
+        columnPanes.value = panes;
+      }
+      break;
+    }
+    default: {
+      const _exhaustiveCheck: never = entry.kind;
+      throw new Error(`Unhandled revealed entry kind: ${String(_exhaustiveCheck)}`);
+    }
+    }
+    return entry;
   }
 
   async function selectColumnEntry({
@@ -218,6 +258,7 @@ export function useFileExplorerNavigation({
     navigateUp,
     jumpToBreadcrumb,
     refresh,
+    revealPath,
     selectColumnEntry,
     loadColumnPane,
     ...((__BUILD_MODE_IS_TEST__ && {

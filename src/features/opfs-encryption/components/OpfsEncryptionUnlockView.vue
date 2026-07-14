@@ -12,8 +12,19 @@ import {
 } from 'lucide-vue-next';
 import { validateEncryptionPassphrase } from '@/00-storage/service/opfs-encryption/passphrase';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
-import type { OpfsEncryptionStartupGate } from '@/logic/startup/opfs-encryption-startup-gate';
+import type {
+  OpfsEncryptionStartupGate,
+  OpfsEncryptionStartupPhase,
+} from '@/logic/startup/opfs-encryption-startup-gate';
 import { ensureStrings, lazyStrings } from '@/strings';
+import OpfsEncryptionUnlockButton from './OpfsEncryptionUnlockButton.vue';
+import {
+  OPFS_ENCRYPTION_UNLOCK_MINIMUM_SEAT_START_MS,
+  OPFS_ENCRYPTION_UNLOCK_POST_SUCCESS_HOLD_DURATION_MS,
+  OPFS_ENCRYPTION_UNLOCK_REDUCED_MOTION_DURATION_MS,
+  OPFS_ENCRYPTION_UNLOCK_SUCCESS_ANIMATION_DURATION_MS,
+  type OpfsEncryptionUnlockButtonState,
+} from './opfs-encryption-unlock-button-motion';
 
 const FileExplorerModal = defineAsyncComponent(
   () => import('@/features/file-explorer/components/FileExplorerModal.vue'),
@@ -23,9 +34,32 @@ const props = defineProps<{
   gate: OpfsEncryptionStartupGate,
 }>();
 
+function resolveInitialUnlockButtonState({
+  phase,
+}: {
+  phase: OpfsEncryptionStartupPhase,
+}): OpfsEncryptionUnlockButtonState {
+  switch (phase) {
+  case 'locked':
+    return 'ready';
+  case 'unlocking':
+    return 'retracting';
+  case 'preparing_application':
+  case 'application_failed':
+    return 'unlocked';
+  default: {
+    const _ex: never = phase;
+    throw new Error(`Unhandled OPFS encryption startup phase: ${String(_ex)}`);
+  }
+  }
+}
+
 const passphrase = ref('');
 const showPassphrase = ref(false);
 const working = ref(false);
+const unlockButtonState = ref<OpfsEncryptionUnlockButtonState>(
+  resolveInitialUnlockButtonState({ phase: props.gate.phase.value }),
+);
 const errorMessage = ref<string>();
 const { isFileExplorerOpen, openFileExplorer } = useFileExplorerModal();
 
@@ -85,6 +119,17 @@ const title = computed(() => {
   }
 });
 
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+async function waitForMilliseconds({ milliseconds }: { milliseconds: number }): Promise<void> {
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+}
+
 async function submitPassphrase(): Promise<void> {
   if (
     working.value
@@ -94,11 +139,47 @@ async function submitPassphrase(): Promise<void> {
   ) {
     return;
   }
+
+  const reducedMotion = prefersReducedMotion();
+  const minimumSeatStartMilliseconds = reducedMotion
+    ? OPFS_ENCRYPTION_UNLOCK_REDUCED_MOTION_DURATION_MS
+    : OPFS_ENCRYPTION_UNLOCK_MINIMUM_SEAT_START_MS;
+  const successAnimationDurationMilliseconds = reducedMotion
+    ? OPFS_ENCRYPTION_UNLOCK_REDUCED_MOTION_DURATION_MS
+    : OPFS_ENCRYPTION_UNLOCK_SUCCESS_ANIMATION_DURATION_MS;
+
   working.value = true;
+  unlockButtonState.value = 'retracting';
   errorMessage.value = undefined;
   try {
-    await props.gate.unlockWithPassphrase({ passphrase: passphrase.value });
+    /**
+     * WHY: The final mechanical snap represents authenticated decryption, not
+     * elapsed time. Start decryption and the visual retraction together, then
+     * hold at zero velocity until both prerequisites have completed. A slow
+     * unlock therefore extends the still frame instead of opening the lock
+     * before authentication succeeds.
+     */
+    await Promise.all([
+      props.gate.unlockWithPassphrase({ passphrase: passphrase.value }),
+      waitForMilliseconds({ milliseconds: minimumSeatStartMilliseconds }),
+    ]);
+
+    unlockButtonState.value = 'seating';
+    await waitForMilliseconds({ milliseconds: successAnimationDurationMilliseconds });
+    unlockButtonState.value = 'unlocked';
+
+    /**
+     * WHY: The tilted open lock and the uncovered result are the visual
+     * confirmation of successful authenticated decryption. Preserve that
+     * completed frame for a full second before allowing the presentation
+     * boundary to disappear, even when the application behind it is ready.
+     */
+    await waitForMilliseconds({
+      milliseconds: OPFS_ENCRYPTION_UNLOCK_POST_SUCCESS_HOLD_DURATION_MS,
+    });
+    props.gate.reportUnlockPresentationReady();
   } catch (error) {
+    unlockButtonState.value = 'ready';
     errorMessage.value = error instanceof Error ? error.message : String(error);
   } finally {
     working.value = false;
@@ -210,7 +291,11 @@ defineExpose({
           </div>
         </div>
 
-        <form v-else-if="!isRecoveryRequired" tw-class="space-y-3" @submit.prevent="submitPassphrase">
+        <form
+          v-if="!isRecoveryRequired && !isApplicationFailed"
+          tw-class="space-y-3"
+          @submit.prevent="submitPassphrase"
+        >
           <label tw-class="block text-xs font-bold text-gray-600 dark:text-gray-300">
             {{ lazyStrings.opfsEncryption__passphrase() }}
           </label>
@@ -221,13 +306,15 @@ defineExpose({
               data-testid="opfs-encryption-unlock-passphrase"
               :type="showPassphrase ? 'text' : 'password'"
               autocomplete="current-password"
-              tw-class="w-full rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 pl-11 pr-12 py-3.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+              :disabled="working || gatePhase !== 'locked'"
+              tw-class="w-full rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 pl-11 pr-12 py-3.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 disabled:cursor-default disabled:opacity-70"
               @paste="handlePassphrasePaste({ event: $event })"
             />
             <button
               type="button"
               data-testid="opfs-encryption-unlock-passphrase-visibility"
-              tw-class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              :disabled="working || gatePhase !== 'locked'"
+              tw-class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:cursor-default"
               :title="showPassphrase ? lazyStrings.opfsEncryption__hide_passphrase() : lazyStrings.opfsEncryption__show_passphrase()"
               @click="showPassphrase = !showPassphrase"
             >
@@ -245,17 +332,15 @@ defineExpose({
           <p v-if="errorMessage" tw-class="text-xs text-red-600 dark:text-red-400 break-words">
             {{ errorMessage }}
           </p>
-          <button
-            type="submit"
-            :disabled="working || passphrase.length === 0 || hasLineBreak"
-            tw-class="w-full mt-2 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-5 py-3.5 text-sm font-bold flex items-center justify-center gap-2 transition-colors"
-          >
-            <Loader2Icon v-if="working" tw-class="w-4 h-4 animate-spin" />
-            {{ isTransitioning ? lazyStrings.opfsEncryption__unlock_and_resume() : lazyStrings.opfsEncryption__unlock_storage() }}
-          </button>
+          <OpfsEncryptionUnlockButton
+            :state="unlockButtonState"
+            :disabled="working || gatePhase !== 'locked' || passphrase.length === 0 || hasLineBreak"
+            :label="isTransitioning ? lazyStrings.opfsEncryption__unlock_and_resume() : lazyStrings.opfsEncryption__unlock_storage()"
+            :result-label="lazyStrings.opfsEncryption__unlocked()"
+          />
         </form>
 
-        <div v-else tw-class="space-y-4">
+        <div v-if="isRecoveryRequired" tw-class="space-y-4">
           <div tw-class="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/20 p-4 text-sm text-amber-900 dark:text-amber-300 break-words">
             {{ inspection.type === 'recovery_required' && inspection.error instanceof Error ? inspection.error.message : lazyStrings.opfsEncryption__encryption_state_is_unreadable() }}
           </div>

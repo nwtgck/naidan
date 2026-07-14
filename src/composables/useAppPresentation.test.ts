@@ -20,7 +20,9 @@ const opfsEncryptionGate = {
   unlockWithPassphrase: async () => {},
   retryInspection: async () => {},
   reportApplicationFailure: () => {},
+  reportUnlockPresentationReady: () => {},
   wait: async () => {},
+  waitForUnlockPresentation: async () => {},
 } as OpfsEncryptionStartupGate;
 
 const startupState = shallowRef<StartupState>({

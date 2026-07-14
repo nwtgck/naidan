@@ -5,7 +5,8 @@ import SidebarDebugControls from './SidebarDebugControls.vue';
 
 const mocks = vi.hoisted(() => ({
   inspectOpfsEncryption: vi.fn(),
-  openInspector: vi.fn(),
+  openHizoFSWorkbench: vi.fn(),
+  openOpfsEncryptionInspector: vi.fn(),
   openFileExplorer: vi.fn(),
   openRecent: vi.fn(),
   toggleDebug: vi.fn(),
@@ -49,9 +50,15 @@ vi.mock('@/composables/useRecentChats', () => ({
   useRecentChats: () => ({ openRecent: mocks.openRecent }),
 }));
 
-vi.mock('@/features/debug-encrypted-storage/composables/useDebugEncryptedStorageInspector', () => ({
-  useDebugEncryptedStorageInspector: () => ({
-    openDebugEncryptedStorageInspector: mocks.openInspector,
+vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
+  useDebugHizoFSWorkbench: () => ({
+    openDebugHizoFSWorkbench: mocks.openHizoFSWorkbench,
+  }),
+}));
+
+vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector', () => ({
+  useDebugOpfsEncryptionInspector: () => ({
+    openDebugOpfsEncryptionInspector: mocks.openOpfsEncryptionInspector,
   }),
 }));
 
@@ -73,20 +80,24 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
     vi.clearAllMocks();
   });
 
-  it('keeps the Inspector disabled for plaintext storage', async () => {
+  it('keeps the Naidan control inspector disabled but exposes the Workbench for plaintext storage', async () => {
     mocks.inspectOpfsEncryption.mockResolvedValue({ type: 'plain' });
     const wrapper = mountControls();
 
     await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
     await flushPromises();
 
-    const inspectorButton = wrapper.get('[data-testid="sidebar-encrypted-storage-inspector-button"]');
-    expect(inspectorButton.attributes('disabled')).toBeDefined();
-    await inspectorButton.trigger('click');
-    expect(mocks.openInspector).not.toHaveBeenCalled();
+    const controlInspectorButton = wrapper.get('[data-testid="sidebar-opfs-encryption-inspector-button"]');
+    const hizoFSWorkbenchButton = wrapper.get('[data-testid="sidebar-hizofs-workbench-button"]');
+    expect(controlInspectorButton.attributes('disabled')).toBeDefined();
+    expect(hizoFSWorkbenchButton.attributes('disabled')).toBeUndefined();
+    await controlInspectorButton.trigger('click');
+    await hizoFSWorkbenchButton.trigger('click');
+    expect(mocks.openOpfsEncryptionInspector).not.toHaveBeenCalled();
+    expect(mocks.openHizoFSWorkbench).toHaveBeenCalledOnce();
   });
 
-  it('opens the Inspector after confirming encrypted OPFS is active', async () => {
+  it('opens the Naidan inspector and the independent HizoFS Workbench for encrypted storage', async () => {
     mocks.inspectOpfsEncryption.mockResolvedValue({
       type: 'encrypted',
       state: {},
@@ -96,9 +107,17 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
     await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
     await flushPromises();
 
-    const inspectorButton = wrapper.get('[data-testid="sidebar-encrypted-storage-inspector-button"]');
-    expect(inspectorButton.attributes('disabled')).toBeUndefined();
-    await inspectorButton.trigger('click');
-    expect(mocks.openInspector).toHaveBeenCalledOnce();
+    const controlInspectorButton = wrapper.get('[data-testid="sidebar-opfs-encryption-inspector-button"]');
+    const hizoFSWorkbenchButton = wrapper.get('[data-testid="sidebar-hizofs-workbench-button"]');
+    expect(controlInspectorButton.attributes('disabled')).toBeUndefined();
+    expect(hizoFSWorkbenchButton.attributes('disabled')).toBeUndefined();
+
+    await controlInspectorButton.trigger('click');
+    expect(mocks.openOpfsEncryptionInspector).toHaveBeenCalledOnce();
+
+    await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="sidebar-hizofs-workbench-button"]').trigger('click');
+    expect(mocks.openHizoFSWorkbench).toHaveBeenCalledOnce();
   });
 });

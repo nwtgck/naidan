@@ -3,6 +3,7 @@ import * as Comlink from 'comlink';
 
 import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
+import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
   weshWorkerExecutionSummarySchema,
@@ -45,6 +46,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   });
 
   const createRuntime = async () => {
+    const storageDirectoryRemote = createWeshStorageDirectoryRemoteForMounts({ mounts });
     const worker = await createFileProtocolStandaloneWorkerHub();
     const remote = Comlink.wrap<IWorkerHub>(worker);
     const wesh = await remote.wesh;
@@ -55,18 +57,26 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       naidanSysfsRemoteReader
         ? Comlink.proxy(naidanSysfsRemoteReader)
         : undefined,
+      storageDirectoryRemote
+        ? Comlink.proxy(storageDirectoryRemote)
+        : undefined,
     );
-    return { worker, remote, wesh };
+    return { worker, remote, wesh, storageDirectoryRemote };
   };
 
-  const destroyRuntime = async ({ worker, remote }: {
+  const destroyRuntime = async ({ worker, remote, storageDirectoryRemote }: {
     worker: Worker,
     remote: Comlink.Remote<IWorkerHub>,
+    storageDirectoryRemote: ReturnType<typeof createWeshStorageDirectoryRemoteForMounts>,
   }) => {
     try {
-      await remote[Comlink.releaseProxy]();
+      await storageDirectoryRemote?.dispose();
     } finally {
-      worker.terminate();
+      try {
+        await remote[Comlink.releaseProxy]();
+      } finally {
+        worker.terminate();
+      }
     }
   };
 

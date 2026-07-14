@@ -1,7 +1,6 @@
 import { ref, shallowRef } from 'vue';
 import type { WeshMount } from '@/features/wesh/types';
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
-import { mapWeshMountsToWorkerMounts } from '@/features/wesh/worker/types';
 
 export type FileExplorerModalOptions =
   | { kind: 'opfs-root' }
@@ -10,6 +9,14 @@ export type FileExplorerModalOptions =
     title: string,
     rootName: string,
     handle: FileSystemDirectoryHandle,
+    readOnly: boolean,
+    initialPath: string[] | undefined,
+  }
+  | {
+    kind: 'storage-directory',
+    title: string,
+    rootName: string,
+    handle: import('@/00-storage/service/storage-file-system/types').StorageDirectoryHandle,
     readOnly: boolean,
     initialPath: string[] | undefined,
   }
@@ -40,11 +47,18 @@ export function mapFileExplorerModalOptionsToRootDescriptor({
       handle: options.handle,
       readOnly: options.readOnly,
     };
+  case 'storage-directory':
+    return {
+      kind: 'storage-directory',
+      rootName: options.rootName,
+      handle: options.handle,
+      readOnly: options.readOnly,
+    };
   case 'wesh-mounts':
     return {
       kind: 'wesh-mounts',
       rootName: options.rootName,
-      mounts: mapWeshMountsToWorkerMounts({ mounts: options.mounts }),
+      mounts: options.mounts,
     };
   default: {
     const _exhaustiveCheck: never = options;

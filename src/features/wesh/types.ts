@@ -312,16 +312,10 @@ export interface WeshDirectoryMount {
   readOnly: boolean,
 }
 
-export interface WeshEncryptedDirectoryMount {
-  type: 'encrypted_directory',
+export interface WeshStorageDirectoryMount {
+  type: 'storage_directory',
   path: string,
-  storeDirectory: FileSystemDirectoryHandle,
-  encryptedStoreId: string,
-  fileSystemId: string,
-  physicalArea: 'durable' | 'temporary',
-  rootDirectoryId: string,
-  objectEncryptionKey: CryptoKey,
-  objectAddressKey: CryptoKey,
+  handle: import('@/00-storage/service/storage-file-system/types').StorageDirectoryHandle,
   readOnly: boolean,
 }
 
@@ -336,7 +330,7 @@ export interface WeshNaidanSysfsMount {
   currentChatGroupId: ChatGroupId | undefined,
 }
 
-export type WeshMount = WeshDirectoryMount | WeshEncryptedDirectoryMount | WeshNaidanSysfsMount;
+export type WeshMount = WeshDirectoryMount | WeshStorageDirectoryMount | WeshNaidanSysfsMount;
 
 export type WeshVirtualEntryRef =
   | {

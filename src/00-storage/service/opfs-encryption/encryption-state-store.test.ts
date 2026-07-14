@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { EncryptionStateDto } from '@/00-storage/00-dto/encryption.dto';
-import {
-  MockFileSystemDirectoryHandle,
-} from '@/utils/in-memory-file-system';
+import type { OpfsEncryptionStateDto } from '@/00-storage/00-dto/opfs-encryption.dto';
+import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { encodeBase64Url } from './base64-url';
 import { EncryptionStateStore } from './encryption-state-store';
 
@@ -10,9 +8,9 @@ function createState({
   sequence,
   encryptedStoreId,
 }: {
-  sequence: number,
-  encryptedStoreId: string,
-}): EncryptionStateDto {
+  sequence: number;
+  encryptedStoreId: string;
+}): OpfsEncryptionStateDto {
   return {
     formatVersion: 1,
     sequence,
@@ -20,7 +18,7 @@ function createState({
     keySlots: [{
       id: 'slot-id',
       keyDerivation: {
-        type: 'pbkdf2_sha256',
+        type: 'pbkdf2_hmac_sha256',
         salt: encodeBase64Url({ bytes: new Uint8Array(32).fill(1) }),
         iterations: 10,
       },
@@ -36,9 +34,9 @@ function createState({
 describe('EncryptionStateStore', () => {
   it('treats a missing encryption-state directory as plain storage', async () => {
     const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
-    const store = new EncryptionStateStore({ storageRoot });
-
-    await expect(store.inspect()).resolves.toEqual({ type: 'plain' });
+    await expect(new EncryptionStateStore({ storageRoot }).inspect()).resolves.toEqual({
+      type: 'plain',
+    });
   });
 
   it('selects the newest valid slot and falls back from a corrupt latest slot', async () => {
@@ -49,10 +47,7 @@ describe('EncryptionStateStore', () => {
 
     await store.writeState({ state: first });
     await store.writeState({ state: second });
-    await expect(store.inspect()).resolves.toEqual({
-      type: 'encrypted',
-      state: second,
-    });
+    await expect(store.inspect()).resolves.toEqual({ type: 'encrypted', state: second });
 
     const stateDirectory = await storageRoot.getDirectoryHandle('encryption-state');
     const latestSlot = await stateDirectory.getFileHandle('state-1.json');
@@ -60,18 +55,13 @@ describe('EncryptionStateStore', () => {
     await writable.write('{invalid json');
     await writable.close();
 
-    await expect(store.inspect()).resolves.toEqual({
-      type: 'encrypted',
-      state: first,
-    });
+    await expect(store.inspect()).resolves.toEqual({ type: 'encrypted', state: first });
   });
 
   it('accepts a durable state-directory removal when removeEntry reports an error', async () => {
     const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
     const store = new EncryptionStateStore({ storageRoot });
-    await store.writeState({
-      state: createState({ sequence: 0, encryptedStoreId: 'store-0' }),
-    });
+    await store.writeState({ state: createState({ sequence: 0, encryptedStoreId: 'store-0' }) });
     const removeEntry = storageRoot.removeEntry.bind(storageRoot);
     vi.spyOn(storageRoot, 'removeEntry').mockImplementation(async (name, options) => {
       await removeEntry(name, options);
@@ -79,18 +69,6 @@ describe('EncryptionStateStore', () => {
     });
 
     await expect(store.removeAll()).resolves.toBeUndefined();
-    await expect(store.inspect()).resolves.toEqual({ type: 'plain' });
-  });
-
-  it('returns to the legacy plain representation by removing all state', async () => {
-    const storageRoot = new MockFileSystemDirectoryHandle({ name: 'naidan-storage' });
-    const store = new EncryptionStateStore({ storageRoot });
-
-    await store.writeState({
-      state: createState({ sequence: 0, encryptedStoreId: 'store-0' }),
-    });
-    await store.removeAll();
-
     await expect(store.inspect()).resolves.toEqual({ type: 'plain' });
   });
 });

@@ -46,43 +46,17 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     };
 
     function createMockFile(name: string) {
-      let content: string | Uint8Array | ArrayBuffer | Blob = '{}';
+      let content = new Blob(['{}']);
       return {
         kind: 'file',
         name,
         createWritable: vi.fn().mockResolvedValue({
-          write: vi.fn().mockImplementation(async (data) => {
-            if (
-              typeof data === 'string'
-              || data instanceof Uint8Array
-              || data instanceof ArrayBuffer
-              || data instanceof Blob
-            ) {
-              content = data;
-              return;
-            }
-            throw new Error(`Unsupported mock write: ${String(data)}`);
+          write: vi.fn().mockImplementation(async (data: BlobPart) => {
+            content = new Blob([data]);
           }),
           close: vi.fn().mockResolvedValue(undefined),
         }),
-        getFile: vi.fn().mockImplementation(async () => {
-          let size: number;
-          if (typeof content === 'string') {
-            size = new TextEncoder().encode(content).byteLength;
-          } else if (content instanceof Blob) {
-            size = content.size;
-          } else {
-            size = content.byteLength;
-          }
-          return {
-            size,
-            text: async () => {
-              if (typeof content === 'string') return content;
-              if (content instanceof Blob) return await content.text();
-              return new TextDecoder().decode(content);
-            },
-          };
-        }),
+        getFile: vi.fn().mockImplementation(async () => new File([content], name)),
       };
     }
 

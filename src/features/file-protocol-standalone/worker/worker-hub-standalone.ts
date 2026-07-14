@@ -1,7 +1,7 @@
-import { createDebugEncryptedStorageWorker } from '@/features/debug-encrypted-storage/worker/impl';
 import * as Comlink from 'comlink';
 
 import { createAdvancedTextEditorV3Worker } from '@/features/advanced-text-editor-v3/worker/impl';
+import { createHizoFSInspectionWorker } from '@/features/debug-hizofs/worker/impl';
 import { createFileExplorerWorker } from '@/features/file-explorer/worker/impl';
 import { createHighlightWorker } from '@/features/highlight/worker/impl';
 import type { IWorkerHub } from './worker-hub.types';
@@ -10,8 +10,8 @@ import { createWeshWorker } from '@/features/wesh/worker/impl';
 
 export function createStandaloneWorkerHub(): IWorkerHub {
   return {
-    debugEncryptedStorage: Comlink.proxy(createDebugEncryptedStorageWorker()),
     wesh: Comlink.proxy(createWeshWorker()),
+    hizoFSInspection: Comlink.proxy(createHizoFSInspectionWorker()),
     globalSearch: Comlink.proxy(createGlobalSearchWorker()),
     fileExplorer: Comlink.proxy(createFileExplorerWorker()),
     advancedTextEditorV3: Comlink.proxy(createAdvancedTextEditorV3Worker()),

@@ -1,8 +1,9 @@
 import type {
-  EncryptedStoreHeaderDto,
-  EncryptionStateDto,
-} from '@/00-storage/00-dto/encryption.dto';
+  OpfsEncryptedStoreHeaderDto,
+  OpfsEncryptionStateDto,
+} from '@/00-storage/00-dto/opfs-encryption.dto';
 import { decodeBase64UrlWithLength } from './base64-url';
+import { validateHizoFSStableId } from '@/00-storage/service/hizofs/id';
 import {
   MAX_ENCRYPTION_KEY_SLOTS,
   MAX_PBKDF2_ITERATIONS,
@@ -12,8 +13,8 @@ function assertNonNegativeSafeInteger({
   value,
   fieldName,
 }: {
-  value: number,
-  fieldName: string,
+  value: number;
+  fieldName: string;
 }): void {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${fieldName} must be a non-negative safe integer`);
@@ -24,20 +25,27 @@ function assertPositiveSafeInteger({
   value,
   fieldName,
 }: {
-  value: number,
-  fieldName: string,
+  value: number;
+  fieldName: string;
 }): void {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new Error(`${fieldName} must be a positive safe integer`);
   }
 }
 
+function assertEncryptionOpaqueId({ value, fieldName }: {
+  value: string;
+  fieldName: string;
+}): void {
+  validateHizoFSStableId({ value, fieldName });
+}
+
 export function assertSafeOpfsPathSegment({
   value,
   fieldName,
 }: {
-  value: string,
-  fieldName: string,
+  value: string;
+  fieldName: string;
 }): void {
   if (
     value.length === 0
@@ -54,9 +62,12 @@ export function assertSafeOpfsPathSegment({
 export function assertEncryptionStateCanBeUsed({
   state,
 }: {
-  state: EncryptionStateDto,
+  state: OpfsEncryptionStateDto;
 }): void {
-  assertNonNegativeSafeInteger({ value: state.sequence, fieldName: 'Encryption state sequence' });
+  assertNonNegativeSafeInteger({
+    value: state.sequence,
+    fieldName: 'Encryption state sequence',
+  });
   if (state.keySlots.length === 0 || state.keySlots.length > MAX_ENCRYPTION_KEY_SLOTS) {
     throw new Error(
       `Encryption state must contain between 1 and ${MAX_ENCRYPTION_KEY_SLOTS} key slots`,
@@ -65,11 +76,13 @@ export function assertEncryptionStateCanBeUsed({
   const keySlotIds = new Set<string>();
   for (const keySlot of state.keySlots) {
     if (keySlot.id.length === 0 || keySlotIds.has(keySlot.id)) {
-      throw new Error(`Encryption state contains an invalid or duplicate key slot ID: ${JSON.stringify(keySlot.id)}`);
+      throw new Error(
+        `Encryption state contains an invalid or duplicate key slot ID: ${JSON.stringify(keySlot.id)}`,
+      );
     }
     keySlotIds.add(keySlot.id);
     switch (keySlot.keyDerivation.type) {
-    case 'pbkdf2_sha256':
+    case 'pbkdf2_hmac_sha256':
       assertPositiveSafeInteger({
         value: keySlot.keyDerivation.iterations,
         fieldName: 'PBKDF2 iteration count',
@@ -85,6 +98,10 @@ export function assertEncryptionStateCanBeUsed({
         fieldName: 'PBKDF2 salt',
       });
       break;
+    default: {
+      const _ex: never = keySlot.keyDerivation.type;
+      throw new Error(`Unhandled key derivation: ${String(_ex)}`);
+    }
     }
     decodeBase64UrlWithLength({
       value: keySlot.wrappedStorageUnlockKey.nonce,
@@ -150,22 +167,25 @@ export function assertEncryptionStateCanBeUsed({
 export function assertEncryptedStoreHeaderCanBeUsed({
   header,
 }: {
-  header: EncryptedStoreHeaderDto,
+  header: OpfsEncryptedStoreHeaderDto;
 }): void {
-  assertNonNegativeSafeInteger({ value: header.sequence, fieldName: 'Encrypted store header sequence' });
   assertSafeOpfsPathSegment({
     value: header.encryptedStoreId,
     fieldName: 'Encrypted store ID',
   });
-  decodeBase64UrlWithLength({
-    value: header.wrappedStoreRootKey.nonce,
-    expectedByteLength: 12,
-    fieldName: 'Wrapped store root key nonce',
+  assertEncryptionOpaqueId({
+    value: header.fileSystemId,
+    fieldName: 'Encrypted store file system ID',
   });
   decodeBase64UrlWithLength({
-    value: header.wrappedStoreRootKey.ciphertext,
+    value: header.wrappedFileSystemRootKey.nonce,
+    expectedByteLength: 12,
+    fieldName: 'Wrapped file system root key nonce',
+  });
+  decodeBase64UrlWithLength({
+    value: header.wrappedFileSystemRootKey.ciphertext,
     expectedByteLength: 48,
-    fieldName: 'Wrapped store root key ciphertext',
+    fieldName: 'Wrapped file system root key ciphertext',
   });
 }
 

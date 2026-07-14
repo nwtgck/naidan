@@ -1,35 +1,40 @@
-import type { EncryptionStateDto } from '@/00-storage/00-dto/encryption.dto';
-import { EncryptedOPFSStorageBackend } from './encrypted-opfs-storage-backend';
+import type { OpfsEncryptionStateDto } from '@/00-storage/00-dto/opfs-encryption.dto';
+import { NaidanOpfsStorageBackend } from '@/00-storage/service/naidan-opfs/backend';
+import { HostVolumeDB } from '@/00-storage/service/opfs/host-volume-db';
+import {
+  openHizoFS,
+  readHizoFSFileSystemId,
+} from '@/00-storage/service/hizofs';
 import { EncryptedStoreHeaderStore } from './encrypted-store-header-store';
 import {
-  deriveEncryptedStoreRuntimeKeys,
   unlockStorageUnlockKeyWithPassphrase,
-  unwrapStoreRootKey,
+  unwrapFileSystemRootKey,
 } from './encryption-key-manager';
 import { EncryptionStateStore } from './encryption-state-store';
-import type { UnlockedOpfsEncryptionSession } from './encryption-transition-coordinator';
-import type { EncryptedStoreRuntimeKeys } from './types';
+import type { UnlockedOpfsEncryptionSession } from './session';
 
 export type OpfsEncryptionInspection =
   | { type: 'plain' }
   | {
-      type: 'encrypted',
-      state: Extract<EncryptionStateDto, { state: 'encrypted' }>,
+      type: 'encrypted';
+      state: Extract<OpfsEncryptionStateDto, { state: 'encrypted' }>;
     }
   | {
-      type: 'transitioning',
-      state: Extract<EncryptionStateDto, { state: 'transitioning' }>,
-      operation: Extract<EncryptionStateDto, { state: 'transitioning' }>['operation'],
+      type: 'transitioning';
+      state: Extract<OpfsEncryptionStateDto, { state: 'transitioning' }>;
+      operation: Extract<
+        OpfsEncryptionStateDto,
+        { state: 'transitioning' }
+      >['operation'];
     }
-  | { type: 'recovery_required', error: unknown };
+  | { type: 'recovery_required'; error: unknown };
 
 export async function inspectOpfsEncryption({
   storageRoot,
 }: {
-  storageRoot: FileSystemDirectoryHandle,
+  storageRoot: FileSystemDirectoryHandle;
 }): Promise<OpfsEncryptionInspection> {
-  const stateStore = new EncryptionStateStore({ storageRoot });
-  const inspection = await stateStore.inspect();
+  const inspection = await new EncryptionStateStore({ storageRoot }).inspect();
   switch (inspection.type) {
   case 'plain':
     return inspection;
@@ -41,11 +46,7 @@ export async function inspectOpfsEncryption({
     case 'encrypted':
       return { type: 'encrypted', state };
     case 'transitioning':
-      return {
-        type: 'transitioning',
-        state,
-        operation: state.operation,
-      };
+      return { type: 'transitioning', state, operation: state.operation };
     default: {
       const _ex: never = state;
       throw new Error(`Unhandled encryption state: ${String(_ex)}`);
@@ -59,16 +60,16 @@ export async function inspectOpfsEncryption({
   }
 }
 
-async function createUnlockedSession({
+export async function createUnlockedOpfsEncryptionSession({
   storageRoot,
   state,
   storageUnlockKey,
   unlockedKeySlotId,
 }: {
-  storageRoot: FileSystemDirectoryHandle,
-  state: Extract<EncryptionStateDto, { state: 'encrypted' }>,
-  storageUnlockKey: Uint8Array,
-  unlockedKeySlotId: string,
+  storageRoot: FileSystemDirectoryHandle;
+  state: Extract<OpfsEncryptionStateDto, { state: 'encrypted' }>;
+  storageUnlockKey: Uint8Array;
+  unlockedKeySlotId: string;
 }): Promise<UnlockedOpfsEncryptionSession> {
   const headerStore = new EncryptedStoreHeaderStore({ storageRoot });
   const header = await headerStore.read({
@@ -80,35 +81,44 @@ async function createUnlockedSession({
   if (header.encryptedStoreId !== state.activeEncryptedStoreId) {
     throw new Error('Encrypted store header ID does not match active state');
   }
-  const storeRootKey = await unwrapStoreRootKey({
+
+  const fileSystemRootKey = await unwrapFileSystemRootKey({
     storageUnlockKey,
     header,
   });
-  let keys: EncryptedStoreRuntimeKeys;
   try {
-    keys = await deriveEncryptedStoreRuntimeKeys({
-      storeRootKey,
+    const backingDirectory = await headerStore.getHizoFSBackingDirectory({
       encryptedStoreId: state.activeEncryptedStoreId,
+      create: false,
     });
+    const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
+    if (fileSystemId !== header.fileSystemId) {
+      throw new Error('Encrypted store header file system ID does not match its HizoFS descriptor');
+    }
+    const fileSystemSession = await openHizoFS({
+      backingDirectory,
+      fileSystemRootKey,
+    });
+    const backend = new NaidanOpfsStorageBackend({
+      namespaceRoot: fileSystemSession.root,
+      hostVolumeDB: new HostVolumeDB(),
+    });
+    try {
+      await backend.init();
+    } catch (error) {
+      await fileSystemSession.close();
+      throw error;
+    }
+    return {
+      state,
+      storageUnlockKey,
+      unlockedKeySlotId,
+      fileSystemSession,
+      backend,
+    };
   } finally {
-    storeRootKey.fill(0);
+    fileSystemRootKey.fill(0);
   }
-  const storeDirectory = await headerStore.getStoreDirectory({
-    encryptedStoreId: state.activeEncryptedStoreId,
-    create: false,
-  });
-  const backend = new EncryptedOPFSStorageBackend({
-    encryptedStoreId: state.activeEncryptedStoreId,
-    storeDirectory,
-    keys,
-  });
-  await backend.init();
-  return {
-    state,
-    storageUnlockKey,
-    unlockedKeySlotId,
-    backend,
-  };
 }
 
 export async function unlockOpfsEncryptionWithPassphrase({
@@ -116,16 +126,16 @@ export async function unlockOpfsEncryptionWithPassphrase({
   state,
   passphrase,
 }: {
-  storageRoot: FileSystemDirectoryHandle,
-  state: Extract<EncryptionStateDto, { state: 'encrypted' }>,
-  passphrase: string,
+  storageRoot: FileSystemDirectoryHandle;
+  state: Extract<OpfsEncryptionStateDto, { state: 'encrypted' }>;
+  passphrase: string;
 }): Promise<UnlockedOpfsEncryptionSession> {
   const { storageUnlockKey, keySlotId } = await unlockStorageUnlockKeyWithPassphrase({
     keySlots: state.keySlots,
     passphrase,
   });
   try {
-    return await createUnlockedSession({
+    return await createUnlockedOpfsEncryptionSession({
       storageRoot,
       state,
       storageUnlockKey,
@@ -136,7 +146,6 @@ export async function unlockOpfsEncryptionWithPassphrase({
     throw error;
   }
 }
-
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

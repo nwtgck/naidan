@@ -1,6 +1,8 @@
 import * as Comlink from 'comlink';
 
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
+import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
+import { mapWeshMountsToWorkerMounts } from '@/features/wesh/worker/types';
 import {
   fileExplorerCreateDirectoryArchiveResponseSchema,
   fileExplorerAnalyzeZipUploadResponseSchema,
@@ -41,9 +43,32 @@ export async function createFileExplorerWorkerClient({
     switch (root.kind) {
     case 'native-directory':
     case 'opfs-root':
+    case 'storage-directory':
       return undefined;
     case 'wesh-mounts':
       return createNaidanSysfsRemoteReaderForMounts({ mounts: root.mounts });
+    default: {
+      const _ex: never = root;
+      throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`);
+    }
+    }
+  })();
+  const storageDirectoryRemote = (() => {
+    switch (root.kind) {
+    case 'native-directory':
+    case 'opfs-root':
+      return undefined;
+    case 'storage-directory':
+      return createWeshStorageDirectoryRemoteForMounts({
+        mounts: [{
+          type: 'storage_directory',
+          path: '/',
+          handle: root.handle,
+          readOnly: root.readOnly,
+        }],
+      });
+    case 'wesh-mounts':
+      return createWeshStorageDirectoryRemoteForMounts({ mounts: root.mounts });
     default: {
       const _ex: never = root;
       throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`);
@@ -63,12 +88,17 @@ export async function createFileExplorerWorkerClient({
     case 'native-directory':
     case 'opfs-root':
       return root;
+    case 'storage-directory':
+      return {
+        kind: 'storage-directory' as const,
+        rootName: root.rootName,
+        readOnly: root.readOnly,
+      };
     case 'wesh-mounts':
       return {
-        ...root,
-        naidanSysfsRemoteReader: naidanSysfsRemoteReader
-          ? Comlink.proxy(naidanSysfsRemoteReader)
-          : undefined,
+        kind: 'wesh-mounts' as const,
+        rootName: root.rootName,
+        mounts: mapWeshMountsToWorkerMounts({ mounts: root.mounts }),
       };
     default: {
       const _ex: never = root;
@@ -76,11 +106,15 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const prepareResponse = await remote.prepareSession({
-    request: {
-      root: requestRoot,
-    },
-  });
+  const prepareResponse = await remote.prepareSession(
+    { root: requestRoot },
+    naidanSysfsRemoteReader
+      ? Comlink.proxy(naidanSysfsRemoteReader)
+      : undefined,
+    storageDirectoryRemote
+      ? Comlink.proxy(storageDirectoryRemote)
+      : undefined,
+  );
   const sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
 
   return {
@@ -171,9 +205,13 @@ export async function createFileExplorerWorkerClient({
     async dispose() {
       try {
         await remote.disposeSession({ request: { sessionId } });
-        await remote[Comlink.releaseProxy]();
+        await storageDirectoryRemote?.dispose();
       } finally {
-        worker.terminate();
+        try {
+          await remote[Comlink.releaseProxy]();
+        } finally {
+          worker.terminate();
+        }
       }
     },
   };

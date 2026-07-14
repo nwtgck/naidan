@@ -1,29 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
+import { HostVolumeDB } from '@/00-storage/service/opfs/host-volume-db';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
 import { EncryptionStateStore } from './encryption-state-store';
 import {
-  createEncryptionMaterial,
-} from './encryption-key-manager';
-import {
   EncryptionTransitionCoordinator,
 } from './encryption-transition-coordinator';
-import type { EncryptedOPFSStorageBackend } from './encrypted-opfs-storage-backend';
-
-interface TestEncryptionTransitionCoordinator {
-  createEncryptedBackend({
-    encryptedStoreId,
-    storageUnlockKey,
-    storeRootKey,
-    replace,
-  }: {
-    encryptedStoreId: string,
-    storageUnlockKey: Uint8Array,
-    storeRootKey: Uint8Array,
-    replace: boolean,
-  }): Promise<EncryptedOPFSStorageBackend>,
-}
-
 const navigatorStorageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage');
 const navigatorLocksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks');
 
@@ -106,48 +88,46 @@ describe('OPFS encryption passphrase changes', () => {
   it('rewrites only the passphrase key slot and preserves the encrypted store bytes', async () => {
     const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
     installOpfsRoot({ opfsRoot });
+    installUncontendedWebLocks();
     const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
-    const material = await createEncryptionMaterial({
-      passphrase: 'old passphrase',
+    const coordinator = new EncryptionTransitionCoordinator({
+      storageRoot,
+      nativeNamespaceRoot: opfsRoot,
+      hostVolumeDB: new HostVolumeDB(),
       pbkdf2Iterations: 10,
     });
-    const encryptedStoreId = 'passphrase-test-store';
-    const coordinator = new EncryptionTransitionCoordinator({ storageRoot });
-    await (
-      coordinator as unknown as TestEncryptionTransitionCoordinator
-    ).createEncryptedBackend({
-      encryptedStoreId,
-      storageUnlockKey: material.storageUnlockKey,
-      storeRootKey: material.storeRootKey,
-      replace: true,
+    const encryptionResult = await coordinator.enableEncryption({
+      passphrase: 'old passphrase',
+      signal: undefined,
     });
-    await new EncryptionStateStore({ storageRoot }).writeState({
-      state: {
-        formatVersion: 1,
-        sequence: 0,
-        state: 'encrypted',
-        keySlots: material.keySlots,
-        activeEncryptedStoreId: encryptedStoreId,
-      },
-    });
+    if (encryptionResult.type !== 'encrypted') {
+      throw new Error('Expected encrypted transition result');
+    }
+    await encryptionResult.session.fileSystemSession.close();
+    encryptionResult.session.storageUnlockKey.fill(0);
 
     const storesDirectory = await storageRoot.getDirectoryHandle('encrypted-stores');
     const before = await snapshotDirectory({ directory: storesDirectory });
+    const stateStore = new EncryptionStateStore({ storageRoot });
+    const beforeInspection = await stateStore.inspect();
+    if (beforeInspection.type !== 'encrypted' || beforeInspection.state.state !== 'encrypted') {
+      throw new Error('Expected stable encrypted state before the passphrase change');
+    }
+    const sequenceBeforePassphraseChange = beforeInspection.state.sequence;
     const provider = new OPFSStorageProvider();
     await provider.unlockWithPassphrase({ passphrase: 'old passphrase' });
     // The provider deliberately requires cross-tab exclusion for the state rewrite.
-    installUncontendedWebLocks();
     await provider.changePassphrase({ passphrase: 'new passphrase' });
     const after = await snapshotDirectory({ directory: storesDirectory });
 
     expect(after).toEqual(before);
 
-    const inspection = await new EncryptionStateStore({ storageRoot }).inspect();
+    const inspection = await stateStore.inspect();
     expect(inspection.type).toBe('encrypted');
     if (inspection.type !== 'encrypted' || inspection.state.state !== 'encrypted') {
       throw new Error('Expected stable encrypted state');
     }
-    expect(inspection.state.sequence).toBe(1);
+    expect(inspection.state.sequence).toBe(sequenceBeforePassphraseChange + 1);
     expect(inspection.state.keySlots[0]?.keyDerivation.iterations).toBeGreaterThan(0);
 
     await provider.lockEncryption();

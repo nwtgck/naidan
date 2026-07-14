@@ -20,12 +20,20 @@ import type {
   ChatGroupDto,
   ChatMetaDto,
   HierarchyDto,
-  StorageBinaryObjectWriteSource,
 } from '@/00-storage/00-dto/dto';
-import type { StorageBinaryObjectReadHandle } from './binary-object-io';
+import type {
+  StorageBinaryObjectReadHandle,
+  StorageBinaryObjectWriteSource,
+} from './binary-object-io';
 import type { StorageVolumeAccess } from './volume-access';
 import { IStorageProvider } from './interface';
-import { PlainOPFSStorageBackend } from './opfs/plain-opfs-storage-backend';
+import { NaidanOpfsStorageBackend } from './naidan-opfs/backend';
+import { HostVolumeDB } from './opfs/host-volume-db';
+import {
+  createNativeOpfsFileSystemSession,
+  unwrapNativeOpfsDirectoryHandle,
+} from './storage-file-system/native-opfs';
+import type { StorageFileSystemSession } from './storage-file-system/types';
 import { OpfsStorageSessionLock } from './opfs/opfs-storage-session-lock';
 import { isOpfsTransitionStorageBackend } from './opfs/opfs-transition-backend';
 import {
@@ -33,7 +41,10 @@ import {
   type OpfsSpecialFileSystemType,
 } from './opfs/opfs-special-file-system';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
-import type { EncryptedStorageDebugCapability } from './opfs-encryption/encrypted-storage-debug-capability';
+import {
+  createOpfsEncryptionDebugSession,
+  type OpfsEncryptionDebugSession,
+} from './opfs-encryption/inspection';
 import type {
   EncryptionTransitionResult,
   UnlockedOpfsEncryptionSession,
@@ -80,6 +91,28 @@ async function hasEncryptionStateDirectory({
       return false;
     }
     throw error;
+  }
+}
+
+function exposeStorageVolumeAccess({ access }: {
+  access: StorageVolumeAccess | null;
+}): StorageVolumeAccess | null {
+  if (access === null) {
+    return null;
+  }
+  switch (access.type) {
+  case 'storage_directory': {
+    const nativeHandle = unwrapNativeOpfsDirectoryHandle({ handle: access.handle });
+    return nativeHandle === undefined
+      ? access
+      : { type: 'direct_directory', handle: nativeHandle };
+  }
+  case 'direct_directory':
+    return access;
+  default: {
+    const _ex: never = access;
+    throw new Error(`Unhandled storage volume access: ${String(_ex)}`);
+  }
   }
 }
 
@@ -157,7 +190,9 @@ export class OPFSStorageProvider extends IStorageProvider {
   readonly canPersistBinary = true;
 
   private backend: IStorageProvider | undefined;
+  private fileSystemSession: StorageFileSystemSession | undefined;
   private unlockedEncryptionSession: UnlockedOpfsEncryptionSession | undefined;
+  private readonly hostVolumeDB = new HostVolumeDB();
   private readonly storageSessionLock = new OpfsStorageSessionLock();
 
   async init(): Promise<void> {
@@ -174,18 +209,14 @@ export class OPFSStorageProvider extends IStorageProvider {
           storageRoot === undefined
           || !(await hasEncryptionStateDirectory({ storageRoot }))
         ) {
-          const backend = new PlainOPFSStorageBackend();
-          await backend.init();
-          this.backend = backend;
+          this.backend = await this.createPlainBackend();
           return;
         }
 
         const inspection = await this.inspectEncryption();
         switch (inspection.type) {
         case 'plain': {
-          const backend = new PlainOPFSStorageBackend();
-          await backend.init();
-          this.backend = backend;
+          this.backend = await this.createPlainBackend();
           return;
         }
         case 'encrypted':
@@ -236,6 +267,8 @@ export class OPFSStorageProvider extends IStorageProvider {
           state: inspection.state,
           passphrase,
         });
+        await this.closeFileSystemSession();
+        this.fileSystemSession = session.fileSystemSession;
         this.unlockedEncryptionSession = session;
         this.backend = session.backend;
       } });
@@ -247,17 +280,18 @@ export class OPFSStorageProvider extends IStorageProvider {
 
 
 
-  async createEncryptedStorageDebugCapability(): Promise<EncryptedStorageDebugCapability> {
+  async createOpfsEncryptionDebugSession(): Promise<OpfsEncryptionDebugSession> {
     return await this.storageSessionLock.run({ run: async () => {
       const session = this.requireUnlockedEncryptionSession();
       const storageRoot = await getOrCreateStorageRoot();
-      return session.backend.createDebugCapability({ storageRoot });
+      return await createOpfsEncryptionDebugSession({ storageRoot, session });
     } });
   }
 
   async lockEncryption(): Promise<void> {
     await this.storageSessionLock.suspend();
     this.clearEncryptionSession();
+    await this.closeFileSystemSession();
     this.backend = undefined;
   }
 
@@ -268,6 +302,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   override async dispose(): Promise<void> {
     await this.storageSessionLock.suspend();
     this.clearEncryptionSession();
+    await this.closeFileSystemSession();
     this.backend = undefined;
   }
 
@@ -287,6 +322,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       );
       return await new transitionModule.EncryptionTransitionCoordinator({
         storageRoot,
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+        hostVolumeDB: this.hostVolumeDB,
+        pbkdf2Iterations: transitionModule.DEFAULT_PBKDF2_ITERATIONS,
       }).enableEncryption({ passphrase, signal });
     } });
     switch (result.type) {
@@ -362,6 +400,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       );
       return await new transitionModule.EncryptionTransitionCoordinator({
         storageRoot,
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+        hostVolumeDB: this.hostVolumeDB,
+        pbkdf2Iterations: transitionModule.DEFAULT_PBKDF2_ITERATIONS,
       }).disableEncryption({ session, signal });
     } });
   }
@@ -379,6 +420,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       );
       return await new transitionModule.EncryptionTransitionCoordinator({
         storageRoot,
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+        hostVolumeDB: this.hostVolumeDB,
+        pbkdf2Iterations: transitionModule.DEFAULT_PBKDF2_ITERATIONS,
       }).reencrypt({ session, signal });
     } });
   }
@@ -400,6 +444,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       );
       return await new transitionModule.EncryptionTransitionCoordinator({
         storageRoot,
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+        hostVolumeDB: this.hostVolumeDB,
+        pbkdf2Iterations: transitionModule.DEFAULT_PBKDF2_ITERATIONS,
       }).resumeWithPassphrase({ state: inspection.state, passphrase, signal });
     } });
   }
@@ -622,7 +669,11 @@ export class OPFSStorageProvider extends IStorageProvider {
   }: {
     volumeId: VolumeId,
   }): Promise<StorageVolumeAccess | null> {
-    return await this.runWithBackend({ run: async ({ backend }) => await backend.openVolume({ volumeId }) });
+    return await this.runWithBackend({
+      run: async ({ backend }) => exposeStorageVolumeAccess({
+        access: await backend.openVolume({ volumeId }),
+      }),
+    });
   }
 
   async openSpecialFileSystemDirectory({
@@ -638,7 +689,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       if (!isOpfsSpecialFileSystemBackend(backend)) {
         throw new Error('Active OPFS backend does not support special filesystems');
       }
-      return await backend.openSpecialFileSystemDirectory({ type, path, create });
+      return exposeStorageVolumeAccess({
+        access: await backend.openSpecialFileSystemDirectory({ type, path, create }),
+      });
     } });
   }
 
@@ -694,7 +747,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.storageSessionLock.suspend();
     try {
       const result = await run();
-      this.applyTransitionResult({ result });
+      await this.applyTransitionResult({ result });
       await this.storageSessionLock.acquire();
       return result;
     } catch (error) {
@@ -713,15 +766,15 @@ export class OPFSStorageProvider extends IStorageProvider {
     switch (inspection.type) {
     case 'plain': {
       this.clearEncryptionSession();
-      const backend = new PlainOPFSStorageBackend();
       await this.storageSessionLock.acquire();
       try {
-        await this.storageSessionLock.run({ run: async () => await backend.init() });
+        this.backend = await this.storageSessionLock.run({
+          run: async () => await this.createPlainBackend(),
+        });
       } catch (error) {
         await this.storageSessionLock.suspend();
         throw error;
       }
-      this.backend = backend;
       return;
     }
     case 'encrypted':
@@ -749,25 +802,39 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  private applyTransitionResult({
+  private async applyTransitionResult({
     result,
   }: {
     result: EncryptionTransitionResult,
-  }): void {
-    const previousSession = this.unlockedEncryptionSession;
+  }): Promise<void> {
+    const previousEncryptionSession = this.unlockedEncryptionSession;
+    const previousFileSystemSession = this.fileSystemSession;
+    const nextFileSystemSession = (() => {
+      switch (result.type) {
+      case 'encrypted':
+        return result.session.fileSystemSession;
+      case 'plain':
+        return result.fileSystemSession;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled encryption transition result: ${String(_ex)}`);
+      }
+      }
+    })();
+
     switch (result.type) {
     case 'encrypted':
       if (
-        previousSession !== undefined
-        && previousSession.storageUnlockKey !== result.session.storageUnlockKey
+        previousEncryptionSession !== undefined
+        && previousEncryptionSession.storageUnlockKey !== result.session.storageUnlockKey
       ) {
-        previousSession.storageUnlockKey.fill(0);
+        previousEncryptionSession.storageUnlockKey.fill(0);
       }
       this.unlockedEncryptionSession = result.session;
       this.backend = result.session.backend;
       break;
     case 'plain':
-      previousSession?.storageUnlockKey.fill(0);
+      previousEncryptionSession?.storageUnlockKey.fill(0);
       this.unlockedEncryptionSession = undefined;
       this.backend = result.backend;
       break;
@@ -776,6 +843,39 @@ export class OPFSStorageProvider extends IStorageProvider {
       throw new Error(`Unhandled OPFS transition result: ${String(_ex)}`);
     }
     }
+
+    this.fileSystemSession = nextFileSystemSession;
+    if (
+      previousFileSystemSession !== undefined
+      && previousFileSystemSession !== nextFileSystemSession
+    ) {
+      await previousFileSystemSession.close();
+    }
+  }
+
+  private async createPlainBackend(): Promise<NaidanOpfsStorageBackend> {
+    const nextSession = createNativeOpfsFileSystemSession({
+      root: await navigator.storage.getDirectory(),
+    });
+    const backend = new NaidanOpfsStorageBackend({
+      namespaceRoot: nextSession.root,
+      hostVolumeDB: this.hostVolumeDB,
+    });
+    try {
+      await backend.init();
+    } catch (error) {
+      await nextSession.close();
+      throw error;
+    }
+    await this.closeFileSystemSession();
+    this.fileSystemSession = nextSession;
+    return backend;
+  }
+
+  private async closeFileSystemSession(): Promise<void> {
+    const session = this.fileSystemSession;
+    this.fileSystemSession = undefined;
+    await session?.close();
   }
 
   private clearEncryptionSession(): void {

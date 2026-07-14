@@ -1,21 +1,9 @@
-import type { EncryptionKeySlotDto } from '@/00-storage/00-dto/encryption.dto';
-
-export interface EncryptedStoreRuntimeKeys {
-  readonly objectEncryptionKey: CryptoKey,
-  readonly objectAddressKey: CryptoKey,
-}
+import type { OpfsEncryptionKeySlotDto } from '@/00-storage/00-dto/opfs-encryption.dto';
 
 export interface CreatedEncryptionMaterial {
-  readonly storageUnlockKey: Uint8Array,
-  readonly storeRootKey: Uint8Array,
-  readonly keySlots: EncryptionKeySlotDto[],
-}
-
-export interface UnlockedEncryptionState {
-  readonly storageUnlockKey: Uint8Array,
-  readonly unlockedKeySlotId: string,
-  readonly storeRootKey: Uint8Array,
-  readonly storeKeys: EncryptedStoreRuntimeKeys,
+  readonly storageUnlockKey: Uint8Array;
+  readonly fileSystemRootKey: Uint8Array;
+  readonly keySlots: readonly OpfsEncryptionKeySlotDto[];
 }
 
 export type PassphraseValidationResult =

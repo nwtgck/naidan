@@ -1,7 +1,7 @@
 import {
-  EncryptionStateSchemaDto,
-  type EncryptionStateDto,
-} from '@/00-storage/00-dto/encryption.dto';
+  OpfsEncryptionStateSchemaDto,
+  type OpfsEncryptionStateDto,
+} from '@/00-storage/00-dto/opfs-encryption.dto';
 import { DualSlotJsonStore } from './dual-slot-json-store';
 import { isNotFoundError, removeDirectoryEntryIfPresent } from './opfs-json-file';
 import { assertEncryptionStateCanBeUsed } from './encryption-semantic-validation';
@@ -11,8 +11,8 @@ export const ENCRYPTED_STORES_DIRECTORY_NAME = 'encrypted-stores';
 
 export type EncryptionStateInspection =
   | { type: 'plain' }
-  | { type: 'encrypted', state: EncryptionStateDto }
-  | { type: 'invalid', error: unknown };
+  | { type: 'encrypted'; state: OpfsEncryptionStateDto }
+  | { type: 'invalid'; error: unknown };
 
 export class EncryptionStateStore {
   constructor({ storageRoot }: { storageRoot: FileSystemDirectoryHandle }) {
@@ -36,7 +36,7 @@ export class EncryptionStateStore {
       const state = await new DualSlotJsonStore({
         directory,
         filePrefix: 'state',
-        schema: EncryptionStateSchemaDto,
+        schema: OpfsEncryptionStateSchemaDto,
       }).read();
       if (state === undefined) {
         return {
@@ -51,7 +51,7 @@ export class EncryptionStateStore {
     }
   }
 
-  async writeState({ state }: { state: EncryptionStateDto }): Promise<void> {
+  async writeState({ state }: { state: OpfsEncryptionStateDto }): Promise<void> {
     assertEncryptionStateCanBeUsed({ state });
     const directory = await this.storageRoot.getDirectoryHandle(
       ENCRYPTION_STATE_DIRECTORY_NAME,
@@ -60,7 +60,7 @@ export class EncryptionStateStore {
     await new DualSlotJsonStore({
       directory,
       filePrefix: 'state',
-      schema: EncryptionStateSchemaDto,
+      schema: OpfsEncryptionStateSchemaDto,
     }).write({ value: state });
   }
 

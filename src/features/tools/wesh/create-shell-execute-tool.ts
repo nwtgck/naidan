@@ -82,7 +82,7 @@ export async function createShellExecuteTool({
     case 'direct_directory':
       volumeHandles.set(mount.volumeId, access.handle);
       break;
-    case 'encrypted_directory':
+    case 'storage_directory':
       break;
     default: {
       const _ex: never = access;

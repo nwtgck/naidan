@@ -4,7 +4,6 @@ import {
   type ChatMetaDto,
   type ChatGroupDto,
   type HierarchyDto,
-  type StorageBinaryObjectWriteSource,
   ChatMetaSchemaDto,
   ChatGroupSchemaDto,
   SettingsSchemaDto,
@@ -27,7 +26,10 @@ import {
   buildSidebarItemsFromHierarchy,
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from './interface';
-import type { StorageBinaryObjectReadHandle } from './binary-object-io';
+import type {
+  StorageBinaryObjectReadHandle,
+  StorageBinaryObjectWriteSource,
+} from './binary-object-io';
 import type { StorageVolumeAccess } from './volume-access';
 
 import { STORAGE_KEY_PREFIX } from '@/constants';

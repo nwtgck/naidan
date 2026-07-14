@@ -6,6 +6,8 @@ import {
   createOpfsNaidanSysfsStorageReader,
   createRemoteNaidanSysfsStorageReader,
 } from '@/features/wesh/naidan-sysfs/storage-reader';
+import { RemoteStorageDirectoryWeshProvider } from '@/features/wesh/storage-directory/provider';
+import type { WeshStorageDirectoryRemote } from '@/features/wesh/storage-directory/types';
 import { EXTENSION_LANGUAGE_MAP, MEDIA_PREVIEW_SIZE_LIMIT, TEXT_PREVIEW_SIZE_LIMIT } from '@/features/file-explorer/logic/constants';
 import { getFileExtension, getMimeCategory } from '@/features/file-explorer/logic/utils';
 import {
@@ -62,7 +64,7 @@ import {
   fileExplorerUploadFilesRequestSchema,
   type FileExplorerEntryRecord,
   type FileExplorerPathSegment,
-  type FileExplorerRootDescriptor,
+  type FileExplorerWorkerRootDescriptor,
   type FileExplorerZipUploadPlacement,
   type IFileExplorerWorker,
 } from './types';
@@ -206,7 +208,15 @@ function getSession({ sessionId }: { sessionId: string }): FileExplorerSession {
   return session;
 }
 
-async function createSessionFromRoot({ root }: { root: FileExplorerRootDescriptor }): Promise<FileExplorerSession> {
+async function createSessionFromRoot({
+  root,
+  naidanSysfsRemoteReader,
+  storageDirectoryRemote,
+}: {
+  root: FileExplorerWorkerRootDescriptor,
+  naidanSysfsRemoteReader: Parameters<typeof createRemoteNaidanSysfsStorageReader>[0]['remoteReader'] | undefined,
+  storageDirectoryRemote: WeshStorageDirectoryRemote | undefined,
+}): Promise<FileExplorerSession> {
   switch (root.kind) {
   case 'opfs-root':
     return {
@@ -222,6 +232,28 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
       rootHandle: root.handle,
       readOnly: root.readOnly,
     };
+  case 'storage-directory': {
+    if (storageDirectoryRemote === undefined) {
+      throw new Error('Storage directory remote is required for a storage-directory root');
+    }
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    // The File Explorer receives one StorageDirectoryHandle as its filesystem root.
+    // Keeping this as a distinct root kind prevents a direct root from being
+    // reinterpreted as a user-visible Wesh mount and preserves root-relative paths.
+    vfs.mountVirtual({
+      path: '/',
+      readOnly: root.readOnly,
+      provider: new RemoteStorageDirectoryWeshProvider({
+        remote: storageDirectoryRemote,
+        mountPath: '/',
+      }),
+    });
+    return {
+      kind: 'wesh-mounts',
+      rootName: root.rootName,
+      vfs,
+    };
+  }
   case 'wesh-mounts': {
     const vfs = new WeshVFS({ rootHandle: undefined });
     for (const mount of root.mounts) {
@@ -234,24 +266,15 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
           readOnly: mount.readOnly,
         });
         break;
-      case 'encrypted_directory': {
-        const { EncryptedDirectoryWeshProvider } = await import(
-          '@/features/wesh/encrypted-directory-provider'
-        );
+      case 'storage_directory': {
+        if (storageDirectoryRemote === undefined) {
+          throw new Error('Storage directory remote is required for storage_directory mounts');
+        }
         vfs.mountVirtual({
           path: mount.path,
           readOnly: mount.readOnly,
-          provider: new EncryptedDirectoryWeshProvider({
-            access: {
-              type: 'encrypted_directory',
-              storeDirectory: mount.storeDirectory,
-              encryptedStoreId: mount.encryptedStoreId,
-              fileSystemId: mount.fileSystemId,
-              physicalArea: mount.physicalArea,
-              rootDirectoryId: mount.rootDirectoryId,
-              objectEncryptionKey: mount.objectEncryptionKey,
-              objectAddressKey: mount.objectAddressKey,
-            },
+          provider: new RemoteStorageDirectoryWeshProvider({
+            remote: storageDirectoryRemote,
             mountPath: mount.path,
           }),
         });
@@ -264,11 +287,11 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
             return createOpfsNaidanSysfsStorageReader();
           case 'local':
           case 'memory':
-            if (root.naidanSysfsRemoteReader === undefined) {
+            if (naidanSysfsRemoteReader === undefined) {
               throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`);
             }
             return createRemoteNaidanSysfsStorageReader({
-              remoteReader: root.naidanSysfsRemoteReader,
+              remoteReader: naidanSysfsRemoteReader,
             });
           default: {
             const _exhaustiveCheck: never = mount.storageType;
@@ -1160,10 +1183,19 @@ async function listZipUploadExistingEntries({
 
 export function createFileExplorerWorker(): IFileExplorerWorker {
   return {
-    async prepareSession({ request }) {
+    // This method implements the existing Comlink RPC contract shared with hosted and standalone clients.
+    // eslint-disable-next-line local-rules-named-args/require-named-args
+    async prepareSession(requestOrOptions, naidanSysfsRemoteReader, storageDirectoryRemote) {
+      const request = 'request' in requestOrOptions
+        ? requestOrOptions.request
+        : requestOrOptions;
       const validated = fileExplorerPrepareSessionRequestSchema.parse(request);
       const sessionId = createSessionId();
-      sessions.set(sessionId, await createSessionFromRoot({ root: validated.root }));
+      sessions.set(sessionId, await createSessionFromRoot({
+        root: validated.root,
+        naidanSysfsRemoteReader,
+        storageDirectoryRemote,
+      }));
       return fileExplorerPrepareSessionResponseSchema.parse({ sessionId });
     },
 

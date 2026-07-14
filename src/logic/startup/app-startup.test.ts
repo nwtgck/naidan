@@ -179,7 +179,7 @@ describe('app startup', () => {
             keySlots: [{
               id: 'slot-id',
               keyDerivation: {
-                type: 'pbkdf2_sha256',
+                type: 'pbkdf2_hmac_sha256',
                 salt: 'salt',
                 iterations: 10,
               },
@@ -239,6 +239,10 @@ describe('app startup', () => {
     renderingState.renderGate.reportInitialRender();
     await flushPromises();
     flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    await flushPromises();
+    expect(harness.startupState.value.kind).toBe('rendering-main-after-opfs-unlock');
+
+    state.gate.reportUnlockPresentationReady();
     const dispose = await startup;
     expect(harness.startupState.value.kind).toBe('ready');
     dispose();
@@ -266,7 +270,7 @@ describe('app startup', () => {
             keySlots: [{
               id: 'slot-id',
               keyDerivation: {
-                type: 'pbkdf2_sha256',
+                type: 'pbkdf2_hmac_sha256',
                 salt: 'salt',
                 iterations: 10,
               },

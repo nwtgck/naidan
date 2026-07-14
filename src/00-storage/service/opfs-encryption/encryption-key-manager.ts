@@ -1,19 +1,17 @@
 import type {
-  EncryptedStoreHeaderDto,
-  EncryptionKeySlotDto,
-} from '@/00-storage/00-dto/encryption.dto';
+  OpfsEncryptedStoreHeaderDto,
+  OpfsEncryptionKeySlotDto,
+} from '@/00-storage/00-dto/opfs-encryption.dto';
 import { decodeBase64UrlWithLength, encodeBase64Url } from './base64-url';
 import { assertEncryptionPassphraseCanBeUsed } from './passphrase';
 import { toExactArrayBuffer } from './array-buffer';
-import type { CreatedEncryptionMaterial, EncryptedStoreRuntimeKeys } from './types';
+import type { CreatedEncryptionMaterial } from './types';
 
 export const DEFAULT_PBKDF2_ITERATIONS = 600_000;
 export const MAX_PBKDF2_ITERATIONS = 10_000_000;
 export const MAX_ENCRYPTION_KEY_SLOTS = 32;
 
 const UTF8 = new TextEncoder();
-const OBJECT_ENCRYPTION_HKDF_INFO = UTF8.encode('naidan/opfs-encryption/object-encryption-key/v1');
-const OBJECT_ADDRESS_HKDF_INFO = UTF8.encode('naidan/opfs-encryption/object-address-key/v1');
 
 function randomBytes({ byteLength }: { byteLength: number }): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(byteLength));
@@ -172,7 +170,7 @@ export async function createEncryptionKeySlotFromSecret({
   secret: Uint8Array,
   keySlotId: string,
   pbkdf2Iterations: number,
-}): Promise<EncryptionKeySlotDto> {
+}): Promise<OpfsEncryptionKeySlotDto> {
   const salt = randomBytes({ byteLength: 32 });
   try {
     const wrappingKey = await deriveSecretWrappingKey({
@@ -183,7 +181,7 @@ export async function createEncryptionKeySlotFromSecret({
     return {
       id: keySlotId,
       keyDerivation: {
-        type: 'pbkdf2_sha256',
+        type: 'pbkdf2_hmac_sha256',
         salt: encodeBase64Url({ bytes: salt }),
         iterations: pbkdf2Iterations,
       },
@@ -211,7 +209,7 @@ export async function createPassphraseEncryptionKeySlot({
   passphrase: string,
   keySlotId: string,
   pbkdf2Iterations: number,
-}): Promise<EncryptionKeySlotDto> {
+}): Promise<OpfsEncryptionKeySlotDto> {
   assertEncryptionPassphraseCanBeUsed({ passphrase });
   const passphraseBytes = UTF8.encode(passphrase);
   try {
@@ -234,11 +232,11 @@ export async function replacePassphraseEncryptionKeySlot({
   pbkdf2Iterations,
 }: {
   storageUnlockKey: Uint8Array,
-  keySlots: EncryptionKeySlotDto[],
+  keySlots: readonly OpfsEncryptionKeySlotDto[],
   keySlotId: string,
   passphrase: string,
   pbkdf2Iterations: number,
-}): Promise<EncryptionKeySlotDto[]> {
+}): Promise<readonly OpfsEncryptionKeySlotDto[]> {
   const replacement = await createPassphraseEncryptionKeySlot({
     storageUnlockKey,
     passphrase,
@@ -261,7 +259,7 @@ export async function createEncryptionMaterial({
 }): Promise<CreatedEncryptionMaterial> {
   assertEncryptionPassphraseCanBeUsed({ passphrase });
   const storageUnlockKey = randomBytes({ byteLength: 32 });
-  const storeRootKey = randomBytes({ byteLength: 32 });
+  const fileSystemRootKey = randomBytes({ byteLength: 32 });
   try {
     const keySlotId = createEncryptionOpaqueId();
     const keySlot = await createPassphraseEncryptionKeySlot({
@@ -272,12 +270,12 @@ export async function createEncryptionMaterial({
     });
     return {
       storageUnlockKey,
-      storeRootKey,
+      fileSystemRootKey,
       keySlots: [keySlot],
     };
   } catch (error) {
     storageUnlockKey.fill(0);
-    storeRootKey.fill(0);
+    fileSystemRootKey.fill(0);
     throw error;
   }
 }
@@ -286,7 +284,7 @@ export async function unlockStorageUnlockKeyWithPassphrase({
   keySlots,
   passphrase,
 }: {
-  keySlots: EncryptionKeySlotDto[],
+  keySlots: readonly OpfsEncryptionKeySlotDto[],
   passphrase: string,
 }): Promise<{ storageUnlockKey: Uint8Array, keySlotId: string }> {
   assertEncryptionPassphraseCanBeUsed({ passphrase });
@@ -299,7 +297,7 @@ export async function unlockStorageUnlockKeyWithPassphrase({
   try {
     for (const keySlot of keySlots) {
       switch (keySlot.keyDerivation.type) {
-      case 'pbkdf2_sha256': {
+      case 'pbkdf2_hmac_sha256': {
         const salt = decodeBase64UrlWithLength({
           value: keySlot.keyDerivation.salt,
           expectedByteLength: 32,
@@ -339,21 +337,21 @@ export async function unlockStorageUnlockKeyWithPassphrase({
   throw new Error('Passphrase did not unlock any encryption key slot');
 }
 
-export async function wrapStoreRootKey({
+export async function wrapFileSystemRootKey({
   storageUnlockKey,
-  storeRootKey,
+  fileSystemRootKey,
   encryptedStoreId,
 }: {
   storageUnlockKey: Uint8Array,
-  storeRootKey: Uint8Array,
+  fileSystemRootKey: Uint8Array,
   encryptedStoreId: string,
-}): Promise<EncryptedStoreHeaderDto['wrappedStoreRootKey']> {
+}): Promise<OpfsEncryptedStoreHeaderDto['wrappedFileSystemRootKey']> {
   const wrappingKey = await importAesGcmKey({
     rawKey: storageUnlockKey,
     usages: ['encrypt'],
   });
   return await wrapRawKey({
-    rawKey: storeRootKey,
+    rawKey: fileSystemRootKey,
     wrappingKey,
     additionalData: createWrappedKeyAad({
       purpose: 'store_root_key',
@@ -362,19 +360,19 @@ export async function wrapStoreRootKey({
   });
 }
 
-export async function unwrapStoreRootKey({
+export async function unwrapFileSystemRootKey({
   storageUnlockKey,
   header,
 }: {
   storageUnlockKey: Uint8Array,
-  header: EncryptedStoreHeaderDto,
+  header: OpfsEncryptedStoreHeaderDto,
 }): Promise<Uint8Array> {
   const wrappingKey = await importAesGcmKey({
     rawKey: storageUnlockKey,
     usages: ['decrypt'],
   });
   return await unwrapRawKey({
-    wrappedKey: header.wrappedStoreRootKey,
+    wrappedKey: header.wrappedFileSystemRootKey,
     wrappingKey,
     additionalData: createWrappedKeyAad({
       purpose: 'store_root_key',
@@ -383,50 +381,6 @@ export async function unwrapStoreRootKey({
   });
 }
 
-export async function deriveEncryptedStoreRuntimeKeys({
-  storeRootKey,
-  encryptedStoreId,
-}: {
-  storeRootKey: Uint8Array,
-  encryptedStoreId: string,
-}): Promise<EncryptedStoreRuntimeKeys> {
-  if (storeRootKey.byteLength !== 32) {
-    throw new Error('Encrypted store root key must contain exactly 32 bytes');
-  }
-  const material = await crypto.subtle.importKey(
-    'raw',
-    toExactArrayBuffer({ bytes: storeRootKey }),
-    'HKDF',
-    false,
-    ['deriveKey'],
-  );
-  const salt = UTF8.encode(encryptedStoreId);
-  const objectEncryptionKey = await crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: toExactArrayBuffer({ bytes: salt }),
-      info: toExactArrayBuffer({ bytes: OBJECT_ENCRYPTION_HKDF_INFO }),
-    },
-    material,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt'],
-  );
-  const objectAddressKey = await crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: toExactArrayBuffer({ bytes: salt }),
-      info: toExactArrayBuffer({ bytes: OBJECT_ADDRESS_HKDF_INFO }),
-    },
-    material,
-    { name: 'HMAC', hash: 'SHA-256', length: 256 },
-    false,
-    ['sign'],
-  );
-  return { objectEncryptionKey, objectAddressKey };
-}
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

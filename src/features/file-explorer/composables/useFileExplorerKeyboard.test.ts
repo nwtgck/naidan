@@ -171,6 +171,8 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
     isLocked: false,
     toggleLock: vi.fn(),
     ...overrides,
+    revealPath: overrides.revealPath ?? vi.fn().mockResolvedValue(undefined),
+    entryContextActionLabel: overrides.entryContextActionLabel,
     directoryDownload,
     upload,
   };

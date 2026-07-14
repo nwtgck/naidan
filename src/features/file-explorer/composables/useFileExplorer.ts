@@ -39,10 +39,15 @@ export async function useFileExplorer({
   root,
   initialPath,
   initialLocked,
+  entryContextAction,
 }: {
   root: FileExplorerRootDescriptor,
   initialPath: string[] | undefined,
   initialLocked: boolean,
+  entryContextAction: {
+    readonly label: string;
+    readonly invoke: ({ entry }: { entry: FileExplorerEntry }) => void;
+  } | undefined,
 }) {
   const client = registerFileExplorerWorkerClient({
     client: await createFileExplorerWorkerClient({ root }),
@@ -330,6 +335,19 @@ export async function useFileExplorer({
       }
       }
       break;
+    case 'entryContextAction':
+      switch (targetCtx.kind) {
+      case 'entry':
+        entryContextAction?.invoke({ entry: targetCtx.entry });
+        break;
+      case 'background':
+        break;
+      default: {
+        const _exhaustiveCheck: never = targetCtx;
+        throw new Error(`Unhandled context menu target: ${JSON.stringify(_exhaustiveCheck)}`);
+      }
+      }
+      break;
     case 'selectAll':
       applySelection({
         action: { type: 'all', allEntries: nav.sortedFilteredEntries.value },
@@ -369,6 +387,14 @@ export async function useFileExplorer({
     }
   }
 
+  async function revealPath({ path }: { path: string }): Promise<void> {
+    const entry = await nav.revealPath({ path });
+    sel.clearSelectionForNewDirectory();
+    if (entry !== undefined && entry.kind === 'file') {
+      sel.applySelection({ action: { type: 'single', name: entry.name } });
+    }
+  }
+
   const context: FileExplorerContext = {
     root,
     get currentDirectoryPath() {
@@ -384,6 +410,7 @@ export async function useFileExplorer({
     navigateUp: nav.navigateUp,
     jumpToBreadcrumb: nav.jumpToBreadcrumb,
     refresh: nav.refresh,
+    revealPath,
 
     get entries() {
       return nav.entries.value;
@@ -459,6 +486,9 @@ export async function useFileExplorer({
     showContextMenu: ctxMenu.showContextMenu,
     hideContextMenu: ctxMenu.hideContextMenu,
     executeContextAction,
+    get entryContextActionLabel() {
+      return entryContextAction?.label;
+    },
 
     get clipboardState() {
       return clipboard.clipboardState.value;

@@ -15,7 +15,9 @@ export interface OpfsEncryptionStartupGate {
   unlockWithPassphrase({ passphrase }: { passphrase: string }): Promise<void>,
   retryInspection(): Promise<void>,
   reportApplicationFailure({ error }: { error: unknown }): void,
+  reportUnlockPresentationReady(): void,
   wait(): Promise<void>,
+  waitForUnlockPresentation(): Promise<void>,
 }
 
 export function createOpfsEncryptionStartupGate({
@@ -27,7 +29,9 @@ export function createOpfsEncryptionStartupGate({
   const phase = shallowRef<OpfsEncryptionStartupPhase>('locked');
   const applicationError = shallowRef<unknown>();
   const completion = Promise.withResolvers<void>();
+  const unlockPresentationCompletion = Promise.withResolvers<void>();
   let completed = false;
+  let unlockPresentationCompleted = false;
 
   function complete(): void {
     if (completed) {
@@ -35,6 +39,14 @@ export function createOpfsEncryptionStartupGate({
     }
     completed = true;
     completion.resolve();
+  }
+
+  function reportUnlockPresentationReady(): void {
+    if (unlockPresentationCompleted) {
+      return;
+    }
+    unlockPresentationCompleted = true;
+    unlockPresentationCompletion.resolve();
   }
 
   async function unlockWithPassphrase({
@@ -103,6 +115,7 @@ export function createOpfsEncryptionStartupGate({
       // before allowing Settings and onboarding startup to continue.
       await storageService.retryPlainOpfsInitializationAfterEncryptionRecovery();
       phase.value = 'preparing_application';
+      reportUnlockPresentationReady();
       complete();
       return;
     case 'encrypted':
@@ -131,7 +144,9 @@ export function createOpfsEncryptionStartupGate({
     unlockWithPassphrase,
     retryInspection,
     reportApplicationFailure,
+    reportUnlockPresentationReady,
     wait: async () => await completion.promise,
+    waitForUnlockPresentation: async () => await unlockPresentationCompletion.promise,
   };
 }
 

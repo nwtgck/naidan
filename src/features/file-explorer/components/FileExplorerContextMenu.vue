@@ -4,7 +4,7 @@ import { inject, computed, ref } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 import {
   FolderOpenIcon, PencilIcon, Trash2Icon, CopyIcon, ScissorsIcon, ClipboardPasteIcon,
-  DownloadIcon, InfoIcon, FilePlusIcon, FolderPlusIcon, CheckSquareIcon,
+  DownloadIcon, InfoIcon, FilePlusIcon, FolderPlusIcon, CheckSquareIcon, SearchCodeIcon,
 } from 'lucide-vue-next';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import type { ContextMenuAction } from '@/features/file-explorer/logic/types';
@@ -83,6 +83,14 @@ const menuItems = computed<MenuItem[]>(() => {
     }
 
     items.push({ type: 'action', action: 'getInfo', label: lazyStrings.fileExplorer__get_info(), icon: InfoIcon });
+    if (isSingleEntry && ctx.entryContextActionLabel !== undefined) {
+      items.push({
+        type: 'action',
+        action: 'entryContextAction',
+        label: ctx.entryContextActionLabel,
+        icon: SearchCodeIcon,
+      });
+    }
     items.push({ type: 'divider' });
     items.push({ type: 'action', action: 'delete', label: lazyStrings.fileExplorer__delete(), icon: Trash2Icon, danger: true, disabled: readOnly, disabledReason: lockedReason });
 

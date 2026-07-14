@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, provide } from 'vue';
+import { onUnmounted, provide, ref, watch } from 'vue';
 import { Loader2Icon } from 'lucide-vue-next';
 import FileExplorerToolbar from './FileExplorerToolbar.vue';
 import FileExplorerListView from './FileExplorerListView.vue';
@@ -12,7 +12,7 @@ import FileExplorerDirectoryDownloadDialog from './FileExplorerDirectoryDownload
 import FileExplorerZipUploadDialog from './FileExplorerZipUploadDialog.vue';
 import { useFileExplorer, FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import { useFileExplorerKeyboard } from '@/features/file-explorer/composables/useFileExplorerKeyboard';
-import type { ViewMode, PreviewVisibility } from '@/features/file-explorer/logic/types';
+import type { FileExplorerEntry, ViewMode, PreviewVisibility } from '@/features/file-explorer/logic/types';
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
 
 const props = defineProps<{
@@ -22,6 +22,14 @@ const props = defineProps<{
   initialPath: string[] | undefined,
   /** When true, the explorer starts in locked mode (write operations disabled). */
   initialLocked: boolean,
+  revealPath?: string | undefined,
+  /** Controls whether a controlled file reveal also loads its preview. */
+  revealFilePreview: 'load' | 'preserve',
+  entryContextActionLabel?: string | undefined,
+}>();
+
+const emit = defineEmits<{
+  (event: 'entry-context-action', payload: { entry: FileExplorerEntry }): void,
 }>();
 
 defineExpose({
@@ -36,7 +44,81 @@ const { context, client, _viewMode, _preview } = await useFileExplorer({
   root: props.root,
   initialPath: props.initialPath,
   initialLocked: props.initialLocked,
+  entryContextAction: props.entryContextActionLabel === undefined
+    ? undefined
+    : {
+      label: props.entryContextActionLabel,
+      invoke: ({ entry }) => emit('entry-context-action', { entry }),
+    },
 });
+
+const controlledRevealError = ref<string>();
+let controlledRevealGeneration = 0;
+let controlledRevealQueue = Promise.resolve();
+
+watch(
+  () => props.revealPath,
+  path => {
+    controlledRevealGeneration += 1;
+    const generation = controlledRevealGeneration;
+    controlledRevealError.value = undefined;
+    if (path === undefined) return;
+    /**
+     * Controlled reveals are serialized so an older asynchronous directory
+     * load cannot finish after a newer Workbench traversal and leave the
+     * companion Explorer focused on stale data. Superseded requests are
+     * skipped before they start; the newest request always runs last.
+     */
+    controlledRevealQueue = controlledRevealQueue
+      .catch(() => undefined)
+      .then(async () => {
+        if (generation !== controlledRevealGeneration) return;
+        try {
+          await context.revealPath({ path });
+          /**
+           * A controlled reveal normally changes navigation and selection only.
+           * The Workbench companion explicitly opts into preview loading so the
+           * decrypted file represented by the low-level traversal is visible
+           * immediately while follow mode is active.
+           */
+          switch (props.revealFilePreview) {
+          case 'load': {
+            const selectedEntry = context.selectedEntries.length === 1
+              ? context.selectedEntries[0]
+              : undefined;
+            if (selectedEntry === undefined) {
+              context.clearPreview();
+              break;
+            }
+            switch (selectedEntry.kind) {
+            case 'file':
+              await context.loadPreview({ entry: selectedEntry });
+              break;
+            case 'directory':
+              context.clearPreview();
+              break;
+            default: {
+              const _ex: never = selectedEntry.kind;
+              throw new Error(`Unhandled revealed entry kind: ${_ex}`);
+            }
+            }
+            break;
+          }
+          case 'preserve':
+            break;
+          default: {
+            const _ex: never = props.revealFilePreview;
+            throw new Error(`Unhandled reveal file preview mode: ${_ex}`);
+          }
+          }
+        } catch (error) {
+          if (generation !== controlledRevealGeneration) return;
+          controlledRevealError.value = error instanceof Error ? error.message : String(error);
+        }
+      });
+  },
+  { immediate: true },
+);
 
 // Apply initial values
 _viewMode.value = props.initialViewMode;
@@ -49,6 +131,7 @@ provide(FILE_EXPLORER_INJECTION_KEY, context);
 const { handleKeyDown } = useFileExplorerKeyboard({ ctx: context });
 
 onUnmounted(() => {
+  controlledRevealGeneration += 1;
   _preview.dispose();
   context.directoryDownload.dispose();
   context.upload.dispose();
@@ -67,10 +150,21 @@ onUnmounted(() => {
     <FileExplorerToolbar />
 
     <!-- Main content area -->
-    <div tw-class="flex flex-1 overflow-hidden">
-      <!-- Loading overlay -->
+    <!--
+      Absolute status layers must be positioned against the File Explorer,
+      not an enclosing modal. Without this positioning context, a directory
+      load in an embedded explorer can visually cover the whole Workbench.
+    -->
+    <div data-testid="file-explorer-main-content" tw-class="relative flex flex-1 overflow-hidden">
+      <!--
+        List and icon views replace one directory listing with another, so a
+        scoped overlay is useful. Column view preserves the existing trail and
+        renders its pending directory as a local column instead of flashing the
+        entire explorer.
+      -->
       <div
-        v-if="context.isLoading"
+        v-if="context.isLoading && context.viewMode !== 'column'"
+        data-testid="file-explorer-loading-overlay"
         tw-class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 z-10 pointer-events-none"
       >
         <Loader2Icon tw-class="w-5 h-5 text-gray-400 animate-spin" />
@@ -78,10 +172,11 @@ onUnmounted(() => {
 
       <!-- Error banner -->
       <div
-        v-if="context.loadError"
+        v-if="context.loadError || controlledRevealError"
         tw-class="absolute top-0 left-0 right-0 px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/50 text-xs text-red-600 dark:text-red-400 z-20"
+        data-testid="file-explorer-controlled-error"
       >
-        {{ context.loadError }}
+        {{ context.loadError ?? controlledRevealError }}
       </div>
 
       <!-- Column view has its own layout (includes preview panel) -->

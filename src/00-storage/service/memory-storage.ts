@@ -5,7 +5,6 @@ import {
   type ChatGroupDto,
   type HierarchyDto,
   type ChatContentDto,
-  type StorageBinaryObjectWriteSource,
   ChatMetaSchemaDto,
   ChatGroupSchemaDto,
   SettingsSchemaDto,
@@ -28,7 +27,10 @@ import {
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from './interface';
 import { createBlobStorageBinaryObjectReadHandle, materializeStorageBinaryObjectWriteSourceAsBlob } from './binary-object-io';
-import type { StorageBinaryObjectReadHandle } from './binary-object-io';
+import type {
+  StorageBinaryObjectReadHandle,
+  StorageBinaryObjectWriteSource,
+} from './binary-object-io';
 import type { StorageVolumeAccess } from './volume-access';
 import { idToRaw, toBinaryObjectId, toChatGroupId } from '@/01-models/ids';
 
@@ -368,7 +370,7 @@ export class MemoryStorageProvider extends IStorageProvider {
           mimeType: meta.mimeType,
           size: meta.size,
           createdAt: meta.createdAt,
-          source: { type: 'direct_blob' as const, blob },
+          blob,
         };
       }
     };
@@ -413,7 +415,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       }
       case 'binary_object':
         await this.writeBinaryObject({
-          source: chunk.source,
+          source: { type: 'direct_blob', blob: chunk.blob },
           binaryObjectId: toBinaryObjectId({ raw: chunk.id }),
           name: chunk.name,
           mimeType: chunk.mimeType,

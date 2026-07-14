@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   abortAllChatProcessingForStorageTransition: vi.fn(),
-  closeDebugEncryptedStorageInspector: vi.fn(),
+  closeDebugHizoFSWorkbench: vi.fn(),
+  closeDebugOpfsEncryptionInspector: vi.fn(),
   closeFileExplorer: vi.fn(),
-  disposeDebugClients: vi.fn<() => Promise<void>>(),
   disposeFileExplorerClients: vi.fn<() => Promise<void>>(),
   disposeWeshClients: vi.fn<() => Promise<void>>(),
 }));
@@ -14,14 +14,16 @@ vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
   abortAllChatProcessingForStorageTransition: mocks.abortAllChatProcessingForStorageTransition,
 }));
 
-vi.mock('@/features/debug-encrypted-storage/composables/useDebugEncryptedStorageInspector', () => ({
-  useDebugEncryptedStorageInspector: () => ({
-    closeDebugEncryptedStorageInspector: mocks.closeDebugEncryptedStorageInspector,
+vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
+  useDebugHizoFSWorkbench: () => ({
+    closeDebugHizoFSWorkbench: mocks.closeDebugHizoFSWorkbench,
   }),
 }));
 
-vi.mock('@/features/debug-encrypted-storage/worker/client-registry', () => ({
-  disposeAllDebugEncryptedStorageWorkerClientsForStorageTransition: mocks.disposeDebugClients,
+vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector', () => ({
+  useDebugOpfsEncryptionInspector: () => ({
+    closeDebugOpfsEncryptionInspector: mocks.closeDebugOpfsEncryptionInspector,
+  }),
 }));
 
 vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({
@@ -46,14 +48,14 @@ beforeEach(() => {
   mocks.abortAllChatProcessingForStorageTransition.mockImplementation(() => {
     mocks.calls.push('abort-chat');
   });
-  mocks.closeDebugEncryptedStorageInspector.mockImplementation(() => {
-    mocks.calls.push('close-inspector');
+  mocks.closeDebugHizoFSWorkbench.mockImplementation(() => {
+    mocks.calls.push('close-hizofs-inspector');
+  });
+  mocks.closeDebugOpfsEncryptionInspector.mockImplementation(() => {
+    mocks.calls.push('close-opfs-encryption-inspector');
   });
   mocks.closeFileExplorer.mockImplementation(() => {
     mocks.calls.push('close-file-explorer');
-  });
-  mocks.disposeDebugClients.mockImplementation(async () => {
-    mocks.calls.push('dispose-inspector-workers');
   });
   mocks.disposeFileExplorerClients.mockImplementation(async () => {
     mocks.calls.push('dispose-file-explorer-workers');
@@ -68,41 +70,15 @@ describe('prepareForOpfsEncryptionTransition', () => {
     await prepareForOpfsEncryptionTransition();
 
     expect(mocks.abortAllChatProcessingForStorageTransition).toHaveBeenCalledOnce();
-    expect(mocks.closeDebugEncryptedStorageInspector).toHaveBeenCalledOnce();
+    expect(mocks.closeDebugHizoFSWorkbench).toHaveBeenCalledOnce();
+    expect(mocks.closeDebugOpfsEncryptionInspector).toHaveBeenCalledOnce();
     expect(mocks.closeFileExplorer).toHaveBeenCalledOnce();
-    expect(mocks.disposeDebugClients).toHaveBeenCalledOnce();
     expect(mocks.disposeFileExplorerClients).toHaveBeenCalledOnce();
     expect(mocks.disposeWeshClients).toHaveBeenCalledOnce();
 
-    expect(mocks.calls.indexOf('close-inspector')).toBeLessThan(
-      mocks.calls.indexOf('dispose-inspector-workers'),
-    );
     expect(mocks.calls.indexOf('close-file-explorer')).toBeLessThan(
       mocks.calls.indexOf('dispose-file-explorer-workers'),
     );
   });
 
-  it('does not resolve while the Inspector worker still owns its debug session', async () => {
-    let releaseInspector: (() => void) | undefined;
-    mocks.disposeDebugClients.mockImplementation(async () => {
-      mocks.calls.push('dispose-inspector-workers');
-      await new Promise<void>((resolve) => {
-        releaseInspector = resolve;
-      });
-    });
-
-    let completed = false;
-    const preparation = prepareForOpfsEncryptionTransition().then(() => {
-      completed = true;
-    });
-    await vi.waitFor(() => {
-      expect(mocks.disposeDebugClients).toHaveBeenCalledOnce();
-      expect(releaseInspector).toBeTypeOf('function');
-    });
-
-    expect(completed).toBe(false);
-    releaseInspector?.();
-    await preparation;
-    expect(completed).toBe(true);
-  });
 });

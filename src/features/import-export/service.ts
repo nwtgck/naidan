@@ -27,7 +27,7 @@ import {
   type BinaryShardIndexDto,
   BinaryShardIndexSchemaDto,
 } from '@/00-storage/00-dto/dto';
-import { openStorageBinaryObjectWriteSourceStream } from '@/00-storage/service/binary-object-io';
+import { openBlobReadableStream } from '@/00-storage/service/binary-object-io';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the mapper dependency with the storage service API.
 import {
   settingsToDomain,
@@ -464,7 +464,15 @@ export class ImportExportService {
           const shard = getShard({ id: chunk.id });
           const fileName = `${chunk.id}.bin`;
           const shardPath = `${rootPath}binary-objects/${shard}/`;
-          await addFile({ path: `${shardPath}${fileName}`, stream: openStorageBinaryObjectWriteSourceStream({ source: chunk.source }) });
+          await addFile({
+            path: `${shardPath}${fileName}`,
+            stream: openBlobReadableStream({
+              blob: chunk.blob,
+              start: 0,
+              end: undefined,
+              signal: undefined,
+            }),
+          });
           await addEmptyFile({ path: `${shardPath}.${fileName}.complete` });
 
           let index = shardIndices.get(shard);
@@ -948,7 +956,7 @@ export class ImportExportService {
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,
-                source: { type: 'direct_blob', blob },
+                blob,
               };
             }
           }
@@ -1162,7 +1170,7 @@ export class ImportExportService {
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,
-                source: { type: 'direct_blob', blob },
+                blob,
               };
             }
           }

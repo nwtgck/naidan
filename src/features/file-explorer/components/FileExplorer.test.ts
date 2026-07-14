@@ -1,4 +1,4 @@
-import { defineComponent, h, Suspense } from 'vue';
+import { defineComponent, h, reactive, Suspense } from 'vue';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
@@ -105,6 +105,7 @@ class MockExplorerDirectory implements ExplorerDirectory {
 // ---- Mocks ----
 
 let activeRoot: MockExplorerDirectory | undefined;
+let beforeReadDirectory: (({ path }: { path: string }) => Promise<void>) | undefined;
 
 function normalizePath(path: string): string {
   return path === '/' ? '/' : `/${path.split('/').filter(Boolean).join('/')}`;
@@ -195,6 +196,7 @@ async function listDirectory(path: string): Promise<{
 async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
   const client: FileExplorerWorkerClient = {
     async readDirectory({ path }) {
+      await beforeReadDirectory?.({ path });
       return listDirectory(path);
     },
     async readPreview({ path, mode }) {
@@ -359,6 +361,7 @@ function mountExplorer(root: MockExplorerDirectory, overrides: Record<string, un
           root: { kind: 'native-directory', rootName: root.name, handle: {} as FileSystemDirectoryHandle, readOnly: root.readOnly },
           initialViewMode: 'list',
           initialPreviewVisibility: 'visible',
+          revealFilePreview: 'preserve',
           initialPath: undefined,
           initialLocked: false,
           ...overrides,
@@ -422,6 +425,7 @@ describe('FileExplorer.vue', () => {
 
   beforeEach(() => {
     root = makeRoot();
+    beforeReadDirectory = undefined;
     mockShowConfirm.mockResolvedValue(true);
     mockShowPrompt.mockResolvedValue(undefined);
     mockAddToast.mockReset();
@@ -504,6 +508,103 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('mydir');
+  });
+
+  it('reveals a controlled file path in column view', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128);
+    const wrapper = tracked(mountExplorer(root, {
+      initialViewMode: 'column',
+      revealPath: '/docs/settings.json',
+    }));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('docs');
+    expect(wrapper.find('[data-testid="entry-item-settings.json"]').exists()).toBe(true);
+  });
+
+  it('keeps embedded column navigation local instead of flashing an enclosing workbench', async () => {
+    const subdir = root.addDir('subdir');
+    subdir.addFile('child.txt', 50);
+    const pendingDirectory = Promise.withResolvers<void>();
+    beforeReadDirectory = async ({ path }) => {
+      if (path === '/subdir') {
+        await pendingDirectory.promise;
+      }
+    };
+    const wrapper = tracked(mountExplorer(root, { initialViewMode: 'column' }));
+    await flushPromises();
+
+    const explorerElement = wrapper.get('[data-testid="file-explorer"]').element;
+    expect(wrapper.get('[data-testid="file-explorer-main-content"]').classes()).toContain('relative');
+
+    await wrapper.get('[data-testid="entry-item-subdir"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="file-explorer-loading-overlay"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="file-explorer-column-navigation-loading"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="file-explorer"]').element).toBe(explorerElement);
+
+    pendingDirectory.resolve();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="file-explorer-column-navigation-loading"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="file-explorer"]').element).toBe(explorerElement);
+    expect(wrapper.text()).toContain('child.txt');
+  });
+
+  it('loads the selected file preview when controlled reveal preview mode is load', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128, '{"preview":true}');
+    const wrapper = tracked(mountExplorer(root, {
+      initialViewMode: 'column',
+      revealPath: '/docs/settings.json',
+      revealFilePreview: 'load',
+    }));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="preview-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).toContain('settings.json');
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).not.toContain('Select a file');
+  });
+
+  it('clears a previously loaded preview when controlled follow reveals a directory', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128, '{"preview":true}');
+    const controlledProps = reactive({
+      initialViewMode: 'column',
+      revealPath: '/docs/settings.json',
+      revealFilePreview: 'load',
+    });
+    const wrapper = tracked(mountExplorer(root, controlledProps));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).toContain('settings.json');
+
+    controlledProps.revealPath = '/docs';
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).not.toContain('settings.json');
+    expect(wrapper.find('[data-testid="preview-panel"]').text()).toContain('Select a file');
+  });
+
+  it('reports a failed controlled reveal and recovers on the next valid path', async () => {
+    const docs = root.addDir('docs');
+    docs.addFile('settings.json', 128);
+    const controlledProps = reactive({
+      initialViewMode: 'column',
+      revealPath: '/docs/missing.json',
+    });
+    const wrapper = tracked(mountExplorer(root, controlledProps));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="file-explorer-controlled-error"]').text())
+      .toContain('File Explorer path does not exist: /docs/missing.json');
+
+    controlledProps.revealPath = '/docs/settings.json';
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="file-explorer-controlled-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('docs');
+    expect(wrapper.find('[data-testid="entry-item-settings.json"]').exists()).toBe(true);
   });
 
   it('back button navigates up', async () => {
@@ -743,6 +844,35 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
 
     expect(document.body.querySelector('[data-testid="context-menu"]')).toBeNull();
+  });
+
+  it('emits a generic entry context action for the selected file', async () => {
+    root.addFile('inspect-me.txt', 32);
+    const onEntryContextAction = vi.fn();
+    const wrapper = tracked(mountExplorer(root, {
+      entryContextActionLabel: 'Inspect HizoFS records',
+      onEntryContextAction,
+    }));
+    await flushPromises();
+
+    await wrapper.find('[data-testid="entry-item-inspect-me.txt"]').trigger('contextmenu', {
+      clientX: 50,
+      clientY: 50,
+    });
+    await flushPromises();
+    const action = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[data-testid="context-menu"] button'))
+      .find(button => button.textContent?.includes('Inspect HizoFS records'));
+    if (action === undefined) throw new Error('Custom context action was not rendered');
+    action.click();
+    await flushPromises();
+
+    expect(onEntryContextAction).toHaveBeenCalledWith({
+      entry: expect.objectContaining({
+        path: '/inspect-me.txt',
+        name: 'inspect-me.txt',
+        kind: 'file',
+      }),
+    });
   });
 
   it('opens the directory download dialog with the selected directory name', async () => {

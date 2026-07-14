@@ -18,17 +18,11 @@ export function createWeshStorageMount({
       handle: access.handle,
       readOnly,
     };
-  case 'encrypted_directory':
+  case 'storage_directory':
     return {
-      type: 'encrypted_directory',
+      type: 'storage_directory',
       path,
-      storeDirectory: access.storeDirectory,
-      encryptedStoreId: access.encryptedStoreId,
-      fileSystemId: access.fileSystemId,
-      physicalArea: access.physicalArea,
-      rootDirectoryId: access.rootDirectoryId,
-      objectEncryptionKey: access.objectEncryptionKey,
-      objectAddressKey: access.objectAddressKey,
+      handle: access.handle,
       readOnly,
     };
   default: {

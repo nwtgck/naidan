@@ -13,7 +13,7 @@ function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 
       keySlots: [{
         id: 'slot-id',
         keyDerivation: {
-          type: 'pbkdf2_sha256',
+          type: 'pbkdf2_hmac_sha256',
           salt: 'salt',
           iterations: 10,
         },
@@ -43,7 +43,7 @@ function createTransitioningInspection(): Extract<OpfsEncryptionInspection, { ty
       keySlots: [{
         id: 'slot-id',
         keyDerivation: {
-          type: 'pbkdf2_sha256',
+          type: 'pbkdf2_hmac_sha256',
           salt: 'salt',
           iterations: 10,
         },
@@ -78,6 +78,17 @@ describe('createOpfsEncryptionStartupGate', () => {
       passphrase: 'correct horse battery staple',
     });
     expect(gate.phase.value).toBe('preparing_application');
+
+    let presentationReady = false;
+    const presentation = gate.waitForUnlockPresentation().then(() => {
+      presentationReady = true;
+    });
+    await Promise.resolve();
+    expect(presentationReady).toBe(false);
+
+    gate.reportUnlockPresentationReady();
+    await presentation;
+    expect(presentationReady).toBe(true);
   });
 
   it('resumes an interrupted transition before completing the gate', async () => {
@@ -138,6 +149,7 @@ describe('createOpfsEncryptionStartupGate', () => {
 
     await gate.retryInspection();
     await gate.wait();
+    await gate.waitForUnlockPresentation();
 
     expect(retryPlainInitialization).toHaveBeenCalledOnce();
     expect(gate.phase.value).toBe('preparing_application');

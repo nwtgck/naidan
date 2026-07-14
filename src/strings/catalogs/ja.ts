@@ -1531,6 +1531,7 @@ import { opfsEncryption__understand_experimental_storage_risk } from '@/strings/
 import { opfsEncryption__unlock_and_resume } from '@/strings/messages/opfsEncryption__unlock_and_resume/ja';
 import { opfsEncryption__unlock_encrypted_storage } from '@/strings/messages/opfsEncryption__unlock_encrypted_storage/ja';
 import { opfsEncryption__unlock_storage } from '@/strings/messages/opfsEncryption__unlock_storage/ja';
+import { opfsEncryption__unlocked } from '@/strings/messages/opfsEncryption__unlocked/ja';
 import { opfsEncryption__updating_encrypted_storage } from '@/strings/messages/opfsEncryption__updating_encrypted_storage/ja';
 import { useSettings__storage_already_initialized } from '@/strings/messages/useSettings__storage_already_initialized/ja';
 import { useSettings__storage_type_is_already_set_and_requested_type_was_ignored } from '@/strings/messages/useSettings__storage_type_is_already_set_and_requested_type_was_ignored/ja';
@@ -3155,6 +3156,7 @@ export const ja = {
   opfsEncryption__unlock_and_resume,
   opfsEncryption__unlock_encrypted_storage,
   opfsEncryption__unlock_storage,
+  opfsEncryption__unlocked,
   opfsEncryption__updating_encrypted_storage,
   useSettings__storage_already_initialized,
   useSettings__storage_type_is_already_set_and_requested_type_was_ignored,

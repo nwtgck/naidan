@@ -147,7 +147,7 @@ export function createWeshTerminalSessions({
             rootHandle: rootAccess.handle,
             rootMounts: [] as WeshMount[],
           };
-        case 'encrypted_directory':
+        case 'storage_directory':
           return {
             rootHandle: 'readonly' as const,
             rootMounts: [createWeshStorageMount({

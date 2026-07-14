@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 import { idToRaw } from '@/01-models/ids';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
+import type { WeshStorageDirectoryRemote } from '@/features/wesh/storage-directory/types';
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
   type WeshMount,
@@ -15,16 +16,9 @@ export const weshWorkerDirectoryMountSchema = z.object({
   readOnly: z.boolean(),
 });
 
-export const weshWorkerEncryptedDirectoryMountSchema = z.object({
-  type: z.literal('encrypted_directory'),
+export const weshWorkerStorageDirectoryMountSchema = z.object({
+  type: z.literal('storage_directory'),
   path: z.string().min(1),
-  storeDirectory: z.custom<FileSystemDirectoryHandle>(),
-  encryptedStoreId: z.string().min(1),
-  fileSystemId: z.string().min(1),
-  physicalArea: z.enum(['durable', 'temporary']),
-  rootDirectoryId: z.string().min(1),
-  objectEncryptionKey: z.custom<CryptoKey>(),
-  objectAddressKey: z.custom<CryptoKey>(),
   readOnly: z.boolean(),
 });
 
@@ -49,7 +43,7 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
 
 export const weshWorkerMountSchema = resolveMissingAsUndefined(z.discriminatedUnion('type', [
   weshWorkerDirectoryMountSchema,
-  weshWorkerEncryptedDirectoryMountSchema,
+  weshWorkerStorageDirectoryMountSchema,
   weshWorkerNaidanSysfsMountSchema,
 ]));
 
@@ -146,6 +140,7 @@ export interface IWeshWorker {
   init(
     request: WeshWorkerInitRequest,
     naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
+    storageDirectoryRemote?: WeshStorageDirectoryRemote,
   ): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   startExecution(
@@ -193,17 +188,10 @@ export function mapWeshMountsToWorkerMounts({ mounts }: {
         handle: mount.handle,
         readOnly: mount.readOnly,
       };
-    case 'encrypted_directory':
+    case 'storage_directory':
       return {
-        type: 'encrypted_directory',
+        type: 'storage_directory',
         path: mount.path,
-        storeDirectory: mount.storeDirectory,
-        encryptedStoreId: mount.encryptedStoreId,
-        fileSystemId: mount.fileSystemId,
-        physicalArea: mount.physicalArea,
-        rootDirectoryId: mount.rootDirectoryId,
-        objectEncryptionKey: mount.objectEncryptionKey,
-        objectAddressKey: mount.objectAddressKey,
         readOnly: mount.readOnly,
       };
     case 'naidan_sysfs':

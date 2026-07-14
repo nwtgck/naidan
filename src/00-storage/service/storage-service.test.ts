@@ -264,10 +264,7 @@ describe('StorageService Migration', () => {
     const binaryChunk = receivedChunks.find(c => c.type === 'binary_object');
     expect(binaryChunk).toBeDefined();
     expect(binaryChunk.id).toBe('bin-1');
-    expect(binaryChunk.source).toEqual({
-      type: 'direct_blob',
-      blob: mockBlob,
-    });
+    expect(binaryChunk.blob).toBe(mockBlob);
 
     // Chat chunk should have been updated to 'persisted' status
     const chatChunk = receivedChunks.find(c => c.type === 'chat');

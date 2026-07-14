@@ -5,6 +5,8 @@ import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } fro
 import { createFileExplorerWorker } from './impl';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
+import { createHizoFS } from '@/00-storage/service/hizofs/api';
+import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 import { renderChatMetadataMarkdown } from '@/features/wesh/naidan-sysfs/render/metadata-markdown';
 import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
@@ -14,6 +16,61 @@ describe('file-explorer.worker.impl', () => {
 
   beforeEach(() => {
     worker = createFileExplorerWorker();
+  });
+
+  it('treats a decrypted StorageDirectoryHandle as the File Explorer root without Wesh mount path leakage', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'encrypted-backing' });
+    const encryptedSession = await createHizoFS({
+      backingDirectory: backing as unknown as FileSystemDirectoryHandle,
+      fileSystemRootKey: new Uint8Array(32).fill(0x42),
+    });
+    const naidanStorage = await encryptedSession.root.getDirectoryHandle({
+      name: 'naidan-storage',
+      create: true,
+    });
+    const settings = await naidanStorage.getFileHandle({
+      name: 'settings.json',
+      create: true,
+    });
+    const writable = await settings.createWritable({ keepExistingData: false });
+    await writable.write({
+      position: 0,
+      data: new TextEncoder().encode('{"formatVersion":1}'),
+    });
+    await writable.close();
+
+    const storageDirectoryRemote = createWeshStorageDirectoryRemoteForMounts({
+      mounts: [{
+        type: 'storage_directory',
+        path: '/',
+        handle: encryptedSession.root,
+        readOnly: false,
+      }],
+    });
+    if (storageDirectoryRemote === undefined) {
+      throw new Error('Expected root storage directory remote');
+    }
+
+    const { sessionId } = await worker.prepareSession({
+      root: {
+        kind: 'storage-directory',
+        rootName: 'HizoFS root',
+        readOnly: false,
+      },
+    }, undefined, storageDirectoryRemote);
+
+    const rootListing = await worker.readDirectory({
+      request: { sessionId, path: '/' },
+    });
+    expect(rootListing.entries.map(entry => entry.name)).toContain('naidan-storage');
+
+    const storageListing = await worker.readDirectory({
+      request: { sessionId, path: '/naidan-storage' },
+    });
+    expect(storageListing.entries.map(entry => entry.name)).toContain('settings.json');
+
+    await worker.disposeSession({ request: { sessionId } });
+    await encryptedSession.close();
   });
 
   it('lists native directory entries with metadata', async () => {
@@ -699,85 +756,84 @@ describe('file-explorer.worker.impl', () => {
             currentChatId: 'chat-1',
             currentChatGroupId: 'chat-group-1',
           }],
-          naidanSysfsRemoteReader: {
-            storageType: 'local',
-            async getSidebarStructure() {
-              return [{
-                id: 'chat-group:chat-group-1',
-                type: 'chat_group',
-                chatGroup: {
-                  dto: chatGroupToDto({ domain: chatGroup }),
-                  items: chatGroup.items.map(item => ({
-                    id: item.id,
-                    type: 'chat',
-                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-                  })),
-                },
-              }];
-            },
-            async listChats() {
-              return [{
-                id: 'chat-1',
-                title: 'Local Chat',
-                updatedAt: 200,
-                groupId: 'chat-group-1',
-              }];
-            },
-            async listChatGroups() {
-              return [{
-                dto: chatGroupToDto({ domain: chatGroup }),
-                items: chatGroup.items.map(item => ({
-                  id: item.id,
-                  type: 'chat',
-                  chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-                })),
-              }];
-            },
-            async loadChatMeta({ chatId }: { chatId: string }) {
-              return chatId === 'chat-1'
-                ? {
-                  dto: chatMetaToDto({ domain: chatMeta }),
-                  groupId: 'chat-group-1',
-                }
-                : undefined;
-            },
-            async loadChatContent({ chatId }: { chatId: string }) {
-              return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined;
-            },
-            async loadChat({ chatId }: { chatId: string }) {
-              return chatId === 'chat-1'
-                ? {
-                  metadata: {
-                    dto: chatMetaToDto({ domain: chatMeta }),
-                    groupId: 'chat-group-1',
-                  },
-                  content: chatContentToDto({ domain: chatContent }),
-                }
-                : undefined;
-            },
-            async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
-              return chatGroupId === 'chat-group-1'
-                ? {
-                  dto: chatGroupToDto({ domain: chatGroup }),
-                  items: chatGroup.items.map(item => ({
-                    id: item.id,
-                    type: 'chat',
-                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-                  })),
-                }
-                : undefined;
-            },
-            async listBinaryObjects() {
-              return [];
-            },
-            async getBinaryObject() {
-              return undefined;
-            },
-            async getBinaryObjectBlob() {
-              return undefined;
-            },
-          },
         },
+      },
+    }, {
+      storageType: 'local',
+      async getSidebarStructure() {
+        return [{
+          id: 'chat-group:chat-group-1',
+          type: 'chat_group',
+          chatGroup: {
+            dto: chatGroupToDto({ domain: chatGroup }),
+            items: chatGroup.items.map(item => ({
+              id: item.id,
+              type: 'chat',
+              chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+            })),
+          },
+        }];
+      },
+      async listChats() {
+        return [{
+          id: 'chat-1',
+          title: 'Local Chat',
+          updatedAt: 200,
+          groupId: 'chat-group-1',
+        }];
+      },
+      async listChatGroups() {
+        return [{
+          dto: chatGroupToDto({ domain: chatGroup }),
+          items: chatGroup.items.map(item => ({
+            id: item.id,
+            type: 'chat',
+            chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+          })),
+        }];
+      },
+      async loadChatMeta({ chatId }: { chatId: string }) {
+        return chatId === 'chat-1'
+          ? {
+            dto: chatMetaToDto({ domain: chatMeta }),
+            groupId: 'chat-group-1',
+          }
+          : undefined;
+      },
+      async loadChatContent({ chatId }: { chatId: string }) {
+        return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined;
+      },
+      async loadChat({ chatId }: { chatId: string }) {
+        return chatId === 'chat-1'
+          ? {
+            metadata: {
+              dto: chatMetaToDto({ domain: chatMeta }),
+              groupId: 'chat-group-1',
+            },
+            content: chatContentToDto({ domain: chatContent }),
+          }
+          : undefined;
+      },
+      async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
+        return chatGroupId === 'chat-group-1'
+          ? {
+            dto: chatGroupToDto({ domain: chatGroup }),
+            items: chatGroup.items.map(item => ({
+              id: item.id,
+              type: 'chat',
+              chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+            })),
+          }
+          : undefined;
+      },
+      async listBinaryObjects() {
+        return [];
+      },
+      async getBinaryObject() {
+        return undefined;
+      },
+      async getBinaryObjectBlob() {
+        return undefined;
       },
     });
 
