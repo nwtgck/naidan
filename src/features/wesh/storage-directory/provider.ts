@@ -7,6 +7,8 @@ import type {
   WeshVirtualMountProvider,
   WeshWriteResult,
 } from '@/features/wesh/types';
+import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
+import { StorageDirectoryWeshAccess } from './remote';
 import type { WeshStorageDirectoryRemote } from './types';
 
 class RemoteStorageDirectoryFileHandle implements WeshFileHandle {
@@ -183,6 +185,145 @@ export class RemoteStorageDirectoryWeshProvider implements WeshVirtualMountProvi
 
   rename({ oldPath, newPath }: { oldPath: string; newPath: string }): Promise<void> {
     return this.remote.rename({
+      mountPath: this.mountPath,
+      oldPath: this.toRelativePath({ path: oldPath }),
+      newPath: this.toRelativePath({ path: newPath }),
+    });
+  }
+
+  private toRelativePath({ path }: { path: string }): string {
+    if (this.mountPath === '/') {
+      return path;
+    }
+    if (path === this.mountPath) {
+      return '/';
+    }
+    const prefix = `${this.mountPath}/`;
+    if (!path.startsWith(prefix)) {
+      throw new Error(`Path is outside storage directory mount: ${path}`);
+    }
+    return `/${path.slice(prefix.length)}`;
+  }
+
+  private toMountedPath({ relativePath }: { relativePath: string }): string {
+    if (this.mountPath === '/') {
+      return relativePath;
+    }
+    return relativePath === '/'
+      ? this.mountPath
+      : `${this.mountPath}${relativePath}`;
+  }
+}
+
+
+/**
+ * Runs the StorageDirectoryHandle adapter in the same realm as Wesh.
+ *
+ * HizoFS mounts use this provider inside the Wesh Worker so file reads,
+ * writes, directory traversal, encryption, and OPFS access never bounce
+ * through the UI thread or copy buffers across a Comlink boundary.
+ */
+export class LocalStorageDirectoryWeshProvider implements WeshVirtualMountProvider {
+  constructor({ root, mountPath, readOnly }: {
+    root: StorageDirectoryHandle;
+    mountPath: string;
+    readOnly: boolean;
+  }) {
+    this.mountPath = mountPath;
+    this.access = new StorageDirectoryWeshAccess({
+      mounts: [{
+        type: 'storage_directory',
+        path: mountPath,
+        handle: root,
+        workerSource: undefined,
+        readOnly,
+      }],
+    });
+  }
+
+  private readonly access: StorageDirectoryWeshAccess;
+  private readonly mountPath: string;
+
+  open({ path, flags }: {
+    path: string;
+    flags: WeshOpenFlags;
+    mode?: number;
+  }): Promise<WeshFileHandle> {
+    return this.access.openLocal({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+      flags,
+    });
+  }
+
+  stat({ path }: { path: string }): Promise<WeshStat> {
+    return this.access.stat({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+      followFinalSymlink: true,
+    });
+  }
+
+  lstat({ path }: { path: string }): Promise<WeshStat> {
+    return this.access.stat({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+      followFinalSymlink: false,
+    });
+  }
+
+  async *readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry> {
+    const entries = await this.access.readDir({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+    });
+    for (const entry of entries) {
+      yield {
+        ...entry,
+        fullPath: this.toMountedPath({ relativePath: entry.fullPath }),
+      };
+    }
+  }
+
+  readlink({ path }: { path: string }): Promise<string> {
+    return this.access.readlink({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+    });
+  }
+
+  mkdir({ path, recursive }: { path: string; recursive: boolean }): Promise<void> {
+    return this.access.mkdir({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+      recursive,
+    });
+  }
+
+  symlink({ path, targetPath }: { path: string; targetPath: string }): Promise<void> {
+    return this.access.symlink({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+      targetPath,
+    });
+  }
+
+  unlink({ path }: { path: string }): Promise<void> {
+    return this.access.unlink({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+    });
+  }
+
+  rmdir({ path }: { path: string }): Promise<void> {
+    return this.access.rmdir({
+      mountPath: this.mountPath,
+      path: this.toRelativePath({ path }),
+    });
+  }
+
+  rename({ oldPath, newPath }: { oldPath: string; newPath: string }): Promise<void> {
+    return this.access.rename({
       mountPath: this.mountPath,
       oldPath: this.toRelativePath({ path: oldPath }),
       newPath: this.toRelativePath({ path: newPath }),

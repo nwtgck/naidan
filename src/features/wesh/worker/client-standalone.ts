@@ -6,7 +6,6 @@ import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-s
 import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
-  weshWorkerExecutionSummarySchema,
   mapWeshMountsToWorkerMounts,
   weshWorkerStartExecutionResponseSchema,
   weshWorkerInitRequestSchema,
@@ -22,6 +21,19 @@ import {
 import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
 import type { WeshMount } from '@/features/wesh/types';
 import { registerWeshWorkerClient } from './client-registry';
+import { createWeshWorkerExecutionTracker } from './execution-tracker';
+
+const WESH_WORKER_GRACEFUL_DISPOSE_TIMEOUT_MS = 1000;
+
+type StandaloneWeshWorkerTransport = {
+  readonly worker: Worker;
+  readonly remote: Comlink.Remote<IWorkerHub>;
+  readonly storageDirectoryRemote: ReturnType<typeof createWeshStorageDirectoryRemoteForMounts>;
+};
+
+type StandaloneWeshWorkerRuntime = StandaloneWeshWorkerTransport & {
+  readonly wesh: Awaited<Comlink.Remote<IWorkerHub>['wesh']>;
+};
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
   rootHandle,
@@ -39,74 +51,220 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts });
   const initRequest = weshWorkerInitRequestSchema.parse({
     rootHandle,
-    mounts: mapWeshMountsToWorkerMounts({ mounts }),
+    mounts: mapWeshMountsToWorkerMounts({
+      mounts,
+      storageDirectoryExecution: 'worker_local',
+    }),
     user,
     initialEnv,
     initialCwd,
   });
 
-  const createRuntime = async () => {
-    const storageDirectoryRemote = createWeshStorageDirectoryRemoteForMounts({ mounts });
-    const worker = await createFileProtocolStandaloneWorkerHub();
-    const remote = Comlink.wrap<IWorkerHub>(worker);
-    const wesh = await remote.wesh;
-    // Keep the proxied reader as a separate top-level argument.
-    // Putting it inside the init request object can fail structured clone in browsers.
-    await wesh.init(
-      initRequest,
-      naidanSysfsRemoteReader
-        ? Comlink.proxy(naidanSysfsRemoteReader)
-        : undefined,
-      storageDirectoryRemote
-        ? Comlink.proxy(storageDirectoryRemote)
-        : undefined,
-    );
-    return { worker, remote, wesh, storageDirectoryRemote };
+  const liveRuntimes = new Set<StandaloneWeshWorkerTransport>();
+  const runtimeDestructionPromises = new WeakMap<StandaloneWeshWorkerTransport, Promise<void>>();
+
+  const destroyRuntime = ({ runtime }: {
+    runtime: StandaloneWeshWorkerTransport;
+  }): Promise<void> => {
+    const existing = runtimeDestructionPromises.get(runtime);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const destruction = (async () => {
+      liveRuntimes.delete(runtime);
+      // Termination is the hard lifecycle boundary. In particular, it releases
+      // Worker-owned HizoFS Web Locks even when a cancelled execution never
+      // settles or the graceful dispose RPC cannot run.
+      const errors: unknown[] = [];
+      try {
+        runtime.remote[Comlink.releaseProxy]();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        runtime.worker.terminate();
+      } catch (error) {
+        errors.push(error);
+      }
+      try {
+        await runtime.storageDirectoryRemote?.dispose();
+      } catch (error) {
+        errors.push(error);
+      }
+      if (errors.length > 0) {
+        throw new AggregateError(errors, 'Failed to destroy standalone Wesh Worker runtime');
+      }
+    })();
+    runtimeDestructionPromises.set(runtime, destruction);
+    return destruction;
   };
 
-  const destroyRuntime = async ({ worker, remote, storageDirectoryRemote }: {
-    worker: Worker,
-    remote: Comlink.Remote<IWorkerHub>,
-    storageDirectoryRemote: ReturnType<typeof createWeshStorageDirectoryRemoteForMounts>,
-  }) => {
-    try {
-      await storageDirectoryRemote?.dispose();
-    } finally {
-      try {
-        await remote[Comlink.releaseProxy]();
-      } finally {
-        worker.terminate();
+  const gracefullyDisposeRuntime = async ({ runtime }: {
+    runtime: StandaloneWeshWorkerRuntime;
+  }): Promise<'completed' | 'timed_out'> => {
+    const completion = Promise.resolve()
+      .then(async () => {
+        await runtime.wesh.dispose();
+        return { status: 'completed' as const };
+      })
+      .catch(error => ({ status: 'failed' as const, error }));
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<{ readonly status: 'timed_out' }>(resolve => {
+      timeoutId = setTimeout(
+        () => resolve({ status: 'timed_out' }),
+        WESH_WORKER_GRACEFUL_DISPOSE_TIMEOUT_MS,
+      );
+    });
+    const outcome = await Promise.race([completion, timeout]).finally(() => {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
       }
+    });
+    switch (outcome.status) {
+    case 'completed':
+      return 'completed';
+    case 'timed_out':
+      return 'timed_out';
+    case 'failed':
+      throw outcome.error;
+    default: {
+      const _ex: never = outcome;
+      throw new Error(`Unhandled standalone Wesh Worker graceful disposal result: ${String(_ex)}`);
+    }
+    }
+  };
+
+  const createRuntime = async () => {
+    const storageDirectoryRemote = createWeshStorageDirectoryRemoteForMounts({
+      mounts,
+      storageDirectoryExecution: 'worker_local',
+    });
+    const worker = await createFileProtocolStandaloneWorkerHub();
+    const remote = Comlink.wrap<IWorkerHub>(worker);
+    const transport: StandaloneWeshWorkerTransport = {
+      worker,
+      remote,
+      storageDirectoryRemote,
+    };
+    try {
+      const wesh = await remote.wesh;
+      const runtime: StandaloneWeshWorkerRuntime = {
+        worker,
+        remote,
+        wesh,
+        storageDirectoryRemote,
+      };
+      // Keep the proxied reader as a separate top-level argument.
+      // Putting it inside the init request object can fail structured clone in browsers.
+      await wesh.init(
+        initRequest,
+        naidanSysfsRemoteReader
+          ? Comlink.proxy(naidanSysfsRemoteReader)
+          : undefined,
+        storageDirectoryRemote
+          ? Comlink.proxy(storageDirectoryRemote)
+          : undefined,
+      );
+      liveRuntimes.add(runtime);
+      return runtime;
+    } catch (initializationError: unknown) {
+      try {
+        await destroyRuntime({ runtime: transport });
+      } catch (cleanupError: unknown) {
+        throw new AggregateError(
+          [initializationError, cleanupError],
+          'Wesh Worker initialization failed and its runtime could not be destroyed',
+        );
+      }
+      throw initializationError;
     }
   };
 
   let runtime = await createRuntime();
+  const executionTracker = createWeshWorkerExecutionTracker<StandaloneWeshWorkerRuntime>({
+    getRemote: ({ runtime: executionRuntime }) => executionRuntime.wesh,
+  });
+  const runtimeReplacementPromises = new WeakMap<StandaloneWeshWorkerRuntime, Promise<void>>();
+  const pendingRuntimeReplacements = new Set<Promise<void>>();
+  let disposeStarted = false;
+
+  const replaceCancelledRuntime = ({ activeRuntime }: {
+    readonly activeRuntime: StandaloneWeshWorkerRuntime;
+  }): Promise<void> => {
+    const existing = runtimeReplacementPromises.get(activeRuntime);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const replacement = (async () => {
+      executionTracker.forceCompleteRuntime({ runtime: activeRuntime });
+      try {
+        if (runtime === activeRuntime && !disposeStarted) {
+          const replacementRuntime = await createRuntime();
+          if (disposeStarted) {
+            await destroyRuntime({ runtime: replacementRuntime });
+          } else {
+            runtime = replacementRuntime;
+          }
+        }
+      } catch (replacementError: unknown) {
+        try {
+          await destroyRuntime({ runtime: activeRuntime });
+        } catch (cleanupError: unknown) {
+          throw new AggregateError(
+            [replacementError, cleanupError],
+            'Standalone Wesh Worker replacement failed and the cancelled runtime could not be destroyed',
+          );
+        }
+        throw replacementError;
+      }
+      await destroyRuntime({ runtime: activeRuntime });
+    })();
+    runtimeReplacementPromises.set(activeRuntime, replacement);
+    pendingRuntimeReplacements.add(replacement);
+    void replacement.then(
+      () => pendingRuntimeReplacements.delete(replacement),
+      () => pendingRuntimeReplacements.delete(replacement),
+    );
+    return replacement;
+  };
 
   return registerWeshWorkerClient({ client: {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest,
       onEvent?: WeshWorkerExecutionEventCallback,
     }) {
-      const response = await runtime.wesh.startExecution(
+      const executionRuntime = runtime;
+      const response = await executionRuntime.wesh.startExecution(
         request,
         onEvent ? Comlink.proxy(async (event: WeshWorkerRemoteExecutionEvent) => {
           await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
         }) : undefined,
       );
-      return weshWorkerStartExecutionResponseSchema.parse(response);
+      const validated = weshWorkerStartExecutionResponseSchema.parse(response);
+      return weshWorkerStartExecutionResponseSchema.parse({
+        executionId: executionTracker.registerExecution({
+          runtime: executionRuntime,
+          remoteExecutionId: validated.executionId,
+        }),
+      });
     },
     async awaitExecution({ request }) {
-      const response = await runtime.wesh.awaitExecution({ request });
-      return weshWorkerExecutionSummarySchema.parse(response);
+      return executionTracker.awaitExecution({ executionId: request.executionId });
     },
     async interruptExecution({ request }) {
-      return runtime.wesh.interruptExecution({ request });
+      return executionTracker.interruptExecution({ executionId: request.executionId });
     },
     async cancelExecution({ request }) {
-      const activeRuntime = runtime;
-      await activeRuntime.wesh.interruptExecution({ request }).catch(() => false);
+      const activeRuntime = executionTracker.getRuntime({ executionId: request.executionId });
+      // Do not await the interrupt RPC before starting the hard-cancel timer.
+      // A synchronously wedged Worker cannot answer Comlink at all.
+      void executionTracker.interruptExecution({
+        executionId: request.executionId,
+      }).catch(() => false);
 
-      const completionSettled = activeRuntime.wesh.awaitExecution({ request }).then(() => true).catch(() => true);
+      const completionSettled = executionTracker.awaitExecution({
+        executionId: request.executionId,
+      }).then(() => true).catch(() => true);
       const stopped = await Promise.race([
         completionSettled,
         new Promise<boolean>(resolve => setTimeout(() => resolve(false), 150)),
@@ -116,20 +274,29 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
         return true;
       }
 
-      runtime = await createRuntime();
-      void completionSettled.finally(() => {
-        void destroyRuntime(activeRuntime).catch(error => {
-          console.error('Failed to destroy cancelled standalone Wesh worker runtime', error);
-        });
-      });
+      // A cancelled Worker may never settle and now owns HizoFS maintenance
+      // leases. Termination is therefore part of cancellation, not deferred
+      // cleanup after awaitExecution eventually resolves.
+      await replaceCancelledRuntime({ activeRuntime });
       return true;
     },
     async disposeExecution({ request }) {
-      await runtime.wesh.disposeExecution({ request });
+      await executionTracker.disposeExecution({ executionId: request.executionId });
     },
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
-      const response = await runtime.wesh.execute({ request });
-      return weshWorkerExecutionSummarySchema.parse(response);
+      const executionRuntime = runtime;
+      const response = weshWorkerStartExecutionResponseSchema.parse(
+        await executionRuntime.wesh.startExecution(request, undefined),
+      );
+      const executionId = executionTracker.registerExecution({
+        runtime: executionRuntime,
+        remoteExecutionId: response.executionId,
+      });
+      try {
+        return await executionTracker.awaitExecution({ executionId });
+      } finally {
+        await executionTracker.disposeExecution({ executionId });
+      }
     },
     async getShellState() {
       const response = await runtime.wesh.getShellState();
@@ -148,11 +315,68 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       return runtime.wesh.interrupt();
     },
     async dispose() {
-      const activeRuntime = runtime;
-      try {
-        await activeRuntime.wesh.dispose();
-      } finally {
-        await destroyRuntime(activeRuntime);
+      disposeStarted = true;
+      executionTracker.forceCompleteAll();
+      const errors: unknown[] = [];
+      const replacementResults = await Promise.allSettled([...pendingRuntimeReplacements]);
+      for (const result of replacementResults) {
+        switch (result.status) {
+        case 'fulfilled':
+          break;
+        case 'rejected':
+          errors.push(result.reason);
+          break;
+        default: {
+          const _ex: never = result;
+          throw new Error(`Unhandled standalone Wesh Worker replacement result: ${String(_ex)}`);
+        }
+        }
+      }
+      const activeRuntime = liveRuntimes.has(runtime) ? runtime : undefined;
+      const retiredRuntimes = [...liveRuntimes].filter(candidate => candidate !== activeRuntime);
+      const retiredResults = await Promise.allSettled(
+        retiredRuntimes.map(async retiredRuntime => {
+          await destroyRuntime({ runtime: retiredRuntime });
+        }),
+      );
+      for (const result of retiredResults) {
+        switch (result.status) {
+        case 'fulfilled':
+          break;
+        case 'rejected':
+          errors.push(result.reason);
+          break;
+        default: {
+          const _ex: never = result;
+          throw new Error(`Unhandled standalone Wesh Worker runtime disposal result: ${String(_ex)}`);
+        }
+        }
+      }
+      if (activeRuntime !== undefined) {
+        try {
+          const disposal = await gracefullyDisposeRuntime({ runtime: activeRuntime });
+          switch (disposal) {
+          case 'completed':
+            break;
+          case 'timed_out':
+            console.warn('Standalone Wesh Worker did not dispose in time and was terminated');
+            break;
+          default: {
+            const _ex: never = disposal;
+            throw new Error(`Unhandled standalone Wesh Worker disposal result: ${String(_ex)}`);
+          }
+          }
+        } catch (error) {
+          errors.push(error);
+        }
+        try {
+          await destroyRuntime({ runtime: activeRuntime });
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (errors.length > 0) {
+        throw new AggregateError(errors, 'Failed to dispose all standalone Wesh Worker runtimes');
       }
     },
   } });

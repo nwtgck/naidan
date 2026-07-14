@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 import { idToRaw } from '@/01-models/ids';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
+import type { StorageDirectoryWorkerMountSource } from '@/00-storage/service/storage-file-system/types';
 import type { WeshStorageDirectoryRemote } from '@/features/wesh/storage-directory/types';
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
   type WeshMount,
+  type WeshStorageDirectoryExecution,
 } from '@/features/wesh/types';
 
 export const weshWorkerDirectoryMountSchema = z.object({
@@ -16,9 +18,18 @@ export const weshWorkerDirectoryMountSchema = z.object({
   readOnly: z.boolean(),
 });
 
+export const weshWorkerStorageDirectoryMountSourceSchema = z.object({
+  type: z.literal('hizofs'),
+  backingDirectory: z.custom<FileSystemDirectoryHandle>(),
+  fileSystemId: z.string().min(1),
+  rootKey: z.custom<CryptoKey>(),
+  rootDirectoryNodeId: z.string().min(1),
+}) satisfies z.ZodType<StorageDirectoryWorkerMountSource>;
+
 export const weshWorkerStorageDirectoryMountSchema = z.object({
   type: z.literal('storage_directory'),
   path: z.string().min(1),
+  workerSource: missingAsUndefined(weshWorkerStorageDirectoryMountSourceSchema),
   readOnly: z.boolean(),
 });
 
@@ -176,8 +187,9 @@ export interface WeshWorkerClient {
   dispose(): Promise<void>,
 }
 
-export function mapWeshMountsToWorkerMounts({ mounts }: {
+export function mapWeshMountsToWorkerMounts({ mounts, storageDirectoryExecution }: {
   mounts: WeshMount[],
+  storageDirectoryExecution: WeshStorageDirectoryExecution,
 }): WeshWorkerMount[] {
   return mounts.map(mount => {
     switch (mount.type) {
@@ -188,12 +200,26 @@ export function mapWeshMountsToWorkerMounts({ mounts }: {
         handle: mount.handle,
         readOnly: mount.readOnly,
       };
-    case 'storage_directory':
+    case 'storage_directory': {
+      const workerSource = (() => {
+        switch (storageDirectoryExecution) {
+        case 'worker_local':
+          return mount.workerSource;
+        case 'ui_remote':
+          return undefined;
+        default: {
+          const _ex: never = storageDirectoryExecution;
+          throw new Error(`Unhandled storage directory execution: ${String(_ex)}`);
+        }
+        }
+      })();
       return {
         type: 'storage_directory',
         path: mount.path,
+        workerSource,
         readOnly: mount.readOnly,
       };
+    }
     case 'naidan_sysfs':
       return {
         type: 'naidan_sysfs',

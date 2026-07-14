@@ -23,6 +23,7 @@ export function createWeshStorageMount({
       type: 'storage_directory',
       path,
       handle: access.handle,
+      workerSource: access.handle.createWorkerMountSource?.(),
       readOnly,
     };
   default: {

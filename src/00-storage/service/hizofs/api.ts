@@ -3,7 +3,11 @@ import type {
   HizoFSDescriptorDto,
   HizoFSSuperblockDto,
 } from '@/00-storage/00-dto/hizofs.dto';
-import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
+import type {
+  StorageDirectoryWorkerMountSession,
+  StorageDirectoryWorkerMountSource,
+  StorageFileSystemSession,
+} from '@/00-storage/service/storage-file-system/types';
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
 import { importHizoFSRootKey } from './crypto/object-crypto';
 import {
@@ -38,6 +42,37 @@ export async function openHizoFS({ backingDirectory, fileSystemRootKey }: {
     policy: DEFAULT_HIZOFS_POLICY,
     now: () => Date.now(),
   });
+}
+
+
+export async function openHizoFSWorkerMount({ source }: {
+  source: StorageDirectoryWorkerMountSource;
+}): Promise<StorageDirectoryWorkerMountSession> {
+  // The in-module fallback lock is isolated per realm. Allowing it here would
+  // let the UI and Wesh Worker publish conflicting commits independently.
+  if (
+    typeof navigator === 'undefined'
+    || navigator.locks?.request === undefined
+  ) {
+    throw new Error(
+      'Worker-local HizoFS mounts require the Web Locks API for cross-realm consistency',
+    );
+  }
+  switch (source.type) {
+  case 'hizofs':
+    return openHizoFSWithImportedRootKey({
+      backingDirectory: source.backingDirectory,
+      fileSystemId: source.fileSystemId,
+      rootKey: source.rootKey,
+      rootDirectoryNodeId: source.rootDirectoryNodeId,
+      policy: DEFAULT_HIZOFS_POLICY,
+      now: () => Date.now(),
+    });
+  default: {
+    const _ex: never = source.type;
+    throw new Error(`Unhandled storage directory Worker mount: ${String(_ex)}`);
+  }
+  }
 }
 
 
@@ -160,6 +195,12 @@ async function createHizoFSInternal({
       runtime,
       rootDirectoryNodeId,
       maintenanceLease,
+      workerMountContext: {
+        type: 'hizofs',
+        backingDirectory,
+        fileSystemId: descriptor.fileSystemId,
+        rootKey,
+      },
     });
   } catch (error) {
     await maintenanceLease.release();
@@ -200,6 +241,67 @@ async function openHizoFSInternal({
       runtime,
       rootDirectoryNodeId: state.commit.rootDirectoryNodeId,
       maintenanceLease,
+      workerMountContext: {
+        type: 'hizofs',
+        backingDirectory,
+        fileSystemId: descriptor.fileSystemId,
+        rootKey,
+      },
+    });
+  } catch (error) {
+    await maintenanceLease.release();
+    throw error;
+  }
+}
+
+
+async function openHizoFSWithImportedRootKey({
+  backingDirectory,
+  fileSystemId,
+  rootKey,
+  rootDirectoryNodeId,
+  policy,
+  now,
+}: {
+  backingDirectory: FileSystemDirectoryHandle;
+  fileSystemId: string;
+  rootKey: CryptoKey;
+  rootDirectoryNodeId: string;
+  policy: HizoFSPolicy;
+  now: () => number;
+}): Promise<StorageDirectoryWorkerMountSession> {
+  const backingStore = new NativeOpfsHizoFSBackingStore({ root: backingDirectory });
+  const descriptor = await readHizoFSDescriptor({ backingStore });
+  if (descriptor === undefined) {
+    throw new Error('HizoFS descriptor is missing');
+  }
+  if (descriptor.fileSystemId !== fileSystemId) {
+    throw new Error('HizoFS Worker mount file system identity changed');
+  }
+  const maintenanceLease = await acquireHizoFSSessionLease({ fileSystemId });
+  try {
+    const runtime = createHizoFSRuntime({
+      backingStore,
+      rootKey,
+      fileSystemId,
+      policy,
+      now,
+    });
+    const state = await runtime.core.loadActiveState();
+    await runtime.nodeService.readDirectory({
+      state,
+      nodeId: rootDirectoryNodeId,
+    });
+    return new HizoFSSession({
+      runtime,
+      rootDirectoryNodeId,
+      maintenanceLease,
+      workerMountContext: {
+        type: 'hizofs',
+        backingDirectory,
+        fileSystemId,
+        rootKey,
+      },
     });
   } catch (error) {
     await maintenanceLease.release();

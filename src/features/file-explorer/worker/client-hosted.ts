@@ -64,11 +64,16 @@ export async function createFileExplorerWorkerClient({
           type: 'storage_directory',
           path: '/',
           handle: root.handle,
+          workerSource: undefined,
           readOnly: root.readOnly,
         }],
+        storageDirectoryExecution: 'ui_remote',
       });
     case 'wesh-mounts':
-      return createWeshStorageDirectoryRemoteForMounts({ mounts: root.mounts });
+      return createWeshStorageDirectoryRemoteForMounts({
+        mounts: root.mounts,
+        storageDirectoryExecution: 'ui_remote',
+      });
     default: {
       const _ex: never = root;
       throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`);
@@ -98,7 +103,10 @@ export async function createFileExplorerWorkerClient({
       return {
         kind: 'wesh-mounts' as const,
         rootName: root.rootName,
-        mounts: mapWeshMountsToWorkerMounts({ mounts: root.mounts }),
+        mounts: mapWeshMountsToWorkerMounts({
+          mounts: root.mounts,
+          storageDirectoryExecution: 'ui_remote',
+        }),
       };
     default: {
       const _ex: never = root;

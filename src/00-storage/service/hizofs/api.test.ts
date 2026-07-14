@@ -9,9 +9,11 @@ import {
   createHizoFS,
   inspectHizoFS,
   openHizoFS,
+  openHizoFSWorkerMount,
   TEST_ONLY,
 } from './api';
 import type { HizoFSPolicy } from './file-system/policy';
+import { createQueuedTestLockManager } from './test-lock-manager';
 
 const ROOT_KEY = new Uint8Array(32).fill(9);
 const TINY_POLICY: HizoFSPolicy = {
@@ -164,6 +166,93 @@ describe('HizoFS public file-system API', () => {
       backingDirectory: emptyCanonicalName,
       fileSystemRootKey: ROOT_KEY,
     })).rejects.toThrow('HizoFS descriptor is missing');
+  });
+
+  it('fails closed when a Worker mount cannot coordinate through Web Locks', async () => {
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+      const ownerSession = await createHizoFS({
+        backingDirectory: backing,
+        fileSystemRootKey: ROOT_KEY,
+      });
+      const source = ownerSession.root.createWorkerMountSource?.();
+      if (source === undefined) {
+        throw new Error('HizoFS directory did not expose a Worker mount source');
+      }
+      await expect(openHizoFSWorkerMount({ source })).rejects.toThrow(
+        'require the Web Locks API',
+      );
+      await ownerSession.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+  it('reopens a scoped directory for Worker-local filesystem access', async () => {
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager(),
+    });
+    try {
+      const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+      const ownerSession = await createHizoFS({
+        backingDirectory: backing,
+        fileSystemRootKey: ROOT_KEY,
+      });
+      const mountedDirectory = await ownerSession.root.getDirectoryHandle({
+        name: 'mounted',
+        create: true,
+      });
+      const source = mountedDirectory.createWorkerMountSource?.();
+      if (source === undefined) {
+        throw new Error('HizoFS directory did not expose a Worker mount source');
+      }
+      expect(source.rootKey.extractable).toBe(false);
+      expect(source.rootKey.usages).toEqual(['deriveKey']);
+
+      const workerSession = await openHizoFSWorkerMount({ source });
+      const unrelatedBackingDirectory = new MockFileSystemDirectoryHandle({
+        name: 'unrelated-backing',
+      });
+      await expect(workerSession.openWorkerMountDirectory({
+        source: {
+          ...source,
+          backingDirectory: unrelatedBackingDirectory,
+        },
+      })).rejects.toThrow('different backing directory');
+
+      await writeStorageFileText({
+        fileHandle: await workerSession.root.getFileHandle({
+          name: 'worker.txt',
+          create: true,
+        }),
+        value: 'worker-local HizoFS',
+      });
+
+      expect(await readStorageFileText({
+        fileHandle: await mountedDirectory.getFileHandle({
+          name: 'worker.txt',
+          create: false,
+        }),
+      })).toBe('worker-local HizoFS');
+
+      await workerSession.close();
+      await ownerSession.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
   });
 
   it('round-trips an inline file across a complete reopen', async () => {

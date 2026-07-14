@@ -38,8 +38,10 @@ async function createMountedHizoFS({ readOnly = false }: {
       type: 'storage_directory',
       path: MOUNT_PATH,
       handle: session.root,
+      workerSource: undefined,
       readOnly,
     }],
+    storageDirectoryExecution: 'ui_remote',
   });
   if (remote === undefined) {
     throw new Error('Expected storage directory remote');
@@ -227,8 +229,10 @@ describe('Wesh StorageDirectoryHandle remote', () => {
         type: 'storage_directory',
         path: MOUNT_PATH,
         handle: session.root,
+        workerSource: undefined,
         readOnly: false,
       }],
+      storageDirectoryExecution: 'ui_remote',
     });
     if (secondRemote === undefined) {
       throw new Error('Expected replacement storage directory remote');

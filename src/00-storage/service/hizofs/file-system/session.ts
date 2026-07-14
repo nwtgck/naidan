@@ -6,10 +6,11 @@ import type {
 } from '@/00-storage/00-dto/hizofs.dto';
 import type {
   StorageDirectoryHandle,
+  StorageDirectoryWorkerMountSession,
+  StorageDirectoryWorkerMountSource,
   StorageEntryHandle,
   StorageFileHandle,
   StorageFileStat,
-  StorageFileSystemSession,
   StorageSymlinkHandle,
   StorageWritableFile,
 } from '@/00-storage/service/storage-file-system/types';
@@ -89,14 +90,22 @@ function isDirectoryEntry({ entry }: {
   }
 }
 
-export class HizoFSSession implements StorageFileSystemSession {
-  constructor({ runtime, rootDirectoryNodeId, maintenanceLease }: {
+export class HizoFSSession implements StorageDirectoryWorkerMountSession {
+  constructor({
+    runtime,
+    rootDirectoryNodeId,
+    maintenanceLease,
+    workerMountContext,
+  }: {
     runtime: HizoFSRuntime;
     rootDirectoryNodeId: string;
     maintenanceLease: HizoFSMaintenanceLease;
+    workerMountContext: Omit<StorageDirectoryWorkerMountSource, 'rootDirectoryNodeId'>;
   }) {
     this.runtime = runtime;
+    this.fileSystemId = runtime.core.fileSystemId;
     this.maintenanceLease = maintenanceLease;
+    this.workerMountContext = workerMountContext;
     this.root = new HizoFSDirectoryHandle({
       session: this,
       nodeId: rootDirectoryNodeId,
@@ -110,7 +119,9 @@ export class HizoFSSession implements StorageFileSystemSession {
     atomicMove: 'supported' as const,
   };
   readonly root: StorageDirectoryHandle;
+  readonly fileSystemId: string;
   readonly runtime: HizoFSRuntime;
+  private readonly workerMountContext: Omit<StorageDirectoryWorkerMountSource, 'rootDirectoryNodeId'>;
   private readonly maintenanceLease: HizoFSMaintenanceLease;
   private readonly resources = new Set<HizoFSSessionResource>();
   private closed = false;
@@ -139,6 +150,42 @@ export class HizoFSSession implements StorageFileSystemSession {
     if (this.closed) {
       throw new Error('HizoFS session is closed');
     }
+  }
+
+
+  createWorkerMountSource({ rootDirectoryNodeId }: {
+    rootDirectoryNodeId: string;
+  }): StorageDirectoryWorkerMountSource {
+    this.assertOpen();
+    return {
+      ...this.workerMountContext,
+      rootDirectoryNodeId,
+    };
+  }
+
+
+  async openWorkerMountDirectory({ source }: {
+    source: StorageDirectoryWorkerMountSource;
+  }): Promise<StorageDirectoryHandle> {
+    this.assertOpen();
+    if (source.fileSystemId !== this.fileSystemId) {
+      throw new Error('HizoFS Worker mount belongs to a different file system');
+    }
+    if (!await this.workerMountContext.backingDirectory.isSameEntry(
+      source.backingDirectory,
+    )) {
+      throw new Error('HizoFS Worker mount belongs to a different backing directory');
+    }
+    const state = await this.runtime.core.loadActiveState();
+    await this.runtime.nodeService.readDirectory({
+      state,
+      nodeId: source.rootDirectoryNodeId,
+    });
+    return new HizoFSDirectoryHandle({
+      session: this,
+      nodeId: source.rootDirectoryNodeId,
+      name: '',
+    });
   }
 
   async getFileHandle({ directoryNodeId, name, create }: {
@@ -821,6 +868,12 @@ class HizoFSDirectoryHandle implements StorageDirectoryHandle {
       destination,
       newName,
       replace,
+    });
+  }
+
+  createWorkerMountSource(): StorageDirectoryWorkerMountSource {
+    return this.session.createWorkerMountSource({
+      rootDirectoryNodeId: this.nodeId,
     });
   }
 }

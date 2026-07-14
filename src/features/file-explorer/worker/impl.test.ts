@@ -44,8 +44,10 @@ describe('file-explorer.worker.impl', () => {
         type: 'storage_directory',
         path: '/',
         handle: encryptedSession.root,
+        workerSource: undefined,
         readOnly: false,
       }],
+      storageDirectoryExecution: 'ui_remote',
     });
     if (storageDirectoryRemote === undefined) {
       throw new Error('Expected root storage directory remote');

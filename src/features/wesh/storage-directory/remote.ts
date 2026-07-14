@@ -7,7 +7,15 @@ import type {
   StorageFileStat,
   StorageWritableFile,
 } from '@/00-storage/service/storage-file-system/types';
-import type { WeshMount, WeshOpenFlags, WeshStat } from '@/features/wesh/types';
+import type {
+  WeshFileHandle,
+  WeshIOResult,
+  WeshMount,
+  WeshOpenFlags,
+  WeshStat,
+  WeshWriteResult,
+  WeshStorageDirectoryExecution,
+} from '@/features/wesh/types';
 import type {
   WeshStorageDirectoryReadResult,
   WeshStorageDirectoryRemote,
@@ -19,7 +27,7 @@ const DIRECTORY_MODE = 0o755;
 const SYMLINK_MODE = 0o777;
 const MAX_SYMLINK_DEPTH = 40;
 
-type StorageDirectoryMount = Extract<WeshMount, { type: 'storage_directory' }>;
+export type StorageDirectoryMount = Extract<WeshMount, { type: 'storage_directory' }>;
 
 function getModeForKind({ kind }: {
   kind: StorageEntryHandle['kind'];
@@ -211,7 +219,7 @@ function canWrite({ flags }: { flags: WeshOpenFlags }): boolean {
   return flags.access === 'write' || flags.access === 'read-write';
 }
 
-class OpenStorageFile {
+export class OpenStorageFile implements WeshFileHandle {
   constructor({ fileHandle, flags }: {
     fileHandle: StorageFileHandle;
     flags: WeshOpenFlags;
@@ -245,23 +253,32 @@ class OpenStorageFile {
     }
   }
 
-  async read({ length, position }: {
-    length: number;
-    position: number | undefined;
-  }): Promise<WeshStorageDirectoryReadResult> {
+  async read({ buffer, offset: requestedOffset, length: requestedLength, position }: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshIOResult> {
     this.assertOpen();
     if (!canRead({ flags: this.flags })) {
       throw new Error('The Wesh file handle was not opened for reading');
     }
-    if (!Number.isSafeInteger(length) || length < 0) {
-      throw new Error('Read length must be a non-negative safe integer');
+    const offset = requestedOffset ?? 0;
+    const length = requestedLength ?? buffer.byteLength - offset;
+    if (
+      !Number.isSafeInteger(offset)
+      || offset < 0
+      || !Number.isSafeInteger(length)
+      || length < 0
+      || offset + length > buffer.byteLength
+    ) {
+      throw new Error('Read buffer range is invalid');
     }
     this.reader ??= await this.fileHandle.openReadable({ mimeType: 'application/octet-stream' });
     const readPosition = position ?? this.cursor;
-    const target = new Uint8Array(length);
     const result = await this.reader.read({
-      buffer: target,
-      offset: 0,
+      buffer,
+      offset,
       length,
       position: readPosition,
       signal: undefined,
@@ -269,22 +286,48 @@ class OpenStorageFile {
     if (position === undefined) {
       this.cursor += result.bytesRead;
     }
-    const exact = target.buffer.slice(0, result.bytesRead);
+    return { bytesRead: result.bytesRead };
+  }
+
+  async readRemote({ length, position }: {
+    length: number;
+    position: number | undefined;
+  }): Promise<WeshStorageDirectoryReadResult> {
+    const target = new Uint8Array(length);
+    const result = await this.read({
+      buffer: target,
+      offset: 0,
+      length,
+      position,
+    });
     return {
-      buffer: exact,
+      buffer: target.buffer.slice(0, result.bytesRead),
       bytesRead: result.bytesRead,
     };
   }
 
-  async write({ buffer, position }: {
-    buffer: ArrayBuffer;
-    position: number | undefined;
-  }): Promise<WeshStorageDirectoryWriteResult> {
+  async write({ buffer, offset: requestedOffset, length: requestedLength, position }: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshWriteResult> {
     this.assertOpen();
     if (!canWrite({ flags: this.flags }) || this.writer === undefined) {
       throw new Error('The Wesh file handle was not opened for writing');
     }
-    const bytes = new Uint8Array(buffer);
+    const offset = requestedOffset ?? 0;
+    const length = requestedLength ?? buffer.byteLength - offset;
+    if (
+      !Number.isSafeInteger(offset)
+      || offset < 0
+      || !Number.isSafeInteger(length)
+      || length < 0
+      || offset + length > buffer.byteLength
+    ) {
+      throw new Error('Write buffer range is invalid');
+    }
+    const bytes = buffer.subarray(offset, offset + length);
     const append = shouldAppend({ flags: this.flags });
     const writePosition = append
       ? this.logicalSize ?? (await this.fileHandle.stat()).size
@@ -297,6 +340,18 @@ class OpenStorageFile {
       this.cursor = end;
     }
     return { bytesWritten: bytes.byteLength };
+  }
+
+  async writeRemote({ buffer, position }: {
+    buffer: ArrayBuffer;
+    position: number | undefined;
+  }): Promise<WeshStorageDirectoryWriteResult> {
+    return this.write({
+      buffer: new Uint8Array(buffer),
+      offset: 0,
+      length: buffer.byteLength,
+      position,
+    });
   }
 
   async stat(): Promise<WeshStat> {
@@ -321,6 +376,12 @@ class OpenStorageFile {
     this.logicalSize = size;
     this.modifiedAt = Date.now();
     this.cursor = Math.min(this.cursor, size);
+  }
+
+
+  async ioctl(): Promise<{ ret: number }> {
+    this.assertOpen();
+    return { ret: 0 };
   }
 
   async close(): Promise<void> {
@@ -350,7 +411,7 @@ class OpenStorageFile {
     }
     this.settled = true;
     await Promise.allSettled([
-      this.writer?.abort({ reason: new Error('Wesh storage directory remote was disposed') }),
+      this.writer?.abort({ reason: new Error('Wesh storage directory access was disposed') }),
       this.reader?.close(),
     ]);
   }
@@ -362,7 +423,7 @@ class OpenStorageFile {
   }
 }
 
-class StorageDirectoryRemote implements WeshStorageDirectoryRemote {
+export class StorageDirectoryWeshAccess implements WeshStorageDirectoryRemote {
   constructor({ mounts }: {
     mounts: readonly StorageDirectoryMount[];
   }) {
@@ -428,11 +489,11 @@ class StorageDirectoryRemote implements WeshStorageDirectoryRemote {
     return entry.readTarget();
   }
 
-  async open({ mountPath, path, flags }: {
+  async openLocal({ mountPath, path, flags }: {
     mountPath: string;
     path: string;
     flags: WeshOpenFlags;
-  }) {
+  }): Promise<OpenStorageFile> {
     const mount = this.getMount({ mountPath });
     if (
       mount.readOnly
@@ -465,6 +526,15 @@ class StorageDirectoryRemote implements WeshStorageDirectoryRemote {
     }
     const openFile = new OpenStorageFile({ fileHandle, flags });
     await openFile.initialize();
+    return openFile;
+  }
+
+  async open({ mountPath, path, flags }: {
+    mountPath: string;
+    path: string;
+    flags: WeshOpenFlags;
+  }) {
+    const openFile = await this.openLocal({ mountPath, path, flags });
     const handleId = String(this.nextHandleId++);
     this.openFiles.set(handleId, openFile);
     return { handleId };
@@ -475,7 +545,7 @@ class StorageDirectoryRemote implements WeshStorageDirectoryRemote {
     length: number;
     position: number | undefined;
   }) {
-    return this.getOpenFile({ handleId }).read({ length, position });
+    return this.getOpenFile({ handleId }).readRemote({ length, position });
   }
 
   async write({ handleId, buffer, position }: {
@@ -483,7 +553,7 @@ class StorageDirectoryRemote implements WeshStorageDirectoryRemote {
     buffer: ArrayBuffer;
     position: number | undefined;
   }) {
-    return this.getOpenFile({ handleId }).write({ buffer, position });
+    return this.getOpenFile({ handleId }).writeRemote({ buffer, position });
   }
 
   async statHandle({ handleId }: { handleId: string }): Promise<WeshStat> {
@@ -680,15 +750,46 @@ class StorageDirectoryRemote implements WeshStorageDirectoryRemote {
   }
 }
 
-export function createWeshStorageDirectoryRemoteForMounts({ mounts }: {
+export function createWeshStorageDirectoryRemoteForMounts({
+  mounts,
+  storageDirectoryExecution,
+}: {
   mounts: readonly WeshMount[];
+  storageDirectoryExecution: WeshStorageDirectoryExecution;
 }): WeshStorageDirectoryRemote | undefined {
   const storageDirectoryMounts = mounts.filter(
-    (mount): mount is StorageDirectoryMount => mount.type === 'storage_directory',
+    (mount): mount is StorageDirectoryMount => {
+      switch (mount.type) {
+      case 'directory':
+      case 'naidan_sysfs':
+        return false;
+      case 'storage_directory':
+        switch (storageDirectoryExecution) {
+        case 'worker_local':
+          // Worker-reopenable mounts run beside Wesh and must never route
+          // primitive I/O back through this UI-owned Comlink remote.
+          return mount.workerSource === undefined;
+        case 'ui_remote':
+          // File Explorer still uses the UI-owned handle capability. It must not
+          // lose HizoFS-backed mounts merely because Wesh can reopen them locally.
+          return true;
+        default: {
+          const _ex: never = storageDirectoryExecution;
+          throw new Error(`Unhandled storage directory execution: ${String(_ex)}`);
+        }
+        }
+      default: {
+        const _ex: never = mount;
+        throw new Error(
+          `Unhandled Wesh mount type: ${((_ex satisfies never) as { readonly type: string }).type}`,
+        );
+      }
+      }
+    },
   );
   return storageDirectoryMounts.length === 0
     ? undefined
-    : new StorageDirectoryRemote({ mounts: storageDirectoryMounts });
+    : new StorageDirectoryWeshAccess({ mounts: storageDirectoryMounts });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

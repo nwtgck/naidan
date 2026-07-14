@@ -11,6 +11,15 @@ export type StorageFileSystemCapabilities = {
   readonly atomicMove: 'supported' | 'unsupported';
 };
 
+
+export type StorageDirectoryWorkerMountSource = {
+  readonly type: 'hizofs';
+  readonly backingDirectory: FileSystemDirectoryHandle;
+  readonly fileSystemId: string;
+  readonly rootKey: CryptoKey;
+  readonly rootDirectoryNodeId: string;
+};
+
 export type StorageFileStat = {
   readonly size: number;
   readonly createdAt: number | undefined;
@@ -106,6 +115,15 @@ export interface StorageDirectoryHandle {
     newName: string;
     replace: boolean;
   }): Promise<void>;
+
+  /**
+   * Returns a structured-cloneable capability that lets a trusted Worker reopen
+   * this exact directory without routing filesystem primitives through the UI
+   * realm. The capability may contain cryptographic authority and must not be
+   * exposed outside the application's Worker boundary. Implementations that
+   * cannot be reopened inside a Worker leave it undefined.
+   */
+  createWorkerMountSource?(): StorageDirectoryWorkerMountSource;
 }
 
 export interface StorageFileSystemSession {
@@ -113,6 +131,15 @@ export interface StorageFileSystemSession {
   readonly capabilities: StorageFileSystemCapabilities;
 
   close(): Promise<void>;
+}
+
+
+export interface StorageDirectoryWorkerMountSession extends StorageFileSystemSession {
+  readonly fileSystemId: string;
+
+  openWorkerMountDirectory({ source }: {
+    source: StorageDirectoryWorkerMountSource;
+  }): Promise<StorageDirectoryHandle>;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

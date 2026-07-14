@@ -8,7 +8,15 @@ import {
   createRemoteNaidanSysfsStorageReader,
 } from '@/features/wesh/naidan-sysfs/storage-reader';
 import { ReadonlyDirectoryHandle } from '@/features/wesh/readonly-directory-handle';
-import { RemoteStorageDirectoryWeshProvider } from '@/features/wesh/storage-directory/provider';
+import type {
+  StorageDirectoryHandle,
+  StorageDirectoryWorkerMountSession,
+} from '@/00-storage/service/storage-file-system/types';
+import { openStorageDirectoryWorkerMount } from '@/00-storage/service/storage-file-system/worker-mount';
+import {
+  LocalStorageDirectoryWeshProvider,
+  RemoteStorageDirectoryWeshProvider,
+} from '@/features/wesh/storage-directory/provider';
 import { createTestReadHandleFromText } from '@/features/wesh/utils/test-stream';
 import { createWriteHandleFromStream } from '@/features/wesh/utils/stream';
 import {
@@ -152,14 +160,45 @@ function createForwardingHandle({
 
 export function createWeshWorker(): IWeshWorker {
   let wesh: Wesh | undefined;
+  let localStorageFileSystemSessions = new Map<string, StorageDirectoryWorkerMountSession>();
   let nextExecutionId = 1;
   const executions = new Map<string, {
     completion: Promise<WeshWorkerExecutionSummary>,
   }>();
 
+  const closeLocalStorageFileSystemSessions = async (): Promise<void> => {
+    const sessions = [...localStorageFileSystemSessions.values()];
+    localStorageFileSystemSessions = new Map();
+    const results = await Promise.allSettled(
+      sessions.map(async session => await session.close()),
+    );
+    const failures: unknown[] = [];
+    for (const result of results) {
+      switch (result.status) {
+      case 'fulfilled':
+        break;
+      case 'rejected':
+        failures.push(result.reason);
+        break;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled storage filesystem session close result: ${String(_ex)}`);
+      }
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        'Failed to close Worker-local storage filesystem sessions',
+      );
+    }
+  };
+
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     async init(requestOrOptions, naidanSysfsRemoteReader, storageDirectoryRemote) {
+      wesh = undefined;
+      await closeLocalStorageFileSystemSessions();
       const normalizedRequest = (() => {
         if (
           typeof requestOrOptions === 'object'
@@ -182,66 +221,106 @@ export function createWeshWorker(): IWeshWorker {
         initialCwd: validated.initialCwd,
       });
 
-      for (const mount of validated.mounts) {
-        switch (mount.type) {
-        case 'directory':
-          await wesh.vfs.mount({
-            path: mount.path,
-            handle: mount.handle,
-            readOnly: mount.readOnly,
-          });
-          break;
-        case 'storage_directory': {
-          if (storageDirectoryRemote === undefined) {
-            throw new Error('Storage directory remote is required for storage_directory mounts');
-          }
-          wesh.vfs.mountVirtual({
-            path: mount.path,
-            readOnly: mount.readOnly,
-            provider: new RemoteStorageDirectoryWeshProvider({
-              remote: storageDirectoryRemote,
-              mountPath: mount.path,
-            }),
-          });
-          break;
-        }
-        case 'naidan_sysfs': {
-          const reader = await (() => {
-            switch (mount.storageType) {
-            case 'opfs':
-              return createOpfsNaidanSysfsStorageReader();
-            case 'local':
-            case 'memory':
-              if (naidanSysfsRemoteReader === undefined) {
-                throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`);
+      try {
+        for (const mount of validated.mounts) {
+          switch (mount.type) {
+          case 'directory':
+            await wesh.vfs.mount({
+              path: mount.path,
+              handle: mount.handle,
+              readOnly: mount.readOnly,
+            });
+            break;
+          case 'storage_directory': {
+            if (mount.workerSource !== undefined) {
+              let session = localStorageFileSystemSessions.get(
+                mount.workerSource.fileSystemId,
+              );
+              let root: StorageDirectoryHandle;
+              if (session === undefined) {
+                session = await openStorageDirectoryWorkerMount({
+                  source: mount.workerSource,
+                });
+                localStorageFileSystemSessions.set(session.fileSystemId, session);
+                root = session.root;
+              } else {
+                root = await session.openWorkerMountDirectory({
+                  source: mount.workerSource,
+                });
               }
-              return createRemoteNaidanSysfsStorageReader({
-                remoteReader: naidanSysfsRemoteReader,
+              wesh.vfs.mountVirtual({
+                path: mount.path,
+                readOnly: mount.readOnly,
+                provider: new LocalStorageDirectoryWeshProvider({
+                  root,
+                  mountPath: mount.path,
+                  readOnly: mount.readOnly,
+                }),
               });
-            default: {
-              const _ex: never = mount.storageType;
-              throw new Error(`Unsupported naidan sysfs storage type: ${String(_ex)}`);
+              break;
             }
+            if (storageDirectoryRemote === undefined) {
+              throw new Error('Storage directory remote is required for non-Worker storage_directory mounts');
             }
-          })();
-          wesh.vfs.mountVirtual({
-            path: mount.path,
-            readOnly: mount.readOnly,
-            provider: new NaidanSysfsProvider({
-              reader,
-              visibility: mount.visibility,
-              binaryObjectAccess: mount.binaryObjectAccess,
-              currentChatId: mount.currentChatId,
-              currentChatGroupId: mount.currentChatGroupId,
-            }),
-          });
-          break;
+            wesh.vfs.mountVirtual({
+              path: mount.path,
+              readOnly: mount.readOnly,
+              provider: new RemoteStorageDirectoryWeshProvider({
+                remote: storageDirectoryRemote,
+                mountPath: mount.path,
+              }),
+            });
+            break;
+          }
+          case 'naidan_sysfs': {
+            const reader = await (() => {
+              switch (mount.storageType) {
+              case 'opfs':
+                return createOpfsNaidanSysfsStorageReader();
+              case 'local':
+              case 'memory':
+                if (naidanSysfsRemoteReader === undefined) {
+                  throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`);
+                }
+                return createRemoteNaidanSysfsStorageReader({
+                  remoteReader: naidanSysfsRemoteReader,
+                });
+              default: {
+                const _ex: never = mount.storageType;
+                throw new Error(`Unsupported naidan sysfs storage type: ${String(_ex)}`);
+              }
+              }
+            })();
+            wesh.vfs.mountVirtual({
+              path: mount.path,
+              readOnly: mount.readOnly,
+              provider: new NaidanSysfsProvider({
+                reader,
+                visibility: mount.visibility,
+                binaryObjectAccess: mount.binaryObjectAccess,
+                currentChatId: mount.currentChatId,
+                currentChatGroupId: mount.currentChatGroupId,
+              }),
+            });
+            break;
+          }
+          default: {
+            const _ex: never = mount;
+            throw new Error(`Unhandled Wesh worker mount type: ${String(_ex)}`);
+          }
+          }
         }
-        default: {
-          const _ex: never = mount;
-          throw new Error(`Unhandled Wesh worker mount type: ${String(_ex)}`);
+      } catch (initializationError: unknown) {
+        wesh = undefined;
+        try {
+          await closeLocalStorageFileSystemSessions();
+        } catch (closeError: unknown) {
+          throw new AggregateError(
+            [initializationError, closeError],
+            'Wesh initialization failed and Worker-local storage filesystem sessions could not be closed',
+          );
         }
-        }
+        throw initializationError;
       }
     },
 
@@ -400,6 +479,7 @@ export function createWeshWorker(): IWeshWorker {
 
     async dispose() {
       wesh = undefined;
+      await closeLocalStorageFileSystemSessions();
     },
   };
 }
