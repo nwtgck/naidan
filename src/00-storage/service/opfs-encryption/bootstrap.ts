@@ -3,7 +3,7 @@ import { NaidanOpfsStorageBackend } from '@/00-storage/service/naidan-opfs/backe
 import { HostVolumeDB } from '@/00-storage/service/opfs/host-volume-db';
 import {
   openHizoFS,
-  readHizoFSFileSystemId,
+  deriveHizoFSFileSystemIdFromRawRootKey,
 } from '@/00-storage/service/hizofs';
 import { EncryptedStoreHeaderStore } from './encrypted-store-header-store';
 import {
@@ -91,9 +91,11 @@ export async function createUnlockedOpfsEncryptionSession({
       encryptedStoreId: state.activeEncryptedStoreId,
       create: false,
     });
-    const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
+    const fileSystemId = await deriveHizoFSFileSystemIdFromRawRootKey({
+      fileSystemRootKey,
+    });
     if (fileSystemId !== header.fileSystemId) {
-      throw new Error('Encrypted store header file system ID does not match its HizoFS descriptor');
+      throw new Error('Encrypted store header file system ID does not match the HizoFS root key');
     }
     const fileSystemSession = await openHizoFS({
       backingDirectory,

@@ -1,8 +1,9 @@
 export {
   createHizoFS,
+  createHizoFSBulkBuilder,
   inspectHizoFS,
   openHizoFS,
-  readHizoFSFileSystemId,
+  deriveHizoFSFileSystemIdFromRawRootKey,
 } from './api';
 export type { HizoFSInspection } from './api';
 export { createHizoFSInspectionReader } from './inspection';

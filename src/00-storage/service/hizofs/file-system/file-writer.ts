@@ -1,18 +1,19 @@
-import type {
-  HizoFSFileInodeDto,
-} from '@/00-storage/00-dto/hizofs.dto';
-import type { StorageWritableFile } from '@/00-storage/service/storage-file-system/types';
-import type { HizoFSCore } from './core';
-import type { HizoFSExtentIndex } from './extent-index';
-import type { HizoFSFileChunkStore } from './file-chunk-store';
-import type { HizoFSInodeStore } from './inode-store';
-import type {
-  HizoFSNodeService,
-  LoadedHizoFSFile,
-} from './node-service';
-import type { HizoFSPolicy } from './policy';
+import type { HizoFSFileInodeDto } from "@/00-storage/00-dto/hizofs.dto";
+import type { StorageWritableFile } from "@/00-storage/service/storage-file-system/types";
+import type { HizoFSCore } from "./core";
+import type { HizoFSExtentIndex } from "./extent-index";
+import type { HizoFSFileChunkStore } from "./file-chunk-store";
+import type { HizoFSInodeStore } from "./inode-store";
+import type { HizoFSMaintenanceLease } from "./maintenance-lock";
+import type { HizoFSNodeService, LoadedHizoFSFile } from "./node-service";
+import type { HizoFSPolicy } from "./policy";
 
-function assertNonNegativeSafeInteger({ value, fieldName }: {
+const MAX_DIRTY_CHUNKS_IN_MEMORY = 2;
+
+function assertNonNegativeSafeInteger({
+  value,
+  fieldName,
+}: {
   value: number;
   fieldName: string;
 }): void {
@@ -32,6 +33,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     baseFile,
     keepExistingData,
     now,
+    maintenanceLease,
     onSettled,
   }: {
     core: HizoFSCore;
@@ -43,6 +45,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     baseFile: LoadedHizoFSFile;
     keepExistingData: boolean;
     now: () => number;
+    maintenanceLease: HizoFSMaintenanceLease;
     onSettled: () => void;
   }) {
     this.core = core;
@@ -54,13 +57,15 @@ export class HizoFSFileWriter implements StorageWritableFile {
     this.baseFile = baseFile;
     this.keepExistingData = keepExistingData;
     this.now = now;
+    this.maintenanceLease = maintenanceLease;
     this.onSettled = onSettled;
-    this.chunkSize = keepExistingData && baseFile.inode.storage.type === 'extents'
-      ? baseFile.inode.storage.chunkSize
-      : policy.fileChunkSize;
+    this.chunkSize =
+      keepExistingData && baseFile.inode.storage.type === "extents"
+        ? baseFile.inode.storage.chunkSize
+        : policy.fileChunkSize;
     this.size = keepExistingData ? baseFile.inode.size : 0;
     this.baseRetainedSize = this.size;
-    this.dirty = keepExistingData ? 'no' : 'yes';
+    this.dirty = keepExistingData ? "no" : "yes";
   }
 
   private readonly core: HizoFSCore;
@@ -72,26 +77,32 @@ export class HizoFSFileWriter implements StorageWritableFile {
   private readonly baseFile: LoadedHizoFSFile;
   private readonly keepExistingData: boolean;
   private readonly now: () => number;
+  private readonly maintenanceLease: HizoFSMaintenanceLease;
   private readonly onSettled: () => void;
   private readonly chunkSize: number;
   private readonly preparedChunks = new Map<number, string | undefined>();
+  private readonly workingChunks = new Map<number, Uint8Array>();
   private baseRetainedSize: number;
   private size: number;
-  private dirty: 'yes' | 'no';
+  private dirty: "yes" | "no";
   private settled = false;
 
-  async write({ position, data }: {
+  async write({
+    position,
+    data,
+  }: {
     position: number;
     data: Uint8Array;
   }): Promise<void> {
     this.assertOpen();
-    assertNonNegativeSafeInteger({ value: position, fieldName: 'Write position' });
+    assertNonNegativeSafeInteger({
+      value: position,
+      fieldName: "Write position",
+    });
     if (position + data.byteLength > Number.MAX_SAFE_INTEGER) {
-      throw new Error('HizoFS write end exceeds the safe integer range');
+      throw new Error("HizoFS write end exceeds the safe integer range");
     }
-    if (data.byteLength === 0) {
-      return;
-    }
+    if (data.byteLength === 0) return;
 
     const nextSize = Math.max(this.size, position + data.byteLength);
     let sourceOffset = 0;
@@ -104,34 +115,36 @@ export class HizoFSFileWriter implements StorageWritableFile {
         this.chunkSize - offsetInChunk,
       );
       const chunk = await this.loadWorkingChunk({ chunkIndex });
-      chunk.set(data.subarray(sourceOffset, sourceOffset + copyLength), offsetInChunk);
-      await this.persistWorkingChunk({
+      chunk.set(
+        data.subarray(sourceOffset, sourceOffset + copyLength),
+        offsetInChunk,
+      );
+      await this.retainWorkingChunk({
         chunkIndex,
         bytes: chunk,
-        logicalLength: Math.min(
-          this.chunkSize,
-          nextSize - chunkIndex * this.chunkSize,
-        ),
+        logicalFileSize: nextSize,
       });
       sourceOffset += copyLength;
       targetPosition += copyLength;
     }
     this.size = nextSize;
-    this.dirty = 'yes';
+    this.dirty = "yes";
   }
 
-  async truncate({ size }: {
-    size: number;
-  }): Promise<void> {
+  async truncate({ size }: { size: number }): Promise<void> {
     this.assertOpen();
-    assertNonNegativeSafeInteger({ value: size, fieldName: 'Truncate size' });
-    if (size === this.size) {
-      return;
-    }
+    assertNonNegativeSafeInteger({ value: size, fieldName: "Truncate size" });
+    if (size === this.size) return;
 
     if (size < this.size) {
       this.baseRetainedSize = Math.min(this.baseRetainedSize, size);
       const retainedChunkCount = Math.ceil(size / this.chunkSize);
+      for (const chunkIndex of [...this.workingChunks.keys()]) {
+        if (chunkIndex >= retainedChunkCount) {
+          this.workingChunks.delete(chunkIndex);
+          this.preparedChunks.set(chunkIndex, undefined);
+        }
+      }
       for (const chunkIndex of this.preparedChunks.keys()) {
         if (chunkIndex >= retainedChunkCount) {
           this.preparedChunks.set(chunkIndex, undefined);
@@ -142,16 +155,16 @@ export class HizoFSFileWriter implements StorageWritableFile {
         const chunkIndex = Math.floor(size / this.chunkSize);
         const chunk = await this.loadWorkingChunk({ chunkIndex });
         chunk.fill(0, remainder);
-        await this.persistWorkingChunk({
+        await this.retainWorkingChunk({
           chunkIndex,
           bytes: chunk,
-          logicalLength: remainder,
+          logicalFileSize: size,
         });
       }
     }
 
     this.size = size;
-    this.dirty = 'yes';
+    this.dirty = "yes";
   }
 
   async close(): Promise<void> {
@@ -159,9 +172,9 @@ export class HizoFSFileWriter implements StorageWritableFile {
     this.settled = true;
     try {
       switch (this.dirty) {
-      case 'no':
+      case "no":
         return;
-      case 'yes':
+      case "yes":
         break;
       default: {
         const _ex: never = this.dirty;
@@ -169,14 +182,14 @@ export class HizoFSFileWriter implements StorageWritableFile {
       }
       }
 
-      await this.core.mutate({
+      await this.core.mutateWithResourceLeaseHeld({
         operation: async ({ state }) => {
           const currentFile = await this.nodeService.readFile({
             state,
             nodeId: this.baseFile.inode.nodeId,
           });
           if (currentFile.inode.revision !== this.baseFile.inode.revision) {
-            throw new Error('HizoFS file changed while its writer was open');
+            throw new Error("HizoFS file changed while its writer was open");
           }
 
           const modifiedAt = this.now();
@@ -190,7 +203,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
               createdAt: currentFile.inode.createdAt,
               modifiedAt,
               size: this.size,
-              storage: { type: 'inline' },
+              storage: { type: "inline" },
             };
           } else {
             const extentIndexRootObjectId = await this.buildExtentIndex();
@@ -202,7 +215,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
               modifiedAt,
               size: this.size,
               storage: {
-                type: 'extents',
+                type: "extents",
                 chunkSize: this.chunkSize,
                 extentIndexRootObjectId,
               },
@@ -219,23 +232,29 @@ export class HizoFSFileWriter implements StorageWritableFile {
             inodeObjectId,
           });
           return {
-            changed: 'yes' as const,
+            changed: "yes" as const,
             inodeIndexRootObjectId,
             result: undefined,
           };
         },
       });
     } finally {
-      this.onSettled();
+      try {
+        await this.maintenanceLease.release();
+      } finally {
+        this.onSettled();
+      }
     }
   }
 
-  async abort({ reason: _reason }: {
-    reason: unknown;
-  }): Promise<void> {
+  async abort({ reason: _reason }: { reason: unknown }): Promise<void> {
     if (this.settled) return;
     this.settled = true;
-    this.onSettled();
+    try {
+      await this.maintenanceLease.release();
+    } finally {
+      this.onSettled();
+    }
   }
 
   private async materializeInlineBytes(): Promise<Uint8Array> {
@@ -249,66 +268,83 @@ export class HizoFSFileWriter implements StorageWritableFile {
         bytes.byteLength - position,
         this.chunkSize - offsetInChunk,
       );
-      bytes.set(chunk.subarray(offsetInChunk, offsetInChunk + copyLength), position);
+      bytes.set(
+        chunk.subarray(offsetInChunk, offsetInChunk + copyLength),
+        position,
+      );
       position += copyLength;
     }
     return bytes;
   }
 
   private async buildExtentIndex(): Promise<string> {
+    await this.flushAllWorkingChunks();
     let rootObjectId: string;
-    if (this.keepExistingData && this.baseFile.inode.storage.type === 'extents') {
+    if (
+      this.keepExistingData &&
+      this.baseFile.inode.storage.type === "extents"
+    ) {
       rootObjectId = this.baseFile.inode.storage.extentIndexRootObjectId;
     } else {
       rootObjectId = await this.extentIndex.createEmpty();
     }
 
-    if (this.keepExistingData && this.baseFile.inode.storage.type === 'inline') {
+    if (
+      this.keepExistingData &&
+      this.baseFile.inode.storage.type === "inline"
+    ) {
       const retainedBaseByteLength = Math.min(
         this.baseFile.binaryPayload.byteLength,
         this.baseRetainedSize,
         this.size,
       );
-      const retainedBaseChunkCount = Math.ceil(retainedBaseByteLength / this.chunkSize);
-      for (let chunkIndex = 0; chunkIndex < retainedBaseChunkCount; chunkIndex += 1) {
+      const retainedBaseChunkCount = Math.ceil(
+        retainedBaseByteLength / this.chunkSize,
+      );
+      for (
+        let chunkIndex = 0;
+        chunkIndex < retainedBaseChunkCount;
+        chunkIndex += 1
+      ) {
         if (this.preparedChunks.has(chunkIndex)) continue;
         const chunkStart = chunkIndex * this.chunkSize;
-        const logicalLength = Math.min(
-          this.chunkSize,
-          this.size - chunkStart,
-        );
+        const logicalLength = Math.min(this.chunkSize, this.size - chunkStart);
         const bytes = new Uint8Array(this.chunkSize);
-        bytes.set(this.baseFile.binaryPayload.subarray(
-          chunkStart,
-          Math.min(chunkStart + logicalLength, retainedBaseByteLength),
-        ));
-        await this.persistWorkingChunk({
-          chunkIndex,
-          bytes,
-          logicalLength,
-        });
+        bytes.set(
+          this.baseFile.binaryPayload.subarray(
+            chunkStart,
+            Math.min(chunkStart + logicalLength, retainedBaseByteLength),
+          ),
+        );
+        await this.persistWorkingChunk({ chunkIndex, bytes, logicalLength });
       }
     }
 
-    if (this.keepExistingData && this.baseFile.inode.storage.type === 'extents') {
-      const retainedChunkCount = Math.ceil(this.baseRetainedSize / this.chunkSize);
-      for await (const extent of this.extentIndex.entries({ rootObjectId })) {
-        if (extent.chunkIndex >= retainedChunkCount) {
-          rootObjectId = await this.extentIndex.delete({
+    if (
+      this.keepExistingData &&
+      this.baseFile.inode.storage.type === "extents"
+    ) {
+      const retainedChunkCount = Math.ceil(
+        this.baseRetainedSize / this.chunkSize,
+      );
+      rootObjectId =
+        retainedChunkCount === 0
+          ? await this.extentIndex.createEmpty()
+          : await this.extentIndex.truncateAtOrAfter({
             rootObjectId,
-            chunkIndex: extent.chunkIndex,
+            chunkIndex: retainedChunkCount,
           });
-        }
-      }
     }
 
-    const prepared = [...this.preparedChunks.entries()]
-      .sort(([left], [right]) => left - right);
-    for (const [chunkIndex, chunkObjectId] of prepared) {
-      if (chunkIndex >= Math.ceil(this.size / this.chunkSize)) {
-        rootObjectId = await this.extentIndex.delete({ rootObjectId, chunkIndex });
-      } else if (chunkObjectId === undefined) {
-        rootObjectId = await this.extentIndex.delete({ rootObjectId, chunkIndex });
+    const finalChunkCount = Math.ceil(this.size / this.chunkSize);
+    for (const [chunkIndex, chunkObjectId] of [
+      ...this.preparedChunks.entries(),
+    ].sort(([left], [right]) => left - right)) {
+      if (chunkIndex >= finalChunkCount || chunkObjectId === undefined) {
+        rootObjectId = await this.extentIndex.delete({
+          rootObjectId,
+          chunkIndex,
+        });
       } else {
         rootObjectId = await this.extentIndex.set({
           rootObjectId,
@@ -319,9 +355,18 @@ export class HizoFSFileWriter implements StorageWritableFile {
     return rootObjectId;
   }
 
-  private async loadWorkingChunk({ chunkIndex }: {
+  private async loadWorkingChunk({
+    chunkIndex,
+  }: {
     chunkIndex: number;
   }): Promise<Uint8Array> {
+    const working = this.workingChunks.get(chunkIndex);
+    if (working !== undefined) {
+      this.workingChunks.delete(chunkIndex);
+      this.workingChunks.set(chunkIndex, working);
+      return working;
+    }
+
     const preparedObjectId = this.preparedChunks.get(chunkIndex);
     if (this.preparedChunks.has(chunkIndex)) {
       return preparedObjectId === undefined
@@ -333,7 +378,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     }
 
     switch (this.baseFile.inode.storage.type) {
-    case 'inline': {
+    case "inline": {
       const bytes = new Uint8Array(this.chunkSize);
       const start = chunkIndex * this.chunkSize;
       const retainedEnd = Math.min(
@@ -346,7 +391,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
       }
       return bytes;
     }
-    case 'extents': {
+    case "extents": {
       const start = chunkIndex * this.chunkSize;
       if (start >= this.baseRetainedSize) {
         return new Uint8Array(this.chunkSize);
@@ -355,9 +400,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
         rootObjectId: this.baseFile.inode.storage.extentIndexRootObjectId,
         chunkIndex,
       });
-      if (extent === undefined) {
-        return new Uint8Array(this.chunkSize);
-      }
+      if (extent === undefined) return new Uint8Array(this.chunkSize);
       const bytes = await this.readChunkObject({
         objectId: extent.chunkObjectId,
       });
@@ -375,7 +418,54 @@ export class HizoFSFileWriter implements StorageWritableFile {
     }
   }
 
-  private async readChunkObject({ objectId }: {
+  private async retainWorkingChunk({
+    chunkIndex,
+    bytes,
+    logicalFileSize,
+  }: {
+    chunkIndex: number;
+    bytes: Uint8Array;
+    logicalFileSize: number;
+  }): Promise<void> {
+    this.workingChunks.delete(chunkIndex);
+    this.workingChunks.set(chunkIndex, bytes);
+    while (this.workingChunks.size > MAX_DIRTY_CHUNKS_IN_MEMORY) {
+      const oldestChunkIndex = this.workingChunks.keys().next().value as
+        number | undefined;
+      if (oldestChunkIndex === undefined) break;
+      await this.flushWorkingChunk({
+        chunkIndex: oldestChunkIndex,
+        logicalFileSize,
+      });
+    }
+  }
+
+  private async flushAllWorkingChunks(): Promise<void> {
+    for (const chunkIndex of [...this.workingChunks.keys()]) {
+      await this.flushWorkingChunk({ chunkIndex, logicalFileSize: this.size });
+    }
+  }
+
+  private async flushWorkingChunk({
+    chunkIndex,
+    logicalFileSize,
+  }: {
+    chunkIndex: number;
+    logicalFileSize: number;
+  }): Promise<void> {
+    const bytes = this.workingChunks.get(chunkIndex);
+    if (bytes === undefined) return;
+    this.workingChunks.delete(chunkIndex);
+    const logicalLength = Math.max(
+      0,
+      Math.min(this.chunkSize, logicalFileSize - chunkIndex * this.chunkSize),
+    );
+    await this.persistWorkingChunk({ chunkIndex, bytes, logicalLength });
+  }
+
+  private async readChunkObject({
+    objectId,
+  }: {
     objectId: string;
   }): Promise<Uint8Array> {
     const stored = await this.chunkStore.read({
@@ -387,7 +477,11 @@ export class HizoFSFileWriter implements StorageWritableFile {
     return bytes;
   }
 
-  private async persistWorkingChunk({ chunkIndex, bytes, logicalLength }: {
+  private async persistWorkingChunk({
+    chunkIndex,
+    bytes,
+    logicalLength,
+  }: {
     chunkIndex: number;
     bytes: Uint8Array;
     logicalLength: number;
@@ -409,7 +503,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
 
   private assertOpen(): void {
     if (this.settled) {
-      throw new Error('HizoFS file writer is already closed or aborted');
+      throw new Error("HizoFS file writer is already closed or aborted");
     }
   }
 }
@@ -417,4 +511,5 @@ export class HizoFSFileWriter implements StorageWritableFile {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  MAX_DIRTY_CHUNKS_IN_MEMORY,
 };

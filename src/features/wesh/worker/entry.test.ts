@@ -89,7 +89,7 @@ describe('wesh.worker', () => {
     const { runWithHizoFSMaintenanceLock } = await import('@/00-storage/service/hizofs/file-system/maintenance-lock');
     const { createQueuedTestLockManager } = await import('@/00-storage/service/hizofs/test-lock-manager');
     const originalLocks = navigator.locks;
-    const lockManager = createQueuedTestLockManager();
+    const lockManager = createQueuedTestLockManager({ onRequest: undefined });
     const lockRequest = vi.spyOn(lockManager, 'request');
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
@@ -163,9 +163,13 @@ find /mnt/search -type f -exec grep needle {} +
           expect(stdoutChunks.join('')).toBe(`\
 worker-local HizoFSshared runtime/mnt/search/a.txt:needle
 `);
-          expect(lockRequest.mock.calls.filter(([name]) => (
+          const maintenanceRequests = lockRequest.mock.calls.filter(([name]) => (
             name.endsWith('/maintenance')
-          ))).toHaveLength(2);
+          ));
+          expect(maintenanceRequests.length).toBeGreaterThan(0);
+          expect(maintenanceRequests.every(([, options]) => (
+            options.mode === 'shared'
+          ))).toBe(true);
 
           const resultFile = await mountedDirectory.getFileHandle({
             name: 'result.txt',

@@ -143,6 +143,14 @@ export interface StorageFileSystemSession {
   readonly root: StorageDirectoryHandle;
   readonly capabilities: StorageFileSystemCapabilities;
 
+  /**
+   * Opens a stable read-only generation when the implementation supports
+   * immutable snapshots. Transition copy and verification can then traverse
+   * one generation without re-reading mutable filesystem control state for
+   * every file.
+   */
+  createReadSnapshot?(): Promise<StorageFileSystemSession>;
+
   close(): Promise<void>;
 }
 

@@ -149,10 +149,27 @@ async function acquireLease({ fileSystemId, mode }: {
   return acquireLocalLease({ lockName, mode });
 }
 
-export function acquireHizoFSSessionLease({ fileSystemId }: {
+/**
+ * Protects one active reader, writer, or mutation from a concurrent GC sweep.
+ * Idle sessions intentionally do not hold this lease so maintenance remains
+ * runnable during normal application uptime.
+ */
+export function acquireHizoFSResourceLease({ fileSystemId }: {
   fileSystemId: string;
 }): Promise<HizoFSMaintenanceLease> {
   return acquireLease({ fileSystemId, mode: 'shared' });
+}
+
+export async function runWithHizoFSResourceLease<T>({ fileSystemId, operation }: {
+  fileSystemId: string;
+  operation: () => Promise<T>;
+}): Promise<T> {
+  const lease = await acquireHizoFSResourceLease({ fileSystemId });
+  try {
+    return await operation();
+  } finally {
+    await lease.release();
+  }
 }
 
 export async function runWithHizoFSMaintenanceLock<T>({ fileSystemId, operation }: {

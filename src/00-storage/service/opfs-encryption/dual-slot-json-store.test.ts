@@ -129,4 +129,18 @@ describe('DualSlotJsonStore', () => {
       'Dual-slot value values have the same sequence',
     );
   });
+
+  it('propagates OPFS I/O failures instead of treating them as a corrupt slot', async () => {
+    const directory = new MockFileSystemDirectoryHandle({ name: 'state' });
+    const failure = new DOMException('permission denied', 'SecurityError');
+    vi.spyOn(directory, 'getFileHandle').mockRejectedValue(failure);
+    const store = new DualSlotJsonStore({
+      directory,
+      filePrefix: 'value',
+      schema: TestValueSchemaDto,
+    });
+
+    await expect(store.read()).rejects.toBe(failure);
+  });
+
 });

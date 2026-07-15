@@ -1,25 +1,42 @@
 import type { ZodType } from 'zod';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
-  createWritable(): Promise<FileSystemWritableFileStream>,
+  createWritable(): Promise<FileSystemWritableFileStream>;
+}
+
+export class OpfsJsonSyntaxError extends Error {
+  constructor({ name, cause }: {
+    name: string;
+    cause: unknown;
+  }) {
+    super(`OPFS JSON file is syntactically invalid: ${name}`, { cause });
+    this.name = 'OpfsJsonSyntaxError';
+  }
 }
 
 export async function readJsonValueIfPresent({
   directory,
   name,
 }: {
-  directory: FileSystemDirectoryHandle,
-  name: string,
+  directory: FileSystemDirectoryHandle;
+  name: string;
 }): Promise<unknown | undefined> {
+  let text: string;
   try {
     const handle = await directory.getFileHandle(name);
     const file = await handle.getFile();
-    return JSON.parse(await file.text()) as unknown;
+    text = await file.text();
   } catch (error) {
     if (isNotFoundError({ error })) {
       return undefined;
     }
     throw error;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    throw new OpfsJsonSyntaxError({ name, cause: error });
   }
 }
 
@@ -28,9 +45,9 @@ export async function readJsonFileIfPresent<T>({
   name,
   schema,
 }: {
-  directory: FileSystemDirectoryHandle,
-  name: string,
-  schema: ZodType<T>,
+  directory: FileSystemDirectoryHandle;
+  name: string;
+  schema: ZodType<T>;
 }): Promise<T | undefined> {
   const value = await readJsonValueIfPresent({ directory, name });
   return value === undefined ? undefined : schema.parse(value);
@@ -41,12 +58,15 @@ export async function writeJsonFile({
   name,
   value,
 }: {
-  directory: FileSystemDirectoryHandle,
-  name: string,
-  value: unknown,
+  directory: FileSystemDirectoryHandle;
+  name: string;
+  value: unknown;
 }): Promise<void> {
   const serialized = JSON.stringify(value);
-  const handle = await directory.getFileHandle(name, { create: true }) as FileSystemFileHandleWithWritable;
+  const handle = await directory.getFileHandle(
+    name,
+    { create: true },
+  ) as FileSystemFileHandleWithWritable;
   const writable = await handle.createWritable();
   try {
     await writable.write(serialized);
@@ -72,13 +92,12 @@ export async function writeJsonFile({
   }
 }
 
-
 export async function removeDirectoryEntryIfPresent({
   directory,
   name,
 }: {
-  directory: FileSystemDirectoryHandle,
-  name: string,
+  directory: FileSystemDirectoryHandle;
+  name: string;
 }): Promise<void> {
   try {
     await directory.removeEntry(name, { recursive: true });

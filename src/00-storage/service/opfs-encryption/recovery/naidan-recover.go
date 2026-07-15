@@ -106,7 +106,6 @@ type storeHeader struct {
 type descriptor struct {
 	Format        string `json:"format"`
 	FormatVersion int64  `json:"formatVersion"`
-	FileSystemID  string `json:"fileSystemId"`
 }
 
 type superblock struct {
@@ -385,6 +384,44 @@ func readJSON(path string, destination any) error {
 	return nil
 }
 
+func validateOptionalHizoFSDescriptor(path string) error {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !utf8.Valid(data) {
+		// The descriptor is a non-secret marker. A complete authenticated
+		// generation remains authoritative when this marker is truncated or lost.
+		return nil
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil || raw == nil {
+		return nil
+	}
+	if value, exists := raw["format"]; exists {
+		var format string
+		if err := json.Unmarshal(value, &format); err != nil {
+			return nil
+		}
+		if format != "hizofs" {
+			return unsupportedFormatError{message: fmt.Sprintf("HizoFS descriptor identifier is unsupported: %s", format)}
+		}
+	}
+	if value, exists := raw["formatVersion"]; exists {
+		var formatVersion int64
+		if err := json.Unmarshal(value, &formatVersion); err != nil {
+			return nil
+		}
+		if formatVersion != 1 {
+			return unsupportedFormatError{message: fmt.Sprintf("HizoFS descriptor format is unsupported: %d", formatVersion)}
+		}
+	}
+	return nil
+}
+
 func findStorageRoot(input string) (string, error) {
 	cleaned, err := filepath.Abs(input)
 	if err != nil {
@@ -489,20 +526,77 @@ func chooseStoreID(state *encryptionState, explicit string) (string, error) {
 }
 
 func readStoreHeader(storageRoot, storeID string) (*storeHeader, error) {
-	var header storeHeader
-	if err := readJSON(filepath.Join(storageRoot, "encrypted-stores", storeID, "header.json"), &header); err != nil {
-		return nil, err
+	var selected *storeHeader
+	var failures []error
+	for _, name := range []string{"header-0.json", "header-1.json"} {
+		var header storeHeader
+		err := readJSON(filepath.Join(
+			storageRoot,
+			"encrypted-stores",
+			storeID,
+			name,
+		), &header)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			failures = append(failures, err)
+			continue
+		}
+		if header.FormatVersion != 1 {
+			return nil, unsupportedFormatError{message: fmt.Sprintf(
+				"encrypted store header format is unsupported: %d",
+				header.FormatVersion,
+			)}
+		}
+		if header.EncryptedStoreID != storeID {
+			failures = append(failures, errors.New(
+				"encrypted store header ID does not match its directory",
+			))
+			continue
+		}
+		if err := validateStableID(
+			header.FileSystemID,
+			"encrypted store fileSystemId",
+		); err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		if _, err := decodeBase64URL(
+			header.WrappedFileSystemRootKey.Nonce,
+			12,
+			"wrapped file-system root key nonce",
+		); err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		if _, err := decodeBase64URL(
+			header.WrappedFileSystemRootKey.Ciphertext,
+			48,
+			"wrapped file-system root key ciphertext",
+		); err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		if selected == nil {
+			copy := header
+			selected = &copy
+			continue
+		}
+		if header != *selected {
+			return nil, errors.New("encrypted store header copies disagree")
+		}
 	}
-	if header.FormatVersion != 1 {
-		return nil, unsupportedFormatError{message: fmt.Sprintf("encrypted store header format is unsupported: %d", header.FormatVersion)}
+	if selected == nil {
+		if len(failures) == 0 {
+			return nil, errors.New("encrypted store header is missing")
+		}
+		return nil, fmt.Errorf(
+			"encrypted store has no valid header copy: %w",
+			errors.Join(failures...),
+		)
 	}
-	if header.EncryptedStoreID != storeID {
-		return nil, errors.New("encrypted store header ID does not match its directory")
-	}
-	if err := validateStableID(header.FileSystemID, "encrypted store fileSystemId"); err != nil {
-		return nil, err
-	}
-	return &header, nil
+	return selected, nil
 }
 
 func unlockStorageUnlockKey(state *encryptionState, passphrase string) ([]byte, error) {
@@ -551,6 +645,19 @@ func unwrapFileSystemRootKey(storageUnlockKey []byte, header *storeHeader) ([]by
 		[]byte("naidan/opfs-encryption/store-root-key/v1/"+header.EncryptedStoreID),
 		"wrapped file-system root key",
 	)
+}
+
+func deriveHizoFSFileSystemID(rootKey []byte) (string, error) {
+	bytes, err := hkdfSHA256(
+		rootKey,
+		[]byte("HizoFS/v1/filesystem-id/salt"),
+		[]byte("HizoFS/v1/filesystem-id"),
+		stableIDByteLength,
+	)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
 
 func (reader *hizoFSReader) deriveObjectKey(identity, area string) ([]byte, error) {
@@ -668,7 +775,7 @@ func (reader *hizoFSReader) readObject(objectID string) (*record, error) {
 	return reader.readRecord(objectID, "object")
 }
 
-func (reader *hizoFSReader) readActiveSuperblock() (*superblock, error) {
+func (reader *hizoFSReader) readSuperblockCandidates() ([]*superblock, error) {
 	type candidate struct {
 		value *superblock
 	}
@@ -695,7 +802,8 @@ func (reader *hizoFSReader) readActiveSuperblock() (*superblock, error) {
 			return nil, unsupportedFormatError{message: fmt.Sprintf("HizoFS superblock record version is unsupported: %d", record.RecordVersion)}
 		}
 		if len(record.Binary) != 0 {
-			return nil, errors.New("HizoFS superblock contains an unexpected binary payload")
+			corruptions = append(corruptions, errors.New("HizoFS superblock contains an unexpected binary payload"))
+			continue
 		}
 		var value superblock
 		if err := json.Unmarshal(record.Metadata, &value); err != nil {
@@ -722,7 +830,11 @@ func (reader *hizoFSReader) readActiveSuperblock() (*superblock, error) {
 		}
 		return nil, errors.New("HizoFS superblock is missing")
 	}
-	return candidates[0].value, nil
+	result := make([]*superblock, 0, len(candidates))
+	for _, candidate := range candidates {
+		result = append(result, candidate.value)
+	}
+	return result, nil
 }
 
 func loadInodeIndex(reader *hizoFSReader, rootObjectID string) (map[string]string, error) {
@@ -876,6 +988,78 @@ func loadDirectoryEntries(reader *hizoFSReader, inode *directoryInode) ([]direct
 		}
 	}
 	return entries, nil
+}
+
+func loadCompleteGeneration(reader *hizoFSReader) (*commit, error) {
+	candidates, err := reader.readSuperblockCandidates()
+	if err != nil {
+		return nil, err
+	}
+	rejected := make([]error, 0, len(candidates))
+	for _, candidate := range candidates {
+		activeCommit, candidateErr := loadCompleteGenerationCandidate(reader, candidate)
+		if candidateErr == nil {
+			return activeCommit, nil
+		}
+		var unsupported unsupportedFormatError
+		if errors.As(candidateErr, &unsupported) {
+			return nil, candidateErr
+		}
+		rejected = append(rejected, candidateErr)
+	}
+	return nil, fmt.Errorf(
+		"no complete HizoFS superblock generation remains: %w",
+		errors.Join(rejected...),
+	)
+}
+
+func loadCompleteGenerationCandidate(reader *hizoFSReader, candidate *superblock) (*commit, error) {
+	commitRecord, err := reader.readObject(candidate.ActiveCommitObjectID)
+	if err != nil {
+		return nil, err
+	}
+	if commitRecord.Kind != "commit" || commitRecord.RecordVersion != 1 || len(commitRecord.Binary) != 0 {
+		return nil, errors.New("active commit object has an invalid kind, version, or binary payload")
+	}
+	var activeCommit commit
+	if err := json.Unmarshal(commitRecord.Metadata, &activeCommit); err != nil {
+		return nil, err
+	}
+	if !isSafeNonNegative(activeCommit.Revision) {
+		return nil, errors.New("HizoFS commit revision is invalid")
+	}
+	if err := validateStableID(activeCommit.RootDirectoryNodeID, "root directory node ID"); err != nil {
+		return nil, err
+	}
+	if err := validateObjectID(activeCommit.InodeIndexRootObjectID, "inode index root object ID"); err != nil {
+		return nil, err
+	}
+	inodeIndex, err := loadInodeIndex(reader, activeCommit.InodeIndexRootObjectID)
+	if err != nil {
+		return nil, err
+	}
+	rootObjectID, exists := inodeIndex[activeCommit.RootDirectoryNodeID]
+	if !exists {
+		return nil, errors.New("HizoFS root directory is absent from the inode index")
+	}
+	rootRecord, err := reader.readObject(rootObjectID)
+	if err != nil {
+		return nil, err
+	}
+	if rootRecord.Kind != "directory_inode" || rootRecord.RecordVersion != 1 || len(rootRecord.Binary) != 0 {
+		return nil, errors.New("HizoFS root inode is not a valid directory inode")
+	}
+	var rootInode directoryInode
+	if err := json.Unmarshal(rootRecord.Metadata, &rootInode); err != nil {
+		return nil, err
+	}
+	if rootInode.NodeID != activeCommit.RootDirectoryNodeID || !isSafeNonNegative(rootInode.Revision) {
+		return nil, errors.New("HizoFS root directory inode metadata is inconsistent")
+	}
+	if _, err := loadDirectoryEntries(reader, &rootInode); err != nil {
+		return nil, err
+	}
+	return &activeCommit, nil
 }
 
 func loadExtents(reader *hizoFSReader, rootObjectID string) ([]extent, error) {
@@ -1220,40 +1404,23 @@ func run(input, output, passphrase, explicitStoreID string) error {
 	defer zero(fileSystemRootKey)
 
 	dataDirectory := filepath.Join(storageRoot, "encrypted-stores", storeID, "filesystem.hizofs")
-	var descriptorValue descriptor
-	if err := readJSON(filepath.Join(dataDirectory, "descriptor.json"), &descriptorValue); err != nil {
+	if err := validateOptionalHizoFSDescriptor(filepath.Join(dataDirectory, "descriptor.json")); err != nil {
 		return err
 	}
-	if descriptorValue.Format != "hizofs" {
-		return unsupportedFormatError{message: fmt.Sprintf("HizoFS descriptor identifier is unsupported: %s", descriptorValue.Format)}
-	}
-	if descriptorValue.FormatVersion != 1 {
-		return unsupportedFormatError{message: fmt.Sprintf("HizoFS descriptor format is unsupported: %d", descriptorValue.FormatVersion)}
-	}
-	if err := validateStableID(descriptorValue.FileSystemID, "HizoFS fileSystemId"); err != nil {
+	fileSystemID, err := deriveHizoFSFileSystemID(fileSystemRootKey)
+	if err != nil {
 		return err
 	}
-	if descriptorValue.FileSystemID != header.FileSystemID {
-		return errors.New("encrypted store header and descriptor fileSystemId disagree")
+	if fileSystemID != header.FileSystemID {
+		return errors.New("encrypted store header fileSystemId does not match the root key")
 	}
 	reader := &hizoFSReader{
 		dataDirectory: dataDirectory,
-		fileSystemID:  descriptorValue.FileSystemID,
+		fileSystemID:  fileSystemID,
 		rootKey:       fileSystemRootKey,
 	}
-	activeSuperblock, err := reader.readActiveSuperblock()
+	activeCommit, err := loadCompleteGeneration(reader)
 	if err != nil {
-		return err
-	}
-	commitRecord, err := reader.readObject(activeSuperblock.ActiveCommitObjectID)
-	if err != nil {
-		return err
-	}
-	if commitRecord.Kind != "commit" || commitRecord.RecordVersion != 1 || len(commitRecord.Binary) != 0 {
-		return errors.New("active commit object has an invalid kind, version, or binary payload")
-	}
-	var activeCommit commit
-	if err := json.Unmarshal(commitRecord.Metadata, &activeCommit); err != nil {
 		return err
 	}
 	if _, err := os.Lstat(output); err == nil {
@@ -1265,7 +1432,7 @@ func run(input, output, passphrase, explicitStoreID string) error {
 	if err := os.RemoveAll(temporaryOutput); err != nil {
 		return err
 	}
-	if err := restoreFileSystem(reader, &activeCommit, temporaryOutput); err != nil {
+	if err := restoreFileSystem(reader, activeCommit, temporaryOutput); err != nil {
 		_ = os.RemoveAll(temporaryOutput)
 		return err
 	}

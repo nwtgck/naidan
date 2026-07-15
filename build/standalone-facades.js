@@ -24,6 +24,10 @@ export const STANDALONE_FACADES = [
     standalonePath: 'src/features/debug-hizofs/worker/client-standalone.ts',
   },
   {
+    facadePath: '@/00-storage/service/opfs-encryption/worker/client',
+    standalonePath: 'src/features/file-protocol-standalone/worker/opfs-encryption-worker-client.ts',
+  },
+  {
     facadePath: '@/features/global-search/worker/client',
     standalonePath: 'src/features/global-search/worker/client-standalone.ts',
   },
@@ -54,6 +58,7 @@ export const STANDALONE_WORKER_CLIENT_FACADES = [
   '@/features/highlight/worker/client',
   '@/features/wesh/worker/client',
   '@/features/debug-hizofs/worker/client',
+  '@/00-storage/service/opfs-encryption/worker/client',
   '@/features/global-search/worker/client',
   '@/features/file-explorer/worker/client',
   '@/features/transformers-js/worker/client',

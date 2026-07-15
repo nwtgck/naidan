@@ -26,15 +26,17 @@ AAD, or object addressing.
 <backing-directory>/
 ├── descriptor.json
 ├── superblock-0.enc
-├── superblock-1.enc          # absent until the second commit
+├── superblock-1.enc          # both slots exist from initial creation
 └── objects/
     ├── 00/
     ├── 01/
     └── ...
 ```
 
-Object shard directories are created lazily. Unknown physical entries are not
-part of the format and must not be deleted automatically.
+Object shard directories are created lazily. Creation requires an empty backing
+directory because one directory is exclusively owned by one HizoFS instance.
+Unknown physical entries are not part of the format and must not be deleted
+automatically.
 
 ## Descriptor
 
@@ -44,18 +46,23 @@ part of the format and must not be deleted automatically.
 type HizoFSDescriptorDto = {
   readonly format: 'hizofs';
   readonly formatVersion: 1;
-  readonly fileSystemId: string;
 };
 ```
 
-`fileSystemId` is canonical unpadded Base64URL encoding of 16 random bytes.
-The descriptor is immutable after creation. An unknown `format` or
-`formatVersion` must fail closed.
+The descriptor is only a non-secret format marker. It is not part of key
+derivation and does not contain the file-system identity. After a complete
+authenticated generation has been opened with the root key, a missing or
+structurally corrupt descriptor may be replaced with this canonical value.
+I/O and permission failures while reading or repairing it must still propagate.
+An unsupported encrypted record generation must never be made readable by
+rewriting the descriptor.
 
 ## Identifiers
 
-Stable node and file-system identifiers contain 16 random bytes encoded as
-canonical unpadded Base64URL.
+Stable node identifiers contain 16 random bytes encoded as canonical unpadded
+Base64URL. The file-system identifier is a stable 128-bit value derived from
+the File System Root Key as specified below; it is not independently random or
+persisted in the descriptor.
 
 Immutable object identifiers are 21-character Nano IDs generated from the
 fixed URL-safe alphabet `A-Z a-z 0-9 _ -`. This provides 126 random bits while
@@ -72,6 +79,18 @@ Paths and logical names never participate in physical object names.
 
 The caller provides one 32-byte File System Root Key. HizoFS imports it
 as HKDF key material. It does not persist or manage credentials or key slots.
+
+The stable `fileSystemId` is canonical unpadded Base64URL encoding of the first
+128 bits derived with HKDF-SHA-256:
+
+```text
+salt = UTF-8("HizoFS/v1/filesystem-id/salt")
+info = UTF-8("HizoFS/v1/filesystem-id")
+```
+
+Deriving this identity from the root key removes a plaintext single point of
+failure while retaining domain separation between independent root keys. A
+root key must not be reused for two independent HizoFS instances.
 
 For each object, an AES-256-GCM key is derived with HKDF-SHA-256:
 
@@ -155,13 +174,24 @@ type HizoFSSuperblockDto = {
 };
 ```
 
-The active slot is the valid slot with the greater non-negative safe-integer
-`sequence`. Two valid slots with the same sequence are ambiguous corruption.
-An unsupported record found in either slot must not be treated as an invalid
-slot eligible for fallback.
+Candidates are ordered by descending non-negative safe-integer `sequence`.
+Two valid slots with the same sequence are ambiguous corruption. For each
+candidate, the reader authenticates and validates the referenced commit, inode
+index root, and root directory inode before selecting it. If the newest
+candidate is structurally corrupt but the older generation is complete, the
+older generation may be opened only in `fallback_read_only` recovery mode. A
+valid generation is also treated as fallback when the other physical slot is
+unreadable, because its sequence cannot be proven older. Normal mutations,
+bulk construction, and garbage collection are forbidden in that mode so an
+uncertain rollback cannot be published or swept. An unsupported record found
+in a newer slot must fail closed rather than being treated as an invalid slot
+eligible for fallback.
 
-A commit writes the next sequence to `sequence % 2`. The alternate slot remains
-as the previous recoverable state.
+Creation writes the same initial commit to both slots with sequences `0` and
+`1`, so a stable filesystem never depends on one initially missing slot. A
+later commit writes the next sequence to `sequence % 2`; the alternate slot
+remains as the previous recoverable state. A missing slot in an opened
+filesystem is therefore an uncertain rollback and forces read-only recovery.
 
 ## File-system commit
 
@@ -235,44 +265,68 @@ type HizoFSDirectoryEntryDto = {
 };
 ```
 
-Names are neither trimmed nor Unicode-normalized. Invalid path components,
-empty names, `.` and `..`, slash-containing names, duplicates, and unsorted
-pages are rejected. Renaming or moving an entry does not change its node ID.
+Names are neither trimmed nor Unicode-normalized. They must be well-formed
+Unicode scalar sequences and encode to at most 4 KiB of UTF-8. Invalid path
+components, empty names, `.` and `..`, slash-containing names, duplicates, and
+unsorted pages are rejected. Renaming or moving an entry does not change its
+node ID.
 
 ## Symlink inode
 
 A symlink inode stores its stable node identity, revision, timestamps, and the
-exact target string. HizoFS does not resolve the target while reading
-metadata. Export to a backing file system without symlink support requires an
-explicit caller policy and must not silently convert the link into a file.
+exact target string. The target must be well-formed Unicode and encode to at
+most 64 KiB of UTF-8. HizoFS does not resolve the target while reading metadata.
+Export to a backing file system without symlink support requires an explicit
+caller policy and must not silently convert the link into a file.
 
 ## Mutation and concurrency model
 
-Normal mutations prepare new immutable objects and then acquire the per-file-
-system commit lock. Under that lock they reload the active state, verify the
-base inode revision where required, write one new commit, and switch one
-superblock slot.
+Normal mutations load a base commit and prepare new immutable objects outside
+the per-file-system commit lock. Under that lock they reload the active state,
+verify that the base commit is still current, write one new commit, and switch
+one superblock slot. If another writer published first, preparation is retried
+against the new base. Objects prepared by a losing attempt become ordinary GC
+candidates.
 
 An open writer batches writes, sparse updates, and truncates and performs at
-most one file-system commit on `close()`. A conflicting changed inode causes
-the writer to fail rather than silently apply last-writer-wins behavior.
+most one file-system commit on `close()`. A bounded dirty-chunk cache avoids
+rewriting the same logical chunk for each small `write()` call. A conflicting
+changed inode causes the writer to fail rather than silently apply
+last-writer-wins behavior.
 
 Readers retain immutable inode and extent roots, providing snapshot reads while
 a later commit is active.
 
+## Bulk construction
+
+A newly created, unpublished target may be populated through the HizoFS bulk
+builder. It streams file contents into immutable chunks, builds directory,
+extent, and inode indexes bottom-up, and publishes the complete imported tree
+with one file-system commit. It is used for encryption and re-encryption
+transitions so file and directory counts do not multiply superblock commits.
+Failure before publication leaves only unreachable immutable objects in a
+target that the transition coordinator may discard.
+
 ## Maintenance and garbage collection
 
-Every open HizoFS session holds a shared maintenance lease. Session
-closure closes or aborts its child readers and writers before releasing that
-lease. Garbage collection obtains the exclusive maintenance lease and thus
-cannot run concurrently with any session snapshot.
+Idle HizoFS sessions do not hold a maintenance lease. A shared resource lease
+is held only while an active read operation or traversal, reader, writer, fixed
+read snapshot, mutation, or inspector can reference immutable objects. Garbage
+collection obtains the exclusive maintenance lease, so it can run during normal
+application uptime once active resources have settled, but never while a live
+operation could still require an old object.
 
-GC marks from every valid A/B superblock commit through all inode-index pages,
-inode objects, directory-index pages, extent pages, and chunks. Shared extent
-pages and chunk objects are authenticated and traversed once by object ID even
-when many reflinked inodes reference the same graph. Retaining both valid
-generations preserves fallback after corruption of the newest slot. It
-authenticates and validates all referenced objects before deleting anything.
+GC marks from every valid A/B superblock commit. For each generation it
+validates the persistent inode, directory, and extent indexes, then traverses
+the namespace from the root directory. Every non-root inode must be reachable
+from exactly one directory entry, entry kinds must match inode kinds, and the
+set of namespace nodes must equal the set stored in the inode index. Cycles,
+duplicate parents, dangling entries, and disconnected inode-index entries stop
+the mark phase before deletion.
+
+Shared extent pages and chunk objects are authenticated and traversed once by
+object ID even when many reflinked inodes reference the same graph. Retaining
+both valid generations preserves fallback after corruption of the newest slot.
 Only canonical object files in their correct shard are eligible for deletion.
 Unknown physical entries are left untouched and reported. Failure during mark
 performs no sweep.
@@ -285,9 +339,11 @@ presence is not itself corruption.
 
 The descriptor format version, object envelope version, and each record version
 are independent compatibility boundaries. Released readers remain available;
-writers normally emit only the current version. Unknown incompatible versions
-must never be interpreted as empty storage, partially rewritten, or silently
-reduced to known fields.
+writers normally emit only the current version. Unknown incompatible encrypted
+versions must never be interpreted as empty storage or partially rewritten.
+Raw inspection preserves exact persisted metadata even when a DTO parser uses
+only its known fields. Repairing the non-secret descriptor does not change or
+reinterpret any encrypted generation.
 
 Major format migration is performed by opening the old logical file system,
 copying it to a new backing directory using a new writer, validating the target,

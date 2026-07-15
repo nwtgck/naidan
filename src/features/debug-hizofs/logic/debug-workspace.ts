@@ -2,7 +2,7 @@ import type { StorageDirectoryHandle, StorageFileSystemSession } from '@/00-stor
 import {
   createHizoFS,
   createHizoFSInspectionReader,
-  readHizoFSFileSystemId,
+  deriveHizoFSFileSystemIdFromRawRootKey,
   type HizoFSInspectionReader,
 } from '@/00-storage/service/hizofs';
 
@@ -76,7 +76,9 @@ export async function createHizoFSDebugWorkspace({ nativeOpfsRoot }: {
       backingDirectory,
       fileSystemRootKey,
     });
-    const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
+    const fileSystemId = await deriveHizoFSFileSystemIdFromRawRootKey({
+      fileSystemRootKey,
+    });
     const createdAt = Date.now();
     liveWorkspaces.set(workspaceId, {
       workspaceId,
@@ -119,10 +121,8 @@ export async function listHizoFSDebugWorkspaces({ nativeOpfsRoot }: {
   }
 
   for await (const [name, handle] of parent.entries()) {
-    let directoryHandle: FileSystemDirectoryHandle;
     switch (handle.kind) {
     case 'directory':
-      directoryHandle = handle as FileSystemDirectoryHandle;
       break;
     case 'file':
       continue;
@@ -140,15 +140,10 @@ export async function listHizoFSDebugWorkspaces({ nativeOpfsRoot }: {
     if (liveWorkspaces.has(workspaceId)) {
       continue;
     }
-    let fileSystemId: string | undefined;
-    try {
-      fileSystemId = await readHizoFSFileSystemId({
-        backingDirectory: directoryHandle,
-      });
-    } catch {
-      // A stale debug directory may have been interrupted before descriptor
-      // creation. It remains visible so its raw physical state can be audited.
-    }
+    // The filesystem identity is derived from the root key. A stale workspace
+    // intentionally does not retain that key across reloads, so only its raw
+    // physical directory remains inspectable.
+    const fileSystemId = undefined;
     /**
      * Do not delete a keyless workspace automatically. A crash or reload may
      * itself be the condition under investigation, and filesystem developers

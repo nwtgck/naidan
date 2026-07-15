@@ -1132,6 +1132,51 @@ self.onmessage = () => self.postMessage(workerAliasValue + ':' + __WORKER_DEFINE
     expect(worker?.moduleIds).toContain('/src/worker-value.ts');
   });
 
+  it('removes page-only nested Worker creation from the standalone Worker Hub artifact', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'src/worker-hub.worker.ts': `\
+import { runPageOwnedOperation } from './worker-provider'
+self.onmessage = async () => self.postMessage(await runPageOwnedOperation())
+`,
+        'src/worker-provider.ts': `\
+declare const __BUILD_TARGET_IS_FILE_PROTOCOL_STANDALONE_WORKER__: boolean
+export async function runPageOwnedOperation(): Promise<string> {
+  if (__BUILD_TARGET_IS_FILE_PROTOCOL_STANDALONE_WORKER__) {
+    throw new Error('page-owned operation is unavailable inside the Worker Hub')
+  }
+  const client = await import('./nested-worker-client')
+  return client.run()
+}
+`,
+        'src/nested-worker-client.ts': `\
+export function run(): string {
+  const worker = new Worker(new URL('./nested.worker.ts', import.meta.url), { type: 'module' })
+  worker.terminate()
+  return 'ok'
+}
+`,
+        'src/nested.worker.ts': `\
+self.onmessage = () => self.postMessage('nested')
+`,
+      },
+    });
+
+    await expect(buildFixtureWithOptions({
+      root,
+      budgets: undefined,
+      workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
+      pluginsBeforeStandalone: [],
+      input: path.join(root, 'index.html'),
+      define: {
+        __BUILD_TARGET_IS_FILE_PROTOCOL_STANDALONE_WORKER__: JSON.stringify(false),
+      },
+      alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).resolves.toBeUndefined();
+  });
+
   it('reports licenses for manually emitted SystemJS and nested Worker-only dependencies', async () => {
     const root = await createFixture({
       files: {

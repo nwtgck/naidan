@@ -217,6 +217,22 @@ export class HizoFSDirectoryIndex {
   }): AsyncIterable<HizoFSDirectoryEntryDto> {
     return this.index.entries({ rootObjectId });
   }
+
+  buildFromSortedEntries({ entries }: {
+    entries: AsyncIterable<HizoFSDirectoryEntryDto> | Iterable<HizoFSDirectoryEntryDto>;
+  }): Promise<string> {
+    return this.index.buildFromSortedEntries({ entries });
+  }
+
+  validateStructure({ rootObjectId }: {
+    rootObjectId: string;
+  }): Promise<{
+    readonly pageCount: number;
+    readonly entryCount: number;
+    readonly depth: number;
+  }> {
+    return this.index.validateStructure({ rootObjectId });
+  }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

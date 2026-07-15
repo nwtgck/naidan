@@ -46,7 +46,7 @@ describe('HizoFS debug workspaces', () => {
       value: 'HizoFS probe',
     });
     const overview = await session.hizoFSReader.readOverview();
-    expect(overview.descriptor.fileSystemId).toBe(summary.fileSystemId);
+    expect(overview.fileSystemId).toBe(summary.fileSystemId);
     expect(overview.activeCommit.revision).toBeGreaterThan(0);
     await session.dispose();
 
@@ -75,7 +75,7 @@ describe('HizoFS debug workspaces', () => {
     expect(workspaces).toContainEqual(expect.objectContaining({
       status: 'stale',
       workspaceId,
-      fileSystemId: expect.any(String),
+      fileSystemId: undefined,
       physicalPath: [TEST_ONLY.DEBUG_WORKSPACE_DIRECTORY_NAME, TEST_ONLY.getPhysicalDirectoryName({ workspaceId })],
     }));
   });
@@ -114,7 +114,7 @@ describe('HizoFS debug workspaces', () => {
       expect(workspaces).toContainEqual(expect.objectContaining({
         status: 'stale',
         workspaceId: testCase.workspaceId,
-        fileSystemId: expect.any(String),
+        fileSystemId: undefined,
         physicalPath: [
           TEST_ONLY.DEBUG_WORKSPACE_DIRECTORY_NAME,
           testCase.physicalDirectoryName,

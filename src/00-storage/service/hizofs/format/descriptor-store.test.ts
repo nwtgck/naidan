@@ -15,7 +15,6 @@ describe('HizoFS descriptor store', () => {
     expect(descriptor).toEqual({
       format: 'hizofs',
       formatVersion: 1,
-      fileSystemId: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/u),
     });
     expect(await readHizoFSDescriptor({ backingStore })).toEqual(descriptor);
   });
@@ -26,11 +25,11 @@ describe('HizoFS descriptor store', () => {
     });
     await createHizoFSDescriptor({ backingStore });
     await expect(createHizoFSDescriptor({ backingStore })).rejects.toThrow(
-      'descriptor already exists',
+      'backing directory must be empty',
     );
   });
 
-  it('rejects a structurally valid but non-canonical filesystem ID', async () => {
+  it('ignores unknown non-secret descriptor fields', async () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
     });
@@ -42,9 +41,10 @@ describe('HizoFS descriptor store', () => {
         fileSystemId: 'not-an-id',
       })),
     });
-    await expect(readHizoFSDescriptor({ backingStore })).rejects.toThrow(
-      'canonical Base64URL',
-    );
+    await expect(readHizoFSDescriptor({ backingStore })).resolves.toEqual({
+      format: 'hizofs',
+      formatVersion: 1,
+    });
   });
 
   it('rejects a directory whose descriptor does not identify HizoFS', async () => {
@@ -56,7 +56,6 @@ describe('HizoFS descriptor store', () => {
       bytes: new TextEncoder().encode(JSON.stringify({
         format: 'something_else',
         formatVersion: 1,
-        fileSystemId: 'AAAAAAAAAAAAAAAAAAAAAA',
       })),
     });
     await expect(readHizoFSDescriptor({ backingStore })).rejects.toThrow();

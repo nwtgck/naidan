@@ -1246,6 +1246,7 @@ defineExpose({
                 <dl tw-class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[9px] text-gray-500 dark:text-gray-400">
                   <dt>source</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ selectedSource.type }}</dd>
                   <dt>access</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ selectedSource.access }}</dd>
+                  <dt>generation</dt><dd data-testid="hizofs-active-mode" :tw-class="['truncate', overview.activeMode === 'fallback_read_only' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-700 dark:text-gray-300']">{{ overview.activeMode }}</dd>
                   <dt>backing</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ sourceSession?.physicalPath.join('/') }}</dd>
                   <template v-if="selectedSource.type === 'ephemeral_debug_workspace'">
                     <dt>root key</dt><dd tw-class="text-gray-700 dark:text-gray-300">random · memory only</dd>
@@ -1307,6 +1308,7 @@ defineExpose({
 
             <div v-if="column.kind === 'descriptor'" tw-class="min-h-0 flex-1 overflow-auto">
               <div tw-class="border-b border-gray-200 bg-emerald-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-gray-700 dark:bg-emerald-950/20 dark:text-emerald-300">Raw DTO · exact persisted representation</div>
+              <div v-if="overview?.descriptorValidationError" data-testid="hizofs-descriptor-validation-error" tw-class="border-b border-red-200 bg-red-50 px-3 py-2 font-mono text-[9px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ overview.descriptorValidationError }}</div>
               <JsonCodeView :source="rawJson({ value: overview?.persistedDescriptorDto ?? null })" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
             </div>
 

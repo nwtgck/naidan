@@ -3,13 +3,11 @@ import { z } from 'zod';
 export type HizoFSDescriptorDto = {
   readonly format: 'hizofs';
   readonly formatVersion: 1;
-  readonly fileSystemId: string;
 };
 
 export const HizoFSDescriptorSchemaDto: z.ZodType<HizoFSDescriptorDto> = z.object({
   format: z.literal('hizofs'),
   formatVersion: z.literal(1),
-  fileSystemId: z.string(),
 });
 
 export type HizoFSSuperblockDto = {

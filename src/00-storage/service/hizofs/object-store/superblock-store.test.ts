@@ -70,6 +70,32 @@ describe('HizoFS A/B superblock store', () => {
     expect(await superblockStore.read()).toMatchObject({ sequence: 0 });
   });
 
+  it('uses the older slot when newer authenticated metadata is structurally corrupt', async () => {
+    const { objectStore, superblockStore } = await setup();
+    await superblockStore.write({
+      value: {
+        sequence: 0,
+        fileSystemId: 'filesystem-id',
+        activeCommitObjectId: 'commit-0',
+      },
+    });
+    await objectStore.writeSuperblock({
+      slot: 1,
+      record: {
+        kind: 'superblock',
+        recordVersion: 1,
+        metadata: {
+          sequence: 1,
+          fileSystemId: 'filesystem-id',
+          activeCommitObjectId: 42,
+        },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+
+    await expect(superblockStore.read()).resolves.toMatchObject({ sequence: 0 });
+  });
+
   it('fails when no valid slot remains', async () => {
     const { backingStore, superblockStore } = await setup();
     await backingStore.write({
@@ -128,7 +154,7 @@ describe('HizoFS A/B superblock store', () => {
     await expect(superblockStore.read()).rejects.toThrow('same sequence');
   });
 
-  it('rejects a superblock belonging to another descriptor', async () => {
+  it('rejects a superblock belonging to another root-key-derived identity', async () => {
     const { objectStore } = await setup();
     await objectStore.writeSuperblock({
       slot: 0,
@@ -148,7 +174,7 @@ describe('HizoFS A/B superblock store', () => {
       fileSystemId: 'filesystem-id',
     });
     await expect(superblockStore.read()).rejects.toThrow(
-      'does not match its descriptor',
+      'does not match the root-key-derived file system ID',
     );
   });
 });

@@ -6,7 +6,11 @@ type QueuedLockRequest = {
   readonly acquired: ReturnType<typeof Promise.withResolvers<unknown>>;
 };
 
-export function createQueuedTestLockManager(): LockManager {
+export function createQueuedTestLockManager({
+  onRequest,
+}: {
+  onRequest: (({ name, mode }: { name: string; mode: LockMode }) => void) | undefined;
+}): LockManager {
   const queues = new Map<string, QueuedLockRequest[]>();
   const activeShared = new Map<string, number>();
   const activeExclusive = new Set<string>();
@@ -74,9 +78,11 @@ export function createQueuedTestLockManager(): LockManager {
     callback: TestLockCallback,
   ): Promise<unknown> => {
     const acquired = Promise.withResolvers<unknown>();
+    const mode = options.mode ?? 'exclusive';
+    onRequest?.({ name, mode });
     const queue = queues.get(name) ?? [];
     queue.push({
-      mode: options.mode ?? 'exclusive',
+      mode,
       callback,
       acquired,
     });

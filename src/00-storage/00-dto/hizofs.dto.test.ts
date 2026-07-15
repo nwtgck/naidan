@@ -10,15 +10,13 @@ import {
 } from './hizofs.dto';
 
 describe('HizoFS DTO schemas', () => {
-  it('parses the HizoFS descriptor identity', () => {
+  it('parses the HizoFS descriptor format marker', () => {
     expect(HizoFSDescriptorSchemaDto.parse({
       format: 'hizofs',
       formatVersion: 1,
-      fileSystemId: 'filesystem-id',
     })).toEqual({
       format: 'hizofs',
       formatVersion: 1,
-      fileSystemId: 'filesystem-id',
     });
   });
 
@@ -93,8 +91,8 @@ describe('HizoFS DTO schemas', () => {
 
   it('rejects an unsupported descriptor version', () => {
     expect(() => HizoFSDescriptorSchemaDto.parse({
+      format: 'hizofs',
       formatVersion: 2,
-      fileSystemId: 'filesystem-id',
     })).toThrow();
   });
 

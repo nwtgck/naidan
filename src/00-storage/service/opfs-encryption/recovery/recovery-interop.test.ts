@@ -17,8 +17,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import {
   createHizoFS,
-  readHizoFSFileSystemId,
+  deriveHizoFSFileSystemIdFromRawRootKey,
+  inspectHizoFS,
 } from '@/00-storage/service/hizofs/api';
+import { getHizoFSObjectShard } from '@/00-storage/service/hizofs/object-store/object-id';
 import type {
   StorageDirectoryHandle,
   StorageFileHandle,
@@ -109,7 +111,10 @@ async function createRawHizoFS({
 }: {
   outputDirectory: string;
   passphrase: string;
-}): Promise<void> {
+}): Promise<{
+  readonly activeCommitObjectId: string;
+  readonly encryptedStoreId: string;
+}> {
   const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
   const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', {
     create: true,
@@ -176,9 +181,24 @@ async function createRawHizoFS({
       name: 'target-link',
       target: 'target.txt',
     });
+
+    // Leave one latest-only generation so recovery fallback can corrupt the
+    // newest commit while retaining a complete prior namespace generation.
+    await writeText({
+      directory: logicalStorage,
+      name: 'latest-only.txt',
+      value: 'latest generation\n',
+    });
     await session.close();
 
-    const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
+    const inspection = await inspectHizoFS({
+      backingDirectory,
+      fileSystemRootKey: material.fileSystemRootKey,
+    });
+
+    const fileSystemId = await deriveHizoFSFileSystemIdFromRawRootKey({
+      fileSystemRootKey: material.fileSystemRootKey,
+    });
     await new EncryptedStoreHeaderStore({ storageRoot }).write({
       header: {
         formatVersion: 1,
@@ -201,9 +221,66 @@ async function createRawHizoFS({
       },
     });
     await exportDirectory({ directory: opfsRoot, outputDirectory });
+    return {
+      activeCommitObjectId: inspection.activeCommitObjectId,
+      encryptedStoreId,
+    };
   } finally {
     material.storageUnlockKey.fill(0);
     material.fileSystemRootKey.fill(0);
+  }
+}
+
+function getExportedHizoFSDirectory({
+  rawOpfs,
+  encryptedStoreId,
+}: {
+  rawOpfs: string;
+  encryptedStoreId: string;
+}): string {
+  return join(
+    rawOpfs,
+    'naidan-storage',
+    'encrypted-stores',
+    encryptedStoreId,
+    'filesystem.hizofs',
+  );
+}
+
+async function runIndependentRecovery({
+  implementation,
+  rawOpfs,
+  output,
+  passphrase,
+}: {
+  implementation: 'node' | 'go';
+  rawOpfs: string;
+  output: string;
+  passphrase: string;
+}): Promise<void> {
+  switch (implementation) {
+  case 'node':
+    await execFile(process.execPath, [
+      NODE_RECOVERY_SOURCE,
+      rawOpfs,
+      output,
+      '--passphrase',
+      passphrase,
+    ]);
+    return;
+  case 'go':
+    await execFile('go', [
+      'run',
+      GO_RECOVERY_SOURCE,
+      '-input', rawOpfs,
+      '-output', output,
+      '-passphrase', passphrase,
+    ]);
+    return;
+  default: {
+    const _ex: never = implementation;
+    throw new Error(`Unhandled recovery implementation: ${String(_ex)}`);
+  }
   }
 }
 
@@ -306,6 +383,115 @@ describe('HizoFS recovery interoperability', () => {
     },
     30_000,
   );
+
+  it('recovers without trusting a corrupt optional HizoFS descriptor', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-descriptor-recovery-'));
+    temporaryDirectories.push(root);
+    const rawOpfs = join(root, 'raw-opfs');
+    const passphrase = 'descriptor recovery passphrase';
+    const { encryptedStoreId } = await createRawHizoFS({
+      outputDirectory: rawOpfs,
+      passphrase,
+    });
+    await writeFile(join(
+      getExportedHizoFSDirectory({ rawOpfs, encryptedStoreId }),
+      'descriptor.json',
+    ), '{');
+
+    const implementations = goAvailable
+      ? (['node', 'go'] as const)
+      : (['node'] as const);
+    for (const implementation of implementations) {
+      const output = join(root, `recovered-${implementation}`);
+      await runIndependentRecovery({
+        implementation,
+        rawOpfs,
+        output,
+        passphrase,
+      });
+      await expectRecoveredFileSystem({ output });
+    }
+  }, 30_000);
+
+  it('uses the intact encrypted-store header when the other copy is semantically invalid', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-header-recovery-'));
+    temporaryDirectories.push(root);
+    const rawOpfs = join(root, 'raw-opfs');
+    const passphrase = 'header recovery passphrase';
+    const { encryptedStoreId } = await createRawHizoFS({
+      outputDirectory: rawOpfs,
+      passphrase,
+    });
+    const damagedHeaderPath = join(
+      rawOpfs,
+      'naidan-storage',
+      'encrypted-stores',
+      encryptedStoreId,
+      'header-0.json',
+    );
+    const damagedHeader = JSON.parse(
+      await readFile(damagedHeaderPath, 'utf8'),
+    ) as {
+      wrappedFileSystemRootKey: { nonce: string };
+    };
+    damagedHeader.wrappedFileSystemRootKey.nonce = 'not-base64url';
+    await writeFile(damagedHeaderPath, `${JSON.stringify(damagedHeader)}
+`);
+
+    const implementations = goAvailable
+      ? (['node', 'go'] as const)
+      : (['node'] as const);
+    for (const implementation of implementations) {
+      const output = join(root, `recovered-${implementation}`);
+      await runIndependentRecovery({
+        implementation,
+        rawOpfs,
+        output,
+        passphrase,
+      });
+      await expectRecoveredFileSystem({ output });
+    }
+  }, 30_000);
+
+  it('falls back to an older complete HizoFS generation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-generation-recovery-'));
+    temporaryDirectories.push(root);
+    const rawOpfs = join(root, 'raw-opfs');
+    const passphrase = 'generation recovery passphrase';
+    const {
+      activeCommitObjectId,
+      encryptedStoreId,
+    } = await createRawHizoFS({
+      outputDirectory: rawOpfs,
+      passphrase,
+    });
+    const shard = getHizoFSObjectShard({ objectId: activeCommitObjectId });
+    await writeFile(join(
+      getExportedHizoFSDirectory({ rawOpfs, encryptedStoreId }),
+      'objects',
+      shard,
+      `${activeCommitObjectId}.enc`,
+    ), new Uint8Array([0]));
+
+    const implementations = goAvailable
+      ? (['node', 'go'] as const)
+      : (['node'] as const);
+    for (const implementation of implementations) {
+      const output = join(root, `recovered-${implementation}`);
+      await runIndependentRecovery({
+        implementation,
+        rawOpfs,
+        output,
+        passphrase,
+      });
+      await expectRecoveredFileSystem({ output });
+      await expect(readFile(join(
+        output,
+        'naidan-storage',
+        'latest-only.txt',
+      ))).resolves.toHaveLength(0);
+    }
+  }, 30_000);
 
   it('rejects an incorrect passphrase without leaving output or partial output', async () => {
     const root = await mkdtemp(join(tmpdir(), 'naidan-hizofs-wrong-passphrase-'));

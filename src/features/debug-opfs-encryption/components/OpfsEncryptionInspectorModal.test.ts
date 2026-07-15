@@ -70,17 +70,52 @@ function createSession(): OpfsEncryptionDebugSession {
         ciphertext: 'root-ciphertext',
       },
     },
+    headerCopies: [
+      {
+        slot: 0,
+        fileName: 'header-0.json',
+        physicalPath: ['naidan-storage', 'encrypted-stores', 'store-a', 'header-0.json'],
+        status: 'valid',
+        persistedDto: {
+          formatVersion: 1,
+          encryptedStoreId: 'store-a',
+          fileSystemId: 'filesystem-a',
+          wrappedFileSystemRootKey: {
+            nonce: 'root-nonce',
+            ciphertext: 'root-ciphertext',
+          },
+        },
+        header: {
+          formatVersion: 1,
+          encryptedStoreId: 'store-a',
+          fileSystemId: 'filesystem-a',
+          wrappedFileSystemRootKey: {
+            nonce: 'root-nonce',
+            ciphertext: 'root-ciphertext',
+          },
+        },
+      },
+      {
+        slot: 1,
+        fileName: 'header-1.json',
+        physicalPath: ['naidan-storage', 'encrypted-stores', 'store-a', 'header-1.json'],
+        status: 'invalid',
+        persistedDto: { formatVersion: 1, fileSystemId: 'broken' },
+        errorMessage: 'Encrypted store header failed semantic validation',
+      },
+    ],
     hizoFS: {
+      activeMode: 'current',
       descriptor: {
         format: 'hizofs',
         formatVersion: 1,
-        fileSystemId: 'filesystem-a',
       },
+      fileSystemId: 'filesystem-a',
       persistedDescriptorDto: {
         format: 'hizofs',
         formatVersion: 1,
-        fileSystemId: 'filesystem-a',
       },
+      descriptorValidationError: undefined,
       superblockSlots: [],
       activeSuperblock: {
         sequence: 10,
@@ -128,6 +163,9 @@ describe('OpfsEncryptionInspectorModal', () => {
     expect(document.body.textContent).toContain('naidan-storage/encrypted-stores/store-a/filesystem.hizofs');
     expect(document.body.textContent).toContain('slot-a');
     expect(document.body.textContent).toContain('root-ciphertext');
+    expect(document.body.textContent).toContain('1 / 2 valid');
+    expect(document.body.textContent).toContain('header-1.json');
+    expect(document.body.textContent).toContain('Encrypted store header failed semantic validation');
 
     wrapper.unmount();
   });

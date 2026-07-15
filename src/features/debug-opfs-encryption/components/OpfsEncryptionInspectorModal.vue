@@ -16,6 +16,7 @@ import {
   XIcon,
 } from 'lucide-vue-next';
 import { storageService } from '@/00-storage/service';
+import type { EncryptedStoreHeaderCopyInspection } from '@/00-storage/service/opfs-encryption/encrypted-store-header-store';
 import type { OpfsEncryptionDebugSession } from '@/00-storage/service/opfs-encryption/inspection';
 import { useDebugOpfsEncryptionInspector } from '@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector';
 import { useDebugHizoFSWorkbench } from '@/features/debug-hizofs/composables/useDebugHizoFSWorkbench';
@@ -32,8 +33,11 @@ const errorMessage = ref<string>();
 
 const stateJson = computed(() => JSON.stringify(session.value?.state ?? null, undefined, 2));
 const headerJson = computed(() => JSON.stringify(session.value?.header ?? null, undefined, 2));
+const headerCopiesJson = computed(() => JSON.stringify(session.value?.headerCopies ?? null, undefined, 2));
 const physicalPath = computed(() => session.value?.physicalPath.join('/') ?? '');
 const keySlotCount = computed(() => session.value?.state.keySlots.length ?? 0);
+const validHeaderCopyCount = computed(() => session.value?.headerCopies
+  .filter(copy => copy.status === 'valid').length ?? 0);
 
 onMounted(reload);
 onUnmounted(() => {
@@ -90,7 +94,8 @@ function openHizoFS(): void {
 const _persistedDtoAuditTypes: readonly [
   OpfsEncryptionStateDto | undefined,
   OpfsEncryptedStoreHeaderDto | undefined,
-] = [undefined, undefined];
+  readonly EncryptedStoreHeaderCopyInspection[] | undefined,
+] = [undefined, undefined, undefined];
 void _persistedDtoAuditTypes;
 
 defineExpose({
@@ -130,7 +135,7 @@ defineExpose({
         </div>
 
         <template v-else-if="session">
-          <div tw-class="grid shrink-0 gap-3 border-b border-gray-200 p-4 sm:grid-cols-2 lg:grid-cols-4 dark:border-gray-700">
+          <div tw-class="grid shrink-0 gap-3 border-b border-gray-200 p-4 sm:grid-cols-2 lg:grid-cols-5 dark:border-gray-700">
             <div tw-class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
               <div tw-class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">State</div>
               <div tw-class="mt-1 font-mono text-xs text-gray-800 dark:text-gray-200">{{ session.state.state }}</div>
@@ -138,6 +143,10 @@ defineExpose({
             <div tw-class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
               <div tw-class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Key slots</div>
               <div tw-class="mt-1 font-mono text-xs text-gray-800 dark:text-gray-200">{{ keySlotCount }}</div>
+            </div>
+            <div tw-class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
+              <div tw-class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Header copies</div>
+              <div data-testid="opfs-encryption-header-copy-summary" tw-class="mt-1 font-mono text-xs text-gray-800 dark:text-gray-200">{{ validHeaderCopyCount }} / {{ session.headerCopies.length }} valid</div>
             </div>
             <div tw-class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
               <div tw-class="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Active store</div>
@@ -165,14 +174,18 @@ defineExpose({
             </button>
           </div>
 
-          <div tw-class="grid min-h-0 flex-1 overflow-auto lg:grid-cols-2">
+          <div tw-class="grid min-h-0 flex-1 overflow-auto lg:grid-cols-3">
             <section tw-class="min-w-0 border-b border-gray-200 lg:border-b-0 lg:border-r dark:border-gray-700">
               <header tw-class="border-b border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-200">Persisted encryption state DTO</header>
               <JsonCodeView :source="stateJson" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
             </section>
-            <section tw-class="min-w-0">
-              <header tw-class="border-b border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-200">Persisted encrypted store header DTO</header>
+            <section tw-class="min-w-0 border-b border-gray-200 lg:border-b-0 lg:border-r dark:border-gray-700">
+              <header tw-class="border-b border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-200">Selected encrypted store header DTO</header>
               <JsonCodeView :source="headerJson" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
+            </section>
+            <section tw-class="min-w-0">
+              <header tw-class="border-b border-gray-200 px-4 py-2 text-xs font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-200">Persisted header copy inspection</header>
+              <JsonCodeView :source="headerCopiesJson" display-mode="formatted" overflow-mode="scroll" height-mode="content" />
             </section>
           </div>
         </template>

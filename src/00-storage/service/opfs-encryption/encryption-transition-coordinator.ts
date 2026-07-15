@@ -14,8 +14,9 @@ import type {
 } from '@/00-storage/service/storage-file-system/types';
 import {
   createHizoFS,
+  createHizoFSBulkBuilder,
   openHizoFS,
-  readHizoFSFileSystemId,
+  deriveHizoFSFileSystemIdFromRawRootKey,
 } from '@/00-storage/service/hizofs';
 import {
   clearNaidanPersistenceNamespace,
@@ -170,7 +171,7 @@ export class EncryptionTransitionCoordinator {
           };
           await this.stateStore.writeState({ state: transitionState });
           const targetBackend = await this.copyAndValidateNamespace({
-            sourceRoot: source.fileSystemSession.root,
+            sourceFileSystemSession: source.fileSystemSession,
             targetFileSystemSession,
             signal,
           });
@@ -258,7 +259,7 @@ export class EncryptionTransitionCoordinator {
         try {
           await this.stateStore.writeState({ state: transitionState });
           const targetBackend = await this.copyAndValidateNamespace({
-            sourceRoot: session.fileSystemSession.root,
+            sourceFileSystemSession: session.fileSystemSession,
             targetFileSystemSession: target,
             signal,
           });
@@ -340,7 +341,7 @@ export class EncryptionTransitionCoordinator {
           };
           await this.stateStore.writeState({ state: transitionState });
           const targetBackend = await this.copyAndValidateNamespace({
-            sourceRoot: session.fileSystemSession.root,
+            sourceFileSystemSession: session.fileSystemSession,
             targetFileSystemSession,
             signal,
           });
@@ -509,7 +510,7 @@ export class EncryptionTransitionCoordinator {
           fileSystemRootKey.fill(0);
         }
         await this.copyAndValidateNamespace({
-          sourceRoot: source.fileSystemSession.root,
+          sourceFileSystemSession: source.fileSystemSession,
           targetFileSystemSession,
           signal,
         });
@@ -604,7 +605,7 @@ export class EncryptionTransitionCoordinator {
           storageUnlockKey,
         });
         await this.copyAndValidateNamespace({
-          sourceRoot: source.fileSystemSession.root,
+          sourceFileSystemSession: source.fileSystemSession,
           targetFileSystemSession: target,
           signal,
         });
@@ -697,7 +698,7 @@ export class EncryptionTransitionCoordinator {
           fileSystemRootKey.fill(0);
         }
         await this.copyAndValidateNamespace({
-          sourceRoot: source.fileSystemSession.root,
+          sourceFileSystemSession: source.fileSystemSession,
           targetFileSystemSession,
           signal,
         });
@@ -813,7 +814,9 @@ export class EncryptionTransitionCoordinator {
         backingDirectory,
         fileSystemRootKey,
       });
-      const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
+      const fileSystemId = await deriveHizoFSFileSystemIdFromRawRootKey({
+        fileSystemRootKey,
+      });
       await this.headerStore.write({
         header: {
           formatVersion: 1,
@@ -854,9 +857,11 @@ export class EncryptionTransitionCoordinator {
         encryptedStoreId,
         create: false,
       });
-      const fileSystemId = await readHizoFSFileSystemId({ backingDirectory });
+      const fileSystemId = await deriveHizoFSFileSystemIdFromRawRootKey({
+        fileSystemRootKey,
+      });
       if (fileSystemId !== header.fileSystemId) {
-        throw new Error('Encrypted store header file system ID does not match its HizoFS descriptor');
+        throw new Error('Encrypted store header file system ID does not match the HizoFS root key');
       }
       return await openHizoFS({ backingDirectory, fileSystemRootKey });
     } finally {
@@ -890,26 +895,46 @@ export class EncryptionTransitionCoordinator {
   }
 
   private async copyAndValidateNamespace({
-    sourceRoot,
+    sourceFileSystemSession,
     targetFileSystemSession,
     signal,
   }: {
-    sourceRoot: StorageFileSystemSession['root'];
+    sourceFileSystemSession: StorageFileSystemSession;
     targetFileSystemSession: StorageFileSystemSession;
     signal: AbortSignal | undefined;
   }): Promise<NaidanOpfsStorageBackend> {
-    await copyNaidanPersistenceNamespace({
-      sourceRoot,
-      targetRoot: targetFileSystemSession.root,
-      signal,
-    });
-    await verifyNaidanPersistenceNamespaceCopy({
-      sourceRoot,
-      targetRoot: targetFileSystemSession.root,
-    });
-    return await this.createValidatedBackend({
-      fileSystemSession: targetFileSystemSession,
-    });
+    const sourceSnapshot = await sourceFileSystemSession.createReadSnapshot?.()
+      ?? sourceFileSystemSession;
+    try {
+      await copyNaidanPersistenceNamespace({
+        sourceRoot: sourceSnapshot.root,
+        targetRoot: targetFileSystemSession.root,
+        targetBuilder: await createHizoFSBulkBuilder({
+          fileSystemSession: targetFileSystemSession,
+        }),
+        signal,
+      });
+      const targetSnapshot = await targetFileSystemSession.createReadSnapshot?.()
+        ?? targetFileSystemSession;
+      try {
+        await verifyNaidanPersistenceNamespaceCopy({
+          sourceRoot: sourceSnapshot.root,
+          targetRoot: targetSnapshot.root,
+          signal,
+        });
+      } finally {
+        if (targetSnapshot !== targetFileSystemSession) {
+          await targetSnapshot.close();
+        }
+      }
+      return await this.createValidatedBackend({
+        fileSystemSession: targetFileSystemSession,
+      });
+    } finally {
+      if (sourceSnapshot !== sourceFileSystemSession) {
+        await sourceSnapshot.close();
+      }
+    }
   }
 
   private async createValidatedBackend({

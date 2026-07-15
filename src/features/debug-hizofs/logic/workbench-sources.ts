@@ -133,7 +133,7 @@ export async function openHizoFSWorkbenchSource({ source }: {
     const session = await storageService.createOpfsEncryptionDebugSession();
     return {
       source,
-      fileSystemId: session.hizoFS.descriptor.fileSystemId,
+      fileSystemId: session.hizoFS.fileSystemId,
       physicalPath: session.physicalPath,
       decryptedRoot: session.decryptedRoot,
       hizoFSReader: session.hizoFSReader,

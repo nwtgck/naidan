@@ -1,5 +1,9 @@
 import type { ZodType } from 'zod';
-import { readJsonValueIfPresent, writeJsonFile } from './opfs-json-file';
+import {
+  OpfsJsonSyntaxError,
+  readJsonValueIfPresent,
+  writeJsonFile,
+} from './opfs-json-file';
 
 export interface SequencedValue {
   readonly formatVersion: number,
@@ -39,11 +43,14 @@ export class DualSlotJsonStore<T extends SequencedValue> {
           directory: this.directory,
           name: `${this.filePrefix}-${slot}.json`,
         });
-      } catch {
-        // A partially written JSON document is not a committed slot. The other
-        // slot remains eligible, but a complete newer envelope must never be
-        // silently downgraded merely because this client cannot parse it.
-        continue;
+      } catch (error) {
+        if (error instanceof OpfsJsonSyntaxError) {
+          // A partially written JSON document is not a committed slot. The
+          // other slot remains eligible, but I/O and permission failures must
+          // not be mislabeled as ordinary slot corruption.
+          continue;
+        }
+        throw error;
       }
       if (raw === undefined || typeof raw !== 'object' || raw === null) {
         continue;

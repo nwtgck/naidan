@@ -8,13 +8,17 @@ import {
   type HizoFSInspectionReader,
 } from '@/00-storage/service/hizofs';
 import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
-import { EncryptedStoreHeaderStore } from './encrypted-store-header-store';
+import {
+  EncryptedStoreHeaderStore,
+  type EncryptedStoreHeaderCopyInspection,
+} from './encrypted-store-header-store';
 import { unwrapFileSystemRootKey } from './encryption-key-manager';
 import type { UnlockedOpfsEncryptionSession } from './session';
 
 export interface OpfsEncryptionDebugSession {
   readonly state: Extract<OpfsEncryptionStateDto, { readonly state: 'encrypted' }>;
   readonly header: OpfsEncryptedStoreHeaderDto;
+  readonly headerCopies: readonly EncryptedStoreHeaderCopyInspection[];
   readonly hizoFS: HizoFSInspectionOverview;
   readonly hizoFSReader: HizoFSInspectionReader;
   readonly decryptedRoot: StorageDirectoryHandle;
@@ -32,6 +36,7 @@ export async function createOpfsEncryptionDebugSession({
 }): Promise<OpfsEncryptionDebugSession> {
   const encryptedStoreId = session.state.activeEncryptedStoreId;
   const headerStore = new EncryptedStoreHeaderStore({ storageRoot });
+  const headerCopies = await headerStore.inspectCopies({ encryptedStoreId });
   const header = await headerStore.read({ encryptedStoreId });
   if (header === undefined) {
     throw new Error(`Encrypted store header is missing: ${encryptedStoreId}`);
@@ -51,13 +56,14 @@ export async function createOpfsEncryptionDebugSession({
       fileSystemRootKey,
     });
     const hizoFS = await hizoFSReader.readOverview();
-    if (hizoFS.descriptor.fileSystemId !== header.fileSystemId) {
+    if (hizoFS.fileSystemId !== header.fileSystemId) {
       throw new Error('Encrypted store header and HizoFS descriptor disagree');
     }
     let disposed = false;
     return {
       state: session.state,
       header,
+      headerCopies,
       hizoFS,
       hizoFSReader,
       decryptedRoot: session.fileSystemSession.root,

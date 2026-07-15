@@ -159,4 +159,101 @@ describe('persistent HizoFS index', () => {
     expect(await index.delete({ rootObjectId: root, key: 'missing' })).toBe(root);
     expect(pageStore.writes).toBe(writesBefore);
   });
+
+  it('validates parent bounds against the actual child subtree', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    let root = await index.createEmpty();
+    for (let value = 0; value < 20; value += 1) {
+      root = await index.set({
+        rootObjectId: root,
+        entry: { key: String(value).padStart(2, '0'), value },
+      });
+    }
+    await expect(index.validateStructure({ rootObjectId: root })).resolves.toMatchObject({
+      entryCount: 20,
+    });
+    const rootPage = pageStore.pages.get(root);
+    if (rootPage === undefined || rootPage.type !== 'branch') {
+      throw new Error('Expected a branch root');
+    }
+    const lastChild = rootPage.children.at(-1);
+    if (lastChild === undefined) throw new Error('Expected a branch child');
+    pageStore.pages.set(root, {
+      ...rootPage,
+      children: [
+        ...rootPage.children.slice(0, -1),
+        { ...lastChild, upperBound: 'zz' },
+      ],
+    });
+    await expect(index.validateStructure({ rootObjectId: root })).rejects.toThrow(
+      'upper bound',
+    );
+  });
+
+  it('batch-deletes sorted keys without one copy-on-write path per key', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    let root = await index.createEmpty();
+    for (let value = 0; value < 100; value += 1) {
+      root = await index.set({
+        rootObjectId: root,
+        entry: { key: String(value).padStart(3, '0'), value },
+      });
+    }
+    const writesBefore = pageStore.writes;
+    root = await index.deleteMany({
+      rootObjectId: root,
+      keys: new Set(Array.from({ length: 80 }, (_, value) => String(value).padStart(3, '0'))),
+    });
+    expect(pageStore.writes - writesBefore).toBeLessThan(30);
+    expect((await collect({ index, rootObjectId: root })).map(entry => entry.value)).toEqual(
+      Array.from({ length: 20 }, (_, index_) => index_ + 80),
+    );
+  });
+
+  it('rewrites only affected paths for a small batch in a large index', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    let root = await index.createEmpty();
+    for (let value = 0; value < 100; value += 1) {
+      root = await index.set({
+        rootObjectId: root,
+        entry: { key: String(value).padStart(3, '0'), value },
+      });
+    }
+    const writesBefore = pageStore.writes;
+    root = await index.deleteMany({
+      rootObjectId: root,
+      keys: new Set(['010', '011']),
+    });
+
+    expect(pageStore.writes - writesBefore).toBeLessThan(15);
+    expect((await collect({ index, rootObjectId: root })).map(entry => entry.value)).toEqual(
+      Array.from({ length: 100 }, (_, value) => value)
+        .filter(value => value !== 10 && value !== 11),
+    );
+  });
+
+  it('truncates the right side without deleting each key separately', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    let root = await index.createEmpty();
+    for (let value = 0; value < 100; value += 1) {
+      root = await index.set({
+        rootObjectId: root,
+        entry: { key: String(value).padStart(3, '0'), value },
+      });
+    }
+    const writesBefore = pageStore.writes;
+    root = await index.truncateAtOrAfter({
+      rootObjectId: root,
+      key: '010',
+    });
+    expect(pageStore.writes - writesBefore).toBeLessThan(12);
+    expect((await collect({ index, rootObjectId: root })).map(entry => entry.value)).toEqual(
+      Array.from({ length: 10 }, (_, index_) => index_),
+    );
+  });
+
 });

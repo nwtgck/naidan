@@ -1,4 +1,5 @@
 import { promiseAllKeyed } from '@/utils/promise';
+import type { HizoFSBulkBuilder } from '@/00-storage/service/hizofs/file-system/bulk-builder';
 import type {
   StorageDirectoryHandle,
   StorageEntryHandle,
@@ -192,12 +193,56 @@ export async function prepareNaidanPersistenceNamespaceTarget({
 export async function copyNaidanPersistenceNamespace({
   sourceRoot,
   targetRoot,
+  targetBuilder,
   signal,
 }: {
   sourceRoot: StorageDirectoryHandle;
   targetRoot: StorageDirectoryHandle;
+  targetBuilder: HizoFSBulkBuilder | undefined;
   signal: AbortSignal | undefined;
 }): Promise<void> {
+  if (targetBuilder !== undefined) {
+    try {
+      await targetBuilder.importRootMetadata({ source: sourceRoot });
+      for (const name of DURABLE_TOP_LEVEL_DIRECTORY_NAMES) {
+        signal?.throwIfAborted();
+        const sourceDirectory = await getDirectoryIfPresent({
+          parent: sourceRoot,
+          name,
+        });
+        if (sourceDirectory === undefined) {
+          if (name === STORAGE_DIRECTORY_NAME) {
+            await targetBuilder.createEmptyDirectory({ name });
+          }
+          continue;
+        }
+        await targetBuilder.importDirectory({
+          source: sourceDirectory,
+          name,
+          excludedNames: name === STORAGE_DIRECTORY_NAME
+            ? STORAGE_CONTROL_ENTRY_NAMES
+            : new Set(),
+          signal,
+        });
+      }
+      await targetBuilder.createEmptyDirectory({
+        name: TEMPORARY_DIRECTORY_NAME,
+      });
+      await targetBuilder.commit();
+      return;
+    } catch (error) {
+      try {
+        await targetBuilder.abort({ reason: error });
+      } catch (abortError) {
+        throw new AggregateError(
+          [error, abortError],
+          'Failed to abort HizoFS bulk namespace construction',
+        );
+      }
+      throw error;
+    }
+  }
+
   await prepareNaidanPersistenceNamespaceTarget({ targetRoot });
   for (const name of DURABLE_TOP_LEVEL_DIRECTORY_NAMES) {
     signal?.throwIfAborted();
@@ -223,20 +268,75 @@ export async function copyNaidanPersistenceNamespace({
   }
 }
 
-async function readFileBytes({
-  file,
+const FILE_VERIFICATION_BUFFER_BYTE_LENGTH = 256 * 1024;
+
+async function assertFileContentsEqual({
+  source,
+  target,
+  path,
+  signal,
 }: {
-  file: Extract<StorageEntryHandle, { kind: 'file' }>;
-}): Promise<Uint8Array> {
-  const readable = await file.openReadable({ mimeType: 'application/octet-stream' });
+  source: Extract<StorageEntryHandle, { kind: 'file' }>;
+  target: Extract<StorageEntryHandle, { kind: 'file' }>;
+  path: string;
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  const sourceStat = await source.stat();
+  const targetStat = await target.stat();
+  if (sourceStat.size !== targetStat.size) {
+    throw new Error(`Transferred file size does not match at ${path}`);
+  }
+
+  const sourceReadable = await source.openReadable({
+    mimeType: 'application/octet-stream',
+  });
+  const targetReadable = await target.openReadable({
+    mimeType: 'application/octet-stream',
+  });
+  const sourceBuffer = new Uint8Array(FILE_VERIFICATION_BUFFER_BYTE_LENGTH);
+  const targetBuffer = new Uint8Array(FILE_VERIFICATION_BUFFER_BYTE_LENGTH);
   try {
-    return new Uint8Array(await new Response(readable.stream({
-      start: 0,
-      end: undefined,
-      signal: undefined,
-    })).arrayBuffer());
+    let position = 0;
+    while (position < sourceStat.size) {
+      signal?.throwIfAborted();
+      const length = Math.min(
+        FILE_VERIFICATION_BUFFER_BYTE_LENGTH,
+        sourceStat.size - position,
+      );
+      const { sourceResult, targetResult } = await promiseAllKeyed({
+        sourceResult: sourceReadable.read({
+          buffer: sourceBuffer,
+          offset: 0,
+          length,
+          position,
+          signal,
+        }),
+        targetResult: targetReadable.read({
+          buffer: targetBuffer,
+          offset: 0,
+          length,
+          position,
+          signal,
+        }),
+      });
+      if (
+        sourceResult.bytesRead !== length
+        || targetResult.bytesRead !== length
+      ) {
+        throw new Error(`Transferred file ended unexpectedly at ${path}`);
+      }
+      for (let index = 0; index < length; index += 1) {
+        if (sourceBuffer[index] !== targetBuffer[index]) {
+          throw new Error(`Transferred file contents do not match at ${path}`);
+        }
+      }
+      position += length;
+    }
   } finally {
-    await readable.close();
+    await Promise.all([
+      sourceReadable.close(),
+      targetReadable.close(),
+    ]);
   }
 }
 
@@ -245,11 +345,13 @@ async function assertDirectoryContentsEqual({
   target,
   excludedNames,
   path,
+  signal,
 }: {
   source: StorageDirectoryHandle;
   target: StorageDirectoryHandle;
   excludedNames: ReadonlySet<string>;
   path: string;
+  signal: AbortSignal | undefined;
 }): Promise<void> {
   const sourceEntries = new Map<string, StorageEntryHandle>();
   const targetEntries = new Map<string, StorageEntryHandle>();
@@ -282,6 +384,7 @@ async function assertDirectoryContentsEqual({
           target: targetEntry,
           excludedNames: new Set(),
           path: childPath,
+          signal,
         });
         break;
       case 'file':
@@ -295,19 +398,14 @@ async function assertDirectoryContentsEqual({
       break;
     case 'file':
       switch (targetEntry.kind) {
-      case 'file': {
-        const { sourceBytes, targetBytes } = await promiseAllKeyed({
-          sourceBytes: readFileBytes({ file: sourceEntry }),
-          targetBytes: readFileBytes({ file: targetEntry }),
+      case 'file':
+        await assertFileContentsEqual({
+          source: sourceEntry,
+          target: targetEntry,
+          path: childPath,
+          signal,
         });
-        if (
-          sourceBytes.byteLength !== targetBytes.byteLength
-          || sourceBytes.some((value, index) => targetBytes[index] !== value)
-        ) {
-          throw new Error(`Transferred file contents do not match at ${childPath}`);
-        }
         break;
-      }
       case 'directory':
       case 'symlink':
         throw new Error(`Transferred entry kind does not match at ${childPath}`);
@@ -344,9 +442,11 @@ async function assertDirectoryContentsEqual({
 export async function verifyNaidanPersistenceNamespaceCopy({
   sourceRoot,
   targetRoot,
+  signal,
 }: {
   sourceRoot: StorageDirectoryHandle;
   targetRoot: StorageDirectoryHandle;
+  signal: AbortSignal | undefined;
 }): Promise<void> {
   for (const name of DURABLE_TOP_LEVEL_DIRECTORY_NAMES) {
     const source = await getDirectoryIfPresent({ parent: sourceRoot, name });
@@ -367,6 +467,7 @@ export async function verifyNaidanPersistenceNamespaceCopy({
         ? STORAGE_CONTROL_ENTRY_NAMES
         : new Set(),
       path: `/${name}`,
+      signal,
     });
   }
 

@@ -2,6 +2,7 @@ import * as Comlink from 'comlink';
 
 import { createAdvancedTextEditorV3Worker } from '@/features/advanced-text-editor-v3/worker/impl';
 import { createHizoFSInspectionWorker } from '@/features/debug-hizofs/worker/impl';
+import { createOpfsEncryptionWorker } from '@/00-storage/service/opfs-encryption/worker/impl';
 import { createFileExplorerWorker } from '@/features/file-explorer/worker/impl';
 import { createHighlightWorker } from '@/features/highlight/worker/impl';
 import type { IWorkerHub } from './worker-hub.types';
@@ -12,6 +13,7 @@ export function createStandaloneWorkerHub(): IWorkerHub {
   return {
     wesh: Comlink.proxy(createWeshWorker()),
     hizoFSInspection: Comlink.proxy(createHizoFSInspectionWorker()),
+    opfsEncryption: Comlink.proxy(createOpfsEncryptionWorker()),
     globalSearch: Comlink.proxy(createGlobalSearchWorker()),
     fileExplorer: Comlink.proxy(createFileExplorerWorker()),
     advancedTextEditorV3: Comlink.proxy(createAdvancedTextEditorV3Worker()),

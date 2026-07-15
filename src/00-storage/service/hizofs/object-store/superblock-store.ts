@@ -13,6 +13,11 @@ type Candidate = {
   readonly value: HizoFSSuperblockDto;
 };
 
+export type HizoFSSuperblockCandidateSet = {
+  readonly candidates: readonly HizoFSSuperblockDto[];
+  readonly unusableSlotCount: number;
+};
+
 export class HizoFSSuperblockStore {
   constructor({ objectStore, fileSystemId }: {
     objectStore: HizoFSObjectStore;
@@ -26,72 +31,84 @@ export class HizoFSSuperblockStore {
   private readonly fileSystemId: string;
 
   async read(): Promise<HizoFSSuperblockDto | undefined> {
-    return (await this.readCandidates())[0];
+    return (await this.readCandidateSet()).candidates[0];
   }
 
   async readCandidates(): Promise<readonly HizoFSSuperblockDto[]> {
+    return (await this.readCandidateSet()).candidates;
+  }
+
+  async readCandidateSet(): Promise<HizoFSSuperblockCandidateSet> {
     const candidates: Candidate[] = [];
     const corruptions: unknown[] = [];
+    let missingSlotCount = 0;
 
     for (const slot of [0, 1] as const) {
-      let record;
       try {
-        record = await this.objectStore.readSuperblock({ slot });
+        const record = await this.objectStore.readSuperblock({ slot });
+        if (record === undefined) {
+          missingSlotCount += 1;
+          continue;
+        }
+        switch (record.kind) {
+        case 'superblock':
+          break;
+        default:
+          throw new HizoFSUnsupportedFormatError({
+            message: `HizoFS superblock slot ${String(slot)} has an unsupported record kind`,
+          });
+        }
+        if (record.recordVersion !== 1) {
+          throw new HizoFSUnsupportedFormatError({
+            message: `HizoFS superblock record version is unsupported: ${String(record.recordVersion)}`,
+          });
+        }
+        if (record.binaryPayload.byteLength !== 0) {
+          throw new HizoFSCorruptionError({
+            message: 'HizoFS superblock contains an unexpected binary payload',
+            cause: undefined,
+          });
+        }
+
+        const value = HizoFSSuperblockSchemaDto.parse(record.metadata);
+        if (value.fileSystemId !== this.fileSystemId) {
+          throw new HizoFSCorruptionError({
+            message: 'HizoFS superblock fileSystemId does not match the root-key-derived file system ID',
+            cause: undefined,
+          });
+        }
+        if (!Number.isSafeInteger(value.sequence) || value.sequence < 0) {
+          throw new HizoFSCorruptionError({
+            message: 'HizoFS superblock sequence is invalid',
+            cause: undefined,
+          });
+        }
+        candidates.push({ slot, value });
       } catch (error) {
         if (error instanceof HizoFSUnsupportedFormatError) {
+          // An authenticated format this reader does not understand must not
+          // be hidden by selecting an older writable generation.
           throw error;
         }
         corruptions.push(error);
-        continue;
       }
-      if (record === undefined) {
-        continue;
-      }
-      switch (record.kind) {
-      case 'superblock':
-        break;
-      default:
-        throw new HizoFSUnsupportedFormatError({
-          message: `HizoFS superblock slot ${String(slot)} has an unsupported record kind`,
-        });
-      }
-      if (record.recordVersion !== 1) {
-        throw new HizoFSUnsupportedFormatError({
-          message: `HizoFS superblock record version is unsupported: ${String(record.recordVersion)}`,
-        });
-      }
-      if (record.binaryPayload.byteLength !== 0) {
-        throw new HizoFSCorruptionError({
-          message: 'HizoFS superblock contains an unexpected binary payload',
-          cause: undefined,
-        });
-      }
-
-      const value = HizoFSSuperblockSchemaDto.parse(record.metadata);
-      if (value.fileSystemId !== this.fileSystemId) {
-        throw new HizoFSCorruptionError({
-          message: 'HizoFS superblock fileSystemId does not match its descriptor',
-          cause: undefined,
-        });
-      }
-      if (!Number.isSafeInteger(value.sequence) || value.sequence < 0) {
-        throw new HizoFSCorruptionError({
-          message: 'HizoFS superblock sequence is invalid',
-          cause: undefined,
-        });
-      }
-      candidates.push({ slot, value });
     }
 
     candidates.sort((left, right) => right.value.sequence - left.value.sequence);
     if (candidates.length === 0) {
+      const onlyCorruption = corruptions.length === 1
+        ? corruptions[0]
+        : undefined;
+      if (onlyCorruption instanceof HizoFSCorruptionError) {
+        throw onlyCorruption;
+      }
       if (corruptions.length > 0) {
         throw new HizoFSCorruptionError({
           message: 'No valid HizoFS superblock slot remains',
           cause: new AggregateError(corruptions),
         });
       }
-      return [];
+      return { candidates: [], unusableSlotCount: 2 };
     }
     if (
       candidates.length >= 2
@@ -102,7 +119,10 @@ export class HizoFSSuperblockStore {
         cause: undefined,
       });
     }
-    return candidates.map(candidate => candidate.value);
+    return {
+      candidates: candidates.map(candidate => candidate.value),
+      unusableSlotCount: corruptions.length + missingSlotCount,
+    };
   }
 
   async write({ value }: {

@@ -102,6 +102,16 @@ export class HizoFSNodeService {
     });
   }
 
+  async deleteInodes({ inodeIndexRootObjectId, nodeIds }: {
+    inodeIndexRootObjectId: string;
+    nodeIds: ReadonlySet<string>;
+  }): Promise<string> {
+    return this.inodeIndex.deleteMany({
+      rootObjectId: inodeIndexRootObjectId,
+      nodeIds,
+    });
+  }
+
   private async requireInodeObjectId({ state, nodeId }: {
     state: HizoFSActiveState;
     nodeId: string;

@@ -2,48 +2,48 @@ import {
   HizoFSFileExtentPageSchemaDto,
   type HizoFSFileExtentDto,
   type HizoFSFileExtentPageDto,
-} from '@/00-storage/00-dto/hizofs.dto';
+} from "@/00-storage/00-dto/hizofs.dto";
 import {
   PersistentHizoFSIndex,
   type PersistentIndexPage,
   type PersistentIndexPageStore,
-} from './persistent-index';
-import { compareHizoFSNumbers } from './ordering';
+} from "./persistent-index";
+import { compareHizoFSNumbers } from "./ordering";
 import {
   assertHizoFSNonNegativeSafeInteger,
   assertHizoFSObjectId,
-} from './semantic-validation';
-import type { HizoFSRecordStore } from './record-store';
+} from "./semantic-validation";
+import type { HizoFSRecordStore } from "./record-store";
 
 class ExtentIndexPageStore implements PersistentIndexPageStore<
   number,
   HizoFSFileExtentDto
 > {
-  constructor({ recordStore }: {
-    recordStore: HizoFSRecordStore;
-  }) {
+  constructor({ recordStore }: { recordStore: HizoFSRecordStore }) {
     this.recordStore = recordStore;
   }
 
   private readonly recordStore: HizoFSRecordStore;
 
-  async readPage({ objectId }: {
+  async readPage({
+    objectId,
+  }: {
     objectId: string;
   }): Promise<PersistentIndexPage<number, HizoFSFileExtentDto>> {
     const { metadata } = await this.recordStore.read({
       objectId,
-      expectedKind: 'file_extent_page',
+      expectedKind: "file_extent_page",
       schema: HizoFSFileExtentPageSchemaDto,
-      binaryPayload: 'forbidden',
+      binaryPayload: "forbidden",
     });
     assertPage({ page: metadata });
     switch (metadata.type) {
-    case 'leaf':
-      return { type: 'leaf', entries: metadata.extents };
-    case 'branch':
+    case "leaf":
+      return { type: "leaf", entries: metadata.extents };
+    case "branch":
       return {
-        type: 'branch',
-        children: metadata.children.map(child => ({
+        type: "branch",
+        children: metadata.children.map((child) => ({
           upperBound: child.upperBoundChunkIndex,
           childPageObjectId: child.childPageObjectId,
         })),
@@ -55,17 +55,19 @@ class ExtentIndexPageStore implements PersistentIndexPageStore<
     }
   }
 
-  async writePage({ page }: {
+  async writePage({
+    page,
+  }: {
     page: PersistentIndexPage<number, HizoFSFileExtentDto>;
   }): Promise<string> {
     const metadata: HizoFSFileExtentPageDto = (() => {
       switch (page.type) {
-      case 'leaf':
-        return { type: 'leaf', extents: page.entries };
-      case 'branch':
+      case "leaf":
+        return { type: "leaf", extents: page.entries };
+      case "branch":
         return {
-          type: 'branch',
-          children: page.children.map(child => ({
+          type: "branch",
+          children: page.children.map((child) => ({
             upperBoundChunkIndex: child.upperBound,
             childPageObjectId: child.childPageObjectId,
           })),
@@ -78,51 +80,61 @@ class ExtentIndexPageStore implements PersistentIndexPageStore<
     })();
     assertPage({ page: metadata });
     return this.recordStore.write({
-      kind: 'file_extent_page',
+      kind: "file_extent_page",
       metadata,
       binaryPayload: new Uint8Array(),
     });
   }
 }
 
-function assertPage({ page }: {
-  page: HizoFSFileExtentPageDto;
-}): void {
+function assertPage({ page }: { page: HizoFSFileExtentPageDto }): void {
   switch (page.type) {
-  case 'leaf': {
+  case "leaf": {
     let previousChunkIndex: number | undefined;
     for (const extent of page.extents) {
       assertHizoFSNonNegativeSafeInteger({
         value: extent.chunkIndex,
-        fieldName: 'Extent chunkIndex',
+        fieldName: "Extent chunkIndex",
       });
       assertHizoFSObjectId({
         value: extent.chunkObjectId,
-        fieldName: 'Extent chunkObjectId',
+        fieldName: "Extent chunkObjectId",
       });
-      if (previousChunkIndex !== undefined && previousChunkIndex >= extent.chunkIndex) {
-        throw new Error('HizoFS extent index leaf entries must be strictly sorted');
+      if (
+        previousChunkIndex !== undefined &&
+          previousChunkIndex >= extent.chunkIndex
+      ) {
+        throw new Error(
+          "HizoFS extent index leaf entries must be strictly sorted",
+        );
       }
       previousChunkIndex = extent.chunkIndex;
     }
     break;
   }
-  case 'branch': {
+  case "branch": {
     if (page.children.length === 0) {
-      throw new Error('HizoFS extent index branch must contain at least one child');
+      throw new Error(
+        "HizoFS extent index branch must contain at least one child",
+      );
     }
     let previousUpperBound: number | undefined;
     for (const child of page.children) {
       assertHizoFSNonNegativeSafeInteger({
         value: child.upperBoundChunkIndex,
-        fieldName: 'Extent upperBoundChunkIndex',
+        fieldName: "Extent upperBoundChunkIndex",
       });
       assertHizoFSObjectId({
         value: child.childPageObjectId,
-        fieldName: 'Extent childPageObjectId',
+        fieldName: "Extent childPageObjectId",
       });
-      if (previousUpperBound !== undefined && previousUpperBound >= child.upperBoundChunkIndex) {
-        throw new Error('HizoFS extent index branch bounds must be strictly sorted');
+      if (
+        previousUpperBound !== undefined &&
+          previousUpperBound >= child.upperBoundChunkIndex
+      ) {
+        throw new Error(
+          "HizoFS extent index branch bounds must be strictly sorted",
+        );
       }
       previousUpperBound = child.upperBoundChunkIndex;
     }
@@ -136,7 +148,10 @@ function assertPage({ page }: {
 }
 
 export class HizoFSExtentIndex {
-  constructor({ recordStore, maxPageEntries }: {
+  constructor({
+    recordStore,
+    maxPageEntries,
+  }: {
     recordStore: HizoFSRecordStore;
     maxPageEntries: number;
   }) {
@@ -152,7 +167,6 @@ export class HizoFSExtentIndex {
   private readonly pageStore: ExtentIndexPageStore;
   private readonly index: PersistentHizoFSIndex<number, HizoFSFileExtentDto>;
 
-
   async visitReferences({
     rootObjectId,
     visitPageObjectId,
@@ -161,19 +175,31 @@ export class HizoFSExtentIndex {
   }: {
     rootObjectId: string;
     visitPageObjectId: ({ objectId }: { objectId: string }) => void;
-    visitChunkObjectId: ({ objectId, chunkIndex }: { objectId: string; chunkIndex: number }) => void;
+    visitChunkObjectId: ({
+      objectId,
+      chunkIndex,
+    }: {
+      objectId: string;
+      chunkIndex: number;
+    }) => void;
     visitedPageObjectIds: Set<string> | undefined;
   }): Promise<void> {
     const completed = visitedPageObjectIds ?? new Set<string>();
     const visiting = new Set<string>();
     const seenInThisTraversal = new Set<string>();
-    const visitPage = async ({ objectId }: { objectId: string }): Promise<void> => {
+    const visitPage = async ({
+      objectId,
+    }: {
+      objectId: string;
+    }): Promise<void> => {
       visitPageObjectId({ objectId });
       if (visiting.has(objectId)) {
-        throw new Error('HizoFS extent index contains a page cycle');
+        throw new Error("HizoFS extent index contains a page cycle");
       }
       if (seenInThisTraversal.has(objectId)) {
-        throw new Error('HizoFS extent index contains a duplicate page reference');
+        throw new Error(
+          "HizoFS extent index contains a duplicate page reference",
+        );
       }
       seenInThisTraversal.add(objectId);
       if (completed.has(objectId)) return;
@@ -182,7 +208,7 @@ export class HizoFSExtentIndex {
       try {
         const page = await this.pageStore.readPage({ objectId });
         switch (page.type) {
-        case 'leaf':
+        case "leaf":
           for (const extent of page.entries) {
             visitChunkObjectId({
               objectId: extent.chunkObjectId,
@@ -190,7 +216,7 @@ export class HizoFSExtentIndex {
             });
           }
           break;
-        case 'branch':
+        case "branch":
           for (const child of page.children) {
             await visitPage({ objectId: child.childPageObjectId });
           }
@@ -212,28 +238,67 @@ export class HizoFSExtentIndex {
     return this.index.createEmpty();
   }
 
-  get({ rootObjectId, chunkIndex }: {
+  get({
+    rootObjectId,
+    chunkIndex,
+  }: {
     rootObjectId: string;
     chunkIndex: number;
   }): Promise<HizoFSFileExtentDto | undefined> {
     return this.index.get({ rootObjectId, key: chunkIndex });
   }
 
-  set({ rootObjectId, extent }: {
+  set({
+    rootObjectId,
+    extent,
+  }: {
     rootObjectId: string;
     extent: HizoFSFileExtentDto;
   }): Promise<string> {
     return this.index.set({ rootObjectId, entry: extent });
   }
 
-  delete({ rootObjectId, chunkIndex }: {
+  delete({
+    rootObjectId,
+    chunkIndex,
+  }: {
     rootObjectId: string;
     chunkIndex: number;
   }): Promise<string> {
     return this.index.delete({ rootObjectId, key: chunkIndex });
   }
 
-  entries({ rootObjectId }: {
+  truncateAtOrAfter({
+    rootObjectId,
+    chunkIndex,
+  }: {
+    rootObjectId: string;
+    chunkIndex: number;
+  }): Promise<string> {
+    return this.index.truncateAtOrAfter({ rootObjectId, key: chunkIndex });
+  }
+
+  buildFromSortedExtents({ extents }: {
+    extents: AsyncIterable<HizoFSFileExtentDto> | Iterable<HizoFSFileExtentDto>;
+  }): Promise<string> {
+    return this.index.buildFromSortedEntries({ entries: extents });
+  }
+
+  validateStructure({
+    rootObjectId,
+  }: {
+    rootObjectId: string;
+  }): Promise<{
+    readonly pageCount: number;
+    readonly entryCount: number;
+    readonly depth: number;
+  }> {
+    return this.index.validateStructure({ rootObjectId });
+  }
+
+  entries({
+    rootObjectId,
+  }: {
     rootObjectId: string;
   }): AsyncIterable<HizoFSFileExtentDto> {
     return this.index.entries({ rootObjectId });

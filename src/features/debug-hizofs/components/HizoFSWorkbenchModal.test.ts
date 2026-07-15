@@ -392,13 +392,15 @@ function createClient({
     binaryPayload: new Uint8Array([0xde, 0xad, 0xbe, 0xef]),
   });
   const overview: OverviewResult = {
-    descriptor: { format: 'hizofs', formatVersion: 1, fileSystemId },
+    activeMode: 'fallback_read_only',
+    descriptor: { format: 'hizofs', formatVersion: 1 },
+    fileSystemId,
     persistedDescriptorDto: {
       format: 'hizofs',
       formatVersion: 1,
-      fileSystemId,
       unknownPersistedField: "must remain visible",
     },
+    descriptorValidationError: 'Unrecognized key: unknownPersistedField',
     superblockSlots: [
       {
         slot: 0,
@@ -663,6 +665,7 @@ describe("HizoFSWorkbenchModal", () => {
     expect(document.body.textContent).toContain("Physical object store");
     expect(document.body.textContent).toContain("Logical filesystem views");
     expect(document.body.textContent).toContain("mutationdisabled in Workbench");
+    expect(document.body.textContent).toContain("fallback_read_only");
 
     document.body
       .querySelector<HTMLButtonElement>(
@@ -674,7 +677,7 @@ describe("HizoFSWorkbenchModal", () => {
       "Raw DTO · exact persisted representation",
     );
     expect(document.body.textContent).toContain(
-      '"fileSystemId": "filesystem-a"',
+      '"format": "hizofs"',
     );
     expect(document.body.textContent).toContain(
       '"unknownPersistedField": "must remain visible"',

@@ -1,7 +1,8 @@
-import type { StorageBinaryObjectReadHandle } from '@/00-storage/service/binary-object-io';
-import type { HizoFSExtentIndex } from './extent-index';
-import type { HizoFSFileChunkStore } from './file-chunk-store';
-import type { LoadedHizoFSFile } from './node-service';
+import type { StorageBinaryObjectReadHandle } from "@/00-storage/service/binary-object-io";
+import type { HizoFSExtentIndex } from "./extent-index";
+import type { HizoFSFileChunkStore } from "./file-chunk-store";
+import type { LoadedHizoFSFile } from "./node-service";
+import type { HizoFSMaintenanceLease } from "./maintenance-lock";
 
 function assertReadArguments({
   buffer,
@@ -15,16 +16,18 @@ function assertReadArguments({
   position: number;
 }): void {
   for (const [fieldName, value] of [
-    ['offset', offset],
-    ['length', length],
-    ['position', position],
+    ["offset", offset],
+    ["length", length],
+    ["position", position],
   ] as const) {
     if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error(`HizoFS read ${fieldName} must be a non-negative safe integer`);
+      throw new Error(
+        `HizoFS read ${fieldName} must be a non-negative safe integer`,
+      );
     }
   }
   if (offset + length > buffer.byteLength) {
-    throw new Error('HizoFS read range exceeds the destination buffer');
+    throw new Error("HizoFS read range exceeds the destination buffer");
   }
 }
 
@@ -35,6 +38,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     chunkStore,
     mimeType,
     streamChunkSize,
+    maintenanceLease,
     onSettled,
   }: {
     file: LoadedHizoFSFile;
@@ -42,6 +46,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     chunkStore: HizoFSFileChunkStore;
     mimeType: string;
     streamChunkSize: number;
+    maintenanceLease: HizoFSMaintenanceLease;
     onSettled: () => void;
   }) {
     this.file = file;
@@ -49,22 +54,30 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     this.chunkStore = chunkStore;
     this.mimeType = mimeType;
     this.streamChunkSize = streamChunkSize;
+    this.maintenanceLease = maintenanceLease;
     this.onSettled = onSettled;
     this.size = file.inode.size;
   }
 
   readonly size: number;
   readonly mimeType: string;
-  readonly backing = { type: 'reader_only' as const };
+  readonly backing = { type: "reader_only" as const };
 
   private readonly file: LoadedHizoFSFile;
   private readonly extentIndex: HizoFSExtentIndex;
   private readonly chunkStore: HizoFSFileChunkStore;
   private readonly streamChunkSize: number;
+  private readonly maintenanceLease: HizoFSMaintenanceLease;
   private readonly onSettled: () => void;
   private closed = false;
 
-  async read({ buffer, offset, length, position, signal }: {
+  async read({
+    buffer,
+    offset,
+    length,
+    position,
+    signal,
+  }: {
     buffer: Uint8Array;
     offset: number;
     length: number;
@@ -80,13 +93,13 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     }
 
     switch (this.file.inode.storage.type) {
-    case 'inline':
+    case "inline":
       buffer.set(
         this.file.binaryPayload.subarray(position, position + bytesRead),
         offset,
       );
       break;
-    case 'extents':
+    case "extents":
       await this.readExtents({
         buffer,
         offset,
@@ -104,29 +117,39 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     return { bytesRead };
   }
 
-  stream({ start, end, signal }: {
+  stream({
+    start,
+    end,
+    signal,
+  }: {
     start: number;
     end: number | undefined;
     signal: AbortSignal | undefined;
   }): ReadableStream<Uint8Array> {
     this.assertOpen();
     if (!Number.isSafeInteger(start) || start < 0) {
-      throw new Error('HizoFS stream start must be a non-negative safe integer');
+      throw new Error(
+        "HizoFS stream start must be a non-negative safe integer",
+      );
     }
     if (end !== undefined && (!Number.isSafeInteger(end) || end < start)) {
-      throw new Error('HizoFS stream end must be a safe integer not smaller than start');
+      throw new Error(
+        "HizoFS stream end must be a safe integer not smaller than start",
+      );
     }
     const finalEnd = Math.min(end ?? this.size, this.size);
     let position = Math.min(start, finalEnd);
     return new ReadableStream<Uint8Array>({
-      pull: async controller => {
+      pull: async (controller) => {
         try {
           signal?.throwIfAborted();
           if (position >= finalEnd) {
             controller.close();
             return;
           }
-          const bytes = new Uint8Array(Math.min(this.streamChunkSize, finalEnd - position));
+          const bytes = new Uint8Array(
+            Math.min(this.streamChunkSize, finalEnd - position),
+          );
           const { bytesRead } = await this.read({
             buffer: bytes,
             offset: 0,
@@ -135,7 +158,11 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
             signal,
           });
           position += bytesRead;
-          controller.enqueue(bytesRead === bytes.byteLength ? bytes : bytes.subarray(0, bytesRead));
+          controller.enqueue(
+            bytesRead === bytes.byteLength
+              ? bytes
+              : bytes.subarray(0, bytesRead),
+          );
         } catch (error) {
           controller.error(error);
         }
@@ -146,10 +173,20 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    this.onSettled();
+    try {
+      await this.maintenanceLease.release();
+    } finally {
+      this.onSettled();
+    }
   }
 
-  private async readExtents({ buffer, offset, length, position, signal }: {
+  private async readExtents({
+    buffer,
+    offset,
+    length,
+    position,
+    signal,
+  }: {
     buffer: Uint8Array;
     offset: number;
     length: number;
@@ -158,10 +195,10 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
   }): Promise<void> {
     const storage = this.file.inode.storage;
     switch (storage.type) {
-    case 'extents':
+    case "extents":
       break;
-    case 'inline':
-      throw new Error('HizoFS extent reader received an inline file');
+    case "inline":
+      throw new Error("HizoFS extent reader received an inline file");
     default: {
       const _ex: never = storage;
       throw new Error(`Unhandled HizoFS file storage: ${String(_ex)}`);
@@ -186,7 +223,10 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
           objectId: extent.chunkObjectId,
           chunkSize: storage.chunkSize,
         });
-        const available = Math.max(0, Math.min(copyLength, chunk.byteLength - offsetInChunk));
+        const available = Math.max(
+          0,
+          Math.min(copyLength, chunk.byteLength - offsetInChunk),
+        );
         if (available > 0) {
           buffer.set(
             chunk.subarray(offsetInChunk, offsetInChunk + available),
@@ -209,7 +249,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
 
   private assertOpen(): void {
     if (this.closed) {
-      throw new Error('HizoFS file reader is closed');
+      throw new Error("HizoFS file reader is closed");
     }
   }
 }

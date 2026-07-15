@@ -23,6 +23,7 @@ describe('HizoFS inspection reader', () => {
     const descriptorWritable = await descriptorFile.createWritable({ keepExistingData: false });
     await descriptorWritable.write(JSON.stringify({
       ...persistedDescriptor,
+      formatVersion: 'invalid',
       unknownPersistedField: 'must remain visible',
     }));
     await descriptorWritable.close();
@@ -32,10 +33,12 @@ describe('HizoFS inspection reader', () => {
       fileSystemRootKey: ROOT_KEY,
     });
     const overview = await reader.readOverview();
-    expect(overview.descriptor.fileSystemId).toBe(overview.activeSuperblock.fileSystemId);
+    expect(overview.fileSystemId).toBe(overview.activeSuperblock.fileSystemId);
+    expect(overview.activeMode).toBe('current');
     expect(overview.persistedDescriptorDto).toMatchObject({
       unknownPersistedField: 'must remain visible',
     });
+    expect(overview.descriptorValidationError).toContain('formatVersion');
     expect(overview.activeCommitPersistedDto).toEqual(overview.activeCommit);
     expect(overview.activeCommit.revision).toBe(2);
     expect(overview.superblockSlots).toContainEqual(expect.objectContaining({
@@ -97,7 +100,7 @@ describe('HizoFS inspection reader', () => {
     await session.close();
   });
 
-  it('reports an invalid fallback superblock without hiding the active slot', async () => {
+  it('reports fallback read-only mode when the newest superblock is invalid', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createHizoFS({
       backingDirectory: backing,
@@ -111,7 +114,21 @@ describe('HizoFS inspection reader', () => {
       fileHandle: await session.root.getFileHandle({ name: 'b.txt', create: true }),
       value: 'b',
     });
-    const invalidSlot = await backing.getFileHandle('superblock-0.enc');
+
+    const beforeCorruptionReader = await createHizoFSInspectionReader({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const beforeCorruption = await beforeCorruptionReader.readOverview();
+    const activeSlot = beforeCorruption.superblockSlots.find(
+      slot => slot.status === 'valid' && slot.selected,
+    );
+    if (activeSlot === undefined || activeSlot.status !== 'valid') {
+      throw new Error('Active superblock fixture was missing');
+    }
+    await beforeCorruptionReader.dispose();
+
+    const invalidSlot = await backing.getFileHandle(`superblock-${String(activeSlot.slot)}.enc`);
     const writable = await invalidSlot.createWritable({ keepExistingData: false });
     await writable.write(new Uint8Array([1, 2, 3]));
     await writable.close();
@@ -121,8 +138,9 @@ describe('HizoFS inspection reader', () => {
       fileSystemRootKey: ROOT_KEY,
     });
     const overview = await reader.readOverview();
+    expect(overview.activeMode).toBe('fallback_read_only');
     expect(overview.superblockSlots).toContainEqual(expect.objectContaining({
-      slot: 0,
+      slot: activeSlot.slot,
       status: 'invalid',
       selected: false,
       physicalBytes: expect.objectContaining({
@@ -132,7 +150,6 @@ describe('HizoFS inspection reader', () => {
       }),
     }));
     expect(overview.superblockSlots).toContainEqual(expect.objectContaining({
-      slot: 1,
       status: 'valid',
       selected: true,
     }));

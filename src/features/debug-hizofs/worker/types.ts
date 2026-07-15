@@ -95,8 +95,11 @@ export const hizoFSSuperblockSlotSchema = z.discriminatedUnion('status', [
 ]);
 
 export const hizoFSInspectionOverviewSchema = z.object({
+  activeMode: z.union([z.literal('current'), z.literal('fallback_read_only')]),
   descriptor: HizoFSDescriptorSchemaDto,
+  fileSystemId: z.string(),
   persistedDescriptorDto: z.unknown(),
+  descriptorValidationError: z.union([z.string(), z.undefined()]),
   superblockSlots: z.array(hizoFSSuperblockSlotSchema),
   activeSuperblock: HizoFSSuperblockSchemaDto,
   activeCommitObjectId: z.string(),

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OPFSStorageProvider } from './opfs-storage';
+import type { OpfsEncryptionStateDto } from '@/00-storage/00-dto/opfs-encryption.dto';
+import { OPFSStorageProvider, TEST_ONLY } from './opfs-storage';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -68,6 +69,43 @@ class MockFileSystemDirectoryHandle {
 }
 
 const mockOpfsRoot = new MockFileSystemDirectoryHandle('opfs-root');
+
+describe('OPFS transition request secret cleanup', () => {
+  it('zeros the copied storage unlock key after a Worker transition request', () => {
+    const storageUnlockKey = new Uint8Array([1, 2, 3, 4]);
+    const state: Extract<OpfsEncryptionStateDto, { state: 'encrypted' }> = {
+      formatVersion: 1,
+      sequence: 0,
+      state: 'encrypted',
+      keySlots: [{
+        id: 'slot-id',
+        keyDerivation: {
+          type: 'pbkdf2_hmac_sha256',
+          salt: 'salt',
+          iterations: 1,
+        },
+        wrappedStorageUnlockKey: {
+          nonce: 'nonce',
+          ciphertext: 'ciphertext',
+        },
+      }],
+      activeEncryptedStoreId: 'store-id',
+    };
+
+    TEST_ONLY.clearOpfsEncryptionWorkerRequestSecrets({
+      request: {
+        operation: 'disable',
+        storageRoot: mockOpfsRoot as unknown as FileSystemDirectoryHandle,
+        nativeNamespaceRoot: mockOpfsRoot as unknown as FileSystemDirectoryHandle,
+        state,
+        storageUnlockKey,
+        unlockedKeySlotId: 'slot-id',
+      },
+    });
+
+    expect([...storageUnlockKey]).toEqual([0, 0, 0, 0]);
+  });
+});
 
 describe('OPFSStorageProvider Directory Isolation', () => {
   beforeEach(() => {

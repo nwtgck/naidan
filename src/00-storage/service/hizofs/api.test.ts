@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import {
   readStorageFileText,
@@ -7,6 +7,7 @@ import {
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
 import {
   createHizoFS,
+  createHizoFSBulkBuilder,
   inspectHizoFS,
   openHizoFS,
   openHizoFSWorkerMount,
@@ -15,9 +16,14 @@ import {
 import type { HizoFSPolicy } from './file-system/policy';
 import { createQueuedTestLockManager } from './test-lock-manager';
 import { HizoFSSession } from './file-system/session';
+import { TEST_ONLY as MUTATION_LOCK_TEST_ONLY } from './file-system/mutation-lock';
 import type { LoadedHizoFSFile } from './file-system/node-service';
 import { createHizoFSInspectionReader } from './inspection';
 import type { HizoFSRecordKind } from './format/record';
+import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
+import { getHizoFSObjectShard } from './object-store/object-id';
+import { collectHizoFSGarbage } from './garbage-collector';
+import { TEST_ONLY as MAINTENANCE_LOCK_TEST_ONLY } from './file-system/maintenance-lock';
 
 const ROOT_KEY = new Uint8Array(32).fill(9);
 const TINY_POLICY: HizoFSPolicy = {
@@ -197,6 +203,7 @@ describe('HizoFS public file-system API', () => {
       'descriptor.json',
       'objects',
       'superblock-0.enc',
+      'superblock-1.enc',
     ]);
     expect(session.capabilities).toEqual({
       directBlob: 'unsupported',
@@ -243,12 +250,80 @@ describe('HizoFS public file-system API', () => {
     }
   });
 
+  it('limits bulk construction to a fresh empty target', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    await session.root.getFileHandle({ name: 'existing.txt', create: true });
+    await expect(createHizoFSBulkBuilder({
+      fileSystemSession: session,
+    })).rejects.toThrow('fresh empty target');
+    await session.close();
+  });
+
   it('does not recognize an empty directory merely because it uses the canonical suffix', async () => {
     const emptyCanonicalName = new MockFileSystemDirectoryHandle({ name: 'filesystem.hizofs' });
     await expect(openHizoFS({
       backingDirectory: emptyCanonicalName,
       fileSystemRootKey: ROOT_KEY,
-    })).rejects.toThrow('HizoFS descriptor is missing');
+    })).rejects.toThrow('superblock');
+  });
+
+
+  it('reconstructs a missing descriptor after authenticating a complete generation', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const created = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    await writeStorageFileText({
+      fileHandle: await created.root.getFileHandle({ name: 'proof.txt', create: true }),
+      value: 'recover descriptor',
+    });
+    await created.close();
+    await backing.removeEntry('descriptor.json');
+
+    const reopened = await openHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    expect(await readStorageFileText({
+      fileHandle: await reopened.root.getFileHandle({ name: 'proof.txt', create: false }),
+    })).toBe('recover descriptor');
+    expect(await backing.getFileHandle('descriptor.json')).toBeDefined();
+    await reopened.close();
+  });
+
+  it('reconstructs a corrupt descriptor after authenticating a complete generation', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const created = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    await writeStorageFileText({
+      fileHandle: await created.root.getFileHandle({ name: 'proof.txt', create: true }),
+      value: 'recover corrupt descriptor',
+    });
+    await created.close();
+    const descriptorHandle = await backing.getFileHandle('descriptor.json');
+    const writable = await descriptorHandle.createWritable();
+    await writable.write('{not valid json');
+    await writable.close();
+
+    const reopened = await openHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    expect(await readStorageFileText({
+      fileHandle: await reopened.root.getFileHandle({ name: 'proof.txt', create: false }),
+    })).toBe('recover corrupt descriptor');
+    expect(JSON.parse(await (await descriptorHandle.getFile()).text())).toEqual({
+      format: 'hizofs',
+      formatVersion: 1,
+    });
+    await reopened.close();
   });
 
   it('fails closed when a Worker mount cannot coordinate through Web Locks', async () => {
@@ -283,7 +358,7 @@ describe('HizoFS public file-system API', () => {
     const originalLocks = navigator.locks;
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
-      value: createQueuedTestLockManager(),
+      value: createQueuedTestLockManager({ onRequest: undefined }),
     });
     try {
       const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
@@ -352,11 +427,18 @@ describe('HizoFS public file-system API', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
     });
-    const reopened = await second.root.getFileHandle({ name: 'settings.json', create: false });
-    expect(await readStorageFileText({ fileHandle: reopened })).toBe('{"ok":true}');
-    expect((await reopened.openReadable({ mimeType: 'application/json' })).backing).toEqual({
-      type: 'reader_only',
-    });
+    try {
+      const reopened = await second.root.getFileHandle({ name: 'settings.json', create: false });
+      expect(await readStorageFileText({ fileHandle: reopened })).toBe('{"ok":true}');
+      const readable = await reopened.openReadable({ mimeType: 'application/json' });
+      try {
+        expect(readable.backing).toEqual({ type: 'reader_only' });
+      } finally {
+        await readable.close();
+      }
+    } finally {
+      await second.close();
+    }
   });
 
   it('inspects the authenticated descriptor, superblock, and active commit', async () => {
@@ -376,7 +458,7 @@ describe('HizoFS public file-system API', () => {
     });
 
     expect(inspection.descriptor.formatVersion).toBe(1);
-    expect(inspection.superblock.fileSystemId).toBe(inspection.descriptor.fileSystemId);
+    expect(inspection.superblock.fileSystemId).toBe(inspection.fileSystemId);
     expect(inspection.superblock.activeCommitObjectId).toBe(inspection.activeCommitObjectId);
     expect(inspection.activeCommit.revision).toBe(2);
     expect(inspection.activeCommit.rootDirectoryNodeId).toBeTruthy();
@@ -801,17 +883,25 @@ describe('HizoFS public file-system API', () => {
   it('keeps an open reader on its immutable snapshot after a later overwrite', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ root: backing, now: () => 1 });
-    const file = await session.root.getFileHandle({ name: 'snapshot.txt', create: true });
-    await writeStorageFileText({ fileHandle: file, value: 'old-value-which-is-large' });
-    const reader = await file.openReadable({ mimeType: 'text/plain' });
-    await writeStorageFileText({ fileHandle: file, value: 'new-value-which-is-large' });
+    try {
+      const file = await session.root.getFileHandle({ name: 'snapshot.txt', create: true });
+      await writeStorageFileText({ fileHandle: file, value: 'old-value-which-is-large' });
+      const reader = await file.openReadable({ mimeType: 'text/plain' });
+      try {
+        await writeStorageFileText({ fileHandle: file, value: 'new-value-which-is-large' });
 
-    expect(await new Response(reader.stream({
-      start: 0,
-      end: undefined,
-      signal: undefined,
-    })).text()).toBe('old-value-which-is-large');
-    expect(await readStorageFileText({ fileHandle: file })).toBe('new-value-which-is-large');
+        expect(await new Response(reader.stream({
+          start: 0,
+          end: undefined,
+          signal: undefined,
+        })).text()).toBe('old-value-which-is-large');
+        expect(await readStorageFileText({ fileHandle: file })).toBe('new-value-which-is-large');
+      } finally {
+        await reader.close();
+      }
+    } finally {
+      await session.close();
+    }
   });
 
   it('rejects the second writer when the file revision changed', async () => {
@@ -829,6 +919,126 @@ describe('HizoFS public file-system API', () => {
     expect([...await readBytes({ session, path: ['conflict.bin'] })]).toEqual([1]);
   });
 
+
+  it('publishes a writer while an exclusive GC request waits behind its existing lease', async () => {
+    const originalLocks = navigator.locks;
+    const exclusiveMaintenanceRequest = Promise.withResolvers<void>();
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({
+        onRequest: ({ name, mode }) => {
+          if (name.endsWith('/maintenance') && mode === 'exclusive') {
+            exclusiveMaintenanceRequest.resolve();
+          }
+        },
+      }),
+    });
+    try {
+      const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+      const session = await createTiny({ root: backing, now: () => 1 });
+      const file = await session.root.getFileHandle({ name: 'leased.bin', create: true });
+      const writer = await file.createWritable({ keepExistingData: false });
+      await writer.write({ position: 0, data: new Uint8Array([1, 2, 3, 4, 5]) });
+
+      const garbageCollection = collectHizoFSGarbage({
+        backingDirectory: backing,
+        fileSystemRootKey: ROOT_KEY,
+        dryRun: true,
+      });
+      await exclusiveMaintenanceRequest.promise;
+
+      await Promise.all([
+        writer.close(),
+        garbageCollection,
+      ]);
+      expect([...await readBytes({ session, path: ['leased.bin'] })]).toEqual([
+        1, 2, 3, 4, 5,
+      ]);
+      await session.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+  it('holds a maintenance lease for bulk objects until the one-commit publication', async () => {
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+      const session = await createTiny({ root: backing, now: () => 1 });
+      const hizofs = requireHizoFSSession({ session });
+      const lockName = `hizofs/${hizofs.fileSystemId}/maintenance`;
+      const activeSharedBefore = MAINTENANCE_LOCK_TEST_ONLY.localStates
+        .get(lockName)?.activeSharedCount ?? 0;
+      const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });
+      if (builder === undefined) {
+        throw new Error('Expected a HizoFS bulk builder');
+      }
+
+      expect(MAINTENANCE_LOCK_TEST_ONLY.localStates.get(lockName)?.activeSharedCount)
+        .toBe(activeSharedBefore + 1);
+      await builder.createEmptyDirectory({ name: 'kept' });
+      await builder.commit();
+      expect(MAINTENANCE_LOCK_TEST_ONLY.localStates.get(lockName)?.activeSharedCount ?? 0)
+        .toBe(activeSharedBefore);
+      await expect(session.root.getDirectoryHandle({
+        name: 'kept',
+        create: false,
+      })).resolves.toBeDefined();
+      await session.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+
+  it('prepares immutable file objects before acquiring the global commit lock', async () => {
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      const session = await createTiny({
+        root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+        now: () => 1,
+      });
+      const hizofs = requireHizoFSSession({ session });
+      const lockName = `hizofs/${hizofs.fileSystemId}/commit`;
+      const originalWriteFile = hizofs.runtime.inodeStore.writeFile.bind(
+        hizofs.runtime.inodeStore,
+      );
+      const observedLockStates: boolean[] = [];
+      vi.spyOn(hizofs.runtime.inodeStore, 'writeFile').mockImplementation(
+        async options => {
+          observedLockStates.push(
+            MUTATION_LOCK_TEST_ONLY.localMutationTails.has(lockName),
+          );
+          return await originalWriteFile(options);
+        },
+      );
+
+      await session.root.getFileHandle({ name: 'prepared.txt', create: true });
+
+      expect(observedLockStates.length).toBeGreaterThan(0);
+      expect(observedLockStates).not.toContain(true);
+      await session.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
 
   it('serializes mutations from separate sessions without losing either root update', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
@@ -1041,4 +1251,159 @@ describe('HizoFS public file-system API', () => {
       'session is closed',
     );
   });
+
+  it('keeps one fixed generation for snapshot traversal without reloading active state', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    for (let index = 0; index < 12; index += 1) {
+      await writeStorageFileText({
+        fileHandle: await session.root.getFileHandle({
+          name: `file-${String(index)}.txt`,
+          create: true,
+        }),
+        value: `value-${String(index)}`,
+      });
+    }
+    const snapshot = await session.createReadSnapshot?.();
+    expect(snapshot).toBeDefined();
+    if (snapshot === undefined) throw new Error('Expected a HizoFS read snapshot');
+    const snapshotSession = requireHizoFSSession({ session: snapshot });
+    const activeStateSpy = vi.spyOn(snapshotSession.runtime.core, 'loadActiveState');
+
+    for await (const [, entry] of snapshot.root.entries()) {
+      if (entry.kind !== 'file') continue;
+      await entry.stat();
+      const readable = await entry.openReadable({ mimeType: 'text/plain' });
+      try {
+        await readable.read({
+          buffer: new Uint8Array(2),
+          offset: 0,
+          length: 2,
+          position: 0,
+          signal: undefined,
+        });
+      } finally {
+        await readable.close();
+      }
+    }
+
+    expect(activeStateSpy).not.toHaveBeenCalled();
+    await snapshot.close();
+    await session.close();
+  });
+
+  it('flushes one replacement object for repeated writes to the same chunk', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const file = await session.root.getFileHandle({ name: 'same-chunk.bin', create: true });
+    await writeStorageFileText({ fileHandle: file, value: 'abcdefghijklmnop' });
+    const chunksBefore = await countPhysicalObjectsByKind({
+      backing,
+      kind: 'file_chunk',
+    });
+
+    const writer = await file.createWritable({ keepExistingData: true });
+    await writer.write({ position: 0, data: new Uint8Array([1]) });
+    await writer.write({ position: 1, data: new Uint8Array([2]) });
+    await writer.write({ position: 2, data: new Uint8Array([3]) });
+    await writer.close();
+
+    expect(await countPhysicalObjectsByKind({
+      backing,
+      kind: 'file_chunk',
+    })).toBe(chunksBefore + 1);
+    await session.close();
+  });
+
+  it('truncates an extent-backed file without one delete per extent', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const file = await session.root.getFileHandle({ name: 'truncate.bin', create: true });
+    await writeStorageFileText({
+      fileHandle: file,
+      value: 'abcdefghijklmnopqrstuvwxyz0123456789',
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const truncateSpy = vi.spyOn(hizofs.runtime.extentIndex, 'truncateAtOrAfter');
+    const deleteSpy = vi.spyOn(hizofs.runtime.extentIndex, 'delete');
+
+    const writer = await file.createWritable({ keepExistingData: true });
+    await writer.truncate({ size: 0 });
+    await writer.close();
+
+    expect(truncateSpy.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(await file.stat()).toMatchObject({ size: 0 });
+    await session.close();
+  });
+
+  it('batch-deletes one recursive subtree from the inode index', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const directory = await session.root.getDirectoryHandle({ name: 'tree', create: true });
+    for (let index = 0; index < 12; index += 1) {
+      await writeStorageFileText({
+        fileHandle: await directory.getFileHandle({
+          name: `file-${String(index)}.txt`,
+          create: true,
+        }),
+        value: String(index),
+      });
+    }
+    const hizofs = requireHizoFSSession({ session });
+    const deleteManySpy = vi.spyOn(hizofs.runtime.inodeIndex, 'deleteMany');
+    const deleteSpy = vi.spyOn(hizofs.runtime.inodeIndex, 'delete');
+
+    await session.root.removeEntry({ name: 'tree', recursive: true });
+
+    expect(deleteManySpy).toHaveBeenCalledTimes(1);
+    expect(deleteSpy).not.toHaveBeenCalled();
+    await session.close();
+  });
+
+  it('rejects malformed Unicode names before they enter persistent ordering', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    await expect(session.root.getFileHandle({
+      name: '\uD800',
+      create: true,
+    })).rejects.toThrow('unpaired UTF-16 surrogate');
+    await session.close();
+  });
+
+
+  it('falls back read-only when the newest complete superblock points to a corrupt commit', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    await writeStorageFileText({
+      fileHandle: await session.root.getFileHandle({ name: 'value.txt', create: true }),
+      value: 'latest',
+    });
+    const inspection = await inspectHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const activeCommitObjectId = inspection.activeCommitObjectId;
+    await new NativeOpfsHizoFSBackingStore({ root: backing }).remove({
+      path: [
+        'objects',
+        getHizoFSObjectShard({ objectId: activeCommitObjectId }),
+        `${activeCommitObjectId}.enc`,
+      ],
+      recursive: false,
+    });
+    await session.close();
+
+    const recovered = await openTiny({ root: backing, now: () => 2 });
+    const recoveredSession = requireHizoFSSession({ session: recovered });
+    expect((await recoveredSession.loadActiveState()).mode).toBe('fallback_read_only');
+    await expect(recovered.root.getFileHandle({
+      name: 'must-not-write.txt',
+      create: true,
+    })).rejects.toThrow('read-only recovery mode');
+    await recovered.close();
+  });
+
 });

@@ -39,6 +39,14 @@ const MAX_ENCRYPTION_KEY_SLOTS = 32;
 const OBJECT_ID_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
 const OBJECT_ID_LENGTH = 21;
 const STABLE_ID_BYTE_LENGTH = 16;
+const HIZOFS_FILE_SYSTEM_ID_SALT = Buffer.from(
+  'HizoFS/v1/filesystem-id/salt',
+  'utf8',
+);
+const HIZOFS_FILE_SYSTEM_ID_INFO = Buffer.from(
+  'HizoFS/v1/filesystem-id',
+  'utf8',
+);
 const RECORD_KINDS = new Map([
   [1, 'commit'],
   [2, 'inode_index_page'],
@@ -159,6 +167,16 @@ function getObjectShard(objectId) {
   return ((firstIndex << 2) | (secondIndex >>> 4)).toString(16).padStart(2, '0');
 }
 
+function deriveHizoFSFileSystemId(rootKey) {
+  return Buffer.from(hkdfSync(
+    'sha256',
+    rootKey,
+    HIZOFS_FILE_SYSTEM_ID_SALT,
+    HIZOFS_FILE_SYSTEM_ID_INFO,
+    STABLE_ID_BYTE_LENGTH,
+  )).toString('base64url');
+}
+
 function assertStableId(value, label) {
   decodeBase64Url(value, STABLE_ID_BYTE_LENGTH, label);
   return value;
@@ -190,6 +208,36 @@ async function readJson(path) {
     return JSON.parse(text);
   } catch (error) {
     throw new CorruptionError(`JSON file is invalid: ${path}`, { cause: error });
+  }
+}
+
+async function validateOptionalHizoFSDescriptor(path) {
+  let bytes;
+  try {
+    bytes = await readFile(path);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    throw error;
+  }
+
+  let raw;
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    raw = JSON.parse(text);
+  } catch {
+    // The descriptor is a non-secret marker. A complete authenticated
+    // generation remains authoritative when this marker is truncated or lost.
+    return;
+  }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return;
+  if ('format' in raw && raw.format !== 'hizofs') {
+    throw new UnsupportedFormatError(`HizoFS descriptor identifier is unsupported: ${String(raw.format)}`);
+  }
+  if (
+    'formatVersion' in raw
+    && (!Number.isSafeInteger(raw.formatVersion) || raw.formatVersion !== 1)
+  ) {
+    throw new UnsupportedFormatError(`HizoFS descriptor format is unsupported: ${String(raw.formatVersion)}`);
   }
 }
 
@@ -274,19 +322,67 @@ function chooseStoreId(state, explicitStoreId) {
 }
 
 async function readStoreHeader(storageRoot, storeId) {
-  const header = assertObject(
-    await readJson(join(storageRoot, 'encrypted-stores', storeId, 'header.json')),
-    'Encrypted store header',
-  );
-  if (header.formatVersion !== 1) {
-    throw new UnsupportedFormatError(`Encrypted store header format is unsupported: ${String(header.formatVersion)}`);
+  const valid = [];
+  const failures = [];
+  for (const name of ['header-0.json', 'header-1.json']) {
+    try {
+      const raw = await readJson(join(
+        storageRoot,
+        'encrypted-stores',
+        storeId,
+        name,
+      ));
+      if (raw === undefined) continue;
+      const header = assertObject(raw, 'Encrypted store header');
+      if (header.formatVersion !== 1) {
+        throw new UnsupportedFormatError(
+          `Encrypted store header format is unsupported: ${String(header.formatVersion)}`,
+        );
+      }
+      if (header.encryptedStoreId !== storeId) {
+        throw new CorruptionError(
+          'Encrypted store header ID does not match its directory',
+        );
+      }
+      assertStableId(header.fileSystemId, 'Encrypted store fileSystemId');
+      const wrappedFileSystemRootKey = assertObject(
+        header.wrappedFileSystemRootKey,
+        'Wrapped file-system root key',
+      );
+      decodeBase64Url(
+        wrappedFileSystemRootKey.nonce,
+        12,
+        'Wrapped file-system root key nonce',
+      );
+      decodeBase64Url(
+        wrappedFileSystemRootKey.ciphertext,
+        48,
+        'Wrapped file-system root key ciphertext',
+      );
+      valid.push(header);
+    } catch (error) {
+      if (error instanceof UnsupportedFormatError) throw error;
+      failures.push(error);
+    }
   }
-  if (header.encryptedStoreId !== storeId) {
-    throw new CorruptionError('Encrypted store header ID does not match its directory');
+  if (valid.length === 0) {
+    throw new AggregateError(failures, 'Encrypted store has no valid header copy');
   }
-  assertStableId(header.fileSystemId, 'Encrypted store fileSystemId');
-  assertObject(header.wrappedFileSystemRootKey, 'Wrapped file-system root key');
-  return header;
+  const selected = valid[0];
+  for (const candidate of valid.slice(1)) {
+    if (
+      candidate.formatVersion !== selected.formatVersion
+      || candidate.encryptedStoreId !== selected.encryptedStoreId
+      || candidate.fileSystemId !== selected.fileSystemId
+      || candidate.wrappedFileSystemRootKey.nonce
+        !== selected.wrappedFileSystemRootKey.nonce
+      || candidate.wrappedFileSystemRootKey.ciphertext
+        !== selected.wrappedFileSystemRootKey.ciphertext
+    ) {
+      throw new CorruptionError('Encrypted store header copies disagree');
+    }
+  }
+  return selected;
 }
 
 function decryptAesGcm({ key, nonce, ciphertext, aad }) {
@@ -470,7 +566,7 @@ class HizoFSReader {
     }
   }
 
-  async readActiveSuperblock() {
+  async readSuperblockCandidates() {
     const candidates = [];
     const corruptions = [];
     for (const slot of [0, 1]) {
@@ -502,7 +598,7 @@ class HizoFSReader {
     if (candidates.length >= 2 && candidates[0].sequence === candidates[1].sequence) {
       throw new CorruptionError('HizoFS superblock slots have the same sequence');
     }
-    return candidates[0].value;
+    return candidates.map(candidate => candidate.value);
   }
 }
 
@@ -703,6 +799,50 @@ async function restoreFile({ reader, inode, outputPath }) {
   }
 }
 
+async function loadCompleteGeneration(reader) {
+  const rejected = [];
+  for (const superblock of await reader.readSuperblockCandidates()) {
+    try {
+      const commitRecord = await reader.readObject(superblock.activeCommitObjectId);
+      if (commitRecord.kind !== 'commit' || commitRecord.binary.length !== 0) {
+        throw new CorruptionError('Active commit object has an invalid kind or binary payload');
+      }
+      const commit = assertObject(commitRecord.metadata, 'HizoFS commit');
+      assertNonNegativeSafeInteger(commit.revision, 'HizoFS commit revision');
+      const rootNodeId = assertStableId(
+        commit.rootDirectoryNodeId,
+        'Root directory node ID',
+      );
+      const inodeIndexRootObjectId = assertObjectId(
+        commit.inodeIndexRootObjectId,
+        'Inode index root object ID',
+      );
+      const inodeIndex = await loadInodeIndex(reader, inodeIndexRootObjectId);
+      const rootInodeObjectId = inodeIndex.get(rootNodeId);
+      if (rootInodeObjectId === undefined) {
+        throw new CorruptionError('HizoFS root directory is absent from the inode index');
+      }
+      const rootRecord = await reader.readObject(rootInodeObjectId);
+      if (rootRecord.kind !== 'directory_inode' || rootRecord.binary.length !== 0) {
+        throw new CorruptionError('HizoFS root inode is not a directory inode');
+      }
+      const rootInode = assertObject(rootRecord.metadata, 'Root directory inode');
+      if (assertStableId(rootInode.nodeId, 'Root directory inode node ID') !== rootNodeId) {
+        throw new CorruptionError('HizoFS root directory inode identity is inconsistent');
+      }
+      assertNonNegativeSafeInteger(rootInode.revision, 'Root directory inode revision');
+      await loadDirectoryEntries(reader, rootInode);
+      return { superblock, commit };
+    } catch (error) {
+      if (error instanceof UnsupportedFormatError) throw error;
+      rejected.push(error);
+    }
+  }
+  throw new CorruptionError('No complete HizoFS superblock generation remains', {
+    cause: new AggregateError(rejected),
+  });
+}
+
 async function restoreFileSystem({ reader, commit, outputRoot }) {
   const inodeIndex = await loadInodeIndex(reader, assertObjectId(commit.inodeIndexRootObjectId, 'Inode index root object ID'));
   const rootNodeId = assertStableId(commit.rootDirectoryNodeId, 'Root directory node ID');
@@ -794,25 +934,15 @@ async function main() {
   }
 
   const dataDirectory = join(storageRoot, 'encrypted-stores', storeId, 'filesystem.hizofs');
-  const descriptor = assertObject(await readJson(join(dataDirectory, 'descriptor.json')), 'HizoFS descriptor');
-  if (descriptor.format !== 'hizofs') {
-    throw new UnsupportedFormatError(`HizoFS descriptor identifier is unsupported: ${String(descriptor.format)}`);
+  await validateOptionalHizoFSDescriptor(join(dataDirectory, 'descriptor.json'));
+  const fileSystemId = deriveHizoFSFileSystemId(fileSystemRootKey);
+  if (fileSystemId !== header.fileSystemId) {
+    throw new CorruptionError('Encrypted store header fileSystemId does not match the root key');
   }
-  if (descriptor.formatVersion !== 1) {
-    throw new UnsupportedFormatError(`HizoFS descriptor format is unsupported: ${String(descriptor.formatVersion)}`);
-  }
-  const fileSystemId = assertStableId(descriptor.fileSystemId, 'HizoFS fileSystemId');
-  if (fileSystemId !== header.fileSystemId) throw new CorruptionError('Encrypted store header and descriptor fileSystemId disagree');
 
   const reader = new HizoFSReader({ dataDirectory, fileSystemId, rootKey: fileSystemRootKey });
   try {
-    const superblock = await reader.readActiveSuperblock();
-    const commitRecord = await reader.readObject(superblock.activeCommitObjectId);
-    if (commitRecord.kind !== 'commit' || commitRecord.binary.length !== 0) {
-      throw new CorruptionError('Active commit object has an invalid kind or binary payload');
-    }
-    const commit = assertObject(commitRecord.metadata, 'HizoFS commit');
-    assertNonNegativeSafeInteger(commit.revision, 'HizoFS commit revision');
+    const { commit } = await loadCompleteGeneration(reader);
 
     try {
       await lstat(args.output);

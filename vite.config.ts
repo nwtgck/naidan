@@ -248,6 +248,7 @@ export default defineConfig(({ mode }) => {
       __BUILD_MODE_IS_STANDALONE__: JSON.stringify(isStandalone),
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(isHosted || mode === 'development'),
       __BUILD_MODE_IS_TEST__: JSON.stringify(mode === 'test'),
+      __BUILD_TARGET_IS_FILE_PROTOCOL_STANDALONE_WORKER__: JSON.stringify(false),
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {

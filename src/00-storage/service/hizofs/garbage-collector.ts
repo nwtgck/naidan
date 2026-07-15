@@ -5,11 +5,13 @@ import type {
 } from '@/00-storage/00-dto/hizofs.dto';
 import { HizoFSCorruptionError } from './errors';
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
-import { importHizoFSRootKey } from './crypto/object-crypto';
+import {
+  deriveHizoFSFileSystemId,
+  importHizoFSRootKey,
+} from './crypto/object-crypto';
 import { createHizoFSRuntime, type HizoFSRuntime } from './file-system/runtime';
 import { DEFAULT_HIZOFS_POLICY } from './file-system/policy';
 import { runWithHizoFSMaintenanceLock } from './file-system/maintenance-lock';
-import { readHizoFSDescriptor } from './format/descriptor-store';
 import type { HizoFSRecordKind } from './format/record';
 import {
   getHizoFSObjectShard,
@@ -64,25 +66,35 @@ export async function collectHizoFSGarbage({
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
   });
-  const descriptor = await readHizoFSDescriptor({ backingStore });
-  if (descriptor === undefined) {
-    throw new Error('HizoFS descriptor is missing');
-  }
+  const rootKey = await importHizoFSRootKey({
+    rawRootKey: fileSystemRootKey,
+  });
+  const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
 
   return runWithHizoFSMaintenanceLock({
-    fileSystemId: descriptor.fileSystemId,
+    fileSystemId,
     operation: async () => {
-      const rootKey = await importHizoFSRootKey({
-        rawRootKey: fileSystemRootKey,
-      });
       const runtime = createHizoFSRuntime({
         backingStore,
         rootKey,
-        fileSystemId: descriptor.fileSystemId,
+        fileSystemId,
         policy: DEFAULT_HIZOFS_POLICY,
         now: () => Date.now(),
       });
       const activeState = await runtime.core.loadActiveState();
+      switch (activeState.mode) {
+      case 'current':
+        break;
+      case 'fallback_read_only':
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS garbage collection is disabled in read-only recovery mode',
+          cause: undefined,
+        });
+      default: {
+        const _ex: never = activeState.mode;
+        throw new Error(`Unhandled HizoFS active state mode: ${String(_ex)}`);
+      }
+      }
       const superblocks = await runtime.core.superblockStore.readCandidates();
       const markState: HizoFSMarkState = {
         reachableObjectIds: new Set<string>(),
@@ -148,7 +160,11 @@ async function markCommitGeneration({ runtime, commitObjectId, markState }: {
     expectedKind: 'commit',
   });
   const commit = await runtime.commitStore.read({ objectId: commitObjectId });
-  const referencedInodes: ReferencedInode[] = [];
+  await runtime.inodeIndex.validateStructure({
+    rootObjectId: commit.inodeIndexRootObjectId,
+  });
+
+  const referencedInodes = new Map<string, ReferencedInode>();
   await runtime.inodeIndex.visitReferences({
     rootObjectId: commit.inodeIndexRootObjectId,
     visitPageObjectId: ({ objectId }) => registerObjectReference({
@@ -157,32 +173,77 @@ async function markCommitGeneration({ runtime, commitObjectId, markState }: {
       expectedKind: 'inode_index_page',
     }),
     visitInodeObjectId: ({ objectId, nodeId }) => {
-      markState.reachableObjectIds.add(objectId);
-      referencedInodes.push({ objectId, nodeId });
+      if (referencedInodes.has(nodeId)) {
+        throw new HizoFSCorruptionError({
+          message: `HizoFS inode index contains a duplicate node ID: ${nodeId}`,
+          cause: undefined,
+        });
+      }
+      referencedInodes.set(nodeId, { objectId, nodeId });
     },
     visitedPageObjectIds: undefined,
   });
 
-  let rootDirectoryFound = false;
-  for (const reference of referencedInodes) {
+  type PendingNode = {
+    readonly nodeId: string;
+    readonly expectedKind: 'file' | 'directory' | 'symlink';
+  };
+  const pending: PendingNode[] = [{
+    nodeId: commit.rootDirectoryNodeId,
+    expectedKind: 'directory',
+  }];
+  const namespaceNodeIds = new Set<string>();
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined) break;
+    if (namespaceNodeIds.has(current.nodeId)) {
+      throw new HizoFSCorruptionError({
+        message: `HizoFS namespace contains a cycle or duplicate inode reference: ${current.nodeId}`,
+        cause: undefined,
+      });
+    }
+    namespaceNodeIds.add(current.nodeId);
+
+    const reference = referencedInodes.get(current.nodeId);
+    if (reference === undefined) {
+      throw new HizoFSCorruptionError({
+        message: `HizoFS directory entry references an inode absent from the index: ${current.nodeId}`,
+        cause: undefined,
+      });
+    }
     const loaded = await loadReferencedInode({ runtime, reference, markState });
     switch (loaded.kind) {
     case 'file_inode': {
-      if (reference.nodeId === commit.rootDirectoryNodeId) {
+      switch (current.expectedKind) {
+      case 'file':
+        break;
+      case 'directory':
+      case 'symlink':
         throw new HizoFSCorruptionError({
-          message: 'HizoFS commit root points to a file inode',
+          message: `HizoFS directory entry kind does not match file inode: ${current.nodeId}`,
           cause: undefined,
         });
+      default: {
+        const _ex: never = current.expectedKind;
+        throw new Error(`Unhandled HizoFS directory entry kind: ${String(_ex)}`);
+      }
       }
       const { storage } = loaded.inode;
       switch (storage.type) {
       case 'inline':
         break;
       case 'extents': {
+        await runtime.extentIndex.validateStructure({
+          rootObjectId: storage.extentIndexRootObjectId,
+        });
         const previousChunkSize = markState.extentRootChunkSizes.get(
           storage.extentIndexRootObjectId,
         );
-        if (previousChunkSize !== undefined && previousChunkSize !== storage.chunkSize) {
+        if (
+          previousChunkSize !== undefined
+          && previousChunkSize !== storage.chunkSize
+        ) {
           throw new HizoFSCorruptionError({
             message: 'A shared HizoFS extent root is referenced with inconsistent chunk sizes',
             cause: undefined,
@@ -225,14 +286,28 @@ async function markCommitGeneration({ runtime, commitObjectId, markState }: {
       break;
     }
     case 'directory_inode': {
-      if (reference.nodeId === commit.rootDirectoryNodeId) {
-        rootDirectoryFound = true;
+      switch (current.expectedKind) {
+      case 'directory':
+        break;
+      case 'file':
+      case 'symlink':
+        throw new HizoFSCorruptionError({
+          message: `HizoFS directory entry kind does not match directory inode: ${current.nodeId}`,
+          cause: undefined,
+        });
+      default: {
+        const _ex: never = current.expectedKind;
+        throw new Error(`Unhandled HizoFS directory entry kind: ${String(_ex)}`);
+      }
       }
       const { storage } = loaded.inode;
       switch (storage.type) {
       case 'inline':
         break;
       case 'indexed':
+        await runtime.directoryIndex.validateStructure({
+          rootObjectId: storage.directoryIndexRootObjectId,
+        });
         await runtime.directoryIndex.visitReferences({
           rootObjectId: storage.directoryIndexRootObjectId,
           visitPageObjectId: ({ objectId }) => registerObjectReference({
@@ -248,16 +323,30 @@ async function markCommitGeneration({ runtime, commitObjectId, markState }: {
         throw new Error(`Unhandled HizoFS directory storage: ${String(_ex)}`);
       }
       }
-      break;
-    }
-    case 'symlink_inode':
-      if (reference.nodeId === commit.rootDirectoryNodeId) {
-        throw new HizoFSCorruptionError({
-          message: 'HizoFS commit root points to a symlink inode',
-          cause: undefined,
-        });
+      for await (const entry of runtime.directoryStorage.entries({
+        inode: loaded.inode,
+      })) {
+        pending.push({ nodeId: entry.nodeId, expectedKind: entry.kind });
       }
       break;
+    }
+    case 'symlink_inode': {
+      switch (current.expectedKind) {
+      case 'symlink':
+        break;
+      case 'file':
+      case 'directory':
+        throw new HizoFSCorruptionError({
+          message: `HizoFS directory entry kind does not match symlink inode: ${current.nodeId}`,
+          cause: undefined,
+        });
+      default: {
+        const _ex: never = current.expectedKind;
+        throw new Error(`Unhandled HizoFS directory entry kind: ${String(_ex)}`);
+      }
+      }
+      break;
+    }
     default: {
       const _ex: never = loaded;
       throw new Error(`Unhandled HizoFS loaded inode: ${String(_ex)}`);
@@ -265,9 +354,12 @@ async function markCommitGeneration({ runtime, commitObjectId, markState }: {
     }
   }
 
-  if (!rootDirectoryFound) {
+  if (namespaceNodeIds.size !== referencedInodes.size) {
+    const disconnectedNodeIds = [...referencedInodes.keys()]
+      .filter(nodeId => !namespaceNodeIds.has(nodeId))
+      .sort();
     throw new HizoFSCorruptionError({
-      message: 'HizoFS commit root directory is absent from its inode index',
+      message: `HizoFS inode index contains namespace-disconnected nodes: ${disconnectedNodeIds.join(', ')}`,
       cause: undefined,
     });
   }

@@ -116,6 +116,7 @@ export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolved
     })],
     define: {
       ...resolvedConfig.define,
+      __BUILD_TARGET_IS_FILE_PROTOCOL_STANDALONE_WORKER__: JSON.stringify(true),
       'process.env.NODE_ENV': JSON.stringify('production'),
     },
     resolve: {
@@ -151,8 +152,9 @@ export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolved
   const assets = outputs.filter((item): item is OutputAsset => item.type === 'asset');
 
   if (chunks.length !== 1 || assets.length !== 0) {
+    const outputNames = outputs.map(output => output.fileName).join(', ');
     throw new Error(
-      `[${pluginName}] Worker ${worker.id} must produce exactly one JavaScript chunk and no assets; produced ${chunks.length} chunks and ${assets.length} assets.`,
+      `[${pluginName}] Worker ${worker.id} must produce exactly one JavaScript chunk and no assets; produced ${chunks.length} chunks and ${assets.length} assets (${outputNames}).`,
     );
   }
 

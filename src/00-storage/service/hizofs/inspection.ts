@@ -8,6 +8,7 @@ import {
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
 import {
   decryptHizoFSObject,
+  deriveHizoFSFileSystemId,
   importHizoFSRootKey,
 } from './crypto/object-crypto';
 import {
@@ -15,9 +16,8 @@ import {
   HizoFSUnsupportedFormatError,
 } from './errors';
 import { createHizoFSRuntime } from './file-system/runtime';
-import { acquireHizoFSSessionLease } from './file-system/maintenance-lock';
+import { acquireHizoFSResourceLease } from './file-system/maintenance-lock';
 import { DEFAULT_HIZOFS_POLICY } from './file-system/policy';
-import { validateHizoFSStableId } from './id';
 import { decodeHizoFSObjectEnvelope } from './format/object-envelope';
 import { decodeHizoFSRecord } from './format/record';
 import {
@@ -85,8 +85,11 @@ export type HizoFSSuperblockSlotInspection =
     };
 
 export type HizoFSInspectionOverview = {
+  readonly activeMode: 'current' | 'fallback_read_only';
   readonly descriptor: HizoFSDescriptorDto;
+  readonly fileSystemId: string;
   readonly persistedDescriptorDto: unknown;
+  readonly descriptorValidationError: string | undefined;
   readonly superblockSlots: readonly HizoFSSuperblockSlotInspection[];
   readonly activeSuperblock: HizoFSSuperblockDto;
   readonly activeCommitObjectId: string;
@@ -149,15 +152,14 @@ export async function createHizoFSInspectionReader({
   const backingStore = new NativeOpfsHizoFSBackingStore({ root: backingDirectory });
   const descriptorInspection = await readDescriptorForInspection({ backingStore });
   const descriptor = descriptorInspection.value;
-  const maintenanceLease = await acquireHizoFSSessionLease({
-    fileSystemId: descriptor.fileSystemId,
-  });
+  const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
+  const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
+  const maintenanceLease = await acquireHizoFSResourceLease({ fileSystemId });
   try {
-    const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
     const runtime = createHizoFSRuntime({
       backingStore,
       rootKey,
-      fileSystemId: descriptor.fileSystemId,
+      fileSystemId,
       policy: DEFAULT_HIZOFS_POLICY,
       now: () => Date.now(),
     });
@@ -176,7 +178,7 @@ export async function createHizoFSInspectionReader({
         const superblockSlots = await inspectSuperblockSlots({
           backingStore,
           rootKey,
-          fileSystemId: descriptor.fileSystemId,
+          fileSystemId,
           selectedSuperblock: activeState.superblock,
           binaryPreviewByteLength: 0,
         });
@@ -190,8 +192,11 @@ export async function createHizoFSInspectionReader({
           });
         }
         return {
+          activeMode: activeState.mode,
           descriptor,
+          fileSystemId,
           persistedDescriptorDto: descriptorInspection.persistedDto,
+          descriptorValidationError: descriptorInspection.validationError,
           superblockSlots,
           activeSuperblock: activeState.superblock,
           activeCommitObjectId: activeState.commitObjectId,
@@ -220,7 +225,7 @@ export async function createHizoFSInspectionReader({
         const inspected = await inspectEncryptedRecordBinary({
           physical,
           rootKey,
-          fileSystemId: descriptor.fileSystemId,
+          fileSystemId,
           objectIdentity: objectId,
           area: 'object',
           binaryPreviewByteLength,
@@ -246,7 +251,7 @@ export async function createHizoFSInspectionReader({
         return await inspectSuperblockSlot({
           backingStore,
           rootKey,
-          fileSystemId: descriptor.fileSystemId,
+          fileSystemId,
           selectedSuperblock: activeState.superblock,
           slot,
           binaryPreviewByteLength,
@@ -598,7 +603,7 @@ async function inspectSuperblockSlot({
     const value = HizoFSSuperblockSchemaDto.parse(record.metadata);
     if (value.fileSystemId !== fileSystemId) {
       throw new HizoFSCorruptionError({
-        message: 'HizoFS superblock fileSystemId does not match its descriptor',
+        message: 'HizoFS superblock fileSystemId does not match the root-key-derived file system ID',
         cause: undefined,
       });
     }
@@ -641,10 +646,15 @@ async function readDescriptorForInspection({ backingStore }: {
 }): Promise<{
   readonly value: HizoFSDescriptorDto;
   readonly persistedDto: unknown;
+  readonly validationError: string | undefined;
 }> {
   const bytes = await backingStore.read({ path: ['descriptor.json'] });
   if (bytes === undefined) {
-    throw new Error('HizoFS descriptor is missing');
+    const value: HizoFSDescriptorDto = {
+      format: 'hizofs',
+      formatVersion: 1,
+    };
+    return { value, persistedDto: undefined, validationError: undefined };
   }
   let persistedDto: unknown;
   try {
@@ -652,12 +662,14 @@ async function readDescriptorForInspection({ backingStore }: {
   } catch (error) {
     throw new Error('HizoFS descriptor is invalid UTF-8 JSON', { cause: error });
   }
-  const value = HizoFSDescriptorSchemaDto.parse(persistedDto);
-  validateHizoFSStableId({
-    value: value.fileSystemId,
-    fieldName: 'HizoFS fileSystemId',
-  });
-  return { value, persistedDto };
+  const parsed = HizoFSDescriptorSchemaDto.safeParse(persistedDto);
+  return {
+    value: parsed.success
+      ? parsed.data
+      : { format: 'hizofs', formatVersion: 1 },
+    persistedDto,
+    validationError: parsed.success ? undefined : parsed.error.message,
+  };
 }
 
 /**

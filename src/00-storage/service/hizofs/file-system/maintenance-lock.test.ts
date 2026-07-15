@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { acquireHizoFSSessionLease } from './maintenance-lock';
+import { acquireHizoFSResourceLease } from './maintenance-lock';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -14,7 +14,7 @@ describe('HizoFS maintenance lock', () => {
       },
     });
 
-    await expect(acquireHizoFSSessionLease({
+    await expect(acquireHizoFSResourceLease({
       fileSystemId: 'AAAAAAAAAAAAAAAAAAAAAA',
     })).rejects.toBe(failure);
   });

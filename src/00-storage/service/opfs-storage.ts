@@ -48,10 +48,37 @@ import {
 import type {
   EncryptionTransitionResult,
   UnlockedOpfsEncryptionSession,
-} from './opfs-encryption/encryption-transition-coordinator';
+} from './opfs-encryption/session';
+import type {
+  OpfsEncryptionWorkerRequest,
+  OpfsEncryptionWorkerResult,
+} from './opfs-encryption/worker/types';
 
 const STORAGE_DIRECTORY_NAME = 'naidan-storage';
 const ENCRYPTION_STATE_DIRECTORY_NAME = 'encryption-state';
+
+
+function clearOpfsEncryptionWorkerRequestSecrets({
+  request,
+}: {
+  request: OpfsEncryptionWorkerRequest;
+}): void {
+  switch (request.operation) {
+  case 'disable':
+  case 'reencrypt':
+    request.storageUnlockKey.fill(0);
+    return;
+  case 'enable':
+  case 'resume':
+    // JavaScript strings cannot be zeroed. The Worker receives only the
+    // passphrase string and never returns file payloads to the caller realm.
+    return;
+  default: {
+    const _ex: never = request;
+    throw new Error(`Unhandled transition Worker request: ${String(_ex)}`);
+  }
+  }
+}
 
 function isNotFoundError({ error }: { error: unknown }): boolean {
   return error instanceof DOMException
@@ -313,32 +340,19 @@ export class OPFSStorageProvider extends IStorageProvider {
     passphrase: string,
     signal: AbortSignal | undefined,
   }): Promise<void> {
-    const result = await this.runTransition({ run: async () => {
-      const inspection = await this.inspectEncryption();
-      requirePlainInspection({ inspection });
-      const storageRoot = await getOrCreateStorageRoot();
-      const transitionModule = await import(
-        './opfs-encryption/encryption-transition-coordinator'
-      );
-      return await new transitionModule.EncryptionTransitionCoordinator({
+    const inspection = await this.inspectEncryption();
+    requirePlainInspection({ inspection });
+    const storageRoot = await getOrCreateStorageRoot();
+    await this.runTransitionInWorker({
+      request: {
+        operation: 'enable',
         storageRoot,
         nativeNamespaceRoot: await navigator.storage.getDirectory(),
-        hostVolumeDB: this.hostVolumeDB,
-        pbkdf2Iterations: transitionModule.DEFAULT_PBKDF2_ITERATIONS,
-      }).enableEncryption({ passphrase, signal });
-    } });
-    switch (result.type) {
-    case 'encrypted':
-      return;
-    case 'plain':
-      throw new Error('Enabling OPFS encryption produced a plain storage backend');
-    default: {
-      const _ex: never = result;
-      throw new Error(
-        `Unhandled encryption transition result: ${((_ex satisfies never) as { readonly type: string }).type}`,
-      );
-    }
-    }
+        passphrase,
+      },
+      signal,
+      reopen: { type: 'passphrase', passphrase },
+    });
   }
 
   async changePassphrase({
@@ -393,18 +407,19 @@ export class OPFSStorageProvider extends IStorageProvider {
     signal: AbortSignal | undefined,
   }): Promise<void> {
     const session = this.requireUnlockedEncryptionSession();
-    await this.runTransition({ run: async () => {
-      const storageRoot = await getOrCreateStorageRoot();
-      const transitionModule = await import(
-        './opfs-encryption/encryption-transition-coordinator'
-      );
-      return await new transitionModule.EncryptionTransitionCoordinator({
+    const storageRoot = await getOrCreateStorageRoot();
+    await this.runTransitionInWorker({
+      request: {
+        operation: 'disable',
         storageRoot,
         nativeNamespaceRoot: await navigator.storage.getDirectory(),
-        hostVolumeDB: this.hostVolumeDB,
-        pbkdf2Iterations: transitionModule.DEFAULT_PBKDF2_ITERATIONS,
-      }).disableEncryption({ session, signal });
-    } });
+        state: session.state,
+        storageUnlockKey: session.storageUnlockKey.slice(),
+        unlockedKeySlotId: session.unlockedKeySlotId,
+      },
+      signal,
+      reopen: { type: 'plain' },
+    });
   }
 
   async reencrypt({
@@ -413,18 +428,23 @@ export class OPFSStorageProvider extends IStorageProvider {
     signal: AbortSignal | undefined,
   }): Promise<void> {
     const session = this.requireUnlockedEncryptionSession();
-    await this.runTransition({ run: async () => {
-      const storageRoot = await getOrCreateStorageRoot();
-      const transitionModule = await import(
-        './opfs-encryption/encryption-transition-coordinator'
-      );
-      return await new transitionModule.EncryptionTransitionCoordinator({
+    const storageRoot = await getOrCreateStorageRoot();
+    await this.runTransitionInWorker({
+      request: {
+        operation: 'reencrypt',
         storageRoot,
         nativeNamespaceRoot: await navigator.storage.getDirectory(),
-        hostVolumeDB: this.hostVolumeDB,
-        pbkdf2Iterations: transitionModule.DEFAULT_PBKDF2_ITERATIONS,
-      }).reencrypt({ session, signal });
-    } });
+        state: session.state,
+        storageUnlockKey: session.storageUnlockKey.slice(),
+        unlockedKeySlotId: session.unlockedKeySlotId,
+      },
+      signal,
+      reopen: {
+        type: 'unlocked_key',
+        storageUnlockKey: session.storageUnlockKey,
+        unlockedKeySlotId: session.unlockedKeySlotId,
+      },
+    });
   }
 
   async resumeTransitionWithPassphrase({
@@ -434,23 +454,22 @@ export class OPFSStorageProvider extends IStorageProvider {
     passphrase: string,
     signal: AbortSignal | undefined,
   }): Promise<void> {
-    await this.runTransition({ run: async () => {
-      const inspection = requireTransitioningInspection({
-        inspection: await this.inspectEncryption(),
-      });
-      const storageRoot = await getOrCreateStorageRoot();
-      const transitionModule = await import(
-        './opfs-encryption/encryption-transition-coordinator'
-      );
-      return await new transitionModule.EncryptionTransitionCoordinator({
+    const inspection = requireTransitioningInspection({
+      inspection: await this.inspectEncryption(),
+    });
+    const storageRoot = await getOrCreateStorageRoot();
+    await this.runTransitionInWorker({
+      request: {
+        operation: 'resume',
         storageRoot,
         nativeNamespaceRoot: await navigator.storage.getDirectory(),
-        hostVolumeDB: this.hostVolumeDB,
-        pbkdf2Iterations: transitionModule.DEFAULT_PBKDF2_ITERATIONS,
-      }).resumeWithPassphrase({ state: inspection.state, passphrase, signal });
-    } });
+        state: inspection.state,
+        passphrase,
+      },
+      signal,
+      reopen: { type: 'passphrase', passphrase },
+    });
   }
-
 
   async listChatMetasRaw(): Promise<ChatMetaDto[]> {
     return await this.runWithBackend({ run: async ({ backend }) => await backend.listChatMetasRaw() });
@@ -739,24 +758,128 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.runWithBackend({ run: async ({ backend }) => await backend.renameVolume({ volumeId, name }) });
   }
 
-  private async runTransition({
-    run,
+  private async runTransitionInWorker({
+    request,
+    signal,
+    reopen,
   }: {
-    run: () => Promise<EncryptionTransitionResult>,
-  }): Promise<EncryptionTransitionResult> {
-    await this.storageSessionLock.suspend();
+    request: OpfsEncryptionWorkerRequest;
+    signal: AbortSignal | undefined;
+    reopen:
+      | { readonly type: 'plain' }
+      | { readonly type: 'passphrase'; readonly passphrase: string }
+      | {
+          readonly type: 'unlocked_key';
+          readonly storageUnlockKey: Uint8Array;
+          readonly unlockedKeySlotId: string;
+        };
+  }): Promise<void> {
     try {
-      const result = await run();
-      await this.applyTransitionResult({ result });
-      await this.storageSessionLock.acquire();
-      return result;
-    } catch (error) {
+      await this.storageSessionLock.suspend();
       try {
-        await this.recoverAfterFailedTransition();
-      } catch (recoveryError) {
-        console.error('Failed to restore OPFS provider after encryption transition failure:', recoveryError);
+        if (__BUILD_TARGET_IS_FILE_PROTOCOL_STANDALONE_WORKER__) {
+          // The standalone hub already owns the OPFS encryption Worker service.
+          // Provider copies pulled into another hub service must not recursively
+          // create the same hub or emit a nested Worker asset.
+          throw new Error('OPFS encryption transitions cannot be initiated from the standalone Worker Hub');
+        }
+        const workerModule = await import(
+          '@/00-storage/service/opfs-encryption/worker/client'
+        );
+        const worker = await workerModule.createOpfsEncryptionWorkerClient();
+        let result: OpfsEncryptionWorkerResult;
+        try {
+          result = await worker.run({ request, signal });
+        } finally {
+          await worker.dispose();
+        }
+        await this.applyWorkerTransitionResult({ result, reopen });
+        await this.storageSessionLock.acquire();
+      } catch (error) {
+        try {
+          await this.recoverAfterFailedTransition();
+        } catch (recoveryError) {
+          console.error(
+            'Failed to restore OPFS provider after encryption transition failure:',
+            recoveryError,
+          );
+        }
+        throw error;
       }
-      throw error;
+    } finally {
+      clearOpfsEncryptionWorkerRequestSecrets({ request });
+    }
+  }
+
+  private async applyWorkerTransitionResult({
+    result,
+    reopen,
+  }: {
+    result: OpfsEncryptionWorkerResult;
+    reopen:
+      | { readonly type: 'plain' }
+      | { readonly type: 'passphrase'; readonly passphrase: string }
+      | {
+          readonly type: 'unlocked_key';
+          readonly storageUnlockKey: Uint8Array;
+          readonly unlockedKeySlotId: string;
+        };
+  }): Promise<void> {
+    switch (result.type) {
+    case 'plain': {
+      switch (reopen.type) {
+      case 'plain':
+        break;
+      case 'passphrase':
+      case 'unlocked_key':
+        throw new Error('OPFS encryption Worker returned plain storage unexpectedly');
+      default: {
+        const _ex: never = reopen;
+        throw new Error(`Unhandled transition reopen strategy: ${String(_ex)}`);
+      }
+      }
+      this.clearEncryptionSession();
+      this.backend = await this.createPlainBackend();
+      return;
+    }
+    case 'encrypted': {
+      const storageRoot = await getOrCreateStorageRoot();
+      const encryptionModule = await import('./opfs-encryption/bootstrap');
+      const inspection = requireEncryptedInspection({
+        inspection: await encryptionModule.inspectOpfsEncryption({ storageRoot }),
+      });
+      const nextSession = await (async () => {
+        switch (reopen.type) {
+        case 'plain':
+          throw new Error('OPFS encryption Worker returned encrypted storage unexpectedly');
+        case 'passphrase':
+          return await encryptionModule.unlockOpfsEncryptionWithPassphrase({
+            storageRoot,
+            state: inspection.state,
+            passphrase: reopen.passphrase,
+          });
+        case 'unlocked_key':
+          return await encryptionModule.createUnlockedOpfsEncryptionSession({
+            storageRoot,
+            state: inspection.state,
+            storageUnlockKey: reopen.storageUnlockKey,
+            unlockedKeySlotId: reopen.unlockedKeySlotId,
+          });
+        default: {
+          const _ex: never = reopen;
+          throw new Error(`Unhandled transition reopen strategy: ${String(_ex)}`);
+        }
+        }
+      })();
+      await this.applyTransitionResult({
+        result: { type: 'encrypted', session: nextSession },
+      });
+      return;
+    }
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled transition Worker result: ${String(_ex)}`);
+    }
     }
   }
 
@@ -953,6 +1076,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  clearOpfsEncryptionWorkerRequestSecrets,
   getOrCreateStorageRoot,
   getStorageRootIfPresent,
   hasEncryptionStateDirectory,

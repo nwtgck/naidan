@@ -7,6 +7,8 @@ import { inspectHizoFS, TEST_ONLY } from './api';
 import type { HizoFSPolicy } from './file-system/policy';
 import { getHizoFSObjectShard } from './object-store/object-id';
 import { toExactArrayBuffer } from './bytes';
+import { HizoFSSession } from './file-system/session';
+import { createHizoFSStableId } from './id';
 
 const ROOT_KEY = new Uint8Array(32).fill(17);
 const TINY_POLICY: HizoFSPolicy = {
@@ -121,6 +123,88 @@ describe('HizoFS garbage collection', () => {
     })).unreachableObjectIds).toEqual([]);
   });
 
+
+  it('runs while an idle filesystem session remains open', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'idle-session-value' });
+
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: true,
+    })).resolves.toBeDefined();
+    await session.close();
+  });
+
+  it('waits for an active directory traversal while allowing idle sessions', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    for (const name of ['a.txt', 'b.txt', 'c.txt']) {
+      await writeStorageFileText({
+        fileHandle: await session.root.getFileHandle({ name, create: true }),
+        value: name,
+      });
+    }
+
+    const iterator = session.root.entries()[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({ done: false });
+    let settled = false;
+    const collection = collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: true,
+    }).finally(() => {
+      settled = true;
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+
+    await iterator.return?.();
+    await collection;
+    expect(settled).toBe(true);
+    await session.close();
+  });
+
+  it('refuses to sweep when the inode index contains a disconnected node', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    if (!(session instanceof HizoFSSession)) {
+      throw new Error('Expected a HizoFS session');
+    }
+    await session.runtime.core.mutate({
+      operation: async ({ state }) => {
+        const nodeId = createHizoFSStableId();
+        const inodeObjectId = await session.runtime.inodeStore.writeFile({
+          inode: {
+            nodeId,
+            revision: 0,
+            createdAt: 1,
+            modifiedAt: 1,
+            size: 0,
+            storage: { type: 'inline' },
+          },
+          binaryPayload: new Uint8Array(),
+        });
+        return {
+          changed: 'yes' as const,
+          inodeIndexRootObjectId: await session.runtime.inodeIndex.set({
+            rootObjectId: state.commit.inodeIndexRootObjectId,
+            entry: { nodeId, inodeObjectId },
+          }),
+          result: undefined,
+        };
+      },
+    });
+
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+    })).rejects.toThrow('disconnected');
+    await session.close();
+  });
+
   it('preserves the previous valid superblock generation as a physical fallback', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
@@ -144,12 +228,21 @@ describe('HizoFS garbage collection', () => {
     });
 
     const reopened = await openTiny({ backing });
+    if (!(reopened instanceof HizoFSSession)) {
+      throw new Error('Expected a HizoFS session');
+    }
+    expect((await reopened.loadActiveState()).mode).toBe('fallback_read_only');
     const file = await reopened.root.getFileHandle({ name: 'value.txt', create: false });
     expect(await readStorageFileText({ fileHandle: file })).toBe('first-large-value');
     await reopened.close();
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: true,
+    })).rejects.toThrow('read-only recovery mode');
   });
 
-  it('waits for the open filesystem session and closes its child resources before collection', async () => {
+  it('waits for active child resources and session close disposes them before collection', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
     await writeLargeValue({ session, value: 'reader-snapshot-value' });
