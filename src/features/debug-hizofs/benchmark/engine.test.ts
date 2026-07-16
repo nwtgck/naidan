@@ -41,8 +41,11 @@ describe('HizoFS benchmark engine', () => {
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
       hizoFSInternalMemoryMeasured: false,
-      hizoFSRuntimeMemoryLimits: {
+      hizoFSRuntimePolicy: {
+        fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
+        fileChunkWriteConcurrencyPerWriter: 4,
+        maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
         fileChunkCacheByteLimitPerRuntime: 8 * 1024 * 1024,
@@ -86,6 +89,12 @@ describe('HizoFS benchmark engine', () => {
     const createResult = report.results.find(
       result => result.caseId === 'small_files_create_empty',
     );
+    expect(createResult?.backends.hizofs?.samples[0]?.hizoFSDiagnostics).toMatchObject({
+      backingStore: { writeOperations: 15 },
+      objects: { created: 12 },
+      commits: { superblockPublications: 3 },
+      amplification: { objectCreatesPerOperation: 4 },
+    });
     const writeResult = report.results.find(
       result => result.caseId === 'small_files_write_existing',
     );

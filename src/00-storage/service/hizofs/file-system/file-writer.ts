@@ -1,4 +1,5 @@
 import type { HizoFSFileInodeDto } from "@/00-storage/00-dto/hizofs.dto";
+import { Semaphore } from "@/utils/concurrency";
 import type { StorageWritableFile } from "@/00-storage/service/storage-file-system/types";
 import type { HizoFSCore } from "./core";
 import type { HizoFSExtentIndex } from "./extent-index";
@@ -68,6 +69,15 @@ export class HizoFSFileWriter implements StorageWritableFile {
       1,
       Math.floor(policy.maxDirtyFileBytes / this.chunkSize),
     );
+    if (
+      !Number.isSafeInteger(policy.fileChunkWriteConcurrency)
+      || policy.fileChunkWriteConcurrency < 1
+    ) {
+      throw new Error("HizoFS fileChunkWriteConcurrency must be a positive safe integer");
+    }
+    this.chunkWriteSemaphore = new Semaphore({
+      maxConcurrency: policy.fileChunkWriteConcurrency,
+    });
     this.size = keepExistingData ? baseFile.inode.size : 0;
     this.baseRetainedSize = this.size;
     this.dirty = keepExistingData ? "no" : "yes";
@@ -86,6 +96,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
   private readonly onSettled: () => void;
   private readonly chunkSize: number;
   private readonly maxDirtyChunksInMemory: number;
+  private readonly chunkWriteSemaphore: Semaphore;
   private readonly preparedChunks = new Map<number, string | undefined>();
   private readonly workingChunks = new Map<number, Uint8Array>();
   private baseRetainedSize: number;
@@ -492,9 +503,19 @@ export class HizoFSFileWriter implements StorageWritableFile {
   }
 
   private async flushAllWorkingChunks(): Promise<void> {
-    for (const chunkIndex of [...this.workingChunks.keys()]) {
-      await this.flushWorkingChunk({ chunkIndex, logicalFileSize: this.size });
-    }
+    const tasks = [...this.workingChunks.keys()].map(chunkIndex =>
+      this.chunkWriteSemaphore.run({
+        task: async () => this.flushWorkingChunk({
+          chunkIndex,
+          logicalFileSize: this.size,
+        }),
+      }),
+    );
+    const results = await Promise.allSettled(tasks);
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failure !== undefined) throw failure.reason;
   }
 
   private async flushWorkingChunk({

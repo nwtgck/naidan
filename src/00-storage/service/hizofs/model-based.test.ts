@@ -17,6 +17,7 @@ const MODEL_POLICY: HizoFSPolicy = {
   indexPageEntryLimit: 3,
   readerStreamChunkSize: 4,
   maxDirtyFileBytes: 16,
+  fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 64 * 1024,
   metadataObjectCacheEntryLimit: 1024,
   fileChunkCacheByteLimit: 64,

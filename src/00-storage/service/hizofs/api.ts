@@ -201,13 +201,8 @@ async function createHizoFSInternal({
       storage: { type: "inline", entries: [] },
     },
   });
-  let inodeIndexRootObjectId = await runtime.inodeIndex.createEmpty();
-  inodeIndexRootObjectId = await runtime.inodeIndex.set({
-    rootObjectId: inodeIndexRootObjectId,
-    entry: {
-      nodeId: rootDirectoryNodeId,
-      inodeObjectId: rootInodeObjectId,
-    },
+  const inodeIndexRootObjectId = await runtime.inodeIndex.buildFromSortedEntries({
+    entries: [{ nodeId: rootDirectoryNodeId, inodeObjectId: rootInodeObjectId }],
   });
   const commitObjectId = await runtime.commitStore.write({
     commit: {

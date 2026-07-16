@@ -107,10 +107,7 @@ export class HizoFSDirectoryStorage {
         storage = { type: 'inline', entries };
         break;
       }
-      let rootObjectId = await this.directoryIndex.createEmpty();
-      for (const entry of entries) {
-        rootObjectId = await this.directoryIndex.set({ rootObjectId, entry });
-      }
+      const rootObjectId = await this.directoryIndex.buildFromSortedEntries({ entries });
       storage = {
         type: 'indexed',
         directoryIndexRootObjectId: rootObjectId,

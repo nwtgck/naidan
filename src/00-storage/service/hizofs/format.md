@@ -292,11 +292,13 @@ An open writer batches writes, sparse updates, and truncates and performs at
 most one file-system commit on `close()`. A byte-bounded dirty-chunk cache
 coalesces repeated writes to the same logical chunk. When the final extent tree
 is completely determined by prepared chunks, it is built bottom-up once rather
-than publishing intermediate Copy-on-Write pages for every extent. Both are
-runtime policies and do not change the persistent format. A conflicting changed
-inode causes the writer to fail rather than silently apply last-writer-wins
-behavior. Dirty plaintext buffers are overwritten as they are flushed,
-discarded by truncation, aborted, or released after close.
+than publishing intermediate Copy-on-Write pages for every extent. Independent
+chunk objects are encrypted and persisted with explicit bounded concurrency;
+the maintenance lease remains held until every scheduled write has either
+completed or failed. These are runtime policies and do not change the persistent
+format. A conflicting changed inode causes the writer to fail rather than
+silently apply last-writer-wins behavior. Dirty plaintext buffers are overwritten
+as they are flushed, discarded by truncation, aborted, or released after close.
 
 Authenticated immutable objects may be retained in byte- and entry-bounded
 plaintext LRU caches. Metadata and file chunks have separate budgets so
@@ -310,7 +312,12 @@ remaining session can repopulate them only by authenticating the immutable
 physical objects again.
 
 Readers retain immutable inode and extent roots, providing snapshot reads while
-a later commit is active.
+a later commit is active. Runtime backing stores retain resolved directory
+handles and fixed root-file handles and deduplicate concurrent resolutions, but
+read file contents afresh and invalidate cached handles when their entries are
+removed. Per-object file handles are not retained. Multiple inode-index changes
+belonging to one mutation traverse and rewrite each affected Copy-on-Write path
+once.
 
 ## Bulk construction
 

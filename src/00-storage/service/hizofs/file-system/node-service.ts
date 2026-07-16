@@ -92,6 +92,19 @@ export class HizoFSNodeService {
     });
   }
 
+  async setInodes({ inodeIndexRootObjectId, entries }: {
+    inodeIndexRootObjectId: string;
+    entries: readonly {
+      readonly nodeId: string;
+      readonly inodeObjectId: string;
+    }[];
+  }): Promise<string> {
+    return this.inodeIndex.setMany({
+      rootObjectId: inodeIndexRootObjectId,
+      entries,
+    });
+  }
+
   async deleteInode({ inodeIndexRootObjectId, nodeId }: {
     inodeIndexRootObjectId: string;
     nodeId: string;

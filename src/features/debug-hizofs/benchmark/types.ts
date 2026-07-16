@@ -238,8 +238,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(3),
-  benchmarkImplementationVersion: z.literal(3),
+  schemaVersion: z.literal(4),
+  benchmarkImplementationVersion: z.literal(4),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -262,8 +262,11 @@ export const hizoFSBenchmarkReportSchema = z.object({
     memoryScope: z.literal('benchmark_harness_buffers_only'),
     browserHeapMeasured: z.literal(false),
     hizoFSInternalMemoryMeasured: z.literal(false),
-    hizoFSRuntimeMemoryLimits: z.object({
+    hizoFSRuntimePolicy: z.object({
+      fileChunkSizeBytes: z.number().int().positive(),
       maxDirtyFileBytesPerWriter: z.number().int().positive(),
+      fileChunkWriteConcurrencyPerWriter: z.number().int().positive(),
+      maximumPlaintextChunkWriteBytesInFlightPerWriter: z.number().int().positive(),
       metadataObjectCacheByteLimitPerRuntime: z.number().int().nonnegative(),
       metadataObjectCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       fileChunkCacheByteLimitPerRuntime: z.number().int().nonnegative(),

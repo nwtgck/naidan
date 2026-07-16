@@ -18,6 +18,78 @@ describe('native OPFS HizoFS backing store', () => {
     await expect(root.getDirectoryHandle('objects')).resolves.toBeDefined();
   });
 
+  it('reuses resolved directory handles for repeated object operations', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const objects = await root.getDirectoryHandle('objects', { create: true });
+    const shard = await objects.getDirectoryHandle('ab', { create: true });
+    const rootLookup = vi.spyOn(root, 'getDirectoryHandle');
+    const objectsLookup = vi.spyOn(objects, 'getDirectoryHandle');
+    const store = new NativeOpfsHizoFSBackingStore({ root });
+
+    await store.write({
+      path: ['objects', 'ab', 'one.enc'],
+      bytes: new Uint8Array([1]),
+    });
+    await store.write({
+      path: ['objects', 'ab', 'two.enc'],
+      bytes: new Uint8Array([2]),
+    });
+    await expect(store.read({
+      path: ['objects', 'ab', 'one.enc'],
+    })).resolves.toEqual(new Uint8Array([1]));
+
+    expect(rootLookup).toHaveBeenCalledTimes(1);
+    expect(objectsLookup).toHaveBeenCalledTimes(1);
+    await expect(shard.getFileHandle('two.enc')).resolves.toBeDefined();
+  });
+
+  it('invalidates cached directory handles after recursive removal', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const rootLookup = vi.spyOn(root, 'getDirectoryHandle');
+    const store = new NativeOpfsHizoFSBackingStore({ root });
+
+    await store.write({ path: ['temporary', 'one'], bytes: new Uint8Array([1]) });
+    await store.remove({ path: ['temporary'], recursive: true });
+    await store.write({ path: ['temporary', 'two'], bytes: new Uint8Array([2]) });
+
+    expect(rootLookup.mock.calls.filter(([name]) => name === 'temporary')).toHaveLength(2);
+    await expect(store.read({ path: ['temporary', 'two'] })).resolves.toEqual(
+      new Uint8Array([2]),
+    );
+  });
+
+  it('reuses root file handles while reading fresh file contents each time', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const rootFileLookup = vi.spyOn(root, 'getFileHandle');
+    const store = new NativeOpfsHizoFSBackingStore({ root });
+
+    await store.write({ path: ['superblock-0.enc'], bytes: new Uint8Array([1]) });
+    await expect(store.read({ path: ['superblock-0.enc'] })).resolves.toEqual(
+      new Uint8Array([1]),
+    );
+    await store.write({ path: ['superblock-0.enc'], bytes: new Uint8Array([2]) });
+    await expect(store.read({ path: ['superblock-0.enc'] })).resolves.toEqual(
+      new Uint8Array([2]),
+    );
+
+    expect(rootFileLookup).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates a cached root file handle after removal', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const rootFileLookup = vi.spyOn(root, 'getFileHandle');
+    const store = new NativeOpfsHizoFSBackingStore({ root });
+
+    await store.write({ path: ['descriptor.json'], bytes: new Uint8Array([1]) });
+    await store.remove({ path: ['descriptor.json'], recursive: false });
+    await store.write({ path: ['descriptor.json'], bytes: new Uint8Array([2]) });
+
+    expect(rootFileLookup).toHaveBeenCalledTimes(2);
+    await expect(store.read({ path: ['descriptor.json'] })).resolves.toEqual(
+      new Uint8Array([2]),
+    );
+  });
+
   it('returns undefined for missing files and makes removal idempotent', async () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'root' }),

@@ -150,6 +150,48 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
     });
   }
 
+  async setMany({
+    rootObjectId,
+    entries,
+  }: {
+    rootObjectId: string;
+    entries: readonly TEntry[];
+  }): Promise<string> {
+    if (entries.length === 0) return rootObjectId;
+    const sortedEntries = [...entries].sort((left, right) =>
+      this.compare({
+        left: this.getEntryKey({ entry: left }),
+        right: this.getEntryKey({ entry: right }),
+      })
+    );
+    let previousKey: TKey | undefined;
+    for (const entry of sortedEntries) {
+      const key = this.getEntryKey({ entry });
+      if (
+        previousKey !== undefined &&
+        this.compare({ left: previousKey, right: key }) === 0
+      ) {
+        throw new Error("Persistent index batch entries must be unique");
+      }
+      previousKey = key;
+    }
+
+    const references = await this.insertManyIntoPage({
+      objectId: rootObjectId,
+      entries: sortedEntries,
+    });
+    if (references.length === 1) {
+      const reference = references[0];
+      if (reference === undefined) {
+        throw new Error(
+          "Persistent index batch insertion returned no root reference",
+        );
+      }
+      return reference.objectId;
+    }
+    return this.buildRootFromReferences({ references });
+  }
+
   async delete({
     rootObjectId,
     key,
@@ -722,6 +764,101 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
     }
   }
 
+  private async insertManyIntoPage({
+    objectId,
+    entries: changes,
+  }: {
+    objectId: string;
+    entries: readonly TEntry[];
+  }): Promise<readonly PageReference<TKey>[]> {
+    const page = await this.pageStore.readPage({ objectId });
+    switch (page.type) {
+    case "leaf": {
+      const entries: TEntry[] = [];
+      let existingIndex = 0;
+      let changeIndex = 0;
+      while (
+        existingIndex < page.entries.length || changeIndex < changes.length
+      ) {
+        const existing = page.entries[existingIndex];
+        const change = changes[changeIndex];
+        if (existing === undefined) {
+          entries.push(...changes.slice(changeIndex));
+          break;
+        }
+        if (change === undefined) {
+          entries.push(...page.entries.slice(existingIndex));
+          break;
+        }
+        const comparison = this.compare({
+          left: this.getEntryKey({ entry: existing }),
+          right: this.getEntryKey({ entry: change }),
+        });
+        if (comparison < 0) {
+          entries.push(existing);
+          existingIndex += 1;
+        } else if (comparison > 0) {
+          entries.push(change);
+          changeIndex += 1;
+        } else {
+          entries.push(change);
+          existingIndex += 1;
+          changeIndex += 1;
+        }
+      }
+      return this.writeSplitLeafPages({ entries });
+    }
+    case "branch": {
+      const children: PersistentIndexBranchChild<TKey>[] = [];
+      let changeIndex = 0;
+      for (
+        let childIndex = 0;
+        childIndex < page.children.length;
+        childIndex += 1
+      ) {
+        const child = page.children[childIndex];
+        if (child === undefined) {
+          throw new Error("Persistent index branch has no child");
+        }
+        const firstChangeIndex = changeIndex;
+        const isLastChild = childIndex === page.children.length - 1;
+        while (changeIndex < changes.length) {
+          const change = changes[changeIndex];
+          if (change === undefined) break;
+          if (
+            !isLastChild &&
+            this.compare({
+              left: this.getEntryKey({ entry: change }),
+              right: child.upperBound,
+            }) > 0
+          ) break;
+          changeIndex += 1;
+        }
+        if (changeIndex === firstChangeIndex) {
+          children.push(child);
+          continue;
+        }
+        const replacements = await this.insertManyIntoPage({
+          objectId: child.childPageObjectId,
+          entries: changes.slice(firstChangeIndex, changeIndex),
+        });
+        children.push(...replacements.map(reference => ({
+          upperBound: reference.upperBound,
+          childPageObjectId: reference.objectId,
+        })));
+      }
+      if (changeIndex !== changes.length) {
+        throw new Error("Persistent index batch insertion left entries unassigned");
+      }
+      return this.writeSplitBranchPages({ children });
+    }
+    default: {
+      const _ex: never = page;
+      throw new Error(`Unhandled persistent index page: ${String(_ex)}`);
+    }
+    }
+  }
+
   private async insertIntoPage({
     objectId,
     entry,
@@ -926,11 +1063,18 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
   }: {
     values: readonly T[];
   }): readonly (readonly T[])[] {
-    if (values.length <= this.maxPageEntries) {
-      return [values];
+    if (values.length <= this.maxPageEntries) return [values];
+    const groupCount = Math.ceil(values.length / this.maxPageEntries);
+    const minimumGroupSize = Math.floor(values.length / groupCount);
+    const largerGroupCount = values.length % groupCount;
+    const groups: T[][] = [];
+    let offset = 0;
+    for (let index = 0; index < groupCount; index += 1) {
+      const groupSize = minimumGroupSize + (index < largerGroupCount ? 1 : 0);
+      groups.push(values.slice(offset, offset + groupSize));
+      offset += groupSize;
     }
-    const splitIndex = Math.ceil(values.length / 2);
-    return [values.slice(0, splitIndex), values.slice(splitIndex)];
+    return groups;
   }
 
   private async referenceForPage({

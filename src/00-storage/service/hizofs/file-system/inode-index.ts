@@ -264,6 +264,16 @@ export class HizoFSInodeIndex {
     return this.index.set({ rootObjectId, entry });
   }
 
+  setMany({
+    rootObjectId,
+    entries,
+  }: {
+    rootObjectId: string;
+    entries: readonly HizoFSInodeIndexEntry[];
+  }): Promise<string> {
+    return this.index.setMany({ rootObjectId, entries });
+  }
+
   delete({
     rootObjectId,
     nodeId,

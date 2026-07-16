@@ -439,15 +439,12 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
             ],
             modifiedAt: timestamp,
           });
-        let inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
+        const inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
-          nodeId: childNodeId,
-          inodeObjectId: fileInodeObjectId,
-        });
-        inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
-          inodeIndexRootObjectId,
-          nodeId: directoryNodeId,
-          inodeObjectId: changedDirectory.inodeObjectId,
+          entries: [
+            { nodeId: childNodeId, inodeObjectId: fileInodeObjectId },
+            { nodeId: directoryNodeId, inodeObjectId: changedDirectory.inodeObjectId },
+          ],
         });
         return {
           changed: "yes" as const,
@@ -543,15 +540,12 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
             ],
             modifiedAt: timestamp,
           });
-        let inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
+        const inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
-          nodeId: childNodeId,
-          inodeObjectId: childInodeObjectId,
-        });
-        inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
-          inodeIndexRootObjectId,
-          nodeId: directoryNodeId,
-          inodeObjectId: changedDirectory.inodeObjectId,
+          entries: [
+            { nodeId: childNodeId, inodeObjectId: childInodeObjectId },
+            { nodeId: directoryNodeId, inodeObjectId: changedDirectory.inodeObjectId },
+          ],
         });
         return {
           changed: "yes" as const,
@@ -685,15 +679,12 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
             ],
             modifiedAt: timestamp,
           });
-        let inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
+        const inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
-          nodeId: childNodeId,
-          inodeObjectId,
-        });
-        inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
-          inodeIndexRootObjectId,
-          nodeId: directoryNodeId,
-          inodeObjectId: changedDirectory.inodeObjectId,
+          entries: [
+            { nodeId: childNodeId, inodeObjectId },
+            { nodeId: directoryNodeId, inodeObjectId: changedDirectory.inodeObjectId },
+          ],
         });
         return {
           changed: "yes" as const,
@@ -932,15 +923,12 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
               changes: destinationChanges,
               modifiedAt: timestamp,
             });
-          inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
+          inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
             inodeIndexRootObjectId,
-            nodeId: sourceDirectoryNodeId,
-            inodeObjectId: changedSource.inodeObjectId,
-          });
-          inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
-            inodeIndexRootObjectId,
-            nodeId: destinationNodeId,
-            inodeObjectId: changedDestination.inodeObjectId,
+            entries: [
+              { nodeId: sourceDirectoryNodeId, inodeObjectId: changedSource.inodeObjectId },
+              { nodeId: destinationNodeId, inodeObjectId: changedDestination.inodeObjectId },
+            ],
           });
         }
         inodeIndexRootObjectId = await this.runtime.nodeService.deleteInodes({
@@ -1077,15 +1065,12 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
             changes: directoryChanges,
             modifiedAt: timestamp,
           });
-        let inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
+        let inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
-          nodeId,
-          inodeObjectId,
-        });
-        inodeIndexRootObjectId = await this.runtime.nodeService.setInode({
-          inodeIndexRootObjectId,
-          nodeId: destinationNodeId,
-          inodeObjectId: changedDestination.inodeObjectId,
+          entries: [
+            { nodeId, inodeObjectId },
+            { nodeId: destinationNodeId, inodeObjectId: changedDestination.inodeObjectId },
+          ],
         });
         if (destinationEntry !== undefined) {
           inodeIndexRootObjectId = await this.runtime.nodeService.deleteInode({

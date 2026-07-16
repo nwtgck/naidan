@@ -121,6 +121,84 @@ describe('persistent HizoFS index', () => {
     });
   });
 
+  it('batch-sets entries by rewriting each affected path once', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    let root = await index.createEmpty();
+    for (let value = 0; value < 100; value += 1) {
+      root = await index.set({
+        rootObjectId: root,
+        entry: { key: String(value).padStart(3, '0'), value },
+      });
+    }
+
+    const previousRoot = root;
+    const writesBefore = pageStore.writes;
+    root = await index.setMany({
+      rootObjectId: root,
+      entries: [
+        { key: '011', value: 1100 },
+        { key: '010', value: 1000 },
+      ],
+    });
+    const batchWrites = pageStore.writes - writesBefore;
+
+    let sequentialRoot = previousRoot;
+    const sequentialWritesBefore = pageStore.writes;
+    sequentialRoot = await index.set({
+      rootObjectId: sequentialRoot,
+      entry: { key: '010', value: 1000 },
+    });
+    sequentialRoot = await index.set({
+      rootObjectId: sequentialRoot,
+      entry: { key: '011', value: 1100 },
+    });
+    const sequentialWrites = pageStore.writes - sequentialWritesBefore;
+
+    expect(batchWrites).toBeLessThan(sequentialWrites);
+    expect(await index.get({ rootObjectId: previousRoot, key: '010' })).toEqual({
+      key: '010',
+      value: 10,
+    });
+    expect(await index.get({ rootObjectId: root, key: '010' })).toEqual({
+      key: '010',
+      value: 1000,
+    });
+    expect(await index.get({ rootObjectId: root, key: '011' })).toEqual({
+      key: '011',
+      value: 1100,
+    });
+    await expect(index.validateStructure({ rootObjectId: sequentialRoot }))
+      .resolves.toMatchObject({ entryCount: 100 });
+  });
+
+  it('batch-sets entries across leaves and rejects duplicate keys', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    let root = await index.createEmpty();
+    root = await index.setMany({
+      rootObjectId: root,
+      entries: Array.from({ length: 20 }, (_, value) => ({
+        key: String(value).padStart(2, '0'),
+        value,
+      })).reverse(),
+    });
+
+    expect((await collect({ index, rootObjectId: root })).map(entry => entry.value)).toEqual(
+      Array.from({ length: 20 }, (_, value) => value),
+    );
+    await expect(index.validateStructure({ rootObjectId: root })).resolves.toMatchObject({
+      entryCount: 20,
+    });
+    await expect(index.setMany({
+      rootObjectId: root,
+      entries: [
+        { key: '10', value: 1 },
+        { key: '10', value: 2 },
+      ],
+    })).rejects.toThrow('batch entries must be unique');
+  });
+
   it('deletes keys without rebuilding unrelated leaves and collapses an empty root', async () => {
     const pageStore = new MemoryPageStore();
     const index = createIndex({ pageStore });

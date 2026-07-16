@@ -18,8 +18,8 @@ vi.mock('@/features/debug-hizofs/worker/client', () => ({
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 3,
-    benchmarkImplementationVersion: 3,
+    schemaVersion: 4,
+    benchmarkImplementationVersion: 4,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
@@ -38,8 +38,11 @@ function createReport(): HizoFSBenchmarkReport {
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
       hizoFSInternalMemoryMeasured: false,
-      hizoFSRuntimeMemoryLimits: {
+      hizoFSRuntimePolicy: {
+        fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
+        fileChunkWriteConcurrencyPerWriter: 4,
+        maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
         fileChunkCacheByteLimitPerRuntime: 8 * 1024 * 1024,

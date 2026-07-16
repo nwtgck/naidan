@@ -21,6 +21,16 @@ function validatePath({ path }: {
   }
 }
 
+function validateDirectoryPath({ path }: {
+  path: readonly string[];
+}): void {
+  for (const segment of path) {
+    if (segment.length === 0 || segment === '.' || segment === '..' || segment.includes('/')) {
+      throw new Error(`Invalid HizoFS backing-store path segment: ${segment}`);
+    }
+  }
+}
+
 function isNotFoundError({ error }: {
   error: unknown;
 }): boolean {
@@ -35,9 +45,12 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
     root: FileSystemDirectoryHandle;
   }) {
     this.root = root;
+    this.directoryHandlePromises.set('', Promise.resolve(root));
   }
 
   private readonly root: FileSystemDirectoryHandle;
+  private readonly directoryHandlePromises = new Map<string, Promise<FileSystemDirectoryHandle>>();
+  private readonly rootFileHandlePromises = new Map<string, Promise<FileSystemFileHandle>>();
 
   async read({ path }: {
     path: readonly string[];
@@ -45,7 +58,12 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
     validatePath({ path });
     try {
       const { directory, name } = await this.resolveParent({ path, create: false });
-      const handle = await directory.getFileHandle(name);
+      const handle = await this.resolveFileHandle({
+        directory,
+        parentPath: path.slice(0, -1),
+        name,
+        create: false,
+      });
       return new Uint8Array(await (await handle.getFile()).arrayBuffer());
     } catch (error) {
       if (isNotFoundError({ error })) {
@@ -61,7 +79,12 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
   }): Promise<void> {
     validatePath({ path });
     const { directory, name } = await this.resolveParent({ path, create: true });
-    const handle = await directory.getFileHandle(name, { create: true }) as FileHandleWithWritable;
+    const handle = await this.resolveFileHandle({
+      directory,
+      parentPath: path.slice(0, -1),
+      name,
+      create: true,
+    }) as FileHandleWithWritable;
     const writable = await handle.createWritable({ keepExistingData: false });
     try {
       await writable.write(toExactArrayBuffer({ bytes }));
@@ -94,23 +117,22 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
     try {
       const { directory, name } = await this.resolveParent({ path, create: false });
       await directory.removeEntry(name, { recursive });
+      this.invalidateRootFileHandle({ path });
+      this.invalidateDirectoryHandlesAtOrBelow({ path });
     } catch (error) {
       if (!isNotFoundError({ error })) {
         throw error;
       }
+      this.invalidateRootFileHandle({ path });
+      this.invalidateDirectoryHandlesAtOrBelow({ path });
     }
   }
 
   async *list({ path }: {
     path: readonly string[];
   }): AsyncIterable<HizoFSBackingStoreEntry> {
-    let directory = this.root;
-    for (const segment of path) {
-      if (segment.length === 0 || segment === '.' || segment === '..' || segment.includes('/')) {
-        throw new Error(`Invalid HizoFS backing-store path segment: ${segment}`);
-      }
-      directory = await directory.getDirectoryHandle(segment);
-    }
+    validateDirectoryPath({ path });
+    const directory = await this.resolveDirectory({ path, create: false });
 
     for await (const [name, handle] of directory.entries()) {
       switch (handle.kind) {
@@ -140,11 +162,96 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
       throw new Error('HizoFS backing-store file path must not be empty');
     }
 
-    let directory = this.root;
-    for (const segment of path.slice(0, -1)) {
-      directory = await directory.getDirectoryHandle(segment, { create });
-    }
+    const directory = await this.resolveDirectory({
+      path: path.slice(0, -1),
+      create,
+    });
     return { directory, name };
+  }
+
+  private async resolveDirectory({ path, create }: {
+    path: readonly string[];
+    create: boolean;
+  }): Promise<FileSystemDirectoryHandle> {
+    let parent = this.root;
+    const resolvedSegments: string[] = [];
+    for (const segment of path) {
+      resolvedSegments.push(segment);
+      const cacheKey = resolvedSegments.join('/');
+      const cached = this.directoryHandlePromises.get(cacheKey);
+      if (cached !== undefined) {
+        try {
+          parent = await cached;
+          continue;
+        } catch (error) {
+          if (!create || !isNotFoundError({ error })) throw error;
+          if (this.directoryHandlePromises.get(cacheKey) === cached) {
+            this.directoryHandlePromises.delete(cacheKey);
+          }
+        }
+      }
+
+      const pending = parent.getDirectoryHandle(segment, { create });
+      this.directoryHandlePromises.set(cacheKey, pending);
+      try {
+        parent = await pending;
+      } catch (error) {
+        if (this.directoryHandlePromises.get(cacheKey) === pending) {
+          this.directoryHandlePromises.delete(cacheKey);
+        }
+        throw error;
+      }
+    }
+    return parent;
+  }
+
+  private async resolveFileHandle({ directory, parentPath, name, create }: {
+    directory: FileSystemDirectoryHandle;
+    parentPath: readonly string[];
+    name: string;
+    create: boolean;
+  }): Promise<FileSystemFileHandle> {
+    if (parentPath.length !== 0) {
+      return directory.getFileHandle(name, { create });
+    }
+    const cached = this.rootFileHandlePromises.get(name);
+    if (cached !== undefined) {
+      try {
+        return await cached;
+      } catch (error) {
+        if (!create || !isNotFoundError({ error })) throw error;
+        if (this.rootFileHandlePromises.get(name) === cached) {
+          this.rootFileHandlePromises.delete(name);
+        }
+      }
+    }
+    const pending = directory.getFileHandle(name, { create });
+    this.rootFileHandlePromises.set(name, pending);
+    try {
+      return await pending;
+    } catch (error) {
+      if (this.rootFileHandlePromises.get(name) === pending) {
+        this.rootFileHandlePromises.delete(name);
+      }
+      throw error;
+    }
+  }
+
+  private invalidateRootFileHandle({ path }: {
+    path: readonly string[];
+  }): void {
+    if (path.length === 1) this.rootFileHandlePromises.delete(path[0]!);
+  }
+
+  private invalidateDirectoryHandlesAtOrBelow({ path }: {
+    path: readonly string[];
+  }): void {
+    const removedPath = path.join('/');
+    for (const key of this.directoryHandlePromises.keys()) {
+      if (key === removedPath || key.startsWith(`${removedPath}/`)) {
+        this.directoryHandlePromises.delete(key);
+      }
+    }
   }
 }
 
