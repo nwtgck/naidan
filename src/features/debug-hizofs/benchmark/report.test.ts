@@ -8,8 +8,8 @@ import type { HizoFSBenchmarkReport } from './types';
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 1,
-    benchmarkImplementationVersion: 1,
+    schemaVersion: 2,
+    benchmarkImplementationVersion: 2,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -22,11 +22,19 @@ function createReport(): HizoFSBenchmarkReport {
       crossOriginIsolated: false,
       hardwareConcurrency: 2,
     },
+    measurementModel: {
+      caseDurationScope: 'workload_public_api_calls_only',
+      lifecycleDurationScope: 'separate_lifecycle_events',
+      memoryScope: 'benchmark_harness_buffers_only',
+      browserHeapMeasured: false,
+      hizoFSInternalMemoryMeasured: false,
+    },
     configuration: createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
+    lifecycleEvents: [],
     executionOrder: [],
     results: [{
       workload: 'small_files',
-      caseId: 'small_files_write',
+      caseId: 'small_files_write_existing',
       label: 'write',
       parameters: { count: 1 },
       backends: {
@@ -35,6 +43,8 @@ function createReport(): HizoFSBenchmarkReport {
           durationMs: { median: 1, p95: 1, minimum: 1, maximum: 1 },
           operationsPerSecond: 1,
           throughputBytesPerSecond: undefined,
+          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0 },
+          memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: undefined,
           samples: [{
             iteration: 0,
@@ -44,6 +54,25 @@ function createReport(): HizoFSBenchmarkReport {
             operationCount: 1,
             bytesProcessed: 0,
             checksum: 0,
+            apiOperations: {
+              directoryHandleLookups: 0,
+              directoryCreates: 0,
+              fileHandleLookups: 1,
+              fileCreates: 0,
+              writableOpens: 0,
+              writeCalls: 0,
+              truncateCalls: 0,
+              readableOpens: 0,
+              readCalls: 0,
+              directoryLists: 0,
+              removeCalls: 0,
+              cloneCalls: 0,
+            },
+            memory: {
+              maximumTrackedBytes: 0,
+              largestTrackedAllocationBytes: 0,
+              scope: 'benchmark_harness_buffers_only',
+            },
             hizoFSDiagnostics: undefined,
           }],
         },
@@ -52,6 +81,8 @@ function createReport(): HizoFSBenchmarkReport {
           durationMs: { median: 2, p95: 2, minimum: 2, maximum: 2 },
           operationsPerSecond: 0.5,
           throughputBytesPerSecond: undefined,
+          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0 },
+          memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: {
             backingStore: {
               readOperations: 2,
@@ -67,6 +98,12 @@ function createReport(): HizoFSBenchmarkReport {
               plaintextBytesProcessed: 64,
               ciphertextBytesWritten: 256,
             },
+            amplification: {
+              backingReadBytesPerLogicalByte: 2,
+              backingWriteBytesPerLogicalByte: 4,
+              objectCreatesPerOperation: 2,
+              superblockPublicationsPerOperation: 1,
+            },
           },
           samples: [{
             iteration: 0,
@@ -76,6 +113,25 @@ function createReport(): HizoFSBenchmarkReport {
             operationCount: 1,
             bytesProcessed: 64,
             checksum: 0,
+            apiOperations: {
+              directoryHandleLookups: 0,
+              directoryCreates: 0,
+              fileHandleLookups: 1,
+              fileCreates: 0,
+              writableOpens: 1,
+              writeCalls: 1,
+              truncateCalls: 0,
+              readableOpens: 0,
+              readCalls: 0,
+              directoryLists: 0,
+              removeCalls: 0,
+              cloneCalls: 0,
+            },
+            memory: {
+              maximumTrackedBytes: 64,
+              largestTrackedAllocationBytes: 64,
+              scope: 'benchmark_harness_buffers_only',
+            },
             hizoFSDiagnostics: {
               backingStore: {
                 readOperations: 2,
@@ -91,6 +147,12 @@ function createReport(): HizoFSBenchmarkReport {
                 plaintextBytesProcessed: 64,
                 ciphertextBytesWritten: 256,
               },
+              amplification: {
+                backingReadBytesPerLogicalByte: 2,
+                backingWriteBytesPerLogicalByte: 4,
+                objectCreatesPerOperation: 2,
+                superblockPublicationsPerOperation: 1,
+              },
             },
           }],
         },
@@ -103,7 +165,7 @@ function createReport(): HizoFSBenchmarkReport {
     }],
     failure: {
       workload: 'small_files',
-      caseId: 'small_files_write',
+      caseId: 'small_files_write_existing',
       backend: 'raw_opfs',
       iteration: 0,
       errorName: 'Error',
@@ -134,6 +196,11 @@ describe('HizoFS benchmark report serialization', () => {
 
     expect(full).toMatchObject({
       reportType: 'hizofs_benchmark',
+      measurementModel: {
+        caseDurationScope: 'workload_public_api_calls_only',
+        lifecycleDurationScope: 'separate_lifecycle_events',
+        memoryScope: 'benchmark_harness_buffers_only',
+      },
       failure: { errorStack: 'private stack' },
       results: [{
         backends: {
@@ -146,6 +213,17 @@ describe('HizoFS benchmark report serialization', () => {
     expect(summary.results[0]?.backends.hizofs.hizoFSDiagnosticsTotals).toMatchObject({
       backingStore: { writeOperations: 3 },
       commits: { superblockPublications: 1 },
+      amplification: {
+        backingReadBytesPerLogicalByte: 2,
+        backingWriteBytesPerLogicalByte: 4,
+      },
+    });
+    expect(summary.results[0]?.backends.hizofs).toMatchObject({
+      apiOperationTotals: { writableOpens: 0 },
+      memoryHighWater: {
+        maximumTrackedBytes: 0,
+        scope: 'benchmark_harness_buffers_only',
+      },
     });
     expect(summary.failure.errorStack).toBeUndefined();
   });

@@ -74,6 +74,7 @@ function setPreset({ preset }: { preset: HizoFSBenchmarkPreset }): void {
       ...presetConfiguration,
       backendMode: previous.backendMode,
       runLabel: previous.runLabel,
+      storeLifecycle: previous.storeLifecycle,
       workloads: getWorkloadsForBackendMode({
         workloads: presetConfiguration.workloads,
         backendMode: previous.backendMode,
@@ -249,6 +250,7 @@ async function copyHumanSummary(): Promise<void> {
     `HizoFS benchmark: ${currentReport.status}`,
     `Run ID: ${currentReport.runId}`,
     `Backends: ${currentReport.configuration.backendMode}`,
+    `Store lifecycle: ${currentReport.configuration.storeLifecycle}`,
     '',
     '| Case | Raw OPFS | HizoFS | HizoFS / Raw |',
     '|---|---:|---:|---:|',
@@ -401,6 +403,7 @@ onBeforeUnmount(() => {
             <label tw-class="text-xs">Run label<input v-model="configuration.runLabel" type="text" maxlength="200" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" placeholder="Optional local label"></label>
             <label tw-class="text-xs">Warm-up iterations<select v-model.number="configuration.warmupIterations" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="0">0</option><option :value="1">1</option><option :value="2">2</option></select></label>
             <label tw-class="text-xs">Measured iterations<select v-model.number="configuration.measuredIterations" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1">1</option><option :value="3">3</option><option :value="5">5</option><option :value="10">10</option></select></label>
+            <label tw-class="text-xs">Store lifecycle<select v-model="configuration.storeLifecycle" data-testid="hizofs-benchmark-store-lifecycle" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option value="reuse_without_gc">Reuse without GC</option><option value="fresh_per_iteration">Fresh store per iteration</option><option value="reuse_with_gc_between_iterations">Reuse with GC between iterations</option><option value="reopen_between_iterations">Reopen between iterations</option></select></label>
             <label tw-class="text-xs">Random seed<input v-model.number="configuration.randomSeed" type="number" min="1" max="4294967295" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @input="markCustom"></label>
 
             <label tw-class="text-xs">Small file count<select v-model.number="configuration.smallFiles.count" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="32">32</option><option :value="500">500</option><option :value="1000">1,000</option><option :value="10000">10,000</option></select></label>
@@ -416,13 +419,15 @@ onBeforeUnmount(() => {
             <label tw-class="text-xs">Maintenance clone count<select v-model.number="configuration.hizoFSMaintenance.cloneCount" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="8">8</option><option :value="50">50</option><option :value="100">100</option><option :value="1000">1,000</option></select></label>
             <label tw-class="text-xs">Maintenance source size<select v-model.number="configuration.hizoFSMaintenance.sourceFileSizeBytes" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1048576">1 MiB</option><option :value="16777216">16 MiB</option><option :value="67108864">64 MiB</option><option :value="134217728">128 MiB</option></select></label>
             <label tw-class="text-xs">Benchmark data<select v-model="configuration.benchmarkDataRetention" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running"><option value="delete_after_run">Delete after run</option><option value="keep_after_run">Keep for raw inspection</option></select></label>
+            <p tw-class="text-[10px] text-gray-500 sm:col-span-2 lg:col-span-4">Lifecycle events separate fresh-store cost, orphan accumulation, GC effects, and reopen cost. Reported memory high-water covers benchmark-owned buffers only; it is not a browser heap measurement or a complete HizoFS internal-memory measurement.</p>
           </div>
         </section>
 
         <section tw-class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-          <div tw-class="grid gap-2 text-xs sm:grid-cols-3">
+          <div tw-class="grid gap-2 text-xs sm:grid-cols-4">
             <div><span tw-class="text-gray-500">Backends:</span> {{ configuration.backendMode }}</div>
             <div><span tw-class="text-gray-500">Workloads:</span> {{ selectedWorkloadLabels }}</div>
+            <div><span tw-class="text-gray-500">Lifecycle:</span> {{ configuration.storeLifecycle }}</div>
             <div><span tw-class="text-gray-500">Estimated logical writes:</span> {{ formatBytes({ value: estimatedWrittenBytes }) }}</div>
           </div>
           <div tw-class="mt-4 flex flex-wrap items-center gap-2">
@@ -448,16 +453,17 @@ onBeforeUnmount(() => {
           </header>
           <div tw-class="border-b border-gray-200 px-4 py-2 text-[10px] text-gray-500 dark:border-gray-700">Duration ratio is HizoFS median duration divided by raw OPFS median duration.</div>
           <div tw-class="overflow-x-auto">
-            <table tw-class="w-full min-w-[900px] text-left text-xs">
-              <thead tw-class="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-950"><tr><th tw-class="px-3 py-2">Case</th><th tw-class="px-3 py-2">Raw median</th><th tw-class="px-3 py-2">HizoFS median</th><th tw-class="px-3 py-2">Duration ratio</th><th tw-class="px-3 py-2">Raw rate</th><th tw-class="px-3 py-2">HizoFS rate</th><th tw-class="px-3 py-2">HizoFS commits</th></tr></thead>
+            <table tw-class="w-full min-w-[1100px] text-left text-xs">
+              <thead tw-class="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-950"><tr><th tw-class="px-3 py-2">Case</th><th tw-class="px-3 py-2">Raw median</th><th tw-class="px-3 py-2">HizoFS median</th><th tw-class="px-3 py-2">Duration ratio</th><th tw-class="px-3 py-2">Raw rate</th><th tw-class="px-3 py-2">HizoFS rate</th><th tw-class="px-3 py-2">Read amp</th><th tw-class="px-3 py-2">Write amp</th><th tw-class="px-3 py-2">HizoFS commits</th></tr></thead>
               <tbody>
                 <template v-for="result in report.results" :key="`${result.workload}:${result.caseId}`">
-                  <tr tw-class="border-t border-gray-100 dark:border-gray-800"><td tw-class="px-3 py-2"><div tw-class="font-medium">{{ result.label }}</div><div tw-class="font-mono text-[9px] text-gray-400">{{ result.caseId }}</div></td><td tw-class="px-3 py-2 font-mono">{{ formatDuration({ value: result.backends.rawOpfs?.durationMs.median }) }}</td><td tw-class="px-3 py-2 font-mono">{{ formatDuration({ value: result.backends.hizofs?.durationMs.median }) }}</td><td tw-class="px-3 py-2 font-mono">{{ result.comparison?.durationRatio === undefined ? '—' : `${result.comparison.durationRatio.toFixed(2)}×` }}</td><td tw-class="px-3 py-2 font-mono">{{ formatRate({ result: result.backends.rawOpfs }) }}</td><td tw-class="px-3 py-2 font-mono">{{ formatRate({ result: result.backends.hizofs }) }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.commits.superblockPublications ?? '—' }}</td></tr>
-                  <tr tw-class="border-t border-dashed border-gray-100 bg-gray-50/60 dark:border-gray-800 dark:bg-gray-950/40"><td colspan="7" tw-class="px-3 py-2"><details><summary tw-class="cursor-pointer text-[10px] text-gray-500">Parameters and samples</summary><pre tw-class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px]">{{ JSON.stringify(result, undefined, 2) }}</pre></details></td></tr>
+                  <tr tw-class="border-t border-gray-100 dark:border-gray-800"><td tw-class="px-3 py-2"><div tw-class="font-medium">{{ result.label }}</div><div tw-class="font-mono text-[9px] text-gray-400">{{ result.caseId }}</div></td><td tw-class="px-3 py-2 font-mono">{{ formatDuration({ value: result.backends.rawOpfs?.durationMs.median }) }}</td><td tw-class="px-3 py-2 font-mono">{{ formatDuration({ value: result.backends.hizofs?.durationMs.median }) }}</td><td tw-class="px-3 py-2 font-mono">{{ result.comparison?.durationRatio === undefined ? '—' : `${result.comparison.durationRatio.toFixed(2)}×` }}</td><td tw-class="px-3 py-2 font-mono">{{ formatRate({ result: result.backends.rawOpfs }) }}</td><td tw-class="px-3 py-2 font-mono">{{ formatRate({ result: result.backends.hizofs }) }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.amplification.backingReadBytesPerLogicalByte?.toFixed(2) ?? '—' }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.amplification.backingWriteBytesPerLogicalByte?.toFixed(2) ?? '—' }}</td><td tw-class="px-3 py-2 font-mono">{{ result.backends.hizofs?.hizoFSDiagnosticsTotals?.commits.superblockPublications ?? '—' }}</td></tr>
+                  <tr tw-class="border-t border-dashed border-gray-100 bg-gray-50/60 dark:border-gray-800 dark:bg-gray-950/40"><td colspan="9" tw-class="px-3 py-2"><details><summary tw-class="cursor-pointer text-[10px] text-gray-500">Parameters and samples</summary><pre tw-class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px]">{{ JSON.stringify(result, undefined, 2) }}</pre></details></td></tr>
                 </template>
               </tbody>
             </table>
           </div>
+          <details v-if="report.lifecycleEvents.length > 0" tw-class="border-t border-gray-200 p-3 dark:border-gray-700"><summary tw-class="cursor-pointer text-xs text-gray-500">Store lifecycle events</summary><pre tw-class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px]">{{ JSON.stringify(report.lifecycleEvents, undefined, 2) }}</pre></details>
           <div v-if="report.failure" tw-class="border-t border-red-200 bg-red-50 p-3 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ report.failure.errorName }}: {{ report.failure.errorMessage }}</div>
           <div v-if="report.cleanup.remainingPaths.length > 0" tw-class="border-t border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">Benchmark data remains at <span tw-class="font-mono">{{ report.cleanup.remainingPaths.join(', ') }}</span>.</div>
         </section>

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+// IMPORTANT: Benchmark configuration and report JSON are ephemeral developer
+// diagnostics, not Naidan persistent data or import/export contracts. Their
+// structures may change destructively between Naidan versions. Do not add
+// backward-compatible readers or migrations for old benchmark JSON. Configuration
+// import intentionally accepts only the schema implemented by the current build.
+
 export const hizoFSBenchmarkBackendModeSchema = z.union([
   z.literal('compare'),
   z.literal('hizofs_only'),
@@ -11,6 +17,13 @@ export const hizoFSBenchmarkPresetSchema = z.union([
   z.literal('standard'),
   z.literal('stress'),
   z.literal('custom'),
+]);
+
+export const hizoFSBenchmarkStoreLifecycleSchema = z.union([
+  z.literal('reuse_without_gc'),
+  z.literal('fresh_per_iteration'),
+  z.literal('reuse_with_gc_between_iterations'),
+  z.literal('reopen_between_iterations'),
 ]);
 
 export const hizoFSBenchmarkWorkloadSchema = z.union([
@@ -28,6 +41,7 @@ export const hizoFSBenchmarkConfigurationSchema = z.object({
   randomSeed: z.number().int().min(1).max(0xffff_ffff),
   warmupIterations: z.number().int().min(0).max(5),
   measuredIterations: z.number().int().min(1).max(20),
+  storeLifecycle: hizoFSBenchmarkStoreLifecycleSchema,
   workloads: z.array(hizoFSBenchmarkWorkloadSchema).min(1),
   smallFiles: z.object({
     count: z.number().int().min(1).max(100_000),
@@ -76,13 +90,42 @@ const hizoFSBackingStoreCountersSchema = z.object({
   bytesWritten: z.number().int().nonnegative(),
 }).strict();
 
+
+const benchmarkApiCountersSchema = z.object({
+  directoryHandleLookups: z.number().int().nonnegative(),
+  directoryCreates: z.number().int().nonnegative(),
+  fileHandleLookups: z.number().int().nonnegative(),
+  fileCreates: z.number().int().nonnegative(),
+  writableOpens: z.number().int().nonnegative(),
+  writeCalls: z.number().int().nonnegative(),
+  truncateCalls: z.number().int().nonnegative(),
+  readableOpens: z.number().int().nonnegative(),
+  readCalls: z.number().int().nonnegative(),
+  directoryLists: z.number().int().nonnegative(),
+  removeCalls: z.number().int().nonnegative(),
+  cloneCalls: z.number().int().nonnegative(),
+}).strict();
+
+const benchmarkMemoryDiagnosticsSchema = z.object({
+  maximumTrackedBytes: z.number().int().nonnegative(),
+  largestTrackedAllocationBytes: z.number().int().nonnegative(),
+  scope: z.literal('benchmark_harness_buffers_only'),
+}).strict();
+
+const benchmarkAmplificationSchema = z.object({
+  backingReadBytesPerLogicalByte: z.union([z.number().nonnegative(), z.undefined()]),
+  backingWriteBytesPerLogicalByte: z.union([z.number().nonnegative(), z.undefined()]),
+  objectCreatesPerOperation: z.union([z.number().nonnegative(), z.undefined()]),
+  superblockPublicationsPerOperation: z.union([z.number().nonnegative(), z.undefined()]),
+}).strict();
+
 const hizoFSBenchmarkDiagnosticsSchema = z.object({
   backingStore: hizoFSBackingStoreCountersSchema,
   objects: z.object({
     before: z.number().int().nonnegative(),
     after: z.number().int().nonnegative(),
-    created: z.number().int(),
-    removed: z.number().int(),
+    created: z.number().int().nonnegative(),
+    removed: z.number().int().nonnegative(),
   }).strict(),
   commits: z.object({
     superblockPublications: z.number().int().nonnegative(),
@@ -91,6 +134,7 @@ const hizoFSBenchmarkDiagnosticsSchema = z.object({
     plaintextBytesProcessed: z.number().int().nonnegative(),
     ciphertextBytesWritten: z.number().int().nonnegative(),
   }).strict(),
+  amplification: benchmarkAmplificationSchema,
 }).strict();
 
 const hizoFSBenchmarkDiagnosticsTotalsSchema = z.object({
@@ -106,6 +150,7 @@ const hizoFSBenchmarkDiagnosticsTotalsSchema = z.object({
     plaintextBytesProcessed: z.number().int().nonnegative(),
     ciphertextBytesWritten: z.number().int().nonnegative(),
   }).strict(),
+  amplification: benchmarkAmplificationSchema,
 }).strict();
 
 const benchmarkSampleSchema = z.object({
@@ -116,6 +161,8 @@ const benchmarkSampleSchema = z.object({
   operationCount: z.number().int().nonnegative(),
   bytesProcessed: z.number().int().nonnegative(),
   checksum: z.number().int().nonnegative(),
+  apiOperations: benchmarkApiCountersSchema,
+  memory: benchmarkMemoryDiagnosticsSchema,
   hizoFSDiagnostics: z.union([hizoFSBenchmarkDiagnosticsSchema, z.undefined()]),
 }).strict();
 
@@ -124,6 +171,8 @@ const benchmarkBackendCaseResultSchema = z.object({
   durationMs: durationSummarySchema,
   operationsPerSecond: z.union([z.number().nonnegative(), z.undefined()]),
   throughputBytesPerSecond: z.union([z.number().nonnegative(), z.undefined()]),
+  apiOperationTotals: benchmarkApiCountersSchema,
+  memoryHighWater: benchmarkMemoryDiagnosticsSchema,
   hizoFSDiagnosticsTotals: z.union([hizoFSBenchmarkDiagnosticsTotalsSchema, z.undefined()]),
   samples: z.array(benchmarkSampleSchema),
 }).strict();
@@ -163,9 +212,34 @@ export const hizoFSBenchmarkProgressSchema = z.object({
   message: z.string(),
 }).strict();
 
+
+const hizoFSBenchmarkLifecycleEventSchema = z.object({
+  phase: z.union([z.literal('preparing'), z.literal('warmup'), z.literal('measured')]),
+  iteration: z.union([z.number().int().nonnegative(), z.undefined()]),
+  backend: z.union([z.literal('raw_opfs'), z.literal('hizofs')]),
+  action: z.union([
+    z.literal('create_context'),
+    z.literal('reopen_context'),
+    z.literal('garbage_collection'),
+  ]),
+  durationMs: z.number().nonnegative(),
+  hizoFS: z.union([
+    z.object({
+      objectsBefore: z.number().int().nonnegative(),
+      objectsAfter: z.number().int().nonnegative(),
+      reachableObjectCount: z.union([z.number().int().nonnegative(), z.undefined()]),
+      unreachableObjectCount: z.union([z.number().int().nonnegative(), z.undefined()]),
+      removedObjectCount: z.union([z.number().int().nonnegative(), z.undefined()]),
+      backingStore: hizoFSBackingStoreCountersSchema,
+      superblockPublications: z.number().int().nonnegative(),
+    }).strict(),
+    z.undefined(),
+  ]),
+}).strict();
+
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(1),
-  benchmarkImplementationVersion: z.literal(1),
+  schemaVersion: z.literal(2),
+  benchmarkImplementationVersion: z.literal(2),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -182,7 +256,15 @@ export const hizoFSBenchmarkReportSchema = z.object({
     crossOriginIsolated: z.boolean(),
     hardwareConcurrency: z.union([z.number().int().positive(), z.undefined()]),
   }).strict(),
+  measurementModel: z.object({
+    caseDurationScope: z.literal('workload_public_api_calls_only'),
+    lifecycleDurationScope: z.literal('separate_lifecycle_events'),
+    memoryScope: z.literal('benchmark_harness_buffers_only'),
+    browserHeapMeasured: z.literal(false),
+    hizoFSInternalMemoryMeasured: z.literal(false),
+  }).strict(),
   configuration: hizoFSBenchmarkConfigurationSchema,
+  lifecycleEvents: z.array(hizoFSBenchmarkLifecycleEventSchema),
   executionOrder: z.array(z.object({
     iteration: z.number().int().nonnegative(),
     phase: z.union([z.literal('warmup'), z.literal('measured')]),
@@ -212,8 +294,10 @@ export const hizoFSBenchmarkReportSchema = z.object({
 
 export type HizoFSBenchmarkBackendMode = z.infer<typeof hizoFSBenchmarkBackendModeSchema>;
 export type HizoFSBenchmarkPreset = z.infer<typeof hizoFSBenchmarkPresetSchema>;
+export type HizoFSBenchmarkStoreLifecycle = z.infer<typeof hizoFSBenchmarkStoreLifecycleSchema>;
 export type HizoFSBenchmarkWorkload = z.infer<typeof hizoFSBenchmarkWorkloadSchema>;
 export type HizoFSBenchmarkConfiguration = z.infer<typeof hizoFSBenchmarkConfigurationSchema>;
+export type HizoFSBenchmarkLifecycleEvent = HizoFSBenchmarkReport['lifecycleEvents'][number];
 export type HizoFSBenchmarkProgress = z.infer<typeof hizoFSBenchmarkProgressSchema>;
 export type HizoFSBenchmarkReport = z.infer<typeof hizoFSBenchmarkReportSchema>;
 export type HizoFSBenchmarkCaseResult = HizoFSBenchmarkReport['results'][number];

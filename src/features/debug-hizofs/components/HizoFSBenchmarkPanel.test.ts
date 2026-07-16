@@ -18,8 +18,8 @@ vi.mock('@/features/debug-hizofs/worker/client', () => ({
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 1,
-    benchmarkImplementationVersion: 1,
+    schemaVersion: 2,
+    benchmarkImplementationVersion: 2,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
@@ -32,11 +32,19 @@ function createReport(): HizoFSBenchmarkReport {
       crossOriginIsolated: false,
       hardwareConcurrency: 2,
     },
+    measurementModel: {
+      caseDurationScope: 'workload_public_api_calls_only',
+      lifecycleDurationScope: 'separate_lifecycle_events',
+      memoryScope: 'benchmark_harness_buffers_only',
+      browserHeapMeasured: false,
+      hizoFSInternalMemoryMeasured: false,
+    },
     configuration: createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
+    lifecycleEvents: [],
     executionOrder: [],
     results: [{
       workload: 'small_files',
-      caseId: 'small_files_write',
+      caseId: 'small_files_write_existing',
       label: 'Create and write small files',
       parameters: { fileCount: 32 },
       backends: {
@@ -45,6 +53,8 @@ function createReport(): HizoFSBenchmarkReport {
           durationMs: { median: 10, p95: 10, minimum: 10, maximum: 10 },
           operationsPerSecond: 100,
           throughputBytesPerSecond: undefined,
+          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0 },
+          memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: undefined,
           samples: [],
         },
@@ -53,6 +63,8 @@ function createReport(): HizoFSBenchmarkReport {
           durationMs: { median: 20, p95: 20, minimum: 20, maximum: 20 },
           operationsPerSecond: 50,
           throughputBytesPerSecond: undefined,
+          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0 },
+          memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: undefined,
           samples: [],
         },
@@ -87,7 +99,7 @@ describe('HizoFSBenchmarkPanel', () => {
         progress: {
           stage: 'measuring',
           workload: 'small_files',
-          caseId: 'small_files_write',
+          caseId: 'small_files_write_existing',
           backend: 'hizofs',
           iteration: 0,
           completedUnits: 1,
@@ -161,6 +173,22 @@ describe('HizoFSBenchmarkPanel', () => {
     expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(
       expect.stringContaining('"backendMode": "raw_opfs_only"'),
     );
+  });
+
+  it('passes the selected store lifecycle to the Worker benchmark', async () => {
+    const wrapper = mount(HizoFSBenchmarkPanel);
+
+    await wrapper.get('[data-testid="hizofs-benchmark-advanced-toggle"]').trigger('click');
+    await wrapper.get('[data-testid="hizofs-benchmark-store-lifecycle"]')
+      .setValue('fresh_per_iteration');
+    await wrapper.get('[data-testid="hizofs-benchmark-run"]').trigger('click');
+    await flushPromises();
+
+    expect(mocks.runBenchmark).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({
+        storeLifecycle: 'fresh_per_iteration',
+      }),
+    }));
   });
 
   it('cleans retained benchmark data through the Worker', async () => {

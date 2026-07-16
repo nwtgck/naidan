@@ -2,6 +2,8 @@ import { toExactArrayBuffer } from '@/00-storage/service/hizofs/bytes';
 import {
   collectHizoFSGarbage,
   createHizoFS,
+  DEFAULT_HIZOFS_POLICY,
+  openHizoFS,
 } from '@/00-storage/service/hizofs';
 import type {
   StorageDirectoryHandle,
@@ -14,6 +16,7 @@ import {
   type HizoFSBenchmarkConfiguration,
   type HizoFSBenchmarkDiagnostics,
   type HizoFSBenchmarkDiagnosticsTotals,
+  type HizoFSBenchmarkLifecycleEvent,
   type HizoFSBenchmarkProgress,
   type HizoFSBenchmarkReport,
   type HizoFSBenchmarkSample,
@@ -23,12 +26,19 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 1 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 2 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
 
 type BackingStoreCounters = HizoFSBenchmarkDiagnostics['backingStore'];
+type BenchmarkApiCounters = HizoFSBenchmarkSample['apiOperations'];
+
+type BenchmarkMemoryTracker = {
+  activeBytes: number;
+  sampleHighWaterBytes: number;
+  sampleLargestAllocationBytes: number;
+};
 
 // These counters are updated by the backing-store proxy so diagnostics never
 // read the encrypted object tree between timed cases and accidentally warm the
@@ -41,12 +51,14 @@ type HizoFSPhysicalDiagnosticTracker = {
 type BenchmarkContext = {
   readonly kind: BackendKind;
   readonly rawRoot: FileSystemDirectoryHandle | undefined;
-  readonly hizoFSSession: StorageFileSystemSession | undefined;
+  hizoFSSession: StorageFileSystemSession | undefined;
   readonly hizoFSBackingDirectory: FileSystemDirectoryHandle | undefined;
   readonly hizoFSPhysicalBackingDirectory: FileSystemDirectoryHandle | undefined;
   readonly hizoFSRootKey: Uint8Array | undefined;
   readonly counters: BackingStoreCounters | undefined;
   readonly hizoFSPhysicalDiagnostics: HizoFSPhysicalDiagnosticTracker | undefined;
+  readonly apiCounters: BenchmarkApiCounters;
+  readonly memoryTracker: BenchmarkMemoryTracker;
 };
 
 type CaseSample = {
@@ -109,6 +121,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   const runDirectoryName = `run-${runId}`;
   const runDirectory = await benchmarkRoot.getDirectoryHandle(runDirectoryName, { create: true });
   const samples: CaseSample[] = [];
+  const lifecycleEvents: HizoFSBenchmarkLifecycleEvent[] = [];
   const executionOrder: HizoFSBenchmarkReport['executionOrder'] = [];
   let failure: HizoFSBenchmarkReport['failure'];
   let status: HizoFSBenchmarkReport['status'] = 'completed';
@@ -137,13 +150,22 @@ async function runHizoFSBenchmarkWithLockHeld({
 
   reportProgress({ message: 'Preparing isolated benchmark directories' });
 
+  let sharedContexts: Map<BackendKind, BenchmarkContext> | undefined;
   try {
-    const contexts = await createBenchmarkContexts({
-      configuration,
-      runDirectory,
+    const totalIterations = configuration.warmupIterations + configuration.measuredIterations;
+    const freshPerIteration = isFreshPerIteration({
+      lifecycle: configuration.storeLifecycle,
     });
+    if (!freshPerIteration) {
+      sharedContexts = await createBenchmarkContexts({
+        configuration,
+        contextDirectory: runDirectory,
+        phase: 'preparing',
+        iteration: undefined,
+        lifecycleEvents,
+      });
+    }
     try {
-      const totalIterations = configuration.warmupIterations + configuration.measuredIterations;
       for (let iteration = 0; iteration < totalIterations; iteration += 1) {
         assertActive();
         const phase: BenchmarkPhase = iteration < configuration.warmupIterations
@@ -164,41 +186,74 @@ async function runHizoFSBenchmarkWithLockHeld({
           order: [...order],
         });
 
-        for (const workload of configuration.workloads) {
-          currentWorkload = workload;
-          for (const backend of getBackendsForWorkload({ workload, order })) {
-            currentBackend = backend;
-            currentIteration = measuredIteration;
-            currentPhase = phase;
-            reportProgress({ message: `Running ${workload} on ${backend}` });
-            const context = contexts.get(backend);
-            if (context === undefined) {
-              throw new Error(`Missing benchmark context: ${backend}`);
+        const contexts = freshPerIteration
+          ? await createBenchmarkContexts({
+            configuration,
+            contextDirectory: await runDirectory.getDirectoryHandle(
+              `iteration-${phase}-${String(measuredIteration)}`,
+              { create: true },
+            ),
+            phase,
+            iteration: measuredIteration,
+            lifecycleEvents,
+          })
+          : sharedContexts;
+        if (contexts === undefined) throw new Error('Benchmark contexts are unavailable');
+
+        try {
+          for (const workload of configuration.workloads) {
+            currentWorkload = workload;
+            for (const backend of getBackendsForWorkload({ workload, order })) {
+              currentBackend = backend;
+              currentIteration = measuredIteration;
+              currentPhase = phase;
+              reportProgress({ message: `Running ${workload} on ${backend}` });
+              const context = contexts.get(backend);
+              if (context === undefined) {
+                throw new Error(`Missing benchmark context: ${backend}`);
+              }
+              const nextSamples = await runWorkloadIteration({
+                configuration,
+                workload,
+                context,
+                phase,
+                iteration: measuredIteration,
+                randomSeed: mixSeed({
+                  seed: configuration.randomSeed,
+                  value: iteration * 31 + getWorkloadSeedDiscriminator({ workload }),
+                }),
+                assertActive,
+                onCaseStart: ({ caseId }) => {
+                  currentCaseId = caseId;
+                  reportProgress({ message: `Running ${caseId} on ${backend}` });
+                },
+              });
+              samples.push(...nextSamples);
+              completedUnits += 1;
+              reportProgress({ message: `Completed ${workload} on ${backend}` });
             }
-            const nextSamples = await runWorkloadIteration({
-              configuration,
-              workload,
-              context,
-              phase,
-              iteration: measuredIteration,
-              randomSeed: mixSeed({
-                seed: configuration.randomSeed,
-                value: iteration * 31 + getWorkloadSeedDiscriminator({ workload }),
-              }),
-              assertActive,
-              onCaseStart: ({ caseId }) => {
-                currentCaseId = caseId;
-                reportProgress({ message: `Running ${caseId} on ${backend}` });
-              },
-            });
-            samples.push(...nextSamples);
-            completedUnits += 1;
-            reportProgress({ message: `Completed ${workload} on ${backend}` });
           }
+        } finally {
+          if (freshPerIteration) {
+            await closeBenchmarkContexts({ contexts });
+          }
+        }
+
+        if (
+          !freshPerIteration
+          && iteration < totalIterations - 1
+        ) {
+          await applyBetweenIterationLifecycle({
+            lifecycle: configuration.storeLifecycle,
+            contexts,
+            phase,
+            iteration: measuredIteration,
+            lifecycleEvents,
+          });
         }
       }
     } finally {
-      await closeBenchmarkContexts({ contexts });
+      if (sharedContexts !== undefined) await closeBenchmarkContexts({ contexts: sharedContexts });
     }
   } catch (error) {
     status = isAbortError({ error }) ? 'cancelled' : 'failed';
@@ -228,7 +283,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -242,7 +297,15 @@ async function runHizoFSBenchmarkWithLockHeld({
       crossOriginIsolated: globalThis.crossOriginIsolated === true,
       hardwareConcurrency: getHardwareConcurrency(),
     },
+    measurementModel: {
+      caseDurationScope: 'workload_public_api_calls_only',
+      lifecycleDurationScope: 'separate_lifecycle_events',
+      memoryScope: 'benchmark_harness_buffers_only',
+      browserHeapMeasured: false,
+      hizoFSInternalMemoryMeasured: false,
+    },
     configuration,
+    lifecycleEvents,
     executionOrder,
     results: aggregateSamples({ samples }),
     failure,
@@ -281,16 +344,23 @@ async function runWithExclusiveBenchmarkLock<T>({
 
 async function createBenchmarkContexts({
   configuration,
-  runDirectory,
+  contextDirectory,
+  phase,
+  iteration,
+  lifecycleEvents,
 }: {
   configuration: HizoFSBenchmarkConfiguration;
-  runDirectory: FileSystemDirectoryHandle;
+  contextDirectory: FileSystemDirectoryHandle;
+  phase: HizoFSBenchmarkLifecycleEvent['phase'];
+  iteration: number | undefined;
+  lifecycleEvents: HizoFSBenchmarkLifecycleEvent[];
 }): Promise<Map<BackendKind, BenchmarkContext>> {
   const result = new Map<BackendKind, BenchmarkContext>();
   for (const backend of getRequestedBackendKinds({ backendMode: configuration.backendMode })) {
+    const startedAt = performance.now();
     switch (backend) {
     case 'raw_opfs': {
-      const rawRoot = await runDirectory.getDirectoryHandle('raw', { create: true });
+      const rawRoot = await contextDirectory.getDirectoryHandle('raw', { create: true });
       result.set('raw_opfs', {
         kind: 'raw_opfs',
         rawRoot,
@@ -300,11 +370,21 @@ async function createBenchmarkContexts({
         hizoFSRootKey: undefined,
         counters: undefined,
         hizoFSPhysicalDiagnostics: undefined,
+        apiCounters: createEmptyBenchmarkApiCounters(),
+        memoryTracker: createBenchmarkMemoryTracker(),
+      });
+      lifecycleEvents.push({
+        phase,
+        iteration,
+        backend,
+        action: 'create_context',
+        durationMs: Math.max(performance.now() - startedAt, 0),
+        hizoFS: undefined,
       });
       break;
     }
     case 'hizofs': {
-      const backingDirectory = await runDirectory.getDirectoryHandle('hizofs-backing', { create: true });
+      const backingDirectory = await contextDirectory.getDirectoryHandle('hizofs-backing', { create: true });
       const counters = createEmptyBackingStoreCounters();
       const physicalDiagnostics = createHizoFSPhysicalDiagnosticTracker();
       const countedBackingDirectory = createCountingDirectoryHandle({
@@ -315,11 +395,15 @@ async function createBenchmarkContexts({
       });
       const rootKey = crypto.getRandomValues(new Uint8Array(32));
       let session: StorageFileSystemSession | undefined;
+      let initializationBackingStore = createEmptyBackingStoreCounters();
+      let initializationSuperblockPublications = 0;
       try {
         session = await createHizoFS({
           backingDirectory: countedBackingDirectory,
           fileSystemRootKey: rootKey,
         });
+        initializationBackingStore = { ...counters };
+        initializationSuperblockPublications = physicalDiagnostics.superblockPublications;
         await initializeHizoFSPhysicalDiagnostics({
           backingDirectory,
           physicalDiagnostics,
@@ -343,6 +427,24 @@ async function createBenchmarkContexts({
         hizoFSRootKey: rootKey,
         counters,
         hizoFSPhysicalDiagnostics: physicalDiagnostics,
+        apiCounters: createEmptyBenchmarkApiCounters(),
+        memoryTracker: createBenchmarkMemoryTracker(),
+      });
+      lifecycleEvents.push({
+        phase,
+        iteration,
+        backend,
+        action: 'create_context',
+        durationMs: Math.max(performance.now() - startedAt, 0),
+        hizoFS: {
+          objectsBefore: 0,
+          objectsAfter: physicalDiagnostics.objectPaths.size,
+          reachableObjectCount: undefined,
+          unreachableObjectCount: undefined,
+          removedObjectCount: undefined,
+          backingStore: initializationBackingStore,
+          superblockPublications: initializationSuperblockPublications,
+        },
       });
       break;
     }
@@ -353,6 +455,157 @@ async function createBenchmarkContexts({
     }
   }
   return result;
+}
+
+async function applyBetweenIterationLifecycle({
+  lifecycle,
+  contexts,
+  phase,
+  iteration,
+  lifecycleEvents,
+}: {
+  lifecycle: HizoFSBenchmarkConfiguration['storeLifecycle'];
+  contexts: Map<BackendKind, BenchmarkContext>;
+  phase: BenchmarkPhase;
+  iteration: number;
+  lifecycleEvents: HizoFSBenchmarkLifecycleEvent[];
+}): Promise<void> {
+  switch (lifecycle) {
+  case 'reuse_without_gc':
+    return;
+  case 'fresh_per_iteration':
+    throw new Error('Fresh-per-iteration lifecycle is handled by context replacement');
+  case 'reopen_between_iterations': {
+    const context = contexts.get('hizofs');
+    if (
+      context === undefined
+      || context.hizoFSSession === undefined
+      || context.hizoFSBackingDirectory === undefined
+      || context.hizoFSRootKey === undefined
+      || context.counters === undefined
+      || context.hizoFSPhysicalDiagnostics === undefined
+    ) {
+      return;
+    }
+    const countersBefore = { ...context.counters };
+    const superblockPublicationsBefore = context.hizoFSPhysicalDiagnostics.superblockPublications;
+    const startedAt = performance.now();
+    await context.hizoFSSession.close();
+    context.hizoFSSession = await openHizoFS({
+      backingDirectory: context.hizoFSBackingDirectory,
+      fileSystemRootKey: context.hizoFSRootKey,
+    });
+    lifecycleEvents.push({
+      phase,
+      iteration,
+      backend: 'hizofs',
+      action: 'reopen_context',
+      durationMs: Math.max(performance.now() - startedAt, 0),
+      hizoFS: createLifecycleObjectSnapshot({
+        context,
+        backingStore: subtractBackingStoreCounters({
+          before: countersBefore,
+          after: context.counters,
+        }),
+        superblockPublications: Math.max(
+          context.hizoFSPhysicalDiagnostics.superblockPublications
+            - superblockPublicationsBefore,
+          0,
+        ),
+      }),
+    });
+    return;
+  }
+  case 'reuse_with_gc_between_iterations': {
+    const context = contexts.get('hizofs');
+    if (
+      context === undefined
+      || context.hizoFSBackingDirectory === undefined
+      || context.hizoFSRootKey === undefined
+      || context.hizoFSPhysicalDiagnostics === undefined
+      || context.counters === undefined
+    ) {
+      return;
+    }
+    const objectsBefore = context.hizoFSPhysicalDiagnostics.objectPaths.size;
+    const countersBefore = { ...context.counters };
+    const superblockPublicationsBefore = context.hizoFSPhysicalDiagnostics.superblockPublications;
+    const startedAt = performance.now();
+    const result = await collectHizoFSGarbage({
+      backingDirectory: context.hizoFSBackingDirectory,
+      fileSystemRootKey: context.hizoFSRootKey,
+      dryRun: false,
+    });
+    lifecycleEvents.push({
+      phase,
+      iteration,
+      backend: 'hizofs',
+      action: 'garbage_collection',
+      durationMs: Math.max(performance.now() - startedAt, 0),
+      hizoFS: {
+        objectsBefore,
+        objectsAfter: context.hizoFSPhysicalDiagnostics.objectPaths.size,
+        reachableObjectCount: result.reachableObjectCount,
+        unreachableObjectCount: result.unreachableObjectIds.length,
+        removedObjectCount: result.removedObjectCount,
+        backingStore: subtractBackingStoreCounters({
+          before: countersBefore,
+          after: context.counters,
+        }),
+        superblockPublications: Math.max(
+          context.hizoFSPhysicalDiagnostics.superblockPublications
+            - superblockPublicationsBefore,
+          0,
+        ),
+      },
+    });
+    return;
+  }
+  default: {
+    const _ex: never = lifecycle;
+    throw new Error(`Unhandled benchmark store lifecycle: ${String(_ex)}`);
+  }
+  }
+}
+
+function isFreshPerIteration({
+  lifecycle,
+}: {
+  lifecycle: HizoFSBenchmarkConfiguration['storeLifecycle'];
+}): boolean {
+  switch (lifecycle) {
+  case 'fresh_per_iteration':
+    return true;
+  case 'reuse_without_gc':
+  case 'reuse_with_gc_between_iterations':
+  case 'reopen_between_iterations':
+    return false;
+  default: {
+    const _ex: never = lifecycle;
+    throw new Error(`Unhandled benchmark store lifecycle: ${String(_ex)}`);
+  }
+  }
+}
+
+function createLifecycleObjectSnapshot({
+  context,
+  backingStore,
+  superblockPublications,
+}: {
+  context: BenchmarkContext;
+  backingStore: BackingStoreCounters;
+  superblockPublications: number;
+}): HizoFSBenchmarkLifecycleEvent['hizoFS'] {
+  const objectCount = context.hizoFSPhysicalDiagnostics?.objectPaths.size ?? 0;
+  return {
+    objectsBefore: objectCount,
+    objectsAfter: objectCount,
+    reachableObjectCount: undefined,
+    unreachableObjectCount: undefined,
+    removedObjectCount: undefined,
+    backingStore,
+    superblockPublications,
+  };
 }
 
 async function closeBenchmarkContexts({
@@ -530,12 +783,36 @@ async function runSmallFilesWorkload({
   };
   const samples: CaseSample[] = [];
 
-  onCaseStart({ caseId: 'small_files_write' });
+  onCaseStart({ caseId: 'small_files_create_empty' });
   samples.push(await measureCase({
     context,
     workload: 'small_files',
-    caseId: 'small_files_write',
-    label: 'Create and write small files',
+    caseId: 'small_files_create_empty',
+    label: 'Create empty small files',
+    parameters,
+    phase,
+    iteration,
+    operationCount: configuration.smallFiles.count,
+    bytesProcessed: 0,
+    operation: async () => {
+      for (let index = 0; index < configuration.smallFiles.count; index += 1) {
+        assertActive();
+        await createEmptyBackendFile({
+          context,
+          directory,
+          name: smallFileName({ index }),
+        });
+      }
+      return 0;
+    },
+  }));
+
+  onCaseStart({ caseId: 'small_files_write_existing' });
+  samples.push(await measureCase({
+    context,
+    workload: 'small_files',
+    caseId: 'small_files_write_existing',
+    label: 'Write existing small files',
     parameters,
     phase,
     iteration,
@@ -548,6 +825,7 @@ async function runSmallFilesWorkload({
           context,
           directory,
           name: smallFileName({ index }),
+          create: false,
           bytes: data,
           keepExistingData: false,
           position: 0,
@@ -703,6 +981,7 @@ async function runSequentialIoWorkload({
         context,
         directory,
         name: fileName,
+        create: false,
         bytes: block,
         keepExistingData: true,
         position: configuration.sequentialIo.fileSizeBytes,
@@ -786,6 +1065,11 @@ async function runRandomAccessWorkload({
     fileSizeBytes: configuration.randomAccess.fileSizeBytes,
     operationCount: configuration.randomAccess.operationCount,
     blockSizeBytes: configuration.randomAccess.blockSizeBytes,
+    uniqueBlockPositions: new Set(positions).size,
+    hizoFSChunkSizeBytes: DEFAULT_HIZOFS_POLICY.fileChunkSize,
+    uniqueHizoFSChunks: new Set(
+      positions.map(position => Math.floor(position / DEFAULT_HIZOFS_POLICY.fileChunkSize)),
+    ).size,
   };
   const samples: CaseSample[] = [];
 
@@ -1027,6 +1311,7 @@ async function runHizoFSMaintenanceWorkload({
     operation: async () => {
       for (let index = 0; index < configuration.hizoFSMaintenance.cloneCount; index += 1) {
         assertActive();
+        context.apiCounters.cloneCalls += 1;
         await directory.cloneFile({
           name: sourceName,
           destination: directory,
@@ -1056,6 +1341,7 @@ async function runHizoFSMaintenanceWorkload({
           context,
           directory,
           name: `clone-${String(index).padStart(6, '0')}.bin`,
+          create: false,
           bytes: block,
           keepExistingData: true,
           position: 0,
@@ -1138,6 +1424,8 @@ async function measureCase({
   operation: () => Promise<number>;
 }): Promise<CaseSample> {
   const before = readHizoFSDiagnosticBaseline({ context });
+  const apiBefore = { ...context.apiCounters };
+  beginMemoryMeasurement({ tracker: context.memoryTracker });
   const startedAt = performance.now();
   const checksum = await operation();
   const durationMs = Math.max(performance.now() - startedAt, 0);
@@ -1156,10 +1444,16 @@ async function measureCase({
       operationCount,
       bytesProcessed,
       checksum,
+      apiOperations: subtractBenchmarkApiCounters({
+        before: apiBefore,
+        after: context.apiCounters,
+      }),
+      memory: readMemoryDiagnostics({ tracker: context.memoryTracker }),
       hizoFSDiagnostics: createHizoFSDiagnostics({
         before,
         after,
         plaintextBytesProcessed: bytesProcessed,
+        operationCount,
       }),
     },
   };
@@ -1194,10 +1488,12 @@ function createHizoFSDiagnostics({
   before,
   after,
   plaintextBytesProcessed,
+  operationCount,
 }: {
   before: HizoFSDiagnosticSnapshot | undefined;
   after: HizoFSDiagnosticSnapshot | undefined;
   plaintextBytesProcessed: number;
+  operationCount: number;
 }): HizoFSBenchmarkDiagnostics | undefined {
   if (before === undefined || after === undefined) return undefined;
   const counters = subtractBackingStoreCounters({ before: before.counters, after: after.counters });
@@ -1215,6 +1511,24 @@ function createHizoFSDiagnostics({
     crypto: {
       plaintextBytesProcessed,
       ciphertextBytesWritten: counters.bytesWritten,
+    },
+    amplification: {
+      backingReadBytesPerLogicalByte: ratioOptional({
+        numerator: counters.bytesRead,
+        denominator: plaintextBytesProcessed,
+      }),
+      backingWriteBytesPerLogicalByte: ratioOptional({
+        numerator: counters.bytesWritten,
+        denominator: plaintextBytesProcessed,
+      }),
+      objectCreatesPerOperation: ratioOptional({
+        numerator: Math.max(after.objectCount - before.objectCount, 0),
+        denominator: operationCount,
+      }),
+      superblockPublicationsPerOperation: ratioOptional({
+        numerator: Math.max(after.superblockPublications - before.superblockPublications, 0),
+        denominator: operationCount,
+      }),
     },
   };
 }
@@ -1318,8 +1632,48 @@ function summarizeBackendSamples({
     throughputBytesPerSecond: throughputRates.length === 0
       ? undefined
       : median({ values: throughputRates }),
+    apiOperationTotals: aggregateBenchmarkApiCounters({ samples: measured }),
+    memoryHighWater: aggregateBenchmarkMemoryDiagnostics({ samples: measured }),
     hizoFSDiagnosticsTotals: aggregateHizoFSDiagnosticsTotals({ samples: measured }),
     samples: [...samples],
+  };
+}
+
+function aggregateBenchmarkApiCounters({
+  samples,
+}: {
+  samples: readonly HizoFSBenchmarkSample[];
+}): BenchmarkApiCounters {
+  const total = createEmptyBenchmarkApiCounters();
+  for (const sample of samples) {
+    total.directoryHandleLookups += sample.apiOperations.directoryHandleLookups;
+    total.directoryCreates += sample.apiOperations.directoryCreates;
+    total.fileHandleLookups += sample.apiOperations.fileHandleLookups;
+    total.fileCreates += sample.apiOperations.fileCreates;
+    total.writableOpens += sample.apiOperations.writableOpens;
+    total.writeCalls += sample.apiOperations.writeCalls;
+    total.truncateCalls += sample.apiOperations.truncateCalls;
+    total.readableOpens += sample.apiOperations.readableOpens;
+    total.readCalls += sample.apiOperations.readCalls;
+    total.directoryLists += sample.apiOperations.directoryLists;
+    total.removeCalls += sample.apiOperations.removeCalls;
+    total.cloneCalls += sample.apiOperations.cloneCalls;
+  }
+  return total;
+}
+
+function aggregateBenchmarkMemoryDiagnostics({
+  samples,
+}: {
+  samples: readonly HizoFSBenchmarkSample[];
+}): HizoFSBenchmarkSample['memory'] {
+  return {
+    maximumTrackedBytes: Math.max(...samples.map(sample => sample.memory.maximumTrackedBytes), 0),
+    largestTrackedAllocationBytes: Math.max(
+      ...samples.map(sample => sample.memory.largestTrackedAllocationBytes),
+      0,
+    ),
+    scope: 'benchmark_harness_buffers_only',
   };
 }
 
@@ -1339,6 +1693,7 @@ function aggregateHizoFSDiagnosticsTotals({
   let superblockPublications = 0;
   let plaintextBytesProcessed = 0;
   let ciphertextBytesWritten = 0;
+  let operationCount = 0;
   for (const diagnostic of diagnostics) {
     backingStore.readOperations += diagnostic.backingStore.readOperations;
     backingStore.writeOperations += diagnostic.backingStore.writeOperations;
@@ -1352,12 +1707,31 @@ function aggregateHizoFSDiagnosticsTotals({
     plaintextBytesProcessed += diagnostic.crypto.plaintextBytesProcessed;
     ciphertextBytesWritten += diagnostic.crypto.ciphertextBytesWritten;
   }
+  for (const sample of samples) operationCount += sample.operationCount;
 
   return {
     backingStore,
     objectChanges: { created, removed },
     commits: { superblockPublications },
     crypto: { plaintextBytesProcessed, ciphertextBytesWritten },
+    amplification: {
+      backingReadBytesPerLogicalByte: ratioOptional({
+        numerator: backingStore.bytesRead,
+        denominator: plaintextBytesProcessed,
+      }),
+      backingWriteBytesPerLogicalByte: ratioOptional({
+        numerator: backingStore.bytesWritten,
+        denominator: plaintextBytesProcessed,
+      }),
+      objectCreatesPerOperation: ratioOptional({
+        numerator: created,
+        denominator: operationCount,
+      }),
+      superblockPublicationsPerOperation: ratioOptional({
+        numerator: superblockPublications,
+        denominator: operationCount,
+      }),
+    },
   };
 }
 
@@ -1406,6 +1780,8 @@ async function getBackendDirectory({
   name: string;
   create?: boolean;
 }): Promise<FileSystemDirectoryHandle | StorageDirectoryHandle> {
+  context.apiCounters.directoryHandleLookups += 1;
+  if (create) context.apiCounters.directoryCreates += 1;
   switch (context.kind) {
   case 'raw_opfs':
     return (directory as FileSystemDirectoryHandle).getDirectoryHandle(name, { create });
@@ -1429,6 +1805,8 @@ async function getBackendFile({
   name: string;
   create: boolean;
 }): Promise<FileSystemFileHandle | StorageFileHandle> {
+  context.apiCounters.fileHandleLookups += 1;
+  if (create) context.apiCounters.fileCreates += 1;
   switch (context.kind) {
   case 'raw_opfs':
     return (directory as FileSystemDirectoryHandle).getFileHandle(name, { create });
@@ -1457,6 +1835,7 @@ async function writeBackendFile({
   context,
   directory,
   name,
+  create,
   bytes,
   keepExistingData,
   position,
@@ -1464,39 +1843,52 @@ async function writeBackendFile({
   context: BenchmarkContext;
   directory: FileSystemDirectoryHandle | StorageDirectoryHandle;
   name: string;
+  create: boolean;
   bytes: Uint8Array;
   keepExistingData: boolean;
   position: number;
 }): Promise<void> {
-  const file = await getBackendFile({ context, directory, name, create: true });
-  switch (context.kind) {
-  case 'raw_opfs': {
-    const writable = await (file as FileSystemFileHandle).createWritable({ keepExistingData });
-    try {
-      await writable.seek(position);
-      await writable.write(toExactArrayBuffer({ bytes }));
-      await writable.close();
-    } catch (error) {
-      await writable.abort(error);
-      throw error;
+  const file = await getBackendFile({ context, directory, name, create });
+  context.apiCounters.writableOpens += 1;
+  retainTrackedBytes({ tracker: context.memoryTracker, byteLength: bytes.byteLength });
+  try {
+    switch (context.kind) {
+    case 'raw_opfs': {
+      const writable = await (file as FileSystemFileHandle).createWritable({ keepExistingData });
+      try {
+        await writable.seek(position);
+        context.apiCounters.writeCalls += 1;
+        await writeRawOpfsBytes({
+          writable,
+          bytes,
+          memoryTracker: context.memoryTracker,
+        });
+        await writable.close();
+      } catch (error) {
+        await writable.abort(error);
+        throw error;
+      }
+      break;
     }
-    break;
-  }
-  case 'hizofs': {
-    const writable = await (file as StorageFileHandle).createWritable({ keepExistingData });
-    try {
-      await writable.write({ position, data: bytes });
-      await writable.close();
-    } catch (error) {
-      await writable.abort({ reason: error });
-      throw error;
+    case 'hizofs': {
+      const writable = await (file as StorageFileHandle).createWritable({ keepExistingData });
+      try {
+        context.apiCounters.writeCalls += 1;
+        await writable.write({ position, data: bytes });
+        await writable.close();
+      } catch (error) {
+        await writable.abort({ reason: error });
+        throw error;
+      }
+      break;
     }
-    break;
-  }
-  default: {
-    const _ex: never = context.kind;
-    throw new Error(`Unhandled benchmark context: ${String(_ex)}`);
-  }
+    default: {
+      const _ex: never = context.kind;
+      throw new Error(`Unhandled benchmark context: ${String(_ex)}`);
+    }
+    }
+  } finally {
+    releaseTrackedBytes({ tracker: context.memoryTracker, byteLength: bytes.byteLength });
   }
 }
 
@@ -1520,51 +1912,61 @@ async function writeBackendFileByBlocks({
   assertActive: () => void;
 }): Promise<void> {
   const file = await getBackendFile({ context, directory, name, create: true });
-  switch (context.kind) {
-  case 'raw_opfs': {
-    const writable = await (file as FileSystemFileHandle).createWritable({ keepExistingData });
-    try {
-      let written = 0;
-      while (written < sizeBytes) {
-        assertActive();
-        const length = Math.min(block.byteLength, sizeBytes - written);
-        await writable.seek(startPosition + written);
-        await writable.write(toExactArrayBuffer({
-          bytes: length === block.byteLength ? block : block.subarray(0, length),
-        }));
-        written += length;
+  context.apiCounters.writableOpens += 1;
+  retainTrackedBytes({ tracker: context.memoryTracker, byteLength: block.byteLength });
+  try {
+    switch (context.kind) {
+    case 'raw_opfs': {
+      const writable = await (file as FileSystemFileHandle).createWritable({ keepExistingData });
+      try {
+        let written = 0;
+        while (written < sizeBytes) {
+          assertActive();
+          const length = Math.min(block.byteLength, sizeBytes - written);
+          await writable.seek(startPosition + written);
+          context.apiCounters.writeCalls += 1;
+          await writeRawOpfsBytes({
+            writable,
+            bytes: length === block.byteLength ? block : block.subarray(0, length),
+            memoryTracker: context.memoryTracker,
+          });
+          written += length;
+        }
+        await writable.close();
+      } catch (error) {
+        await writable.abort(error);
+        throw error;
       }
-      await writable.close();
-    } catch (error) {
-      await writable.abort(error);
-      throw error;
+      break;
     }
-    break;
-  }
-  case 'hizofs': {
-    const writable = await (file as StorageFileHandle).createWritable({ keepExistingData });
-    try {
-      let written = 0;
-      while (written < sizeBytes) {
-        assertActive();
-        const length = Math.min(block.byteLength, sizeBytes - written);
-        await writable.write({
-          position: startPosition + written,
-          data: length === block.byteLength ? block : block.subarray(0, length),
-        });
-        written += length;
+    case 'hizofs': {
+      const writable = await (file as StorageFileHandle).createWritable({ keepExistingData });
+      try {
+        let written = 0;
+        while (written < sizeBytes) {
+          assertActive();
+          const length = Math.min(block.byteLength, sizeBytes - written);
+          await writable.write({
+            position: startPosition + written,
+            data: length === block.byteLength ? block : block.subarray(0, length),
+          });
+          context.apiCounters.writeCalls += 1;
+          written += length;
+        }
+        await writable.close();
+      } catch (error) {
+        await writable.abort({ reason: error });
+        throw error;
       }
-      await writable.close();
-    } catch (error) {
-      await writable.abort({ reason: error });
-      throw error;
+      break;
     }
-    break;
-  }
-  default: {
-    const _ex: never = context.kind;
-    throw new Error(`Unhandled benchmark context: ${String(_ex)}`);
-  }
+    default: {
+      const _ex: never = context.kind;
+      throw new Error(`Unhandled benchmark context: ${String(_ex)}`);
+    }
+    }
+  } finally {
+    releaseTrackedBytes({ tracker: context.memoryTracker, byteLength: block.byteLength });
   }
 }
 
@@ -1582,6 +1984,7 @@ async function readBackendFile({
   assertActive: () => void;
 }): Promise<number> {
   const file = await getBackendFile({ context, directory, name, create: false });
+  context.apiCounters.readableOpens += 1;
   switch (context.kind) {
   case 'raw_opfs': {
     const blob = await (file as FileSystemFileHandle).getFile();
@@ -1589,13 +1992,20 @@ async function readBackendFile({
     for (let position = 0; position < blob.size; position += blockSizeBytes) {
       assertActive();
       const bytes = new Uint8Array(await blob.slice(position, position + blockSizeBytes).arrayBuffer());
-      checksum = addChecksum({ checksum, value: checksumBytes({ bytes }) });
+      context.apiCounters.readCalls += 1;
+      retainTrackedBytes({ tracker: context.memoryTracker, byteLength: bytes.byteLength });
+      try {
+        checksum = addChecksum({ checksum, value: checksumBytes({ bytes }) });
+      } finally {
+        releaseTrackedBytes({ tracker: context.memoryTracker, byteLength: bytes.byteLength });
+      }
     }
     return checksum;
   }
   case 'hizofs': {
     const readable = await (file as StorageFileHandle).openReadable({ mimeType: 'application/octet-stream' });
     const buffer = new Uint8Array(Math.max(blockSizeBytes, 1));
+    retainTrackedBytes({ tracker: context.memoryTracker, byteLength: buffer.byteLength });
     let position = 0;
     let checksum = 0;
     try {
@@ -1608,6 +2018,7 @@ async function readBackendFile({
           position,
           signal: undefined,
         });
+        context.apiCounters.readCalls += 1;
         if (bytesRead === 0) break;
         checksum = addChecksum({
           checksum,
@@ -1616,7 +2027,11 @@ async function readBackendFile({
         position += bytesRead;
       }
     } finally {
-      await readable.close();
+      try {
+        await readable.close();
+      } finally {
+        releaseTrackedBytes({ tracker: context.memoryTracker, byteLength: buffer.byteLength });
+      }
     }
     return checksum;
   }
@@ -1643,6 +2058,7 @@ async function randomReadBackendFile({
   assertActive: () => void;
 }): Promise<number> {
   const file = await getBackendFile({ context, directory, name, create: false });
+  context.apiCounters.readableOpens += 1;
   switch (context.kind) {
   case 'raw_opfs': {
     const blob = await (file as FileSystemFileHandle).getFile();
@@ -1650,13 +2066,20 @@ async function randomReadBackendFile({
     for (const position of positions) {
       assertActive();
       const bytes = new Uint8Array(await blob.slice(position, position + blockSizeBytes).arrayBuffer());
-      checksum = addChecksum({ checksum, value: checksumBytes({ bytes }) });
+      context.apiCounters.readCalls += 1;
+      retainTrackedBytes({ tracker: context.memoryTracker, byteLength: bytes.byteLength });
+      try {
+        checksum = addChecksum({ checksum, value: checksumBytes({ bytes }) });
+      } finally {
+        releaseTrackedBytes({ tracker: context.memoryTracker, byteLength: bytes.byteLength });
+      }
     }
     return checksum;
   }
   case 'hizofs': {
     const readable = await (file as StorageFileHandle).openReadable({ mimeType: 'application/octet-stream' });
     const buffer = new Uint8Array(blockSizeBytes);
+    retainTrackedBytes({ tracker: context.memoryTracker, byteLength: buffer.byteLength });
     let checksum = 0;
     try {
       for (const position of positions) {
@@ -1668,13 +2091,18 @@ async function randomReadBackendFile({
           position,
           signal: undefined,
         });
+        context.apiCounters.readCalls += 1;
         checksum = addChecksum({
           checksum,
           value: checksumBytes({ bytes: buffer.subarray(0, bytesRead) }),
         });
       }
     } finally {
-      await readable.close();
+      try {
+        await readable.close();
+      } finally {
+        releaseTrackedBytes({ tracker: context.memoryTracker, byteLength: buffer.byteLength });
+      }
     }
     return checksum;
   }
@@ -1701,40 +2129,52 @@ async function randomWriteBackendFile({
   assertActive: () => void;
 }): Promise<void> {
   const file = await getBackendFile({ context, directory, name, create: false });
-  switch (context.kind) {
-  case 'raw_opfs': {
-    const writable = await (file as FileSystemFileHandle).createWritable({ keepExistingData: true });
-    try {
-      for (const position of positions) {
-        assertActive();
-        await writable.seek(position);
-        await writable.write(toExactArrayBuffer({ bytes: block }));
+  context.apiCounters.writableOpens += 1;
+  retainTrackedBytes({ tracker: context.memoryTracker, byteLength: block.byteLength });
+  try {
+    switch (context.kind) {
+    case 'raw_opfs': {
+      const writable = await (file as FileSystemFileHandle).createWritable({ keepExistingData: true });
+      try {
+        for (const position of positions) {
+          assertActive();
+          await writable.seek(position);
+          context.apiCounters.writeCalls += 1;
+          await writeRawOpfsBytes({
+            writable,
+            bytes: block,
+            memoryTracker: context.memoryTracker,
+          });
+        }
+        await writable.close();
+      } catch (error) {
+        await writable.abort(error);
+        throw error;
       }
-      await writable.close();
-    } catch (error) {
-      await writable.abort(error);
-      throw error;
+      break;
     }
-    break;
-  }
-  case 'hizofs': {
-    const writable = await (file as StorageFileHandle).createWritable({ keepExistingData: true });
-    try {
-      for (const position of positions) {
-        assertActive();
-        await writable.write({ position, data: block });
+    case 'hizofs': {
+      const writable = await (file as StorageFileHandle).createWritable({ keepExistingData: true });
+      try {
+        for (const position of positions) {
+          assertActive();
+          context.apiCounters.writeCalls += 1;
+          await writable.write({ position, data: block });
+        }
+        await writable.close();
+      } catch (error) {
+        await writable.abort({ reason: error });
+        throw error;
       }
-      await writable.close();
-    } catch (error) {
-      await writable.abort({ reason: error });
-      throw error;
+      break;
     }
-    break;
-  }
-  default: {
-    const _ex: never = context.kind;
-    throw new Error(`Unhandled benchmark context: ${String(_ex)}`);
-  }
+    default: {
+      const _ex: never = context.kind;
+      throw new Error(`Unhandled benchmark context: ${String(_ex)}`);
+    }
+    }
+  } finally {
+    releaseTrackedBytes({ tracker: context.memoryTracker, byteLength: block.byteLength });
   }
 }
 
@@ -1750,6 +2190,8 @@ async function truncateBackendFile({
   size: number;
 }): Promise<void> {
   const file = await getBackendFile({ context, directory, name, create: false });
+  context.apiCounters.writableOpens += 1;
+  context.apiCounters.truncateCalls += 1;
   switch (context.kind) {
   case 'raw_opfs': {
     const writable = await (file as FileSystemFileHandle).createWritable({ keepExistingData: true });
@@ -1780,6 +2222,24 @@ async function truncateBackendFile({
   }
 }
 
+async function writeRawOpfsBytes({
+  writable,
+  bytes,
+  memoryTracker,
+}: {
+  writable: FileSystemWritableFileStream;
+  bytes: Uint8Array;
+  memoryTracker: BenchmarkMemoryTracker;
+}): Promise<void> {
+  const exactBuffer = toExactArrayBuffer({ bytes });
+  retainTrackedBytes({ tracker: memoryTracker, byteLength: exactBuffer.byteLength });
+  try {
+    await writable.write(exactBuffer);
+  } finally {
+    releaseTrackedBytes({ tracker: memoryTracker, byteLength: exactBuffer.byteLength });
+  }
+}
+
 function listBackendEntries({
   context,
   directory,
@@ -1787,6 +2247,7 @@ function listBackendEntries({
   context: BenchmarkContext;
   directory: FileSystemDirectoryHandle | StorageDirectoryHandle;
 }): AsyncIterable<unknown> {
+  context.apiCounters.directoryLists += 1;
   switch (context.kind) {
   case 'raw_opfs':
     return (directory as FileSystemDirectoryHandle).entries();
@@ -1810,6 +2271,7 @@ async function removeBackendEntry({
   name: string;
   recursive: boolean;
 }): Promise<void> {
+  context.apiCounters.removeCalls += 1;
   switch (context.kind) {
   case 'raw_opfs':
     await (directory as FileSystemDirectoryHandle).removeEntry(name, { recursive });
@@ -2070,6 +2532,97 @@ function createEmptyBackingStoreCounters(): BackingStoreCounters {
     listOperations: 0,
     bytesRead: 0,
     bytesWritten: 0,
+  };
+}
+
+function createEmptyBenchmarkApiCounters(): BenchmarkApiCounters {
+  return {
+    directoryHandleLookups: 0,
+    directoryCreates: 0,
+    fileHandleLookups: 0,
+    fileCreates: 0,
+    writableOpens: 0,
+    writeCalls: 0,
+    truncateCalls: 0,
+    readableOpens: 0,
+    readCalls: 0,
+    directoryLists: 0,
+    removeCalls: 0,
+    cloneCalls: 0,
+  };
+}
+
+function subtractBenchmarkApiCounters({
+  before,
+  after,
+}: {
+  before: BenchmarkApiCounters;
+  after: BenchmarkApiCounters;
+}): BenchmarkApiCounters {
+  return {
+    directoryHandleLookups: Math.max(after.directoryHandleLookups - before.directoryHandleLookups, 0),
+    directoryCreates: Math.max(after.directoryCreates - before.directoryCreates, 0),
+    fileHandleLookups: Math.max(after.fileHandleLookups - before.fileHandleLookups, 0),
+    fileCreates: Math.max(after.fileCreates - before.fileCreates, 0),
+    writableOpens: Math.max(after.writableOpens - before.writableOpens, 0),
+    writeCalls: Math.max(after.writeCalls - before.writeCalls, 0),
+    truncateCalls: Math.max(after.truncateCalls - before.truncateCalls, 0),
+    readableOpens: Math.max(after.readableOpens - before.readableOpens, 0),
+    readCalls: Math.max(after.readCalls - before.readCalls, 0),
+    directoryLists: Math.max(after.directoryLists - before.directoryLists, 0),
+    removeCalls: Math.max(after.removeCalls - before.removeCalls, 0),
+    cloneCalls: Math.max(after.cloneCalls - before.cloneCalls, 0),
+  };
+}
+
+function createBenchmarkMemoryTracker(): BenchmarkMemoryTracker {
+  return {
+    activeBytes: 0,
+    sampleHighWaterBytes: 0,
+    sampleLargestAllocationBytes: 0,
+  };
+}
+
+function beginMemoryMeasurement({
+  tracker,
+}: {
+  tracker: BenchmarkMemoryTracker;
+}): void {
+  tracker.sampleHighWaterBytes = tracker.activeBytes;
+  tracker.sampleLargestAllocationBytes = 0;
+}
+
+function retainTrackedBytes({
+  tracker,
+  byteLength,
+}: {
+  tracker: BenchmarkMemoryTracker;
+  byteLength: number;
+}): void {
+  tracker.activeBytes += byteLength;
+  tracker.sampleHighWaterBytes = Math.max(tracker.sampleHighWaterBytes, tracker.activeBytes);
+  tracker.sampleLargestAllocationBytes = Math.max(tracker.sampleLargestAllocationBytes, byteLength);
+}
+
+function releaseTrackedBytes({
+  tracker,
+  byteLength,
+}: {
+  tracker: BenchmarkMemoryTracker;
+  byteLength: number;
+}): void {
+  tracker.activeBytes = Math.max(tracker.activeBytes - byteLength, 0);
+}
+
+function readMemoryDiagnostics({
+  tracker,
+}: {
+  tracker: BenchmarkMemoryTracker;
+}): HizoFSBenchmarkSample['memory'] {
+  return {
+    maximumTrackedBytes: tracker.sampleHighWaterBytes,
+    largestTrackedAllocationBytes: tracker.sampleLargestAllocationBytes,
+    scope: 'benchmark_harness_buffers_only',
   };
 }
 

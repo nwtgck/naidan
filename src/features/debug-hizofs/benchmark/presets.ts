@@ -159,6 +159,7 @@ function createConfiguration({
     randomSeed: 0x4e_61_69_64,
     warmupIterations,
     measuredIterations,
+    storeLifecycle: 'reuse_without_gc',
     workloads: [...workloads],
     smallFiles: {
       count: smallFileCount,
