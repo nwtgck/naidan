@@ -9,8 +9,15 @@ import type {
   HizoFSInodeIndexPageDto,
 } from '@/00-storage/00-dto/hizofs.dto';
 import type { HizoFSInspectionReader } from '@/00-storage/service/hizofs';
+import {
+  cleanHizoFSBenchmarkData,
+  runHizoFSBenchmark,
+} from '@/features/debug-hizofs/benchmark/engine';
 import { compareHizoFSStrings } from '@/00-storage/service/hizofs/file-system/ordering';
 import {
+  hizoFSBenchmarkConfigurationSchema,
+  hizoFSBenchmarkProgressSchema,
+  hizoFSBenchmarkReportSchema,
   hizoFSInspectionOverviewSchema,
   hizoFSPhysicalObjectPageSchema,
   persistedDtoSchemasByRecordKind,
@@ -770,6 +777,23 @@ export function createHizoFSInspectionWorker(): IHizoFSInspectionWorker {
         totalBinaryPayloadBytes,
         issues,
       } satisfies HizoFSIntegrityScanResult;
+    },
+
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements the positional Comlink boundary declared by IHizoFSInspectionWorker.
+    async runBenchmark(configuration, onProgress) {
+      const operation = beginOperation();
+      return hizoFSBenchmarkReportSchema.parse(await runHizoFSBenchmark({
+        configuration: hizoFSBenchmarkConfigurationSchema.parse(configuration),
+        onProgress: ({ progress }) => onProgress({
+          progress: hizoFSBenchmarkProgressSchema.parse(progress),
+        }),
+        assertActive: () => assertOperationActive(operation),
+        nativeOpfsRoot: undefined,
+      }));
+    },
+
+    async cleanBenchmarkData() {
+      await cleanHizoFSBenchmarkData({ nativeOpfsRoot: undefined });
     },
 
     async cancelCurrentOperation() {

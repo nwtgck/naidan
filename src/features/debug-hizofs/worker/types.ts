@@ -13,6 +13,14 @@ import {
   HizoFSSuperblockSchemaDto,
   HizoFSSymlinkInodeSchemaDto,
 } from '@/00-storage/00-dto/hizofs.dto';
+import {
+  hizoFSBenchmarkConfigurationSchema,
+  hizoFSBenchmarkProgressSchema,
+  hizoFSBenchmarkReportSchema,
+  type HizoFSBenchmarkConfiguration,
+  type HizoFSBenchmarkProgress,
+  type HizoFSBenchmarkReport,
+} from '@/features/debug-hizofs/benchmark/types';
 import type {
   HizoFSBinaryRecordInspection,
   HizoFSBinarySlice,
@@ -247,6 +255,16 @@ export type HizoFSNamespaceResult = z.infer<typeof hizoFSNamespaceResultSchema>;
 export type HizoFSResolvedNodeView = z.infer<typeof hizoFSResolvedNodeSchema>;
 export type HizoFSResolvedPathView = z.infer<typeof hizoFSResolvedPathSchema>;
 export type HizoFSIntegrityScanResult = z.infer<typeof hizoFSIntegrityScanResultSchema>;
+export {
+  hizoFSBenchmarkConfigurationSchema,
+  hizoFSBenchmarkProgressSchema,
+  hizoFSBenchmarkReportSchema,
+};
+export type {
+  HizoFSBenchmarkConfiguration,
+  HizoFSBenchmarkProgress,
+  HizoFSBenchmarkReport,
+};
 
 export interface IHizoFSInspectionWorker {
   // Comlink boundary: the proxied reader must be passed as a top-level argument.
@@ -289,7 +307,26 @@ export interface IHizoFSInspectionWorker {
 
   runIntegrityScan(): Promise<HizoFSIntegrityScanResult>;
 
+  // Comlink boundary: progress callbacks must be passed as top-level proxy arguments.
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks cannot be nested in the request object.
+  runBenchmark(
+    configuration: HizoFSBenchmarkConfiguration,
+    onProgress: ({ progress }: { progress: HizoFSBenchmarkProgress }) => void,
+  ): Promise<HizoFSBenchmarkReport>;
+
+  cleanBenchmarkData(): Promise<void>;
+
   cancelCurrentOperation(): Promise<void>;
+}
+
+export interface HizoFSBenchmarkWorkerClient {
+  runBenchmark({ configuration, onProgress }: {
+    configuration: HizoFSBenchmarkConfiguration;
+    onProgress: ({ progress }: { progress: HizoFSBenchmarkProgress }) => void;
+  }): Promise<HizoFSBenchmarkReport>;
+  cleanBenchmarkData(): Promise<void>;
+  cancelCurrentOperation(): Promise<void>;
+  dispose(): Promise<void>;
 }
 
 export interface HizoFSInspectionWorkerClient {
@@ -321,6 +358,11 @@ export interface HizoFSInspectionWorkerClient {
     maximumEntryCount: number;
   }): Promise<HizoFSNamespaceResult>;
   runIntegrityScan(): Promise<HizoFSIntegrityScanResult>;
+  runBenchmark({ configuration, onProgress }: {
+    configuration: HizoFSBenchmarkConfiguration;
+    onProgress: ({ progress }: { progress: HizoFSBenchmarkProgress }) => void;
+  }): Promise<HizoFSBenchmarkReport>;
+  cleanBenchmarkData(): Promise<void>;
   cancelCurrentOperation(): Promise<void>;
   dispose(): Promise<void>;
 }

@@ -230,6 +230,7 @@ function limitBinaryPreview({
 
 const mocks = vi.hoisted(() => ({
   closeWorkbench: vi.fn(),
+  createBenchmarkClient: vi.fn(),
   createClient: vi.fn(),
   createWorkspace: vi.fn(),
   generateFixture: vi.fn(),
@@ -271,6 +272,7 @@ vi.mock("@/features/debug-hizofs/logic/comprehensive-fixture", () => ({
 }));
 
 vi.mock("@/features/debug-hizofs/worker/client", () => ({
+  createHizoFSBenchmarkWorkerClient: mocks.createBenchmarkClient,
   createHizoFSInspectionWorkerClient: mocks.createClient,
 }));
 
@@ -593,6 +595,10 @@ function createClient({
     readPath: vi.fn(async ({ logicalPath }) => logicalPath === "/" ? [resolvedRoot] : [resolvedRoot, resolvedDocs]),
     readNamespace: vi.fn(async () => namespace),
     runIntegrityScan: vi.fn(async () => integrity),
+    runBenchmark: vi.fn(async () => {
+      throw new Error('benchmark not configured in this test');
+    }),
+    cleanBenchmarkData: vi.fn(async () => {}),
     cancelCurrentOperation: vi.fn(async () => {}),
     dispose: vi.fn(async () => {}),
   };
@@ -933,6 +939,24 @@ describe("HizoFSWorkbenchModal", () => {
     expect(document.body.textContent).toContain(
       "Expected number, received string",
     );
+
+    wrapper.unmount();
+  });
+
+  it("switches from persisted inspection to the isolated benchmark panel", async () => {
+    const wrapper = mount(HizoFSWorkbenchModal, {
+      attachTo: document.body,
+    });
+    await flushPromises();
+
+    expect(document.body.querySelector('[data-testid="hizofs-benchmark-panel"]')).toBeNull();
+    document.body
+      .querySelector<HTMLButtonElement>('[data-testid="hizofs-primary-benchmark"]')
+      ?.click();
+    await flushPromises();
+
+    expect(document.body.querySelector('[data-testid="hizofs-benchmark-panel"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="hizofs-companion-explorer"]')).toBeNull();
 
     wrapper.unmount();
   });

@@ -54,11 +54,14 @@ import { useFileExplorerModal } from '@/features/file-explorer/composables/useFi
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
 import { JsonCodeView } from '@/features/json-viewer';
+import HizoFSBenchmarkPanel from './HizoFSBenchmarkPanel.vue';
 import BinaryHexView from './BinaryHexView.vue';
 import BinaryRecordInspectionView from './BinaryRecordInspectionView.vue';
 
 const OBJECT_ROW_HEIGHT = 58;
 const OBJECT_OVERSCAN = 8;
+
+const primaryView = ref<'inspection' | 'benchmark'>('inspection');
 
 /**
  * Persisted records and object references are the primary Workbench
@@ -1188,15 +1191,16 @@ defineExpose({
               <span>{{ revisionLabel }}</span>
             </div>
           </div>
-          <button type="button" tw-class="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openRawOpfs"><ExternalLinkIcon tw-class="mr-1 inline h-3.5 w-3.5" /> Raw OPFS</button>
-          <button v-if="selectedSource?.type === 'naidan_active_store'" type="button" data-testid="hizofs-open-control-plane" tw-class="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openControlPlane">Naidan control plane</button>
-          <button type="button" aria-label="Refresh HizoFS instance" tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" :disabled="loadingSource || generatingComprehensiveFixture" @click="refreshSelectedInstance"><RefreshCwIcon :tw-class="['h-4 w-4', loadingSource ? 'animate-spin' : '']" /></button>
+          <div tw-class="flex rounded-lg border border-gray-300 p-0.5 text-xs dark:border-gray-600"><button type="button" data-testid="hizofs-primary-inspection" :tw-class="['rounded px-2.5 py-1', primaryView === 'inspection' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800']" @click="primaryView = 'inspection'">Inspection</button><button type="button" data-testid="hizofs-primary-benchmark" :tw-class="['rounded px-2.5 py-1', primaryView === 'benchmark' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800']" @click="primaryView = 'benchmark'">Benchmark</button></div>
+          <button v-if="primaryView === 'inspection'" type="button" tw-class="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openRawOpfs"><ExternalLinkIcon tw-class="mr-1 inline h-3.5 w-3.5" /> Raw OPFS</button>
+          <button v-if="primaryView === 'inspection' && selectedSource?.type === 'naidan_active_store'" type="button" data-testid="hizofs-open-control-plane" tw-class="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openControlPlane">Naidan control plane</button>
+          <button v-if="primaryView === 'inspection'" type="button" aria-label="Refresh HizoFS instance" tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" :disabled="loadingSource || generatingComprehensiveFixture" @click="refreshSelectedInstance"><RefreshCwIcon :tw-class="['h-4 w-4', loadingSource ? 'animate-spin' : '']" /></button>
           <button type="button" aria-label="Close HizoFS Workbench" tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="closeDebugHizoFSWorkbench"><XIcon tw-class="h-5 w-5" /></button>
         </header>
 
-        <div v-if="errorMessage" tw-class="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ errorMessage }}</div>
+        <div v-if="primaryView === 'inspection' && errorMessage" tw-class="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ errorMessage }}</div>
 
-        <nav tw-class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-[10px] text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+        <nav v-if="primaryView === 'inspection'" tw-class="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-[10px] text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
           <button v-if="columns.length > 0" type="button" aria-label="Back one Workbench column" tw-class="mr-1 rounded p-1 hover:bg-gray-200 dark:hover:bg-gray-800" @click="navigateBack"><ArrowLeftIcon tw-class="h-3.5 w-3.5" /></button>
           <template v-for="(label, index) in breadcrumbLabels" :key="`${label}:${String(index)}`">
             <ChevronRightIcon v-if="index > 0" tw-class="h-3 w-3 shrink-0" />
@@ -1204,7 +1208,7 @@ defineExpose({
           </template>
         </nav>
 
-        <div data-workbench-column-scroll tw-class="flex min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-gray-100 dark:bg-gray-950">
+        <div v-if="primaryView === 'inspection'" data-workbench-column-scroll tw-class="flex min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-gray-100 dark:bg-gray-950">
           <aside tw-class="flex w-[300px] shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
             <div tw-class="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
               <div>
@@ -1489,7 +1493,9 @@ defineExpose({
           </section>
         </div>
 
-        <section v-if="selectedSource && fileExplorerRoot" data-testid="hizofs-companion-explorer" tw-class="shrink-0 border-t border-blue-200 bg-white dark:border-blue-900 dark:bg-gray-900">
+        <HizoFSBenchmarkPanel v-else />
+
+        <section v-if="primaryView === 'inspection' && selectedSource && fileExplorerRoot" data-testid="hizofs-companion-explorer" tw-class="shrink-0 border-t border-blue-200 bg-white dark:border-blue-900 dark:bg-gray-900">
           <header tw-class="flex items-center gap-3 px-3 py-2">
             <button type="button" data-testid="hizofs-toggle-companion-explorer" tw-class="flex min-w-0 flex-1 items-center gap-2 text-left" @click="toggleCompanionExplorer">
               <ChevronUpIcon v-if="companionExplorerVisibility === 'expanded'" tw-class="h-3.5 w-3.5 shrink-0 text-blue-500" />

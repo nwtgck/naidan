@@ -2,6 +2,9 @@ import * as Comlink from 'comlink';
 import { HIZOFS_INSPECTION_WORKER_NAME } from '@/constants';
 import type { HizoFSInspectionReader } from '@/00-storage/service/hizofs';
 import {
+  hizoFSBenchmarkConfigurationSchema,
+  hizoFSBenchmarkProgressSchema,
+  hizoFSBenchmarkReportSchema,
   hizoFSInspectionOverviewSchema,
   hizoFSInspectedObjectViewSchema,
   hizoFSIntegrityScanResultSchema,
@@ -10,6 +13,7 @@ import {
   hizoFSResolvedNodeSchema,
   hizoFSResolvedPathSchema,
   hizoFSSuperblockSlotSchema,
+  type HizoFSBenchmarkWorkerClient,
   type HizoFSInspectionWorkerClient,
   type IHizoFSInspectionWorker,
 } from './types';
@@ -19,30 +23,57 @@ export async function createHizoFSInspectionWorkerClient({
 }: {
   reader: HizoFSInspectionReader;
 }): Promise<HizoFSInspectionWorkerClient> {
+  const connection = createWorkerConnection();
+  try {
+    await connection.remote.configure(Comlink.proxy(reader));
+  } catch (error) {
+    await connection.releasePreservingError();
+    throw error;
+  }
+  return createClient({
+    remoteWorker: connection.remote,
+    release: connection.release,
+  });
+}
+
+export async function createHizoFSBenchmarkWorkerClient(): Promise<HizoFSBenchmarkWorkerClient> {
+  const connection = createWorkerConnection();
+  return createClient({
+    remoteWorker: connection.remote,
+    release: connection.release,
+  });
+}
+
+function createWorkerConnection(): {
+  readonly remote: Comlink.Remote<IHizoFSInspectionWorker>;
+  readonly release: () => Promise<void>;
+  readonly releasePreservingError: () => Promise<void>;
+  } {
   const worker = new Worker(new URL('./entry.ts', import.meta.url), {
     type: 'module',
     name: HIZOFS_INSPECTION_WORKER_NAME,
   });
   const remote = Comlink.wrap<IHizoFSInspectionWorker>(worker);
-  try {
-    await remote.configure(Comlink.proxy(reader));
-  } catch (error) {
-    try {
-      await remote[Comlink.releaseProxy]();
-    } catch {
-      // Preserve the worker configuration error.
-    } finally {
-      worker.terminate();
-    }
-    throw error;
-  }
-  return createClient({ remoteWorker: remote, release: async () => {
+  const release = async (): Promise<void> => {
     try {
       await remote[Comlink.releaseProxy]();
     } finally {
       worker.terminate();
     }
-  } });
+  };
+  return {
+    remote,
+    release,
+    async releasePreservingError() {
+      try {
+        await remote[Comlink.releaseProxy]();
+      } catch {
+        // Preserve the worker operation error.
+      } finally {
+        worker.terminate();
+      }
+    },
+  };
 }
 
 function createClient({
@@ -92,6 +123,17 @@ function createClient({
     },
     async runIntegrityScan() {
       return hizoFSIntegrityScanResultSchema.parse(await remoteWorker.runIntegrityScan());
+    },
+    async runBenchmark({ configuration, onProgress }) {
+      return hizoFSBenchmarkReportSchema.parse(await remoteWorker.runBenchmark(
+        hizoFSBenchmarkConfigurationSchema.parse(configuration),
+        Comlink.proxy(({ progress }) => onProgress({
+          progress: hizoFSBenchmarkProgressSchema.parse(progress),
+        })),
+      ));
+    },
+    async cleanBenchmarkData() {
+      await remoteWorker.cleanBenchmarkData();
     },
     async cancelCurrentOperation() {
       await remoteWorker.cancelCurrentOperation();
