@@ -11,6 +11,7 @@ export type HizoFSPolicy = {
   readonly fileChunkSize: number;
   readonly indexPageEntryLimit: number;
   readonly readerStreamChunkSize: number;
+  readonly fileChunkReadPrefetchConcurrency: number;
   readonly maxDirtyFileBytes: number;
   readonly fileChunkWriteConcurrency: number;
   readonly metadataObjectCacheByteLimit: number;
@@ -25,6 +26,7 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   fileChunkSize: 256 * 1024,
   indexPageEntryLimit: 64,
   readerStreamChunkSize: 256 * 1024,
+  fileChunkReadPrefetchConcurrency: 1,
   maxDirtyFileBytes: 16 * 1024 * 1024,
   fileChunkWriteConcurrency: 4,
   metadataObjectCacheByteLimit: 8 * 1024 * 1024,

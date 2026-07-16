@@ -1,8 +1,10 @@
 export {
   createHizoFS,
   createHizoFSBulkBuilder,
+  createHizoFSDiagnosticSession,
   inspectHizoFS,
   openHizoFS,
+  openHizoFSDiagnosticSession,
   deriveHizoFSFileSystemIdFromRawRootKey,
 } from './api';
 export type { HizoFSInspection } from './api';
@@ -20,6 +22,18 @@ export type {
 } from './inspection';
 export { DEFAULT_HIZOFS_POLICY } from './file-system/policy';
 export type { HizoFSPolicy } from './file-system/policy';
+export {
+  createHizoFSRuntimeDiagnostics,
+  HIZOFS_RUNTIME_DIAGNOSTIC_PHASES,
+  HIZOFS_RUNTIME_DIAGNOSTIC_RECORD_KINDS,
+} from './file-system/diagnostics';
+export type {
+  HizoFSRuntimeDiagnosticCacheSnapshot,
+  HizoFSRuntimeDiagnosticPhase,
+  HizoFSRuntimeDiagnosticPhaseSnapshot,
+  HizoFSRuntimeDiagnosticRecordSnapshot,
+  HizoFSRuntimeDiagnosticsSnapshot,
+} from './file-system/diagnostics';
 export { collectHizoFSGarbage } from './garbage-collector';
 export type { HizoFSGarbageCollectionResult } from './garbage-collector';
 

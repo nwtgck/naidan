@@ -14,6 +14,7 @@ import {
   assertHizoFSObjectId,
 } from './semantic-validation';
 import type { HizoFSRecordStore } from './record-store';
+import type { HizoFSRuntimeDiagnostics } from './diagnostics';
 
 class DirectoryIndexPageStore implements PersistentIndexPageStore<
   string,
@@ -120,11 +121,13 @@ function assertPage({ page }: {
 }
 
 export class HizoFSDirectoryIndex {
-  constructor({ recordStore, maxPageEntries }: {
+  constructor({ recordStore, maxPageEntries, diagnostics }: {
     recordStore: HizoFSRecordStore;
     maxPageEntries: number;
+    diagnostics?: HizoFSRuntimeDiagnostics;
   }) {
     this.pageStore = new DirectoryIndexPageStore({ recordStore });
+    this.diagnostics = diagnostics;
     this.index = new PersistentHizoFSIndex({
       pageStore: this.pageStore,
       compare: compareHizoFSStrings,
@@ -134,6 +137,7 @@ export class HizoFSDirectoryIndex {
   }
 
   private readonly pageStore: DirectoryIndexPageStore;
+  private readonly diagnostics?: HizoFSRuntimeDiagnostics;
   private readonly index: PersistentHizoFSIndex<
     string,
     HizoFSDirectoryEntryDto
@@ -188,7 +192,12 @@ export class HizoFSDirectoryIndex {
   }
 
   createEmpty(): Promise<string> {
-    return this.index.createEmpty();
+    return this.diagnostics === undefined
+      ? this.index.createEmpty()
+      : this.diagnostics.measureAsync({
+        phase: 'index_build',
+        operation: async () => this.index.createEmpty(),
+      });
   }
 
   get({ rootObjectId, name }: {
@@ -202,14 +211,24 @@ export class HizoFSDirectoryIndex {
     rootObjectId: string;
     entry: HizoFSDirectoryEntryDto;
   }): Promise<string> {
-    return this.index.set({ rootObjectId, entry });
+    return this.diagnostics === undefined
+      ? this.index.set({ rootObjectId, entry })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.set({ rootObjectId, entry }),
+      });
   }
 
   delete({ rootObjectId, name }: {
     rootObjectId: string;
     name: string;
   }): Promise<string> {
-    return this.index.delete({ rootObjectId, key: name });
+    return this.diagnostics === undefined
+      ? this.index.delete({ rootObjectId, key: name })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.delete({ rootObjectId, key: name }),
+      });
   }
 
   entries({ rootObjectId }: {
@@ -221,7 +240,12 @@ export class HizoFSDirectoryIndex {
   buildFromSortedEntries({ entries }: {
     entries: AsyncIterable<HizoFSDirectoryEntryDto> | Iterable<HizoFSDirectoryEntryDto>;
   }): Promise<string> {
-    return this.index.buildFromSortedEntries({ entries });
+    return this.diagnostics === undefined
+      ? this.index.buildFromSortedEntries({ entries })
+      : this.diagnostics.measureAsync({
+        phase: 'index_build',
+        operation: async () => this.index.buildFromSortedEntries({ entries }),
+      });
   }
 
   validateStructure({ rootObjectId }: {

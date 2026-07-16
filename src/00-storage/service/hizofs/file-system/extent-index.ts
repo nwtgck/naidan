@@ -14,6 +14,7 @@ import {
   assertHizoFSObjectId,
 } from "./semantic-validation";
 import type { HizoFSRecordStore } from "./record-store";
+import type { HizoFSRuntimeDiagnostics } from "./diagnostics";
 
 class ExtentIndexPageStore implements PersistentIndexPageStore<
   number,
@@ -151,11 +152,14 @@ export class HizoFSExtentIndex {
   constructor({
     recordStore,
     maxPageEntries,
+    diagnostics,
   }: {
     recordStore: HizoFSRecordStore;
     maxPageEntries: number;
+    diagnostics?: HizoFSRuntimeDiagnostics;
   }) {
     this.pageStore = new ExtentIndexPageStore({ recordStore });
+    this.diagnostics = diagnostics;
     this.index = new PersistentHizoFSIndex({
       pageStore: this.pageStore,
       compare: compareHizoFSNumbers,
@@ -165,6 +169,7 @@ export class HizoFSExtentIndex {
   }
 
   private readonly pageStore: ExtentIndexPageStore;
+  private readonly diagnostics?: HizoFSRuntimeDiagnostics;
   private readonly index: PersistentHizoFSIndex<number, HizoFSFileExtentDto>;
 
   async visitReferences({
@@ -235,7 +240,12 @@ export class HizoFSExtentIndex {
   }
 
   createEmpty(): Promise<string> {
-    return this.index.createEmpty();
+    return this.diagnostics === undefined
+      ? this.index.createEmpty()
+      : this.diagnostics.measureAsync({
+        phase: 'index_build',
+        operation: async () => this.index.createEmpty(),
+      });
   }
 
   get({
@@ -255,7 +265,12 @@ export class HizoFSExtentIndex {
     rootObjectId: string;
     extent: HizoFSFileExtentDto;
   }): Promise<string> {
-    return this.index.set({ rootObjectId, entry: extent });
+    return this.diagnostics === undefined
+      ? this.index.set({ rootObjectId, entry: extent })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.set({ rootObjectId, entry: extent }),
+      });
   }
 
   delete({
@@ -265,7 +280,12 @@ export class HizoFSExtentIndex {
     rootObjectId: string;
     chunkIndex: number;
   }): Promise<string> {
-    return this.index.delete({ rootObjectId, key: chunkIndex });
+    return this.diagnostics === undefined
+      ? this.index.delete({ rootObjectId, key: chunkIndex })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.delete({ rootObjectId, key: chunkIndex }),
+      });
   }
 
   truncateAtOrAfter({
@@ -275,13 +295,23 @@ export class HizoFSExtentIndex {
     rootObjectId: string;
     chunkIndex: number;
   }): Promise<string> {
-    return this.index.truncateAtOrAfter({ rootObjectId, key: chunkIndex });
+    return this.diagnostics === undefined
+      ? this.index.truncateAtOrAfter({ rootObjectId, key: chunkIndex })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.truncateAtOrAfter({ rootObjectId, key: chunkIndex }),
+      });
   }
 
   buildFromSortedExtents({ extents }: {
     extents: AsyncIterable<HizoFSFileExtentDto> | Iterable<HizoFSFileExtentDto>;
   }): Promise<string> {
-    return this.index.buildFromSortedEntries({ entries: extents });
+    return this.diagnostics === undefined
+      ? this.index.buildFromSortedEntries({ entries: extents })
+      : this.diagnostics.measureAsync({
+        phase: 'index_build',
+        operation: async () => this.index.buildFromSortedEntries({ entries: extents }),
+      });
   }
 
   validateStructure({

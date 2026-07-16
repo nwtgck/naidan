@@ -1,9 +1,16 @@
 import { toExactArrayBuffer } from '@/00-storage/service/hizofs/bytes';
 import {
   collectHizoFSGarbage,
-  createHizoFS,
+  createHizoFSDiagnosticSession,
+  createHizoFSRuntimeDiagnostics,
+  HIZOFS_RUNTIME_DIAGNOSTIC_PHASES,
+  HIZOFS_RUNTIME_DIAGNOSTIC_RECORD_KINDS,
   DEFAULT_HIZOFS_POLICY,
-  openHizoFS,
+  openHizoFSDiagnosticSession,
+} from '@/00-storage/service/hizofs';
+import type {
+  HizoFSPolicy,
+  HizoFSRuntimeDiagnosticsSnapshot,
 } from '@/00-storage/service/hizofs';
 import type {
   StorageDirectoryHandle,
@@ -26,7 +33,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 4 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 6 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -57,6 +64,9 @@ type BenchmarkContext = {
   readonly hizoFSRootKey: Uint8Array | undefined;
   readonly counters: BackingStoreCounters | undefined;
   readonly hizoFSPhysicalDiagnostics: HizoFSPhysicalDiagnosticTracker | undefined;
+  readonly hizoFSRuntimeDiagnostics:
+    ReturnType<typeof createHizoFSRuntimeDiagnostics> | undefined;
+  readonly hizoFSPolicy: HizoFSPolicy | undefined;
   readonly apiCounters: BenchmarkApiCounters;
   readonly memoryTracker: BenchmarkMemoryTracker;
 };
@@ -115,6 +125,7 @@ async function runHizoFSBenchmarkWithLockHeld({
 }: RunHizoFSBenchmarkOptions): Promise<HizoFSBenchmarkReport> {
   const configuration = hizoFSBenchmarkConfigurationSchema.parse(rawConfiguration);
   validateBenchmarkConfiguration({ configuration });
+  const hizoFSPolicy = createBenchmarkHizoFSPolicy({ configuration });
   const root = nativeOpfsRoot ?? await navigator.storage.getDirectory();
   const runId = createRunId();
   const benchmarkRoot = await root.getDirectoryHandle(BENCHMARK_ROOT_DIRECTORY_NAME, { create: true });
@@ -163,6 +174,7 @@ async function runHizoFSBenchmarkWithLockHeld({
         phase: 'preparing',
         iteration: undefined,
         lifecycleEvents,
+        hizoFSPolicy,
       });
     }
     try {
@@ -196,6 +208,7 @@ async function runHizoFSBenchmarkWithLockHeld({
             phase,
             iteration: measuredIteration,
             lifecycleEvents,
+            hizoFSPolicy,
           })
           : sharedContexts;
         if (contexts === undefined) throw new Error('Benchmark contexts are unavailable');
@@ -249,6 +262,7 @@ async function runHizoFSBenchmarkWithLockHeld({
             phase,
             iteration: measuredIteration,
             lifecycleEvents,
+            hizoFSPolicy,
           });
         }
       }
@@ -283,7 +297,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 4,
+    schemaVersion: 6,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -303,22 +317,29 @@ async function runHizoFSBenchmarkWithLockHeld({
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
       hizoFSInternalMemoryMeasured: false,
+      hizoFSRuntimeDiagnosticsEnabled: true,
+      phaseDurationsAreNested: true,
       hizoFSRuntimePolicy: {
-        fileChunkSizeBytes: DEFAULT_HIZOFS_POLICY.fileChunkSize,
-        maxDirtyFileBytesPerWriter: DEFAULT_HIZOFS_POLICY.maxDirtyFileBytes,
+        fileChunkSizeBytes: hizoFSPolicy.fileChunkSize,
+        maxDirtyFileBytesPerWriter: hizoFSPolicy.maxDirtyFileBytes,
         fileChunkWriteConcurrencyPerWriter:
-          DEFAULT_HIZOFS_POLICY.fileChunkWriteConcurrency,
+          hizoFSPolicy.fileChunkWriteConcurrency,
+        fileChunkReadPrefetchConcurrencyPerReader:
+          hizoFSPolicy.fileChunkReadPrefetchConcurrency,
         maximumPlaintextChunkWriteBytesInFlightPerWriter:
-          DEFAULT_HIZOFS_POLICY.fileChunkSize
-          * DEFAULT_HIZOFS_POLICY.fileChunkWriteConcurrency,
+          hizoFSPolicy.fileChunkSize
+          * hizoFSPolicy.fileChunkWriteConcurrency,
+        maximumPlaintextChunkReadBytesInFlightPerReader:
+          hizoFSPolicy.fileChunkSize
+          * hizoFSPolicy.fileChunkReadPrefetchConcurrency,
         metadataObjectCacheByteLimitPerRuntime:
-          DEFAULT_HIZOFS_POLICY.metadataObjectCacheByteLimit,
+          hizoFSPolicy.metadataObjectCacheByteLimit,
         metadataObjectCacheEntryLimitPerRuntime:
-          DEFAULT_HIZOFS_POLICY.metadataObjectCacheEntryLimit,
+          hizoFSPolicy.metadataObjectCacheEntryLimit,
         fileChunkCacheByteLimitPerRuntime:
-          DEFAULT_HIZOFS_POLICY.fileChunkCacheByteLimit,
+          hizoFSPolicy.fileChunkCacheByteLimit,
         fileChunkCacheEntryLimitPerRuntime:
-          DEFAULT_HIZOFS_POLICY.fileChunkCacheEntryLimit,
+          hizoFSPolicy.fileChunkCacheEntryLimit,
       },
     },
     configuration,
@@ -327,6 +348,24 @@ async function runHizoFSBenchmarkWithLockHeld({
     results: aggregateSamples({ samples }),
     failure,
     cleanup,
+  };
+}
+
+function createBenchmarkHizoFSPolicy({
+  configuration,
+}: {
+  configuration: HizoFSBenchmarkConfiguration;
+}): HizoFSPolicy {
+  return {
+    ...DEFAULT_HIZOFS_POLICY,
+    fileChunkWriteConcurrency:
+      configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
+    fileChunkReadPrefetchConcurrency:
+      configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency,
+    fileChunkCacheByteLimit:
+      configuration.hizoFSRuntimePolicy.fileChunkCacheByteLimit,
+    fileChunkCacheEntryLimit:
+      configuration.hizoFSRuntimePolicy.fileChunkCacheEntryLimit,
   };
 }
 
@@ -365,12 +404,14 @@ async function createBenchmarkContexts({
   phase,
   iteration,
   lifecycleEvents,
+  hizoFSPolicy,
 }: {
   configuration: HizoFSBenchmarkConfiguration;
   contextDirectory: FileSystemDirectoryHandle;
   phase: HizoFSBenchmarkLifecycleEvent['phase'];
   iteration: number | undefined;
   lifecycleEvents: HizoFSBenchmarkLifecycleEvent[];
+  hizoFSPolicy: HizoFSPolicy;
 }): Promise<Map<BackendKind, BenchmarkContext>> {
   const result = new Map<BackendKind, BenchmarkContext>();
   for (const backend of getRequestedBackendKinds({ backendMode: configuration.backendMode })) {
@@ -387,6 +428,8 @@ async function createBenchmarkContexts({
         hizoFSRootKey: undefined,
         counters: undefined,
         hizoFSPhysicalDiagnostics: undefined,
+        hizoFSRuntimeDiagnostics: undefined,
+        hizoFSPolicy: undefined,
         apiCounters: createEmptyBenchmarkApiCounters(),
         memoryTracker: createBenchmarkMemoryTracker(),
       });
@@ -404,6 +447,7 @@ async function createBenchmarkContexts({
       const backingDirectory = await contextDirectory.getDirectoryHandle('hizofs-backing', { create: true });
       const counters = createEmptyBackingStoreCounters();
       const physicalDiagnostics = createHizoFSPhysicalDiagnosticTracker();
+      const runtimeDiagnostics = createHizoFSRuntimeDiagnostics();
       const countedBackingDirectory = createCountingDirectoryHandle({
         directory: backingDirectory,
         counters,
@@ -415,9 +459,11 @@ async function createBenchmarkContexts({
       let initializationBackingStore = createEmptyBackingStoreCounters();
       let initializationSuperblockPublications = 0;
       try {
-        session = await createHizoFS({
+        session = await createHizoFSDiagnosticSession({
           backingDirectory: countedBackingDirectory,
           fileSystemRootKey: rootKey,
+          policy: hizoFSPolicy,
+          diagnostics: runtimeDiagnostics,
         });
         initializationBackingStore = { ...counters };
         initializationSuperblockPublications = physicalDiagnostics.superblockPublications;
@@ -444,6 +490,8 @@ async function createBenchmarkContexts({
         hizoFSRootKey: rootKey,
         counters,
         hizoFSPhysicalDiagnostics: physicalDiagnostics,
+        hizoFSRuntimeDiagnostics: runtimeDiagnostics,
+        hizoFSPolicy,
         apiCounters: createEmptyBenchmarkApiCounters(),
         memoryTracker: createBenchmarkMemoryTracker(),
       });
@@ -480,12 +528,14 @@ async function applyBetweenIterationLifecycle({
   phase,
   iteration,
   lifecycleEvents,
+  hizoFSPolicy,
 }: {
   lifecycle: HizoFSBenchmarkConfiguration['storeLifecycle'];
   contexts: Map<BackendKind, BenchmarkContext>;
   phase: BenchmarkPhase;
   iteration: number;
   lifecycleEvents: HizoFSBenchmarkLifecycleEvent[];
+  hizoFSPolicy: HizoFSPolicy;
 }): Promise<void> {
   switch (lifecycle) {
   case 'reuse_without_gc':
@@ -501,6 +551,7 @@ async function applyBetweenIterationLifecycle({
       || context.hizoFSRootKey === undefined
       || context.counters === undefined
       || context.hizoFSPhysicalDiagnostics === undefined
+      || context.hizoFSRuntimeDiagnostics === undefined
     ) {
       return;
     }
@@ -508,9 +559,11 @@ async function applyBetweenIterationLifecycle({
     const superblockPublicationsBefore = context.hizoFSPhysicalDiagnostics.superblockPublications;
     const startedAt = performance.now();
     await context.hizoFSSession.close();
-    context.hizoFSSession = await openHizoFS({
+    context.hizoFSSession = await openHizoFSDiagnosticSession({
       backingDirectory: context.hizoFSBackingDirectory,
       fileSystemRootKey: context.hizoFSRootKey,
+      policy: hizoFSPolicy,
+      diagnostics: context.hizoFSRuntimeDiagnostics,
     });
     lifecycleEvents.push({
       phase,
@@ -1480,6 +1533,7 @@ type HizoFSDiagnosticSnapshot = {
   readonly counters: BackingStoreCounters;
   readonly objectCount: number;
   readonly superblockPublications: number;
+  readonly runtime: HizoFSRuntimeDiagnosticsSnapshot;
 };
 
 function readHizoFSDiagnosticBaseline({
@@ -1491,6 +1545,7 @@ function readHizoFSDiagnosticBaseline({
     context.kind !== 'hizofs'
     || context.counters === undefined
     || context.hizoFSPhysicalDiagnostics === undefined
+    || context.hizoFSRuntimeDiagnostics === undefined
   ) {
     return undefined;
   }
@@ -1498,6 +1553,7 @@ function readHizoFSDiagnosticBaseline({
     counters: { ...context.counters },
     objectCount: context.hizoFSPhysicalDiagnostics.objectPaths.size,
     superblockPublications: context.hizoFSPhysicalDiagnostics.superblockPublications,
+    runtime: context.hizoFSRuntimeDiagnostics.snapshot(),
   };
 }
 
@@ -1529,6 +1585,10 @@ function createHizoFSDiagnostics({
       plaintextBytesProcessed,
       ciphertextBytesWritten: counters.bytesWritten,
     },
+    runtime: subtractHizoFSRuntimeDiagnostics({
+      before: before.runtime,
+      after: after.runtime,
+    }),
     amplification: {
       backingReadBytesPerLogicalByte: ratioOptional({
         numerator: counters.bytesRead,
@@ -1547,6 +1607,91 @@ function createHizoFSDiagnostics({
         denominator: operationCount,
       }),
     },
+  };
+}
+
+function subtractHizoFSRuntimeDiagnostics({
+  before,
+  after,
+}: {
+  before: HizoFSRuntimeDiagnosticsSnapshot;
+  after: HizoFSRuntimeDiagnosticsSnapshot;
+}): HizoFSRuntimeDiagnosticsSnapshot {
+  return {
+    phases: Object.fromEntries(
+      HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
+        phase,
+        {
+          operationCount: Math.max(
+            after.phases[phase].operationCount - before.phases[phase].operationCount,
+            0,
+          ),
+          totalDurationMs: Math.max(
+            after.phases[phase].totalDurationMs - before.phases[phase].totalDurationMs,
+            0,
+          ),
+        },
+      ]),
+    ) as HizoFSRuntimeDiagnosticsSnapshot['phases'],
+    records: Object.fromEntries(
+      HIZOFS_RUNTIME_DIAGNOSTIC_RECORD_KINDS.map(kind => {
+        const beforeRecord = before.records[kind];
+        const afterRecord = after.records[kind];
+        return [
+          kind,
+          {
+            readOperations: Math.max(afterRecord.readOperations - beforeRecord.readOperations, 0),
+            writeOperations: Math.max(afterRecord.writeOperations - beforeRecord.writeOperations, 0),
+            cacheHits: Math.max(afterRecord.cacheHits - beforeRecord.cacheHits, 0),
+            cacheMisses: Math.max(afterRecord.cacheMisses - beforeRecord.cacheMisses, 0),
+            plaintextBytesRead: Math.max(
+              afterRecord.plaintextBytesRead - beforeRecord.plaintextBytesRead,
+              0,
+            ),
+            plaintextBytesWritten: Math.max(
+              afterRecord.plaintextBytesWritten - beforeRecord.plaintextBytesWritten,
+              0,
+            ),
+            physicalBytesRead: Math.max(
+              afterRecord.physicalBytesRead - beforeRecord.physicalBytesRead,
+              0,
+            ),
+            physicalBytesWritten: Math.max(
+              afterRecord.physicalBytesWritten - beforeRecord.physicalBytesWritten,
+              0,
+            ),
+          },
+        ];
+      }),
+    ) as HizoFSRuntimeDiagnosticsSnapshot['records'],
+    caches: {
+      metadata: subtractHizoFSRuntimeCacheDiagnostics({
+        before: before.caches.metadata,
+        after: after.caches.metadata,
+      }),
+      fileChunk: subtractHizoFSRuntimeCacheDiagnostics({
+        before: before.caches.fileChunk,
+        after: after.caches.fileChunk,
+      }),
+    },
+  };
+}
+
+function subtractHizoFSRuntimeCacheDiagnostics({
+  before,
+  after,
+}: {
+  before: HizoFSRuntimeDiagnosticsSnapshot['caches']['metadata'];
+  after: HizoFSRuntimeDiagnosticsSnapshot['caches']['metadata'];
+}): HizoFSRuntimeDiagnosticsSnapshot['caches']['metadata'] {
+  return {
+    hits: Math.max(after.hits - before.hits, 0),
+    misses: Math.max(after.misses - before.misses, 0),
+    evictions: Math.max(after.evictions - before.evictions, 0),
+    currentBytes: after.currentBytes,
+    maximumBytes: after.maximumBytes,
+    currentEntries: after.currentEntries,
+    maximumEntries: after.maximumEntries,
   };
 }
 
@@ -1731,6 +1876,9 @@ function aggregateHizoFSDiagnosticsTotals({
     objectChanges: { created, removed },
     commits: { superblockPublications },
     crypto: { plaintextBytesProcessed, ciphertextBytesWritten },
+    runtime: aggregateHizoFSRuntimeDiagnostics({
+      diagnostics: diagnostics.map(diagnostic => diagnostic.runtime),
+    }),
     amplification: {
       backingReadBytesPerLogicalByte: ratioOptional({
         numerator: backingStore.bytesRead,
@@ -1749,6 +1897,101 @@ function aggregateHizoFSDiagnosticsTotals({
         denominator: operationCount,
       }),
     },
+  };
+}
+
+function aggregateHizoFSRuntimeDiagnostics({
+  diagnostics,
+}: {
+  diagnostics: readonly HizoFSRuntimeDiagnosticsSnapshot[];
+}): HizoFSRuntimeDiagnosticsSnapshot {
+  const last = diagnostics.at(-1);
+  if (last === undefined) {
+    throw new Error('HizoFS runtime diagnostics aggregate requires at least one sample');
+  }
+  return {
+    phases: Object.fromEntries(
+      HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
+        phase,
+        {
+          operationCount: diagnostics.reduce(
+            (sum, value) => sum + value.phases[phase].operationCount,
+            0,
+          ),
+          totalDurationMs: diagnostics.reduce(
+            (sum, value) => sum + value.phases[phase].totalDurationMs,
+            0,
+          ),
+        },
+      ]),
+    ) as HizoFSRuntimeDiagnosticsSnapshot['phases'],
+    records: Object.fromEntries(
+      HIZOFS_RUNTIME_DIAGNOSTIC_RECORD_KINDS.map(kind => [
+        kind,
+        {
+          readOperations: diagnostics.reduce(
+            (sum, value) => sum + value.records[kind].readOperations,
+            0,
+          ),
+          writeOperations: diagnostics.reduce(
+            (sum, value) => sum + value.records[kind].writeOperations,
+            0,
+          ),
+          cacheHits: diagnostics.reduce(
+            (sum, value) => sum + value.records[kind].cacheHits,
+            0,
+          ),
+          cacheMisses: diagnostics.reduce(
+            (sum, value) => sum + value.records[kind].cacheMisses,
+            0,
+          ),
+          plaintextBytesRead: diagnostics.reduce(
+            (sum, value) => sum + value.records[kind].plaintextBytesRead,
+            0,
+          ),
+          plaintextBytesWritten: diagnostics.reduce(
+            (sum, value) => sum + value.records[kind].plaintextBytesWritten,
+            0,
+          ),
+          physicalBytesRead: diagnostics.reduce(
+            (sum, value) => sum + value.records[kind].physicalBytesRead,
+            0,
+          ),
+          physicalBytesWritten: diagnostics.reduce(
+            (sum, value) => sum + value.records[kind].physicalBytesWritten,
+            0,
+          ),
+        },
+      ]),
+    ) as HizoFSRuntimeDiagnosticsSnapshot['records'],
+    caches: {
+      metadata: aggregateHizoFSRuntimeCacheDiagnostics({
+        diagnostics: diagnostics.map(value => value.caches.metadata),
+        current: last.caches.metadata,
+      }),
+      fileChunk: aggregateHizoFSRuntimeCacheDiagnostics({
+        diagnostics: diagnostics.map(value => value.caches.fileChunk),
+        current: last.caches.fileChunk,
+      }),
+    },
+  };
+}
+
+function aggregateHizoFSRuntimeCacheDiagnostics({
+  diagnostics,
+  current,
+}: {
+  diagnostics: readonly HizoFSRuntimeDiagnosticsSnapshot['caches']['metadata'][];
+  current: HizoFSRuntimeDiagnosticsSnapshot['caches']['metadata'];
+}): HizoFSRuntimeDiagnosticsSnapshot['caches']['metadata'] {
+  return {
+    hits: diagnostics.reduce((sum, value) => sum + value.hits, 0),
+    misses: diagnostics.reduce((sum, value) => sum + value.misses, 0),
+    evictions: diagnostics.reduce((sum, value) => sum + value.evictions, 0),
+    currentBytes: current.currentBytes,
+    maximumBytes: Math.max(...diagnostics.map(value => value.maximumBytes)),
+    currentEntries: current.currentEntries,
+    maximumEntries: Math.max(...diagnostics.map(value => value.maximumEntries)),
   };
 }
 

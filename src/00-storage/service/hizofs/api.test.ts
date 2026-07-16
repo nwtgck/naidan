@@ -32,6 +32,7 @@ const TINY_POLICY: HizoFSPolicy = {
   fileChunkSize: 4,
   indexPageEntryLimit: 2,
   readerStreamChunkSize: 3,
+  fileChunkReadPrefetchConcurrency: 2,
   maxDirtyFileBytes: 16,
   fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 64 * 1024,
@@ -1443,6 +1444,126 @@ describe('HizoFS public file-system API', () => {
     expect(maximumActiveWrites).toBe(2);
     expect(startedWrites).toBe(4);
     expect(await readBytes({ session, path: ['concurrent-chunks.bin'] })).toEqual(expected);
+    await session.close();
+  });
+
+  it('bounds sequential chunk-read prefetch and overlaps the next read window', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const policy: HizoFSPolicy = {
+      ...TINY_POLICY,
+      fileChunkReadPrefetchConcurrency: 3,
+    };
+    const session = await TEST_ONLY.createHizoFSInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      policy,
+      now: () => 1,
+    });
+    const file = await session.root.getFileHandle({
+      name: 'prefetched-read.bin',
+      create: true,
+    });
+    const expected = new Uint8Array(16).map((_, index) => index + 1);
+    const writer = await file.createWritable({ keepExistingData: false });
+    await writer.write({ position: 0, data: expected });
+    await writer.close();
+
+    const hizofs = requireHizoFSSession({ session });
+    const originalRead = hizofs.runtime.chunkStore.read.bind(hizofs.runtime.chunkStore);
+    const releaseReads = Promise.withResolvers<void>();
+    const prefetchWindowStarted = Promise.withResolvers<void>();
+    let blocking = false;
+    let activeReads = 0;
+    let maximumActiveReads = 0;
+    let blockedReadCount = 0;
+    vi.spyOn(hizofs.runtime.chunkStore, 'read').mockImplementation(async (arguments_) => {
+      if (!blocking) return originalRead(arguments_);
+      activeReads += 1;
+      blockedReadCount += 1;
+      maximumActiveReads = Math.max(maximumActiveReads, activeReads);
+      if (blockedReadCount === 3) prefetchWindowStarted.resolve();
+      try {
+        await releaseReads.promise;
+        return await originalRead(arguments_);
+      } finally {
+        activeReads -= 1;
+      }
+    });
+
+    const readable = await file.openReadable({ mimeType: 'application/octet-stream' });
+    const buffer = new Uint8Array(4);
+    await expect(readable.read({
+      buffer,
+      offset: 0,
+      length: 4,
+      position: 0,
+      signal: undefined,
+    })).resolves.toEqual({ bytesRead: 4 });
+    expect(buffer).toEqual(expected.subarray(0, 4));
+
+    blocking = true;
+    const secondRead = readable.read({
+      buffer,
+      offset: 0,
+      length: 4,
+      position: 4,
+      signal: undefined,
+    });
+    await prefetchWindowStarted.promise;
+    expect(maximumActiveReads).toBe(3);
+    expect(blockedReadCount).toBe(3);
+    releaseReads.resolve();
+    await expect(secondRead).resolves.toEqual({ bytesRead: 4 });
+    expect(buffer).toEqual(expected.subarray(4, 8));
+
+    await readable.close();
+    await session.close();
+  });
+
+  it('does not prefetch adjacent chunks for non-sequential random reads', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const policy: HizoFSPolicy = {
+      ...TINY_POLICY,
+      fileChunkReadPrefetchConcurrency: 4,
+    };
+    const session = await TEST_ONLY.createHizoFSInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      policy,
+      now: () => 1,
+    });
+    const file = await session.root.getFileHandle({
+      name: 'random-read.bin',
+      create: true,
+    });
+    const writer = await file.createWritable({ keepExistingData: false });
+    await writer.write({
+      position: 0,
+      data: new Uint8Array(16).map((_, index) => index + 1),
+    });
+    await writer.close();
+    const hizofs = requireHizoFSSession({ session });
+    const readSpy = vi.spyOn(hizofs.runtime.chunkStore, 'read');
+    const readable = await file.openReadable({ mimeType: 'application/octet-stream' });
+    const buffer = new Uint8Array(4);
+
+    await readable.read({
+      buffer,
+      offset: 0,
+      length: 4,
+      position: 0,
+      signal: undefined,
+    });
+    await readable.read({
+      buffer,
+      offset: 0,
+      length: 4,
+      position: 8,
+      signal: undefined,
+    });
+
+    expect(readSpy).toHaveBeenCalledTimes(2);
+    await readable.close();
     await session.close();
   });
 

@@ -17,6 +17,7 @@ const TINY_POLICY: HizoFSPolicy = {
   fileChunkSize: 4,
   indexPageEntryLimit: 2,
   readerStreamChunkSize: 3,
+  fileChunkReadPrefetchConcurrency: 2,
   maxDirtyFileBytes: 16,
   fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 64 * 1024,

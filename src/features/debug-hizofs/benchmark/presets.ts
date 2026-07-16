@@ -181,6 +181,12 @@ function createConfiguration({
       cloneCount,
       sourceFileSizeBytes: cloneSourceFileSizeBytes,
     },
+    hizoFSRuntimePolicy: {
+      fileChunkWriteConcurrency: 4,
+      fileChunkReadPrefetchConcurrency: 1,
+      fileChunkCacheByteLimit: 8 * 1024 * 1024,
+      fileChunkCacheEntryLimit: 1024,
+    },
     benchmarkDataRetention: 'delete_after_run',
   };
 }

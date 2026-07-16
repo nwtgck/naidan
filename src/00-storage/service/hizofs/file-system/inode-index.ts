@@ -11,6 +11,7 @@ import {
 import { compareHizoFSStrings } from "./ordering";
 import { assertHizoFSObjectId } from "./semantic-validation";
 import type { HizoFSRecordStore } from "./record-store";
+import type { HizoFSRuntimeDiagnostics } from "./diagnostics";
 
 export type HizoFSInodeIndexEntry = {
   readonly nodeId: string;
@@ -157,11 +158,14 @@ export class HizoFSInodeIndex {
   constructor({
     recordStore,
     maxPageEntries,
+    diagnostics,
   }: {
     recordStore: HizoFSRecordStore;
     maxPageEntries: number;
+    diagnostics?: HizoFSRuntimeDiagnostics;
   }) {
     this.pageStore = new InodeIndexPageStore({ recordStore });
+    this.diagnostics = diagnostics;
     this.index = new PersistentHizoFSIndex({
       pageStore: this.pageStore,
       compare: compareHizoFSStrings,
@@ -171,6 +175,7 @@ export class HizoFSInodeIndex {
   }
 
   private readonly pageStore: InodeIndexPageStore;
+  private readonly diagnostics?: HizoFSRuntimeDiagnostics;
   private readonly index: PersistentHizoFSIndex<string, HizoFSInodeIndexEntry>;
 
   async visitReferences({
@@ -241,7 +246,12 @@ export class HizoFSInodeIndex {
   }
 
   createEmpty(): Promise<string> {
-    return this.index.createEmpty();
+    return this.diagnostics === undefined
+      ? this.index.createEmpty()
+      : this.diagnostics.measureAsync({
+        phase: 'index_build',
+        operation: async () => this.index.createEmpty(),
+      });
   }
 
   get({
@@ -261,7 +271,12 @@ export class HizoFSInodeIndex {
     rootObjectId: string;
     entry: HizoFSInodeIndexEntry;
   }): Promise<string> {
-    return this.index.set({ rootObjectId, entry });
+    return this.diagnostics === undefined
+      ? this.index.set({ rootObjectId, entry })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.set({ rootObjectId, entry }),
+      });
   }
 
   setMany({
@@ -271,7 +286,12 @@ export class HizoFSInodeIndex {
     rootObjectId: string;
     entries: readonly HizoFSInodeIndexEntry[];
   }): Promise<string> {
-    return this.index.setMany({ rootObjectId, entries });
+    return this.diagnostics === undefined
+      ? this.index.setMany({ rootObjectId, entries })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.setMany({ rootObjectId, entries }),
+      });
   }
 
   delete({
@@ -281,7 +301,12 @@ export class HizoFSInodeIndex {
     rootObjectId: string;
     nodeId: string;
   }): Promise<string> {
-    return this.index.delete({ rootObjectId, key: nodeId });
+    return this.diagnostics === undefined
+      ? this.index.delete({ rootObjectId, key: nodeId })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.delete({ rootObjectId, key: nodeId }),
+      });
   }
 
   deleteMany({
@@ -291,13 +316,23 @@ export class HizoFSInodeIndex {
     rootObjectId: string;
     nodeIds: ReadonlySet<string>;
   }): Promise<string> {
-    return this.index.deleteMany({ rootObjectId, keys: nodeIds });
+    return this.diagnostics === undefined
+      ? this.index.deleteMany({ rootObjectId, keys: nodeIds })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.deleteMany({ rootObjectId, keys: nodeIds }),
+      });
   }
 
   buildFromSortedEntries({ entries }: {
     entries: AsyncIterable<HizoFSInodeIndexEntry> | Iterable<HizoFSInodeIndexEntry>;
   }): Promise<string> {
-    return this.index.buildFromSortedEntries({ entries });
+    return this.diagnostics === undefined
+      ? this.index.buildFromSortedEntries({ entries })
+      : this.diagnostics.measureAsync({
+        phase: 'index_build',
+        operation: async () => this.index.buildFromSortedEntries({ entries }),
+      });
   }
 
   validateStructure({

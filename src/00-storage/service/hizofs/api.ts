@@ -26,6 +26,7 @@ import { DEFAULT_HIZOFS_POLICY, type HizoFSPolicy } from "./file-system/policy";
 import { createHizoFSRuntime } from "./file-system/runtime";
 import { HizoFSSession } from "./file-system/session";
 import { HizoFSBulkBuilder } from './file-system/bulk-builder';
+import type { HizoFSRuntimeDiagnostics } from './file-system/diagnostics';
 
 export async function createHizoFS({
   backingDirectory,
@@ -39,6 +40,27 @@ export async function createHizoFS({
     fileSystemRootKey,
     policy: DEFAULT_HIZOFS_POLICY,
     now: () => Date.now(),
+    diagnostics: undefined,
+  });
+}
+
+export async function createHizoFSDiagnosticSession({
+  backingDirectory,
+  fileSystemRootKey,
+  policy,
+  diagnostics,
+}: {
+  backingDirectory: FileSystemDirectoryHandle;
+  fileSystemRootKey: Uint8Array;
+  policy: HizoFSPolicy;
+  diagnostics: HizoFSRuntimeDiagnostics;
+}): Promise<StorageFileSystemSession> {
+  return createHizoFSInternal({
+    backingDirectory,
+    fileSystemRootKey,
+    policy,
+    now: () => Date.now(),
+    diagnostics,
   });
 }
 
@@ -54,6 +76,27 @@ export async function openHizoFS({
     fileSystemRootKey,
     policy: DEFAULT_HIZOFS_POLICY,
     now: () => Date.now(),
+    diagnostics: undefined,
+  });
+}
+
+export async function openHizoFSDiagnosticSession({
+  backingDirectory,
+  fileSystemRootKey,
+  policy,
+  diagnostics,
+}: {
+  backingDirectory: FileSystemDirectoryHandle;
+  fileSystemRootKey: Uint8Array;
+  policy: HizoFSPolicy;
+  diagnostics: HizoFSRuntimeDiagnostics;
+}): Promise<StorageFileSystemSession> {
+  return openHizoFSInternal({
+    backingDirectory,
+    fileSystemRootKey,
+    policy,
+    now: () => Date.now(),
+    diagnostics,
   });
 }
 
@@ -132,6 +175,7 @@ export async function inspectHizoFS({
 }): Promise<HizoFSInspection> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    diagnostics: undefined,
   });
   let descriptor: HizoFSDescriptorDto;
   try {
@@ -151,6 +195,7 @@ export async function inspectHizoFS({
     fileSystemId,
     policy: DEFAULT_HIZOFS_POLICY,
     now: () => Date.now(),
+    diagnostics: undefined,
   });
   const activeState = await runtime.core.loadActiveState();
   return {
@@ -167,14 +212,17 @@ async function createHizoFSInternal({
   fileSystemRootKey,
   policy,
   now,
+  diagnostics,
 }: {
   backingDirectory: FileSystemDirectoryHandle;
   fileSystemRootKey: Uint8Array;
   policy: HizoFSPolicy;
   now: () => number;
+  diagnostics?: HizoFSRuntimeDiagnostics;
 }): Promise<StorageFileSystemSession> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    diagnostics,
   });
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
   const workerRootKey = await importHizoFSWorkerRootKey({
@@ -188,6 +236,7 @@ async function createHizoFSInternal({
     fileSystemId,
     policy,
     now,
+    diagnostics,
   });
 
   const rootDirectoryNodeId = createHizoFSStableId();
@@ -240,14 +289,17 @@ async function openHizoFSInternal({
   fileSystemRootKey,
   policy,
   now,
+  diagnostics,
 }: {
   backingDirectory: FileSystemDirectoryHandle;
   fileSystemRootKey: Uint8Array;
   policy: HizoFSPolicy;
   now: () => number;
+  diagnostics?: HizoFSRuntimeDiagnostics;
 }): Promise<StorageFileSystemSession> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    diagnostics,
   });
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
   const workerRootKey = await importHizoFSWorkerRootKey({
@@ -260,6 +312,7 @@ async function openHizoFSInternal({
     fileSystemId,
     policy,
     now,
+    diagnostics,
   });
   const state = await runtime.core.loadActiveState();
   await restoreHizoFSDescriptor({ backingStore });
@@ -294,6 +347,7 @@ async function openHizoFSWithImportedRootKey({
 }): Promise<StorageDirectoryWorkerMountSession> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    diagnostics: undefined,
   });
   const runtime = createHizoFSRuntime({
     backingStore,
@@ -301,6 +355,7 @@ async function openHizoFSWithImportedRootKey({
     fileSystemId,
     policy,
     now,
+    diagnostics: undefined,
   });
   const state = await runtime.core.loadActiveState();
   await restoreHizoFSDescriptor({ backingStore });

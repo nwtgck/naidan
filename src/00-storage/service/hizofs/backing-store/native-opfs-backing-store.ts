@@ -1,4 +1,5 @@
 import { bytesEqual, toExactArrayBuffer } from '@/00-storage/service/hizofs/bytes';
+import type { HizoFSRuntimeDiagnostics } from '@/00-storage/service/hizofs/file-system/diagnostics';
 import type {
   HizoFSBackingStore,
   HizoFSBackingStoreEntry,
@@ -40,15 +41,37 @@ function isNotFoundError({ error }: {
       && (error.name === 'NotFoundError' || error.message.startsWith('NotFoundError'));
 }
 
+function toBackingStoreEntry({
+  name,
+  handle,
+}: {
+  name: string;
+  handle: FileSystemHandle;
+}): HizoFSBackingStoreEntry {
+  switch (handle.kind) {
+  case 'file':
+    return { name, kind: 'file' };
+  case 'directory':
+    return { name, kind: 'directory' };
+  default: {
+    const _ex: never = handle.kind;
+    throw new Error(`Unhandled backing-store entry kind: ${String(_ex)}`);
+  }
+  }
+}
+
 export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
-  constructor({ root }: {
+  constructor({ root, diagnostics }: {
     root: FileSystemDirectoryHandle;
+    diagnostics?: HizoFSRuntimeDiagnostics;
   }) {
     this.root = root;
+    this.diagnostics = diagnostics;
     this.directoryHandlePromises.set('', Promise.resolve(root));
   }
 
   private readonly root: FileSystemDirectoryHandle;
+  private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
   private readonly directoryHandlePromises = new Map<string, Promise<FileSystemDirectoryHandle>>();
   private readonly rootFileHandlePromises = new Map<string, Promise<FileSystemFileHandle>>();
 
@@ -56,6 +79,154 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
     path: readonly string[];
   }): Promise<Uint8Array | undefined> {
     validatePath({ path });
+    if (this.diagnostics === undefined) {
+      return this.readWithoutDiagnostics({ path });
+    }
+    try {
+      const { directory, name } = await this.diagnostics.measureAsync({
+        phase: 'backing_resolve_parent',
+        operation: async () => this.resolveParent({ path, create: false }),
+      });
+      const handle = await this.diagnostics.measureAsync({
+        phase: 'backing_get_file_handle',
+        operation: async () => this.resolveFileHandle({
+          directory,
+          parentPath: path.slice(0, -1),
+          name,
+          create: false,
+        }),
+      });
+      const file = await this.diagnostics.measureAsync({
+        phase: 'backing_get_file',
+        operation: async () => handle.getFile(),
+      });
+      const buffer = await this.diagnostics.measureAsync({
+        phase: 'backing_array_buffer',
+        operation: async () => file.arrayBuffer(),
+      });
+      return new Uint8Array(buffer);
+    } catch (error) {
+      if (isNotFoundError({ error })) return undefined;
+      throw error;
+    }
+  }
+
+  async write({ path, bytes }: {
+    path: readonly string[];
+    bytes: Uint8Array;
+  }): Promise<void> {
+    validatePath({ path });
+    if (this.diagnostics === undefined) {
+      await this.writeWithoutDiagnostics({ path, bytes });
+      return;
+    }
+    const { directory, name } = await this.diagnostics.measureAsync({
+      phase: 'backing_resolve_parent',
+      operation: async () => this.resolveParent({ path, create: true }),
+    });
+    const handle = await this.diagnostics.measureAsync({
+      phase: 'backing_get_file_handle',
+      operation: async () => this.resolveFileHandle({
+        directory,
+        parentPath: path.slice(0, -1),
+        name,
+        create: true,
+      }),
+    }) as FileHandleWithWritable;
+    const writable = await this.diagnostics.measureAsync({
+      phase: 'backing_create_writable',
+      operation: async () => handle.createWritable({ keepExistingData: false }),
+    });
+    try {
+      await this.diagnostics.measureAsync({
+        phase: 'backing_write',
+        operation: async () => writable.write(toExactArrayBuffer({ bytes })),
+      });
+      await this.diagnostics.measureAsync({
+        phase: 'backing_close',
+        operation: async () => writable.close(),
+      });
+    } catch (error) {
+      try {
+        await writable.abort(error);
+      } catch {
+        // Preserve the original write error.
+      }
+
+      try {
+        const persisted = await this.diagnostics.measureAsync({
+          phase: 'backing_failure_verification',
+          operation: async () => new Uint8Array(await (await handle.getFile()).arrayBuffer()),
+        });
+        if (bytesEqual({ left: persisted, right: bytes })) {
+          // A failed close may still have durably committed the complete replacement.
+          return;
+        }
+      } catch {
+        // Preserve the original error when exact durable completion cannot be proven.
+      }
+      throw error;
+    }
+  }
+
+  async remove({ path, recursive }: {
+    path: readonly string[];
+    recursive: boolean;
+  }): Promise<void> {
+    validatePath({ path });
+    if (this.diagnostics === undefined) {
+      await this.removeWithoutDiagnostics({ path, recursive });
+      return;
+    }
+    try {
+      const { directory, name } = await this.diagnostics.measureAsync({
+        phase: 'backing_resolve_parent',
+        operation: async () => this.resolveParent({ path, create: false }),
+      });
+      await this.diagnostics.measureAsync({
+        phase: 'backing_remove',
+        operation: async () => directory.removeEntry(name, { recursive }),
+      });
+      this.invalidateAfterRemoval({ path });
+    } catch (error) {
+      if (!isNotFoundError({ error })) throw error;
+      this.invalidateAfterRemoval({ path });
+    }
+  }
+
+  async *list({ path }: {
+    path: readonly string[];
+  }): AsyncIterable<HizoFSBackingStoreEntry> {
+    validateDirectoryPath({ path });
+    if (this.diagnostics === undefined) {
+      const directory = await this.resolveDirectory({ path, create: false });
+      for await (const [name, handle] of directory.entries()) {
+        yield toBackingStoreEntry({ name, handle });
+      }
+      return;
+    }
+
+    const directory = await this.diagnostics.measureAsync({
+      phase: 'backing_resolve_parent',
+      operation: async () => this.resolveDirectory({ path, create: false }),
+    });
+    const iterator = directory.entries()[Symbol.asyncIterator]();
+    while (true) {
+      const next = await this.diagnostics.measureAsync({
+        phase: 'backing_list',
+        operation: async () => iterator.next(),
+      });
+      if (next.done === true) return;
+      const [name, handle] = next.value;
+      yield toBackingStoreEntry({ name, handle });
+    }
+  }
+
+  private async readWithoutDiagnostics({
+    path,
+  }: {
+    path: readonly string[];
+  }): Promise<Uint8Array | undefined> {
     try {
       const { directory, name } = await this.resolveParent({ path, create: false });
       const handle = await this.resolveFileHandle({
@@ -66,18 +237,18 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
       });
       return new Uint8Array(await (await handle.getFile()).arrayBuffer());
     } catch (error) {
-      if (isNotFoundError({ error })) {
-        return undefined;
-      }
+      if (isNotFoundError({ error })) return undefined;
       throw error;
     }
   }
 
-  async write({ path, bytes }: {
+  private async writeWithoutDiagnostics({
+    path,
+    bytes,
+  }: {
     path: readonly string[];
     bytes: Uint8Array;
   }): Promise<void> {
-    validatePath({ path });
     const { directory, name } = await this.resolveParent({ path, create: true });
     const handle = await this.resolveFileHandle({
       directory,
@@ -95,13 +266,9 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
       } catch {
         // Preserve the original write error.
       }
-
       try {
         const persisted = new Uint8Array(await (await handle.getFile()).arrayBuffer());
-        if (bytesEqual({ left: persisted, right: bytes })) {
-          // A failed close may still have durably committed the complete replacement.
-          return;
-        }
+        if (bytesEqual({ left: persisted, right: bytes })) return;
       } catch {
         // Preserve the original error when exact durable completion cannot be proven.
       }
@@ -109,44 +276,20 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
     }
   }
 
-  async remove({ path, recursive }: {
+  private async removeWithoutDiagnostics({
+    path,
+    recursive,
+  }: {
     path: readonly string[];
     recursive: boolean;
   }): Promise<void> {
-    validatePath({ path });
     try {
       const { directory, name } = await this.resolveParent({ path, create: false });
       await directory.removeEntry(name, { recursive });
-      this.invalidateRootFileHandle({ path });
-      this.invalidateDirectoryHandlesAtOrBelow({ path });
+      this.invalidateAfterRemoval({ path });
     } catch (error) {
-      if (!isNotFoundError({ error })) {
-        throw error;
-      }
-      this.invalidateRootFileHandle({ path });
-      this.invalidateDirectoryHandlesAtOrBelow({ path });
-    }
-  }
-
-  async *list({ path }: {
-    path: readonly string[];
-  }): AsyncIterable<HizoFSBackingStoreEntry> {
-    validateDirectoryPath({ path });
-    const directory = await this.resolveDirectory({ path, create: false });
-
-    for await (const [name, handle] of directory.entries()) {
-      switch (handle.kind) {
-      case 'file':
-        yield { name, kind: 'file' };
-        break;
-      case 'directory':
-        yield { name, kind: 'directory' };
-        break;
-      default: {
-        const _ex: never = handle;
-        throw new Error(`Unhandled backing-store entry kind: ${String(_ex)}`);
-      }
-      }
+      if (!isNotFoundError({ error })) throw error;
+      this.invalidateAfterRemoval({ path });
     }
   }
 
@@ -235,6 +378,15 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
       }
       throw error;
     }
+  }
+
+  private invalidateAfterRemoval({
+    path,
+  }: {
+    path: readonly string[];
+  }): void {
+    this.invalidateRootFileHandle({ path });
+    this.invalidateDirectoryHandlesAtOrBelow({ path });
   }
 
   private invalidateRootFileHandle({ path }: {

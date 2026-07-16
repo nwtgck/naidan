@@ -12,6 +12,7 @@ import { HizoFSFileChunkStore } from './file-chunk-store';
 import { HizoFSNodeService } from './node-service';
 import { HizoFSDirectoryStorage } from './directory-storage';
 import { HizoFSCore } from './core';
+import type { HizoFSRuntimeDiagnostics } from './diagnostics';
 
 export type HizoFSRuntime = {
   readonly core: HizoFSCore;
@@ -35,12 +36,14 @@ export function createHizoFSRuntime({
   fileSystemId,
   policy,
   now,
+  diagnostics,
 }: {
   backingStore: HizoFSBackingStore;
   rootKey: CryptoKey;
   fileSystemId: string;
   policy: HizoFSPolicy;
   now: () => number;
+  diagnostics: HizoFSRuntimeDiagnostics | undefined;
 }): HizoFSRuntime {
   const objectStore = new HizoFSObjectStore({
     backingStore,
@@ -50,20 +53,24 @@ export function createHizoFSRuntime({
     metadataCacheEntryLimit: policy.metadataObjectCacheEntryLimit,
     fileChunkCacheByteLimit: policy.fileChunkCacheByteLimit,
     fileChunkCacheEntryLimit: policy.fileChunkCacheEntryLimit,
+    diagnostics,
   });
   const recordStore = new HizoFSRecordStore({ objectStore });
   const commitStore = new HizoFSCommitStore({ recordStore });
   const inodeIndex = new HizoFSInodeIndex({
     recordStore,
     maxPageEntries: policy.indexPageEntryLimit,
+    diagnostics,
   });
   const directoryIndex = new HizoFSDirectoryIndex({
     recordStore,
     maxPageEntries: policy.indexPageEntryLimit,
+    diagnostics,
   });
   const extentIndex = new HizoFSExtentIndex({
     recordStore,
     maxPageEntries: policy.indexPageEntryLimit,
+    diagnostics,
   });
   const inodeStore = new HizoFSInodeStore({ recordStore });
   const chunkStore = new HizoFSFileChunkStore({ recordStore });
@@ -84,6 +91,7 @@ export function createHizoFSRuntime({
     commitStore,
     inodeIndex,
     inodeStore,
+    diagnostics,
   });
   return {
     core,

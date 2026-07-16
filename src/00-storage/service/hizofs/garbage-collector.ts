@@ -65,6 +65,7 @@ export async function collectHizoFSGarbage({
 }): Promise<HizoFSGarbageCollectionResult> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    diagnostics: undefined,
   });
   const rootKey = await importHizoFSRootKey({
     rawRootKey: fileSystemRootKey,
@@ -80,6 +81,7 @@ export async function collectHizoFSGarbage({
         fileSystemId,
         policy: DEFAULT_HIZOFS_POLICY,
         now: () => Date.now(),
+        diagnostics: undefined,
       });
       const activeState = await runtime.core.loadActiveState();
       switch (activeState.mode) {

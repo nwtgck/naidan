@@ -149,7 +149,10 @@ export async function createHizoFSInspectionReader({
   backingDirectory: FileSystemDirectoryHandle;
   fileSystemRootKey: Uint8Array;
 }): Promise<HizoFSInspectionReader> {
-  const backingStore = new NativeOpfsHizoFSBackingStore({ root: backingDirectory });
+  const backingStore = new NativeOpfsHizoFSBackingStore({
+    root: backingDirectory,
+    diagnostics: undefined,
+  });
   const descriptorInspection = await readDescriptorForInspection({ backingStore });
   const descriptor = descriptorInspection.value;
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
@@ -162,6 +165,7 @@ export async function createHizoFSInspectionReader({
       fileSystemId,
       policy: DEFAULT_HIZOFS_POLICY,
       now: () => Date.now(),
+      diagnostics: undefined,
     });
     let disposed = false;
 

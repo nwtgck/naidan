@@ -63,6 +63,12 @@ export const hizoFSBenchmarkConfigurationSchema = z.object({
     cloneCount: z.number().int().min(1).max(10_000),
     sourceFileSizeBytes: z.number().int().min(1).max(1024 * 1024 * 1024),
   }),
+  hizoFSRuntimePolicy: z.object({
+    fileChunkWriteConcurrency: z.number().int().min(1).max(16),
+    fileChunkReadPrefetchConcurrency: z.number().int().min(1).max(16),
+    fileChunkCacheByteLimit: z.number().int().min(0).max(1024 * 1024 * 1024),
+    fileChunkCacheEntryLimit: z.number().int().min(0).max(1_000_000),
+  }).strict(),
   benchmarkDataRetention: z.union([
     z.literal('delete_after_run'),
     z.literal('keep_after_run'),
@@ -119,6 +125,72 @@ const benchmarkAmplificationSchema = z.object({
   superblockPublicationsPerOperation: z.union([z.number().nonnegative(), z.undefined()]),
 }).strict();
 
+
+const hizoFSRuntimePhaseCounterSchema = z.object({
+  operationCount: z.number().int().nonnegative(),
+  totalDurationMs: z.number().nonnegative(),
+}).strict();
+
+const hizoFSRuntimeRecordCounterSchema = z.object({
+  readOperations: z.number().int().nonnegative(),
+  writeOperations: z.number().int().nonnegative(),
+  cacheHits: z.number().int().nonnegative(),
+  cacheMisses: z.number().int().nonnegative(),
+  plaintextBytesRead: z.number().int().nonnegative(),
+  plaintextBytesWritten: z.number().int().nonnegative(),
+  physicalBytesRead: z.number().int().nonnegative(),
+  physicalBytesWritten: z.number().int().nonnegative(),
+}).strict();
+
+const hizoFSRuntimeCacheCounterSchema = z.object({
+  hits: z.number().int().nonnegative(),
+  misses: z.number().int().nonnegative(),
+  evictions: z.number().int().nonnegative(),
+  currentBytes: z.number().int().nonnegative(),
+  maximumBytes: z.number().int().nonnegative(),
+  currentEntries: z.number().int().nonnegative(),
+  maximumEntries: z.number().int().nonnegative(),
+}).strict();
+
+const hizoFSRuntimeDiagnosticsSchema = z.object({
+  phases: z.object({
+    record_encode: hizoFSRuntimePhaseCounterSchema,
+    record_decode: hizoFSRuntimePhaseCounterSchema,
+    object_encrypt: hizoFSRuntimePhaseCounterSchema,
+    object_decrypt: hizoFSRuntimePhaseCounterSchema,
+    envelope_encode: hizoFSRuntimePhaseCounterSchema,
+    envelope_decode: hizoFSRuntimePhaseCounterSchema,
+    backing_resolve_parent: hizoFSRuntimePhaseCounterSchema,
+    backing_get_file_handle: hizoFSRuntimePhaseCounterSchema,
+    backing_get_file: hizoFSRuntimePhaseCounterSchema,
+    backing_array_buffer: hizoFSRuntimePhaseCounterSchema,
+    backing_create_writable: hizoFSRuntimePhaseCounterSchema,
+    backing_write: hizoFSRuntimePhaseCounterSchema,
+    backing_close: hizoFSRuntimePhaseCounterSchema,
+    backing_failure_verification: hizoFSRuntimePhaseCounterSchema,
+    backing_remove: hizoFSRuntimePhaseCounterSchema,
+    backing_list: hizoFSRuntimePhaseCounterSchema,
+    index_build: hizoFSRuntimePhaseCounterSchema,
+    index_update: hizoFSRuntimePhaseCounterSchema,
+    commit_publication: hizoFSRuntimePhaseCounterSchema,
+  }).strict(),
+  records: z.object({
+    commit: hizoFSRuntimeRecordCounterSchema,
+    inode_index_page: hizoFSRuntimeRecordCounterSchema,
+    file_inode: hizoFSRuntimeRecordCounterSchema,
+    directory_inode: hizoFSRuntimeRecordCounterSchema,
+    symlink_inode: hizoFSRuntimeRecordCounterSchema,
+    directory_index_page: hizoFSRuntimeRecordCounterSchema,
+    file_extent_page: hizoFSRuntimeRecordCounterSchema,
+    file_chunk: hizoFSRuntimeRecordCounterSchema,
+    superblock: hizoFSRuntimeRecordCounterSchema,
+  }).strict(),
+  caches: z.object({
+    metadata: hizoFSRuntimeCacheCounterSchema,
+    fileChunk: hizoFSRuntimeCacheCounterSchema,
+  }).strict(),
+}).strict();
+
 const hizoFSBenchmarkDiagnosticsSchema = z.object({
   backingStore: hizoFSBackingStoreCountersSchema,
   objects: z.object({
@@ -135,6 +207,7 @@ const hizoFSBenchmarkDiagnosticsSchema = z.object({
     ciphertextBytesWritten: z.number().int().nonnegative(),
   }).strict(),
   amplification: benchmarkAmplificationSchema,
+  runtime: hizoFSRuntimeDiagnosticsSchema,
 }).strict();
 
 const hizoFSBenchmarkDiagnosticsTotalsSchema = z.object({
@@ -151,6 +224,7 @@ const hizoFSBenchmarkDiagnosticsTotalsSchema = z.object({
     ciphertextBytesWritten: z.number().int().nonnegative(),
   }).strict(),
   amplification: benchmarkAmplificationSchema,
+  runtime: hizoFSRuntimeDiagnosticsSchema,
 }).strict();
 
 const benchmarkSampleSchema = z.object({
@@ -238,8 +312,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(4),
-  benchmarkImplementationVersion: z.literal(4),
+  schemaVersion: z.literal(6),
+  benchmarkImplementationVersion: z.literal(6),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -262,11 +336,15 @@ export const hizoFSBenchmarkReportSchema = z.object({
     memoryScope: z.literal('benchmark_harness_buffers_only'),
     browserHeapMeasured: z.literal(false),
     hizoFSInternalMemoryMeasured: z.literal(false),
+    hizoFSRuntimeDiagnosticsEnabled: z.literal(true),
+    phaseDurationsAreNested: z.literal(true),
     hizoFSRuntimePolicy: z.object({
       fileChunkSizeBytes: z.number().int().positive(),
       maxDirtyFileBytesPerWriter: z.number().int().positive(),
       fileChunkWriteConcurrencyPerWriter: z.number().int().positive(),
+      fileChunkReadPrefetchConcurrencyPerReader: z.number().int().positive(),
       maximumPlaintextChunkWriteBytesInFlightPerWriter: z.number().int().positive(),
+      maximumPlaintextChunkReadBytesInFlightPerReader: z.number().int().positive(),
       metadataObjectCacheByteLimitPerRuntime: z.number().int().nonnegative(),
       metadataObjectCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       fileChunkCacheByteLimitPerRuntime: z.number().int().nonnegative(),

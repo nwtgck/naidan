@@ -1207,6 +1207,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       chunkStore: this.runtime.chunkStore,
       mimeType,
       streamChunkSize: this.runtime.policy.readerStreamChunkSize,
+      prefetchConcurrency: this.runtime.policy.fileChunkReadPrefetchConcurrency,
       maintenanceLease,
       onSettled: () => this.resources.delete(resource),
     });

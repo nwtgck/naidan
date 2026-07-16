@@ -13,6 +13,7 @@ import type { HizoFSInodeIndex } from "./inode-index";
 import type { HizoFSInodeStore } from "./inode-store";
 import { runWithHizoFSMutationLock } from "./mutation-lock";
 import { runWithHizoFSResourceLease } from "./maintenance-lock";
+import type { HizoFSRuntimeDiagnostics } from "./diagnostics";
 
 export type HizoFSActiveState = {
   readonly superblock: HizoFSSuperblockDto;
@@ -56,6 +57,7 @@ export class HizoFSCore {
     commitStore,
     inodeIndex,
     inodeStore,
+    diagnostics,
   }: {
     fileSystemId: string;
     objectStore: HizoFSObjectStore;
@@ -63,6 +65,7 @@ export class HizoFSCore {
     commitStore: HizoFSCommitStore;
     inodeIndex: HizoFSInodeIndex;
     inodeStore: HizoFSInodeStore;
+    diagnostics: HizoFSRuntimeDiagnostics | undefined;
   }) {
     this.fileSystemId = fileSystemId;
     this.objectStore = objectStore;
@@ -70,6 +73,7 @@ export class HizoFSCore {
     this.commitStore = commitStore;
     this.inodeIndex = inodeIndex;
     this.inodeStore = inodeStore;
+    this.diagnostics = diagnostics;
   }
 
   readonly fileSystemId: string;
@@ -78,6 +82,7 @@ export class HizoFSCore {
   readonly commitStore: HizoFSCommitStore;
   readonly inodeIndex: HizoFSInodeIndex;
   readonly inodeStore: HizoFSInodeStore;
+  private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
 
   async loadActiveState(): Promise<HizoFSActiveState> {
     const candidateSet = await this.superblockStore.readCandidateSet();
@@ -217,14 +222,24 @@ export class HizoFSCore {
               rootDirectoryNodeId: currentState.commit.rootDirectoryNodeId,
               inodeIndexRootObjectId: mutation.inodeIndexRootObjectId,
             };
-            const commitObjectId = await this.commitStore.write({ commit });
-            await this.superblockStore.write({
-              value: {
-                sequence: currentState.superblock.sequence + 1,
-                fileSystemId: this.fileSystemId,
-                activeCommitObjectId: commitObjectId,
-              },
-            });
+            const publish = async (): Promise<void> => {
+              const commitObjectId = await this.commitStore.write({ commit });
+              await this.superblockStore.write({
+                value: {
+                  sequence: currentState.superblock.sequence + 1,
+                  fileSystemId: this.fileSystemId,
+                  activeCommitObjectId: commitObjectId,
+                },
+              });
+            };
+            if (this.diagnostics === undefined) {
+              await publish();
+            } else {
+              await this.diagnostics.measureAsync({
+                phase: "commit_publication",
+                operation: publish,
+              });
+            }
             return { type: "published", result: mutation.result };
           }
           default: {
