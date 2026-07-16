@@ -1,0 +1,1 @@
+export const opfsEncryption__return_to_plain_after_authority_switch = (): string => 'Encrypted storage is already authoritative. Enter the passphrase to rebuild and verify plain storage before removing encryption.';

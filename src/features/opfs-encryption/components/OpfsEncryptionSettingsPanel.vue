@@ -28,6 +28,7 @@ const props = defineProps<{
 const { showConfirm } = useConfirm();
 const {
   beginLocalOperation,
+  updateProgress,
   finishLocalOperation,
 } = useOpfsEncryptionTransition();
 const inspection = ref<OpfsEncryptionInspection>({ type: 'plain' });
@@ -242,7 +243,10 @@ async function handleToggle(): Promise<void> {
   beginLocalOperation();
   try {
     await prepareForStorageTransition();
-    await storageService.disableOpfsEncryption({ signal: undefined });
+    await storageService.disableOpfsEncryption({
+      signal: undefined,
+      onProgress: updateProgress,
+    });
     await refreshExpectedInspection({ expectedType: 'plain' });
     finishLocalOperation({ outcome: 'completed', errorMessage: undefined });
   } catch (error) {
@@ -265,6 +269,7 @@ async function enableEncryption(): Promise<void> {
     await storageService.enableOpfsEncryption({
       passphrase: passphrase.value,
       signal: undefined,
+      onProgress: updateProgress,
     });
     await refreshExpectedInspection({ expectedType: 'encrypted' });
     resetSetup();
@@ -312,7 +317,10 @@ async function reencrypt(): Promise<void> {
   beginLocalOperation();
   try {
     await prepareForStorageTransition();
-    await storageService.reencryptOpfsEncryption({ signal: undefined });
+    await storageService.reencryptOpfsEncryption({
+      signal: undefined,
+      onProgress: updateProgress,
+    });
     await refreshExpectedInspection({ expectedType: 'encrypted' });
     finishLocalOperation({ outcome: 'completed', errorMessage: undefined });
   } catch (error) {

@@ -4,6 +4,7 @@ import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { CpuIcon, FlaskConicalIcon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
+import DeveloperOpfsEncryptionInterruptionPanel from './DeveloperOpfsEncryptionInterruptionPanel.vue';
 import DeveloperDataDeletionPanel from '@/features/data-deletion/components/DeveloperDataDeletionPanel.vue';
 import { lazyStrings } from '@/strings';
 
@@ -76,6 +77,8 @@ defineExpose({
         </div>
 
         <DeveloperOpenStateLinks />
+
+        <DeveloperOpfsEncryptionInterruptionPanel :storage-type="props.storageType" />
 
         <div tw-class="space-y-2">
           <button

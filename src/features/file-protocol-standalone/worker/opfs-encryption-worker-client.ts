@@ -1,5 +1,6 @@
 import * as Comlink from 'comlink';
 
+import type { OpfsEncryptionTransitionProgress } from '@/00-storage/service/opfs-encryption/transition-progress';
 import type {
   IOpfsEncryptionWorker,
   OpfsEncryptionWorkerClient,
@@ -12,14 +13,22 @@ export async function createOpfsEncryptionWorkerClient(): Promise<OpfsEncryption
   const remoteHub = Comlink.wrap<IWorkerHub>(worker);
   const remote = await remoteHub.opfsEncryption as Comlink.Remote<IOpfsEncryptionWorker>;
   return {
-    async run({ request, signal }) {
+    async run({ request, signal, onProgress }) {
       signal?.throwIfAborted();
       const cancel = () => {
         void remote.cancel();
       };
       signal?.addEventListener('abort', cancel, { once: true });
       try {
-        return await remote.run({ request });
+        let remoteOnProgress;
+        if (onProgress !== undefined) {
+          remoteOnProgress = Comlink.proxy(async ({ progress }: {
+            progress: OpfsEncryptionTransitionProgress;
+          }) => {
+            onProgress({ progress });
+          });
+        }
+        return await remote.run(request, remoteOnProgress);
       } finally {
         signal?.removeEventListener('abort', cancel);
       }

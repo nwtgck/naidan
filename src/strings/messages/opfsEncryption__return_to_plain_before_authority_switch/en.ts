@@ -1,0 +1,1 @@
+export const opfsEncryption__return_to_plain_before_authority_switch = (): string => 'The unfinished encrypted target will be deleted. The current plain storage remains authoritative and will not be rewritten.';

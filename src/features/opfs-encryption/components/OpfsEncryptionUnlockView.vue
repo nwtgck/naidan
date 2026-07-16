@@ -18,6 +18,7 @@ import type {
 } from '@/logic/startup/opfs-encryption-startup-gate';
 import { ensureStrings, lazyStrings } from '@/strings';
 import OpfsEncryptionUnlockButton from './OpfsEncryptionUnlockButton.vue';
+import OpfsEncryptionTransitionProgress from './OpfsEncryptionTransitionProgress.vue';
 import {
   OPFS_ENCRYPTION_UNLOCK_MINIMUM_SEAT_START_MS,
   OPFS_ENCRYPTION_UNLOCK_POST_SUCCESS_HOLD_DURATION_MS,
@@ -78,6 +79,20 @@ const boundaryWhitespaceWarning = computed(() => (
 const hasLineBreak = computed(() => (
   passphraseValidation.value.type === 'line_break'
 ));
+const transitionPhase = computed(() => {
+  const value = inspection.value;
+  switch (value.type) {
+  case 'transitioning':
+    return value.operation.phase;
+  case 'encrypted':
+  case 'recovery_required':
+    return undefined;
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled OPFS encryption inspection: ${String(_ex)}`);
+  }
+  }
+});
 const transitionOperation = computed(() => {
   const value = inspection.value;
   switch (value.type) {
@@ -92,6 +107,14 @@ const transitionOperation = computed(() => {
   }
   }
 });
+const canReturnInterruptedEncryptionToPlain = computed(() => (
+  transitionOperation.value === 'encrypting'
+));
+const returnToPlainRequiresPassphrase = computed(() => (
+  canReturnInterruptedEncryptionToPlain.value
+  && transitionPhase.value === 'cleaning_up_source'
+));
+
 const title = computed(() => {
   if (isApplicationFailed.value) {
     return lazyStrings.opfsEncryption__naidan_could_not_finish_loading();
@@ -186,6 +209,30 @@ async function submitPassphrase(): Promise<void> {
   }
 }
 
+async function returnInterruptedEncryptionToPlain(): Promise<void> {
+  if (
+    working.value
+    || gatePhase.value !== 'locked'
+    || !canReturnInterruptedEncryptionToPlain.value
+    || (returnToPlainRequiresPassphrase.value && (passphrase.value.length === 0 || hasLineBreak.value))
+  ) {
+    return;
+  }
+  working.value = true;
+  errorMessage.value = undefined;
+  try {
+    await props.gate.returnInterruptedEncryptionToPlain({
+      passphrase: returnToPlainRequiresPassphrase.value ? passphrase.value : undefined,
+    });
+    unlockButtonState.value = 'unlocked';
+    props.gate.reportUnlockPresentationReady();
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    working.value = false;
+  }
+}
+
 async function retryInspection(): Promise<void> {
   if (working.value || gatePhase.value !== 'locked') {
     return;
@@ -224,6 +271,7 @@ defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       submitPassphrase,
+      returnInterruptedEncryptionToPlain,
       retryInspection,
     },
   }) || {}),
@@ -338,6 +386,34 @@ defineExpose({
             :label="isTransitioning ? lazyStrings.opfsEncryption__unlock_and_resume() : lazyStrings.opfsEncryption__unlock_storage()"
             :result-label="lazyStrings.opfsEncryption__unlocked()"
           />
+
+          <OpfsEncryptionTransitionProgress
+            v-if="isTransitioning && working"
+            :progress="gate.progress.value"
+          />
+
+          <div
+            v-if="canReturnInterruptedEncryptionToPlain"
+            data-testid="opfs-encryption-return-to-plain"
+            tw-class="mt-5 space-y-3 rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20 p-4"
+          >
+            <p tw-class="text-xs leading-relaxed text-amber-900 dark:text-amber-300">
+              {{ returnToPlainRequiresPassphrase
+                ? lazyStrings.opfsEncryption__return_to_plain_after_authority_switch()
+                : lazyStrings.opfsEncryption__return_to_plain_before_authority_switch() }}
+            </p>
+            <button
+              type="button"
+              data-testid="opfs-encryption-return-to-plain-button"
+              :disabled="working || gatePhase !== 'locked' || (returnToPlainRequiresPassphrase && (passphrase.length === 0 || hasLineBreak))"
+              tw-class="w-full rounded-xl border border-amber-300 dark:border-amber-800 bg-white/80 dark:bg-gray-900 px-4 py-3 text-xs font-bold text-amber-900 dark:text-amber-300 hover:bg-white dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              @click="returnInterruptedEncryptionToPlain"
+            >
+              {{ working
+                ? lazyStrings.opfsEncryption__returning_to_plain_storage()
+                : lazyStrings.opfsEncryption__stop_encryption_and_return_to_plain() }}
+            </button>
+          </div>
         </form>
 
         <div v-if="isRecoveryRequired" tw-class="space-y-4">

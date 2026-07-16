@@ -21,6 +21,14 @@ import { assertHizoFSEntryName } from './semantic-validation';
 
 const BULK_READ_BUFFER_BYTE_LENGTH = 256 * 1024;
 
+export type HizoFSBulkImportProgressListener = ({
+  byteLength,
+  completedEntries,
+}: {
+  byteLength: number;
+  completedEntries: number;
+}) => void;
+
 type ImportedNode = {
   readonly entry: HizoFSDirectoryEntryDto;
   readonly inodeIndexEntry: HizoFSInodeIndexEntry;
@@ -139,11 +147,13 @@ export class HizoFSBulkBuilder {
     name,
     excludedNames,
     signal,
+    onProgress,
   }: {
     source: StorageDirectoryHandle;
     name: string;
     excludedNames: ReadonlySet<string>;
     signal: AbortSignal | undefined;
+    onProgress: HizoFSBulkImportProgressListener | undefined;
   }): Promise<void> {
     this.assertOpen();
     this.assertUniqueRootName({ name });
@@ -152,6 +162,7 @@ export class HizoFSBulkBuilder {
       name,
       excludedNames,
       signal,
+      onProgress,
     });
     this.rootEntries.push(imported.entry);
   }
@@ -232,11 +243,13 @@ export class HizoFSBulkBuilder {
     name,
     excludedNames,
     signal,
+    onProgress,
   }: {
     source: StorageDirectoryHandle;
     name: string;
     excludedNames: ReadonlySet<string>;
     signal: AbortSignal | undefined;
+    onProgress: HizoFSBulkImportProgressListener | undefined;
   }): Promise<ImportedNode> {
     signal?.throwIfAborted();
     assertHizoFSEntryName({ name });
@@ -252,6 +265,7 @@ export class HizoFSBulkBuilder {
           name: childName,
           excludedNames: new Set(),
           signal,
+          onProgress,
         });
         entries.push(imported.entry);
         break;
@@ -261,12 +275,14 @@ export class HizoFSBulkBuilder {
           source: child,
           name: childName,
           signal,
+          onProgress,
         })).entry);
         break;
       case 'symlink':
         entries.push((await this.importSymlinkNode({
           source: child,
           name: childName,
+          onProgress,
         })).entry);
         break;
       default: {
@@ -298,6 +314,7 @@ export class HizoFSBulkBuilder {
     });
     const inodeIndexEntry = { nodeId, inodeObjectId };
     this.inodeIndexEntries.push(inodeIndexEntry);
+    onProgress?.({ byteLength: 0, completedEntries: 1 });
     return {
       entry: { name, kind: 'directory', nodeId },
       inodeIndexEntry,
@@ -308,10 +325,12 @@ export class HizoFSBulkBuilder {
     source,
     name,
     signal,
+    onProgress,
   }: {
     source: StorageFileHandle;
     name: string;
     signal: AbortSignal | undefined;
+    onProgress: HizoFSBulkImportProgressListener | undefined;
   }): Promise<ImportedNode> {
     assertHizoFSEntryName({ name });
     const stat = await source.stat();
@@ -340,6 +359,10 @@ export class HizoFSBulkBuilder {
           buffer: binaryPayload,
           position: 0,
           signal,
+          onBytesRead: ({ byteLength }) => onProgress?.({
+            byteLength,
+            completedEntries: 0,
+          }),
         });
         inode = {
           nodeId,
@@ -364,6 +387,10 @@ export class HizoFSBulkBuilder {
               buffer: buffer.subarray(0, length),
               position,
               signal,
+              onBytesRead: ({ byteLength }) => onProgress?.({
+                byteLength,
+                completedEntries: 0,
+              }),
             });
             let storedLength = length;
             while (storedLength > 0 && buffer[storedLength - 1] === 0) {
@@ -405,6 +432,7 @@ export class HizoFSBulkBuilder {
       });
       const inodeIndexEntry = { nodeId, inodeObjectId };
       this.inodeIndexEntries.push(inodeIndexEntry);
+      onProgress?.({ byteLength: 0, completedEntries: 1 });
       return {
         entry: { name, kind: 'file', nodeId },
         inodeIndexEntry,
@@ -417,9 +445,11 @@ export class HizoFSBulkBuilder {
   private async importSymlinkNode({
     source,
     name,
+    onProgress,
   }: {
     source: StorageSymlinkHandle;
     name: string;
+    onProgress: HizoFSBulkImportProgressListener | undefined;
   }): Promise<ImportedNode> {
     assertHizoFSEntryName({ name });
     const stat = await source.stat();
@@ -443,6 +473,7 @@ export class HizoFSBulkBuilder {
     const inodeObjectId = await this.runtime.inodeStore.writeSymlink({ inode });
     const inodeIndexEntry = { nodeId, inodeObjectId };
     this.inodeIndexEntries.push(inodeIndexEntry);
+    onProgress?.({ byteLength: 0, completedEntries: 1 });
     return {
       entry: { name, kind: 'symlink', nodeId },
       inodeIndexEntry,
@@ -488,11 +519,13 @@ export class HizoFSBulkBuilder {
     buffer,
     position,
     signal,
+    onBytesRead,
   }: {
     readable: StorageBinaryObjectReadHandle;
     buffer: Uint8Array;
     position: number;
     signal: AbortSignal | undefined;
+    onBytesRead: (({ byteLength }: { byteLength: number }) => void) | undefined;
   }): Promise<void> {
     let offset = 0;
     while (offset < buffer.byteLength) {
@@ -507,6 +540,7 @@ export class HizoFSBulkBuilder {
         throw new Error('HizoFS bulk source ended before its declared size');
       }
       offset += result.bytesRead;
+      onBytesRead?.({ byteLength: result.bytesRead });
     }
   }
 

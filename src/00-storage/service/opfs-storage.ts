@@ -41,6 +41,7 @@ import {
   type OpfsSpecialFileSystemType,
 } from './opfs/opfs-special-file-system';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
+import type { OpfsEncryptionTransitionProgressListener } from './opfs-encryption/transition-progress';
 import {
   createOpfsEncryptionDebugSession,
   type OpfsEncryptionDebugSession,
@@ -66,10 +67,13 @@ function clearOpfsEncryptionWorkerRequestSecrets({
   switch (request.operation) {
   case 'disable':
   case 'reencrypt':
+  case 'debug_interrupt_disable':
     request.storageUnlockKey.fill(0);
     return;
   case 'enable':
   case 'resume':
+  case 'return_to_plain':
+  case 'debug_interrupt_enable':
     // JavaScript strings cannot be zeroed. The Worker receives only the
     // passphrase string and never returns file payloads to the caller realm.
     return;
@@ -336,9 +340,11 @@ export class OPFSStorageProvider extends IStorageProvider {
   async enableEncryption({
     passphrase,
     signal,
+    onProgress,
   }: {
     passphrase: string,
     signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
     const inspection = await this.inspectEncryption();
     requirePlainInspection({ inspection });
@@ -351,6 +357,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         passphrase,
       },
       signal,
+      onProgress,
       reopen: { type: 'passphrase', passphrase },
     });
   }
@@ -403,8 +410,10 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async disableEncryption({
     signal,
+    onProgress,
   }: {
     signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
     const session = this.requireUnlockedEncryptionSession();
     const storageRoot = await getOrCreateStorageRoot();
@@ -418,14 +427,17 @@ export class OPFSStorageProvider extends IStorageProvider {
         unlockedKeySlotId: session.unlockedKeySlotId,
       },
       signal,
+      onProgress,
       reopen: { type: 'plain' },
     });
   }
 
   async reencrypt({
     signal,
+    onProgress,
   }: {
     signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
     const session = this.requireUnlockedEncryptionSession();
     const storageRoot = await getOrCreateStorageRoot();
@@ -439,6 +451,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         unlockedKeySlotId: session.unlockedKeySlotId,
       },
       signal,
+      onProgress,
       reopen: {
         type: 'unlocked_key',
         storageUnlockKey: session.storageUnlockKey,
@@ -450,9 +463,11 @@ export class OPFSStorageProvider extends IStorageProvider {
   async resumeTransitionWithPassphrase({
     passphrase,
     signal,
+    onProgress,
   }: {
     passphrase: string,
     signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
     const inspection = requireTransitioningInspection({
       inspection: await this.inspectEncryption(),
@@ -467,7 +482,85 @@ export class OPFSStorageProvider extends IStorageProvider {
         passphrase,
       },
       signal,
+      onProgress,
       reopen: { type: 'passphrase', passphrase },
+    });
+  }
+
+  async returnInterruptedEncryptionToPlain({
+    passphrase,
+    signal,
+    onProgress,
+  }: {
+    passphrase: string | undefined,
+    signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
+  }): Promise<void> {
+    const inspection = requireTransitioningInspection({
+      inspection: await this.inspectEncryption(),
+    });
+    switch (inspection.operation.type) {
+    case 'encrypting':
+      break;
+    case 'decrypting':
+    case 'reencrypting':
+      throw new Error('Only interrupted OPFS encryption can return directly to plain storage');
+    default: {
+      const _ex: never = inspection.operation;
+      throw new Error(`Unhandled OPFS encryption operation: ${((_ex satisfies never) as { readonly type: string }).type}`);
+    }
+    }
+    const storageRoot = await getOrCreateStorageRoot();
+    await this.runTransitionInWorker({
+      request: {
+        operation: 'return_to_plain',
+        storageRoot,
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+        state: inspection.state,
+        passphrase,
+      },
+      signal,
+      onProgress,
+      reopen: { type: 'plain' },
+    });
+  }
+
+  async createInterruptedEncryptionForDebug({
+    passphrase,
+    signal,
+  }: {
+    passphrase: string,
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    const storageRoot = await getOrCreateStorageRoot();
+    await this.runInterruptedTransitionInWorker({
+      request: {
+        operation: 'debug_interrupt_enable',
+        storageRoot,
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+        passphrase,
+      },
+      signal,
+    });
+  }
+
+  async createInterruptedDecryptionForDebug({
+    signal,
+  }: {
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    const session = this.requireUnlockedEncryptionSession();
+    const storageRoot = await getOrCreateStorageRoot();
+    await this.runInterruptedTransitionInWorker({
+      request: {
+        operation: 'debug_interrupt_disable',
+        storageRoot,
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+        state: session.state,
+        storageUnlockKey: session.storageUnlockKey.slice(),
+        unlockedKeySlotId: session.unlockedKeySlotId,
+      },
+      signal,
     });
   }
 
@@ -761,10 +854,12 @@ export class OPFSStorageProvider extends IStorageProvider {
   private async runTransitionInWorker({
     request,
     signal,
+    onProgress,
     reopen,
   }: {
     request: OpfsEncryptionWorkerRequest;
     signal: AbortSignal | undefined;
+    onProgress: OpfsEncryptionTransitionProgressListener | undefined;
     reopen:
       | { readonly type: 'plain' }
       | { readonly type: 'passphrase'; readonly passphrase: string }
@@ -789,7 +884,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         const worker = await workerModule.createOpfsEncryptionWorkerClient();
         let result: OpfsEncryptionWorkerResult;
         try {
-          result = await worker.run({ request, signal });
+          result = await worker.run({ request, signal, onProgress });
         } finally {
           await worker.dispose();
         }
@@ -806,6 +901,58 @@ export class OPFSStorageProvider extends IStorageProvider {
         }
         throw error;
       }
+    } finally {
+      clearOpfsEncryptionWorkerRequestSecrets({ request });
+    }
+  }
+
+  private async runInterruptedTransitionInWorker({
+    request,
+    signal,
+  }: {
+    request: OpfsEncryptionWorkerRequest;
+    signal: AbortSignal | undefined;
+  }): Promise<void> {
+    try {
+      await this.storageSessionLock.suspend();
+      if (__BUILD_TARGET_IS_FILE_PROTOCOL_STANDALONE_WORKER__) {
+        throw new Error('Interrupted OPFS transitions cannot be created from the standalone Worker Hub');
+      }
+      const workerModule = await import(
+        '@/00-storage/service/opfs-encryption/worker/client'
+      );
+      const worker = await workerModule.createOpfsEncryptionWorkerClient();
+      let result: OpfsEncryptionWorkerResult;
+      try {
+        result = await worker.run({
+          request,
+          signal,
+          onProgress: undefined,
+        });
+      } finally {
+        await worker.dispose();
+      }
+      switch (result.type) {
+      case 'interrupted':
+        break;
+      case 'plain':
+      case 'encrypted':
+        throw new Error(`Expected interrupted transition state, received: ${result.type}`);
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled OPFS encryption Worker result: ${((_ex satisfies never) as { readonly type: string }).type}`);
+      }
+      }
+      this.clearEncryptionSession();
+      await this.closeFileSystemSession();
+      this.backend = undefined;
+    } catch (error) {
+      try {
+        await this.recoverAfterFailedTransition();
+      } catch (recoveryError) {
+        console.error('Failed to restore OPFS provider after interrupted transition setup failure:', recoveryError);
+      }
+      throw error;
     } finally {
       clearOpfsEncryptionWorkerRequestSecrets({ request });
     }
@@ -842,6 +989,8 @@ export class OPFSStorageProvider extends IStorageProvider {
       this.backend = await this.createPlainBackend();
       return;
     }
+    case 'interrupted':
+      throw new Error('Interrupted transition result cannot be installed as a stable backend');
     case 'encrypted': {
       const storageRoot = await getOrCreateStorageRoot();
       const encryptionModule = await import('./opfs-encryption/bootstrap');

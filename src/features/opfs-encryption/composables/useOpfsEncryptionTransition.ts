@@ -4,6 +4,7 @@ import {
   ref,
 } from 'vue';
 import { showGlobalBlockingOverlay } from '@/composables/useGlobalBlockingOverlay';
+import type { OpfsEncryptionTransitionProgress } from '@/00-storage/service/opfs-encryption/transition-progress';
 
 const OpfsEncryptionTransitionView = defineAsyncComponent(
   () => import('@/features/opfs-encryption/components/OpfsEncryptionTransitionView.vue'),
@@ -17,6 +18,7 @@ export type OpfsEncryptionTransitionOutcome =
 const active = ref(false);
 const failed = ref(false);
 const failureMessage = ref<string>();
+const progress = ref<OpfsEncryptionTransitionProgress>();
 let closeOverlay: (() => void) | undefined;
 let operationOwner: 'local' | 'external' | undefined;
 
@@ -28,6 +30,7 @@ function closeLocalOverlay(): void {
   active.value = false;
   failed.value = false;
   failureMessage.value = undefined;
+  progress.value = undefined;
 }
 
 export function useOpfsEncryptionTransition() {
@@ -38,6 +41,7 @@ export function useOpfsEncryptionTransition() {
     active.value = true;
     failed.value = false;
     failureMessage.value = undefined;
+    progress.value = undefined;
     closeOverlay = showGlobalBlockingOverlay({
       operation: 'storage_transition',
       component: OpfsEncryptionTransitionView,
@@ -59,11 +63,21 @@ export function useOpfsEncryptionTransition() {
       active.value = true;
       failed.value = false;
       failureMessage.value = undefined;
+      progress.value = undefined;
       operationOwner = 'external';
       return;
     }
     beginOperation();
     operationOwner = 'external';
+  }
+
+
+  function updateProgress({
+    progress: nextProgress,
+  }: {
+    progress: OpfsEncryptionTransitionProgress,
+  }): void {
+    progress.value = nextProgress;
   }
 
   function finishLocalOperation({
@@ -112,8 +126,10 @@ export function useOpfsEncryptionTransition() {
     active: readonly(active),
     failed: readonly(failed),
     failureMessage: readonly(failureMessage),
+    progress: readonly(progress),
     beginLocalOperation,
     beginExternalOperation,
+    updateProgress,
     finishLocalOperation,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {

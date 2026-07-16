@@ -42,11 +42,13 @@ export async function writeStorageReadableStream({
   source,
   expectedSize,
   signal,
+  onBytesWritten,
 }: {
   fileHandle: StorageFileHandle;
   source: ReadableStream<Uint8Array>;
   expectedSize: number | undefined;
   signal: AbortSignal | undefined;
+  onBytesWritten: (({ byteLength }: { byteLength: number }) => void) | undefined;
 }): Promise<void> {
   const writable = await fileHandle.createWritable({ keepExistingData: false });
   const reader = source.getReader();
@@ -65,6 +67,7 @@ export async function writeStorageReadableStream({
         );
         await writable.write({ position, data: chunk });
         position += chunk.byteLength;
+        onBytesWritten?.({ byteLength: chunk.byteLength });
       }
     }
     if (expectedSize !== undefined && position !== expectedSize) {

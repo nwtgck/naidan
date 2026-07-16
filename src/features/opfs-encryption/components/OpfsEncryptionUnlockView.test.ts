@@ -31,7 +31,9 @@ function createGate({
     inspection: shallowRef(inspection),
     phase: shallowRef(phase),
     applicationError: shallowRef(applicationError),
+    progress: shallowRef(undefined),
     unlockWithPassphrase: vi.fn(async () => {}),
+    returnInterruptedEncryptionToPlain: vi.fn(async () => {}),
     retryInspection: vi.fn(async () => {}),
     reportApplicationFailure: vi.fn(),
     reportUnlockPresentationReady: vi.fn(),
@@ -77,6 +79,10 @@ beforeEach(async () => {
   await ensureStrings.opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading();
   await ensureStrings.opfsEncryption__unlock_storage();
   await ensureStrings.opfsEncryption__unlocked();
+  await ensureStrings.opfsEncryption__return_to_plain_before_authority_switch();
+  await ensureStrings.opfsEncryption__return_to_plain_after_authority_switch();
+  await ensureStrings.opfsEncryption__stop_encryption_and_return_to_plain();
+  await ensureStrings.opfsEncryption__returning_to_plain_storage();
   vi.clearAllMocks();
 });
 
@@ -310,6 +316,89 @@ second line`,
     await button.trigger('click');
     expect(openFileExplorer).toHaveBeenCalledWith({
       options: { kind: 'opfs-root' },
+    });
+  });
+
+
+  it('discards an unfinished encrypted target without requiring a passphrase', async () => {
+    const operation = {
+      type: 'encrypting' as const,
+      phase: 'building_target' as const,
+      targetEncryptedStoreId: 'target-store',
+    };
+    const gate = createGate({
+      inspection: {
+        type: 'transitioning',
+        state: {
+          formatVersion: 1,
+          sequence: 1,
+          state: 'transitioning',
+          keySlots: [],
+          operation,
+        },
+        operation,
+      },
+    });
+    const wrapper = mount(OpfsEncryptionUnlockView, {
+      props: { gate },
+    });
+
+    expect(wrapper.text()).toContain('The unfinished encrypted target will be deleted. The current plain storage remains authoritative and will not be rewritten.');
+    await wrapper.get('[data-testid="opfs-encryption-return-to-plain-button"]').trigger('click');
+    await flushPromises();
+
+    expect(gate.returnInterruptedEncryptionToPlain).toHaveBeenCalledWith({
+      passphrase: undefined,
+    });
+    expect(gate.reportUnlockPresentationReady).toHaveBeenCalledOnce();
+  });
+
+  it('requires the passphrase when encrypted storage is already authoritative', async () => {
+    const operation = {
+      type: 'encrypting' as const,
+      phase: 'cleaning_up_source' as const,
+      targetEncryptedStoreId: 'target-store',
+    };
+    const gate = createGate({
+      inspection: {
+        type: 'transitioning',
+        state: {
+          formatVersion: 1,
+          sequence: 2,
+          state: 'transitioning',
+          keySlots: [{
+            id: 'slot-id',
+            keyDerivation: {
+              type: 'pbkdf2_hmac_sha256',
+              salt: 'salt',
+              iterations: 10,
+            },
+            wrappedStorageUnlockKey: {
+              nonce: 'nonce',
+              ciphertext: 'ciphertext',
+            },
+          }],
+          operation,
+        },
+        operation,
+      },
+    });
+    const wrapper = mount(OpfsEncryptionUnlockView, {
+      props: { gate },
+    });
+    const returnButton = wrapper.get('[data-testid="opfs-encryption-return-to-plain-button"]');
+
+    expect(returnButton.attributes('disabled')).toBeDefined();
+    expect(wrapper.text()).toContain('Encrypted storage is already authoritative. Enter the passphrase to rebuild and verify plain storage before removing encryption.');
+    await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]')
+      .setValue('existing passphrase');
+    expect(returnButton.attributes('disabled')).toBeUndefined();
+
+    await returnButton.trigger('click');
+    await flushPromises();
+
+    expect(gate.returnInterruptedEncryptionToPlain).toHaveBeenCalledWith({
+      passphrase: 'existing passphrase',
     });
   });
 

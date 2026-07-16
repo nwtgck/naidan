@@ -613,6 +613,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
       source: stream,
       expectedSize: size,
       signal,
+      onBytesWritten: undefined,
     });
 
     const persistedFile = await fileHandle.handle.stat();
@@ -1075,6 +1076,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
         source: file.stream(),
         expectedSize: file.size,
         signal,
+        onBytesWritten: undefined,
       });
 
       if (onProgress) {

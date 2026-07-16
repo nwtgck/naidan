@@ -73,6 +73,7 @@ describe('DeveloperTab', () => {
     expect(wrapper.find('[data-testid="toggle-pwa-update-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="setting-create-long-sample-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="data-deletion-factory-reset-preset-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="developer-opfs-encryption-interruption-panel"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="fake-lm-debug-mode-toggle"]').exists()).toBe(false);
   });
 

@@ -104,6 +104,57 @@ describe('createOpfsEncryptionStartupGate', () => {
     expect(resume).toHaveBeenCalledWith({
       passphrase: 'transition passphrase',
       signal: undefined,
+      onProgress: expect.any(Function),
+    });
+    const onProgress = resume.mock.calls[0]?.[0].onProgress;
+    if (onProgress === undefined) {
+      throw new Error('Expected transition progress callback');
+    }
+    onProgress({
+      progress: {
+        operation: 'reencrypting',
+        phase: 'verifying',
+        percent: 75,
+        completedBytes: 3,
+        totalBytes: 4,
+        completedEntries: 3,
+        totalEntries: 4,
+      },
+    });
+    expect(gate.progress.value?.percent).toBe(75);
+    expect(gate.phase.value).toBe('preparing_application');
+  });
+
+
+  it('returns interrupted pre-authority encryption to plain without a passphrase', async () => {
+    const operation = {
+      type: 'encrypting' as const,
+      phase: 'building_target' as const,
+      targetEncryptedStoreId: 'target-store',
+    };
+    const returnToPlain = vi.spyOn(storageService, 'returnInterruptedOpfsEncryptionToPlain')
+      .mockResolvedValue(undefined);
+    const gate = createOpfsEncryptionStartupGate({
+      inspection: {
+        type: 'transitioning',
+        state: {
+          formatVersion: 1,
+          sequence: 3,
+          state: 'transitioning',
+          keySlots: [],
+          operation,
+        },
+        operation,
+      },
+    });
+
+    await gate.returnInterruptedEncryptionToPlain({ passphrase: undefined });
+    await gate.wait();
+
+    expect(returnToPlain).toHaveBeenCalledWith({
+      passphrase: undefined,
+      signal: undefined,
+      onProgress: expect.any(Function),
     });
     expect(gate.phase.value).toBe('preparing_application');
   });

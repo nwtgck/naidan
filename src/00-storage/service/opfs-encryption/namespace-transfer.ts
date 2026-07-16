@@ -18,6 +18,58 @@ const STORAGE_CONTROL_ENTRY_NAMES = new Set([
   'encrypted-stores',
 ]);
 
+export type NaidanPersistenceNamespaceTotals = {
+  readonly totalBytes: number;
+  readonly totalEntries: number;
+};
+
+export type NaidanPersistenceNamespaceProgress = {
+  readonly completedBytes: number;
+  readonly totalBytes: number | undefined;
+  readonly completedEntries: number;
+  readonly totalEntries: number | undefined;
+};
+
+export type NaidanPersistenceNamespaceProgressListener = ({ progress }: {
+  progress: NaidanPersistenceNamespaceProgress;
+}) => void;
+
+function createNamespaceProgressTracker({
+  totals,
+  onProgress,
+}: {
+  totals: NaidanPersistenceNamespaceTotals | undefined;
+  onProgress: NaidanPersistenceNamespaceProgressListener | undefined;
+}) {
+  let completedBytes = 0;
+  let completedEntries = 0;
+  const report = () => onProgress?.({
+    progress: {
+      completedBytes,
+      totalBytes: totals?.totalBytes,
+      completedEntries,
+      totalEntries: totals?.totalEntries,
+    },
+  });
+  report();
+  return {
+    addBytes({ byteLength }: { byteLength: number }): void {
+      completedBytes += byteLength;
+      report();
+    },
+    addEntries({ count }: { count: number }): void {
+      completedEntries += count;
+      report();
+    },
+    getTotals(): NaidanPersistenceNamespaceTotals {
+      return {
+        totalBytes: completedBytes,
+        totalEntries: completedEntries,
+      };
+    },
+  };
+}
+
 function isNotFoundError({ error }: { error: unknown }): boolean {
   return error instanceof DOMException
     ? error.name === 'NotFoundError'
@@ -82,11 +134,15 @@ async function copyEntry({
   target,
   name,
   signal,
+  onBytesCopied,
+  onEntryCopied,
 }: {
   source: StorageEntryHandle;
   target: StorageDirectoryHandle;
   name: string;
   signal: AbortSignal | undefined;
+  onBytesCopied: ({ byteLength }: { byteLength: number }) => void;
+  onEntryCopied: () => void;
 }): Promise<void> {
   signal?.throwIfAborted();
   switch (source.kind) {
@@ -97,6 +153,8 @@ async function copyEntry({
       target: targetDirectory,
       excludedNames: new Set(),
       signal,
+      onBytesCopied,
+      onEntryCopied,
     });
     break;
   }
@@ -115,6 +173,7 @@ async function copyEntry({
         }),
         expectedSize: stat.size,
         signal,
+        onBytesWritten: onBytesCopied,
       });
     } finally {
       await readable.close();
@@ -132,6 +191,7 @@ async function copyEntry({
     throw new Error(`Unhandled persistence namespace entry: ${String(_ex)}`);
   }
   }
+  onEntryCopied();
 }
 
 async function copyDirectoryContents({
@@ -139,17 +199,28 @@ async function copyDirectoryContents({
   target,
   excludedNames,
   signal,
+  onBytesCopied,
+  onEntryCopied,
 }: {
   source: StorageDirectoryHandle;
   target: StorageDirectoryHandle;
   excludedNames: ReadonlySet<string>;
   signal: AbortSignal | undefined;
+  onBytesCopied: ({ byteLength }: { byteLength: number }) => void;
+  onEntryCopied: () => void;
 }): Promise<void> {
   for await (const [name, entry] of source.entries()) {
     if (excludedNames.has(name)) {
       continue;
     }
-    await copyEntry({ source: entry, target, name, signal });
+    await copyEntry({
+      source: entry,
+      target,
+      name,
+      signal,
+      onBytesCopied,
+      onEntryCopied,
+    });
   }
 }
 
@@ -195,12 +266,15 @@ export async function copyNaidanPersistenceNamespace({
   targetRoot,
   targetBuilder,
   signal,
+  onProgress,
 }: {
   sourceRoot: StorageDirectoryHandle;
   targetRoot: StorageDirectoryHandle;
   targetBuilder: HizoFSBulkBuilder | undefined;
   signal: AbortSignal | undefined;
-}): Promise<void> {
+  onProgress?: NaidanPersistenceNamespaceProgressListener;
+}): Promise<NaidanPersistenceNamespaceTotals> {
+  const tracker = createNamespaceProgressTracker({ totals: undefined, onProgress });
   if (targetBuilder !== undefined) {
     try {
       await targetBuilder.importRootMetadata({ source: sourceRoot });
@@ -223,13 +297,17 @@ export async function copyNaidanPersistenceNamespace({
             ? STORAGE_CONTROL_ENTRY_NAMES
             : new Set(),
           signal,
+          onProgress: ({ byteLength, completedEntries }) => {
+            if (byteLength > 0) tracker.addBytes({ byteLength });
+            if (completedEntries > 0) tracker.addEntries({ count: completedEntries });
+          },
         });
       }
       await targetBuilder.createEmptyDirectory({
         name: TEMPORARY_DIRECTORY_NAME,
       });
       await targetBuilder.commit();
-      return;
+      return tracker.getTotals();
     } catch (error) {
       try {
         await targetBuilder.abort({ reason: error });
@@ -264,8 +342,12 @@ export async function copyNaidanPersistenceNamespace({
         ? STORAGE_CONTROL_ENTRY_NAMES
         : new Set(),
       signal,
+      onBytesCopied: ({ byteLength }) => tracker.addBytes({ byteLength }),
+      onEntryCopied: () => tracker.addEntries({ count: 1 }),
     });
+    tracker.addEntries({ count: 1 });
   }
+  return tracker.getTotals();
 }
 
 const FILE_VERIFICATION_BUFFER_BYTE_LENGTH = 256 * 1024;
@@ -275,11 +357,13 @@ async function assertFileContentsEqual({
   target,
   path,
   signal,
+  onBytesVerified,
 }: {
   source: Extract<StorageEntryHandle, { kind: 'file' }>;
   target: Extract<StorageEntryHandle, { kind: 'file' }>;
   path: string;
   signal: AbortSignal | undefined;
+  onBytesVerified: ({ byteLength }: { byteLength: number }) => void;
 }): Promise<void> {
   const sourceStat = await source.stat();
   const targetStat = await target.stat();
@@ -331,6 +415,7 @@ async function assertFileContentsEqual({
         }
       }
       position += length;
+      onBytesVerified({ byteLength: length });
     }
   } finally {
     await Promise.all([
@@ -346,12 +431,16 @@ async function assertDirectoryContentsEqual({
   excludedNames,
   path,
   signal,
+  onBytesVerified,
+  onEntryVerified,
 }: {
   source: StorageDirectoryHandle;
   target: StorageDirectoryHandle;
   excludedNames: ReadonlySet<string>;
   path: string;
   signal: AbortSignal | undefined;
+  onBytesVerified: ({ byteLength }: { byteLength: number }) => void;
+  onEntryVerified: () => void;
 }): Promise<void> {
   const sourceEntries = new Map<string, StorageEntryHandle>();
   const targetEntries = new Map<string, StorageEntryHandle>();
@@ -385,6 +474,8 @@ async function assertDirectoryContentsEqual({
           excludedNames: new Set(),
           path: childPath,
           signal,
+          onBytesVerified,
+          onEntryVerified,
         });
         break;
       case 'file':
@@ -404,6 +495,7 @@ async function assertDirectoryContentsEqual({
           target: targetEntry,
           path: childPath,
           signal,
+          onBytesVerified,
         });
         break;
       case 'directory':
@@ -436,6 +528,7 @@ async function assertDirectoryContentsEqual({
       throw new Error(`Unhandled source entry: ${String(_ex)}`);
     }
     }
+    onEntryVerified();
   }
 }
 
@@ -443,11 +536,16 @@ export async function verifyNaidanPersistenceNamespaceCopy({
   sourceRoot,
   targetRoot,
   signal,
+  totals,
+  onProgress,
 }: {
   sourceRoot: StorageDirectoryHandle;
   targetRoot: StorageDirectoryHandle;
   signal: AbortSignal | undefined;
+  totals?: NaidanPersistenceNamespaceTotals;
+  onProgress?: NaidanPersistenceNamespaceProgressListener;
 }): Promise<void> {
+  const tracker = createNamespaceProgressTracker({ totals, onProgress });
   for (const name of DURABLE_TOP_LEVEL_DIRECTORY_NAMES) {
     const source = await getDirectoryIfPresent({ parent: sourceRoot, name });
     const target = await getDirectoryIfPresent({ parent: targetRoot, name });
@@ -468,7 +566,10 @@ export async function verifyNaidanPersistenceNamespaceCopy({
         : new Set(),
       path: `/${name}`,
       signal,
+      onBytesVerified: ({ byteLength }) => tracker.addBytes({ byteLength }),
+      onEntryVerified: () => tracker.addEntries({ count: 1 }),
     });
+    tracker.addEntries({ count: 1 });
   }
 
   const temporary = await getDirectoryIfPresent({

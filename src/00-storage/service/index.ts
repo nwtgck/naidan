@@ -9,6 +9,7 @@ import { HostVolumeDB } from './opfs/host-volume-db';
 import { createNativeOpfsFileSystemSession } from './storage-file-system/native-opfs';
 import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
 import type { OpfsEncryptionDebugSession } from './opfs-encryption/inspection';
+import type { OpfsEncryptionTransitionProgressListener } from './opfs-encryption/transition-progress';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
 import {
   notifyRegisteredOpfsExternalTransitionSettled,
@@ -496,12 +497,18 @@ export class StorageService {
   async enableOpfsEncryption({
     passphrase,
     signal,
+    onProgress,
   }: {
     passphrase: string,
     signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
     await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().enableEncryption({ passphrase, signal }),
+      run: async () => await this.getOpfsProvider().enableEncryption({
+        passphrase,
+        signal,
+        onProgress,
+      }),
     });
   }
 
@@ -519,25 +526,65 @@ export class StorageService {
 
   async disableOpfsEncryption({
     signal,
+    onProgress,
   }: {
     signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
     await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().disableEncryption({ signal }),
+      run: async () => await this.getOpfsProvider().disableEncryption({ signal, onProgress }),
     });
   }
 
   async reencryptOpfsEncryption({
     signal,
+    onProgress,
   }: {
     signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
     await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().reencrypt({ signal }),
+      run: async () => await this.getOpfsProvider().reencrypt({ signal, onProgress }),
     });
   }
 
   async resumeOpfsEncryptionTransitionWithPassphrase({
+    passphrase,
+    signal,
+    onProgress,
+  }: {
+    passphrase: string,
+    signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().resumeTransitionWithPassphrase({
+        passphrase,
+        signal,
+        onProgress,
+      }),
+    });
+  }
+
+  async returnInterruptedOpfsEncryptionToPlain({
+    passphrase,
+    signal,
+    onProgress,
+  }: {
+    passphrase: string | undefined,
+    signal: AbortSignal | undefined,
+    onProgress?: OpfsEncryptionTransitionProgressListener,
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().returnInterruptedEncryptionToPlain({
+        passphrase,
+        signal,
+        onProgress,
+      }),
+    });
+  }
+
+  async createInterruptedOpfsEncryptionForDebug({
     passphrase,
     signal,
   }: {
@@ -545,10 +592,20 @@ export class StorageService {
     signal: AbortSignal | undefined,
   }): Promise<void> {
     await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().resumeTransitionWithPassphrase({
+      run: async () => await this.getOpfsProvider().createInterruptedEncryptionForDebug({
         passphrase,
         signal,
       }),
+    });
+  }
+
+  async createInterruptedOpfsDecryptionForDebug({
+    signal,
+  }: {
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().createInterruptedDecryptionForDebug({ signal }),
     });
   }
 

@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__interrupted_decryption_warning = (): string => 'This records decryption as interrupted before copying plain data, then reloads the page. The encrypted store remains authoritative.';

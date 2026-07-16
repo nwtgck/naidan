@@ -448,6 +448,129 @@ describe('EncryptionTransitionCoordinator', () => {
     encrypted.session.storageUnlockKey.fill(0);
   });
 
+  it('returns an interrupted pre-authority encryption to the original plain namespace', async () => {
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
+    installNavigatorMocks({ opfsRoot });
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    const plain = await createPlainBackend({ opfsRoot });
+    const settings = createTestSettings({ marker: 'cancel-interrupted-encryption' });
+    await plain.backend.saveSettings({ settings });
+    const coordinator = new EncryptionTransitionCoordinator({
+      storageRoot,
+      nativeNamespaceRoot: opfsRoot,
+      hostVolumeDB: new HostVolumeDB(),
+      pbkdf2Iterations: 10,
+    });
+
+    const interrupted = await coordinator.createInterruptedEncryptionForDebug({
+      passphrase: 'q',
+      signal: undefined,
+    });
+    expect(interrupted.operation).toMatchObject({
+      type: 'encrypting',
+      phase: 'building_target',
+    });
+
+    const result = await coordinator.returnInterruptedEncryptionToPlain({
+      state: interrupted,
+      passphrase: undefined,
+      signal: undefined,
+    });
+
+    expect(result.type).toBe('plain');
+    if (result.type !== 'plain') {
+      throw new Error('Expected plain result after cancelling interrupted encryption');
+    }
+    expectSettingsEquivalent({
+      actual: await result.backend.loadSettings(),
+      expected: settings,
+    });
+    await expect(new EncryptionStateStore({ storageRoot }).inspect()).resolves.toEqual({
+      type: 'plain',
+    });
+    await expectMissingDirectory({ parent: storageRoot, name: 'encrypted-stores' });
+
+    await plain.fileSystemSession.close();
+    await result.fileSystemSession.close();
+  });
+
+  it('creates a durable interrupted decryption state for Developer UI testing', async () => {
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
+    installNavigatorMocks({ opfsRoot });
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    const plain = await createPlainBackend({ opfsRoot });
+    await plain.backend.saveSettings({ settings: createTestSettings({ marker: 'interrupt-decryption' }) });
+    const coordinator = new EncryptionTransitionCoordinator({
+      storageRoot,
+      nativeNamespaceRoot: opfsRoot,
+      hostVolumeDB: new HostVolumeDB(),
+      pbkdf2Iterations: 10,
+    });
+    const encrypted = await coordinator.enableEncryption({
+      passphrase: 'q',
+      signal: undefined,
+    });
+    if (encrypted.type !== 'encrypted') {
+      throw new Error('Expected encrypted transition result');
+    }
+
+    const interrupted = await coordinator.createInterruptedDecryptionForDebug({
+      session: encrypted.session,
+      signal: undefined,
+    });
+
+    expect(interrupted.operation).toEqual({
+      type: 'decrypting',
+      phase: 'building_target',
+      sourceEncryptedStoreId: encrypted.session.state.activeEncryptedStoreId,
+    });
+    await expect(new EncryptionStateStore({ storageRoot }).inspect()).resolves.toMatchObject({
+      type: 'encrypted',
+      state: interrupted,
+    });
+
+    await plain.fileSystemSession.close();
+    await encrypted.session.fileSystemSession.close();
+    encrypted.session.storageUnlockKey.fill(0);
+  });
+
+  it('reports best-effort copy progress without a separate measuring traversal', async () => {
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
+    installNavigatorMocks({ opfsRoot });
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    const plain = await createPlainBackend({ opfsRoot });
+    await plain.backend.saveSettings({ settings: createTestSettings({ marker: 'progress' }) });
+    const coordinator = new EncryptionTransitionCoordinator({
+      storageRoot,
+      nativeNamespaceRoot: opfsRoot,
+      hostVolumeDB: new HostVolumeDB(),
+      pbkdf2Iterations: 10,
+    });
+    const progress: Array<Parameters<NonNullable<Parameters<typeof coordinator.enableEncryption>[0]['onProgress']>>[0]['progress']> = [];
+
+    const result = await coordinator.enableEncryption({
+      passphrase: 'q',
+      signal: undefined,
+      onProgress: ({ progress: update }) => progress.push(update),
+    });
+
+    expect(progress.some(update => (
+      update.phase === 'copying'
+      && update.totalBytes === undefined
+    ))).toBe(true);
+    expect(progress.some(update => (
+      update.phase === 'verifying'
+      && update.totalBytes !== undefined
+    ))).toBe(true);
+    expect(progress.at(-1)?.percent).toBe(100);
+
+    await plain.fileSystemSession.close();
+    if (result.type === 'encrypted') {
+      await result.session.fileSystemSession.close();
+      result.session.storageUnlockKey.fill(0);
+    }
+  });
+
   it('rejects a stale transition state from another tab', () => {
     const base = {
       formatVersion: 1 as const,

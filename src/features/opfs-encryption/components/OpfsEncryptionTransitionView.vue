@@ -9,11 +9,12 @@ import {
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useOpfsEncryptionTransition } from '@/features/opfs-encryption/composables/useOpfsEncryptionTransition';
 import { lazyStrings } from '@/strings';
+import OpfsEncryptionTransitionProgress from './OpfsEncryptionTransitionProgress.vue';
 
 const FileExplorerModal = defineAsyncComponent(
   () => import('@/features/file-explorer/components/FileExplorerModal.vue'),
 );
-const { failed, failureMessage } = useOpfsEncryptionTransition();
+const { failed, failureMessage, progress } = useOpfsEncryptionTransition();
 const { isFileExplorerOpen, openFileExplorer } = useFileExplorerModal();
 
 defineExpose({
@@ -62,8 +63,11 @@ defineExpose({
           {{ lazyStrings.opfsEncryption__open_raw_opfs_explorer() }}
         </button>
       </div>
-      <div v-else tw-class="rounded-2xl bg-blue-50 dark:bg-blue-950/25 border border-blue-100 dark:border-blue-900/50 px-4 py-3 text-xs leading-relaxed text-blue-800 dark:text-blue-300">
-        {{ lazyStrings.opfsEncryption__source_remains_until_verified() }}
+      <div v-else tw-class="space-y-4">
+        <OpfsEncryptionTransitionProgress :progress="progress" />
+        <div tw-class="rounded-2xl bg-blue-50 dark:bg-blue-950/25 border border-blue-100 dark:border-blue-900/50 px-4 py-3 text-xs leading-relaxed text-blue-800 dark:text-blue-300">
+          {{ lazyStrings.opfsEncryption__source_remains_until_verified() }}
+        </div>
       </div>
     </section>
   </div>

@@ -296,6 +296,7 @@ export function createStorageFileSystemDirectoryTransferTarget({
         source,
         expectedSize: size,
         signal,
+        onBytesWritten: undefined,
       });
     },
     async createSymlink({ path, targetPath }) {

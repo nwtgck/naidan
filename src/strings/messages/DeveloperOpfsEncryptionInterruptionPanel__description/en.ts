@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__description = (): string => 'Create a real durable transition state for the current OPFS storage and reload the page to exercise startup recovery UI. This is not an isolated simulation.';

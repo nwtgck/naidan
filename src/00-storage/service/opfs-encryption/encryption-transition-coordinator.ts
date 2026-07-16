@@ -22,6 +22,7 @@ import {
   clearNaidanPersistenceNamespace,
   copyNaidanPersistenceNamespace,
   verifyNaidanPersistenceNamespaceCopy,
+  type NaidanPersistenceNamespaceProgress,
 } from './namespace-transfer';
 import {
   createEncryptionMaterial,
@@ -40,6 +41,11 @@ import {
   isNotFoundError,
   removeDirectoryEntryIfPresent,
 } from './opfs-json-file';
+import {
+  clampOpfsEncryptionTransitionPercent,
+  type OpfsEncryptionTransitionProgressListener,
+  type OpfsEncryptionTransitionProgressOperation,
+} from './transition-progress';
 import type {
   EncryptionTransitionResult,
   StableOpfsEncryptionState,
@@ -56,6 +62,39 @@ type TransitioningStateWithOperation<TOperation extends OpfsEncryptionOperationD
   Omit<TransitioningOpfsEncryptionState, 'operation'> & {
     readonly operation: TOperation;
   };
+
+
+type EncryptingOperation = Extract<OpfsEncryptionOperationDto, {
+  readonly type: 'encrypting';
+}>;
+
+type TransitionProgressReporter = {
+  readonly listener: OpfsEncryptionTransitionProgressListener | undefined;
+  report({ phase, percent }: {
+    phase: Parameters<OpfsEncryptionTransitionProgressListener>[0]['progress']['phase'];
+    percent: number | undefined;
+  }): void;
+};
+
+function requireEncryptingOperation({
+  operation,
+  message,
+}: {
+  operation: OpfsEncryptionOperationDto;
+  message: string;
+}): EncryptingOperation {
+  switch (operation.type) {
+  case 'encrypting':
+    return operation;
+  case 'decrypting':
+  case 'reencrypting':
+    throw new Error(message);
+  default: {
+    const _ex: never = operation;
+    throw new Error(`Unhandled OPFS encryption operation: ${((_ex satisfies never) as { readonly type: string }).type}`);
+  }
+  }
+}
 
 function isSourceAuthoritativePhase({
   phase,
@@ -92,6 +131,102 @@ function assertSameTransitionState({
 
 export { DEFAULT_PBKDF2_ITERATIONS };
 
+
+function resolveNamespaceProgressFraction({
+  progress,
+}: {
+  progress: NaidanPersistenceNamespaceProgress;
+}): number | undefined {
+  if (progress.totalBytes === undefined || progress.totalEntries === undefined) {
+    return undefined;
+  }
+  const byteFraction = progress.totalBytes === 0
+    ? 1
+    : progress.completedBytes / progress.totalBytes;
+  const entryFraction = progress.totalEntries === 0
+    ? 1
+    : progress.completedEntries / progress.totalEntries;
+  return progress.totalBytes === 0
+    ? entryFraction
+    : (byteFraction * 0.9) + (entryFraction * 0.1);
+}
+
+function reportTransitionProgress({
+  onProgress,
+  operation,
+  phase,
+  percent,
+  completedBytes,
+  totalBytes,
+  completedEntries,
+  totalEntries,
+}: {
+  onProgress?: OpfsEncryptionTransitionProgressListener;
+  operation: OpfsEncryptionTransitionProgressOperation;
+  phase: Parameters<OpfsEncryptionTransitionProgressListener>[0]['progress']['phase'];
+  percent: number | undefined;
+  completedBytes: number;
+  totalBytes: number | undefined;
+  completedEntries: number;
+  totalEntries: number | undefined;
+}): void {
+  onProgress?.({
+    progress: {
+      operation,
+      phase,
+      percent: percent === undefined
+        ? undefined
+        : clampOpfsEncryptionTransitionPercent({ percent }),
+      completedBytes,
+      totalBytes,
+      completedEntries,
+      totalEntries,
+    },
+  });
+}
+
+function createTransitionProgressReporter({
+  onProgress,
+  operation,
+}: {
+  onProgress: OpfsEncryptionTransitionProgressListener | undefined;
+  operation: OpfsEncryptionTransitionProgressOperation;
+}): TransitionProgressReporter {
+  let latest = {
+    completedBytes: 0,
+    totalBytes: undefined as number | undefined,
+    completedEntries: 0,
+    totalEntries: undefined as number | undefined,
+  };
+  let listener: OpfsEncryptionTransitionProgressListener | undefined;
+  if (onProgress !== undefined) {
+    listener = ({ progress }) => {
+      latest = {
+        completedBytes: progress.completedBytes,
+        totalBytes: progress.totalBytes,
+        completedEntries: progress.completedEntries,
+        totalEntries: progress.totalEntries,
+      };
+      onProgress({ progress });
+    };
+  }
+  return {
+    listener,
+    report({
+      phase,
+      percent,
+    }): void {
+      reportTransitionProgress({
+        onProgress,
+        operation,
+        phase,
+        percent,
+        ...latest,
+      });
+    },
+  };
+}
+
 export class EncryptionTransitionCoordinator {
   constructor({
     storageRoot,
@@ -122,10 +257,14 @@ export class EncryptionTransitionCoordinator {
   async enableEncryption({
     passphrase,
     signal,
+    onProgress,
   }: {
     passphrase: string;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<EncryptionTransitionResult> {
+    const progressReporter = createTransitionProgressReporter({ onProgress, operation: 'encrypting' });
+    progressReporter.report({ phase: 'preparing', percent: 0 });
     return await this.withExclusiveTransitionLock({
       run: async () => {
         const inspection = await this.stateStore.inspect();
@@ -173,12 +312,15 @@ export class EncryptionTransitionCoordinator {
           const targetBackend = await this.copyAndValidateNamespace({
             sourceFileSystemSession: source.fileSystemSession,
             targetFileSystemSession,
+            operation: 'encrypting',
             signal,
+            onProgress: progressReporter.listener,
           });
           transitionState = await this.updateTransitionPhase({
             state: transitionState,
             phase: 'cleaning_up_source',
           });
+          progressReporter.report({ phase: 'cleaning_source', percent: 95 });
 
           // The target became authoritative when the cleaning phase was
           // persisted. Plain cleanup may now be retried without ever falling
@@ -190,6 +332,7 @@ export class EncryptionTransitionCoordinator {
             previousState: transitionState,
             activeEncryptedStoreId: encryptedStoreId,
           });
+          progressReporter.report({ phase: 'finalizing', percent: 100 });
           succeeded = true;
           return {
             type: 'encrypted',
@@ -236,10 +379,14 @@ export class EncryptionTransitionCoordinator {
   async disableEncryption({
     session,
     signal,
+    onProgress,
   }: {
     session: UnlockedOpfsEncryptionSession;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<EncryptionTransitionResult> {
+    const progressReporter = createTransitionProgressReporter({ onProgress, operation: 'decrypting' });
+    progressReporter.report({ phase: 'preparing', percent: 0 });
     return await this.withExclusiveTransitionLock({
       run: async () => {
         const latestState = await this.requireLatestStableStateForSession({ session });
@@ -261,17 +408,21 @@ export class EncryptionTransitionCoordinator {
           const targetBackend = await this.copyAndValidateNamespace({
             sourceFileSystemSession: session.fileSystemSession,
             targetFileSystemSession: target,
+            operation: 'decrypting',
             signal,
+            onProgress: progressReporter.listener,
           });
           transitionState = await this.updateTransitionPhase({
             state: transitionState,
             phase: 'cleaning_up_source',
           });
+          progressReporter.report({ phase: 'cleaning_source', percent: 95 });
           await this.headerStore.removeStore({
             encryptedStoreId: latestState.activeEncryptedStoreId,
           });
           await this.removeEncryptedStoresDirectory();
           await this.stateStore.removeAll();
+          progressReporter.report({ phase: 'finalizing', percent: 100 });
           succeeded = true;
           return {
             type: 'plain',
@@ -305,10 +456,14 @@ export class EncryptionTransitionCoordinator {
   async reencrypt({
     session,
     signal,
+    onProgress,
   }: {
     session: UnlockedOpfsEncryptionSession;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<EncryptionTransitionResult> {
+    const progressReporter = createTransitionProgressReporter({ onProgress, operation: 'reencrypting' });
+    progressReporter.report({ phase: 'preparing', percent: 0 });
     return await this.withExclusiveTransitionLock({
       run: async () => {
         const latestState = await this.requireLatestStableStateForSession({ session });
@@ -343,12 +498,15 @@ export class EncryptionTransitionCoordinator {
           const targetBackend = await this.copyAndValidateNamespace({
             sourceFileSystemSession: session.fileSystemSession,
             targetFileSystemSession,
+            operation: 'reencrypting',
             signal,
+            onProgress: progressReporter.listener,
           });
           transitionState = await this.updateTransitionPhase({
             state: transitionState,
             phase: 'cleaning_up_source',
           });
+          progressReporter.report({ phase: 'cleaning_source', percent: 95 });
           await this.headerStore.removeStore({
             encryptedStoreId: latestState.activeEncryptedStoreId,
           });
@@ -356,6 +514,7 @@ export class EncryptionTransitionCoordinator {
             previousState: transitionState,
             activeEncryptedStoreId: targetEncryptedStoreId,
           });
+          progressReporter.report({ phase: 'finalizing', percent: 100 });
           succeeded = true;
           return {
             type: 'encrypted',
@@ -405,10 +564,12 @@ export class EncryptionTransitionCoordinator {
     state,
     passphrase,
     signal,
+    onProgress,
   }: {
     state: TransitioningOpfsEncryptionState;
     passphrase: string;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<EncryptionTransitionResult> {
     const { storageUnlockKey, keySlotId } = await unlockStorageUnlockKeyWithPassphrase({
       keySlots: state.keySlots,
@@ -421,6 +582,7 @@ export class EncryptionTransitionCoordinator {
         storageUnlockKey,
         unlockedKeySlotId: keySlotId,
         signal,
+        onProgress,
       });
       retainedByEncryptedSession = result.type === 'encrypted';
       return result;
@@ -431,16 +593,221 @@ export class EncryptionTransitionCoordinator {
     }
   }
 
+  async returnInterruptedEncryptionToPlain({
+    state,
+    passphrase,
+    signal,
+    onProgress,
+  }: {
+    state: TransitioningOpfsEncryptionState;
+    passphrase: string | undefined;
+    signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
+  }): Promise<EncryptionTransitionResult> {
+    const expectedOperation = requireEncryptingOperation({
+      operation: state.operation,
+      message: 'Only an interrupted encryption operation can return directly to plain storage',
+    });
+
+    switch (expectedOperation.phase) {
+    case 'building_target':
+      return await this.withExclusiveTransitionLock({
+        run: async () => {
+          const latest = await this.requireLatestTransitioningState({ expectedState: state });
+          const latestOperation = requireEncryptingOperation({
+            operation: latest.operation,
+            message: 'OPFS encryption transition changed before it could be cancelled',
+          });
+          reportTransitionProgress({
+            onProgress,
+            operation: 'decrypting',
+            phase: 'cleaning_source',
+            percent: 70,
+            completedBytes: 0,
+            totalBytes: undefined,
+            completedEntries: 0,
+            totalEntries: undefined,
+          });
+          await this.headerStore.removeStore({
+            encryptedStoreId: latestOperation.targetEncryptedStoreId,
+          });
+          await this.removeEncryptedStoresDirectory();
+          await this.stateStore.removeAll();
+          const plain = await this.createNativeBackendSession();
+          reportTransitionProgress({
+            onProgress,
+            operation: 'decrypting',
+            phase: 'finalizing',
+            percent: 100,
+            completedBytes: 0,
+            totalBytes: 0,
+            completedEntries: 0,
+            totalEntries: 0,
+          });
+          return {
+            type: 'plain',
+            fileSystemSession: plain.fileSystemSession,
+            backend: plain.backend,
+          };
+        },
+      });
+    case 'cleaning_up_source': {
+      if (passphrase === undefined) {
+        throw new Error('A passphrase is required because encrypted storage is already authoritative');
+      }
+      const { storageUnlockKey } = await unlockStorageUnlockKeyWithPassphrase({
+        keySlots: state.keySlots,
+        passphrase,
+      });
+      try {
+        return await this.withExclusiveTransitionLock({
+          run: async () => {
+            const latest = await this.requireLatestTransitioningState({ expectedState: state });
+            const latestOperation = requireEncryptingOperation({
+              operation: latest.operation,
+              message: 'OPFS encryption transition changed before it could return to plain storage',
+            });
+            const decryptingOperation = {
+              type: 'decrypting',
+              phase: 'building_target',
+              sourceEncryptedStoreId: latestOperation.targetEncryptedStoreId,
+            } as const;
+            const decryptingState: TransitioningOpfsEncryptionState & {
+              readonly operation: typeof decryptingOperation;
+            } = {
+              formatVersion: 1,
+              sequence: latest.sequence + 1,
+              state: 'transitioning',
+              keySlots: latest.keySlots,
+              operation: decryptingOperation,
+            };
+            await this.stateStore.writeState({ state: decryptingState });
+            return await this.resumeDecrypting({
+              state: {
+                ...decryptingState,
+                operation: decryptingState.operation,
+              },
+              storageUnlockKey,
+              signal,
+              onProgress,
+            });
+          },
+        });
+      } finally {
+        storageUnlockKey.fill(0);
+      }
+    }
+    default: {
+      const _ex: never = expectedOperation.phase;
+      throw new Error(`Unhandled interrupted encryption phase: ${String(_ex)}`);
+    }
+    }
+  }
+
+  async createInterruptedEncryptionForDebug({
+    passphrase,
+    signal,
+  }: {
+    passphrase: string;
+    signal: AbortSignal | undefined;
+  }): Promise<TransitioningOpfsEncryptionState> {
+    return await this.withExclusiveTransitionLock({
+      run: async () => {
+        signal?.throwIfAborted();
+        const inspection = await this.stateStore.inspect();
+        switch (inspection.type) {
+        case 'plain':
+          break;
+        case 'encrypted':
+        case 'invalid':
+          throw new Error(`Interrupted encryption can only be created from plain storage: ${inspection.type}`);
+        default: {
+          const _ex: never = inspection;
+          throw new Error(`Unhandled OPFS encryption inspection: ${((_ex satisfies never) as { readonly type: string }).type}`);
+        }
+        }
+        await this.removeEncryptedStoresExcept({ retainedStoreIds: new Set() });
+        const encryptedStoreId = createEncryptionOpaqueId();
+        const material = await createEncryptionMaterial({
+          passphrase,
+          pbkdf2Iterations: this.pbkdf2Iterations,
+        });
+        let target: StorageFileSystemSession | undefined;
+        try {
+          target = await this.createEncryptedStore({
+            encryptedStoreId,
+            storageUnlockKey: material.storageUnlockKey,
+            fileSystemRootKey: material.fileSystemRootKey,
+            replace: true,
+          });
+          await target.close();
+          target = undefined;
+          const interruptedState: TransitioningOpfsEncryptionState = {
+            formatVersion: 1,
+            sequence: 0,
+            state: 'transitioning',
+            keySlots: material.keySlots,
+            operation: {
+              type: 'encrypting',
+              phase: 'building_target',
+              targetEncryptedStoreId: encryptedStoreId,
+            },
+          };
+          await this.stateStore.writeState({ state: interruptedState });
+          return interruptedState;
+        } catch (error) {
+          await target?.close();
+          await this.headerStore.removeStore({ encryptedStoreId });
+          await this.removeEncryptedStoresDirectory();
+          throw error;
+        } finally {
+          material.storageUnlockKey.fill(0);
+          material.fileSystemRootKey.fill(0);
+        }
+      },
+    });
+  }
+
+  async createInterruptedDecryptionForDebug({
+    session,
+    signal,
+  }: {
+    session: UnlockedOpfsEncryptionSession;
+    signal: AbortSignal | undefined;
+  }): Promise<TransitioningOpfsEncryptionState> {
+    return await this.withExclusiveTransitionLock({
+      run: async () => {
+        signal?.throwIfAborted();
+        const latest = await this.requireLatestStableStateForSession({ session });
+        const interruptedState: TransitioningOpfsEncryptionState = {
+          formatVersion: 1,
+          sequence: latest.sequence + 1,
+          state: 'transitioning',
+          keySlots: latest.keySlots,
+          operation: {
+            type: 'decrypting',
+            phase: 'building_target',
+            sourceEncryptedStoreId: latest.activeEncryptedStoreId,
+          },
+        };
+        await this.stateStore.writeState({ state: interruptedState });
+        return interruptedState;
+      },
+    });
+  }
+
   private async resume({
     expectedState,
     storageUnlockKey,
     unlockedKeySlotId,
     signal,
+    onProgress,
   }: {
     expectedState: TransitioningOpfsEncryptionState;
     storageUnlockKey: Uint8Array;
     unlockedKeySlotId: string;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<EncryptionTransitionResult> {
     return await this.withExclusiveTransitionLock({
       run: async () => {
@@ -453,12 +820,14 @@ export class EncryptionTransitionCoordinator {
             storageUnlockKey,
             unlockedKeySlotId,
             signal,
+            onProgress,
           });
         case 'decrypting':
           return await this.resumeDecrypting({
             state: { ...state, operation },
             storageUnlockKey,
             signal,
+            onProgress,
           });
         case 'reencrypting':
           return await this.resumeReencrypting({
@@ -466,6 +835,7 @@ export class EncryptionTransitionCoordinator {
             storageUnlockKey,
             unlockedKeySlotId,
             signal,
+            onProgress,
           });
         default: {
           const _ex: never = operation;
@@ -481,6 +851,7 @@ export class EncryptionTransitionCoordinator {
     storageUnlockKey,
     unlockedKeySlotId,
     signal,
+    onProgress,
   }: {
     state: TransitioningOpfsEncryptionState & {
       readonly operation: Extract<TransitioningOpfsEncryptionState['operation'], {
@@ -490,7 +861,10 @@ export class EncryptionTransitionCoordinator {
     storageUnlockKey: Uint8Array;
     unlockedKeySlotId: string;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<EncryptionTransitionResult> {
+    const progressReporter = createTransitionProgressReporter({ onProgress, operation: 'encrypting' });
+    progressReporter.report({ phase: 'preparing', percent: 0 });
     const source = await this.createNativeBackendSession();
     let targetFileSystemSession: StorageFileSystemSession | undefined;
     let currentState = state;
@@ -512,7 +886,9 @@ export class EncryptionTransitionCoordinator {
         await this.copyAndValidateNamespace({
           sourceFileSystemSession: source.fileSystemSession,
           targetFileSystemSession,
+          operation: 'encrypting',
           signal,
+          onProgress: progressReporter.listener,
         });
         currentState = await this.updateTransitionPhase({
           state: currentState,
@@ -535,6 +911,7 @@ export class EncryptionTransitionCoordinator {
       const targetBackend = await this.createValidatedBackend({
         fileSystemSession: targetFileSystemSession,
       });
+      progressReporter.report({ phase: 'cleaning_source', percent: 95 });
       await clearNaidanPersistenceNamespace({
         targetRoot: source.fileSystemSession.root,
       });
@@ -542,6 +919,7 @@ export class EncryptionTransitionCoordinator {
         previousState: currentState,
         activeEncryptedStoreId: currentState.operation.targetEncryptedStoreId,
       });
+      progressReporter.report({ phase: 'finalizing', percent: 100 });
       succeeded = true;
       return {
         type: 'encrypted',
@@ -581,6 +959,7 @@ export class EncryptionTransitionCoordinator {
     state,
     storageUnlockKey,
     signal,
+    onProgress,
   }: {
     state: TransitioningOpfsEncryptionState & {
       readonly operation: Extract<TransitioningOpfsEncryptionState['operation'], {
@@ -589,7 +968,10 @@ export class EncryptionTransitionCoordinator {
     };
     storageUnlockKey: Uint8Array;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<EncryptionTransitionResult> {
+    const progressReporter = createTransitionProgressReporter({ onProgress, operation: 'decrypting' });
+    progressReporter.report({ phase: 'preparing', percent: 0 });
     const target = await this.createNativeFileSystemSession();
     let source: {
       readonly fileSystemSession: StorageFileSystemSession;
@@ -604,10 +986,13 @@ export class EncryptionTransitionCoordinator {
           encryptedStoreId: currentState.operation.sourceEncryptedStoreId,
           storageUnlockKey,
         });
+        await clearNaidanPersistenceNamespace({ targetRoot: target.root });
         await this.copyAndValidateNamespace({
           sourceFileSystemSession: source.fileSystemSession,
           targetFileSystemSession: target,
+          operation: 'decrypting',
           signal,
+          onProgress: progressReporter.listener,
         });
         currentState = await this.updateTransitionPhase({
           state: currentState,
@@ -623,11 +1008,13 @@ export class EncryptionTransitionCoordinator {
       }
 
       const targetBackend = await this.createValidatedBackend({ fileSystemSession: target });
+      progressReporter.report({ phase: 'cleaning_source', percent: 95 });
       await this.headerStore.removeStore({
         encryptedStoreId: currentState.operation.sourceEncryptedStoreId,
       });
       await this.removeEncryptedStoresDirectory();
       await this.stateStore.removeAll();
+      progressReporter.report({ phase: 'finalizing', percent: 100 });
       succeeded = true;
       return {
         type: 'plain',
@@ -662,6 +1049,7 @@ export class EncryptionTransitionCoordinator {
     storageUnlockKey,
     unlockedKeySlotId,
     signal,
+    onProgress,
   }: {
     state: TransitioningOpfsEncryptionState & {
       readonly operation: Extract<TransitioningOpfsEncryptionState['operation'], {
@@ -671,7 +1059,10 @@ export class EncryptionTransitionCoordinator {
     storageUnlockKey: Uint8Array;
     unlockedKeySlotId: string;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<EncryptionTransitionResult> {
+    const progressReporter = createTransitionProgressReporter({ onProgress, operation: 'reencrypting' });
+    progressReporter.report({ phase: 'preparing', percent: 0 });
     let source: {
       readonly fileSystemSession: StorageFileSystemSession;
       readonly backend: NaidanOpfsStorageBackend;
@@ -700,7 +1091,9 @@ export class EncryptionTransitionCoordinator {
         await this.copyAndValidateNamespace({
           sourceFileSystemSession: source.fileSystemSession,
           targetFileSystemSession,
+          operation: 'reencrypting',
           signal,
+          onProgress: progressReporter.listener,
         });
         currentState = await this.updateTransitionPhase({
           state: currentState,
@@ -723,6 +1116,7 @@ export class EncryptionTransitionCoordinator {
       const targetBackend = await this.createValidatedBackend({
         fileSystemSession: targetFileSystemSession,
       });
+      progressReporter.report({ phase: 'cleaning_source', percent: 95 });
       await this.headerStore.removeStore({
         encryptedStoreId: currentState.operation.sourceEncryptedStoreId,
       });
@@ -730,6 +1124,7 @@ export class EncryptionTransitionCoordinator {
         previousState: currentState,
         activeEncryptedStoreId: currentState.operation.targetEncryptedStoreId,
       });
+      progressReporter.report({ phase: 'finalizing', percent: 100 });
       succeeded = true;
       return {
         type: 'encrypted',
@@ -897,23 +1292,76 @@ export class EncryptionTransitionCoordinator {
   private async copyAndValidateNamespace({
     sourceFileSystemSession,
     targetFileSystemSession,
+    operation,
     signal,
+    onProgress,
   }: {
     sourceFileSystemSession: StorageFileSystemSession;
     targetFileSystemSession: StorageFileSystemSession;
+    operation: OpfsEncryptionTransitionProgressOperation;
     signal: AbortSignal | undefined;
+    onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<NaidanOpfsStorageBackend> {
     const sourceSnapshot = await sourceFileSystemSession.createReadSnapshot?.()
       ?? sourceFileSystemSession;
     try {
-      await copyNaidanPersistenceNamespace({
+      reportTransitionProgress({
+        onProgress,
+        operation,
+        phase: 'copying',
+        percent: undefined,
+        completedBytes: 0,
+        totalBytes: undefined,
+        completedEntries: 0,
+        totalEntries: undefined,
+      });
+      const totals = await copyNaidanPersistenceNamespace({
         sourceRoot: sourceSnapshot.root,
         targetRoot: targetFileSystemSession.root,
         targetBuilder: await createHizoFSBulkBuilder({
           fileSystemSession: targetFileSystemSession,
         }),
         signal,
+        onProgress: ({ progress }) => {
+          reportTransitionProgress({
+            onProgress,
+            operation,
+            phase: 'copying',
+            percent: undefined,
+            completedBytes: progress.completedBytes,
+            totalBytes: undefined,
+            completedEntries: progress.completedEntries,
+            totalEntries: undefined,
+          });
+        },
       });
+      reportTransitionProgress({
+        onProgress,
+        operation,
+        phase: 'copying',
+        percent: 55,
+        completedBytes: totals.totalBytes,
+        totalBytes: totals.totalBytes,
+        completedEntries: totals.totalEntries,
+        totalEntries: totals.totalEntries,
+      });
+      const reportVerificationProgress = ({
+        progress,
+      }: {
+        progress: NaidanPersistenceNamespaceProgress;
+      }): void => {
+        const fraction = resolveNamespaceProgressFraction({ progress });
+        reportTransitionProgress({
+          onProgress,
+          operation,
+          phase: 'verifying',
+          percent: fraction === undefined ? undefined : 55 + (35 * fraction),
+          completedBytes: progress.completedBytes,
+          totalBytes: progress.totalBytes,
+          completedEntries: progress.completedEntries,
+          totalEntries: progress.totalEntries,
+        });
+      };
       const targetSnapshot = await targetFileSystemSession.createReadSnapshot?.()
         ?? targetFileSystemSession;
       try {
@@ -921,12 +1369,24 @@ export class EncryptionTransitionCoordinator {
           sourceRoot: sourceSnapshot.root,
           targetRoot: targetSnapshot.root,
           signal,
+          totals,
+          onProgress: reportVerificationProgress,
         });
       } finally {
         if (targetSnapshot !== targetFileSystemSession) {
           await targetSnapshot.close();
         }
       }
+      reportTransitionProgress({
+        onProgress,
+        operation,
+        phase: 'switching_authority',
+        percent: 91,
+        completedBytes: totals.totalBytes,
+        totalBytes: totals.totalBytes,
+        completedEntries: totals.totalEntries,
+        totalEntries: totals.totalEntries,
+      });
       return await this.createValidatedBackend({
         fileSystemSession: targetFileSystemSession,
       });

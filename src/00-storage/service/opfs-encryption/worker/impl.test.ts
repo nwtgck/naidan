@@ -8,7 +8,8 @@ import {
   inspectOpfsEncryption,
   unlockOpfsEncryptionWithPassphrase,
 } from '@/00-storage/service/opfs-encryption/bootstrap';
-import { createOpfsEncryptionWorker } from './impl';
+import { createOpfsEncryptionWorker, TEST_ONLY } from './impl';
+import type { OpfsEncryptionTransitionProgress } from '@/00-storage/service/opfs-encryption/transition-progress';
 
 const navigatorStorageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage');
 const navigatorLocksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks');
@@ -55,6 +56,73 @@ afterEach(() => {
 });
 
 describe('OPFS encryption Worker implementation', () => {
+
+  it('throttles same-phase progress across the Worker boundary without delaying phase changes', async () => {
+    const onProgress = vi.fn(async (_value: { progress: OpfsEncryptionTransitionProgress }) => {});
+    const now = vi.spyOn(performance, 'now');
+    const listener = TEST_ONLY.createProgressListener({ onProgress });
+    if (listener === undefined) {
+      throw new Error('Expected a progress listener');
+    }
+
+    now.mockReturnValue(0);
+    listener({
+      progress: {
+        operation: 'encrypting',
+        phase: 'copying',
+        percent: undefined,
+        completedBytes: 1,
+        totalBytes: undefined,
+        completedEntries: 1,
+        totalEntries: undefined,
+      },
+    });
+    now.mockReturnValue(10);
+    listener({
+      progress: {
+        operation: 'encrypting',
+        phase: 'copying',
+        percent: undefined,
+        completedBytes: 2,
+        totalBytes: undefined,
+        completedEntries: 2,
+        totalEntries: undefined,
+      },
+    });
+    now.mockReturnValue(20);
+    listener({
+      progress: {
+        operation: 'encrypting',
+        phase: 'verifying',
+        percent: 55,
+        completedBytes: 2,
+        totalBytes: 4,
+        completedEntries: 2,
+        totalEntries: 4,
+      },
+    });
+    now.mockReturnValue(30);
+    listener({
+      progress: {
+        operation: 'encrypting',
+        phase: 'finalizing',
+        percent: 100,
+        completedBytes: 4,
+        totalBytes: 4,
+        completedEntries: 4,
+        totalEntries: 4,
+      },
+    });
+    await Promise.resolve();
+
+    expect(onProgress).toHaveBeenCalledTimes(3);
+    expect(onProgress.mock.calls.map(([value]) => value.progress.phase)).toEqual([
+      'copying',
+      'verifying',
+      'finalizing',
+    ]);
+  });
+
   it('runs encryption and decryption without returning file payloads to the caller realm', async () => {
     const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs' });
     installNavigator({ opfsRoot });
@@ -81,12 +149,10 @@ describe('OPFS encryption Worker implementation', () => {
     });
     const worker = createOpfsEncryptionWorker();
     await expect(worker.run({
-      request: {
-        operation: 'enable',
-        storageRoot,
-        nativeNamespaceRoot: opfsRoot,
-        passphrase: 'worker passphrase',
-      },
+      operation: 'enable',
+      storageRoot,
+      nativeNamespaceRoot: opfsRoot,
+      passphrase: 'worker passphrase',
     })).resolves.toEqual({ type: 'encrypted' });
 
     const inspection = await inspectOpfsEncryption({ storageRoot });
@@ -101,14 +167,12 @@ describe('OPFS encryption Worker implementation', () => {
     expect((await unlocked.backend.loadSettings())?.storageType).toBe('opfs');
 
     await expect(worker.run({
-      request: {
-        operation: 'disable',
-        storageRoot,
-        nativeNamespaceRoot: opfsRoot,
-        state: unlocked.state,
-        storageUnlockKey: unlocked.storageUnlockKey.slice(),
-        unlockedKeySlotId: unlocked.unlockedKeySlotId,
-      },
+      operation: 'disable',
+      storageRoot,
+      nativeNamespaceRoot: opfsRoot,
+      state: unlocked.state,
+      storageUnlockKey: unlocked.storageUnlockKey.slice(),
+      unlockedKeySlotId: unlocked.unlockedKeySlotId,
     })).resolves.toEqual({ type: 'plain' });
 
     await unlocked.fileSystemSession.close();
