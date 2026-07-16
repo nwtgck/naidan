@@ -8,8 +8,8 @@ import type { HizoFSBenchmarkReport } from './types';
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 2,
-    benchmarkImplementationVersion: 2,
+    schemaVersion: 3,
+    benchmarkImplementationVersion: 3,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -28,6 +28,13 @@ function createReport(): HizoFSBenchmarkReport {
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
       hizoFSInternalMemoryMeasured: false,
+      hizoFSRuntimeMemoryLimits: {
+        maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
+        metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
+        metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
+        fileChunkCacheByteLimitPerRuntime: 8 * 1024 * 1024,
+        fileChunkCacheEntryLimitPerRuntime: 1024,
+      },
     },
     configuration: createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
     lifecycleEvents: [],

@@ -19,6 +19,10 @@ async function setup() {
       rawRootKey: new Uint8Array(32).fill(1),
     }),
     fileSystemId: 'filesystem-id',
+    metadataCacheByteLimit: 1024,
+    metadataCacheEntryLimit: 64,
+    fileChunkCacheByteLimit: 1024,
+    fileChunkCacheEntryLimit: 64,
   });
   return {
     backingStore,

@@ -19,6 +19,63 @@ import {
   getHizoFSObjectShard,
 } from './object-id';
 
+
+type CachedPlaintext = {
+  readonly plaintext: Uint8Array;
+};
+
+class HizoFSPlaintextLruCache {
+  constructor({ byteLimit, entryLimit }: { byteLimit: number; entryLimit: number }) {
+    if (!Number.isSafeInteger(byteLimit) || byteLimit < 0) {
+      throw new Error("HizoFS object cache byte limit must be a non-negative safe integer");
+    }
+    if (!Number.isSafeInteger(entryLimit) || entryLimit < 0) {
+      throw new Error("HizoFS object cache entry limit must be a non-negative safe integer");
+    }
+    this.byteLimit = byteLimit;
+    this.entryLimit = entryLimit;
+  }
+
+  private readonly byteLimit: number;
+  private readonly entryLimit: number;
+  private readonly entries = new Map<string, CachedPlaintext>();
+  private totalBytes = 0;
+
+  get({ objectId }: { objectId: string }): Uint8Array | undefined {
+    const entry = this.entries.get(objectId);
+    if (entry === undefined) return undefined;
+    this.entries.delete(objectId);
+    this.entries.set(objectId, entry);
+    return entry.plaintext;
+  }
+
+  set({ objectId, plaintext }: { objectId: string; plaintext: Uint8Array }): void {
+    this.delete({ objectId });
+    if (this.entryLimit === 0 || plaintext.byteLength > this.byteLimit) return;
+    this.entries.set(objectId, { plaintext });
+    this.totalBytes += plaintext.byteLength;
+    while (this.totalBytes > this.byteLimit || this.entries.size > this.entryLimit) {
+      const oldestObjectId = this.entries.keys().next().value as string | undefined;
+      if (oldestObjectId === undefined) break;
+      this.delete({ objectId: oldestObjectId });
+    }
+  }
+
+  delete({ objectId }: { objectId: string }): void {
+    const entry = this.entries.get(objectId);
+    if (entry === undefined) return;
+    this.entries.delete(objectId);
+    this.totalBytes -= entry.plaintext.byteLength;
+    entry.plaintext.fill(0);
+  }
+
+  clear(): void {
+    for (const objectId of [...this.entries.keys()]) {
+      this.delete({ objectId });
+    }
+  }
+}
+
 export type HizoFSObjectStoreRecord = {
   readonly kind: HizoFSRecordKind;
   readonly recordVersion: number;
@@ -43,19 +100,46 @@ function getPhysicalPath({ area, objectId }: {
 }
 
 export class HizoFSObjectStore {
-  constructor({ backingStore, rootKey, fileSystemId }: {
+  constructor({
+    backingStore,
+    rootKey,
+    fileSystemId,
+    metadataCacheByteLimit,
+    metadataCacheEntryLimit,
+    fileChunkCacheByteLimit,
+    fileChunkCacheEntryLimit,
+  }: {
     backingStore: HizoFSBackingStore;
     rootKey: CryptoKey;
     fileSystemId: string;
+    metadataCacheByteLimit: number;
+    metadataCacheEntryLimit: number;
+    fileChunkCacheByteLimit: number;
+    fileChunkCacheEntryLimit: number;
   }) {
     this.backingStore = backingStore;
     this.rootKey = rootKey;
     this.fileSystemId = fileSystemId;
+    this.metadataCache = new HizoFSPlaintextLruCache({
+      byteLimit: metadataCacheByteLimit,
+      entryLimit: metadataCacheEntryLimit,
+    });
+    this.fileChunkCache = new HizoFSPlaintextLruCache({
+      byteLimit: fileChunkCacheByteLimit,
+      entryLimit: fileChunkCacheEntryLimit,
+    });
   }
 
   private readonly backingStore: HizoFSBackingStore;
   private readonly rootKey: CryptoKey;
   private readonly fileSystemId: string;
+  private readonly metadataCache: HizoFSPlaintextLruCache;
+  private readonly fileChunkCache: HizoFSPlaintextLruCache;
+
+  clearPlaintextCaches(): void {
+    this.metadataCache.clear();
+    this.fileChunkCache.clear();
+  }
 
   async create({ record }: {
     record: HizoFSObjectStoreRecord;
@@ -74,6 +158,8 @@ export class HizoFSObjectStore {
   async remove({ objectId }: {
     objectId: string;
   }): Promise<void> {
+    this.metadataCache.delete({ objectId });
+    this.fileChunkCache.delete({ objectId });
     await this.backingStore.remove({
       path: this.getObjectPath({ objectId }),
       recursive: false,
@@ -117,12 +203,39 @@ export class HizoFSObjectStore {
       path: getPhysicalPath({ area, objectId }),
       bytes: encodeHizoFSObjectEnvelope({ nonce, ciphertext }),
     });
+    switch (area) {
+    case 'object':
+      this.cachePlaintext({ objectId, kind: record.kind, plaintext });
+      break;
+    case 'superblock':
+      break;
+    default: {
+      const _ex: never = area;
+      throw new Error(`Unhandled HizoFS object area: ${String(_ex)}`);
+    }
+    }
   }
 
   private async readObject({ objectId, area }: {
     objectId: string;
     area: 'object' | 'superblock';
   }): Promise<DecodedHizoFSRecord | undefined> {
+    switch (area) {
+    case 'object': {
+      const cached = this.metadataCache.get({ objectId })
+        ?? this.fileChunkCache.get({ objectId });
+      if (cached !== undefined) {
+        return decodeHizoFSRecord({ plaintext: cached });
+      }
+      break;
+    }
+    case 'superblock':
+      break;
+    default: {
+      const _ex: never = area;
+      throw new Error(`Unhandled HizoFS object area: ${String(_ex)}`);
+    }
+    }
     const physical = await this.backingStore.read({
       path: getPhysicalPath({ area, objectId }),
     });
@@ -146,7 +259,50 @@ export class HizoFSObjectStore {
         cause: error,
       });
     }
-    return decodeHizoFSRecord({ plaintext });
+    const decoded = decodeHizoFSRecord({ plaintext });
+    switch (area) {
+    case 'object':
+      this.cachePlaintext({
+        objectId,
+        kind: decoded.kind,
+        plaintext,
+      });
+      break;
+    case 'superblock':
+      break;
+    default: {
+      const _ex: never = area;
+      throw new Error(`Unhandled HizoFS object area: ${String(_ex)}`);
+    }
+    }
+    return decoded;
+  }
+
+  private cachePlaintext({ objectId, kind, plaintext }: {
+    objectId: string;
+    kind: HizoFSRecordKind;
+    plaintext: Uint8Array;
+  }): void {
+    switch (kind) {
+    case "file_chunk":
+      this.fileChunkCache.set({ objectId, plaintext });
+      break;
+    case 'superblock':
+      return;
+    case "commit":
+    case "inode_index_page":
+    case "file_inode":
+    case "directory_inode":
+    case "symlink_inode":
+    case "directory_index_page":
+    case "file_extent_page":
+      this.metadataCache.set({ objectId, plaintext });
+      break;
+    default: {
+      const _ex: never = kind;
+      throw new Error(`Unhandled HizoFS cache record kind: ${String(_ex)}`);
+    }
+    }
   }
 
   private getObjectPath({ objectId }: {

@@ -41,6 +41,13 @@ describe('HizoFS benchmark engine', () => {
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
       hizoFSInternalMemoryMeasured: false,
+      hizoFSRuntimeMemoryLimits: {
+        maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
+        metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
+        metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
+        fileChunkCacheByteLimitPerRuntime: 8 * 1024 * 1024,
+        fileChunkCacheEntryLimitPerRuntime: 1024,
+      },
     });
     expect(report.results.map(result => result.caseId)).toEqual([
       'small_files_create_empty',

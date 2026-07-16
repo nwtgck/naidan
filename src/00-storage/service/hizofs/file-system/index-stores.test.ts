@@ -18,6 +18,10 @@ async function setup() {
       rawRootKey: new Uint8Array(32).fill(8),
     }),
     fileSystemId: createHizoFSStableId(),
+    metadataCacheByteLimit: 1024,
+    metadataCacheEntryLimit: 64,
+    fileChunkCacheByteLimit: 1024,
+    fileChunkCacheEntryLimit: 64,
   });
   const recordStore = new HizoFSRecordStore({ objectStore });
   return { objectStore, recordStore };

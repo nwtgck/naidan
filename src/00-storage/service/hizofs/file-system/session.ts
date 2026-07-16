@@ -246,6 +246,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     } catch (error) {
       errors.push(error);
     }
+    this.runtime.objectStore.clearPlaintextCaches();
     if (errors.length > 0) {
       throw new AggregateError(
         errors,

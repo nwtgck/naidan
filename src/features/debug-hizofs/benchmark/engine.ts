@@ -26,7 +26,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 2 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 3 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -283,7 +283,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -303,6 +303,17 @@ async function runHizoFSBenchmarkWithLockHeld({
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
       hizoFSInternalMemoryMeasured: false,
+      hizoFSRuntimeMemoryLimits: {
+        maxDirtyFileBytesPerWriter: DEFAULT_HIZOFS_POLICY.maxDirtyFileBytes,
+        metadataObjectCacheByteLimitPerRuntime:
+          DEFAULT_HIZOFS_POLICY.metadataObjectCacheByteLimit,
+        metadataObjectCacheEntryLimitPerRuntime:
+          DEFAULT_HIZOFS_POLICY.metadataObjectCacheEntryLimit,
+        fileChunkCacheByteLimitPerRuntime:
+          DEFAULT_HIZOFS_POLICY.fileChunkCacheByteLimit,
+        fileChunkCacheEntryLimitPerRuntime:
+          DEFAULT_HIZOFS_POLICY.fileChunkCacheEntryLimit,
+      },
     },
     configuration,
     lifecycleEvents,

@@ -46,6 +46,10 @@ export function createHizoFSRuntime({
     backingStore,
     rootKey,
     fileSystemId,
+    metadataCacheByteLimit: policy.metadataObjectCacheByteLimit,
+    metadataCacheEntryLimit: policy.metadataObjectCacheEntryLimit,
+    fileChunkCacheByteLimit: policy.fileChunkCacheByteLimit,
+    fileChunkCacheEntryLimit: policy.fileChunkCacheEntryLimit,
   });
   const recordStore = new HizoFSRecordStore({ objectStore });
   const commitStore = new HizoFSCommitStore({ recordStore });

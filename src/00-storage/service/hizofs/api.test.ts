@@ -32,6 +32,11 @@ const TINY_POLICY: HizoFSPolicy = {
   fileChunkSize: 4,
   indexPageEntryLimit: 2,
   readerStreamChunkSize: 3,
+  maxDirtyFileBytes: 16,
+  metadataObjectCacheByteLimit: 64 * 1024,
+  metadataObjectCacheEntryLimit: 1024,
+  fileChunkCacheByteLimit: 64,
+  fileChunkCacheEntryLimit: 16,
 };
 
 async function createTiny({ root, now }: {
@@ -1252,6 +1257,31 @@ describe('HizoFS public file-system API', () => {
     );
   });
 
+  it('reuses immutable metadata while continuing to authenticate mutable superblocks', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    for (let index = 0; index < 12; index += 1) {
+      await session.root.getFileHandle({
+        name: `cached-${String(index)}.txt`,
+        create: true,
+      });
+    }
+    const backingReadSpy = vi.spyOn(
+      NativeOpfsHizoFSBackingStore.prototype,
+      'read',
+    );
+
+    for (let index = 0; index < 10; index += 1) {
+      await session.root.getFileHandle({
+        name: 'cached-11.txt',
+        create: false,
+      });
+    }
+
+    expect(backingReadSpy).toHaveBeenCalledTimes(20);
+    await session.close();
+  });
+
   it('keeps one fixed generation for snapshot traversal without reloading active state', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ root: backing, now: () => 1 });
@@ -1301,7 +1331,6 @@ describe('HizoFS public file-system API', () => {
       backing,
       kind: 'file_chunk',
     });
-
     const writer = await file.createWritable({ keepExistingData: true });
     await writer.write({ position: 0, data: new Uint8Array([1]) });
     await writer.write({ position: 1, data: new Uint8Array([2]) });
@@ -1312,6 +1341,77 @@ describe('HizoFS public file-system API', () => {
       backing,
       kind: 'file_chunk',
     })).toBe(chunksBefore + 1);
+    await session.close();
+  });
+
+  it('coalesces repeated random writes to every dirty chunk retained by the byte budget', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const file = await session.root.getFileHandle({ name: 'random-write.bin', create: true });
+    await writeStorageFileText({ fileHandle: file, value: 'abcdefghijklmnop' });
+    const chunksBefore = await countPhysicalObjectsByKind({
+      backing,
+      kind: 'file_chunk',
+    });
+    const extentPagesBefore = await countPhysicalObjectsByKind({
+      backing,
+      kind: 'file_extent_page',
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const buildSpy = vi.spyOn(hizofs.runtime.extentIndex, 'buildFromSortedExtents');
+    const setSpy = vi.spyOn(hizofs.runtime.extentIndex, 'set');
+
+    const writer = await file.createWritable({ keepExistingData: true });
+    for (let round = 0; round < 8; round += 1) {
+      for (const position of [0, 4, 8, 12]) {
+        await writer.write({
+          position,
+          data: new Uint8Array([round + position]),
+        });
+      }
+    }
+    await writer.close();
+
+    expect(await countPhysicalObjectsByKind({
+      backing,
+      kind: 'file_chunk',
+    })).toBe(chunksBefore + 4);
+    expect(await countPhysicalObjectsByKind({
+      backing,
+      kind: 'file_extent_page',
+    })).toBe(extentPagesBefore + 3);
+    expect(buildSpy).toHaveBeenCalledTimes(1);
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(await readStorageFileText({ fileHandle: file })).toBe(
+      `${String.fromCharCode(7)}bcd${String.fromCharCode(11)}fgh${String.fromCharCode(15)}jkl${String.fromCharCode(19)}nop`,
+    );
+    await session.close();
+  });
+
+  it('flushes dirty chunks before close when the configured byte budget is exhausted', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const policy: HizoFSPolicy = {
+      ...TINY_POLICY,
+      maxDirtyFileBytes: 8,
+    };
+    const session = await TEST_ONLY.createHizoFSInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      policy,
+      now: () => 1,
+    });
+    const file = await session.root.getFileHandle({ name: 'bounded.bin', create: true });
+    const hizofs = requireHizoFSSession({ session });
+    const writeSpy = vi.spyOn(hizofs.runtime.chunkStore, 'write');
+    const writer = await file.createWritable({ keepExistingData: false });
+
+    await writer.write({ position: 0, data: new Uint8Array([1]) });
+    await writer.write({ position: 4, data: new Uint8Array([2]) });
+    expect(writeSpy).not.toHaveBeenCalled();
+    await writer.write({ position: 8, data: new Uint8Array([3]) });
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+
+    await writer.abort({ reason: new Error('test complete') });
     await session.close();
   });
 

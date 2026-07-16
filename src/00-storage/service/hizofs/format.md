@@ -289,10 +289,25 @@ against the new base. Objects prepared by a losing attempt become ordinary GC
 candidates.
 
 An open writer batches writes, sparse updates, and truncates and performs at
-most one file-system commit on `close()`. A bounded dirty-chunk cache avoids
-rewriting the same logical chunk for each small `write()` call. A conflicting
-changed inode causes the writer to fail rather than silently apply
-last-writer-wins behavior.
+most one file-system commit on `close()`. A byte-bounded dirty-chunk cache
+coalesces repeated writes to the same logical chunk. When the final extent tree
+is completely determined by prepared chunks, it is built bottom-up once rather
+than publishing intermediate Copy-on-Write pages for every extent. Both are
+runtime policies and do not change the persistent format. A conflicting changed
+inode causes the writer to fail rather than silently apply last-writer-wins
+behavior. Dirty plaintext buffers are overwritten as they are flushed,
+discarded by truncation, aborted, or released after close.
+
+Authenticated immutable objects may be retained in byte- and entry-bounded
+plaintext LRU caches. Metadata and file chunks have separate budgets so
+sequential file data cannot evict the entire metadata working set, while the
+entry limits also bound Map overhead for many small records. Superblock slots
+are mutable and are never cached; every active-generation selection
+authenticates their current physical contents. Evicted plaintext buffers are
+overwritten before release.
+Closing any session sharing a runtime also clears these caches explicitly; a
+remaining session can repopulate them only by authenticating the immutable
+physical objects again.
 
 Readers retain immutable inode and extent roots, providing snapshot reads while
 a later commit is active.

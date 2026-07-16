@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { NativeOpfsHizoFSBackingStore } from '@/00-storage/service/hizofs/backing-store/native-opfs-backing-store';
 import { importHizoFSRootKey } from '@/00-storage/service/hizofs/crypto/object-crypto';
@@ -26,7 +26,15 @@ async function createStore({
   });
   return {
     backingStore,
-    store: new HizoFSObjectStore({ backingStore, rootKey, fileSystemId }),
+    store: new HizoFSObjectStore({
+      backingStore,
+      rootKey,
+      fileSystemId,
+      metadataCacheByteLimit: 1024,
+      metadataCacheEntryLimit: 64,
+      fileChunkCacheByteLimit: 1024,
+      fileChunkCacheEntryLimit: 64,
+    }),
   };
 }
 
@@ -55,6 +63,189 @@ describe('HizoFS immutable object store', () => {
       metadata: {},
       binaryPayload: new Uint8Array([1, 2, 3]),
     });
+  });
+
+  it('serves immutable objects from bounded plaintext caches without sharing mutable payloads', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { backingStore, store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: 'filesystem-a',
+    });
+    const objectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([1, 2, 3]),
+      },
+    });
+    const readSpy = vi.spyOn(backingStore, 'read');
+
+    const first = await store.read({ objectId });
+    if (first === undefined) throw new Error('Expected cached HizoFS object');
+    first.binaryPayload[0] = 99;
+    const second = await store.read({ objectId });
+
+    expect(readSpy).not.toHaveBeenCalled();
+    expect(second?.binaryPayload).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('honors a zero-byte cache budget without retaining immutable plaintext', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const backingStore = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new HizoFSObjectStore({
+      backingStore,
+      rootKey: await importHizoFSRootKey({
+        rawRootKey: new Uint8Array(32).fill(1),
+      }),
+      fileSystemId: 'filesystem-a',
+      metadataCacheByteLimit: 0,
+      metadataCacheEntryLimit: 0,
+      fileChunkCacheByteLimit: 0,
+      fileChunkCacheEntryLimit: 0,
+    });
+    const objectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 1 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    const readSpy = vi.spyOn(backingStore, 'read');
+
+    await store.read({ objectId });
+    await store.read({ objectId });
+
+    expect(readSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('evicts immutable plaintext by byte budget instead of growing without bound', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const backingStore = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new HizoFSObjectStore({
+      backingStore,
+      rootKey: await importHizoFSRootKey({
+        rawRootKey: new Uint8Array(32).fill(1),
+      }),
+      fileSystemId: 'filesystem-a',
+      metadataCacheByteLimit: 0,
+      metadataCacheEntryLimit: 0,
+      fileChunkCacheByteLimit: 64,
+      fileChunkCacheEntryLimit: 64,
+    });
+    const firstObjectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array(32).fill(1),
+      },
+    });
+    const secondObjectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array(32).fill(2),
+      },
+    });
+    const readSpy = vi.spyOn(backingStore, 'read');
+
+    await store.read({ objectId: firstObjectId });
+    await store.read({ objectId: secondObjectId });
+
+    expect(readSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('also bounds cache entry overhead when immutable records are small', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const backingStore = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new HizoFSObjectStore({
+      backingStore,
+      rootKey: await importHizoFSRootKey({
+        rawRootKey: new Uint8Array(32).fill(1),
+      }),
+      fileSystemId: 'filesystem-a',
+      metadataCacheByteLimit: 0,
+      metadataCacheEntryLimit: 0,
+      fileChunkCacheByteLimit: 1024,
+      fileChunkCacheEntryLimit: 1,
+    });
+    const firstObjectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([1]),
+      },
+    });
+    const secondObjectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([2]),
+      },
+    });
+    const readSpy = vi.spyOn(backingStore, 'read');
+
+    await store.read({ objectId: firstObjectId });
+    await store.read({ objectId: secondObjectId });
+
+    expect(readSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears cached plaintext explicitly so later reads reauthenticate physical objects', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { backingStore, store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: 'filesystem-a',
+    });
+    const objectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([1, 2, 3]),
+      },
+    });
+    store.clearPlaintextCaches();
+    const readSpy = vi.spyOn(backingStore, 'read');
+
+    await store.read({ objectId });
+
+    expect(readSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache mutable superblock slots', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { backingStore, store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: 'filesystem-a',
+    });
+    await store.writeSuperblock({
+      slot: 0,
+      record: {
+        kind: 'superblock',
+        recordVersion: 1,
+        metadata: {
+          sequence: 0,
+          fileSystemId: 'filesystem-a',
+          activeCommitObjectId: 'commit',
+        },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    const readSpy = vi.spyOn(backingStore, 'read');
+
+    await store.readSuperblock({ slot: 0 });
+    await store.readSuperblock({ slot: 0 });
+
+    expect(readSpy).toHaveBeenCalledTimes(2);
   });
 
   it('generates independent physical object IDs for identical plaintext', async () => {
