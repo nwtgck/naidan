@@ -28,6 +28,7 @@ export type HizoFSRuntime = {
   readonly directoryStorage: HizoFSDirectoryStorage;
   readonly policy: HizoFSPolicy;
   readonly now: () => number;
+  readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
 };
 
 export function createHizoFSRuntime({
@@ -53,6 +54,7 @@ export function createHizoFSRuntime({
     metadataCacheEntryLimit: policy.metadataObjectCacheEntryLimit,
     fileChunkCacheByteLimit: policy.fileChunkCacheByteLimit,
     fileChunkCacheEntryLimit: policy.fileChunkCacheEntryLimit,
+    fileChunkCacheAdmission: policy.fileChunkCacheAdmission,
     diagnostics,
   });
   const recordStore = new HizoFSRecordStore({ objectStore });
@@ -107,6 +109,7 @@ export function createHizoFSRuntime({
     directoryStorage,
     policy,
     now,
+    diagnostics,
   };
 }
 

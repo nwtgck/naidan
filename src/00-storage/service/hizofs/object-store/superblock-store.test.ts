@@ -12,6 +12,8 @@ import { HizoFSSuperblockStore } from './superblock-store';
 async function setup() {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+    fileHandleCacheEntryLimit: 64,
+    diagnostics: undefined,
   });
   const objectStore = new HizoFSObjectStore({
     backingStore,
@@ -23,6 +25,7 @@ async function setup() {
     metadataCacheEntryLimit: 64,
     fileChunkCacheByteLimit: 1024,
     fileChunkCacheEntryLimit: 64,
+    fileChunkCacheAdmission: 'read_only',
   });
   return {
     backingStore,

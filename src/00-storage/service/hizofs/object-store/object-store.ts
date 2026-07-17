@@ -67,9 +67,9 @@ class HizoFSPlaintextLruCache {
     return entry.plaintext;
   }
 
-  set({ objectId, plaintext }: { objectId: string; plaintext: Uint8Array }): void {
+  set({ objectId, plaintext }: { objectId: string; plaintext: Uint8Array }): boolean {
     this.delete({ objectId, reason: 'explicit' });
-    if (this.entryLimit === 0 || plaintext.byteLength > this.byteLimit) return;
+    if (this.entryLimit === 0 || plaintext.byteLength > this.byteLimit) return false;
     this.entries.set(objectId, { plaintext });
     this.totalBytes += plaintext.byteLength;
     while (this.totalBytes > this.byteLimit || this.entries.size > this.entryLimit) {
@@ -78,6 +78,7 @@ class HizoFSPlaintextLruCache {
       this.delete({ objectId: oldestObjectId, reason: 'eviction' });
     }
     this.recordState();
+    return true;
   }
 
   delete({
@@ -153,6 +154,7 @@ export class HizoFSObjectStore {
     metadataCacheEntryLimit,
     fileChunkCacheByteLimit,
     fileChunkCacheEntryLimit,
+    fileChunkCacheAdmission,
     diagnostics,
   }: {
     backingStore: HizoFSBackingStore;
@@ -162,11 +164,22 @@ export class HizoFSObjectStore {
     metadataCacheEntryLimit: number;
     fileChunkCacheByteLimit: number;
     fileChunkCacheEntryLimit: number;
+    fileChunkCacheAdmission: 'read_only' | 'read_write';
     diagnostics?: HizoFSRuntimeDiagnostics;
   }) {
     this.backingStore = backingStore;
     this.rootKey = rootKey;
     this.fileSystemId = fileSystemId;
+    switch (fileChunkCacheAdmission) {
+    case 'read_only':
+    case 'read_write':
+      this.fileChunkCacheAdmission = fileChunkCacheAdmission;
+      break;
+    default: {
+      const _ex: never = fileChunkCacheAdmission;
+      throw new Error(`Unhandled HizoFS file chunk cache admission: ${String(_ex)}`);
+    }
+    }
     this.diagnostics = diagnostics;
     this.metadataCache = new HizoFSPlaintextLruCache({
       byteLimit: metadataCacheByteLimit,
@@ -186,6 +199,7 @@ export class HizoFSObjectStore {
   private readonly rootKey: CryptoKey;
   private readonly fileSystemId: string;
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  private readonly fileChunkCacheAdmission: 'read_only' | 'read_write';
   private readonly metadataCache: HizoFSPlaintextLruCache;
   private readonly fileChunkCache: HizoFSPlaintextLruCache;
 
@@ -250,49 +264,59 @@ export class HizoFSObjectStore {
         phase: 'record_encode',
         operation: () => encodeHizoFSRecord(record),
       });
-    const { nonce, ciphertext } = this.diagnostics === undefined
-      ? await encryptHizoFSObject({
-        rootKey: this.rootKey,
-        fileSystemId: this.fileSystemId,
-        objectIdentity: objectId,
-        area,
-        plaintext,
-      })
-      : await this.diagnostics.measureAsync({
-        phase: 'object_encrypt',
-        operation: async () => encryptHizoFSObject({
+    let plaintextRetained = false;
+    try {
+      const { nonce, ciphertext } = this.diagnostics === undefined
+        ? await encryptHizoFSObject({
           rootKey: this.rootKey,
           fileSystemId: this.fileSystemId,
           objectIdentity: objectId,
           area,
           plaintext,
-        }),
+        })
+        : await this.diagnostics.measureAsync({
+          phase: 'object_encrypt',
+          operation: async () => encryptHizoFSObject({
+            rootKey: this.rootKey,
+            fileSystemId: this.fileSystemId,
+            objectIdentity: objectId,
+            area,
+            plaintext,
+          }),
+        });
+      const physical = this.diagnostics === undefined
+        ? encodeHizoFSObjectEnvelope({ nonce, ciphertext })
+        : this.diagnostics.measureSync({
+          phase: 'envelope_encode',
+          operation: () => encodeHizoFSObjectEnvelope({ nonce, ciphertext }),
+        });
+      await this.backingStore.write({
+        path: getPhysicalPath({ area, objectId }),
+        bytes: physical,
       });
-    const physical = this.diagnostics === undefined
-      ? encodeHizoFSObjectEnvelope({ nonce, ciphertext })
-      : this.diagnostics.measureSync({
-        phase: 'envelope_encode',
-        operation: () => encodeHizoFSObjectEnvelope({ nonce, ciphertext }),
+      this.diagnostics?.recordRecordWrite({
+        kind: record.kind,
+        plaintextByteLength: plaintext.byteLength,
+        physicalByteLength: physical.byteLength,
       });
-    await this.backingStore.write({
-      path: getPhysicalPath({ area, objectId }),
-      bytes: physical,
-    });
-    this.diagnostics?.recordRecordWrite({
-      kind: record.kind,
-      plaintextByteLength: plaintext.byteLength,
-      physicalByteLength: physical.byteLength,
-    });
-    switch (area) {
-    case 'object':
-      this.cachePlaintext({ objectId, kind: record.kind, plaintext });
-      break;
-    case 'superblock':
-      break;
-    default: {
-      const _ex: never = area;
-      throw new Error(`Unhandled HizoFS object area: ${String(_ex)}`);
-    }
+      switch (area) {
+      case 'object':
+        plaintextRetained = this.cachePlaintext({
+          objectId,
+          kind: record.kind,
+          plaintext,
+          source: 'write',
+        });
+        break;
+      case 'superblock':
+        break;
+      default: {
+        const _ex: never = area;
+        throw new Error(`Unhandled HizoFS object area: ${String(_ex)}`);
+      }
+      }
+    } finally {
+      if (!plaintextRetained) plaintext.fill(0);
     }
   }
 
@@ -328,9 +352,7 @@ export class HizoFSObjectStore {
     const physical = await this.backingStore.read({
       path: getPhysicalPath({ area, objectId }),
     });
-    if (physical === undefined) {
-      return undefined;
-    }
+    if (physical === undefined) return undefined;
     const { nonce, ciphertext } = this.diagnostics === undefined
       ? decodeHizoFSObjectEnvelope({ physical })
       : this.diagnostics.measureSync({
@@ -365,35 +387,41 @@ export class HizoFSObjectStore {
         cause: error,
       });
     }
-    const decoded = this.diagnostics === undefined
-      ? decodeHizoFSRecord({ plaintext })
-      : this.diagnostics.measureSync({
-        phase: 'record_decode',
-        operation: () => decodeHizoFSRecord({ plaintext }),
-      });
-    this.diagnostics?.recordRecordRead({
-      kind: decoded.kind,
-      source: 'backing',
-      plaintextByteLength: plaintext.byteLength,
-      physicalByteLength: physical.byteLength,
-    });
-    switch (area) {
-    case 'object':
-      this.recordCacheMiss({ kind: decoded.kind });
-      this.cachePlaintext({
-        objectId,
+    let plaintextRetained = false;
+    try {
+      const decoded = this.diagnostics === undefined
+        ? decodeHizoFSRecord({ plaintext })
+        : this.diagnostics.measureSync({
+          phase: 'record_decode',
+          operation: () => decodeHizoFSRecord({ plaintext }),
+        });
+      this.diagnostics?.recordRecordRead({
         kind: decoded.kind,
-        plaintext,
+        source: 'backing',
+        plaintextByteLength: plaintext.byteLength,
+        physicalByteLength: physical.byteLength,
       });
-      break;
-    case 'superblock':
-      break;
-    default: {
-      const _ex: never = area;
-      throw new Error(`Unhandled HizoFS object area: ${String(_ex)}`);
+      switch (area) {
+      case 'object':
+        this.recordCacheMiss({ kind: decoded.kind });
+        plaintextRetained = this.cachePlaintext({
+          objectId,
+          kind: decoded.kind,
+          plaintext,
+          source: 'read',
+        });
+        break;
+      case 'superblock':
+        break;
+      default: {
+        const _ex: never = area;
+        throw new Error(`Unhandled HizoFS object area: ${String(_ex)}`);
+      }
+      }
+      return decoded;
+    } finally {
+      if (!plaintextRetained) plaintext.fill(0);
     }
-    }
-    return decoded;
   }
 
   private decodeCachedRecord({
@@ -442,17 +470,25 @@ export class HizoFSObjectStore {
     }
   }
 
-  private cachePlaintext({ objectId, kind, plaintext }: {
+  private cachePlaintext({
+    objectId,
+    kind,
+    plaintext,
+    source,
+  }: {
     objectId: string;
     kind: HizoFSRecordKind;
     plaintext: Uint8Array;
-  }): void {
+    source: 'read' | 'write';
+  }): boolean {
     switch (kind) {
     case 'file_chunk':
-      this.fileChunkCache.set({ objectId, plaintext });
-      break;
+      if (source === 'write' && this.fileChunkCacheAdmission === 'read_only') {
+        return false;
+      }
+      return this.fileChunkCache.set({ objectId, plaintext });
     case 'superblock':
-      return;
+      return false;
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':
@@ -460,8 +496,7 @@ export class HizoFSObjectStore {
     case 'symlink_inode':
     case 'directory_index_page':
     case 'file_extent_page':
-      this.metadataCache.set({ objectId, plaintext });
-      break;
+      return this.metadataCache.set({ objectId, plaintext });
     default: {
       const _ex: never = kind;
       throw new Error(`Unhandled HizoFS cache record kind: ${String(_ex)}`);

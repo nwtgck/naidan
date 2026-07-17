@@ -17,12 +17,14 @@ const MODEL_POLICY: HizoFSPolicy = {
   indexPageEntryLimit: 3,
   readerStreamChunkSize: 4,
   fileChunkReadPrefetchConcurrency: 2,
+  backingFileHandleCacheEntryLimit: 64,
   maxDirtyFileBytes: 16,
   fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 64 * 1024,
   metadataObjectCacheEntryLimit: 1024,
   fileChunkCacheByteLimit: 64,
   fileChunkCacheEntryLimit: 16,
+  fileChunkCacheAdmission: 'read_only',
 };
 
 type ModelEntry =

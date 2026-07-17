@@ -12,12 +12,14 @@ export type HizoFSPolicy = {
   readonly indexPageEntryLimit: number;
   readonly readerStreamChunkSize: number;
   readonly fileChunkReadPrefetchConcurrency: number;
+  readonly backingFileHandleCacheEntryLimit: number;
   readonly maxDirtyFileBytes: number;
   readonly fileChunkWriteConcurrency: number;
   readonly metadataObjectCacheByteLimit: number;
   readonly metadataObjectCacheEntryLimit: number;
   readonly fileChunkCacheByteLimit: number;
   readonly fileChunkCacheEntryLimit: number;
+  readonly fileChunkCacheAdmission: 'read_only' | 'read_write';
 };
 
 export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
@@ -27,12 +29,14 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   indexPageEntryLimit: 64,
   readerStreamChunkSize: 256 * 1024,
   fileChunkReadPrefetchConcurrency: 1,
+  backingFileHandleCacheEntryLimit: 1024,
   maxDirtyFileBytes: 16 * 1024 * 1024,
   fileChunkWriteConcurrency: 4,
   metadataObjectCacheByteLimit: 8 * 1024 * 1024,
   metadataObjectCacheEntryLimit: 16 * 1024,
   fileChunkCacheByteLimit: 8 * 1024 * 1024,
   fileChunkCacheEntryLimit: 1024,
+  fileChunkCacheAdmission: 'read_only',
 };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

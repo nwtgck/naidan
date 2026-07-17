@@ -151,6 +151,8 @@ export async function createHizoFSInspectionReader({
 }): Promise<HizoFSInspectionReader> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    fileHandleCacheEntryLimit:
+      DEFAULT_HIZOFS_POLICY.backingFileHandleCacheEntryLimit,
     diagnostics: undefined,
   });
   const descriptorInspection = await readDescriptorForInspection({ backingStore });

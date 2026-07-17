@@ -13,6 +13,8 @@ async function setup() {
   const objectStore = new HizoFSObjectStore({
     backingStore: new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
     }),
     rootKey: await importHizoFSRootKey({
       rawRootKey: new Uint8Array(32).fill(8),
@@ -22,6 +24,7 @@ async function setup() {
     metadataCacheEntryLimit: 64,
     fileChunkCacheByteLimit: 1024,
     fileChunkCacheEntryLimit: 64,
+    fileChunkCacheAdmission: 'read_only',
   });
   const recordStore = new HizoFSRecordStore({ objectStore });
   return { objectStore, recordStore };

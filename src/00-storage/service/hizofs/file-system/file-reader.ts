@@ -3,6 +3,7 @@ import type { HizoFSExtentIndex } from './extent-index';
 import type { HizoFSFileChunkStore } from './file-chunk-store';
 import type { HizoFSMaintenanceLease } from './maintenance-lock';
 import type { LoadedHizoFSFile } from './node-service';
+import type { HizoFSRuntimeDiagnostics } from './diagnostics';
 
 type PrefetchedChunkResult =
   | {
@@ -13,6 +14,11 @@ type PrefetchedChunkResult =
       readonly status: 'rejected';
       readonly error: unknown;
     };
+
+type PrefetchedChunk = {
+  readonly reservedByteLength: number;
+  readonly result: Promise<PrefetchedChunkResult>;
+};
 
 function assertReadArguments({
   buffer,
@@ -50,6 +56,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     streamChunkSize,
     prefetchConcurrency,
     maintenanceLease,
+    diagnostics,
     onSettled,
   }: {
     file: LoadedHizoFSFile;
@@ -59,6 +66,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     streamChunkSize: number;
     prefetchConcurrency: number;
     maintenanceLease: HizoFSMaintenanceLease;
+    diagnostics: HizoFSRuntimeDiagnostics | undefined;
     onSettled: () => void;
   }) {
     if (!Number.isSafeInteger(prefetchConcurrency) || prefetchConcurrency < 1) {
@@ -73,6 +81,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     this.streamChunkSize = streamChunkSize;
     this.prefetchConcurrency = prefetchConcurrency;
     this.maintenanceLease = maintenanceLease;
+    this.diagnostics = diagnostics;
     this.onSettled = onSettled;
     this.size = file.inode.size;
   }
@@ -87,11 +96,9 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
   private readonly streamChunkSize: number;
   private readonly prefetchConcurrency: number;
   private readonly maintenanceLease: HizoFSMaintenanceLease;
+  private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
   private readonly onSettled: () => void;
-  private readonly prefetchedChunks = new Map<
-    number,
-    Promise<PrefetchedChunkResult>
-  >();
+  private readonly prefetchedChunks = new Map<number, PrefetchedChunk>();
   private readonly prefetchCleanupTasks = new Set<Promise<void>>();
   private lastReadEndPosition: number | undefined;
   private closed = false;
@@ -208,8 +215,11 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     if (this.closed) return;
     this.closed = true;
     try {
-      await this.clearPrefetchedChunks();
-      await this.maintenanceLease.release();
+      try {
+        await this.clearPrefetchedChunks();
+      } finally {
+        await this.maintenanceLease.release();
+      }
     } finally {
       this.onSettled();
     }
@@ -310,11 +320,16 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
       chunkIndex += 1
     ) {
       if (this.prefetchedChunks.has(chunkIndex)) continue;
-      const pending = this.loadChunk({ storage, chunkIndex }).then(
+      const reservedByteLength = storage.chunkSize;
+      this.adjustPrefetchUsage({
+        byteDelta: reservedByteLength,
+        operationDelta: 1,
+      });
+      const result = this.loadChunk({ storage, chunkIndex }).then(
         chunk => ({ status: 'fulfilled' as const, chunk }),
         error => ({ status: 'rejected' as const, error }),
       );
-      this.prefetchedChunks.set(chunkIndex, pending);
+      this.prefetchedChunks.set(chunkIndex, { reservedByteLength, result });
     }
   }
 
@@ -330,7 +345,11 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
       return this.loadChunk({ storage, chunkIndex });
     }
     this.prefetchedChunks.delete(chunkIndex);
-    const result = await prefetched;
+    const result = await prefetched.result;
+    this.adjustPrefetchUsage({
+      byteDelta: -prefetched.reservedByteLength,
+      operationDelta: -1,
+    });
     switch (result.status) {
     case 'fulfilled':
       return result.chunk;
@@ -368,7 +387,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     minimumChunkIndex: number;
     maximumChunkIndexExclusive: number;
   }): void {
-    for (const [chunkIndex, pending] of this.prefetchedChunks) {
+    for (const [chunkIndex, prefetched] of this.prefetchedChunks) {
       if (
         chunkIndex >= minimumChunkIndex
         && chunkIndex < maximumChunkIndexExclusive
@@ -376,36 +395,89 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
         continue;
       }
       this.prefetchedChunks.delete(chunkIndex);
-      this.schedulePrefetchCleanup({ pending });
+      this.schedulePrefetchCleanup({ prefetched });
     }
   }
 
   private discardPrefetchedChunks(): void {
-    for (const pending of this.prefetchedChunks.values()) {
-      this.schedulePrefetchCleanup({ pending });
+    for (const prefetched of this.prefetchedChunks.values()) {
+      this.schedulePrefetchCleanup({ prefetched });
     }
     this.prefetchedChunks.clear();
   }
 
   private schedulePrefetchCleanup({
-    pending,
+    prefetched,
   }: {
-    pending: Promise<PrefetchedChunkResult>;
+    prefetched: PrefetchedChunk;
   }): void {
-    const cleanup = pending.then(result => this.clearPrefetchedChunkResult({ result }));
+    const cleanup = prefetched.result.then((result) => {
+      try {
+        this.clearPrefetchedChunkResult({ result });
+      } finally {
+        this.adjustPrefetchUsage({
+          byteDelta: -prefetched.reservedByteLength,
+          operationDelta: -1,
+        });
+      }
+    });
     this.prefetchCleanupTasks.add(cleanup);
-    void cleanup.then(() => this.prefetchCleanupTasks.delete(cleanup));
+    void cleanup.then(
+      () => this.prefetchCleanupTasks.delete(cleanup),
+      () => {
+        // Keep rejected cleanup tasks for close() to observe after all settle.
+      },
+    );
   }
 
   private async clearPrefetchedChunks(): Promise<void> {
-    const pending = [...this.prefetchedChunks.values()];
+    const prefetchedChunks = [...this.prefetchedChunks.values()];
     this.prefetchedChunks.clear();
-    const results = await Promise.all(pending);
-    for (const result of results) {
-      this.clearPrefetchedChunkResult({ result });
+    const results = await Promise.all(
+      prefetchedChunks.map(prefetched => prefetched.result),
+    );
+    let firstError: unknown;
+    for (const [index, result] of results.entries()) {
+      const prefetched = prefetchedChunks[index];
+      if (prefetched === undefined) continue;
+      try {
+        this.clearPrefetchedChunkResult({ result });
+      } catch (error) {
+        firstError ??= error;
+      } finally {
+        try {
+          this.adjustPrefetchUsage({
+            byteDelta: -prefetched.reservedByteLength,
+            operationDelta: -1,
+          });
+        } catch (error) {
+          firstError ??= error;
+        }
+      }
     }
-    await Promise.all([...this.prefetchCleanupTasks]);
+    const cleanupResults = await Promise.allSettled([
+      ...this.prefetchCleanupTasks,
+    ]);
     this.prefetchCleanupTasks.clear();
+    const cleanupFailure = cleanupResults.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    firstError ??= cleanupFailure?.reason;
+    if (firstError !== undefined) throw firstError;
+  }
+
+  private adjustPrefetchUsage({
+    byteDelta,
+    operationDelta,
+  }: {
+    byteDelta: number;
+    operationDelta: number;
+  }): void {
+    this.diagnostics?.adjustResourceUsage({
+      resource: 'reader_prefetch',
+      byteDelta,
+      operationDelta,
+    });
   }
 
   private clearPrefetchedChunkResult({

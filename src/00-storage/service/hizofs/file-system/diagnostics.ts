@@ -37,7 +37,15 @@ export const HIZOFS_RUNTIME_DIAGNOSTIC_RECORD_KINDS = [
   'superblock',
 ] as const satisfies readonly HizoFSRecordKind[];
 
-export type HizoFSRuntimeDiagnosticCacheKind = 'metadata' | 'file_chunk';
+export type HizoFSRuntimeDiagnosticCacheKind =
+  | 'metadata'
+  | 'file_chunk'
+  | 'backing_file_handle';
+
+export type HizoFSRuntimeDiagnosticResourceKind =
+  | 'writer_dirty_chunks'
+  | 'writer_pending_chunk_writes'
+  | 'reader_prefetch';
 
 export type HizoFSRuntimeDiagnosticPhaseSnapshot = {
   readonly operationCount: number;
@@ -65,6 +73,13 @@ export type HizoFSRuntimeDiagnosticCacheSnapshot = {
   readonly maximumEntries: number;
 };
 
+export type HizoFSRuntimeDiagnosticResourceSnapshot = {
+  readonly currentBytes: number;
+  readonly maximumBytes: number;
+  readonly currentOperations: number;
+  readonly maximumOperations: number;
+};
+
 export type HizoFSRuntimeDiagnosticsSnapshot = {
   readonly phases: Readonly<
     Record<HizoFSRuntimeDiagnosticPhase, HizoFSRuntimeDiagnosticPhaseSnapshot>
@@ -75,6 +90,12 @@ export type HizoFSRuntimeDiagnosticsSnapshot = {
   readonly caches: {
     readonly metadata: HizoFSRuntimeDiagnosticCacheSnapshot;
     readonly fileChunk: HizoFSRuntimeDiagnosticCacheSnapshot;
+    readonly backingFileHandle: HizoFSRuntimeDiagnosticCacheSnapshot;
+  };
+  readonly resources: {
+    readonly writerDirtyChunks: HizoFSRuntimeDiagnosticResourceSnapshot;
+    readonly writerPendingChunkWrites: HizoFSRuntimeDiagnosticResourceSnapshot;
+    readonly readerPrefetch: HizoFSRuntimeDiagnosticResourceSnapshot;
   };
 };
 
@@ -102,6 +123,13 @@ type MutableCacheCounter = {
   maximumBytes: number;
   currentEntries: number;
   maximumEntries: number;
+};
+
+type MutableResourceCounter = {
+  currentBytes: number;
+  maximumBytes: number;
+  currentOperations: number;
+  maximumOperations: number;
 };
 
 function createPhaseCounters(): Record<HizoFSRuntimeDiagnosticPhase, MutablePhaseCounter> {
@@ -143,6 +171,15 @@ function createCacheCounter(): MutableCacheCounter {
   };
 }
 
+function createResourceCounter(): MutableResourceCounter {
+  return {
+    currentBytes: 0,
+    maximumBytes: 0,
+    currentOperations: 0,
+    maximumOperations: 0,
+  };
+}
+
 export class HizoFSRuntimeDiagnostics {
   constructor({ now }: { now: () => number }) {
     this.now = now;
@@ -154,6 +191,12 @@ export class HizoFSRuntimeDiagnostics {
   private readonly caches = {
     metadata: createCacheCounter(),
     fileChunk: createCacheCounter(),
+    backingFileHandle: createCacheCounter(),
+  };
+  private readonly resources = {
+    writerDirtyChunks: createResourceCounter(),
+    writerPendingChunkWrites: createResourceCounter(),
+    readerPrefetch: createResourceCounter(),
   };
 
   measureSync<T>({
@@ -258,6 +301,37 @@ export class HizoFSRuntimeDiagnostics {
     counter.maximumEntries = Math.max(counter.maximumEntries, entryCount);
   }
 
+  adjustResourceUsage({
+    resource,
+    byteDelta,
+    operationDelta,
+  }: {
+    resource: HizoFSRuntimeDiagnosticResourceKind;
+    byteDelta: number;
+    operationDelta: number;
+  }): void {
+    const counter = this.getResourceCounter({ resource });
+    const currentBytes = counter.currentBytes + byteDelta;
+    const currentOperations = counter.currentOperations + operationDelta;
+    if (currentBytes < 0 || currentOperations < 0) {
+      throw new Error(`HizoFS diagnostic resource usage became negative: ${resource}`);
+    }
+    counter.currentBytes = currentBytes;
+    counter.maximumBytes = Math.max(counter.maximumBytes, currentBytes);
+    counter.currentOperations = currentOperations;
+    counter.maximumOperations = Math.max(
+      counter.maximumOperations,
+      currentOperations,
+    );
+  }
+
+  resetResourceHighWaterMarks(): void {
+    for (const counter of Object.values(this.resources)) {
+      counter.maximumBytes = counter.currentBytes;
+      counter.maximumOperations = counter.currentOperations;
+    }
+  }
+
   snapshot(): HizoFSRuntimeDiagnosticsSnapshot {
     return {
       phases: Object.fromEntries(
@@ -278,6 +352,14 @@ export class HizoFSRuntimeDiagnostics {
       caches: {
         metadata: { ...this.caches.metadata },
         fileChunk: { ...this.caches.fileChunk },
+        backingFileHandle: { ...this.caches.backingFileHandle },
+      },
+      resources: {
+        writerDirtyChunks: { ...this.resources.writerDirtyChunks },
+        writerPendingChunkWrites: {
+          ...this.resources.writerPendingChunkWrites,
+        },
+        readerPrefetch: { ...this.resources.readerPrefetch },
       },
     };
   }
@@ -304,9 +386,30 @@ export class HizoFSRuntimeDiagnostics {
       return this.caches.metadata;
     case 'file_chunk':
       return this.caches.fileChunk;
+    case 'backing_file_handle':
+      return this.caches.backingFileHandle;
     default: {
       const _ex: never = cache;
       throw new Error(`Unhandled HizoFS diagnostic cache: ${String(_ex)}`);
+    }
+    }
+  }
+
+  private getResourceCounter({
+    resource,
+  }: {
+    resource: HizoFSRuntimeDiagnosticResourceKind;
+  }): MutableResourceCounter {
+    switch (resource) {
+    case 'writer_dirty_chunks':
+      return this.resources.writerDirtyChunks;
+    case 'writer_pending_chunk_writes':
+      return this.resources.writerPendingChunkWrites;
+    case 'reader_prefetch':
+      return this.resources.readerPrefetch;
+    default: {
+      const _ex: never = resource;
+      throw new Error(`Unhandled HizoFS diagnostic resource: ${String(_ex)}`);
     }
     }
   }

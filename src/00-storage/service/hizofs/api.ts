@@ -175,6 +175,8 @@ export async function inspectHizoFS({
 }): Promise<HizoFSInspection> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    fileHandleCacheEntryLimit:
+      DEFAULT_HIZOFS_POLICY.backingFileHandleCacheEntryLimit,
     diagnostics: undefined,
   });
   let descriptor: HizoFSDescriptorDto;
@@ -222,6 +224,7 @@ async function createHizoFSInternal({
 }): Promise<StorageFileSystemSession> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    fileHandleCacheEntryLimit: policy.backingFileHandleCacheEntryLimit,
     diagnostics,
   });
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
@@ -299,6 +302,7 @@ async function openHizoFSInternal({
 }): Promise<StorageFileSystemSession> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    fileHandleCacheEntryLimit: policy.backingFileHandleCacheEntryLimit,
     diagnostics,
   });
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
@@ -347,6 +351,7 @@ async function openHizoFSWithImportedRootKey({
 }): Promise<StorageDirectoryWorkerMountSession> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    fileHandleCacheEntryLimit: policy.backingFileHandleCacheEntryLimit,
     diagnostics: undefined,
   });
   const runtime = createHizoFSRuntime({

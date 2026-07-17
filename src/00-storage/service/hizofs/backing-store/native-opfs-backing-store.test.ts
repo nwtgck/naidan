@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createHizoFSRuntimeDiagnostics } from '@/00-storage/service/hizofs/file-system/diagnostics';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { NativeOpfsHizoFSBackingStore } from './native-opfs-backing-store';
 
 describe('native OPFS HizoFS backing store', () => {
   it('uses the provided directory as the complete physical namespace', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'provided-root' });
-    const store = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
 
     await store.write({
       path: ['objects', 'ab', 'object.enc'],
@@ -24,7 +29,11 @@ describe('native OPFS HizoFS backing store', () => {
     const shard = await objects.getDirectoryHandle('ab', { create: true });
     const rootLookup = vi.spyOn(root, 'getDirectoryHandle');
     const objectsLookup = vi.spyOn(objects, 'getDirectoryHandle');
-    const store = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
 
     await store.write({
       path: ['objects', 'ab', 'one.enc'],
@@ -43,10 +52,59 @@ describe('native OPFS HizoFS backing store', () => {
     await expect(shard.getFileHandle('two.enc')).resolves.toBeDefined();
   });
 
+
+  it('reuses nested immutable-object file handles and records cache diagnostics', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const objects = await root.getDirectoryHandle('objects', { create: true });
+    const shard = await objects.getDirectoryHandle('ab', { create: true });
+    const fileLookup = vi.spyOn(shard, 'getFileHandle');
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics,
+    });
+
+    await store.write({
+      path: ['objects', 'ab', 'one.enc'],
+      bytes: new Uint8Array([1]),
+    });
+    await store.read({ path: ['objects', 'ab', 'one.enc'] });
+    await store.read({ path: ['objects', 'ab', 'one.enc'] });
+
+    expect(fileLookup).toHaveBeenCalledTimes(1);
+    expect(diagnostics.snapshot().caches.backingFileHandle).toMatchObject({
+      hits: 2,
+      misses: 1,
+      currentEntries: 1,
+      maximumEntries: 1,
+    });
+  });
+
+  it('evicts the least-recently-used backing file handle at the configured bound', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const fileLookup = vi.spyOn(root, 'getFileHandle');
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 1,
+      diagnostics: undefined,
+    });
+
+    await store.write({ path: ['one.enc'], bytes: new Uint8Array([1]) });
+    await store.write({ path: ['two.enc'], bytes: new Uint8Array([2]) });
+    await store.read({ path: ['one.enc'] });
+
+    expect(fileLookup).toHaveBeenCalledTimes(3);
+  });
+
   it('invalidates cached directory handles after recursive removal', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'root' });
     const rootLookup = vi.spyOn(root, 'getDirectoryHandle');
-    const store = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
 
     await store.write({ path: ['temporary', 'one'], bytes: new Uint8Array([1]) });
     await store.remove({ path: ['temporary'], recursive: true });
@@ -61,7 +119,11 @@ describe('native OPFS HizoFS backing store', () => {
   it('reuses root file handles while reading fresh file contents each time', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'root' });
     const rootFileLookup = vi.spyOn(root, 'getFileHandle');
-    const store = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
 
     await store.write({ path: ['superblock-0.enc'], bytes: new Uint8Array([1]) });
     await expect(store.read({ path: ['superblock-0.enc'] })).resolves.toEqual(
@@ -78,7 +140,11 @@ describe('native OPFS HizoFS backing store', () => {
   it('invalidates a cached root file handle after removal', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'root' });
     const rootFileLookup = vi.spyOn(root, 'getFileHandle');
-    const store = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
 
     await store.write({ path: ['descriptor.json'], bytes: new Uint8Array([1]) });
     await store.remove({ path: ['descriptor.json'], recursive: false });
@@ -93,6 +159,8 @@ describe('native OPFS HizoFS backing store', () => {
   it('returns undefined for missing files and makes removal idempotent', async () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'root' }),
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
     });
     expect(await store.read({ path: ['missing'] })).toBeUndefined();
     await expect(store.remove({
@@ -104,6 +172,8 @@ describe('native OPFS HizoFS backing store', () => {
   it('lists physical entries without interpreting their contents', async () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'root' }),
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
     });
     await store.write({ path: ['a', 'one'], bytes: new Uint8Array([1]) });
     await store.write({ path: ['a', 'two'], bytes: new Uint8Array([2]) });
@@ -131,7 +201,11 @@ describe('native OPFS HizoFS backing store', () => {
       });
       return writable;
     });
-    const store = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
 
     await expect(store.write({
       path: ['value'],
@@ -150,7 +224,11 @@ describe('native OPFS HizoFS backing store', () => {
       vi.spyOn(writable, 'close').mockRejectedValue(new Error('definite close failure'));
       return writable;
     });
-    const store = new NativeOpfsHizoFSBackingStore({ root });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
 
     await expect(store.write({
       path: ['value'],
@@ -162,6 +240,8 @@ describe('native OPFS HizoFS backing store', () => {
   it('rejects traversal-like physical paths', async () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'root' }),
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
     });
     await expect(store.write({
       path: ['..', 'value'],

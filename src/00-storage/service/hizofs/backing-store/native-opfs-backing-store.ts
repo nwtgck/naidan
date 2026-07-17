@@ -9,6 +9,86 @@ interface FileHandleWithWritable extends FileSystemFileHandle {
   createWritable(options?: FileSystemCreateWritableOptions): Promise<FileSystemWritableFileStream>;
 }
 
+class HizoFSFileHandleLruCache {
+  constructor({
+    entryLimit,
+    diagnostics,
+  }: {
+    entryLimit: number;
+    diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  }) {
+    if (!Number.isSafeInteger(entryLimit) || entryLimit < 0) {
+      throw new Error(
+        'HizoFS backing file-handle cache limit must be a non-negative safe integer',
+      );
+    }
+    this.entryLimit = entryLimit;
+    this.diagnostics = diagnostics;
+    this.recordState();
+  }
+
+  private readonly entryLimit: number;
+  private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  private readonly entries = new Map<string, Promise<FileSystemFileHandle>>();
+
+  get({ path }: { path: readonly string[] }): Promise<FileSystemFileHandle> | undefined {
+    const key = path.join('/');
+    const pending = this.entries.get(key);
+    if (pending === undefined) {
+      this.diagnostics?.recordCacheMiss({ cache: 'backing_file_handle' });
+      return undefined;
+    }
+    this.entries.delete(key);
+    this.entries.set(key, pending);
+    this.diagnostics?.recordCacheHit({ cache: 'backing_file_handle' });
+    return pending;
+  }
+
+  set({
+    path,
+    pending,
+  }: {
+    path: readonly string[];
+    pending: Promise<FileSystemFileHandle>;
+  }): void {
+    const key = path.join('/');
+    this.entries.delete(key);
+    if (this.entryLimit === 0) return;
+    this.entries.set(key, pending);
+    while (this.entries.size > this.entryLimit) {
+      const oldestKey = this.entries.keys().next().value as string | undefined;
+      if (oldestKey === undefined) break;
+      this.entries.delete(oldestKey);
+      this.diagnostics?.recordCacheEviction({ cache: 'backing_file_handle' });
+    }
+    this.recordState();
+  }
+
+  delete({ path }: { path: readonly string[] }): void {
+    if (this.entries.delete(path.join('/'))) this.recordState();
+  }
+
+  deleteAtOrBelow({ path }: { path: readonly string[] }): void {
+    const removedPath = path.join('/');
+    let changed = false;
+    for (const key of this.entries.keys()) {
+      if (key === removedPath || key.startsWith(`${removedPath}/`)) {
+        this.entries.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) this.recordState();
+  }
+
+  private recordState(): void {
+    this.diagnostics?.recordCacheState({
+      cache: 'backing_file_handle',
+      byteLength: 0,
+      entryCount: this.entries.size,
+    });
+  }
+}
+
 function validatePath({ path }: {
   path: readonly string[];
 }): void {
@@ -61,19 +141,28 @@ function toBackingStoreEntry({
 }
 
 export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
-  constructor({ root, diagnostics }: {
+  constructor({
+    root,
+    fileHandleCacheEntryLimit,
+    diagnostics,
+  }: {
     root: FileSystemDirectoryHandle;
-    diagnostics?: HizoFSRuntimeDiagnostics;
+    fileHandleCacheEntryLimit: number;
+    diagnostics: HizoFSRuntimeDiagnostics | undefined;
   }) {
     this.root = root;
     this.diagnostics = diagnostics;
+    this.fileHandleCache = new HizoFSFileHandleLruCache({
+      entryLimit: fileHandleCacheEntryLimit,
+      diagnostics,
+    });
     this.directoryHandlePromises.set('', Promise.resolve(root));
   }
 
   private readonly root: FileSystemDirectoryHandle;
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
   private readonly directoryHandlePromises = new Map<string, Promise<FileSystemDirectoryHandle>>();
-  private readonly rootFileHandlePromises = new Map<string, Promise<FileSystemFileHandle>>();
+  private readonly fileHandleCache: HizoFSFileHandleLruCache;
 
   async read({ path }: {
     path: readonly string[];
@@ -106,7 +195,10 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
       });
       return new Uint8Array(buffer);
     } catch (error) {
-      if (isNotFoundError({ error })) return undefined;
+      if (isNotFoundError({ error })) {
+        this.fileHandleCache.delete({ path });
+        return undefined;
+      }
       throw error;
     }
   }
@@ -165,6 +257,7 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
       } catch {
         // Preserve the original error when exact durable completion cannot be proven.
       }
+      this.fileHandleCache.delete({ path });
       throw error;
     }
   }
@@ -237,7 +330,10 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
       });
       return new Uint8Array(await (await handle.getFile()).arrayBuffer());
     } catch (error) {
-      if (isNotFoundError({ error })) return undefined;
+      if (isNotFoundError({ error })) {
+        this.fileHandleCache.delete({ path });
+        return undefined;
+      }
       throw error;
     }
   }
@@ -272,6 +368,7 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
       } catch {
         // Preserve the original error when exact durable completion cannot be proven.
       }
+      this.fileHandleCache.delete({ path });
       throw error;
     }
   }
@@ -354,28 +451,22 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
     name: string;
     create: boolean;
   }): Promise<FileSystemFileHandle> {
-    if (parentPath.length !== 0) {
-      return directory.getFileHandle(name, { create });
-    }
-    const cached = this.rootFileHandlePromises.get(name);
+    const path = [...parentPath, name];
+    const cached = this.fileHandleCache.get({ path });
     if (cached !== undefined) {
       try {
         return await cached;
       } catch (error) {
+        this.fileHandleCache.delete({ path });
         if (!create || !isNotFoundError({ error })) throw error;
-        if (this.rootFileHandlePromises.get(name) === cached) {
-          this.rootFileHandlePromises.delete(name);
-        }
       }
     }
     const pending = directory.getFileHandle(name, { create });
-    this.rootFileHandlePromises.set(name, pending);
+    this.fileHandleCache.set({ path, pending });
     try {
       return await pending;
     } catch (error) {
-      if (this.rootFileHandlePromises.get(name) === pending) {
-        this.rootFileHandlePromises.delete(name);
-      }
+      this.fileHandleCache.delete({ path });
       throw error;
     }
   }
@@ -385,14 +476,8 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
   }: {
     path: readonly string[];
   }): void {
-    this.invalidateRootFileHandle({ path });
+    this.fileHandleCache.deleteAtOrBelow({ path });
     this.invalidateDirectoryHandlesAtOrBelow({ path });
-  }
-
-  private invalidateRootFileHandle({ path }: {
-    path: readonly string[];
-  }): void {
-    if (path.length === 1) this.rootFileHandlePromises.delete(path[0]!);
   }
 
   private invalidateDirectoryHandlesAtOrBelow({ path }: {

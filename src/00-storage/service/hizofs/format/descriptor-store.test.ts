@@ -9,7 +9,11 @@ import {
 describe('HizoFS descriptor store', () => {
   it('creates a descriptor with an explicit HizoFS format identifier', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
-    const backingStore = new NativeOpfsHizoFSBackingStore({ root });
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
 
     const descriptor = await createHizoFSDescriptor({ backingStore });
     expect(descriptor).toEqual({
@@ -22,6 +26,8 @@ describe('HizoFS descriptor store', () => {
   it('does not silently replace an existing descriptor', async () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
     });
     await createHizoFSDescriptor({ backingStore });
     await expect(createHizoFSDescriptor({ backingStore })).rejects.toThrow(
@@ -32,6 +38,8 @@ describe('HizoFS descriptor store', () => {
   it('ignores unknown non-secret descriptor fields', async () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
     });
     await backingStore.write({
       path: ['descriptor.json'],
@@ -50,6 +58,8 @@ describe('HizoFS descriptor store', () => {
   it('rejects a directory whose descriptor does not identify HizoFS', async () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'filesystem.hizofs' }),
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
     });
     await backingStore.write({
       path: ['descriptor.json'],

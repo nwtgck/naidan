@@ -9,8 +9,8 @@ import type { HizoFSBenchmarkReport } from './types';
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 6,
-    benchmarkImplementationVersion: 6,
+    schemaVersion: 7,
+    benchmarkImplementationVersion: 7,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -29,6 +29,7 @@ function createReport(): HizoFSBenchmarkReport {
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
       hizoFSInternalMemoryMeasured: false,
+      hizoFSOwnedResourceDiagnosticsEnabled: true,
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
       hizoFSRuntimePolicy: {
@@ -36,12 +37,14 @@ function createReport(): HizoFSBenchmarkReport {
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
         fileChunkWriteConcurrencyPerWriter: 4,
         fileChunkReadPrefetchConcurrencyPerReader: 1,
+        backingFileHandleCacheEntryLimitPerRuntime: 1024,
         maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
         maximumPlaintextChunkReadBytesInFlightPerReader: 256 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
         fileChunkCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         fileChunkCacheEntryLimitPerRuntime: 1024,
+        fileChunkCacheAdmission: 'read_only',
       },
     },
     configuration: createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),

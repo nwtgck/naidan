@@ -33,7 +33,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 6 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 7 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -297,7 +297,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -317,6 +317,7 @@ async function runHizoFSBenchmarkWithLockHeld({
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
       hizoFSInternalMemoryMeasured: false,
+      hizoFSOwnedResourceDiagnosticsEnabled: true,
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
       hizoFSRuntimePolicy: {
@@ -326,6 +327,8 @@ async function runHizoFSBenchmarkWithLockHeld({
           hizoFSPolicy.fileChunkWriteConcurrency,
         fileChunkReadPrefetchConcurrencyPerReader:
           hizoFSPolicy.fileChunkReadPrefetchConcurrency,
+        backingFileHandleCacheEntryLimitPerRuntime:
+          hizoFSPolicy.backingFileHandleCacheEntryLimit,
         maximumPlaintextChunkWriteBytesInFlightPerWriter:
           hizoFSPolicy.fileChunkSize
           * hizoFSPolicy.fileChunkWriteConcurrency,
@@ -340,6 +343,7 @@ async function runHizoFSBenchmarkWithLockHeld({
           hizoFSPolicy.fileChunkCacheByteLimit,
         fileChunkCacheEntryLimitPerRuntime:
           hizoFSPolicy.fileChunkCacheEntryLimit,
+        fileChunkCacheAdmission: hizoFSPolicy.fileChunkCacheAdmission,
       },
     },
     configuration,
@@ -362,10 +366,14 @@ function createBenchmarkHizoFSPolicy({
       configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
     fileChunkReadPrefetchConcurrency:
       configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency,
+    backingFileHandleCacheEntryLimit:
+      configuration.hizoFSRuntimePolicy.backingFileHandleCacheEntryLimit,
     fileChunkCacheByteLimit:
       configuration.hizoFSRuntimePolicy.fileChunkCacheByteLimit,
     fileChunkCacheEntryLimit:
       configuration.hizoFSRuntimePolicy.fileChunkCacheEntryLimit,
+    fileChunkCacheAdmission:
+      configuration.hizoFSRuntimePolicy.fileChunkCacheAdmission,
   };
 }
 
@@ -1493,6 +1501,10 @@ async function measureCase({
   bytesProcessed: number;
   operation: () => Promise<number>;
 }): Promise<CaseSample> {
+  // Resource high-water marks are live gauges rather than cumulative counters.
+  // Reset only their maxima at the public-case boundary so each sample reports
+  // its own bounded working set without disturbing any live reservations.
+  context.hizoFSRuntimeDiagnostics?.resetResourceHighWaterMarks();
   const before = readHizoFSDiagnosticBaseline({ context });
   const apiBefore = { ...context.apiCounters };
   beginMemoryMeasurement({ tracker: context.memoryTracker });
@@ -1673,6 +1685,21 @@ function subtractHizoFSRuntimeDiagnostics({
         before: before.caches.fileChunk,
         after: after.caches.fileChunk,
       }),
+      backingFileHandle: subtractHizoFSRuntimeCacheDiagnostics({
+        before: before.caches.backingFileHandle,
+        after: after.caches.backingFileHandle,
+      }),
+    },
+    resources: {
+      writerDirtyChunks: copyHizoFSRuntimeResourceDiagnostics({
+        after: after.resources.writerDirtyChunks,
+      }),
+      writerPendingChunkWrites: copyHizoFSRuntimeResourceDiagnostics({
+        after: after.resources.writerPendingChunkWrites,
+      }),
+      readerPrefetch: copyHizoFSRuntimeResourceDiagnostics({
+        after: after.resources.readerPrefetch,
+      }),
     },
   };
 }
@@ -1693,6 +1720,17 @@ function subtractHizoFSRuntimeCacheDiagnostics({
     currentEntries: after.currentEntries,
     maximumEntries: after.maximumEntries,
   };
+}
+
+function copyHizoFSRuntimeResourceDiagnostics({
+  after,
+}: {
+  after: HizoFSRuntimeDiagnosticsSnapshot['resources']['writerDirtyChunks'];
+}): HizoFSRuntimeDiagnosticsSnapshot['resources']['writerDirtyChunks'] {
+  // Resource counters are live gauges. Their high-water marks are reset at the
+  // case boundary, so retain the post-case current value and case-local maximum
+  // instead of subtracting them like cumulative counters.
+  return { ...after };
 }
 
 function aggregateSamples({
@@ -1973,6 +2011,24 @@ function aggregateHizoFSRuntimeDiagnostics({
         diagnostics: diagnostics.map(value => value.caches.fileChunk),
         current: last.caches.fileChunk,
       }),
+      backingFileHandle: aggregateHizoFSRuntimeCacheDiagnostics({
+        diagnostics: diagnostics.map(value => value.caches.backingFileHandle),
+        current: last.caches.backingFileHandle,
+      }),
+    },
+    resources: {
+      writerDirtyChunks: aggregateHizoFSRuntimeResourceDiagnostics({
+        diagnostics: diagnostics.map(value => value.resources.writerDirtyChunks),
+        current: last.resources.writerDirtyChunks,
+      }),
+      writerPendingChunkWrites: aggregateHizoFSRuntimeResourceDiagnostics({
+        diagnostics: diagnostics.map(value => value.resources.writerPendingChunkWrites),
+        current: last.resources.writerPendingChunkWrites,
+      }),
+      readerPrefetch: aggregateHizoFSRuntimeResourceDiagnostics({
+        diagnostics: diagnostics.map(value => value.resources.readerPrefetch),
+        current: last.resources.readerPrefetch,
+      }),
     },
   };
 }
@@ -1992,6 +2048,23 @@ function aggregateHizoFSRuntimeCacheDiagnostics({
     maximumBytes: Math.max(...diagnostics.map(value => value.maximumBytes)),
     currentEntries: current.currentEntries,
     maximumEntries: Math.max(...diagnostics.map(value => value.maximumEntries)),
+  };
+}
+
+function aggregateHizoFSRuntimeResourceDiagnostics({
+  diagnostics,
+  current,
+}: {
+  diagnostics: readonly HizoFSRuntimeDiagnosticsSnapshot['resources']['writerDirtyChunks'][];
+  current: HizoFSRuntimeDiagnosticsSnapshot['resources']['writerDirtyChunks'];
+}): HizoFSRuntimeDiagnosticsSnapshot['resources']['writerDirtyChunks'] {
+  return {
+    currentBytes: current.currentBytes,
+    maximumBytes: Math.max(...diagnostics.map(value => value.maximumBytes)),
+    currentOperations: current.currentOperations,
+    maximumOperations: Math.max(
+      ...diagnostics.map(value => value.maximumOperations),
+    ),
   };
 }
 

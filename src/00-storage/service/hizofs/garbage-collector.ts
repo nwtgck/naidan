@@ -65,6 +65,10 @@ export async function collectHizoFSGarbage({
 }): Promise<HizoFSGarbageCollectionResult> {
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
+    // GC walks most immutable objects only once, so retaining a large runtime
+    // handle cache would trade memory for little reuse. Keep only a small
+    // working set for superblocks and nearby metadata.
+    fileHandleCacheEntryLimit: 64,
     diagnostics: undefined,
   });
   const rootKey = await importHizoFSRootKey({

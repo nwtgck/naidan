@@ -41,6 +41,42 @@ function createNamedError({
   return error;
 }
 
+
+function unwrapSettledResult<T>({
+  result,
+}: {
+  result: PromiseSettledResult<T>;
+}): T {
+  switch (result.status) {
+  case 'fulfilled':
+    return result.value;
+  case 'rejected':
+    throw result.reason;
+  default: {
+    const _ex: never = result;
+    throw new Error(`Unhandled HizoFS independent write result: ${String(_ex)}`);
+  }
+  }
+}
+
+async function awaitIndependentWrites<Left, Right>({
+  left,
+  right,
+}: {
+  left: Promise<Left>;
+  right: Promise<Right>;
+}): Promise<readonly [Left, Right]> {
+  // Both immutable writes are allowed to become unreachable on failure, but
+  // both must settle before the mutation lease can be released. This avoids a
+  // rejected Promise leaving an unobserved physical write running after the
+  // caller has already started recovery or another mutation.
+  const [leftResult, rightResult] = await Promise.allSettled([left, right]);
+  return [
+    unwrapSettledResult({ result: leftResult }),
+    unwrapSettledResult({ result: rightResult }),
+  ];
+}
+
 type HizoFSSessionResource = {
   dispose(): Promise<void>;
 };
@@ -424,20 +460,22 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           size: 0,
           storage: { type: "inline" },
         };
-        const fileInodeObjectId = await this.runtime.inodeStore.writeFile({
-          inode: fileInode,
-          binaryPayload: new Uint8Array(),
-        });
-        const changedDirectory =
-          await this.runtime.directoryStorage.writeChangedInode({
-            inode: directory.inode,
-            changes: [
-              {
-                type: "set",
-                entry: { name, kind: "file", nodeId: childNodeId },
-              },
-            ],
-            modifiedAt: timestamp,
+        const [fileInodeObjectId, changedDirectory] =
+          await awaitIndependentWrites({
+            left: this.runtime.inodeStore.writeFile({
+              inode: fileInode,
+              binaryPayload: new Uint8Array(),
+            }),
+            right: this.runtime.directoryStorage.writeChangedInode({
+              inode: directory.inode,
+              changes: [
+                {
+                  type: "set",
+                  entry: { name, kind: "file", nodeId: childNodeId },
+                },
+              ],
+              modifiedAt: timestamp,
+            }),
           });
         const inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
@@ -526,19 +564,19 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           modifiedAt: timestamp,
           storage: { type: "inline", entries: [] },
         };
-        const childInodeObjectId = await this.runtime.inodeStore.writeDirectory(
-          { inode: childInode },
-        );
-        const changedDirectory =
-          await this.runtime.directoryStorage.writeChangedInode({
-            inode: directory.inode,
-            changes: [
-              {
-                type: "set",
-                entry: { name, kind: "directory", nodeId: childNodeId },
-              },
-            ],
-            modifiedAt: timestamp,
+        const [childInodeObjectId, changedDirectory] =
+          await awaitIndependentWrites({
+            left: this.runtime.inodeStore.writeDirectory({ inode: childInode }),
+            right: this.runtime.directoryStorage.writeChangedInode({
+              inode: directory.inode,
+              changes: [
+                {
+                  type: "set",
+                  entry: { name, kind: "directory", nodeId: childNodeId },
+                },
+              ],
+              modifiedAt: timestamp,
+            }),
           });
         const inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
@@ -665,19 +703,19 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           modifiedAt: timestamp,
           target,
         };
-        const inodeObjectId = await this.runtime.inodeStore.writeSymlink({
-          inode,
-        });
-        const changedDirectory =
-          await this.runtime.directoryStorage.writeChangedInode({
-            inode: directory.inode,
-            changes: [
-              {
-                type: "set",
-                entry: { name, kind: "symlink", nodeId: childNodeId },
-              },
-            ],
-            modifiedAt: timestamp,
+        const [inodeObjectId, changedDirectory] =
+          await awaitIndependentWrites({
+            left: this.runtime.inodeStore.writeSymlink({ inode }),
+            right: this.runtime.directoryStorage.writeChangedInode({
+              inode: directory.inode,
+              changes: [
+                {
+                  type: "set",
+                  entry: { name, kind: "symlink", nodeId: childNodeId },
+                },
+              ],
+              modifiedAt: timestamp,
+            }),
           });
         const inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
@@ -1049,8 +1087,6 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           nodeId,
           timestamp,
         });
-        const inodeObjectId =
-          await this.runtime.inodeStore.writeFile(clonedFile);
         const directoryChanges: HizoFSDirectoryChange[] = [];
         if (destinationEntry !== undefined) {
           directoryChanges.push({ type: "delete", name: newName });
@@ -1059,11 +1095,14 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           type: "set",
           entry: { name: newName, kind: "file", nodeId },
         });
-        const changedDestination =
-          await this.runtime.directoryStorage.writeChangedInode({
-            inode: destinationDirectory.inode,
-            changes: directoryChanges,
-            modifiedAt: timestamp,
+        const [inodeObjectId, changedDestination] =
+          await awaitIndependentWrites({
+            left: this.runtime.inodeStore.writeFile(clonedFile),
+            right: this.runtime.directoryStorage.writeChangedInode({
+              inode: destinationDirectory.inode,
+              changes: directoryChanges,
+              modifiedAt: timestamp,
+            }),
           });
         let inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
@@ -1209,6 +1248,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       streamChunkSize: this.runtime.policy.readerStreamChunkSize,
       prefetchConcurrency: this.runtime.policy.fileChunkReadPrefetchConcurrency,
       maintenanceLease,
+      diagnostics: this.runtime.diagnostics,
       onSettled: () => this.resources.delete(resource),
     });
     const resource: HizoFSSessionResource = { dispose: () => reader.close() };
@@ -1247,6 +1287,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       keepExistingData,
       now: this.runtime.now,
       maintenanceLease,
+      diagnostics: this.runtime.diagnostics,
       onSettled: () => this.resources.delete(resource),
     });
     const resource: HizoFSSessionResource = {

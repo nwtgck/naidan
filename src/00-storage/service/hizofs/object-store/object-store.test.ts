@@ -12,15 +12,21 @@ async function createStore({
   root,
   rootKeyByte,
   fileSystemId,
+  fileChunkCacheAdmission = 'read_only',
 }: {
   root: FileSystemDirectoryHandle;
   rootKeyByte: number;
   fileSystemId: string;
+  fileChunkCacheAdmission?: 'read_only' | 'read_write';
 }): Promise<{
   readonly backingStore: NativeOpfsHizoFSBackingStore;
   readonly store: HizoFSObjectStore;
 }> {
-  const backingStore = new NativeOpfsHizoFSBackingStore({ root });
+  const backingStore = new NativeOpfsHizoFSBackingStore({
+    root,
+    fileHandleCacheEntryLimit: 64,
+    diagnostics: undefined,
+  });
   const rootKey = await importHizoFSRootKey({
     rawRootKey: new Uint8Array(32).fill(rootKeyByte),
   });
@@ -34,6 +40,7 @@ async function createStore({
       metadataCacheEntryLimit: 64,
       fileChunkCacheByteLimit: 1024,
       fileChunkCacheEntryLimit: 64,
+      fileChunkCacheAdmission,
     }),
   };
 }
@@ -71,6 +78,7 @@ describe('HizoFS immutable object store', () => {
       root,
       rootKeyByte: 1,
       fileSystemId: 'filesystem-a',
+      fileChunkCacheAdmission: 'read_write',
     });
     const objectId = await store.create({
       record: {
@@ -91,9 +99,61 @@ describe('HizoFS immutable object store', () => {
     expect(second?.binaryPayload).toEqual(new Uint8Array([1, 2, 3]));
   });
 
+
+  it('admits file chunks on first read without polluting the cache on write', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { backingStore, store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: 'filesystem-a',
+      fileChunkCacheAdmission: 'read_only',
+    });
+    const objectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([1, 2, 3]),
+      },
+    });
+    const readSpy = vi.spyOn(backingStore, 'read');
+
+    await store.read({ objectId });
+    await store.read({ objectId });
+
+    expect(readSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('can retain newly written file chunks for controlled benchmark comparison', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { backingStore, store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: 'filesystem-a',
+      fileChunkCacheAdmission: 'read_write',
+    });
+    const objectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([1, 2, 3]),
+      },
+    });
+    const readSpy = vi.spyOn(backingStore, 'read');
+
+    await store.read({ objectId });
+
+    expect(readSpy).not.toHaveBeenCalled();
+  });
+
   it('honors a zero-byte cache budget without retaining immutable plaintext', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
-    const backingStore = new NativeOpfsHizoFSBackingStore({ root });
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
     const store = new HizoFSObjectStore({
       backingStore,
       rootKey: await importHizoFSRootKey({
@@ -104,6 +164,7 @@ describe('HizoFS immutable object store', () => {
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 0,
       fileChunkCacheEntryLimit: 0,
+      fileChunkCacheAdmission: 'read_only',
     });
     const objectId = await store.create({
       record: {
@@ -123,7 +184,11 @@ describe('HizoFS immutable object store', () => {
 
   it('evicts immutable plaintext by byte budget instead of growing without bound', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
-    const backingStore = new NativeOpfsHizoFSBackingStore({ root });
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
     const store = new HizoFSObjectStore({
       backingStore,
       rootKey: await importHizoFSRootKey({
@@ -134,6 +199,7 @@ describe('HizoFS immutable object store', () => {
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 64,
       fileChunkCacheEntryLimit: 64,
+      fileChunkCacheAdmission: 'read_only',
     });
     const firstObjectId = await store.create({
       record: {
@@ -161,7 +227,11 @@ describe('HizoFS immutable object store', () => {
 
   it('also bounds cache entry overhead when immutable records are small', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
-    const backingStore = new NativeOpfsHizoFSBackingStore({ root });
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
     const store = new HizoFSObjectStore({
       backingStore,
       rootKey: await importHizoFSRootKey({
@@ -172,6 +242,7 @@ describe('HizoFS immutable object store', () => {
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 1024,
       fileChunkCacheEntryLimit: 1,
+      fileChunkCacheAdmission: 'read_only',
     });
     const firstObjectId = await store.create({
       record: {
@@ -203,6 +274,7 @@ describe('HizoFS immutable object store', () => {
       root,
       rootKeyByte: 1,
       fileSystemId: 'filesystem-a',
+      fileChunkCacheAdmission: 'read_write',
     });
     const objectId = await store.create({
       record: {

@@ -8,6 +8,15 @@ import type { HizoFSInodeStore } from "./inode-store";
 import type { HizoFSMaintenanceLease } from "./maintenance-lock";
 import type { HizoFSNodeService, LoadedHizoFSFile } from "./node-service";
 import type { HizoFSPolicy } from "./policy";
+import type { HizoFSRuntimeDiagnostics } from './diagnostics';
+
+type PendingChunkFlushResult =
+  | { readonly status: 'fulfilled' }
+  | { readonly status: 'rejected'; readonly error: unknown };
+
+type PendingChunkFlush = {
+  readonly result: Promise<PendingChunkFlushResult>;
+};
 
 function assertNonNegativeSafeInteger({
   value,
@@ -33,6 +42,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     keepExistingData,
     now,
     maintenanceLease,
+    diagnostics,
     onSettled,
   }: {
     core: HizoFSCore;
@@ -45,6 +55,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     keepExistingData: boolean;
     now: () => number;
     maintenanceLease: HizoFSMaintenanceLease;
+    diagnostics: HizoFSRuntimeDiagnostics | undefined;
     onSettled: () => void;
   }) {
     this.core = core;
@@ -57,6 +68,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     this.keepExistingData = keepExistingData;
     this.now = now;
     this.maintenanceLease = maintenanceLease;
+    this.diagnostics = diagnostics;
     this.onSettled = onSettled;
     this.chunkSize =
       keepExistingData && baseFile.inode.storage.type === "extents"
@@ -93,12 +105,14 @@ export class HizoFSFileWriter implements StorageWritableFile {
   private readonly keepExistingData: boolean;
   private readonly now: () => number;
   private readonly maintenanceLease: HizoFSMaintenanceLease;
+  private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
   private readonly onSettled: () => void;
   private readonly chunkSize: number;
   private readonly maxDirtyChunksInMemory: number;
   private readonly chunkWriteSemaphore: Semaphore;
   private readonly preparedChunks = new Map<number, string | undefined>();
   private readonly workingChunks = new Map<number, Uint8Array>();
+  private readonly pendingChunkFlushes = new Map<number, PendingChunkFlush>();
   private baseRetainedSize: number;
   private size: number;
   private dirty: "yes" | "no";
@@ -152,14 +166,14 @@ export class HizoFSFileWriter implements StorageWritableFile {
     this.assertOpen();
     assertNonNegativeSafeInteger({ value: size, fieldName: "Truncate size" });
     if (size === this.size) return;
+    await this.waitForAllPendingChunkFlushes({ failureMode: 'throw' });
 
     if (size < this.size) {
       this.baseRetainedSize = Math.min(this.baseRetainedSize, size);
       const retainedChunkCount = Math.ceil(size / this.chunkSize);
       for (const chunkIndex of [...this.workingChunks.keys()]) {
         if (chunkIndex >= retainedChunkCount) {
-          this.workingChunks.get(chunkIndex)?.fill(0);
-          this.workingChunks.delete(chunkIndex);
+          this.takeWorkingChunk({ chunkIndex })?.fill(0);
           this.preparedChunks.set(chunkIndex, undefined);
         }
       }
@@ -190,9 +204,9 @@ export class HizoFSFileWriter implements StorageWritableFile {
     this.settled = true;
     try {
       switch (this.dirty) {
-      case "no":
+      case 'no':
         return;
-      case "yes":
+      case 'yes':
         break;
       default: {
         const _ex: never = this.dirty;
@@ -200,6 +214,10 @@ export class HizoFSFileWriter implements StorageWritableFile {
       }
       }
 
+      // Immutable chunks and the replacement inode can be prepared without the
+      // mutation lock. A concurrent revision change only leaves unreachable
+      // objects, while publication remains guarded by the revision check below.
+      const { nextInode, inodeObjectId } = await this.prepareChangedFile();
       await this.core.mutateWithResourceLeaseHeld({
         operation: async ({ state }) => {
           const currentFile = await this.nodeService.readFile({
@@ -207,50 +225,15 @@ export class HizoFSFileWriter implements StorageWritableFile {
             nodeId: this.baseFile.inode.nodeId,
           });
           if (currentFile.inode.revision !== this.baseFile.inode.revision) {
-            throw new Error("HizoFS file changed while its writer was open");
+            throw new Error('HizoFS file changed while its writer was open');
           }
-
-          const modifiedAt = this.now();
-          let nextInode: HizoFSFileInodeDto;
-          let binaryPayload: Uint8Array;
-          if (this.size <= this.policy.inlineFileByteLimit) {
-            binaryPayload = await this.materializeInlineBytes();
-            nextInode = {
-              nodeId: currentFile.inode.nodeId,
-              revision: currentFile.inode.revision + 1,
-              createdAt: currentFile.inode.createdAt,
-              modifiedAt,
-              size: this.size,
-              storage: { type: "inline" },
-            };
-          } else {
-            const extentIndexRootObjectId = await this.buildExtentIndex();
-            binaryPayload = new Uint8Array();
-            nextInode = {
-              nodeId: currentFile.inode.nodeId,
-              revision: currentFile.inode.revision + 1,
-              createdAt: currentFile.inode.createdAt,
-              modifiedAt,
-              size: this.size,
-              storage: {
-                type: "extents",
-                chunkSize: this.chunkSize,
-                extentIndexRootObjectId,
-              },
-            };
-          }
-
-          const inodeObjectId = await this.inodeStore.writeFile({
-            inode: nextInode,
-            binaryPayload,
-          });
           const inodeIndexRootObjectId = await this.nodeService.setInode({
             inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
             nodeId: nextInode.nodeId,
             inodeObjectId,
           });
           return {
-            changed: "yes" as const,
+            changed: 'yes' as const,
             inodeIndexRootObjectId,
             result: undefined,
           };
@@ -258,8 +241,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
       });
     } finally {
       try {
-        this.clearWorkingChunks();
-        await this.maintenanceLease.release();
+        await this.releaseResources();
       } finally {
         this.onSettled();
       }
@@ -270,10 +252,65 @@ export class HizoFSFileWriter implements StorageWritableFile {
     if (this.settled) return;
     this.settled = true;
     try {
-      this.clearWorkingChunks();
-      await this.maintenanceLease.release();
+      await this.releaseResources();
     } finally {
       this.onSettled();
+    }
+  }
+
+  private async releaseResources(): Promise<void> {
+    try {
+      await this.waitForAllPendingChunkFlushes({ failureMode: 'ignore' });
+    } finally {
+      try {
+        this.clearWorkingChunks();
+      } finally {
+        await this.maintenanceLease.release();
+      }
+    }
+  }
+
+  private async prepareChangedFile(): Promise<{
+    readonly nextInode: HizoFSFileInodeDto;
+    readonly inodeObjectId: string;
+  }> {
+    const modifiedAt = this.now();
+    let nextInode: HizoFSFileInodeDto;
+    let binaryPayload: Uint8Array;
+    if (this.size <= this.policy.inlineFileByteLimit) {
+      binaryPayload = await this.materializeInlineBytes();
+      nextInode = {
+        nodeId: this.baseFile.inode.nodeId,
+        revision: this.baseFile.inode.revision + 1,
+        createdAt: this.baseFile.inode.createdAt,
+        modifiedAt,
+        size: this.size,
+        storage: { type: 'inline' },
+      };
+    } else {
+      const extentIndexRootObjectId = await this.buildExtentIndex();
+      binaryPayload = new Uint8Array();
+      nextInode = {
+        nodeId: this.baseFile.inode.nodeId,
+        revision: this.baseFile.inode.revision + 1,
+        createdAt: this.baseFile.inode.createdAt,
+        modifiedAt,
+        size: this.size,
+        storage: {
+          type: 'extents',
+          chunkSize: this.chunkSize,
+          extentIndexRootObjectId,
+        },
+      };
+    }
+    try {
+      const inodeObjectId = await this.inodeStore.writeFile({
+        inode: nextInode,
+        binaryPayload,
+      });
+      return { nextInode, inodeObjectId };
+    } finally {
+      binaryPayload.fill(0);
     }
   }
 
@@ -429,6 +466,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
       return working;
     }
 
+    await this.waitForPendingChunkFlush({ chunkIndex });
     const preparedObjectId = this.preparedChunks.get(chunkIndex);
     if (this.preparedChunks.has(chunkIndex)) {
       return preparedObjectId === undefined
@@ -489,13 +527,13 @@ export class HizoFSFileWriter implements StorageWritableFile {
     bytes: Uint8Array;
     logicalFileSize: number;
   }): Promise<void> {
-    this.workingChunks.delete(chunkIndex);
-    this.workingChunks.set(chunkIndex, bytes);
+    this.setWorkingChunk({ chunkIndex, bytes });
     while (this.workingChunks.size > this.maxDirtyChunksInMemory) {
+      await this.waitForPendingChunkFlushCapacity();
       const oldestChunkIndex = this.workingChunks.keys().next().value as
         number | undefined;
       if (oldestChunkIndex === undefined) break;
-      await this.flushWorkingChunk({
+      this.scheduleWorkingChunkFlush({
         chunkIndex: oldestChunkIndex,
         logicalFileSize,
       });
@@ -503,6 +541,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
   }
 
   private async flushAllWorkingChunks(): Promise<void> {
+    await this.waitForAllPendingChunkFlushes({ failureMode: 'throw' });
     const tasks = [...this.workingChunks.keys()].map(chunkIndex =>
       this.chunkWriteSemaphore.run({
         task: async () => this.flushWorkingChunk({
@@ -513,7 +552,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
     );
     const results = await Promise.allSettled(tasks);
     const failure = results.find(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
     );
     if (failure !== undefined) throw failure.reason;
   }
@@ -525,14 +564,211 @@ export class HizoFSFileWriter implements StorageWritableFile {
     chunkIndex: number;
     logicalFileSize: number;
   }): Promise<void> {
-    const bytes = this.workingChunks.get(chunkIndex);
+    const bytes = this.takeWorkingChunk({ chunkIndex });
     if (bytes === undefined) return;
-    this.workingChunks.delete(chunkIndex);
     const logicalLength = Math.max(
       0,
       Math.min(this.chunkSize, logicalFileSize - chunkIndex * this.chunkSize),
     );
-    await this.persistWorkingChunk({ chunkIndex, bytes, logicalLength });
+    this.adjustPendingChunkWriteUsage({
+      byteDelta: bytes.byteLength,
+      operationDelta: 1,
+    });
+    try {
+      await this.persistWorkingChunk({ chunkIndex, bytes, logicalLength });
+    } finally {
+      this.adjustPendingChunkWriteUsage({
+        byteDelta: -bytes.byteLength,
+        operationDelta: -1,
+      });
+    }
+  }
+
+  private scheduleWorkingChunkFlush({
+    chunkIndex,
+    logicalFileSize,
+  }: {
+    chunkIndex: number;
+    logicalFileSize: number;
+  }): void {
+    if (this.pendingChunkFlushes.has(chunkIndex)) {
+      throw new Error('HizoFS chunk already has a pending immutable write');
+    }
+    const bytes = this.takeWorkingChunk({ chunkIndex });
+    if (bytes === undefined) return;
+    const logicalLength = Math.max(
+      0,
+      Math.min(this.chunkSize, logicalFileSize - chunkIndex * this.chunkSize),
+    );
+    this.adjustPendingChunkWriteUsage({
+      byteDelta: bytes.byteLength,
+      operationDelta: 1,
+    });
+    const result = this.chunkWriteSemaphore.run({
+      task: async (): Promise<PendingChunkFlushResult> => {
+        try {
+          await this.persistWorkingChunk({ chunkIndex, bytes, logicalLength });
+          return { status: 'fulfilled' };
+        } catch (error) {
+          return { status: 'rejected', error };
+        } finally {
+          this.adjustPendingChunkWriteUsage({
+            byteDelta: -bytes.byteLength,
+            operationDelta: -1,
+          });
+        }
+      },
+    });
+    this.pendingChunkFlushes.set(chunkIndex, { result });
+  }
+
+  private async waitForPendingChunkFlushCapacity(): Promise<void> {
+    while (
+      this.pendingChunkFlushes.size >= this.policy.fileChunkWriteConcurrency
+    ) {
+      const oldestChunkIndex = this.pendingChunkFlushes.keys().next().value as
+        number | undefined;
+      if (oldestChunkIndex === undefined) return;
+      await this.waitForPendingChunkFlush({ chunkIndex: oldestChunkIndex });
+    }
+  }
+
+  private async waitForPendingChunkFlush({
+    chunkIndex,
+  }: {
+    chunkIndex: number;
+  }): Promise<void> {
+    const pending = this.pendingChunkFlushes.get(chunkIndex);
+    if (pending === undefined) return;
+    let result: PendingChunkFlushResult;
+    try {
+      result = await pending.result;
+    } finally {
+      if (this.pendingChunkFlushes.get(chunkIndex) === pending) {
+        this.pendingChunkFlushes.delete(chunkIndex);
+      }
+    }
+    switch (result.status) {
+    case 'fulfilled':
+      return;
+    case 'rejected':
+      throw result.error;
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled HizoFS chunk flush result: ${String(_ex)}`);
+    }
+    }
+  }
+
+  private async waitForAllPendingChunkFlushes({
+    failureMode,
+  }: {
+    failureMode: 'ignore' | 'throw';
+  }): Promise<void> {
+    const entries = [...this.pendingChunkFlushes.entries()];
+    const results = await Promise.allSettled(
+      entries.map(([, pending]) => pending.result),
+    );
+    for (const [chunkIndex, pending] of entries) {
+      if (this.pendingChunkFlushes.get(chunkIndex) === pending) {
+        this.pendingChunkFlushes.delete(chunkIndex);
+      }
+    }
+    switch (failureMode) {
+    case 'ignore':
+      return;
+    case 'throw': {
+      const directFailure = results.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      if (directFailure !== undefined) throw directFailure.reason;
+      const flushFailure = results
+        .filter(
+          (result): result is PromiseFulfilledResult<PendingChunkFlushResult> =>
+            result.status === 'fulfilled',
+        )
+        .map(result => result.value)
+        .find(
+          (result): result is Extract<
+            PendingChunkFlushResult,
+            { status: 'rejected' }
+          > => result.status === 'rejected',
+        );
+      if (flushFailure !== undefined) throw flushFailure.error;
+      return;
+    }
+    default: {
+      const _ex: never = failureMode;
+      throw new Error(`Unhandled HizoFS pending flush failure mode: ${String(_ex)}`);
+    }
+    }
+  }
+
+  private setWorkingChunk({
+    chunkIndex,
+    bytes,
+  }: {
+    chunkIndex: number;
+    bytes: Uint8Array;
+  }): void {
+    const previous = this.workingChunks.get(chunkIndex);
+    if (previous === undefined) {
+      this.adjustDirtyChunkUsage({
+        byteDelta: bytes.byteLength,
+        operationDelta: 1,
+      });
+    } else if (previous !== bytes) {
+      previous.fill(0);
+      this.adjustDirtyChunkUsage({
+        byteDelta: bytes.byteLength - previous.byteLength,
+        operationDelta: 0,
+      });
+    }
+    this.workingChunks.delete(chunkIndex);
+    this.workingChunks.set(chunkIndex, bytes);
+  }
+
+  private takeWorkingChunk({
+    chunkIndex,
+  }: {
+    chunkIndex: number;
+  }): Uint8Array | undefined {
+    const bytes = this.workingChunks.get(chunkIndex);
+    if (bytes === undefined) return undefined;
+    this.workingChunks.delete(chunkIndex);
+    this.adjustDirtyChunkUsage({
+      byteDelta: -bytes.byteLength,
+      operationDelta: -1,
+    });
+    return bytes;
+  }
+
+  private adjustDirtyChunkUsage({
+    byteDelta,
+    operationDelta,
+  }: {
+    byteDelta: number;
+    operationDelta: number;
+  }): void {
+    this.diagnostics?.adjustResourceUsage({
+      resource: 'writer_dirty_chunks',
+      byteDelta,
+      operationDelta,
+    });
+  }
+
+  private adjustPendingChunkWriteUsage({
+    byteDelta,
+    operationDelta,
+  }: {
+    byteDelta: number;
+    operationDelta: number;
+  }): void {
+    this.diagnostics?.adjustResourceUsage({
+      resource: 'writer_pending_chunk_writes',
+      byteDelta,
+      operationDelta,
+    });
   }
 
   private async readChunkObject({
@@ -578,10 +814,21 @@ export class HizoFSFileWriter implements StorageWritableFile {
   }
 
   private clearWorkingChunks(): void {
-    for (const bytes of this.workingChunks.values()) {
-      bytes.fill(0);
+    const entries = [...this.workingChunks.values()];
+    for (const bytes of entries) bytes.fill(0);
+    try {
+      if (entries.length > 0) {
+        this.adjustDirtyChunkUsage({
+          byteDelta: -entries.reduce(
+            (total, bytes) => total + bytes.byteLength,
+            0,
+          ),
+          operationDelta: -entries.length,
+        });
+      }
+    } finally {
+      this.workingChunks.clear();
     }
-    this.workingChunks.clear();
   }
 
   private assertOpen(): void {
