@@ -3,14 +3,17 @@ import { createHizoFSRuntimeDiagnostics } from '@/00-storage/service/hizofs';
 import { createHizoFSBenchmarkPresetConfiguration } from './presets';
 import {
   serializeHizoFSBenchmarkFullReport,
+  serializeHizoFSBenchmarkStudyFullReport,
+  serializeHizoFSBenchmarkStudySummaryReport,
   serializeHizoFSBenchmarkSummaryReport,
 } from './report';
+import { createHizoFSBenchmarkStudyReport } from './studies';
 import type { HizoFSBenchmarkReport } from './types';
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 7,
-    benchmarkImplementationVersion: 7,
+    schemaVersion: 8,
+    benchmarkImplementationVersion: 8,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -61,7 +64,7 @@ function createReport(): HizoFSBenchmarkReport {
           durationMs: { median: 1, p95: 1, minimum: 1, maximum: 1 },
           operationsPerSecond: 1,
           throughputBytesPerSecond: undefined,
-          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0 },
+          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0, bulkBuilderCreates: 0, bulkEntryCreates: 0, bulkCommits: 0 },
           memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: undefined,
           samples: [{
@@ -84,7 +87,7 @@ function createReport(): HizoFSBenchmarkReport {
               readCalls: 0,
               directoryLists: 0,
               removeCalls: 0,
-              cloneCalls: 0,
+              cloneCalls: 0, bulkBuilderCreates: 0, bulkEntryCreates: 0, bulkCommits: 0,
             },
             memory: {
               maximumTrackedBytes: 0,
@@ -99,7 +102,7 @@ function createReport(): HizoFSBenchmarkReport {
           durationMs: { median: 2, p95: 2, minimum: 2, maximum: 2 },
           operationsPerSecond: 0.5,
           throughputBytesPerSecond: undefined,
-          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0 },
+          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0, bulkBuilderCreates: 0, bulkEntryCreates: 0, bulkCommits: 0 },
           memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: {
             backingStore: {
@@ -144,7 +147,7 @@ function createReport(): HizoFSBenchmarkReport {
               readCalls: 0,
               directoryLists: 0,
               removeCalls: 0,
-              cloneCalls: 0,
+              cloneCalls: 0, bulkBuilderCreates: 0, bulkEntryCreates: 0, bulkCommits: 0,
             },
             memory: {
               maximumTrackedBytes: 64,
@@ -247,4 +250,37 @@ describe('HizoFS benchmark report serialization', () => {
     });
     expect(summary.failure.errorStack).toBeUndefined();
   });
+
+  it('serializes full and summary study reports without duplicating samples', () => {
+    const benchmarkReport = createReport();
+    const report = createHizoFSBenchmarkStudyReport({
+      studyId: 'study-id',
+      studyKind: 'bulk_transaction',
+      generatedAt: '2026-07-17T00:00:00.000Z',
+      baseConfiguration: benchmarkReport.configuration,
+      plannedVariantCount: 1,
+      variants: [{
+        variantId: 'bulk',
+        label: 'Bulk comparison',
+        report: benchmarkReport,
+      }],
+    });
+
+    const full = JSON.parse(serializeHizoFSBenchmarkStudyFullReport({ report })) as {
+      variants: Array<{ report: { results: Array<{ backends: {
+        rawOpfs: { samples?: unknown };
+      } }> } }>;
+    };
+    const summary = JSON.parse(serializeHizoFSBenchmarkStudySummaryReport({ report })) as {
+      variants: Array<{ report: { results: Array<{ backends: {
+        rawOpfs: { samples?: unknown };
+      } }> } }>;
+    };
+
+    expect(full.variants[0]?.report.results[0]?.backends.rawOpfs.samples)
+      .toBeDefined();
+    expect(summary.variants[0]?.report.results[0]?.backends.rawOpfs.samples)
+      .toBeUndefined();
+  });
+
 });

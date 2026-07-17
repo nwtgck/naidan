@@ -1,6 +1,7 @@
 import type {
   HizoFSBenchmarkConfiguration,
   HizoFSBenchmarkReport,
+  HizoFSBenchmarkStudyReport,
 } from './types';
 
 export function serializeHizoFSBenchmarkConfiguration({
@@ -24,24 +25,52 @@ export function serializeHizoFSBenchmarkSummaryReport({
 }: {
   report: HizoFSBenchmarkReport;
 }): string {
+  return JSON.stringify(createHizoFSBenchmarkSummary({ report }), undefined, 2);
+}
+
+export function serializeHizoFSBenchmarkStudyFullReport({
+  report,
+}: {
+  report: HizoFSBenchmarkStudyReport;
+}): string {
+  return JSON.stringify(report, undefined, 2);
+}
+
+export function serializeHizoFSBenchmarkStudySummaryReport({
+  report,
+}: {
+  report: HizoFSBenchmarkStudyReport;
+}): string {
+  const {
+    variants,
+    ...reportWithoutVariants
+  } = report;
+  return JSON.stringify({
+    ...reportWithoutVariants,
+    variants: variants.map(variant => ({
+      variantId: variant.variantId,
+      label: variant.label,
+      report: createHizoFSBenchmarkSummary({ report: variant.report }),
+    })),
+  }, undefined, 2);
+}
+
+function createHizoFSBenchmarkSummary({
+  report,
+}: {
+  report: HizoFSBenchmarkReport;
+}): Omit<HizoFSBenchmarkReport, 'results' | 'failure'> & {
+  readonly results: readonly ReturnType<typeof createCaseSummary>[];
+  readonly failure: HizoFSBenchmarkReport['failure'];
+} {
   const {
     results,
     failure,
     ...reportWithoutResultsAndFailure
   } = report;
-  const summary = {
+  return {
     ...reportWithoutResultsAndFailure,
-    results: results.map(result => ({
-      ...result,
-      backends: {
-        rawOpfs: result.backends.rawOpfs === undefined
-          ? undefined
-          : omitSamples({ result: result.backends.rawOpfs }),
-        hizofs: result.backends.hizofs === undefined
-          ? undefined
-          : omitSamples({ result: result.backends.hizofs }),
-      },
-    })),
+    results: results.map(result => createCaseSummary({ result })),
     failure: failure === undefined
       ? undefined
       : {
@@ -49,7 +78,24 @@ export function serializeHizoFSBenchmarkSummaryReport({
         errorStack: undefined,
       },
   };
-  return JSON.stringify(summary, undefined, 2);
+}
+
+function createCaseSummary({
+  result,
+}: {
+  result: HizoFSBenchmarkReport['results'][number];
+}) {
+  return {
+    ...result,
+    backends: {
+      rawOpfs: result.backends.rawOpfs === undefined
+        ? undefined
+        : omitSamples({ result: result.backends.rawOpfs }),
+      hizofs: result.backends.hizofs === undefined
+        ? undefined
+        : omitSamples({ result: result.backends.hizofs }),
+    },
+  };
 }
 
 function omitSamples({

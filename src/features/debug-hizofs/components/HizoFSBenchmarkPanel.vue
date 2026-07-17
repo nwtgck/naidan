@@ -15,8 +15,14 @@ import {
 import {
   serializeHizoFSBenchmarkConfiguration,
   serializeHizoFSBenchmarkFullReport,
+  serializeHizoFSBenchmarkStudyFullReport,
+  serializeHizoFSBenchmarkStudySummaryReport,
   serializeHizoFSBenchmarkSummaryReport,
 } from '@/features/debug-hizofs/benchmark/report';
+import {
+  createHizoFSBenchmarkStudyPlan,
+  createHizoFSBenchmarkStudyReport,
+} from '@/features/debug-hizofs/benchmark/studies';
 import {
   hizoFSBenchmarkConfigurationSchema,
   type HizoFSBenchmarkBackendMode,
@@ -24,33 +30,111 @@ import {
   type HizoFSBenchmarkPreset,
   type HizoFSBenchmarkProgress,
   type HizoFSBenchmarkReport,
+  type HizoFSBenchmarkStudyKind,
+  type HizoFSBenchmarkStudyReport,
   type HizoFSBenchmarkWorkload,
 } from '@/features/debug-hizofs/benchmark/types';
 import { createHizoFSBenchmarkWorkerClient } from '@/features/debug-hizofs/worker/client';
 import type { HizoFSBenchmarkWorkerClient } from '@/features/debug-hizofs/worker/types';
 
+type BenchmarkRunMode = 'single' | HizoFSBenchmarkStudyKind;
+
+type StudyVariantProgress = {
+  readonly index: number;
+  readonly total: number;
+  readonly label: string;
+};
+
+type StudyResultRow = {
+  readonly key: string;
+  readonly variantLabel: string;
+  readonly status: HizoFSBenchmarkReport['status'];
+  readonly configurationSummary: string;
+  readonly caseLabel: string;
+  readonly rawMedian: number | undefined;
+  readonly hizoFSMedian: number | undefined;
+  readonly durationRatio: number | undefined;
+};
+
 const configuration = ref<HizoFSBenchmarkConfiguration>(
   createHizoFSBenchmarkPresetConfiguration({ preset: 'standard' }),
 );
+const runMode = ref<BenchmarkRunMode>('single');
 const advancedOpen = ref(false);
 const configurationImportOpen = ref(false);
 const configurationImportText = ref('');
 const configurationImportError = ref<string>();
 const running = ref(false);
 const cancelling = ref(false);
+const cancelRequested = ref(false);
 const cleaningData = ref(false);
 const progress = ref<HizoFSBenchmarkProgress>();
+const studyVariantProgress = ref<StudyVariantProgress>();
 const report = ref<HizoFSBenchmarkReport>();
+const studyReport = ref<HizoFSBenchmarkStudyReport>();
 const errorMessage = ref<string>();
 const copyStatus = ref<string>();
 let benchmarkClient: HizoFSBenchmarkWorkerClient | undefined;
 
-const estimatedWrittenBytes = computed(() => estimateHizoFSBenchmarkWrittenBytes({
-  configuration: configuration.value,
-}));
+const estimatedWrittenBytes = computed(() => {
+  const parsed = hizoFSBenchmarkConfigurationSchema.safeParse(configuration.value);
+  if (!parsed.success) return 0;
+  switch (runMode.value) {
+  case 'single':
+    return estimateHizoFSBenchmarkWrittenBytes({ configuration: parsed.data });
+  case 'policy_matrix':
+  case 'large_write':
+  case 'lifecycle_matrix':
+  case 'bulk_transaction':
+    return createHizoFSBenchmarkStudyPlan({
+      studyKind: runMode.value,
+      baseConfiguration: parsed.data,
+    }).reduce((total, variant) => (
+      total + estimateHizoFSBenchmarkWrittenBytes({
+        configuration: variant.configuration,
+      })
+    ), 0);
+  default: {
+    const _ex: never = runMode.value;
+    throw new Error(`Unhandled benchmark run mode: ${String(_ex)}`);
+  }
+  }
+});
 const selectedWorkloadLabels = computed(() => configuration.value.workloads
   .map(workload => workloadLabel({ workload }))
   .join(', '));
+
+const studyResultRows = computed<readonly StudyResultRow[]>(() => {
+  const currentStudyReport = studyReport.value;
+  if (currentStudyReport === undefined) return [];
+  return currentStudyReport.variants.flatMap(variant => {
+    const configurationSummary = summarizeStudyConfiguration({
+      configuration: variant.report.configuration,
+    });
+    if (variant.report.results.length === 0) {
+      return [{
+        key: `${variant.variantId}/empty`,
+        variantLabel: variant.label,
+        status: variant.report.status,
+        configurationSummary,
+        caseLabel: 'No completed cases',
+        rawMedian: undefined,
+        hizoFSMedian: undefined,
+        durationRatio: undefined,
+      }];
+    }
+    return variant.report.results.map(result => ({
+      key: `${variant.variantId}/${result.workload}/${result.caseId}`,
+      variantLabel: variant.label,
+      status: variant.report.status,
+      configurationSummary,
+      caseLabel: result.label,
+      rawMedian: result.backends.rawOpfs?.durationMs.median,
+      hizoFSMedian: result.backends.hizofs?.durationMs.median,
+      durationRatio: result.comparison?.durationRatio,
+    }));
+  });
+});
 const progressPercent = computed(() => {
   const value = progress.value;
   if (value === undefined) return 0;
@@ -147,18 +231,87 @@ async function runBenchmark(): Promise<void> {
   if (running.value) return;
   errorMessage.value = undefined;
   report.value = undefined;
+  studyReport.value = undefined;
   progress.value = undefined;
+  studyVariantProgress.value = undefined;
   running.value = true;
   cancelling.value = false;
+  cancelRequested.value = false;
   try {
     const parsed = hizoFSBenchmarkConfigurationSchema.parse(configuration.value);
     benchmarkClient = await createHizoFSBenchmarkWorkerClient();
-    report.value = await benchmarkClient.runBenchmark({
-      configuration: parsed,
-      onProgress: ({ progress: nextProgress }) => {
-        progress.value = nextProgress;
-      },
+    if (cancelRequested.value) return;
+    const currentRunMode = runMode.value;
+    let studyKind: HizoFSBenchmarkStudyKind;
+    switch (currentRunMode) {
+    case 'single':
+      report.value = await benchmarkClient.runBenchmark({
+        configuration: parsed,
+        onProgress: ({ progress: nextProgress }) => {
+          progress.value = nextProgress;
+        },
+      });
+      return;
+    case 'policy_matrix':
+    case 'large_write':
+    case 'lifecycle_matrix':
+    case 'bulk_transaction':
+      studyKind = currentRunMode;
+      break;
+    default: {
+      const _ex: never = currentRunMode;
+      throw new Error(`Unhandled benchmark run mode: ${String(_ex)}`);
+    }
+    }
+
+    const plan = createHizoFSBenchmarkStudyPlan({
+      studyKind,
+      baseConfiguration: parsed,
     });
+    const completedVariants: Array<{
+      readonly variantId: string;
+      readonly label: string;
+      readonly report: HizoFSBenchmarkReport;
+    }> = [];
+    const studyId = createStudyId();
+    const generatedAt = new Date().toISOString();
+    const updateStudyReport = (): void => {
+      studyReport.value = createHizoFSBenchmarkStudyReport({
+        studyId,
+        studyKind,
+        generatedAt,
+        baseConfiguration: parsed,
+        plannedVariantCount: plan.length,
+        variants: completedVariants,
+      });
+    };
+    for (const [index, variant] of plan.entries()) {
+      if (cancelRequested.value) break;
+      studyVariantProgress.value = {
+        index: index + 1,
+        total: plan.length,
+        label: variant.label,
+      };
+      const variantReport = await benchmarkClient.runBenchmark({
+        configuration: variant.configuration,
+        onProgress: ({ progress: nextProgress }) => {
+          progress.value = nextProgress;
+        },
+      });
+      completedVariants.push({
+        variantId: variant.variantId,
+        label: variant.label,
+        report: variantReport,
+      });
+      updateStudyReport();
+      if (
+        cancelRequested.value
+        || !shouldContinueStudy({ status: variantReport.status })
+      ) {
+        break;
+      }
+    }
+    updateStudyReport();
   } catch (error) {
     errorMessage.value = toErrorMessage({ error });
   } finally {
@@ -173,6 +326,8 @@ async function runBenchmark(): Promise<void> {
     }
     running.value = false;
     cancelling.value = false;
+    cancelRequested.value = false;
+    studyVariantProgress.value = undefined;
   }
 }
 
@@ -198,10 +353,13 @@ async function cleanBenchmarkData(): Promise<void> {
 }
 
 async function cancelBenchmark(): Promise<void> {
-  if (benchmarkClient === undefined || cancelling.value) return;
+  if (!running.value || cancelling.value) return;
   cancelling.value = true;
+  cancelRequested.value = true;
+  const client = benchmarkClient;
+  if (client === undefined) return;
   try {
-    await benchmarkClient.cancelCurrentOperation();
+    await client.cancelCurrentOperation();
   } catch (error) {
     errorMessage.value = toErrorMessage({ error });
   }
@@ -235,6 +393,16 @@ function applyConfigurationImport(): void {
 }
 
 async function copySummaryJson(): Promise<void> {
+  const currentStudyReport = studyReport.value;
+  if (currentStudyReport !== undefined) {
+    await copyText({
+      text: serializeHizoFSBenchmarkStudySummaryReport({
+        report: currentStudyReport,
+      }),
+      status: 'Study summary JSON copied',
+    });
+    return;
+  }
   const currentReport = report.value;
   if (currentReport === undefined) return;
   await copyText({
@@ -244,6 +412,27 @@ async function copySummaryJson(): Promise<void> {
 }
 
 async function copyHumanSummary(): Promise<void> {
+  const currentStudyReport = studyReport.value;
+  if (currentStudyReport !== undefined) {
+    const lines = [
+      `HizoFS benchmark study: ${currentStudyReport.status}`,
+      `Study ID: ${currentStudyReport.studyId}`,
+      `Study kind: ${currentStudyReport.studyKind}`,
+      '',
+      '| Variant | Status | Case | HizoFS median | Raw median |',
+      '|---|---|---|---:|---:|',
+      ...currentStudyReport.variants.flatMap(variant => (
+        variant.report.results.map(result => (
+          `| ${variant.label} | ${variant.report.status} | ${result.label} | ${formatDuration({ value: result.backends.hizofs?.durationMs.median })} | ${formatDuration({ value: result.backends.rawOpfs?.durationMs.median })} |`
+        ))
+      )),
+    ];
+    await copyText({
+      text: lines.join('\n'),
+      status: 'Study Markdown summary copied',
+    });
+    return;
+  }
   const currentReport = report.value;
   if (currentReport === undefined) return;
   const lines = [
@@ -265,15 +454,34 @@ async function copyHumanSummary(): Promise<void> {
 }
 
 function downloadFullJson(): void {
+  const currentStudyReport = studyReport.value;
+  if (currentStudyReport !== undefined) {
+    downloadJson({
+      text: serializeHizoFSBenchmarkStudyFullReport({ report: currentStudyReport }),
+      fileName: `hizofs-benchmark-study-${currentStudyReport.studyId}.json`,
+    });
+    return;
+  }
   const currentReport = report.value;
   if (currentReport === undefined) return;
-  const blob = new Blob([
-    serializeHizoFSBenchmarkFullReport({ report: currentReport }),
-  ], { type: 'application/json' });
+  downloadJson({
+    text: serializeHizoFSBenchmarkFullReport({ report: currentReport }),
+    fileName: `hizofs-benchmark-${currentReport.runId}.json`,
+  });
+}
+
+function downloadJson({
+  text,
+  fileName,
+}: {
+  text: string;
+  fileName: string;
+}): void {
+  const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `hizofs-benchmark-${currentReport.runId}.json`;
+  anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
 }
@@ -285,6 +493,23 @@ async function copyText({ text, status }: { text: string; status: string }): Pro
   } catch (error) {
     errorMessage.value = toErrorMessage({ error });
   }
+}
+
+function summarizeStudyConfiguration({
+  configuration: value,
+}: {
+  configuration: HizoFSBenchmarkConfiguration;
+}): string {
+  const policy = value.hizoFSRuntimePolicy;
+  return [
+    value.backendMode,
+    value.storeLifecycle,
+    value.workloads.join('+'),
+    `write=${String(policy.fileChunkWriteConcurrency)}`,
+    `read=${String(policy.fileChunkReadPrefetchConcurrency)}`,
+    `handles=${String(policy.backingFileHandleCacheEntryLimit)}`,
+    `chunks=${formatBytes({ value: policy.fileChunkCacheByteLimit })}/${policy.fileChunkCacheAdmission}`,
+  ].join(' · ');
 }
 
 function formatBytes({ value }: { value: number }): string {
@@ -319,12 +544,39 @@ function workloadLabel({ workload }: { workload: HizoFSBenchmarkWorkload }): str
   case 'sequential_io': return 'Sequential I/O';
   case 'random_access': return 'Random access';
   case 'directory_operations': return 'Directory operations';
+  case 'bulk_operations': return 'Bulk operations';
   case 'hizofs_maintenance': return 'HizoFS maintenance';
   default: {
     const _ex: never = workload;
     return String(_ex);
   }
   }
+}
+
+function shouldContinueStudy({
+  status,
+}: {
+  status: HizoFSBenchmarkReport['status'];
+}): boolean {
+  switch (status) {
+  case 'completed':
+    return true;
+  case 'cancelled':
+  case 'failed':
+    return false;
+  default: {
+    const _ex: never = status;
+    throw new Error(`Unhandled benchmark report status: ${String(_ex)}`);
+  }
+  }
+}
+
+function createStudyId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return [...bytes]
+    .map(value => value.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 function toErrorMessage({ error }: { error: unknown }): string {
@@ -335,13 +587,16 @@ defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       configuration,
+      runMode,
       report,
+      studyReport,
       progress,
     },
   }) || {}),
 });
 
 onBeforeUnmount(() => {
+  cancelRequested.value = true;
   void benchmarkClient?.cancelCurrentOperation();
   void benchmarkClient?.dispose();
   benchmarkClient = undefined;
@@ -384,10 +639,22 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
+        <section tw-class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+          <label tw-class="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Run mode</label>
+          <select v-model="runMode" data-testid="hizofs-benchmark-run-mode" tw-class="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-950" :disabled="running">
+            <option value="single">Single benchmark configuration</option>
+            <option value="policy_matrix">Policy matrix</option>
+            <option value="large_write">Large sequential writes</option>
+            <option value="lifecycle_matrix">Store lifecycle matrix</option>
+            <option value="bulk_transaction">Bulk transaction comparison</option>
+          </select>
+          <p tw-class="mt-2 text-[10px] text-gray-500">Studies derive isolated configurations from the current values, run them sequentially, stop after cancellation or failure, and export one combined JSON report.</p>
+        </section>
+
         <section v-if="configuration.preset === 'custom'" tw-class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
           <div tw-class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Workload packs</div>
-          <div tw-class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <label v-for="workload in (['small_files', 'sequential_io', 'random_access', 'directory_operations', 'hizofs_maintenance'] as const)" :key="workload" :tw-class="['flex items-center gap-2 rounded border px-3 py-2 text-xs', configuration.workloads.includes(workload) ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/20' : 'border-gray-300 dark:border-gray-600', workload === 'hizofs_maintenance' && configuration.backendMode === 'raw_opfs_only' ? 'opacity-40' : '']">
+          <div tw-class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+            <label v-for="workload in (['small_files', 'sequential_io', 'random_access', 'directory_operations', 'bulk_operations', 'hizofs_maintenance'] as const)" :key="workload" :tw-class="['flex items-center gap-2 rounded border px-3 py-2 text-xs', configuration.workloads.includes(workload) ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/20' : 'border-gray-300 dark:border-gray-600', workload === 'hizofs_maintenance' && configuration.backendMode === 'raw_opfs_only' ? 'opacity-40' : '']">
               <input type="checkbox" :checked="configuration.workloads.includes(workload)" :disabled="running || (workload === 'hizofs_maintenance' && configuration.backendMode === 'raw_opfs_only')" @change="toggleWorkload({ workload })">
               <span>{{ workloadLabel({ workload }) }}</span>
             </label>
@@ -429,22 +696,52 @@ onBeforeUnmount(() => {
         </section>
 
         <section tw-class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-          <div tw-class="grid gap-2 text-xs sm:grid-cols-4">
+          <div tw-class="grid gap-2 text-xs sm:grid-cols-5">
+            <div><span tw-class="text-gray-500">Run mode:</span> {{ runMode }}</div>
             <div><span tw-class="text-gray-500">Backends:</span> {{ configuration.backendMode }}</div>
             <div><span tw-class="text-gray-500">Workloads:</span> {{ selectedWorkloadLabels }}</div>
             <div><span tw-class="text-gray-500">Lifecycle:</span> {{ configuration.storeLifecycle }}</div>
             <div><span tw-class="text-gray-500">Estimated logical writes:</span> {{ formatBytes({ value: estimatedWrittenBytes }) }}</div>
           </div>
           <div tw-class="mt-4 flex flex-wrap items-center gap-2">
-            <button v-if="!running" type="button" data-testid="hizofs-benchmark-run" tw-class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700" @click="runBenchmark"><PlayIcon tw-class="mr-1 inline h-4 w-4" />Run benchmark</button>
+            <button v-if="!running" type="button" data-testid="hizofs-benchmark-run" tw-class="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700" @click="runBenchmark"><PlayIcon tw-class="mr-1 inline h-4 w-4" />{{ runMode === 'single' ? 'Run benchmark' : 'Run benchmark study' }}</button>
             <button v-else type="button" data-testid="hizofs-benchmark-cancel" tw-class="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50" :disabled="cancelling" @click="cancelBenchmark"><SquareIcon tw-class="mr-1 inline h-4 w-4" />{{ cancelling ? 'Cancelling…' : 'Cancel' }}</button>
             <span v-if="copyStatus" tw-class="text-xs text-emerald-600 dark:text-emerald-400">{{ copyStatus }}</span>
           </div>
           <div v-if="progress" tw-class="mt-4">
+            <div v-if="studyVariantProgress" tw-class="mb-1 text-xs font-medium text-gray-600 dark:text-gray-300">Variant {{ studyVariantProgress.index }} / {{ studyVariantProgress.total }}: {{ studyVariantProgress.label }}</div>
             <div tw-class="flex justify-between text-xs text-gray-500"><span>{{ progress.message }}</span><span>{{ progress.completedUnits }} / {{ progress.totalUnits }}</span></div>
             <div tw-class="mt-1 h-2 overflow-hidden rounded bg-gray-200 dark:bg-gray-700"><div tw-class="h-full bg-emerald-500 transition-[width]" :style="{ width: `${String(progressPercent)}%` }" /></div>
           </div>
           <div v-if="errorMessage" tw-class="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 font-mono text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ errorMessage }}</div>
+        </section>
+
+        <section v-if="studyReport" data-testid="hizofs-benchmark-study-report" tw-class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+          <header tw-class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
+            <div><h3 tw-class="text-sm font-semibold">Study result: {{ studyReport.status }}</h3><div tw-class="mt-1 font-mono text-[10px] text-gray-500">{{ studyReport.studyKind }} · {{ studyReport.studyId }}</div></div>
+            <div tw-class="flex flex-wrap gap-2">
+              <button type="button" data-testid="hizofs-benchmark-copy-summary" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copySummaryJson">Copy summary JSON</button>
+              <button type="button" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copyHumanSummary">Copy Markdown summary</button>
+              <button type="button" data-testid="hizofs-benchmark-download-full" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJson"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON</button>
+            </div>
+          </header>
+          <div tw-class="border-b border-gray-200 px-4 py-2 text-[10px] text-gray-500 dark:border-gray-700">Completed {{ studyReport.completedVariantCount }} of {{ studyReport.plannedVariantCount }} planned variants. Each variant owns an isolated benchmark run and full diagnostics.</div>
+          <div tw-class="overflow-x-auto">
+            <table tw-class="w-full min-w-[1100px] text-left text-xs">
+              <thead tw-class="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500 dark:bg-gray-950"><tr><th tw-class="px-3 py-2">Variant</th><th tw-class="px-3 py-2">Status</th><th tw-class="px-3 py-2">Configuration</th><th tw-class="px-3 py-2">Case</th><th tw-class="px-3 py-2 text-right">Raw median</th><th tw-class="px-3 py-2 text-right">HizoFS median</th><th tw-class="px-3 py-2 text-right">Ratio</th></tr></thead>
+              <tbody>
+                <tr v-for="row in studyResultRows" :key="row.key" tw-class="border-t border-gray-100 align-top dark:border-gray-800">
+                  <td tw-class="px-3 py-2 font-medium">{{ row.variantLabel }}</td>
+                  <td tw-class="px-3 py-2 font-mono">{{ row.status }}</td>
+                  <td tw-class="max-w-[360px] px-3 py-2 font-mono text-[9px] text-gray-500">{{ row.configurationSummary }}</td>
+                  <td tw-class="px-3 py-2">{{ row.caseLabel }}</td>
+                  <td tw-class="px-3 py-2 text-right font-mono">{{ formatDuration({ value: row.rawMedian }) }}</td>
+                  <td tw-class="px-3 py-2 text-right font-mono">{{ formatDuration({ value: row.hizoFSMedian }) }}</td>
+                  <td tw-class="px-3 py-2 text-right font-mono">{{ row.durationRatio === undefined ? '—' : `${row.durationRatio.toFixed(2)}×` }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section v-if="report" data-testid="hizofs-benchmark-report" tw-class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">

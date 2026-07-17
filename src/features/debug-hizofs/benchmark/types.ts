@@ -31,6 +31,7 @@ export const hizoFSBenchmarkWorkloadSchema = z.union([
   z.literal('sequential_io'),
   z.literal('random_access'),
   z.literal('directory_operations'),
+  z.literal('bulk_operations'),
   z.literal('hizofs_maintenance'),
 ]);
 
@@ -115,6 +116,9 @@ const benchmarkApiCountersSchema = z.object({
   directoryLists: z.number().int().nonnegative(),
   removeCalls: z.number().int().nonnegative(),
   cloneCalls: z.number().int().nonnegative(),
+  bulkBuilderCreates: z.number().int().nonnegative(),
+  bulkEntryCreates: z.number().int().nonnegative(),
+  bulkCommits: z.number().int().nonnegative(),
 }).strict();
 
 const benchmarkMemoryDiagnosticsSchema = z.object({
@@ -330,8 +334,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(7),
-  benchmarkImplementationVersion: z.literal(7),
+  schemaVersion: z.literal(8),
+  benchmarkImplementationVersion: z.literal(8),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -404,14 +408,45 @@ export const hizoFSBenchmarkReportSchema = z.object({
   }).strict(),
 }).strict();
 
+export const hizoFSBenchmarkStudyKindSchema = z.union([
+  z.literal('policy_matrix'),
+  z.literal('large_write'),
+  z.literal('lifecycle_matrix'),
+  z.literal('bulk_transaction'),
+]);
+
+export const hizoFSBenchmarkStudyReportSchema = z.object({
+  schemaVersion: z.literal(1),
+  studyImplementationVersion: z.literal(1),
+  reportType: z.literal('hizofs_benchmark_study'),
+  studyId: z.string(),
+  studyKind: hizoFSBenchmarkStudyKindSchema,
+  generatedAt: z.string(),
+  status: z.union([
+    z.literal('completed'),
+    z.literal('cancelled'),
+    z.literal('failed'),
+  ]),
+  baseConfiguration: hizoFSBenchmarkConfigurationSchema,
+  plannedVariantCount: z.number().int().positive(),
+  completedVariantCount: z.number().int().nonnegative(),
+  variants: z.array(z.object({
+    variantId: z.string(),
+    label: z.string(),
+    report: hizoFSBenchmarkReportSchema,
+  }).strict()),
+}).strict();
+
 export type HizoFSBenchmarkBackendMode = z.infer<typeof hizoFSBenchmarkBackendModeSchema>;
 export type HizoFSBenchmarkPreset = z.infer<typeof hizoFSBenchmarkPresetSchema>;
 export type HizoFSBenchmarkStoreLifecycle = z.infer<typeof hizoFSBenchmarkStoreLifecycleSchema>;
 export type HizoFSBenchmarkWorkload = z.infer<typeof hizoFSBenchmarkWorkloadSchema>;
+export type HizoFSBenchmarkStudyKind = z.infer<typeof hizoFSBenchmarkStudyKindSchema>;
 export type HizoFSBenchmarkConfiguration = z.infer<typeof hizoFSBenchmarkConfigurationSchema>;
 export type HizoFSBenchmarkLifecycleEvent = HizoFSBenchmarkReport['lifecycleEvents'][number];
 export type HizoFSBenchmarkProgress = z.infer<typeof hizoFSBenchmarkProgressSchema>;
 export type HizoFSBenchmarkReport = z.infer<typeof hizoFSBenchmarkReportSchema>;
+export type HizoFSBenchmarkStudyReport = z.infer<typeof hizoFSBenchmarkStudyReportSchema>;
 export type HizoFSBenchmarkCaseResult = HizoFSBenchmarkReport['results'][number];
 export type HizoFSBenchmarkBackendCaseResult = NonNullable<
   HizoFSBenchmarkCaseResult['backends']['rawOpfs']

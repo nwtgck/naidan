@@ -1,6 +1,7 @@
 import { toExactArrayBuffer } from '@/00-storage/service/hizofs/bytes';
 import {
   collectHizoFSGarbage,
+  createHizoFSBulkBuilder,
   createHizoFSDiagnosticSession,
   createHizoFSRuntimeDiagnostics,
   HIZOFS_RUNTIME_DIAGNOSTIC_PHASES,
@@ -33,7 +34,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 7 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 8 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -57,6 +58,7 @@ type HizoFSPhysicalDiagnosticTracker = {
 
 type BenchmarkContext = {
   readonly kind: BackendKind;
+  readonly contextDirectory: FileSystemDirectoryHandle;
   readonly rawRoot: FileSystemDirectoryHandle | undefined;
   hizoFSSession: StorageFileSystemSession | undefined;
   readonly hizoFSBackingDirectory: FileSystemDirectoryHandle | undefined;
@@ -297,7 +299,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -429,6 +431,7 @@ async function createBenchmarkContexts({
       const rawRoot = await contextDirectory.getDirectoryHandle('raw', { create: true });
       result.set('raw_opfs', {
         kind: 'raw_opfs',
+        contextDirectory,
         rawRoot,
         hizoFSSession: undefined,
         hizoFSBackingDirectory: undefined,
@@ -491,6 +494,7 @@ async function createBenchmarkContexts({
       }
       result.set('hizofs', {
         kind: 'hizofs',
+        contextDirectory,
         rawRoot: undefined,
         hizoFSSession: session,
         hizoFSBackingDirectory: countedBackingDirectory,
@@ -751,6 +755,7 @@ function getBackendsForWorkload({
   case 'sequential_io':
   case 'random_access':
   case 'directory_operations':
+  case 'bulk_operations':
     return order;
   default: {
     const _ex: never = workload;
@@ -811,6 +816,15 @@ async function runWorkloadIteration({
     });
   case 'directory_operations':
     return runDirectoryOperationsWorkload({
+      configuration,
+      context,
+      phase,
+      iteration,
+      assertActive,
+      onCaseStart,
+    });
+  case 'bulk_operations':
+    return runBulkOperationsWorkload({
       configuration,
       context,
       phase,
@@ -1320,6 +1334,146 @@ async function runDirectoryOperationsWorkload({
       return 0;
     },
   }));
+  return samples;
+}
+
+async function runBulkOperationsWorkload({
+  configuration,
+  context,
+  phase,
+  iteration,
+  assertActive,
+  onCaseStart,
+}: {
+  configuration: HizoFSBenchmarkConfiguration;
+  context: BenchmarkContext;
+  phase: BenchmarkPhase;
+  iteration: number;
+  assertActive: () => void;
+  onCaseStart: ({ caseId }: { caseId: string }) => void;
+}): Promise<readonly CaseSample[]> {
+  const entryCount = configuration.directoryOperations.entryCount;
+  const parameters = { entryCount };
+  const samples: CaseSample[] = [];
+  const root = await getBackendRoot({ context });
+  const directoryName = `bulk-per-operation-${phase}-${String(iteration)}`;
+  const directory = await createBackendDirectory({
+    context,
+    name: directoryName,
+  });
+
+  onCaseStart({ caseId: 'bulk_create_empty_files_per_operation' });
+  samples.push(await measureCase({
+    context,
+    workload: 'bulk_operations',
+    caseId: 'bulk_create_empty_files_per_operation',
+    label: 'Create empty files with one commit per entry',
+    parameters,
+    phase,
+    iteration,
+    operationCount: entryCount,
+    bytesProcessed: 0,
+    operation: async () => {
+      for (let index = 0; index < entryCount; index += 1) {
+        assertActive();
+        await createEmptyBackendFile({
+          context,
+          directory,
+          name: directoryEntryName({ index }),
+        });
+      }
+      return 0;
+    },
+  }));
+  await removeBackendEntry({
+    context,
+    directory: root,
+    name: directoryName,
+    recursive: true,
+  });
+
+  switch (context.kind) {
+  case 'raw_opfs':
+    return samples;
+  case 'hizofs':
+    break;
+  default: {
+    const _ex: never = context.kind;
+    throw new Error(`Unhandled bulk benchmark backend: ${String(_ex)}`);
+  }
+  }
+  if (context.hizoFSPolicy === undefined) {
+    throw new Error('HizoFS bulk benchmark policy is unavailable');
+  }
+  const isolatedDirectory = await context.contextDirectory.getDirectoryHandle(
+    `bulk-one-commit-${phase}-${String(iteration)}`,
+    { create: true },
+  );
+  const isolatedContexts = await createBenchmarkContexts({
+    configuration: {
+      ...configuration,
+      backendMode: 'hizofs_only',
+      workloads: ['bulk_operations'],
+    },
+    contextDirectory: isolatedDirectory,
+    phase,
+    iteration,
+    lifecycleEvents: [],
+    hizoFSPolicy: context.hizoFSPolicy,
+  });
+  try {
+    const bulkContext = isolatedContexts.get('hizofs');
+    if (bulkContext?.hizoFSSession === undefined) {
+      throw new Error('Isolated HizoFS bulk benchmark session is unavailable');
+    }
+    const bulkSession = bulkContext.hizoFSSession;
+    onCaseStart({ caseId: 'bulk_create_empty_files_one_commit' });
+    samples.push(await measureCase({
+      context: bulkContext,
+      workload: 'bulk_operations',
+      caseId: 'bulk_create_empty_files_one_commit',
+      label: 'Create empty files with one bulk commit',
+      parameters,
+      phase,
+      iteration,
+      operationCount: entryCount,
+      bytesProcessed: 0,
+      operation: async () => {
+        const builder = await createHizoFSBulkBuilder({
+          fileSystemSession: bulkSession,
+        });
+        bulkContext.apiCounters.bulkBuilderCreates += 1;
+        if (builder === undefined) {
+          throw new Error('Expected the isolated HizoFS bulk builder');
+        }
+        try {
+          for (let index = 0; index < entryCount; index += 1) {
+            assertActive();
+            bulkContext.apiCounters.bulkEntryCreates += 1;
+            await builder.createEmptyFile({
+              name: directoryEntryName({ index }),
+            });
+          }
+          bulkContext.apiCounters.bulkCommits += 1;
+          await builder.commit();
+          return 0;
+        } catch (error) {
+          await builder.abort({ reason: error });
+          throw error;
+        }
+      },
+    }));
+    await bulkSession.root.getFileHandle({
+      name: directoryEntryName({ index: 0 }),
+      create: false,
+    });
+    await bulkSession.root.getFileHandle({
+      name: directoryEntryName({ index: entryCount - 1 }),
+      create: false,
+    });
+  } finally {
+    await closeBenchmarkContexts({ contexts: isolatedContexts });
+  }
   return samples;
 }
 
@@ -1858,6 +2012,9 @@ function aggregateBenchmarkApiCounters({
     total.directoryLists += sample.apiOperations.directoryLists;
     total.removeCalls += sample.apiOperations.removeCalls;
     total.cloneCalls += sample.apiOperations.cloneCalls;
+    total.bulkBuilderCreates += sample.apiOperations.bulkBuilderCreates;
+    total.bulkEntryCreates += sample.apiOperations.bulkEntryCreates;
+    total.bulkCommits += sample.apiOperations.bulkCommits;
   }
   return total;
 }
@@ -2677,6 +2834,7 @@ function calculateTotalProgressUnits({
     case 'sequential_io':
     case 'random_access':
     case 'directory_operations':
+    case 'bulk_operations':
       perIteration += requestedBackends.length;
       break;
     default: {
@@ -2788,7 +2946,8 @@ function getWorkloadSeedDiscriminator({
   case 'sequential_io': return 2;
   case 'random_access': return 3;
   case 'directory_operations': return 4;
-  case 'hizofs_maintenance': return 5;
+  case 'bulk_operations': return 5;
+  case 'hizofs_maintenance': return 6;
   default: {
     const _ex: never = workload;
     throw new Error(`Unhandled benchmark workload: ${String(_ex)}`);
@@ -2882,6 +3041,9 @@ function createEmptyBenchmarkApiCounters(): BenchmarkApiCounters {
     directoryLists: 0,
     removeCalls: 0,
     cloneCalls: 0,
+    bulkBuilderCreates: 0,
+    bulkEntryCreates: 0,
+    bulkCommits: 0,
   };
 }
 
@@ -2905,6 +3067,15 @@ function subtractBenchmarkApiCounters({
     directoryLists: Math.max(after.directoryLists - before.directoryLists, 0),
     removeCalls: Math.max(after.removeCalls - before.removeCalls, 0),
     cloneCalls: Math.max(after.cloneCalls - before.cloneCalls, 0),
+    bulkBuilderCreates: Math.max(
+      after.bulkBuilderCreates - before.bulkBuilderCreates,
+      0,
+    ),
+    bulkEntryCreates: Math.max(
+      after.bulkEntryCreates - before.bulkEntryCreates,
+      0,
+    ),
+    bulkCommits: Math.max(after.bulkCommits - before.bulkCommits, 0),
   };
 }
 

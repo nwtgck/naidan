@@ -325,6 +325,54 @@ describe('HizoFS benchmark engine', () => {
       .toBe(reopenEvents[0]?.hizoFS?.objectsBefore);
     expect(reopenEvents[0]?.hizoFS?.backingStore.readOperations).toBeGreaterThan(0);
   });
+
+  it('compares per-entry commits with one fresh-target bulk commit', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    const entryCount = 5;
+    const configuration: HizoFSBenchmarkConfiguration = {
+      ...createTinyConfiguration(),
+      workloads: ['bulk_operations'],
+      directoryOperations: { entryCount },
+      storeLifecycle: 'fresh_per_iteration',
+    };
+
+    const report = await runHizoFSBenchmark({
+      configuration,
+      onProgress: () => {},
+      assertActive: () => {},
+      nativeOpfsRoot: root,
+    });
+
+    expect(() => hizoFSBenchmarkReportSchema.parse(report)).not.toThrow();
+    const perOperation = report.results.find(
+      result => result.caseId === 'bulk_create_empty_files_per_operation',
+    );
+    const bulk = report.results.find(
+      result => result.caseId === 'bulk_create_empty_files_one_commit',
+    );
+    expect(perOperation?.backends.rawOpfs).toBeDefined();
+    expect(perOperation?.backends.hizofs).toBeDefined();
+    expect(bulk?.backends.rawOpfs).toBeUndefined();
+    expect(bulk?.backends.hizofs).toBeDefined();
+
+    const perOperationSample = perOperation?.backends.hizofs?.samples[0];
+    const bulkSample = bulk?.backends.hizofs?.samples[0];
+    expect(perOperationSample?.operationCount).toBe(entryCount);
+    expect(perOperationSample?.hizoFSDiagnostics?.commits.superblockPublications)
+      .toBe(entryCount);
+    expect(bulkSample?.operationCount).toBe(entryCount);
+    expect(bulkSample?.apiOperations).toMatchObject({
+      bulkBuilderCreates: 1,
+      bulkEntryCreates: entryCount,
+      bulkCommits: 1,
+    });
+    expect(bulkSample?.hizoFSDiagnostics?.commits.superblockPublications).toBe(1);
+    expect(
+      bulkSample?.hizoFSDiagnostics?.amplification
+        .superblockPublicationsPerOperation,
+    ).toBe(1 / entryCount);
+  });
+
 });
 
 async function collectNames({

@@ -20,6 +20,7 @@ import type { HizoFSRuntime } from './runtime';
 import { assertHizoFSEntryName } from './semantic-validation';
 
 const BULK_READ_BUFFER_BYTE_LENGTH = 256 * 1024;
+const EMPTY_BINARY_PAYLOAD = new Uint8Array();
 
 export type HizoFSBulkImportProgressListener = ({
   byteLength,
@@ -187,6 +188,31 @@ export class HizoFSBulkBuilder {
     const inodeObjectId = await this.runtime.inodeStore.writeDirectory({ inode });
     this.inodeIndexEntries.push({ nodeId, inodeObjectId });
     this.rootEntries.push({ name, kind: 'directory', nodeId });
+  }
+
+  async createEmptyFile({
+    name,
+  }: {
+    name: string;
+  }): Promise<void> {
+    this.assertOpen();
+    this.assertUniqueRootName({ name });
+    const timestamp = this.runtime.now();
+    const nodeId = createHizoFSStableId();
+    const inode: HizoFSFileInodeDto = {
+      nodeId,
+      revision: 0,
+      createdAt: timestamp,
+      modifiedAt: timestamp,
+      size: 0,
+      storage: { type: 'inline' },
+    };
+    const inodeObjectId = await this.runtime.inodeStore.writeFile({
+      inode,
+      binaryPayload: EMPTY_BINARY_PAYLOAD,
+    });
+    this.inodeIndexEntries.push({ nodeId, inodeObjectId });
+    this.rootEntries.push({ name, kind: 'file', nodeId });
   }
 
   async commit(): Promise<void> {

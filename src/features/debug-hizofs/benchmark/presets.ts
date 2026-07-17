@@ -104,6 +104,7 @@ export function estimateHizoFSBenchmarkWrittenBytes({
       );
       break;
     case 'directory_operations':
+    case 'bulk_operations':
       break;
     case 'hizofs_maintenance':
       totalPerIteration += backendMultiplier * (
@@ -217,6 +218,7 @@ function getWorkloadBackendMultiplier({
   case 'sequential_io':
   case 'random_access':
   case 'directory_operations':
+  case 'bulk_operations':
     switch (backendMode) {
     case 'compare': return 2;
     case 'hizofs_only':

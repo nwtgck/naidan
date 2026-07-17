@@ -273,6 +273,41 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
+  it('publishes bulk-created empty files and directories in one commit', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const before = await inspectHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });
+    if (builder === undefined) {
+      throw new Error('Expected a HizoFS bulk builder');
+    }
+
+    await builder.createEmptyFile({ name: 'empty.txt' });
+    await builder.createEmptyDirectory({ name: 'empty-directory' });
+    await builder.commit();
+
+    const after = await inspectHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    expect(after.superblock.sequence).toBe(before.superblock.sequence + 1);
+    expect(await (await session.root.getFileHandle({
+      name: 'empty.txt',
+      create: false,
+    })).stat()).toMatchObject({ size: 0 });
+    await expect(session.root.getDirectoryHandle({
+      name: 'empty-directory',
+      create: false,
+    })).resolves.toBeDefined();
+    await session.close();
+  });
+
   it('does not recognize an empty directory merely because it uses the canonical suffix', async () => {
     const emptyCanonicalName = new MockFileSystemDirectoryHandle({ name: 'filesystem.hizofs' });
     await expect(openHizoFS({

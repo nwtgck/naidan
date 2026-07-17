@@ -16,16 +16,20 @@ vi.mock('@/features/debug-hizofs/worker/client', () => ({
   createHizoFSBenchmarkWorkerClient: mocks.createClient,
 }));
 
-function createReport(): HizoFSBenchmarkReport {
+function createReport({
+  status = 'completed',
+}: {
+  status?: HizoFSBenchmarkReport['status'];
+} = {}): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 7,
-    benchmarkImplementationVersion: 7,
+    schemaVersion: 8,
+    benchmarkImplementationVersion: 8,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
     runLabel: undefined,
     generatedAt: '2026-07-15T00:00:00.000Z',
-    status: 'completed',
+    status,
     environment: {
       appVersion: 'test-version',
       userAgent: 'test',
@@ -70,7 +74,7 @@ function createReport(): HizoFSBenchmarkReport {
           durationMs: { median: 10, p95: 10, minimum: 10, maximum: 10 },
           operationsPerSecond: 100,
           throughputBytesPerSecond: undefined,
-          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0 },
+          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0, bulkBuilderCreates: 0, bulkEntryCreates: 0, bulkCommits: 0 },
           memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: undefined,
           samples: [],
@@ -80,7 +84,7 @@ function createReport(): HizoFSBenchmarkReport {
           durationMs: { median: 20, p95: 20, minimum: 20, maximum: 20 },
           operationsPerSecond: 50,
           throughputBytesPerSecond: undefined,
-          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0 },
+          apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0, bulkBuilderCreates: 0, bulkEntryCreates: 0, bulkCommits: 0 },
           memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: undefined,
           samples: [],
@@ -235,4 +239,49 @@ describe('HizoFSBenchmarkPanel', () => {
       expect.stringContaining('"reportType": "hizofs_benchmark"'),
     );
   });
+
+  it('runs a benchmark study sequentially and exports a combined report', async () => {
+    const wrapper = mount(HizoFSBenchmarkPanel);
+
+    await wrapper.get('[data-testid="hizofs-benchmark-run-mode"]')
+      .setValue('bulk_transaction');
+    await wrapper.get('[data-testid="hizofs-benchmark-run"]').trigger('click');
+    await flushPromises();
+
+    expect(mocks.runBenchmark).toHaveBeenCalledTimes(1);
+    expect(mocks.runBenchmark).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({
+        backendMode: 'compare',
+        preset: 'custom',
+        workloads: ['bulk_operations'],
+        storeLifecycle: 'fresh_per_iteration',
+      }),
+    }));
+    expect(wrapper.get('[data-testid="hizofs-benchmark-study-report"]').text())
+      .toContain('Completed 1 of 1 planned variants');
+
+    await wrapper.get('[data-testid="hizofs-benchmark-copy-summary"]').trigger('click');
+    await flushPromises();
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(
+      expect.stringContaining('"reportType": "hizofs_benchmark_study"'),
+    );
+  });
+
+  it('preserves completed study variants and stops after cancellation', async () => {
+    mocks.runBenchmark
+      .mockResolvedValueOnce(createReport())
+      .mockResolvedValueOnce(createReport({ status: 'cancelled' }));
+    const wrapper = mount(HizoFSBenchmarkPanel);
+
+    await wrapper.get('[data-testid="hizofs-benchmark-run-mode"]')
+      .setValue('policy_matrix');
+    await wrapper.get('[data-testid="hizofs-benchmark-run"]').trigger('click');
+    await flushPromises();
+
+    expect(mocks.runBenchmark).toHaveBeenCalledTimes(2);
+    const studyResult = wrapper.get('[data-testid="hizofs-benchmark-study-report"]');
+    expect(studyResult.text()).toContain('Study result: cancelled');
+    expect(studyResult.text()).toContain('Completed 1 of 17 planned variants');
+  });
+
 });
