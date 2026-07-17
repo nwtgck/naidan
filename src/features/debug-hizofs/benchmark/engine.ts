@@ -10,6 +10,7 @@ import {
   openHizoFSDiagnosticSession,
 } from '@/00-storage/service/hizofs';
 import type {
+  HizoFSGarbageCollectionDiagnostics,
   HizoFSPolicy,
   HizoFSRuntimeDiagnosticsSnapshot,
 } from '@/00-storage/service/hizofs';
@@ -34,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 8 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 9 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -265,6 +266,8 @@ async function runHizoFSBenchmarkWithLockHeld({
             iteration: measuredIteration,
             lifecycleEvents,
             hizoFSPolicy,
+            garbageCollectionSweepPolicy:
+              configuration.hizoFSMaintenance.garbageCollectionSweep,
           });
         }
       }
@@ -299,7 +302,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -519,6 +522,7 @@ async function createBenchmarkContexts({
           reachableObjectCount: undefined,
           unreachableObjectCount: undefined,
           removedObjectCount: undefined,
+          garbageCollection: undefined,
           backingStore: initializationBackingStore,
           superblockPublications: initializationSuperblockPublications,
         },
@@ -541,6 +545,7 @@ async function applyBetweenIterationLifecycle({
   iteration,
   lifecycleEvents,
   hizoFSPolicy,
+  garbageCollectionSweepPolicy,
 }: {
   lifecycle: HizoFSBenchmarkConfiguration['storeLifecycle'];
   contexts: Map<BackendKind, BenchmarkContext>;
@@ -548,6 +553,8 @@ async function applyBetweenIterationLifecycle({
   iteration: number;
   lifecycleEvents: HizoFSBenchmarkLifecycleEvent[];
   hizoFSPolicy: HizoFSPolicy;
+  garbageCollectionSweepPolicy:
+    HizoFSBenchmarkConfiguration['hizoFSMaintenance']['garbageCollectionSweep'];
 }): Promise<void> {
   switch (lifecycle) {
   case 'reuse_without_gc':
@@ -617,6 +624,8 @@ async function applyBetweenIterationLifecycle({
       backingDirectory: context.hizoFSBackingDirectory,
       fileSystemRootKey: context.hizoFSRootKey,
       dryRun: false,
+      sweepPolicy: garbageCollectionSweepPolicy,
+      signal: undefined,
     });
     lifecycleEvents.push({
       phase,
@@ -630,6 +639,7 @@ async function applyBetweenIterationLifecycle({
         reachableObjectCount: result.reachableObjectCount,
         unreachableObjectCount: result.unreachableObjectIds.length,
         removedObjectCount: result.removedObjectCount,
+        garbageCollection: result.diagnostics,
         backingStore: subtractBackingStoreCounters({
           before: countersBefore,
           after: context.counters,
@@ -685,6 +695,7 @@ function createLifecycleObjectSnapshot({
     reachableObjectCount: undefined,
     unreachableObjectCount: undefined,
     removedObjectCount: undefined,
+    garbageCollection: undefined,
     backingStore,
     superblockPublications,
   };
@@ -1599,8 +1610,13 @@ async function runHizoFSMaintenanceWorkload({
         backingDirectory: context.hizoFSBackingDirectory!,
         fileSystemRootKey: context.hizoFSRootKey!,
         dryRun: true,
+        sweepPolicy: configuration.hizoFSMaintenance.garbageCollectionSweep,
+        signal: undefined,
       });
-      return (result.reachableObjectCount + result.unreachableObjectIds.length) >>> 0;
+      return {
+        checksum: (result.reachableObjectCount + result.unreachableObjectIds.length) >>> 0,
+        garbageCollection: result.diagnostics,
+      };
     },
   }));
 
@@ -1625,12 +1641,22 @@ async function runHizoFSMaintenanceWorkload({
         backingDirectory: context.hizoFSBackingDirectory!,
         fileSystemRootKey: context.hizoFSRootKey!,
         dryRun: false,
+        sweepPolicy: configuration.hizoFSMaintenance.garbageCollectionSweep,
+        signal: undefined,
       });
-      return result.removedObjectCount >>> 0;
+      return {
+        checksum: result.removedObjectCount >>> 0,
+        garbageCollection: result.diagnostics,
+      };
     },
   }));
   return samples;
 }
+
+type BenchmarkCaseOperationResult = number | {
+  readonly checksum: number;
+  readonly garbageCollection: HizoFSGarbageCollectionDiagnostics;
+};
 
 async function measureCase({
   context,
@@ -1653,7 +1679,7 @@ async function measureCase({
   iteration: number;
   operationCount: number;
   bytesProcessed: number;
-  operation: () => Promise<number>;
+  operation: () => Promise<BenchmarkCaseOperationResult>;
 }): Promise<CaseSample> {
   // Resource high-water marks are live gauges rather than cumulative counters.
   // Reset only their maxima at the public-case boundary so each sample reports
@@ -1663,7 +1689,13 @@ async function measureCase({
   const apiBefore = { ...context.apiCounters };
   beginMemoryMeasurement({ tracker: context.memoryTracker });
   const startedAt = performance.now();
-  const checksum = await operation();
+  const operationResult = await operation();
+  const checksum = typeof operationResult === 'number'
+    ? operationResult
+    : operationResult.checksum;
+  const garbageCollection = typeof operationResult === 'number'
+    ? undefined
+    : operationResult.garbageCollection;
   const durationMs = Math.max(performance.now() - startedAt, 0);
   const after = readHizoFSDiagnosticBaseline({ context });
   return {
@@ -1691,6 +1723,7 @@ async function measureCase({
         plaintextBytesProcessed: bytesProcessed,
         operationCount,
       }),
+      garbageCollection,
     },
   };
 }

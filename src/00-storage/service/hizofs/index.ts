@@ -35,7 +35,11 @@ export type {
   HizoFSRuntimeDiagnosticsSnapshot,
 } from './file-system/diagnostics';
 export { collectHizoFSGarbage } from './garbage-collector';
-export type { HizoFSGarbageCollectionResult } from './garbage-collector';
+export type {
+  HizoFSGarbageCollectionDiagnostics,
+  HizoFSGarbageCollectionResult,
+  HizoFSGarbageCollectionSweepPolicy,
+} from './garbage-collector';
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

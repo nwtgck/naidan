@@ -289,6 +289,14 @@ describe('HizoFS benchmark engine', () => {
       reachableObjectCount: expect.any(Number),
       unreachableObjectCount: expect.any(Number),
       removedObjectCount: expect.any(Number),
+      garbageCollection: {
+        configuredRemoveConcurrency: 4,
+        configuredMaximumRemovalsPerSlice: 64,
+        configuredMaximumSliceDurationMs: 150,
+        sweepSliceCount: expect.any(Number),
+        maximumPauseDurationMs: expect.any(Number),
+        maximumRemovesInFlight: expect.any(Number),
+      },
       backingStore: {
         readOperations: expect.any(Number),
         removeOperations: expect.any(Number),
@@ -324,6 +332,48 @@ describe('HizoFS benchmark engine', () => {
     expect(reopenEvents[0]?.hizoFS?.objectsAfter)
       .toBe(reopenEvents[0]?.hizoFS?.objectsBefore);
     expect(reopenEvents[0]?.hizoFS?.backingStore.readOperations).toBeGreaterThan(0);
+  });
+
+  it('records per-sample garbage-collection pause and slice diagnostics', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    const configuration: HizoFSBenchmarkConfiguration = {
+      ...createTinyConfiguration(),
+      backendMode: 'hizofs_only',
+      workloads: ['hizofs_maintenance'],
+      warmupIterations: 0,
+      measuredIterations: 1,
+      storeLifecycle: 'fresh_per_iteration',
+      hizoFSMaintenance: {
+        cloneCount: 4,
+        sourceFileSizeBytes: 32,
+        garbageCollectionSweep: {
+          removeConcurrency: 2,
+          maximumRemovalsPerSlice: 3,
+          maximumSliceDurationMs: 10,
+        },
+      },
+    };
+
+    const report = await runHizoFSBenchmark({
+      configuration,
+      onProgress: () => {},
+      assertActive: () => {},
+      nativeOpfsRoot: root,
+    });
+
+    const gcResult = report.results.find(
+      result => result.caseId === 'hizofs_garbage_collection',
+    );
+    const diagnostics = gcResult?.backends.hizofs?.samples[0]?.garbageCollection;
+    expect(diagnostics).toMatchObject({
+      configuredRemoveConcurrency: 2,
+      configuredMaximumRemovalsPerSlice: 3,
+      configuredMaximumSliceDurationMs: 10,
+      sweepSliceCount: expect.any(Number),
+      maximumPauseDurationMs: expect.any(Number),
+      maximumRemovesInFlight: expect.any(Number),
+    });
+    expect(() => hizoFSBenchmarkReportSchema.parse(report)).not.toThrow();
   });
 
   it('compares per-entry commits with one fresh-target bulk commit', async () => {

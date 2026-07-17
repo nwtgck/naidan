@@ -12,8 +12,8 @@ import type { HizoFSBenchmarkReport } from './types';
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 8,
-    benchmarkImplementationVersion: 8,
+    schemaVersion: 9,
+    benchmarkImplementationVersion: 9,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -95,6 +95,7 @@ function createReport(): HizoFSBenchmarkReport {
               scope: 'benchmark_harness_buffers_only',
             },
             hizoFSDiagnostics: undefined,
+            garbageCollection: undefined,
           }],
         },
         hizofs: {
@@ -177,6 +178,7 @@ function createReport(): HizoFSBenchmarkReport {
               },
               runtime: createHizoFSRuntimeDiagnostics().snapshot(),
             },
+            garbageCollection: undefined,
           }],
         },
       },

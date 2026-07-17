@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { writeStorageFileText, readStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
-import { collectHizoFSGarbage } from './garbage-collector';
+import {
+  collectHizoFSGarbage,
+  TEST_ONLY as GARBAGE_COLLECTOR_TEST_ONLY,
+} from './garbage-collector';
 import { inspectHizoFS, TEST_ONLY } from './api';
 import type { HizoFSPolicy } from './file-system/policy';
 import { getHizoFSObjectShard } from './object-store/object-id';
@@ -105,6 +108,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
     });
     expect(dryRun.unreachableObjectIds.length).toBeGreaterThan(0);
     expect(dryRun.removedObjectCount).toBe(0);
@@ -114,6 +119,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
     });
     expect(collected.unreachableObjectIds).toEqual(dryRun.unreachableObjectIds);
     expect(collected.removedObjectCount).toBe(dryRun.unreachableObjectIds.length);
@@ -129,6 +136,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
     })).unreachableObjectIds).toEqual([]);
   });
 
@@ -142,6 +151,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
     })).resolves.toBeDefined();
     await session.close();
   });
@@ -163,6 +174,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
     }).finally(() => {
       settled = true;
     });
@@ -210,6 +223,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
     })).rejects.toThrow('disconnected');
     await session.close();
   });
@@ -225,6 +240,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
     });
     const inspection = await inspectHizoFS({
       backingDirectory: backing,
@@ -248,6 +265,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
     })).rejects.toThrow('read-only recovery mode');
   });
 
@@ -265,6 +284,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
     }).finally(() => {
       settled = true;
     });
@@ -315,6 +336,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
     })).rejects.toThrow();
     expect(await countPhysicalFiles({ directory: backing })).toBe(before);
   });
@@ -332,9 +355,206 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
     });
     expect(result.ignoredPhysicalPaths).toContain('objects/not-a-shard');
     await expect(unknownDirectory.getFileHandle('manual-backup')).resolves.toBeDefined();
+  });
+
+  it('bounds parallel sweep work and lets foreground mutations run between slices', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'first-large-value' });
+    await writeLargeValue({ session, value: 'second-large-value' });
+    await writeLargeValue({ session, value: 'third-large-value' });
+
+    const firstBatchStarted = Promise.withResolvers<void>();
+    const releaseFirstBatch = Promise.withResolvers<void>();
+    let clock = 0;
+    let activeRemovals = 0;
+    let maximumActiveRemovals = 0;
+    let startedRemovals = 0;
+    let yieldCount = 0;
+    const collection = GARBAGE_COLLECTOR_TEST_ONLY.collectHizoFSGarbageInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: {
+        removeConcurrency: 2,
+        maximumRemovalsPerSlice: 3,
+        maximumSliceDurationMs: 5,
+      },
+      signal: undefined,
+      dependencies: {
+        now: () => clock,
+        removeObject: async ({ runtime, objectId }) => {
+          activeRemovals += 1;
+          startedRemovals += 1;
+          maximumActiveRemovals = Math.max(maximumActiveRemovals, activeRemovals);
+          if (startedRemovals === 2) firstBatchStarted.resolve();
+          try {
+            if (startedRemovals <= 2) await releaseFirstBatch.promise;
+            await runtime.objectStore.remove({ objectId });
+            clock += 10;
+          } finally {
+            activeRemovals -= 1;
+          }
+        },
+        yieldToForeground: async () => {
+          yieldCount += 1;
+          await writeStorageFileText({
+            fileHandle: await session.root.getFileHandle({
+              name: `foreground-${String(yieldCount)}.txt`,
+              create: true,
+            }),
+            value: 'foreground-progress',
+          });
+          clock += 1;
+        },
+      },
+    });
+
+    await firstBatchStarted.promise;
+    expect(maximumActiveRemovals).toBe(2);
+    expect(activeRemovals).toBe(2);
+    releaseFirstBatch.resolve();
+
+    const result = await collection;
+    expect(result.removedObjectCount).toBe(result.unreachableObjectIds.length);
+    expect(result.diagnostics.maximumRemovesInFlight).toBe(2);
+    expect(result.diagnostics.maximumRemovalsInSlice).toBeLessThanOrEqual(3);
+    expect(result.diagnostics.sweepSliceCount).toBeGreaterThan(1);
+    expect(result.diagnostics.sliceDurationBudgetOverrunCount).toBeGreaterThan(0);
+    expect(yieldCount).toBe(result.diagnostics.sweepSliceCount - 1);
+    expect(activeRemovals).toBe(0);
+    expect(await readStorageFileText({
+      fileHandle: await session.root.getFileHandle({
+        name: 'foreground-1.txt',
+        create: false,
+      }),
+    })).toBe('foreground-progress');
+    await session.close();
+  });
+
+  it('waits for every removal in a failed batch before releasing the sweep slice', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'first-large-value' });
+    await writeLargeValue({ session, value: 'second-large-value' });
+    await session.close();
+
+    const delayedRemovalStarted = Promise.withResolvers<void>();
+    const releaseDelayedRemoval = Promise.withResolvers<void>();
+    let startedRemovals = 0;
+    let activeRemovals = 0;
+    let settled = false;
+    const collection = GARBAGE_COLLECTOR_TEST_ONLY.collectHizoFSGarbageInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: {
+        removeConcurrency: 2,
+        maximumRemovalsPerSlice: 64,
+        maximumSliceDurationMs: 1_000,
+      },
+      signal: undefined,
+      dependencies: {
+        now: () => performance.now(),
+        removeObject: async ({ runtime, objectId }) => {
+          startedRemovals += 1;
+          activeRemovals += 1;
+          try {
+            if (startedRemovals === 1) throw new Error('injected remove failure');
+            if (startedRemovals === 2) {
+              delayedRemovalStarted.resolve();
+              await releaseDelayedRemoval.promise;
+            }
+            await runtime.objectStore.remove({ objectId });
+          } finally {
+            activeRemovals -= 1;
+          }
+        },
+        yieldToForeground: async () => {},
+      },
+    }).finally(() => {
+      settled = true;
+    });
+
+    await delayedRemovalStarted.promise;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    expect(activeRemovals).toBe(1);
+
+    releaseDelayedRemoval.resolve();
+    await expect(collection).rejects.toThrow(
+      'HizoFS garbage collection could not remove every scheduled object',
+    );
+    expect(settled).toBe(true);
+    expect(activeRemovals).toBe(0);
+
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
+    })).resolves.toBeDefined();
+  });
+
+  it('honors cancellation only after every started removal settles', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'first-large-value' });
+    await writeLargeValue({ session, value: 'second-large-value' });
+    await session.close();
+
+    const controller = new AbortController();
+    const firstBatchStarted = Promise.withResolvers<void>();
+    const releaseFirstBatch = Promise.withResolvers<void>();
+    let activeRemovals = 0;
+    let startedRemovals = 0;
+    let settled = false;
+    const collection = GARBAGE_COLLECTOR_TEST_ONLY.collectHizoFSGarbageInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: {
+        removeConcurrency: 2,
+        maximumRemovalsPerSlice: 64,
+        maximumSliceDurationMs: 1_000,
+      },
+      signal: controller.signal,
+      dependencies: {
+        now: () => performance.now(),
+        removeObject: async ({ runtime, objectId }) => {
+          activeRemovals += 1;
+          startedRemovals += 1;
+          if (startedRemovals === 2) firstBatchStarted.resolve();
+          try {
+            await releaseFirstBatch.promise;
+            await runtime.objectStore.remove({ objectId });
+          } finally {
+            activeRemovals -= 1;
+          }
+        },
+        yieldToForeground: async () => {},
+      },
+    }).finally(() => {
+      settled = true;
+    });
+
+    await firstBatchStarted.promise;
+    controller.abort(new DOMException('cancelled by test', 'AbortError'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    expect(activeRemovals).toBe(2);
+
+    releaseFirstBatch.resolve();
+    await expect(collection).rejects.toMatchObject({ name: 'AbortError' });
+    expect(settled).toBe(true);
+    expect(activeRemovals).toBe(0);
+    expect(startedRemovals).toBe(2);
   });
 
   it('preserves shared reflink objects until both file identities are unreachable', async () => {
@@ -354,6 +574,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
     });
     const cloneOnly = await openTiny({ backing });
     expect(await readStorageFileText({
@@ -368,6 +590,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
     });
     expect(finalCollection.removedObjectCount).toBeGreaterThan(0);
     const reopened = await openTiny({ backing });
@@ -396,6 +620,8 @@ describe('HizoFS garbage collection', () => {
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
     });
     expect(result.reachableObjectCount).toBeGreaterThan(100);
   }, 30_000);

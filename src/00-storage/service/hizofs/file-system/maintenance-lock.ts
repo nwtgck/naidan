@@ -172,11 +172,23 @@ export async function runWithHizoFSResourceLease<T>({ fileSystemId, operation }:
   }
 }
 
+/**
+ * Acquires the exclusive maintenance lease directly. Long-running maintenance
+ * must release this lease between bounded slices so foreground resources can
+ * make progress, while every started maintenance operation settles before the
+ * lease is released.
+ */
+export function acquireHizoFSMaintenanceLease({ fileSystemId }: {
+  fileSystemId: string;
+}): Promise<HizoFSMaintenanceLease> {
+  return acquireLease({ fileSystemId, mode: 'exclusive' });
+}
+
 export async function runWithHizoFSMaintenanceLock<T>({ fileSystemId, operation }: {
   fileSystemId: string;
   operation: () => Promise<T>;
 }): Promise<T> {
-  const lease = await acquireLease({ fileSystemId, mode: 'exclusive' });
+  const lease = await acquireHizoFSMaintenanceLease({ fileSystemId });
   try {
     return await operation();
   } finally {

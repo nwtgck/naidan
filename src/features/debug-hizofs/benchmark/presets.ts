@@ -181,6 +181,11 @@ function createConfiguration({
     hizoFSMaintenance: {
       cloneCount,
       sourceFileSizeBytes: cloneSourceFileSizeBytes,
+      garbageCollectionSweep: {
+        removeConcurrency: 4,
+        maximumRemovalsPerSlice: 64,
+        maximumSliceDurationMs: 150,
+      },
     },
     hizoFSRuntimePolicy: {
       fileChunkWriteConcurrency: 4,

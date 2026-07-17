@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 8,
-    benchmarkImplementationVersion: 8,
+    schemaVersion: 9,
+    benchmarkImplementationVersion: 9,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -117,6 +117,36 @@ describe('HizoFS benchmark studies', () => {
     ))).toBe(true);
     expect(variants[0]?.configuration.runLabel)
       .toBe('baseline / policy_matrix/write-concurrency-1');
+  });
+
+  it('builds bounded garbage-collection policy variants', () => {
+    const variants = createHizoFSBenchmarkStudyPlan({
+      studyKind: 'garbage_collection_policy',
+      baseConfiguration: createConfiguration(),
+    });
+
+    expect(variants.map(variant => variant.variantId)).toEqual([
+      'remove-concurrency-1',
+      'remove-concurrency-2',
+      'remove-concurrency-4',
+      'remove-concurrency-8',
+      'slice-removals-16',
+      'slice-removals-32',
+      'slice-removals-128',
+      'slice-duration-50ms',
+      'slice-duration-500ms',
+    ]);
+    expect(variants.every(variant => (
+      variant.configuration.backendMode === 'hizofs_only'
+      && variant.configuration.workloads.length === 1
+      && variant.configuration.workloads[0] === 'hizofs_maintenance'
+      && variant.configuration.warmupIterations === 0
+      && variant.configuration.measuredIterations === 1
+      && variant.configuration.storeLifecycle === 'fresh_per_iteration'
+      && variant.configuration.hizoFSMaintenance.cloneCount >= 100
+    ))).toBe(true);
+    expect(variants[0]?.configuration.runLabel)
+      .toBe('baseline / garbage_collection_policy/remove-concurrency-1');
   });
 
   it('covers 64 MiB and 256 MiB writes with fixed chunk-aligned blocks', () => {

@@ -989,6 +989,8 @@ describe('HizoFS public file-system API', () => {
         backingDirectory: backing,
         fileSystemRootKey: ROOT_KEY,
         dryRun: true,
+        sweepPolicy: undefined,
+        signal: undefined,
       });
       await exclusiveMaintenanceRequest.promise;
 

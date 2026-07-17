@@ -86,6 +86,7 @@ const estimatedWrittenBytes = computed(() => {
   case 'large_write':
   case 'lifecycle_matrix':
   case 'bulk_transaction':
+  case 'garbage_collection_policy':
     return createHizoFSBenchmarkStudyPlan({
       studyKind: runMode.value,
       baseConfiguration: parsed.data,
@@ -256,6 +257,7 @@ async function runBenchmark(): Promise<void> {
     case 'large_write':
     case 'lifecycle_matrix':
     case 'bulk_transaction':
+    case 'garbage_collection_policy':
       studyKind = currentRunMode;
       break;
     default: {
@@ -501,6 +503,7 @@ function summarizeStudyConfiguration({
   configuration: HizoFSBenchmarkConfiguration;
 }): string {
   const policy = value.hizoFSRuntimePolicy;
+  const garbageCollection = value.hizoFSMaintenance.garbageCollectionSweep;
   return [
     value.backendMode,
     value.storeLifecycle,
@@ -509,6 +512,7 @@ function summarizeStudyConfiguration({
     `read=${String(policy.fileChunkReadPrefetchConcurrency)}`,
     `handles=${String(policy.backingFileHandleCacheEntryLimit)}`,
     `chunks=${formatBytes({ value: policy.fileChunkCacheByteLimit })}/${policy.fileChunkCacheAdmission}`,
+    `gc=${String(garbageCollection.removeConcurrency)}x/${String(garbageCollection.maximumRemovalsPerSlice)}/${String(garbageCollection.maximumSliceDurationMs)}ms`,
   ].join(' · ');
 }
 
@@ -647,6 +651,7 @@ onBeforeUnmount(() => {
             <option value="large_write">Large sequential writes</option>
             <option value="lifecycle_matrix">Store lifecycle matrix</option>
             <option value="bulk_transaction">Bulk transaction comparison</option>
+            <option value="garbage_collection_policy">Garbage-collection policy</option>
           </select>
           <p tw-class="mt-2 text-[10px] text-gray-500">Studies derive isolated configurations from the current values, run them sequentially, stop after cancellation or failure, and export one combined JSON report.</p>
         </section>
@@ -690,6 +695,9 @@ onBeforeUnmount(() => {
 
             <label tw-class="text-xs">Maintenance clone count<select v-model.number="configuration.hizoFSMaintenance.cloneCount" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="8">8</option><option :value="50">50</option><option :value="100">100</option><option :value="1000">1,000</option></select></label>
             <label tw-class="text-xs">Maintenance source size<select v-model.number="configuration.hizoFSMaintenance.sourceFileSizeBytes" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1048576">1 MiB</option><option :value="16777216">16 MiB</option><option :value="67108864">64 MiB</option><option :value="134217728">128 MiB</option></select></label>
+            <label tw-class="text-xs">GC remove concurrency<select v-model.number="configuration.hizoFSMaintenance.garbageCollectionSweep.removeConcurrency" data-testid="hizofs-benchmark-gc-remove-concurrency" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1">1</option><option :value="2">2</option><option :value="4">4</option><option :value="8">8</option><option :value="16">16</option></select></label>
+            <label tw-class="text-xs">GC removals per slice<select v-model.number="configuration.hizoFSMaintenance.garbageCollectionSweep.maximumRemovalsPerSlice" data-testid="hizofs-benchmark-gc-slice-removals" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="16">16</option><option :value="32">32</option><option :value="64">64</option><option :value="128">128</option><option :value="256">256</option></select></label>
+            <label tw-class="text-xs">GC soft slice budget<select v-model.number="configuration.hizoFSMaintenance.garbageCollectionSweep.maximumSliceDurationMs" data-testid="hizofs-benchmark-gc-slice-duration" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="50">50 ms</option><option :value="100">100 ms</option><option :value="150">150 ms</option><option :value="250">250 ms</option><option :value="500">500 ms</option></select></label>
             <label tw-class="text-xs">Benchmark data<select v-model="configuration.benchmarkDataRetention" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running"><option value="delete_after_run">Delete after run</option><option value="keep_after_run">Keep for raw inspection</option></select></label>
             <p tw-class="text-[10px] text-gray-500 sm:col-span-2 lg:col-span-4">Lifecycle events separate fresh-store cost, orphan accumulation, GC effects, and reopen cost. Runtime tuning is benchmark-only and does not change the normal HizoFS defaults. Phase durations are nested and must not be added together. Reported harness memory covers benchmark-owned buffers only. HizoFS resource gauges separately report owned dirty, pending-write, and prefetch plaintext; neither measurement is a complete browser heap measurement.</p>
           </div>

@@ -63,7 +63,12 @@ export const hizoFSBenchmarkConfigurationSchema = z.object({
   hizoFSMaintenance: z.object({
     cloneCount: z.number().int().min(1).max(10_000),
     sourceFileSizeBytes: z.number().int().min(1).max(1024 * 1024 * 1024),
-  }),
+    garbageCollectionSweep: z.object({
+      removeConcurrency: z.number().int().min(1).max(32),
+      maximumRemovalsPerSlice: z.number().int().min(1).max(10_000),
+      maximumSliceDurationMs: z.number().min(1).max(60_000),
+    }).strict(),
+  }).strict(),
   hizoFSRuntimePolicy: z.object({
     fileChunkWriteConcurrency: z.number().int().min(1).max(16),
     fileChunkReadPrefetchConcurrency: z.number().int().min(1).max(16),
@@ -249,6 +254,34 @@ const hizoFSBenchmarkDiagnosticsTotalsSchema = z.object({
   runtime: hizoFSRuntimeDiagnosticsSchema,
 }).strict();
 
+const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
+  reachableObjectCount: z.number().int().nonnegative(),
+  candidateObjectCount: z.number().int().nonnegative(),
+  removedObjectCount: z.number().int().nonnegative(),
+  ignoredPhysicalPathCount: z.number().int().nonnegative(),
+  configuredRemoveConcurrency: z.number().int().positive(),
+  configuredMaximumRemovalsPerSlice: z.number().int().positive(),
+  configuredMaximumSliceDurationMs: z.number().positive(),
+  initialFenceWaitDurationMs: z.number().nonnegative(),
+  initialFenceHoldDurationMs: z.number().nonnegative(),
+  rootSnapshotDurationMs: z.number().nonnegative(),
+  markDurationMs: z.number().nonnegative(),
+  chunkVerificationDurationMs: z.number().nonnegative(),
+  objectListingDurationMs: z.number().nonnegative(),
+  candidateBuildDurationMs: z.number().nonnegative(),
+  sweepWallDurationMs: z.number().nonnegative(),
+  sweepLockWaitDurationMs: z.number().nonnegative(),
+  sweepLockHoldDurationMs: z.number().nonnegative(),
+  yieldDurationMs: z.number().nonnegative(),
+  totalDurationMs: z.number().nonnegative(),
+  sweepSliceCount: z.number().int().nonnegative(),
+  maximumPauseDurationMs: z.number().nonnegative(),
+  maximumSweepSliceDurationMs: z.number().nonnegative(),
+  maximumRemovesInFlight: z.number().int().nonnegative(),
+  maximumRemovalsInSlice: z.number().int().nonnegative(),
+  sliceDurationBudgetOverrunCount: z.number().int().nonnegative(),
+}).strict();
+
 const benchmarkSampleSchema = z.object({
   iteration: z.number().int().nonnegative(),
   phase: z.union([z.literal('warmup'), z.literal('measured')]),
@@ -260,6 +293,10 @@ const benchmarkSampleSchema = z.object({
   apiOperations: benchmarkApiCountersSchema,
   memory: benchmarkMemoryDiagnosticsSchema,
   hizoFSDiagnostics: z.union([hizoFSBenchmarkDiagnosticsSchema, z.undefined()]),
+  garbageCollection: z.union([
+    hizoFSGarbageCollectionDiagnosticsSchema,
+    z.undefined(),
+  ]),
 }).strict();
 
 const benchmarkBackendCaseResultSchema = z.object({
@@ -326,6 +363,10 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
       reachableObjectCount: z.union([z.number().int().nonnegative(), z.undefined()]),
       unreachableObjectCount: z.union([z.number().int().nonnegative(), z.undefined()]),
       removedObjectCount: z.union([z.number().int().nonnegative(), z.undefined()]),
+      garbageCollection: z.union([
+        hizoFSGarbageCollectionDiagnosticsSchema,
+        z.undefined(),
+      ]),
       backingStore: hizoFSBackingStoreCountersSchema,
       superblockPublications: z.number().int().nonnegative(),
     }).strict(),
@@ -334,8 +375,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(8),
-  benchmarkImplementationVersion: z.literal(8),
+  schemaVersion: z.literal(9),
+  benchmarkImplementationVersion: z.literal(9),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -413,11 +454,12 @@ export const hizoFSBenchmarkStudyKindSchema = z.union([
   z.literal('large_write'),
   z.literal('lifecycle_matrix'),
   z.literal('bulk_transaction'),
+  z.literal('garbage_collection_policy'),
 ]);
 
 export const hizoFSBenchmarkStudyReportSchema = z.object({
   schemaVersion: z.literal(1),
-  studyImplementationVersion: z.literal(1),
+  studyImplementationVersion: z.literal(2),
   reportType: z.literal('hizofs_benchmark_study'),
   studyId: z.string(),
   studyKind: hizoFSBenchmarkStudyKindSchema,

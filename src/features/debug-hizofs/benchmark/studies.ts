@@ -40,6 +40,8 @@ export function createHizoFSBenchmarkStudyPlan({
     return createLifecycleMatrix({ baseConfiguration });
   case 'bulk_transaction':
     return createBulkTransactionStudy({ baseConfiguration });
+  case 'garbage_collection_policy':
+    return createGarbageCollectionPolicyStudy({ baseConfiguration });
   default: {
     const _ex: never = studyKind;
     throw new Error(`Unhandled HizoFS benchmark study: ${String(_ex)}`);
@@ -82,7 +84,7 @@ export function createHizoFSBenchmarkStudyReport({
   });
   return hizoFSBenchmarkStudyReportSchema.parse({
     schemaVersion: 1,
-    studyImplementationVersion: 1,
+    studyImplementationVersion: 2,
     reportType: 'hizofs_benchmark_study',
     studyId,
     studyKind,
@@ -309,6 +311,83 @@ function createBulkTransactionStudy({
       storeLifecycle: 'fresh_per_iteration',
     }),
   })];
+}
+
+function createGarbageCollectionPolicyStudy({
+  baseConfiguration,
+}: {
+  baseConfiguration: HizoFSBenchmarkConfiguration;
+}): readonly HizoFSBenchmarkStudyVariant[] {
+  const studyBase = createStudyBaseConfiguration({
+    baseConfiguration: {
+      ...baseConfiguration,
+      hizoFSMaintenance: {
+        ...baseConfiguration.hizoFSMaintenance,
+        cloneCount: Math.max(baseConfiguration.hizoFSMaintenance.cloneCount, 100),
+      },
+    },
+    backendMode: 'hizofs_only',
+    workloads: ['hizofs_maintenance'],
+    warmupIterations: 0,
+    measuredIterations: 1,
+    storeLifecycle: 'fresh_per_iteration',
+  });
+  const variants: HizoFSBenchmarkStudyVariant[] = [];
+  for (const removeConcurrency of [1, 2, 4, 8] as const) {
+    variants.push(createVariant({
+      studyKind: 'garbage_collection_policy',
+      variantId: `remove-concurrency-${String(removeConcurrency)}`,
+      label: `GC remove concurrency ${String(removeConcurrency)}`,
+      configuration: {
+        ...studyBase,
+        hizoFSMaintenance: {
+          ...studyBase.hizoFSMaintenance,
+          garbageCollectionSweep: {
+            ...studyBase.hizoFSMaintenance.garbageCollectionSweep,
+            removeConcurrency,
+          },
+        },
+      },
+    }));
+  }
+  for (const maximumRemovalsPerSlice of [16, 32, 128] as const) {
+    variants.push(createVariant({
+      studyKind: 'garbage_collection_policy',
+      variantId: `slice-removals-${String(maximumRemovalsPerSlice)}`,
+      label: `GC maximum ${String(maximumRemovalsPerSlice)} removals per slice`,
+      configuration: {
+        ...studyBase,
+        hizoFSMaintenance: {
+          ...studyBase.hizoFSMaintenance,
+          garbageCollectionSweep: {
+            ...studyBase.hizoFSMaintenance.garbageCollectionSweep,
+            removeConcurrency: 4,
+            maximumRemovalsPerSlice,
+          },
+        },
+      },
+    }));
+  }
+  for (const maximumSliceDurationMs of [50, 500] as const) {
+    variants.push(createVariant({
+      studyKind: 'garbage_collection_policy',
+      variantId: `slice-duration-${String(maximumSliceDurationMs)}ms`,
+      label: `GC ${String(maximumSliceDurationMs)} ms soft slice budget`,
+      configuration: {
+        ...studyBase,
+        hizoFSMaintenance: {
+          ...studyBase.hizoFSMaintenance,
+          garbageCollectionSweep: {
+            ...studyBase.hizoFSMaintenance.garbageCollectionSweep,
+            removeConcurrency: 4,
+            maximumRemovalsPerSlice: 64,
+            maximumSliceDurationMs,
+          },
+        },
+      },
+    }));
+  }
+  return variants;
 }
 
 function createStudyBaseConfiguration({

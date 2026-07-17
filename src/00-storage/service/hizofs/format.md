@@ -334,9 +334,20 @@ target that the transition coordinator may discard.
 Idle HizoFS sessions do not hold a maintenance lease. A shared resource lease
 is held only while an active read operation or traversal, reader, writer, fixed
 read snapshot, mutation, or inspector can reference immutable objects. Garbage
-collection obtains the exclusive maintenance lease, so it can run during normal
-application uptime once active resources have settled, but never while a live
-operation could still require an old object.
+collection first obtains the exclusive maintenance lease long enough to drain
+active resources, validate every retained generation, and freeze an in-memory
+set of unreachable object IDs. Object IDs are never reused and later mutations
+start from a retained generation, so an object unreachable at that fence cannot
+become reachable afterward.
+
+Sweep reacquires the exclusive lease only for bounded removal slices. Removals
+within one slice use bounded concurrency, and every started removal settles
+before the lease is released. A soft time budget stops scheduling additional
+removals but never abandons an OPFS operation already in flight. Between slices
+GC releases the lease and yields so queued foreground resources can progress.
+The candidate cursor is intentionally not persistent: after process loss,
+already removed objects remain safely absent and a later GC cycle rediscovers
+all remaining unreachable objects.
 
 GC marks from every valid A/B superblock commit. For each generation it
 validates the persistent inode, directory, and extent indexes, then traverses
