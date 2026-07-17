@@ -11,7 +11,10 @@ import {
 } from './crypto/object-crypto';
 import { createHizoFSRuntime, type HizoFSRuntime } from './file-system/runtime';
 import { DEFAULT_HIZOFS_POLICY } from './file-system/policy';
-import { acquireHizoFSMaintenanceLease } from './file-system/maintenance-lock';
+import {
+  acquireHizoFSGarbageCollectionLease,
+  acquireHizoFSMaintenanceLease,
+} from './file-system/maintenance-lock';
 import type { HizoFSRecordKind } from './format/record';
 import {
   getHizoFSObjectShard,
@@ -27,7 +30,7 @@ export type HizoFSGarbageCollectionSweepPolicy = {
 export const DEFAULT_HIZOFS_GARBAGE_COLLECTION_SWEEP_POLICY:
   HizoFSGarbageCollectionSweepPolicy = {
     removeConcurrency: 4,
-    maximumRemovalsPerSlice: 64,
+    maximumRemovalsPerSlice: 16,
     maximumSliceDurationMs: 150,
   };
 
@@ -98,6 +101,7 @@ type HizoFSMarkState = {
 
 type GarbageCollectionDependencies = {
   readonly now: () => number;
+  readonly afterRootSnapshot: () => Promise<void>;
   readonly removeObject: ({ runtime, objectId }: {
     runtime: HizoFSRuntime;
     objectId: string;
@@ -105,17 +109,23 @@ type GarbageCollectionDependencies = {
   readonly yieldToForeground: () => Promise<void>;
 };
 
-type GarbageCollectionPreparation = {
+type GarbageCollectionRootSnapshot = {
   readonly runtime: HizoFSRuntime;
-  readonly reachableObjectCount: number;
-  readonly unreachableObjectIds: readonly string[];
+  readonly activeCommitObjectId: string;
+  readonly commitObjectIds: readonly string[];
+  readonly canonicalObjectIds: ReadonlySet<string>;
   readonly ignoredPhysicalPaths: readonly string[];
   readonly initialFenceWaitDurationMs: number;
   readonly initialFenceHoldDurationMs: number;
   readonly rootSnapshotDurationMs: number;
+  readonly objectListingDurationMs: number;
+};
+
+type GarbageCollectionPreparation = GarbageCollectionRootSnapshot & {
+  readonly reachableObjectCount: number;
+  readonly unreachableObjectIds: readonly string[];
   readonly markDurationMs: number;
   readonly chunkVerificationDurationMs: number;
-  readonly objectListingDurationMs: number;
   readonly candidateBuildDurationMs: number;
 };
 
@@ -206,6 +216,7 @@ export async function collectHizoFSGarbage({
     signal,
     dependencies: {
       now: monotonicNow,
+      afterRootSnapshot: async () => {},
       removeObject: async ({ runtime, objectId }) => {
         await runtime.objectStore.remove({ objectId });
       },
@@ -245,29 +256,39 @@ async function collectHizoFSGarbageInternal({
     rawRootKey: fileSystemRootKey,
   });
   const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
-  const preparation = await prepareGarbageCollection({
-    backingStore,
-    rootKey,
+  const garbageCollectionLease = await acquireHizoFSGarbageCollectionLease({
     fileSystemId,
-    signal,
-    now: dependencies.now,
   });
-
-  // Marking authenticates plaintext metadata and file chunks, but sweeping
-  // needs only immutable object IDs. Release and zero those cached plaintexts
-  // before a potentially long multi-slice sweep.
-  preparation.runtime.objectStore.clearPlaintextCaches();
-
-  const sweepMetrics = dryRun
-    ? createEmptySweepMetrics()
-    : await sweepGarbageCollectionCandidates({
-      runtime: preparation.runtime,
+  let preparation: GarbageCollectionPreparation;
+  let sweepMetrics: GarbageCollectionSweepMetrics;
+  try {
+    preparation = await prepareGarbageCollection({
+      backingStore,
+      rootKey,
       fileSystemId,
-      objectIds: preparation.unreachableObjectIds,
-      sweepPolicy: resolvedSweepPolicy,
       signal,
-      dependencies,
+      now: dependencies.now,
+      afterRootSnapshot: dependencies.afterRootSnapshot,
     });
+
+    // Marking authenticates plaintext metadata and file chunks, but sweeping
+    // needs only immutable object IDs. Release and zero those cached plaintexts
+    // before a potentially long multi-slice sweep.
+    preparation.runtime.objectStore.clearPlaintextCaches();
+
+    sweepMetrics = dryRun
+      ? createEmptySweepMetrics()
+      : await sweepGarbageCollectionCandidates({
+        runtime: preparation.runtime,
+        fileSystemId,
+        objectIds: preparation.unreachableObjectIds,
+        sweepPolicy: resolvedSweepPolicy,
+        signal,
+        dependencies,
+      });
+  } finally {
+    await garbageCollectionLease.release();
+  }
 
   const maximumPauseDurationMs = Math.max(
     preparation.initialFenceHoldDurationMs,
@@ -315,34 +336,117 @@ async function prepareGarbageCollection({
   fileSystemId,
   signal,
   now,
+  afterRootSnapshot,
 }: {
   backingStore: NativeOpfsHizoFSBackingStore;
   rootKey: CryptoKey;
   fileSystemId: string;
   signal: AbortSignal | undefined;
   now: () => number;
+  afterRootSnapshot: () => Promise<void>;
 }): Promise<GarbageCollectionPreparation> {
+  const snapshot = await snapshotGarbageCollectionRoots({
+    backingStore,
+    rootKey,
+    fileSystemId,
+    signal,
+    now,
+  });
+  await afterRootSnapshot();
+  throwIfAborted({ signal });
+
+  // The maintenance fence drained every pre-existing reader, writer, bulk
+  // builder, and mutation before this snapshot was taken. Object IDs are never
+  // reused, and later mutations can reference only objects reachable from the
+  // snapped active generation plus objects created after the physical listing.
+  // Therefore marking the immutable snapped roots is safe without holding the
+  // foreground-blocking maintenance lease.
+  const markStartedAt = now();
+  const markState: HizoFSMarkState = {
+    reachableObjectIds: new Set<string>(),
+    expectedKinds: new Map<string, HizoFSRecordKind>(),
+    loadedInodes: new Map<string, LoadedReferencedInode>(),
+    visitedDirectoryPageObjectIds: new Set<string>(),
+    visitedExtentPageObjectIds: new Set<string>(),
+    extentRootChunkSizes: new Map<string, number>(),
+    chunkSizeLimits: new Map<string, number>(),
+  };
+  for (const commitObjectId of snapshot.commitObjectIds) {
+    throwIfAborted({ signal });
+    await markCommitGeneration({
+      runtime: snapshot.runtime,
+      commitObjectId,
+      markState,
+    });
+  }
+  if (!snapshot.commitObjectIds.includes(snapshot.activeCommitObjectId)) {
+    throw new HizoFSCorruptionError({
+      message: 'HizoFS active commit is absent from the valid superblock candidates',
+      cause: undefined,
+    });
+  }
+  const markDurationMs = elapsed({ now, startedAt: markStartedAt });
+
+  const chunkVerificationStartedAt = now();
+  for (const [objectId, chunkSize] of markState.chunkSizeLimits) {
+    throwIfAborted({ signal });
+    await snapshot.runtime.chunkStore.read({ objectId, chunkSize });
+  }
+  const chunkVerificationDurationMs = elapsed({
+    now,
+    startedAt: chunkVerificationStartedAt,
+  });
+
+  const candidateBuildStartedAt = now();
+  const unreachableObjectIds = [...snapshot.canonicalObjectIds]
+    .filter(objectId => !markState.reachableObjectIds.has(objectId))
+    .sort();
+  const candidateBuildDurationMs = elapsed({
+    now,
+    startedAt: candidateBuildStartedAt,
+  });
+
+  return {
+    ...snapshot,
+    reachableObjectCount: markState.reachableObjectIds.size,
+    unreachableObjectIds,
+    markDurationMs,
+    chunkVerificationDurationMs,
+    candidateBuildDurationMs,
+  };
+}
+
+async function snapshotGarbageCollectionRoots({
+  backingStore,
+  rootKey,
+  fileSystemId,
+  signal,
+  now,
+}: {
+  backingStore: NativeOpfsHizoFSBackingStore;
+  rootKey: CryptoKey;
+  fileSystemId: string;
+  signal: AbortSignal | undefined;
+  now: () => number;
+}): Promise<GarbageCollectionRootSnapshot> {
+  const runtime = createHizoFSRuntime({
+    backingStore,
+    rootKey,
+    fileSystemId,
+    policy: DEFAULT_HIZOFS_POLICY,
+    now: () => Date.now(),
+    diagnostics: undefined,
+  });
   const fenceRequestedAt = now();
   const lease = await acquireHizoFSMaintenanceLease({ fileSystemId });
   const initialFenceWaitDurationMs = elapsed({ now, startedAt: fenceRequestedAt });
   const fenceStartedAt = now();
   let rootSnapshotDurationMs = 0;
-  let markDurationMs = 0;
-  let chunkVerificationDurationMs = 0;
   let objectListingDurationMs = 0;
-  let candidateBuildDurationMs = 0;
-  let preparation: Omit<GarbageCollectionPreparation, 'initialFenceHoldDurationMs'>
+  let snapshot: Omit<GarbageCollectionRootSnapshot, 'initialFenceHoldDurationMs'>
     | undefined;
   try {
     throwIfAborted({ signal });
-    const runtime = createHizoFSRuntime({
-      backingStore,
-      rootKey,
-      fileSystemId,
-      policy: DEFAULT_HIZOFS_POLICY,
-      now: () => Date.now(),
-      diagnostics: undefined,
-    });
 
     const rootSnapshotStartedAt = now();
     const activeState = await runtime.core.loadActiveState();
@@ -360,43 +464,16 @@ async function prepareGarbageCollection({
     }
     }
     const superblocks = await runtime.core.superblockStore.readCandidates();
-    rootSnapshotDurationMs = elapsed({ now, startedAt: rootSnapshotStartedAt });
-
-    const markStartedAt = now();
-    const markState: HizoFSMarkState = {
-      reachableObjectIds: new Set<string>(),
-      expectedKinds: new Map<string, HizoFSRecordKind>(),
-      loadedInodes: new Map<string, LoadedReferencedInode>(),
-      visitedDirectoryPageObjectIds: new Set<string>(),
-      visitedExtentPageObjectIds: new Set<string>(),
-      extentRootChunkSizes: new Map<string, number>(),
-      chunkSizeLimits: new Map<string, number>(),
-    };
-    const markedCommitIds = new Set<string>();
-    for (const superblock of superblocks) {
-      throwIfAborted({ signal });
-      if (markedCommitIds.has(superblock.activeCommitObjectId)) continue;
-      markedCommitIds.add(superblock.activeCommitObjectId);
-      await markCommitGeneration({
-        runtime,
-        commitObjectId: superblock.activeCommitObjectId,
-        markState,
-      });
-    }
-    if (!markedCommitIds.has(activeState.commitObjectId)) {
+    const commitObjectIds = [...new Set(
+      superblocks.map(superblock => superblock.activeCommitObjectId),
+    )];
+    if (!commitObjectIds.includes(activeState.commitObjectId)) {
       throw new HizoFSCorruptionError({
         message: 'HizoFS active commit is absent from the valid superblock candidates',
         cause: undefined,
       });
     }
-    markDurationMs = elapsed({ now, startedAt: markStartedAt });
-
-    const chunkVerificationStartedAt = now();
-    for (const [objectId, chunkSize] of markState.chunkSizeLimits) {
-      throwIfAborted({ signal });
-      await runtime.chunkStore.read({ objectId, chunkSize });
-    }
-    chunkVerificationDurationMs = elapsed({ now, startedAt: chunkVerificationStartedAt });
+    rootSnapshotDurationMs = elapsed({ now, startedAt: rootSnapshotStartedAt });
 
     const objectListingStartedAt = now();
     const {
@@ -405,32 +482,24 @@ async function prepareGarbageCollection({
     } = await listPhysicalHizoFSObjects({ backingStore });
     objectListingDurationMs = elapsed({ now, startedAt: objectListingStartedAt });
 
-    const candidateBuildStartedAt = now();
-    const unreachableObjectIds = [...canonicalObjectIds]
-      .filter(objectId => !markState.reachableObjectIds.has(objectId))
-      .sort();
-    candidateBuildDurationMs = elapsed({ now, startedAt: candidateBuildStartedAt });
-
-    preparation = {
+    snapshot = {
       runtime,
-      reachableObjectCount: markState.reachableObjectIds.size,
-      unreachableObjectIds,
+      activeCommitObjectId: activeState.commitObjectId,
+      commitObjectIds,
+      canonicalObjectIds,
       ignoredPhysicalPaths,
       initialFenceWaitDurationMs,
       rootSnapshotDurationMs,
-      markDurationMs,
-      chunkVerificationDurationMs,
       objectListingDurationMs,
-      candidateBuildDurationMs,
     };
   } finally {
     await lease.release();
   }
-  if (preparation === undefined) {
-    throw new Error('HizoFS garbage-collection preparation completed without a result');
+  if (snapshot === undefined) {
+    throw new Error('HizoFS garbage-collection root snapshot completed without a result');
   }
   return {
-    ...preparation,
+    ...snapshot,
     initialFenceHoldDurationMs: elapsed({ now, startedAt: fenceStartedAt }),
   };
 }

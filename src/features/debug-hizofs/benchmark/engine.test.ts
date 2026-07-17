@@ -48,14 +48,14 @@ describe('HizoFS benchmark engine', () => {
         fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
         fileChunkWriteConcurrencyPerWriter: 4,
-        fileChunkReadPrefetchConcurrencyPerReader: 1,
+        fileChunkReadPrefetchConcurrencyPerReader: 4,
         backingFileHandleCacheEntryLimitPerRuntime: 1024,
         maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
-        maximumPlaintextChunkReadBytesInFlightPerReader: 256 * 1024,
+        maximumPlaintextChunkReadBytesInFlightPerReader: 1024 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
-        fileChunkCacheByteLimitPerRuntime: 8 * 1024 * 1024,
-        fileChunkCacheEntryLimitPerRuntime: 1024,
+        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024,
+        fileChunkCacheEntryLimitPerRuntime: 2048,
         fileChunkCacheAdmission: 'read_only',
       },
     });
@@ -291,7 +291,7 @@ describe('HizoFS benchmark engine', () => {
       removedObjectCount: expect.any(Number),
       garbageCollection: {
         configuredRemoveConcurrency: 4,
-        configuredMaximumRemovalsPerSlice: 64,
+        configuredMaximumRemovalsPerSlice: 16,
         configuredMaximumSliceDurationMs: 150,
         sweepSliceCount: expect.any(Number),
         maximumPauseDurationMs: expect.any(Number),
@@ -365,6 +365,8 @@ describe('HizoFS benchmark engine', () => {
       result => result.caseId === 'hizofs_garbage_collection',
     );
     const diagnostics = gcResult?.backends.hizofs?.samples[0]?.garbageCollection;
+    const foregroundLatency = gcResult?.backends.hizofs?.samples[0]
+      ?.foregroundLatency;
     expect(diagnostics).toMatchObject({
       configuredRemoveConcurrency: 2,
       configuredMaximumRemovalsPerSlice: 3,
@@ -373,6 +375,15 @@ describe('HizoFS benchmark engine', () => {
       maximumPauseDurationMs: expect.any(Number),
       maximumRemovesInFlight: expect.any(Number),
     });
+    expect(foregroundLatency).toMatchObject({
+      operationCount: expect.any(Number),
+      durationMs: {
+        median: expect.any(Number),
+        p95: expect.any(Number),
+        maximum: expect.any(Number),
+      },
+    });
+    expect(foregroundLatency?.operationCount).toBeGreaterThan(0);
     expect(() => hizoFSBenchmarkReportSchema.parse(report)).not.toThrow();
   });
 

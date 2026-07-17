@@ -35,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 9 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 10 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -302,7 +302,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -1533,10 +1533,21 @@ async function runHizoFSMaintenanceWorkload({
     startPosition: 0,
     assertActive,
   });
+  const foregroundProbeName = `foreground-probe-${phase}-${String(iteration)}.bin`;
+  await writeBackendFile({
+    context,
+    directory: await getBackendRoot({ context }),
+    name: foregroundProbeName,
+    create: true,
+    bytes: new Uint8Array([1]),
+    keepExistingData: false,
+    position: 0,
+  });
   const parameters = {
     cloneCount: configuration.hizoFSMaintenance.cloneCount,
     sourceFileSizeBytes: configuration.hizoFSMaintenance.sourceFileSizeBytes,
     cowWriteBlockSizeBytes: block.byteLength,
+    foregroundProbeOperationLimit: 10_000,
   };
   const samples: CaseSample[] = [];
 
@@ -1616,6 +1627,7 @@ async function runHizoFSMaintenanceWorkload({
       return {
         checksum: (result.reachableObjectCount + result.unreachableObjectIds.length) >>> 0,
         garbageCollection: result.diagnostics,
+        foregroundLatency: undefined,
       };
     },
   }));
@@ -1637,16 +1649,53 @@ async function runHizoFSMaintenanceWorkload({
     operationCount: 1,
     bytesProcessed: 0,
     operation: async () => {
-      const result = await collectHizoFSGarbage({
+      let collectionSettled = false;
+      const collection = collectHizoFSGarbage({
         backingDirectory: context.hizoFSBackingDirectory!,
         fileSystemRootKey: context.hizoFSRootKey!,
         dryRun: false,
         sweepPolicy: configuration.hizoFSMaintenance.garbageCollectionSweep,
         signal: undefined,
       });
+      void collection.then(
+        () => {
+          collectionSettled = true;
+        },
+        () => {
+          collectionSettled = true;
+        },
+      );
+      const foregroundLatencies: number[] = [];
+      let foregroundChecksum = 0;
+      do {
+        assertActive();
+        const foregroundStartedAt = performance.now();
+        foregroundChecksum = addChecksum({
+          checksum: foregroundChecksum,
+          value: await readBackendFile({
+            context,
+            directory: await getBackendRoot({ context }),
+            name: foregroundProbeName,
+            blockSizeBytes: 1,
+            assertActive,
+          }),
+        });
+        foregroundLatencies.push(Math.max(
+          performance.now() - foregroundStartedAt,
+          0,
+        ));
+        await yieldToBenchmarkEventLoop();
+      } while (!collectionSettled && foregroundLatencies.length < 10_000);
+      const result = await collection;
       return {
-        checksum: result.removedObjectCount >>> 0,
+        checksum: addChecksum({
+          checksum: result.removedObjectCount >>> 0,
+          value: foregroundChecksum,
+        }),
         garbageCollection: result.diagnostics,
+        foregroundLatency: summarizeForegroundLatencies({
+          durationsMs: foregroundLatencies,
+        }),
       };
     },
   }));
@@ -1656,6 +1705,7 @@ async function runHizoFSMaintenanceWorkload({
 type BenchmarkCaseOperationResult = number | {
   readonly checksum: number;
   readonly garbageCollection: HizoFSGarbageCollectionDiagnostics;
+  readonly foregroundLatency: HizoFSBenchmarkSample['foregroundLatency'];
 };
 
 async function measureCase({
@@ -1696,6 +1746,9 @@ async function measureCase({
   const garbageCollection = typeof operationResult === 'number'
     ? undefined
     : operationResult.garbageCollection;
+  const foregroundLatency = typeof operationResult === 'number'
+    ? undefined
+    : operationResult.foregroundLatency;
   const durationMs = Math.max(performance.now() - startedAt, 0);
   const after = readHizoFSDiagnosticBaseline({ context });
   return {
@@ -1724,6 +1777,7 @@ async function measureCase({
         operationCount,
       }),
       garbageCollection,
+      foregroundLatency,
     },
   };
 }
@@ -3028,6 +3082,27 @@ function percentile({
   if (sortedValues.length === 0) return 0;
   const index = Math.min(Math.ceil(target * sortedValues.length) - 1, sortedValues.length - 1);
   return sortedValues[Math.max(index, 0)] ?? 0;
+}
+
+function summarizeForegroundLatencies({
+  durationsMs,
+}: {
+  durationsMs: readonly number[];
+}): NonNullable<HizoFSBenchmarkSample['foregroundLatency']> {
+  const sortedDurationsMs = [...durationsMs].sort((left, right) => left - right);
+  return {
+    operationCount: sortedDurationsMs.length,
+    durationMs: {
+      median: median({ values: sortedDurationsMs }),
+      p95: percentile({ sortedValues: sortedDurationsMs, percentile: 0.95 }),
+      minimum: sortedDurationsMs[0] ?? 0,
+      maximum: sortedDurationsMs.at(-1) ?? 0,
+    },
+  };
+}
+
+async function yieldToBenchmarkEventLoop(): Promise<void> {
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
 }
 
 function median({ values }: { values: readonly number[] }): number {

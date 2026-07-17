@@ -326,19 +326,25 @@ builder. It streams file contents into immutable chunks, builds directory,
 extent, and inode indexes bottom-up, and publishes the complete imported tree
 with one file-system commit. It is used for encryption and re-encryption
 transitions so file and directory counts do not multiply superblock commits.
-Failure before publication leaves only unreachable immutable objects in a
-target that the transition coordinator may discard.
+Independent inode and directory-object writes are queued with the same bounded
+immutable-write concurrency used by file chunks. Commit and abort both wait for
+every scheduled write to settle before releasing the maintenance resource
+lease. Failure before publication leaves only unreachable immutable objects in
+a target that the transition coordinator may discard.
 
 ## Maintenance and garbage collection
 
 Idle HizoFS sessions do not hold a maintenance lease. A shared resource lease
 is held only while an active read operation or traversal, reader, writer, fixed
 read snapshot, mutation, or inspector can reference immutable objects. Garbage
-collection first obtains the exclusive maintenance lease long enough to drain
-active resources, validate every retained generation, and freeze an in-memory
-set of unreachable object IDs. Object IDs are never reused and later mutations
-start from a retained generation, so an object unreachable at that fence cannot
-become reachable afterward.
+collection first serializes collectors with a separate GC job lease, then
+obtains the exclusive maintenance lease long enough to drain active resources,
+snapshot every valid retained commit, and list the physical object IDs that
+exist at the fence. The foreground-blocking lease is released before metadata
+marking and chunk authentication. Object IDs are never reused, newly created
+objects are absent from the fenced physical listing, and later mutations can
+reference only a retained generation or objects created after the fence, so an
+object found unreachable from the snapped roots cannot become reachable later.
 
 Sweep reacquires the exclusive lease only for bounded removal slices. Removals
 within one slice use bounded concurrency, and every started removal settles

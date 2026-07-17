@@ -282,6 +282,11 @@ const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
   sliceDurationBudgetOverrunCount: z.number().int().nonnegative(),
 }).strict();
 
+const benchmarkForegroundLatencySchema = z.object({
+  operationCount: z.number().int().nonnegative(),
+  durationMs: durationSummarySchema,
+}).strict();
+
 const benchmarkSampleSchema = z.object({
   iteration: z.number().int().nonnegative(),
   phase: z.union([z.literal('warmup'), z.literal('measured')]),
@@ -295,6 +300,10 @@ const benchmarkSampleSchema = z.object({
   hizoFSDiagnostics: z.union([hizoFSBenchmarkDiagnosticsSchema, z.undefined()]),
   garbageCollection: z.union([
     hizoFSGarbageCollectionDiagnosticsSchema,
+    z.undefined(),
+  ]),
+  foregroundLatency: z.union([
+    benchmarkForegroundLatencySchema,
     z.undefined(),
   ]),
 }).strict();
@@ -375,8 +384,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(9),
-  benchmarkImplementationVersion: z.literal(9),
+  schemaVersion: z.literal(10),
+  benchmarkImplementationVersion: z.literal(10),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -459,7 +468,7 @@ export const hizoFSBenchmarkStudyKindSchema = z.union([
 
 export const hizoFSBenchmarkStudyReportSchema = z.object({
   schemaVersion: z.literal(1),
-  studyImplementationVersion: z.literal(2),
+  studyImplementationVersion: z.literal(3),
   reportType: z.literal('hizofs_benchmark_study'),
   studyId: z.string(),
   studyKind: hizoFSBenchmarkStudyKindSchema,

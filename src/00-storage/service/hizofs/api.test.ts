@@ -308,6 +308,145 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
+  it('bounds bulk inode-object writes before one-commit publication', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });
+    if (builder === undefined) {
+      throw new Error('Expected a HizoFS bulk builder');
+    }
+    const hizofs = requireHizoFSSession({ session });
+    const originalWrite = hizofs.runtime.inodeStore.writeFile
+      .bind(hizofs.runtime.inodeStore);
+    const releaseWrites = Promise.withResolvers<void>();
+    const firstWaveStarted = Promise.withResolvers<void>();
+    let activeWrites = 0;
+    let maximumActiveWrites = 0;
+    let startedWrites = 0;
+    vi.spyOn(hizofs.runtime.inodeStore, 'writeFile').mockImplementation(
+      async arguments_ => {
+        activeWrites += 1;
+        startedWrites += 1;
+        maximumActiveWrites = Math.max(maximumActiveWrites, activeWrites);
+        if (startedWrites === TINY_POLICY.fileChunkWriteConcurrency) {
+          firstWaveStarted.resolve();
+        }
+        try {
+          await releaseWrites.promise;
+          return await originalWrite(arguments_);
+        } finally {
+          activeWrites -= 1;
+        }
+      },
+    );
+
+    await builder.createEmptyFile({ name: 'first.txt' });
+    await builder.createEmptyFile({ name: 'second.txt' });
+    await firstWaveStarted.promise;
+    let thirdScheduled = false;
+    const third = builder.createEmptyFile({ name: 'third.txt' }).finally(() => {
+      thirdScheduled = true;
+    });
+    await Promise.resolve();
+
+    expect(thirdScheduled).toBe(false);
+    expect(maximumActiveWrites).toBe(TINY_POLICY.fileChunkWriteConcurrency);
+    releaseWrites.resolve();
+    await third;
+    await builder.commit();
+
+    expect(maximumActiveWrites).toBe(TINY_POLICY.fileChunkWriteConcurrency);
+    expect(startedWrites).toBe(3);
+    await expect(session.root.getFileHandle({
+      name: 'third.txt',
+      create: false,
+    })).resolves.toBeDefined();
+    await session.close();
+  });
+
+  it('waits for scheduled bulk object writes before abort releases its lease', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });
+    if (builder === undefined) {
+      throw new Error('Expected a HizoFS bulk builder');
+    }
+    const hizofs = requireHizoFSSession({ session });
+    const originalWrite = hizofs.runtime.inodeStore.writeFile
+      .bind(hizofs.runtime.inodeStore);
+    const writeStarted = Promise.withResolvers<void>();
+    const releaseWrite = Promise.withResolvers<void>();
+    vi.spyOn(hizofs.runtime.inodeStore, 'writeFile').mockImplementation(
+      async arguments_ => {
+        writeStarted.resolve();
+        await releaseWrite.promise;
+        return await originalWrite(arguments_);
+      },
+    );
+
+    await builder.createEmptyFile({ name: 'orphan.txt' });
+    await writeStarted.promise;
+    let abortSettled = false;
+    const abort = builder.abort({ reason: new Error('cancelled') }).finally(() => {
+      abortSettled = true;
+    });
+    await Promise.resolve();
+    expect(abortSettled).toBe(false);
+
+    releaseWrite.resolve();
+    await abort;
+    expect(abortSettled).toBe(true);
+    await session.close();
+  });
+
+  it('never publishes after a bounded bulk object write fails', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });
+    if (builder === undefined) {
+      throw new Error('Expected a HizoFS bulk builder');
+    }
+    const hizofs = requireHizoFSSession({ session });
+    const originalWrite = hizofs.runtime.inodeStore.writeFile
+      .bind(hizofs.runtime.inodeStore);
+    const firstWriteStarted = Promise.withResolvers<void>();
+    const secondWriteStarted = Promise.withResolvers<void>();
+    const failFirstWrite = Promise.withResolvers<void>();
+    const releaseSecondWrite = Promise.withResolvers<void>();
+    const failure = new Error('simulated bulk object-write failure');
+    let writeCount = 0;
+    vi.spyOn(hizofs.runtime.inodeStore, 'writeFile').mockImplementation(
+      async arguments_ => {
+        writeCount += 1;
+        switch (writeCount) {
+        case 1:
+          firstWriteStarted.resolve();
+          await failFirstWrite.promise;
+          throw failure;
+        case 2:
+          secondWriteStarted.resolve();
+          await releaseSecondWrite.promise;
+          return await originalWrite(arguments_);
+        default:
+          return await originalWrite(arguments_);
+        }
+      },
+    );
+
+    await builder.createEmptyFile({ name: 'first.txt' });
+    await builder.createEmptyFile({ name: 'second.txt' });
+    await Promise.all([firstWriteStarted.promise, secondWriteStarted.promise]);
+    const third = builder.createEmptyFile({ name: 'third.txt' });
+    failFirstWrite.resolve();
+    await expect(third).rejects.toBe(failure);
+
+    releaseSecondWrite.resolve();
+    await expect(builder.commit()).rejects.toThrow('HizoFS bulk object write failed');
+    const state = await hizofs.runtime.core.loadActiveState();
+    expect(state.commit.revision).toBe(0);
+    await session.close();
+  });
+
   it('does not recognize an empty directory merely because it uses the canonical suffix', async () => {
     const emptyCanonicalName = new MockFileSystemDirectoryHandle({ name: 'filesystem.hizofs' });
     await expect(openHizoFS({
@@ -1634,6 +1773,12 @@ describe('HizoFS public file-system API', () => {
     expect(maximumActiveWrites).toBe(2);
     expect(startedWrites).toBe(2);
     expect(diagnostics.snapshot().resources.writerPendingChunkWrites).toMatchObject({
+      currentBytes: 8,
+      maximumBytes: 8,
+      currentOperations: 2,
+      maximumOperations: 2,
+    });
+    expect(diagnostics.snapshot().resources.writerDirtyChunks).toMatchObject({
       currentBytes: 8,
       maximumBytes: 8,
       currentOperations: 2,

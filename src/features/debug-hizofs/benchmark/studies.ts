@@ -84,7 +84,7 @@ export function createHizoFSBenchmarkStudyReport({
   });
   return hizoFSBenchmarkStudyReportSchema.parse({
     schemaVersion: 1,
-    studyImplementationVersion: 2,
+    studyImplementationVersion: 3,
     reportType: 'hizofs_benchmark_study',
     studyId,
     studyKind,
@@ -233,18 +233,37 @@ function createLargeWriteStudy({
     measuredIterations: Math.min(baseConfiguration.measuredIterations, 3),
     storeLifecycle: 'fresh_per_iteration',
   });
-  return [64 * 1024 * 1024, 256 * 1024 * 1024].map(fileSizeBytes => createVariant({
+  const variants: HizoFSBenchmarkStudyVariant[] = [createVariant({
     studyKind: 'large_write',
-    variantId: `sequential-write-${String(fileSizeBytes / (1024 * 1024))}mib`,
-    label: `Sequential I/O with a ${String(fileSizeBytes / (1024 * 1024))} MiB file`,
+    variantId: 'sequential-write-64mib',
+    label: 'Sequential I/O with a 64 MiB file',
     configuration: {
       ...studyBase,
       sequentialIo: {
-        fileSizeBytes,
+        fileSizeBytes: 64 * 1024 * 1024,
         blockSizeBytes: 256 * 1024,
       },
     },
-  }));
+  })];
+  for (const concurrency of [1, 2, 4, 8] as const) {
+    variants.push(createVariant({
+      studyKind: 'large_write',
+      variantId: `sequential-write-256mib-concurrency-${String(concurrency)}`,
+      label: `Sequential 256 MiB write with concurrency ${String(concurrency)}`,
+      configuration: {
+        ...studyBase,
+        sequentialIo: {
+          fileSizeBytes: 256 * 1024 * 1024,
+          blockSizeBytes: 256 * 1024,
+        },
+        hizoFSRuntimePolicy: {
+          ...studyBase.hizoFSRuntimePolicy,
+          fileChunkWriteConcurrency: concurrency,
+        },
+      },
+    }));
+  }
+  return variants;
 }
 
 function createLifecycleMatrix({
@@ -350,7 +369,7 @@ function createGarbageCollectionPolicyStudy({
       },
     }));
   }
-  for (const maximumRemovalsPerSlice of [16, 32, 128] as const) {
+  for (const maximumRemovalsPerSlice of [32, 64, 128] as const) {
     variants.push(createVariant({
       studyKind: 'garbage_collection_policy',
       variantId: `slice-removals-${String(maximumRemovalsPerSlice)}`,
@@ -380,13 +399,30 @@ function createGarbageCollectionPolicyStudy({
           garbageCollectionSweep: {
             ...studyBase.hizoFSMaintenance.garbageCollectionSweep,
             removeConcurrency: 4,
-            maximumRemovalsPerSlice: 64,
+            maximumRemovalsPerSlice: 16,
             maximumSliceDurationMs,
           },
         },
       },
     }));
   }
+  variants.push(createVariant({
+    studyKind: 'garbage_collection_policy',
+    variantId: 'large-candidate-set',
+    label: 'GC large candidate set with foreground latency probes',
+    configuration: {
+      ...studyBase,
+      hizoFSMaintenance: {
+        ...studyBase.hizoFSMaintenance,
+        cloneCount: Math.max(studyBase.hizoFSMaintenance.cloneCount, 1000),
+        garbageCollectionSweep: {
+          removeConcurrency: 4,
+          maximumRemovalsPerSlice: 16,
+          maximumSliceDurationMs: 150,
+        },
+      },
+    },
+  }));
   return variants;
 }
 

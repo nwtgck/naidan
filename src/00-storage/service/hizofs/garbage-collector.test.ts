@@ -157,6 +157,105 @@ describe('HizoFS garbage collection', () => {
     await session.close();
   });
 
+  it('releases the maintenance fence before mark and preserves later mutations', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'first-large-value' });
+    await writeLargeValue({ session, value: 'second-large-value' });
+
+    const snapshotReleased = Promise.withResolvers<void>();
+    const continueMark = Promise.withResolvers<void>();
+    const collection = GARBAGE_COLLECTOR_TEST_ONLY.collectHizoFSGarbageInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: {
+        removeConcurrency: 2,
+        maximumRemovalsPerSlice: 3,
+        maximumSliceDurationMs: 10,
+      },
+      signal: undefined,
+      dependencies: {
+        afterRootSnapshot: async () => {
+          snapshotReleased.resolve();
+          await continueMark.promise;
+        },
+        now: () => performance.now(),
+        removeObject: async ({ runtime, objectId }) => {
+          await runtime.objectStore.remove({ objectId });
+        },
+        yieldToForeground: async () => {},
+      },
+    });
+
+    await snapshotReleased.promise;
+    await writeLargeValue({ session, value: 'foreground-after-snapshot' });
+    continueMark.resolve();
+    await collection;
+
+    const file = await session.root.getFileHandle({ name: 'value.txt', create: false });
+    expect(await readStorageFileText({ fileHandle: file })).toBe(
+      'foreground-after-snapshot',
+    );
+    await session.close();
+  });
+
+  it('serializes collectors while mark runs outside the maintenance fence', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'first-large-value' });
+    await writeLargeValue({ session, value: 'second-large-value' });
+    await session.close();
+
+    const firstSnapshotReleased = Promise.withResolvers<void>();
+    const continueFirstMark = Promise.withResolvers<void>();
+    const firstCollection = GARBAGE_COLLECTOR_TEST_ONLY.collectHizoFSGarbageInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
+      dependencies: {
+        afterRootSnapshot: async () => {
+          firstSnapshotReleased.resolve();
+          await continueFirstMark.promise;
+        },
+        now: () => performance.now(),
+        removeObject: async ({ runtime, objectId }) => {
+          await runtime.objectStore.remove({ objectId });
+        },
+        yieldToForeground: async () => {},
+      },
+    });
+    await firstSnapshotReleased.promise;
+
+    let secondReachedSnapshot = false;
+    const secondCollection = GARBAGE_COLLECTOR_TEST_ONLY.collectHizoFSGarbageInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
+      dependencies: {
+        afterRootSnapshot: async () => {
+          secondReachedSnapshot = true;
+        },
+        now: () => performance.now(),
+        removeObject: async ({ runtime, objectId }) => {
+          await runtime.objectStore.remove({ objectId });
+        },
+        yieldToForeground: async () => {},
+      },
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(secondReachedSnapshot).toBe(false);
+
+    continueFirstMark.resolve();
+    await firstCollection;
+    await secondCollection;
+    expect(secondReachedSnapshot).toBe(true);
+  });
+
   it('waits for an active directory traversal while allowing idle sessions', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
@@ -387,6 +486,7 @@ describe('HizoFS garbage collection', () => {
       },
       signal: undefined,
       dependencies: {
+        afterRootSnapshot: async () => {},
         now: () => clock,
         removeObject: async ({ runtime, objectId }) => {
           activeRemovals += 1;
@@ -460,6 +560,7 @@ describe('HizoFS garbage collection', () => {
       },
       signal: undefined,
       dependencies: {
+        afterRootSnapshot: async () => {},
         now: () => performance.now(),
         removeObject: async ({ runtime, objectId }) => {
           startedRemovals += 1;
@@ -526,6 +627,7 @@ describe('HizoFS garbage collection', () => {
       },
       signal: controller.signal,
       dependencies: {
+        afterRootSnapshot: async () => {},
         now: () => performance.now(),
         removeObject: async ({ runtime, objectId }) => {
           activeRemovals += 1;

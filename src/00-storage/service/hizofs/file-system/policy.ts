@@ -28,14 +28,14 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   fileChunkSize: 256 * 1024,
   indexPageEntryLimit: 64,
   readerStreamChunkSize: 256 * 1024,
-  fileChunkReadPrefetchConcurrency: 1,
+  fileChunkReadPrefetchConcurrency: 4,
   backingFileHandleCacheEntryLimit: 1024,
   maxDirtyFileBytes: 16 * 1024 * 1024,
   fileChunkWriteConcurrency: 4,
   metadataObjectCacheByteLimit: 8 * 1024 * 1024,
   metadataObjectCacheEntryLimit: 16 * 1024,
-  fileChunkCacheByteLimit: 8 * 1024 * 1024,
-  fileChunkCacheEntryLimit: 1024,
+  fileChunkCacheByteLimit: 16 * 1024 * 1024,
+  fileChunkCacheEntryLimit: 2048,
   fileChunkCacheAdmission: 'read_only',
 };
 

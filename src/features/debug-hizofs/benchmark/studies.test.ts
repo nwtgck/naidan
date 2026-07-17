@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 9,
-    benchmarkImplementationVersion: 9,
+    schemaVersion: 10,
+    benchmarkImplementationVersion: 10,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -57,7 +57,9 @@ function createReport({
         backingFileHandleCacheEntryLimitPerRuntime:
           configuration.hizoFSRuntimePolicy.backingFileHandleCacheEntryLimit,
         maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
-        maximumPlaintextChunkReadBytesInFlightPerReader: 256 * 1024,
+        maximumPlaintextChunkReadBytesInFlightPerReader:
+          256 * 1024
+          * configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
         fileChunkCacheByteLimitPerRuntime:
@@ -130,11 +132,12 @@ describe('HizoFS benchmark studies', () => {
       'remove-concurrency-2',
       'remove-concurrency-4',
       'remove-concurrency-8',
-      'slice-removals-16',
       'slice-removals-32',
+      'slice-removals-64',
       'slice-removals-128',
       'slice-duration-50ms',
       'slice-duration-500ms',
+      'large-candidate-set',
     ]);
     expect(variants.every(variant => (
       variant.configuration.backendMode === 'hizofs_only'
@@ -147,6 +150,8 @@ describe('HizoFS benchmark studies', () => {
     ))).toBe(true);
     expect(variants[0]?.configuration.runLabel)
       .toBe('baseline / garbage_collection_policy/remove-concurrency-1');
+    expect(variants.at(-1)?.configuration.hizoFSMaintenance.cloneCount)
+      .toBeGreaterThanOrEqual(1000);
   });
 
   it('covers 64 MiB and 256 MiB writes with fixed chunk-aligned blocks', () => {
@@ -155,9 +160,25 @@ describe('HizoFS benchmark studies', () => {
       baseConfiguration: createConfiguration(),
     });
 
-    expect(variants.map(variant => variant.configuration.sequentialIo)).toEqual([
-      { fileSizeBytes: 64 * 1024 * 1024, blockSizeBytes: 256 * 1024 },
-      { fileSizeBytes: 256 * 1024 * 1024, blockSizeBytes: 256 * 1024 },
+    expect(variants.map(variant => ({
+      sequentialIo: variant.configuration.sequentialIo,
+      writeConcurrency:
+        variant.configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
+    }))).toEqual([
+      {
+        sequentialIo: {
+          fileSizeBytes: 64 * 1024 * 1024,
+          blockSizeBytes: 256 * 1024,
+        },
+        writeConcurrency: 4,
+      },
+      ...[1, 2, 4, 8].map(writeConcurrency => ({
+        sequentialIo: {
+          fileSizeBytes: 256 * 1024 * 1024,
+          blockSizeBytes: 256 * 1024,
+        },
+        writeConcurrency,
+      })),
     ]);
     expect(variants.every(variant => (
       variant.configuration.workloads.length === 1

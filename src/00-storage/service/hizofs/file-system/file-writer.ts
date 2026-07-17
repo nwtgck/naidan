@@ -77,6 +77,9 @@ export class HizoFSFileWriter implements StorageWritableFile {
     if (!Number.isSafeInteger(policy.maxDirtyFileBytes) || policy.maxDirtyFileBytes < 1) {
       throw new Error("HizoFS maxDirtyFileBytes must be a positive safe integer");
     }
+    if (policy.maxDirtyFileBytes < this.chunkSize) {
+      throw new Error("HizoFS maxDirtyFileBytes must retain at least one file chunk");
+    }
     this.maxDirtyChunksInMemory = Math.max(
       1,
       Math.floor(policy.maxDirtyFileBytes / this.chunkSize),
@@ -527,17 +530,19 @@ export class HizoFSFileWriter implements StorageWritableFile {
     bytes: Uint8Array;
     logicalFileSize: number;
   }): Promise<void> {
-    this.setWorkingChunk({ chunkIndex, bytes });
-    while (this.workingChunks.size > this.maxDirtyChunksInMemory) {
-      await this.waitForPendingChunkFlushCapacity();
-      const oldestChunkIndex = this.workingChunks.keys().next().value as
-        number | undefined;
-      if (oldestChunkIndex === undefined) break;
-      this.scheduleWorkingChunkFlush({
-        chunkIndex: oldestChunkIndex,
-        logicalFileSize,
-      });
+    if (!this.workingChunks.has(chunkIndex)) {
+      while (this.workingChunks.size >= this.maxDirtyChunksInMemory) {
+        await this.waitForPendingChunkFlushCapacity();
+        const oldestChunkIndex = this.workingChunks.keys().next().value as
+          number | undefined;
+        if (oldestChunkIndex === undefined) break;
+        this.scheduleWorkingChunkFlush({
+          chunkIndex: oldestChunkIndex,
+          logicalFileSize,
+        });
+      }
     }
+    this.setWorkingChunk({ chunkIndex, bytes });
   }
 
   private async flushAllWorkingChunks(): Promise<void> {

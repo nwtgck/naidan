@@ -12,6 +12,7 @@ import type {
   StorageSymlinkHandle,
 } from '@/00-storage/service/storage-file-system/types';
 import { createHizoFSStableId } from '@/00-storage/service/hizofs/id';
+import { Semaphore } from '@/utils/concurrency';
 import type { HizoFSActiveState } from './core';
 import { acquireHizoFSResourceLease, type HizoFSMaintenanceLease } from './maintenance-lock';
 import type { HizoFSInodeIndexEntry } from './inode-index';
@@ -32,7 +33,18 @@ export type HizoFSBulkImportProgressListener = ({
 
 type ImportedNode = {
   readonly entry: HizoFSDirectoryEntryDto;
-  readonly inodeIndexEntry: HizoFSInodeIndexEntry;
+};
+
+type PendingObjectWriteResult =
+  | { readonly status: 'fulfilled' }
+  | { readonly status: 'rejected'; readonly error: unknown };
+
+type PendingObjectWrite = {
+  readonly result: Promise<PendingObjectWriteResult>;
+};
+
+type ObjectWriteFailure = {
+  readonly error: unknown;
 };
 
 function resolveTimestamp({
@@ -120,6 +132,13 @@ export class HizoFSBulkBuilder {
     this.rootCreatedAt = rootCreatedAt;
     this.rootModifiedAt = rootModifiedAt;
     this.maintenanceLease = maintenanceLease;
+    this.objectWriteConcurrency = runtime.policy.fileChunkWriteConcurrency;
+    if (
+      !Number.isSafeInteger(this.objectWriteConcurrency)
+      || this.objectWriteConcurrency < 1
+    ) {
+      throw new Error('HizoFS bulk object-write concurrency must be positive');
+    }
   }
 
   private readonly runtime: HizoFSRuntime;
@@ -128,8 +147,14 @@ export class HizoFSBulkBuilder {
   private rootCreatedAt: number | null;
   private rootModifiedAt: number | null;
   private readonly maintenanceLease: HizoFSMaintenanceLease;
+  private readonly objectWriteConcurrency: number;
+  private readonly objectWriteEnqueueSemaphore = new Semaphore({ maxConcurrency: 1 });
   private readonly rootEntries: HizoFSDirectoryEntryDto[] = [];
+  private readonly rootEntryNames = new Set<string>();
   private readonly inodeIndexEntries: HizoFSInodeIndexEntry[] = [];
+  private readonly pendingObjectWrites = new Map<number, PendingObjectWrite>();
+  private nextPendingObjectWriteId = 0;
+  private objectWriteFailure: ObjectWriteFailure | undefined;
   private settled = false;
 
   async importRootMetadata({
@@ -157,15 +182,20 @@ export class HizoFSBulkBuilder {
     onProgress: HizoFSBulkImportProgressListener | undefined;
   }): Promise<void> {
     this.assertOpen();
-    this.assertUniqueRootName({ name });
-    const imported = await this.importDirectoryNode({
-      source,
-      name,
-      excludedNames,
-      signal,
-      onProgress,
-    });
-    this.rootEntries.push(imported.entry);
+    this.reserveUniqueRootName({ name });
+    try {
+      const imported = await this.importDirectoryNode({
+        source,
+        name,
+        excludedNames,
+        signal,
+        onProgress,
+      });
+      this.rootEntries.push(imported.entry);
+    } catch (error) {
+      this.rootEntryNames.delete(name);
+      throw error;
+    }
   }
 
   async createEmptyDirectory({
@@ -174,20 +204,26 @@ export class HizoFSBulkBuilder {
     name: string;
   }): Promise<void> {
     this.assertOpen();
-    this.assertUniqueRootName({ name });
-    assertHizoFSEntryName({ name });
-    const timestamp = this.runtime.now();
-    const nodeId = createHizoFSStableId();
-    const inode: HizoFSDirectoryInodeDto = {
-      nodeId,
-      revision: 0,
-      createdAt: timestamp,
-      modifiedAt: timestamp,
-      storage: { type: 'inline', entries: [] },
-    };
-    const inodeObjectId = await this.runtime.inodeStore.writeDirectory({ inode });
-    this.inodeIndexEntries.push({ nodeId, inodeObjectId });
-    this.rootEntries.push({ name, kind: 'directory', nodeId });
+    this.reserveUniqueRootName({ name });
+    try {
+      const timestamp = this.runtime.now();
+      const nodeId = createHizoFSStableId();
+      const inode: HizoFSDirectoryInodeDto = {
+        nodeId,
+        revision: 0,
+        createdAt: timestamp,
+        modifiedAt: timestamp,
+        storage: { type: 'inline', entries: [] },
+      };
+      await this.scheduleInodeObjectWrite({
+        nodeId,
+        operation: async () => await this.runtime.inodeStore.writeDirectory({ inode }),
+      });
+      this.rootEntries.push({ name, kind: 'directory', nodeId });
+    } catch (error) {
+      this.rootEntryNames.delete(name);
+      throw error;
+    }
   }
 
   async createEmptyFile({
@@ -196,29 +232,37 @@ export class HizoFSBulkBuilder {
     name: string;
   }): Promise<void> {
     this.assertOpen();
-    this.assertUniqueRootName({ name });
-    const timestamp = this.runtime.now();
-    const nodeId = createHizoFSStableId();
-    const inode: HizoFSFileInodeDto = {
-      nodeId,
-      revision: 0,
-      createdAt: timestamp,
-      modifiedAt: timestamp,
-      size: 0,
-      storage: { type: 'inline' },
-    };
-    const inodeObjectId = await this.runtime.inodeStore.writeFile({
-      inode,
-      binaryPayload: EMPTY_BINARY_PAYLOAD,
-    });
-    this.inodeIndexEntries.push({ nodeId, inodeObjectId });
-    this.rootEntries.push({ name, kind: 'file', nodeId });
+    this.reserveUniqueRootName({ name });
+    try {
+      const timestamp = this.runtime.now();
+      const nodeId = createHizoFSStableId();
+      const inode: HizoFSFileInodeDto = {
+        nodeId,
+        revision: 0,
+        createdAt: timestamp,
+        modifiedAt: timestamp,
+        size: 0,
+        storage: { type: 'inline' },
+      };
+      await this.scheduleInodeObjectWrite({
+        nodeId,
+        operation: async () => await this.runtime.inodeStore.writeFile({
+          inode,
+          binaryPayload: EMPTY_BINARY_PAYLOAD,
+        }),
+      });
+      this.rootEntries.push({ name, kind: 'file', nodeId });
+    } catch (error) {
+      this.rootEntryNames.delete(name);
+      throw error;
+    }
   }
 
   async commit(): Promise<void> {
     this.assertOpen();
     this.settled = true;
     try {
+      await this.waitForAllPendingObjectWrites({ failureMode: 'throw' });
       this.rootEntries.sort((left, right) => compareHizoFSStrings({
         left: left.name,
         right: right.name,
@@ -261,7 +305,11 @@ export class HizoFSBulkBuilder {
   async abort({ reason: _reason }: { reason: unknown }): Promise<void> {
     if (this.settled) return;
     this.settled = true;
-    await this.maintenanceLease.release();
+    try {
+      await this.waitForAllPendingObjectWrites({ failureMode: 'ignore' });
+    } finally {
+      await this.maintenanceLease.release();
+    }
   }
 
   private async importDirectoryNode({
@@ -323,27 +371,27 @@ export class HizoFSBulkBuilder {
     }));
     const stat = await source.stat();
     const now = this.runtime.now();
-    const inodeObjectId = await this.writeDirectoryInode({
+    await this.scheduleInodeObjectWrite({
       nodeId,
-      revision: 0,
-      createdAt: resolveTimestamp({
-        primary: stat.createdAt,
-        secondary: stat.modifiedAt,
-        fallback: now,
+      operation: async () => await this.writeDirectoryInode({
+        nodeId,
+        revision: 0,
+        createdAt: resolveTimestamp({
+          primary: stat.createdAt,
+          secondary: stat.modifiedAt,
+          fallback: now,
+        }),
+        modifiedAt: resolveTimestamp({
+          primary: stat.modifiedAt,
+          secondary: stat.createdAt,
+          fallback: now,
+        }),
+        entries,
       }),
-      modifiedAt: resolveTimestamp({
-        primary: stat.modifiedAt,
-        secondary: stat.createdAt,
-        fallback: now,
-      }),
-      entries,
+      onFulfilled: () => onProgress?.({ byteLength: 0, completedEntries: 1 }),
     });
-    const inodeIndexEntry = { nodeId, inodeObjectId };
-    this.inodeIndexEntries.push(inodeIndexEntry);
-    onProgress?.({ byteLength: 0, completedEntries: 1 });
     return {
       entry: { name, kind: 'directory', nodeId },
-      inodeIndexEntry,
     };
   }
 
@@ -452,16 +500,16 @@ export class HizoFSBulkBuilder {
           },
         };
       }
-      const inodeObjectId = await this.runtime.inodeStore.writeFile({
-        inode,
-        binaryPayload,
+      await this.scheduleInodeObjectWrite({
+        nodeId,
+        operation: async () => await this.runtime.inodeStore.writeFile({
+          inode,
+          binaryPayload,
+        }),
+        onFulfilled: () => onProgress?.({ byteLength: 0, completedEntries: 1 }),
       });
-      const inodeIndexEntry = { nodeId, inodeObjectId };
-      this.inodeIndexEntries.push(inodeIndexEntry);
-      onProgress?.({ byteLength: 0, completedEntries: 1 });
       return {
         entry: { name, kind: 'file', nodeId },
-        inodeIndexEntry,
       };
     } finally {
       await readable.close();
@@ -496,13 +544,13 @@ export class HizoFSBulkBuilder {
       }),
       target: await source.readTarget(),
     };
-    const inodeObjectId = await this.runtime.inodeStore.writeSymlink({ inode });
-    const inodeIndexEntry = { nodeId, inodeObjectId };
-    this.inodeIndexEntries.push(inodeIndexEntry);
-    onProgress?.({ byteLength: 0, completedEntries: 1 });
+    await this.scheduleInodeObjectWrite({
+      nodeId,
+      operation: async () => await this.runtime.inodeStore.writeSymlink({ inode }),
+      onFulfilled: () => onProgress?.({ byteLength: 0, completedEntries: 1 }),
+    });
     return {
       entry: { name, kind: 'symlink', nodeId },
-      inodeIndexEntry,
     };
   }
 
@@ -540,6 +588,137 @@ export class HizoFSBulkBuilder {
     });
   }
 
+  private async scheduleInodeObjectWrite({
+    nodeId,
+    operation,
+    onFulfilled,
+  }: {
+    nodeId: string;
+    operation: () => Promise<string>;
+    onFulfilled?: () => void;
+  }): Promise<void> {
+    await this.objectWriteEnqueueSemaphore.run({
+      task: async () => {
+        this.assertOpen();
+        this.throwIfObjectWriteFailed();
+        await this.waitForPendingObjectWriteCapacity();
+        this.assertOpen();
+        this.throwIfObjectWriteFailed();
+        const pendingObjectWriteId = this.nextPendingObjectWriteId;
+        this.nextPendingObjectWriteId += 1;
+        const result = (async (): Promise<PendingObjectWriteResult> => {
+          try {
+            const inodeObjectId = await operation();
+            this.inodeIndexEntries.push({ nodeId, inodeObjectId });
+            onFulfilled?.();
+            return { status: 'fulfilled' };
+          } catch (error) {
+            this.objectWriteFailure ??= { error };
+            return { status: 'rejected', error };
+          }
+        })();
+        this.pendingObjectWrites.set(pendingObjectWriteId, { result });
+      },
+    });
+  }
+
+  private async waitForPendingObjectWriteCapacity(): Promise<void> {
+    while (this.pendingObjectWrites.size >= this.objectWriteConcurrency) {
+      const oldestPendingObjectWriteId = this.pendingObjectWrites.keys().next().value as
+        number | undefined;
+      if (oldestPendingObjectWriteId === undefined) return;
+      await this.waitForPendingObjectWrite({
+        pendingObjectWriteId: oldestPendingObjectWriteId,
+      });
+    }
+  }
+
+  private async waitForPendingObjectWrite({
+    pendingObjectWriteId,
+  }: {
+    pendingObjectWriteId: number;
+  }): Promise<void> {
+    const pending = this.pendingObjectWrites.get(pendingObjectWriteId);
+    if (pending === undefined) return;
+    let result: PendingObjectWriteResult;
+    try {
+      result = await pending.result;
+    } finally {
+      if (this.pendingObjectWrites.get(pendingObjectWriteId) === pending) {
+        this.pendingObjectWrites.delete(pendingObjectWriteId);
+      }
+    }
+    switch (result.status) {
+    case 'fulfilled':
+      return;
+    case 'rejected':
+      throw result.error;
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled HizoFS bulk object-write result: ${String(_ex)}`);
+    }
+    }
+  }
+
+  private async waitForAllPendingObjectWrites({
+    failureMode,
+  }: {
+    failureMode: 'ignore' | 'throw';
+  }): Promise<void> {
+    const entries = [...this.pendingObjectWrites.entries()];
+    const results = await Promise.allSettled(
+      entries.map(([, pending]) => pending.result),
+    );
+    for (const [pendingObjectWriteId, pending] of entries) {
+      if (this.pendingObjectWrites.get(pendingObjectWriteId) === pending) {
+        this.pendingObjectWrites.delete(pendingObjectWriteId);
+      }
+    }
+    for (const result of results) {
+      switch (result.status) {
+      case 'fulfilled':
+        switch (result.value.status) {
+        case 'fulfilled':
+          break;
+        case 'rejected':
+          this.objectWriteFailure ??= { error: result.value.error };
+          break;
+        default: {
+          const _ex: never = result.value;
+          throw new Error(`Unhandled HizoFS bulk object-write result: ${String(_ex)}`);
+        }
+        }
+        break;
+      case 'rejected':
+        this.objectWriteFailure ??= { error: result.reason };
+        break;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled HizoFS bulk write settlement: ${String(_ex)}`);
+      }
+      }
+    }
+    switch (failureMode) {
+    case 'ignore':
+      return;
+    case 'throw':
+      this.throwIfObjectWriteFailed();
+      return;
+    default: {
+      const _ex: never = failureMode;
+      throw new Error(`Unhandled HizoFS bulk failure mode: ${String(_ex)}`);
+    }
+    }
+  }
+
+  private throwIfObjectWriteFailed(): void {
+    if (this.objectWriteFailure !== undefined) {
+      throw new Error('HizoFS bulk object write failed', {
+        cause: this.objectWriteFailure.error,
+      });
+    }
+  }
+
   private async readExactly({
     readable,
     buffer,
@@ -570,11 +749,12 @@ export class HizoFSBulkBuilder {
     }
   }
 
-  private assertUniqueRootName({ name }: { name: string }): void {
+  private reserveUniqueRootName({ name }: { name: string }): void {
     assertHizoFSEntryName({ name });
-    if (this.rootEntries.some(entry => entry.name === name)) {
+    if (this.rootEntryNames.has(name)) {
       throw new Error(`HizoFS bulk root entry already exists: ${name}`);
     }
+    this.rootEntryNames.add(name);
   }
 
   private assertOpen(): void {

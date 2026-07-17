@@ -142,7 +142,16 @@ async function acquireLease({ fileSystemId, mode }: {
   fileSystemId: string;
   mode: LocalLockMode;
 }): Promise<HizoFSMaintenanceLease> {
-  const lockName = `hizofs/${fileSystemId}/maintenance`;
+  return acquireNamedLease({
+    lockName: `hizofs/${fileSystemId}/maintenance`,
+    mode,
+  });
+}
+
+async function acquireNamedLease({ lockName, mode }: {
+  lockName: string;
+  mode: LocalLockMode;
+}): Promise<HizoFSMaintenanceLease> {
   if (typeof navigator !== 'undefined' && navigator.locks !== undefined) {
     return acquireWebLease({ lockName, mode });
   }
@@ -182,6 +191,21 @@ export function acquireHizoFSMaintenanceLease({ fileSystemId }: {
   fileSystemId: string;
 }): Promise<HizoFSMaintenanceLease> {
   return acquireLease({ fileSystemId, mode: 'exclusive' });
+}
+
+/**
+ * Serializes garbage-collection jobs without blocking foreground resources for
+ * the whole mark-and-sweep cycle. This separate job lease is held across the
+ * lock-free mark and every bounded sweep slice so two tabs cannot collect from
+ * different root snapshots at the same time.
+ */
+export function acquireHizoFSGarbageCollectionLease({ fileSystemId }: {
+  fileSystemId: string;
+}): Promise<HizoFSMaintenanceLease> {
+  return acquireNamedLease({
+    lockName: `hizofs/${fileSystemId}/garbage-collection`,
+    mode: 'exclusive',
+  });
 }
 
 export async function runWithHizoFSMaintenanceLock<T>({ fileSystemId, operation }: {
