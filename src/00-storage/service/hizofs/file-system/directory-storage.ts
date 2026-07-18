@@ -90,14 +90,24 @@ export class HizoFSDirectoryStorage {
   async *entries({ inode }: {
     inode: HizoFSDirectoryInodeDto;
   }): AsyncIterable<HizoFSDirectoryEntryDto> {
+    for await (const batch of this.entryBatches({ inode })) {
+      for (const entry of batch) {
+        yield entry;
+      }
+    }
+  }
+
+  async *entryBatches({ inode }: {
+    inode: HizoFSDirectoryInodeDto;
+  }): AsyncIterable<readonly HizoFSDirectoryEntryDto[]> {
     switch (inode.storage.type) {
     case 'inline':
-      for (const entry of inode.storage.entries) {
-        yield entry;
+      if (inode.storage.entries.length > 0) {
+        yield inode.storage.entries;
       }
       break;
     case 'indexed':
-      yield* this.directoryIndex.entries({
+      yield* this.directoryIndex.entryBatches({
         rootObjectId: inode.storage.directoryIndexRootObjectId,
       });
       break;

@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 15,
-    benchmarkImplementationVersion: 15,
+    schemaVersion: 17,
+    benchmarkImplementationVersion: 17,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -51,7 +51,7 @@ function createReport({
       backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
       backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
       hizoFSRuntimePolicy: {
-        fileChunkSizeBytes: 256 * 1024,
+        fileChunkSizeBytes: configuration.hizoFSRuntimePolicy.fileChunkSize,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
         fileChunkWriteConcurrencyPerWriter:
           configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
@@ -60,13 +60,18 @@ function createReport({
         backingFileHandleCacheEntryLimitPerRuntime:
           configuration.hizoFSRuntimePolicy.backingFileHandleCacheEntryLimit,
         backingFileSnapshotCacheEntryLimitPerRuntime: 128,
-        maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
+        maximumPlaintextChunkWriteBytesInFlightPerWriter:
+          configuration.hizoFSRuntimePolicy.fileChunkSize
+          * configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
         maximumPlaintextChunkReadBytesInFlightPerReader:
-          256 * 1024
+          configuration.hizoFSRuntimePolicy.fileChunkSize
           * configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
         decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
+        inodeIndexPageEntryLimitPerRuntime: 32,
+        directoryIndexPageEntryLimitPerRuntime: 64,
+        fileExtentIndexPageEntryLimitPerRuntime: 64,
         fileChunkCacheByteLimitPerRuntime:
           configuration.hizoFSRuntimePolicy.fileChunkCacheByteLimit,
         fileChunkCacheEntryLimitPerRuntime:
@@ -96,8 +101,13 @@ describe('HizoFS benchmark studies', () => {
       baseConfiguration: createConfiguration(),
     });
 
-    expect(variants).toHaveLength(17);
+    expect(variants).toHaveLength(22);
     expect(variants.map(variant => variant.variantId)).toEqual([
+      'file-chunk-256kib',
+      'file-chunk-512kib',
+      'file-chunk-1024kib',
+      'file-chunk-2048kib',
+      'file-chunk-4096kib',
       'write-concurrency-1',
       'write-concurrency-2',
       'write-concurrency-4',
@@ -122,8 +132,15 @@ describe('HizoFS benchmark studies', () => {
       && variant.configuration.benchmarkDataRetention === 'delete_after_run'
       && variant.configuration.measuredIterations <= 3
     ))).toBe(true);
+    expect(variants.slice(0, 5).map(variant => ({
+      chunkSize: variant.configuration.hizoFSRuntimePolicy.fileChunkSize,
+      workloads: variant.configuration.workloads,
+    }))).toEqual([256, 512, 1024, 2048, 4096].map(kib => ({
+      chunkSize: kib * 1024,
+      workloads: ['sequential_io', 'random_access'],
+    })));
     expect(variants[0]?.configuration.runLabel)
-      .toBe('baseline / policy_matrix/write-concurrency-1');
+      .toBe('baseline / policy_matrix/file-chunk-256kib');
   });
 
   it('builds bounded garbage-collection policy variants', () => {
@@ -159,7 +176,7 @@ describe('HizoFS benchmark studies', () => {
       .toBeGreaterThanOrEqual(1000);
   });
 
-  it('covers 64 MiB and 256 MiB writes with fixed chunk-aligned blocks', () => {
+  it('covers 64 MiB and 256 MiB writes with fixed input blocks', () => {
     const variants = createHizoFSBenchmarkStudyPlan({
       studyKind: 'large_write',
       baseConfiguration: createConfiguration(),

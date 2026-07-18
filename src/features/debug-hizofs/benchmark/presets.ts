@@ -188,6 +188,7 @@ function createConfiguration({
       },
     },
     hizoFSRuntimePolicy: {
+      fileChunkSize: 1024 * 1024,
       fileChunkWriteConcurrency: 2,
       fileChunkReadPrefetchConcurrency: 4,
       backingFileHandleCacheEntryLimit: 1024,

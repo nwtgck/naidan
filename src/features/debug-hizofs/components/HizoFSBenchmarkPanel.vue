@@ -508,6 +508,7 @@ function summarizeStudyConfiguration({
     value.backendMode,
     value.storeLifecycle,
     value.workloads.join('+'),
+    `chunk=${formatBytes({ value: policy.fileChunkSize })}`,
     `write=${String(policy.fileChunkWriteConcurrency)}`,
     `read=${String(policy.fileChunkReadPrefetchConcurrency)}`,
     `handles=${String(policy.backingFileHandleCacheEntryLimit)}`,

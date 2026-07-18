@@ -824,45 +824,47 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           nodeId: directoryNodeId,
         }),
       });
-      for await (const entry of this.runtime.directoryStorage.entries({
+      for await (const batch of this.runtime.directoryStorage.entryBatches({
         inode: directory.inode,
       })) {
-        this.assertOpen();
-        switch (entry.kind) {
-        case "file":
-          yield [
-            entry.name,
-            new HizoFSFileHandle({
-              session: this,
-              nodeId: entry.nodeId,
-              name: entry.name,
-            }),
-          ];
-          break;
-        case "directory":
-          yield [
-            entry.name,
-            new HizoFSDirectoryHandle({
-              session: this,
-              nodeId: entry.nodeId,
-              name: entry.name,
-            }),
-          ];
-          break;
-        case "symlink":
-          yield [
-            entry.name,
-            new HizoFSSymlinkHandle({
-              session: this,
-              nodeId: entry.nodeId,
-              name: entry.name,
-            }),
-          ];
-          break;
-        default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled HizoFS entry kind: ${String(_ex)}`);
-        }
+        for (const entry of batch) {
+          this.assertOpen();
+          switch (entry.kind) {
+          case "file":
+            yield [
+              entry.name,
+              new HizoFSFileHandle({
+                session: this,
+                nodeId: entry.nodeId,
+                name: entry.name,
+              }),
+            ];
+            break;
+          case "directory":
+            yield [
+              entry.name,
+              new HizoFSDirectoryHandle({
+                session: this,
+                nodeId: entry.nodeId,
+                name: entry.name,
+              }),
+            ];
+            break;
+          case "symlink":
+            yield [
+              entry.name,
+              new HizoFSSymlinkHandle({
+                session: this,
+                nodeId: entry.nodeId,
+                name: entry.name,
+              }),
+            ];
+            break;
+          default: {
+            const _ex: never = entry.kind;
+            throw new Error(`Unhandled HizoFS entry kind: ${String(_ex)}`);
+          }
+          }
         }
       }
     } finally {

@@ -504,6 +504,58 @@ describe('HizoFS immutable object store', () => {
     expect(readSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('truncates a persistent head only when the replacement is shorter', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { backingStore, store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+    const openRandomAccessFile = backingStore.openRandomAccessFile.bind(backingStore);
+    let headTruncates = 0;
+    vi.spyOn(backingStore, 'openRandomAccessFile').mockImplementation(async options => {
+      const file = await openRandomAccessFile(options);
+      if (options.path[0] === 'head-0.hfs') {
+        const truncate = file.truncate.bind(file);
+        vi.spyOn(file, 'truncate').mockImplementation(async arguments_ => {
+          headTruncates += 1;
+          await truncate(arguments_);
+        });
+      }
+      return file;
+    });
+    await store.setHeadHandleRetention({ retention: 'persistent' });
+    const write = async ({ activeCommitObjectId, sequence }: {
+      activeCommitObjectId: string;
+      sequence: number;
+    }): Promise<void> => {
+      await store.writeSuperblock({
+        slot: 0,
+        record: {
+          kind: 'superblock',
+          recordVersion: 1,
+          metadata: {
+            sequence,
+            fileSystemId: FILE_SYSTEM_ID_A,
+            activeCommitObjectId,
+          },
+          binaryPayload: new Uint8Array(),
+        },
+      });
+    };
+
+    await write({ activeCommitObjectId: 'a', sequence: 0 });
+    await write({ activeCommitObjectId: 'b', sequence: 1 });
+    await write({ activeCommitObjectId: 'a-much-longer-commit-id', sequence: 2 });
+    await write({ activeCommitObjectId: 'c', sequence: 3 });
+
+    expect(headTruncates).toBe(1);
+    await expect(store.readSuperblock({ slot: 0 })).resolves.toMatchObject({
+      metadata: { sequence: 3, activeCommitObjectId: 'c' },
+    });
+    await store.close();
+  });
+
   it('does not cache mutable superblock slots', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const { backingStore, store } = await createStore({
@@ -660,7 +712,7 @@ describe('HizoFS immutable object store', () => {
     expect(await backingStore.read({ path: ['head-1.hfs'] })).toBeDefined();
   });
 
-  it('packs exactly sixty-four default chunks into one 16 MiB data payload segment', async () => {
+  it('packs exactly sixty-four 256 KiB records into one 16 MiB data payload segment', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const { store } = await createStore({
       root,

@@ -979,8 +979,11 @@ export class HizoFSSegmentedStore {
       await file.close();
     };
     try {
-      await file.truncate({ size: 0 });
+      const previousSize = await file.getSize();
       await file.writeAt({ offset: 0, bytes: physical });
+      if (previousSize > physical.byteLength) {
+        await file.truncate({ size: physical.byteLength });
+      }
       await file.flush();
       if (!persistent) await close();
     } catch (error) {

@@ -8,7 +8,13 @@ describe('HizoFS runtime policy', () => {
     expect(
       DEFAULT_HIZOFS_POLICY.fileChunkSize
         * DEFAULT_HIZOFS_POLICY.fileChunkWriteConcurrency,
-    ).toBe(512 * 1024);
+    ).toBe(2 * 1024 * 1024);
+  });
+
+  it('uses smaller inode-index pages without shrinking directory or extent pages', () => {
+    expect(DEFAULT_HIZOFS_POLICY.inodeIndexPageEntryLimit).toBe(32);
+    expect(DEFAULT_HIZOFS_POLICY.directoryIndexPageEntryLimit).toBe(64);
+    expect(DEFAULT_HIZOFS_POLICY.fileExtentIndexPageEntryLimit).toBe(64);
   });
 
   it('bounds the decoded inode-index page cache independently', () => {
@@ -17,7 +23,7 @@ describe('HizoFS runtime policy', () => {
       .toBeLessThan(DEFAULT_HIZOFS_POLICY.metadataObjectCacheEntryLimit);
   });
 
-  it('retains one complete 64-chunk read working set without admitting a 65th chunk', () => {
+  it('retains one complete 16-chunk read working set without admitting a 17th chunk', () => {
     const encodedChunkByteLength = encodeHizoFSRecord({
       kind: 'file_chunk',
       recordVersion: 1,
@@ -26,8 +32,8 @@ describe('HizoFS runtime policy', () => {
     }).byteLength;
 
     expect(DEFAULT_HIZOFS_POLICY.fileChunkCacheByteLimit)
-      .toBeGreaterThanOrEqual(encodedChunkByteLength * 64);
+      .toBeGreaterThanOrEqual(encodedChunkByteLength * 16);
     expect(DEFAULT_HIZOFS_POLICY.fileChunkCacheByteLimit)
-      .toBeLessThan(encodedChunkByteLength * 65);
+      .toBeLessThan(encodedChunkByteLength * 17);
   });
 });

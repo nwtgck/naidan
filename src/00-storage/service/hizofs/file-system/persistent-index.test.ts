@@ -94,6 +94,26 @@ describe('persistent HizoFS index', () => {
     }
   });
 
+  it('streams indexed entries as deterministic leaf batches', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    const root = await index.buildFromSortedEntries({
+      entries: Array.from({ length: 12 }, (_, value) => ({
+        key: String(value).padStart(2, '0'),
+        value,
+      })),
+    });
+    const batches: (readonly Entry[])[] = [];
+
+    for await (const batch of index.entryBatches({ rootObjectId: root })) {
+      batches.push(batch);
+    }
+
+    expect(batches.map(batch => batch.length)).toEqual([3, 3, 3, 3]);
+    expect(batches.flat().map(entry => entry.value))
+      .toEqual(Array.from({ length: 12 }, (_, value) => value));
+  });
+
   it('reuses the rightmost path for verified monotonic appends', async () => {
     const pageStore = new MemoryPageStore();
     const index = createIndex({ pageStore });

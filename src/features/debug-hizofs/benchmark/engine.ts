@@ -35,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 15 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 17 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -320,7 +320,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 15,
+    schemaVersion: 17,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -369,6 +369,12 @@ async function runHizoFSBenchmarkWithLockHeld({
           hizoFSPolicy.metadataObjectCacheEntryLimit,
         decodedInodeIndexPageCacheEntryLimitPerRuntime:
           hizoFSPolicy.decodedInodeIndexPageCacheEntryLimit,
+        inodeIndexPageEntryLimitPerRuntime:
+          hizoFSPolicy.inodeIndexPageEntryLimit,
+        directoryIndexPageEntryLimitPerRuntime:
+          hizoFSPolicy.directoryIndexPageEntryLimit,
+        fileExtentIndexPageEntryLimitPerRuntime:
+          hizoFSPolicy.fileExtentIndexPageEntryLimit,
         fileChunkCacheByteLimitPerRuntime:
           hizoFSPolicy.fileChunkCacheByteLimit,
         fileChunkCacheEntryLimitPerRuntime:
@@ -392,6 +398,7 @@ function createBenchmarkHizoFSPolicy({
 }): HizoFSPolicy {
   return {
     ...DEFAULT_HIZOFS_POLICY,
+    fileChunkSize: configuration.hizoFSRuntimePolicy.fileChunkSize,
     fileChunkWriteConcurrency:
       configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
     fileChunkReadPrefetchConcurrency:
@@ -1194,9 +1201,11 @@ async function runRandomAccessWorkload({
     operationCount: configuration.randomAccess.operationCount,
     blockSizeBytes: configuration.randomAccess.blockSizeBytes,
     uniqueBlockPositions: new Set(positions).size,
-    hizoFSChunkSizeBytes: DEFAULT_HIZOFS_POLICY.fileChunkSize,
+    hizoFSChunkSizeBytes: configuration.hizoFSRuntimePolicy.fileChunkSize,
     uniqueHizoFSChunks: new Set(
-      positions.map(position => Math.floor(position / DEFAULT_HIZOFS_POLICY.fileChunkSize)),
+      positions.map(position => Math.floor(
+        position / configuration.hizoFSRuntimePolicy.fileChunkSize,
+      )),
     ).size,
   };
   const samples: CaseSample[] = [];

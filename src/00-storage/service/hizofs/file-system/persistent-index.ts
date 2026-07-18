@@ -521,24 +521,36 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
   }: {
     rootObjectId: string;
   }): AsyncIterable<TEntry> {
-    yield* this.readEntriesFromPage({ objectId: rootObjectId });
+    for await (const batch of this.entryBatches({ rootObjectId })) {
+      for (const entry of batch) {
+        yield entry;
+      }
+    }
   }
 
-  private async *readEntriesFromPage({
+  async *entryBatches({
+    rootObjectId,
+  }: {
+    rootObjectId: string;
+  }): AsyncIterable<readonly TEntry[]> {
+    yield* this.readEntryBatchesFromPage({ objectId: rootObjectId });
+  }
+
+  private async *readEntryBatchesFromPage({
     objectId,
   }: {
     objectId: string;
-  }): AsyncIterable<TEntry> {
+  }): AsyncIterable<readonly TEntry[]> {
     const page = await this.pageStore.readPage({ objectId });
     switch (page.type) {
     case "leaf":
-      for (const entry of page.entries) {
-        yield entry;
+      if (page.entries.length > 0) {
+        yield page.entries;
       }
       break;
     case "branch":
       for (const child of page.children) {
-        yield* this.readEntriesFromPage({
+        yield* this.readEntryBatchesFromPage({
           objectId: child.childPageObjectId,
         });
       }

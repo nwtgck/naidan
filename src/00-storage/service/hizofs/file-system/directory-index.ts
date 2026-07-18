@@ -268,6 +268,12 @@ export class HizoFSDirectoryIndex {
     return this.index.entries({ rootObjectId });
   }
 
+  entryBatches({ rootObjectId }: {
+    rootObjectId: string;
+  }): AsyncIterable<readonly HizoFSDirectoryEntryDto[]> {
+    return this.index.entryBatches({ rootObjectId });
+  }
+
   buildFromSortedEntries({ entries }: {
     entries: AsyncIterable<HizoFSDirectoryEntryDto> | Iterable<HizoFSDirectoryEntryDto>;
   }): Promise<string> {

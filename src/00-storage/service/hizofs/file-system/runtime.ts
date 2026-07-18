@@ -162,19 +162,19 @@ export function createHizoFSRuntime({
   const commitStore = new HizoFSCommitStore({ recordStore });
   const inodeIndex = new HizoFSInodeIndex({
     recordStore,
-    maxPageEntries: policy.indexPageEntryLimit,
+    maxPageEntries: policy.inodeIndexPageEntryLimit,
     decodedPageCacheEntryLimit:
       policy.decodedInodeIndexPageCacheEntryLimit,
     diagnostics,
   });
   const directoryIndex = new HizoFSDirectoryIndex({
     recordStore,
-    maxPageEntries: policy.indexPageEntryLimit,
+    maxPageEntries: policy.directoryIndexPageEntryLimit,
     diagnostics,
   });
   const extentIndex = new HizoFSExtentIndex({
     recordStore,
-    maxPageEntries: policy.indexPageEntryLimit,
+    maxPageEntries: policy.fileExtentIndexPageEntryLimit,
     diagnostics,
   });
   const inodeStore = new HizoFSInodeStore({ recordStore });

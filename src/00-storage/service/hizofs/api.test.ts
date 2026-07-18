@@ -13,7 +13,10 @@ import {
   openHizoFSWorkerMount,
   TEST_ONLY,
 } from './api';
-import type { HizoFSPolicy } from './file-system/policy';
+import {
+  DEFAULT_HIZOFS_POLICY,
+  type HizoFSPolicy,
+} from './file-system/policy';
 import { createHizoFSRuntimeDiagnostics } from './file-system/diagnostics';
 import { createQueuedTestLockManager } from './test-lock-manager';
 import { HizoFSSession } from './file-system/session';
@@ -36,7 +39,9 @@ const TINY_POLICY: HizoFSPolicy = {
   inlineDirectoryEntryLimit: 2,
   fileChunkSize: 4,
   decodedInodeIndexPageCacheEntryLimit: 16,
-  indexPageEntryLimit: 2,
+  inodeIndexPageEntryLimit: 2,
+  directoryIndexPageEntryLimit: 2,
+  fileExtentIndexPageEntryLimit: 2,
   readerStreamChunkSize: 3,
   fileChunkReadPrefetchConcurrency: 2,
   backingFileHandleCacheEntryLimit: 64,
@@ -1790,6 +1795,82 @@ describe('HizoFS public file-system API', () => {
     expect(await readStorageFileText({ fileHandle: file })).toBe(
       `${String.fromCharCode(7)}bcd${String.fromCharCode(11)}fgh${String.fromCharCode(15)}jkl${String.fromCharCode(19)}nop`,
     );
+    await session.close();
+  });
+
+  it('writes one immutable chunk per default MiB without timing assertions', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await TEST_ONLY.createHizoFSInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      policy: DEFAULT_HIZOFS_POLICY,
+      now: () => 1,
+      diagnostics,
+    });
+    const file = await session.root.getFileHandle({
+      name: 'default-chunk-shape.bin',
+      create: true,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const writeSpy = vi.spyOn(hizofs.runtime.chunkStore, 'write');
+    const writer = await file.createWritable({ keepExistingData: false });
+
+    await writer.write({
+      position: 0,
+      data: new Uint8Array(4 * 1024 * 1024).fill(7),
+    });
+    await writer.close();
+
+    expect(writeSpy).toHaveBeenCalledTimes(4);
+    expect(diagnostics.snapshot().resources.writerPendingChunkWrites)
+      .toMatchObject({
+        maximumBytes: 2 * 1024 * 1024,
+        maximumOperations: 2,
+      });
+    await session.close();
+  });
+
+  it('bounds empty-file index write amplification without timing assertions', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await TEST_ONLY.createHizoFSInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      policy: DEFAULT_HIZOFS_POLICY,
+      now: () => 1,
+      diagnostics,
+    });
+    const before = diagnostics.snapshot();
+
+    for (let index = 0; index < 64; index += 1) {
+      await session.root.getFileHandle({
+        name: `empty-${String(index).padStart(2, '0')}`,
+        create: true,
+      });
+    }
+
+    const after = diagnostics.snapshot();
+    expect(
+      after.records.commit.writeOperations
+        - before.records.commit.writeOperations,
+    ).toBe(64);
+    expect(
+      after.records.superblock.writeOperations
+        - before.records.superblock.writeOperations,
+    ).toBe(64);
+    expect(
+      after.records.inode_index_page.writeOperations
+        - before.records.inode_index_page.writeOperations,
+    ).toBeLessThanOrEqual(192);
+    expect(
+      after.records.directory_index_page.writeOperations
+        - before.records.directory_index_page.writeOperations,
+    ).toBeLessThanOrEqual(96);
+    expect(
+      after.phases.object_encrypt.operationCount
+        - before.phases.object_encrypt.operationCount,
+    ).toBeLessThanOrEqual(450);
     await session.close();
   });
 

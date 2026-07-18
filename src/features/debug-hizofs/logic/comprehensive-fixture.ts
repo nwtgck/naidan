@@ -10,7 +10,8 @@ import type {
 } from '@/00-storage/service/storage-file-system/types';
 
 const FIXTURE_ROOT_NAME = '__hizofs_fixture__';
-const INDEX_BRANCH_ENTRY_COUNT = DEFAULT_HIZOFS_POLICY.indexPageEntryLimit + 1;
+const INDEX_BRANCH_ENTRY_COUNT =
+  DEFAULT_HIZOFS_POLICY.directoryIndexPageEntryLimit + 1;
 const DEEP_DIRECTORY_LEVEL_COUNT = 12;
 
 export const HIZOFS_COMPREHENSIVE_FIXTURE_ROOT_PATH = `/${FIXTURE_ROOT_NAME}`;
@@ -265,7 +266,7 @@ async function createIndexCoverage({ indexedDirectory, filesDirectory, policy }:
   const extentIndexed = await filesDirectory.getFileHandle({ name: 'extent-index-branch.bin', create: true });
   const writer = await extentIndexed.createWritable({ keepExistingData: false });
   try {
-    for (let chunkIndex = 0; chunkIndex < policy.indexPageEntryLimit + 1; chunkIndex += 1) {
+    for (let chunkIndex = 0; chunkIndex < policy.fileExtentIndexPageEntryLimit + 1; chunkIndex += 1) {
       await writer.write({
         position: chunkIndex * policy.fileChunkSize,
         data: new Uint8Array([(chunkIndex % 251) + 1]),
@@ -389,7 +390,7 @@ function createCoverageCases({ policy }: {
     {
       id: 'extent-index-branch',
       path: `${HIZOFS_COMPREHENSIVE_FIXTURE_ROOT_PATH}/files/extent-index-branch.bin`,
-      purpose: `Extent index with more than ${String(policy.indexPageEntryLimit)} entries`,
+      purpose: `Extent index with more than ${String(policy.fileExtentIndexPageEntryLimit)} entries`,
       expectedStructures: ['file_extent_page:leaf', 'file_extent_page:branch', 'file_chunk'],
     },
     {
@@ -413,7 +414,7 @@ function createCoverageCases({ policy }: {
     {
       id: 'inode-index-branch',
       path: HIZOFS_COMPREHENSIVE_FIXTURE_ROOT_PATH,
-      purpose: `More than ${String(policy.indexPageEntryLimit)} filesystem nodes`,
+      purpose: `More than ${String(policy.inodeIndexPageEntryLimit)} filesystem nodes`,
       expectedStructures: ['inode_index_page:leaf', 'inode_index_page:branch'],
     },
   ];

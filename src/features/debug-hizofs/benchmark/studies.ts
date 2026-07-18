@@ -84,7 +84,7 @@ export function createHizoFSBenchmarkStudyReport({
   });
   return hizoFSBenchmarkStudyReportSchema.parse({
     schemaVersion: 1,
-    studyImplementationVersion: 5,
+    studyImplementationVersion: 7,
     reportType: 'hizofs_benchmark_study',
     studyId,
     studyKind,
@@ -113,6 +113,28 @@ function createPolicyMatrix({
     storeLifecycle: 'fresh_per_iteration',
   });
   const variants: HizoFSBenchmarkStudyVariant[] = [];
+
+  for (const fileChunkSize of [
+    256 * 1024,
+    512 * 1024,
+    1024 * 1024,
+    2 * 1024 * 1024,
+    4 * 1024 * 1024,
+  ] as const) {
+    variants.push(createVariant({
+      studyKind: 'policy_matrix',
+      variantId: `file-chunk-${String(fileChunkSize / 1024)}kib`,
+      label: `File chunk size ${String(fileChunkSize / 1024)} KiB`,
+      configuration: {
+        ...studyBase,
+        workloads: ['sequential_io', 'random_access'],
+        hizoFSRuntimePolicy: {
+          ...studyBase.hizoFSRuntimePolicy,
+          fileChunkSize,
+        },
+      },
+    }));
+  }
 
   for (const concurrency of [1, 2, 4, 8] as const) {
     variants.push(createVariant({

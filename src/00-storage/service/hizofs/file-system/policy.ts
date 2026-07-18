@@ -9,7 +9,9 @@ export type HizoFSPolicy = {
   readonly inlineFileByteLimit: number;
   readonly inlineDirectoryEntryLimit: number;
   readonly fileChunkSize: number;
-  readonly indexPageEntryLimit: number;
+  readonly inodeIndexPageEntryLimit: number;
+  readonly directoryIndexPageEntryLimit: number;
+  readonly fileExtentIndexPageEntryLimit: number;
   readonly decodedInodeIndexPageCacheEntryLimit: number;
   readonly readerStreamChunkSize: number;
   readonly fileChunkReadPrefetchConcurrency: number;
@@ -27,8 +29,14 @@ export type HizoFSPolicy = {
 export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   inlineFileByteLimit: 64 * 1024,
   inlineDirectoryEntryLimit: 32,
-  fileChunkSize: 256 * 1024,
-  indexPageEntryLimit: 64,
+  // One MiB aligns sixteen encrypted chunks with the 16 MiB data-segment
+  // target while keeping the per-writer in-flight plaintext bound at 2 MiB.
+  fileChunkSize: 1024 * 1024,
+  // Inode-index entries are fixed-size stable IDs plus ObjectRefs. Smaller
+  // pages reduce copy-on-write bytes for per-operation inode publications.
+  inodeIndexPageEntryLimit: 32,
+  directoryIndexPageEntryLimit: 64,
+  fileExtentIndexPageEntryLimit: 64,
   // Inode-index pages contain only fixed-size stable IDs and ObjectRefs. Keep
   // this parsed-page cache separate and explicitly bounded per runtime.
   decodedInodeIndexPageCacheEntryLimit: 128,
@@ -40,9 +48,9 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 8 * 1024 * 1024,
   metadataObjectCacheEntryLimit: 16 * 1024,
-  // One encoded 256 KiB chunk includes a small record header and metadata.
-  // Keep the byte bound explicit while allowing one complete 64-chunk working
-  // set to remain resident instead of deterministically evicting the 64th item.
+  // One encoded 1 MiB chunk includes a small record header and metadata. Keep
+  // the byte bound explicit while allowing one complete 16-chunk working set
+  // to remain resident instead of deterministically evicting the 16th item.
   fileChunkCacheByteLimit: 16 * 1024 * 1024 + 64 * 1024,
   fileChunkCacheEntryLimit: 2048,
   fileChunkCacheAdmission: 'read_only',
