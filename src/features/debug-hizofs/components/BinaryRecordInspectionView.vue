@@ -95,7 +95,7 @@ defineExpose({
       <div v-else-if="binaryDetailsStatus === 'error'" tw-class="px-3 py-3 text-xs text-red-600 dark:text-red-400">{{ binaryDetailsError }}</div>
       <template v-else-if="binaryDetailsStatus === 'loaded'">
         <section>
-          <div tw-class="border-y border-gray-200 bg-gray-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-950">Decoded object envelope fields</div>
+          <div tw-class="border-y border-gray-200 bg-gray-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-950">Authenticated persisted frame fields</div>
           <DecodedBinaryFields :fields="binary.persistedObject.headerFields" />
           <dl tw-class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 px-3 py-2 font-mono text-[9px] text-gray-500 dark:text-gray-400">
             <dt>ciphertext offset</dt><dd>0x{{ binary.persistedObject.ciphertextOffset.toString(16).padStart(8, '0') }}</dd>
@@ -104,7 +104,7 @@ defineExpose({
         </section>
 
         <details tw-class="border-t border-gray-200 dark:border-gray-700">
-          <summary tw-class="cursor-pointer px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500">Persisted encrypted object bytes</summary>
+          <summary tw-class="cursor-pointer px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500">Persisted authenticated frame bytes</summary>
           <BinaryHexView
             :bytes="binary.persistedObject.bytes.bytes"
             :offset="binary.persistedObject.bytes.offset"

@@ -75,11 +75,11 @@ describe('HizoFS inspection reader', () => {
       },
     });
     expect(inspected?.binary.persistedObject.bytes.bytes.slice(0, 8)).toEqual(
-      new Uint8Array([0x48, 0x49, 0x5a, 0x4f, 0x46, 0x53, 0x00, 0x00]),
+      new Uint8Array([0x48, 0x5a, 0x52, 0x45, 0x43, 0x30, 0x30, 0x31]),
     );
     expect(inspected?.binary.persistedObject.headerFields).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'magic', offset: 0, byteLength: 8 }),
-      expect.objectContaining({ name: 'nonce', offset: 12, byteLength: 12 }),
+      expect.objectContaining({ name: 'nonce', offset: 56, byteLength: 12 }),
     ]));
     expect(inspected?.binary.decryptedRecord.bytes.bytes.slice(0, 2)).toEqual(
       new Uint8Array([1, 0]),
@@ -128,7 +128,7 @@ describe('HizoFS inspection reader', () => {
     }
     await beforeCorruptionReader.dispose();
 
-    const invalidSlot = await backing.getFileHandle(`superblock-${String(activeSlot.slot)}.enc`);
+    const invalidSlot = await backing.getFileHandle(`head-${String(activeSlot.slot)}.hfs`);
     const writable = await invalidSlot.createWritable({ keepExistingData: false });
     await writable.write(new Uint8Array([1, 2, 3]));
     await writable.close();
@@ -183,7 +183,7 @@ describe('HizoFS inspection reader', () => {
       const page = await reader.listPhysicalObjects({ cursor, limit: 2 });
       objectIds.push(...page.entries.map(entry => entry.objectId));
       if (page.nextCursor !== undefined) {
-        expect(page.nextCursor).toMatch(/^[0-9a-f]{2}\//u);
+        expect(page.nextCursor).toMatch(/^[A-Za-z0-9_-]{43}$/u);
       }
       cursor = page.nextCursor;
     } while (cursor !== undefined);

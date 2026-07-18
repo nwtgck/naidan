@@ -61,6 +61,23 @@ import BinaryRecordInspectionView from './BinaryRecordInspectionView.vue';
 const OBJECT_ROW_HEIGHT = 58;
 const OBJECT_OVERSCAN = 8;
 
+/**
+ * HizoFS Workbench is a persistence-structure inspector, not a stable generic
+ * file-manager shell. Its navigation hierarchy, labels, binary panels, and
+ * relationships must follow the HizoFS format that the current build actually
+ * writes, even when that requires a substantial UI redesign after a storage
+ * layout change.
+ *
+ * The root-directory shortcut is the intentional exception: preserve a direct
+ * "Root directory" entry point across format changes, while keeping every
+ * persisted record skipped by that shortcut available for explicit inspection.
+ *
+ * During unreleased persistence experiments it is acceptable to defer a full
+ * Workbench redesign so storage work can be evaluated first. Such a temporary
+ * mismatch must be called out with a TODO(hizofs-workbench) beside the stale UI
+ * boundary, and the existing Workbench tests must remain passing. Remove that
+ * TODO only after the UI again exposes the real persisted structure.
+ */
 const primaryView = ref<'inspection' | 'benchmark'>('inspection');
 
 /**
@@ -534,6 +551,8 @@ function openActiveCommit(): void {
  * commit chain every time. This does not invent a separate persisted root
  * concept: the selected commit, rootDirectoryNodeId, every inode-index page,
  * and the resolved inode object remain explicit navigation targets.
+ * This shortcut is a long-lived Workbench contract and must survive future
+ * physical-layout and metadata-graph redesigns.
  */
 async function openActiveRootDirectory({ afterIndex }: {
   afterIndex: number;

@@ -23,7 +23,7 @@ import {
 } from "./format/descriptor-store";
 import { createHizoFSStableId } from "./id";
 import { DEFAULT_HIZOFS_POLICY, type HizoFSPolicy } from "./file-system/policy";
-import { createHizoFSRuntime } from "./file-system/runtime";
+import { createHizoFSRuntime, type HizoFSRuntime } from "./file-system/runtime";
 import { HizoFSSession } from "./file-system/session";
 import { HizoFSBulkBuilder } from './file-system/bulk-builder';
 import type { HizoFSRuntimeDiagnostics } from './file-system/diagnostics';
@@ -177,6 +177,8 @@ export async function inspectHizoFS({
     root: backingDirectory,
     fileHandleCacheEntryLimit:
       DEFAULT_HIZOFS_POLICY.backingFileHandleCacheEntryLimit,
+    fileSnapshotCacheEntryLimit:
+      DEFAULT_HIZOFS_POLICY.backingFileSnapshotCacheEntryLimit,
     diagnostics: undefined,
   });
   let descriptor: HizoFSDescriptorDto;
@@ -199,14 +201,40 @@ export async function inspectHizoFS({
     now: () => Date.now(),
     diagnostics: undefined,
   });
-  const activeState = await runtime.core.loadActiveState();
-  return {
-    descriptor,
-    fileSystemId,
-    superblock: activeState.superblock,
-    activeCommitObjectId: activeState.commitObjectId,
-    activeCommit: activeState.commit,
-  };
+  try {
+    const activeState = await runtime.core.loadActiveState();
+    return {
+      descriptor,
+      fileSystemId,
+      superblock: activeState.superblock,
+      activeCommitObjectId: activeState.commitObjectId,
+      activeCommit: activeState.commit,
+    };
+  } finally {
+    await runtime.close();
+  }
+}
+
+async function runWithRuntimeInitialization<T>({
+  runtime,
+  operation,
+}: {
+  runtime: HizoFSRuntime;
+  operation: () => Promise<T>;
+}): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    try {
+      await runtime.close();
+    } catch (closeError) {
+      throw new AggregateError(
+        [error, closeError],
+        'HizoFS runtime initialization and cleanup both failed',
+      );
+    }
+    throw error;
+  }
 }
 
 async function createHizoFSInternal({
@@ -225,6 +253,7 @@ async function createHizoFSInternal({
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
     fileHandleCacheEntryLimit: policy.backingFileHandleCacheEntryLimit,
+    fileSnapshotCacheEntryLimit: policy.backingFileSnapshotCacheEntryLimit,
     diagnostics,
   });
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
@@ -242,48 +271,53 @@ async function createHizoFSInternal({
     diagnostics,
   });
 
-  const rootDirectoryNodeId = createHizoFSStableId();
-  const timestamp = now();
-  const rootInodeObjectId = await runtime.inodeStore.writeDirectory({
-    inode: {
-      nodeId: rootDirectoryNodeId,
-      revision: 0,
-      createdAt: timestamp,
-      modifiedAt: timestamp,
-      storage: { type: "inline", entries: [] },
-    },
-  });
-  const inodeIndexRootObjectId = await runtime.inodeIndex.buildFromSortedEntries({
-    entries: [{ nodeId: rootDirectoryNodeId, inodeObjectId: rootInodeObjectId }],
-  });
-  const commitObjectId = await runtime.commitStore.write({
-    commit: {
-      revision: 0,
-      rootDirectoryNodeId,
-      inodeIndexRootObjectId,
-    },
-  });
-  for (const sequence of [0, 1] as const) {
-    await runtime.core.superblockStore.write({
-      value: {
-        sequence,
-        fileSystemId,
-        activeCommitObjectId: commitObjectId,
-      },
-    });
-  }
-  await runtime.core.loadActiveState();
-  return new HizoFSSession({
+  return runWithRuntimeInitialization({
     runtime,
-    rootDirectoryNodeId,
-    workerMountContext: {
-      type: "hizofs",
-      backingDirectory,
-      fileSystemId,
-      rootKey: workerRootKey,
+    operation: async () => {
+      const rootDirectoryNodeId = createHizoFSStableId();
+      const timestamp = now();
+      const rootInodeObjectId = await runtime.inodeStore.writeDirectory({
+        inode: {
+          nodeId: rootDirectoryNodeId,
+          revision: 0,
+          createdAt: timestamp,
+          modifiedAt: timestamp,
+          storage: { type: "inline", entries: [] },
+        },
+      });
+      const inodeIndexRootObjectId = await runtime.inodeIndex.buildFromSortedEntries({
+        entries: [{ nodeId: rootDirectoryNodeId, inodeObjectId: rootInodeObjectId }],
+      });
+      const commitObjectId = await runtime.commitStore.write({
+        commit: {
+          revision: 0,
+          rootDirectoryNodeId,
+          inodeIndexRootObjectId,
+        },
+      });
+      for (const sequence of [0, 1] as const) {
+        await runtime.core.superblockStore.write({
+          value: {
+            sequence,
+            fileSystemId,
+            activeCommitObjectId: commitObjectId,
+          },
+        });
+      }
+      await runtime.core.loadActiveState();
+      return new HizoFSSession({
+        runtime,
+        rootDirectoryNodeId,
+        workerMountContext: {
+          type: "hizofs",
+          backingDirectory,
+          fileSystemId,
+          rootKey: workerRootKey,
+        },
+        fixedState: undefined,
+        sessionLease: undefined,
+      });
     },
-    fixedState: undefined,
-    sessionLease: undefined,
   });
 }
 
@@ -303,6 +337,7 @@ async function openHizoFSInternal({
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
     fileHandleCacheEntryLimit: policy.backingFileHandleCacheEntryLimit,
+    fileSnapshotCacheEntryLimit: policy.backingFileSnapshotCacheEntryLimit,
     diagnostics,
   });
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
@@ -318,19 +353,24 @@ async function openHizoFSInternal({
     now,
     diagnostics,
   });
-  const state = await runtime.core.loadActiveState();
-  await restoreHizoFSDescriptor({ backingStore });
-  return new HizoFSSession({
+  return runWithRuntimeInitialization({
     runtime,
-    rootDirectoryNodeId: state.commit.rootDirectoryNodeId,
-    workerMountContext: {
-      type: "hizofs",
-      backingDirectory,
-      fileSystemId,
-      rootKey: workerRootKey,
+    operation: async () => {
+      const state = await runtime.core.loadActiveState();
+      await restoreHizoFSDescriptor({ backingStore });
+      return new HizoFSSession({
+        runtime,
+        rootDirectoryNodeId: state.commit.rootDirectoryNodeId,
+        workerMountContext: {
+          type: "hizofs",
+          backingDirectory,
+          fileSystemId,
+          rootKey: workerRootKey,
+        },
+        fixedState: undefined,
+        sessionLease: undefined,
+      });
     },
-    fixedState: undefined,
-    sessionLease: undefined,
   });
 }
 
@@ -352,6 +392,7 @@ async function openHizoFSWithImportedRootKey({
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root: backingDirectory,
     fileHandleCacheEntryLimit: policy.backingFileHandleCacheEntryLimit,
+    fileSnapshotCacheEntryLimit: policy.backingFileSnapshotCacheEntryLimit,
     diagnostics: undefined,
   });
   const runtime = createHizoFSRuntime({
@@ -362,23 +403,28 @@ async function openHizoFSWithImportedRootKey({
     now,
     diagnostics: undefined,
   });
-  const state = await runtime.core.loadActiveState();
-  await restoreHizoFSDescriptor({ backingStore });
-  await runtime.nodeService.readDirectory({
-    state,
-    nodeId: rootDirectoryNodeId,
-  });
-  return new HizoFSSession({
+  return runWithRuntimeInitialization({
     runtime,
-    rootDirectoryNodeId,
-    workerMountContext: {
-      type: "hizofs",
-      backingDirectory,
-      fileSystemId,
-      rootKey,
+    operation: async () => {
+      const state = await runtime.core.loadActiveState();
+      await restoreHizoFSDescriptor({ backingStore });
+      await runtime.nodeService.readDirectory({
+        state,
+        nodeId: rootDirectoryNodeId,
+      });
+      return new HizoFSSession({
+        runtime,
+        rootDirectoryNodeId,
+        workerMountContext: {
+          type: "hizofs",
+          backingDirectory,
+          fileSystemId,
+          rootKey,
+        },
+        fixedState: undefined,
+        sessionLease: undefined,
+      });
     },
-    fixedState: undefined,
-    sessionLease: undefined,
   });
 }
 

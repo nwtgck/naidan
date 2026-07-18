@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { decodeBase64Url, encodeBase64Url } from '@/00-storage/service/hizofs/base64-url';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { NativeOpfsHizoFSBackingStore } from '@/00-storage/service/hizofs/backing-store/native-opfs-backing-store';
 import { importHizoFSRootKey } from '@/00-storage/service/hizofs/crypto/object-crypto';
@@ -7,6 +8,9 @@ import {
   validateHizoFSObjectId,
 } from './object-id';
 import { HizoFSObjectStore } from './object-store';
+
+const FILE_SYSTEM_ID_A = encodeBase64Url({ bytes: new Uint8Array(16).fill(0xa1) });
+const FILE_SYSTEM_ID_B = encodeBase64Url({ bytes: new Uint8Array(16).fill(0xb2) });
 
 async function createStore({
   root,
@@ -25,6 +29,7 @@ async function createStore({
   const backingStore = new NativeOpfsHizoFSBackingStore({
     root,
     fileHandleCacheEntryLimit: 64,
+    fileSnapshotCacheEntryLimit: 64,
     diagnostics: undefined,
   });
   const rootKey = await importHizoFSRootKey({
@@ -45,13 +50,35 @@ async function createStore({
   };
 }
 
+async function publishStore({
+  store,
+  fileSystemId,
+  activeCommitObjectId,
+  sequence = 0,
+}: {
+  store: HizoFSObjectStore;
+  fileSystemId: string;
+  activeCommitObjectId: string;
+  sequence?: number;
+}): Promise<void> {
+  await store.writeSuperblock({
+    slot: (sequence % 2) as 0 | 1,
+    record: {
+      kind: 'superblock',
+      recordVersion: 1,
+      metadata: { sequence, fileSystemId, activeCommitObjectId },
+      binaryPayload: new Uint8Array(),
+    },
+  });
+}
+
 describe('HizoFS immutable object store', () => {
   it('round-trips an authenticated record under a random opaque object ID', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const { store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
     });
 
     const objectId = await store.create({
@@ -63,7 +90,7 @@ describe('HizoFS immutable object store', () => {
       },
     });
 
-    expect(objectId).toMatch(/^[A-Za-z0-9_-]{21}$/u);
+    expect(objectId).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     expect(await store.read({ objectId })).toEqual({
       kind: 'file_chunk',
       recordVersion: 1,
@@ -72,12 +99,176 @@ describe('HizoFS immutable object store', () => {
     });
   });
 
+  it('reuses runtime-owned metadata and data segments across durable publications', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+
+    const firstMetadataObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 1 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: firstMetadataObjectId,
+      sequence: 0,
+    });
+    const secondMetadataObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 2 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: secondMetadataObjectId,
+      sequence: 1,
+    });
+
+    const firstDataObjectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([1]),
+      },
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: secondMetadataObjectId,
+      sequence: 2,
+    });
+    const secondDataObjectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([2]),
+      },
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: secondMetadataObjectId,
+      sequence: 3,
+    });
+
+    expect(store.getObjectPhysicalPath({ objectId: firstMetadataObjectId })).toEqual(
+      store.getObjectPhysicalPath({ objectId: secondMetadataObjectId }),
+    );
+    expect(store.getObjectPhysicalPath({ objectId: firstDataObjectId })).toEqual(
+      store.getObjectPhysicalPath({ objectId: secondDataObjectId }),
+    );
+    await store.close();
+  });
+
+  it('blocks new segment reservations until a publication flush boundary completes', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
+    const openRandomAccessFile = backingStore.openRandomAccessFile.bind(backingStore);
+    const secondMetadataFlushStarted = Promise.withResolvers<void>();
+    const releaseSecondMetadataFlush = Promise.withResolvers<void>();
+    let metadataFlushCount = 0;
+    vi.spyOn(backingStore, 'openRandomAccessFile').mockImplementation(async options => {
+      const file = await openRandomAccessFile(options);
+      if (options.path.includes('metadata')) {
+        const flush = file.flush.bind(file);
+        vi.spyOn(file, 'flush').mockImplementation(async () => {
+          metadataFlushCount += 1;
+          if (metadataFlushCount === 2) {
+            secondMetadataFlushStarted.resolve();
+            await releaseSecondMetadataFlush.promise;
+          }
+          await flush();
+        });
+      }
+      return file;
+    });
+    const store = new HizoFSObjectStore({
+      backingStore,
+      rootKey: await importHizoFSRootKey({
+        rawRootKey: new Uint8Array(32).fill(1),
+      }),
+      fileSystemId: FILE_SYSTEM_ID_A,
+      metadataCacheByteLimit: 1024,
+      metadataCacheEntryLimit: 64,
+      fileChunkCacheByteLimit: 1024,
+      fileChunkCacheEntryLimit: 64,
+      fileChunkCacheAdmission: 'read_only',
+    });
+    const firstObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 1 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: firstObjectId,
+      sequence: 0,
+    });
+    const secondObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 2 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    const publication = publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: secondObjectId,
+      sequence: 1,
+    });
+    await secondMetadataFlushStarted.promise;
+
+    let laterCreateSettled = false;
+    const laterCreate = store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 3 },
+        binaryPayload: new Uint8Array(),
+      },
+    }).finally(() => {
+      laterCreateSettled = true;
+    });
+    await Promise.resolve();
+    expect(laterCreateSettled).toBe(false);
+
+    releaseSecondMetadataFlush.resolve();
+    await publication;
+    await laterCreate;
+    await store.close();
+  });
+
   it('serves immutable objects from bounded plaintext caches without sharing mutable payloads', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const { backingStore, store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
       fileChunkCacheAdmission: 'read_write',
     });
     const objectId = await store.create({
@@ -88,7 +279,7 @@ describe('HizoFS immutable object store', () => {
         binaryPayload: new Uint8Array([1, 2, 3]),
       },
     });
-    const readSpy = vi.spyOn(backingStore, 'read');
+    const readSpy = vi.spyOn(backingStore, 'readRange');
 
     const first = await store.read({ objectId });
     if (first === undefined) throw new Error('Expected cached HizoFS object');
@@ -105,7 +296,7 @@ describe('HizoFS immutable object store', () => {
     const { backingStore, store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
       fileChunkCacheAdmission: 'read_only',
     });
     const objectId = await store.create({
@@ -116,7 +307,9 @@ describe('HizoFS immutable object store', () => {
         binaryPayload: new Uint8Array([1, 2, 3]),
       },
     });
-    const readSpy = vi.spyOn(backingStore, 'read');
+    await publishStore({ store, fileSystemId: FILE_SYSTEM_ID_A, activeCommitObjectId: objectId });
+    await store.releasePhysicalHandles();
+    const readSpy = vi.spyOn(backingStore, 'readRange');
 
     await store.read({ objectId });
     await store.read({ objectId });
@@ -129,7 +322,7 @@ describe('HizoFS immutable object store', () => {
     const { backingStore, store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
       fileChunkCacheAdmission: 'read_write',
     });
     const objectId = await store.create({
@@ -140,7 +333,7 @@ describe('HizoFS immutable object store', () => {
         binaryPayload: new Uint8Array([1, 2, 3]),
       },
     });
-    const readSpy = vi.spyOn(backingStore, 'read');
+    const readSpy = vi.spyOn(backingStore, 'readRange');
 
     await store.read({ objectId });
 
@@ -152,6 +345,7 @@ describe('HizoFS immutable object store', () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     const store = new HizoFSObjectStore({
@@ -159,7 +353,7 @@ describe('HizoFS immutable object store', () => {
       rootKey: await importHizoFSRootKey({
         rawRootKey: new Uint8Array(32).fill(1),
       }),
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
       metadataCacheByteLimit: 0,
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 0,
@@ -174,7 +368,9 @@ describe('HizoFS immutable object store', () => {
         binaryPayload: new Uint8Array(),
       },
     });
-    const readSpy = vi.spyOn(backingStore, 'read');
+    await publishStore({ store, fileSystemId: FILE_SYSTEM_ID_A, activeCommitObjectId: objectId });
+    await store.releasePhysicalHandles();
+    const readSpy = vi.spyOn(backingStore, 'readRange');
 
     await store.read({ objectId });
     await store.read({ objectId });
@@ -187,6 +383,7 @@ describe('HizoFS immutable object store', () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     const store = new HizoFSObjectStore({
@@ -194,7 +391,7 @@ describe('HizoFS immutable object store', () => {
       rootKey: await importHizoFSRootKey({
         rawRootKey: new Uint8Array(32).fill(1),
       }),
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
       metadataCacheByteLimit: 0,
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 64,
@@ -217,7 +414,13 @@ describe('HizoFS immutable object store', () => {
         binaryPayload: new Uint8Array(32).fill(2),
       },
     });
-    const readSpy = vi.spyOn(backingStore, 'read');
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: secondObjectId,
+    });
+    await store.releasePhysicalHandles();
+    const readSpy = vi.spyOn(backingStore, 'readRange');
 
     await store.read({ objectId: firstObjectId });
     await store.read({ objectId: secondObjectId });
@@ -230,6 +433,7 @@ describe('HizoFS immutable object store', () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     const store = new HizoFSObjectStore({
@@ -237,7 +441,7 @@ describe('HizoFS immutable object store', () => {
       rootKey: await importHizoFSRootKey({
         rawRootKey: new Uint8Array(32).fill(1),
       }),
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
       metadataCacheByteLimit: 0,
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 1024,
@@ -260,7 +464,13 @@ describe('HizoFS immutable object store', () => {
         binaryPayload: new Uint8Array([2]),
       },
     });
-    const readSpy = vi.spyOn(backingStore, 'read');
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: secondObjectId,
+    });
+    await store.releasePhysicalHandles();
+    const readSpy = vi.spyOn(backingStore, 'readRange');
 
     await store.read({ objectId: firstObjectId });
     await store.read({ objectId: secondObjectId });
@@ -273,7 +483,7 @@ describe('HizoFS immutable object store', () => {
     const { backingStore, store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
       fileChunkCacheAdmission: 'read_write',
     });
     const objectId = await store.create({
@@ -284,8 +494,10 @@ describe('HizoFS immutable object store', () => {
         binaryPayload: new Uint8Array([1, 2, 3]),
       },
     });
+    await publishStore({ store, fileSystemId: FILE_SYSTEM_ID_A, activeCommitObjectId: objectId });
     store.clearPlaintextCaches();
-    const readSpy = vi.spyOn(backingStore, 'read');
+    await store.releasePhysicalHandles();
+    const readSpy = vi.spyOn(backingStore, 'readRange');
 
     await store.read({ objectId });
 
@@ -297,7 +509,7 @@ describe('HizoFS immutable object store', () => {
     const { backingStore, store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
     });
     await store.writeSuperblock({
       slot: 0,
@@ -306,7 +518,7 @@ describe('HizoFS immutable object store', () => {
         recordVersion: 1,
         metadata: {
           sequence: 0,
-          fileSystemId: 'filesystem-a',
+          fileSystemId: FILE_SYSTEM_ID_A,
           activeCommitObjectId: 'commit',
         },
         binaryPayload: new Uint8Array(),
@@ -324,7 +536,7 @@ describe('HizoFS immutable object store', () => {
     const { store } = await createStore({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
     });
     const record = {
       kind: 'commit' as const,
@@ -337,20 +549,27 @@ describe('HizoFS immutable object store', () => {
     expect(first).not.toBe(second);
   });
 
-  it('uses the first eight Nano ID bits for canonical object sharding', () => {
-    expect(getHizoFSObjectShard({ objectId: 'AAAAAAAAAAAAAAAAAAAAA' })).toBe('00');
-    expect(getHizoFSObjectShard({ objectId: 'AQAAAAAAAAAAAAAAAAAAA' })).toBe('01');
-    expect(getHizoFSObjectShard({ objectId: '_AAAAAAAAAAAAAAAAAAAA' })).toBe('f8');
-    expect(getHizoFSObjectShard({ objectId: '---------------------' })).toBe('ff');
+  it('uses the first eight home-segment bits for canonical object sharding', () => {
+    const objectIdForFirstByte = (firstByte: number) => {
+      const bytes = new Uint8Array(32);
+      bytes[0] = firstByte;
+      new DataView(bytes.buffer).setUint32(24, 1, false);
+      bytes[28] = 1;
+      return encodeBase64Url({ bytes });
+    };
+    expect(getHizoFSObjectShard({ objectId: objectIdForFirstByte(0x00) })).toBe('00');
+    expect(getHizoFSObjectShard({ objectId: objectIdForFirstByte(0x01) })).toBe('01');
+    expect(getHizoFSObjectShard({ objectId: objectIdForFirstByte(0xf8) })).toBe('f8');
+    expect(getHizoFSObjectShard({ objectId: objectIdForFirstByte(0xff) })).toBe('ff');
   });
 
-  it('rejects non-canonical Nano ID lengths and characters', () => {
+  it('rejects invalid direct object references', () => {
     expect(() => validateHizoFSObjectId({
-      objectId: 'AAAAAAAAAAAAAAAAAAAA',
-    })).toThrow('exactly 21 characters');
+      objectId: 'A'.repeat(42),
+    })).toThrow('exactly 43 Base64URL characters');
     expect(() => validateHizoFSObjectId({
-      objectId: 'AAAAAAAAAAAAAAAAAAAA!',
-    })).toThrow('canonical alphabet');
+      objectId: `${'A'.repeat(42)}!`,
+    })).toThrow('Invalid Base64URL value');
   });
 
   it('fails authentication with a different root key or filesystem ID', async () => {
@@ -358,7 +577,7 @@ describe('HizoFS immutable object store', () => {
     const { store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
     });
     const objectId = await store.create({
       record: {
@@ -372,14 +591,14 @@ describe('HizoFS immutable object store', () => {
     const wrongKey = await createStore({
       root,
       rootKeyByte: 2,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
     });
     await expect(wrongKey.store.read({ objectId })).rejects.toThrow();
 
     const wrongFileSystem = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-b',
+      fileSystemId: FILE_SYSTEM_ID_B,
     });
     await expect(wrongFileSystem.store.read({ objectId })).rejects.toThrow();
   });
@@ -389,7 +608,7 @@ describe('HizoFS immutable object store', () => {
     const { backingStore, store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
     });
     const objectId = await store.create({
       record: {
@@ -399,18 +618,15 @@ describe('HizoFS immutable object store', () => {
         binaryPayload: new Uint8Array(),
       },
     });
-    const physical = await backingStore.read({
-      path: ['objects', getHizoFSObjectShard({ objectId }), `${objectId}.enc`],
-    });
+    const physicalPath = store.getObjectPhysicalPath({ objectId });
+    const physical = await backingStore.read({ path: physicalPath });
     expect(physical).toBeDefined();
 
-    const otherObjectId = 'AAAAAAAAAAAAAAAAAAAAA';
+    const referenceBytes = decodeBase64Url({ value: objectId });
+    referenceBytes[0] = (referenceBytes[0] ?? 0) ^ 0x01;
+    const otherObjectId = encodeBase64Url({ bytes: referenceBytes });
     await backingStore.write({
-      path: [
-        'objects',
-        getHizoFSObjectShard({ objectId: otherObjectId }),
-        `${otherObjectId}.enc`,
-      ],
+      path: store.getObjectPhysicalPath({ objectId: otherObjectId }),
       bytes: physical ?? new Uint8Array(),
     });
     await expect(store.read({ objectId: otherObjectId })).rejects.toThrow();
@@ -421,7 +637,7 @@ describe('HizoFS immutable object store', () => {
     const { backingStore, store } = await createStore({
       root,
       rootKeyByte: 1,
-      fileSystemId: 'filesystem-a',
+      fileSystemId: FILE_SYSTEM_ID_A,
     });
     await store.writeSuperblock({
       slot: 1,
@@ -430,7 +646,7 @@ describe('HizoFS immutable object store', () => {
         recordVersion: 1,
         metadata: {
           sequence: 5,
-          fileSystemId: 'filesystem-a',
+          fileSystemId: FILE_SYSTEM_ID_A,
           activeCommitObjectId: 'commit',
         },
         binaryPayload: new Uint8Array(),
@@ -441,6 +657,172 @@ describe('HizoFS immutable object store', () => {
       kind: 'superblock',
       metadata: { sequence: 5 },
     });
-    expect(await backingStore.read({ path: ['superblock-1.enc'] })).toBeDefined();
+    expect(await backingStore.read({ path: ['head-1.hfs'] })).toBeDefined();
   });
+
+  it('packs exactly sixty-four default chunks into one 16 MiB data payload segment', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+    const payload = new Uint8Array(256 * 1024);
+    const objectIds: string[] = [];
+    for (let index = 0; index < 65; index += 1) {
+      objectIds.push(await store.create({
+        record: {
+          kind: 'file_chunk',
+          recordVersion: 1,
+          metadata: {},
+          binaryPayload: payload,
+        },
+      }));
+    }
+
+    const firstPath = store.getObjectPhysicalPath({ objectId: objectIds[0] ?? '' });
+    for (const objectId of objectIds.slice(0, 64)) {
+      expect(store.getObjectPhysicalPath({ objectId })).toEqual(firstPath);
+    }
+    expect(store.getObjectPhysicalPath({ objectId: objectIds[64] ?? '' }))
+      .not.toEqual(firstPath);
+  });
+
+  it('packs immutable metadata records into one authenticated segment before publication', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+    const firstObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 1 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    const secondObjectId = await store.create({
+      record: {
+        kind: 'file_inode',
+        recordVersion: 1,
+        metadata: { nodeId: 'test' },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+
+    expect(store.getObjectPhysicalPath({ objectId: firstObjectId })).toEqual(
+      store.getObjectPhysicalPath({ objectId: secondObjectId }),
+    );
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: firstObjectId,
+    });
+    const listing = await store.listPhysicalObjects();
+    expect(listing.ignoredPhysicalPaths).toEqual([]);
+    expect(listing.entries.map(entry => entry.objectId)).toEqual(
+      expect.arrayContaining([firstObjectId, secondObjectId]),
+    );
+  });
+
+  it('reclaims a packed segment only when every contained record is unreachable', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+    const firstObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 1 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    const secondObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 2 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: secondObjectId,
+    });
+
+    await expect(store.selectWholeSegmentReclaimCandidates({
+      unreachableObjectIds: [firstObjectId],
+    })).resolves.toEqual([]);
+    const candidates = await store.selectWholeSegmentReclaimCandidates({
+      unreachableObjectIds: [firstObjectId, secondObjectId],
+    });
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.objectIds).toEqual(
+      expect.arrayContaining([firstObjectId, secondObjectId]),
+    );
+  });
+
+  it('does not reclaim a segment that grew after the whole-segment candidate was built', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+    const firstObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 1 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    const secondObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 2 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: secondObjectId,
+    });
+    const [candidate] = await store.selectWholeSegmentReclaimCandidates({
+      unreachableObjectIds: [firstObjectId, secondObjectId],
+    });
+    if (candidate === undefined) throw new Error('Expected one whole-segment candidate');
+
+    const foregroundObjectId = await store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 3 },
+        binaryPayload: new Uint8Array(),
+      },
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: foregroundObjectId,
+      sequence: 1,
+    });
+
+    await expect(store.removeWholeSegmentIfUnchanged({ candidate })).resolves.toBe('changed');
+    await expect(store.read({ objectId: foregroundObjectId })).resolves.toMatchObject({
+      kind: 'commit',
+      metadata: { revision: 3 },
+    });
+    await store.close();
+  });
+
+
 });

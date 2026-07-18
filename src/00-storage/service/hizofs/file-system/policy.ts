@@ -13,6 +13,7 @@ export type HizoFSPolicy = {
   readonly readerStreamChunkSize: number;
   readonly fileChunkReadPrefetchConcurrency: number;
   readonly backingFileHandleCacheEntryLimit: number;
+  readonly backingFileSnapshotCacheEntryLimit: number;
   readonly maxDirtyFileBytes: number;
   readonly fileChunkWriteConcurrency: number;
   readonly metadataObjectCacheByteLimit: number;
@@ -30,11 +31,15 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   readerStreamChunkSize: 256 * 1024,
   fileChunkReadPrefetchConcurrency: 4,
   backingFileHandleCacheEntryLimit: 1024,
+  backingFileSnapshotCacheEntryLimit: 128,
   maxDirtyFileBytes: 16 * 1024 * 1024,
   fileChunkWriteConcurrency: 4,
   metadataObjectCacheByteLimit: 8 * 1024 * 1024,
   metadataObjectCacheEntryLimit: 16 * 1024,
-  fileChunkCacheByteLimit: 16 * 1024 * 1024,
+  // One encoded 256 KiB chunk includes a small record header and metadata.
+  // Keep the byte bound explicit while allowing one complete 64-chunk working
+  // set to remain resident instead of deterministically evicting the 64th item.
+  fileChunkCacheByteLimit: 16 * 1024 * 1024 + 64 * 1024,
   fileChunkCacheEntryLimit: 2048,
   fileChunkCacheAdmission: 'read_only',
 };

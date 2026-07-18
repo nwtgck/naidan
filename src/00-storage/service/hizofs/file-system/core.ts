@@ -85,6 +85,12 @@ export class HizoFSCore {
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
 
   async loadActiveState(): Promise<HizoFSActiveState> {
+    // TODO(hizofs): Once every public operation is routed through the
+    // authoritative cross-realm storage coordinator, serve the current
+    // validated superblock/commit/root tuple from that coordinator and reload
+    // A/B heads only during startup or failover. A realm-local cache is not a
+    // safe substitute because another tab or Worker may publish while this
+    // runtime remains alive.
     const candidateSet = await this.superblockStore.readCandidateSet();
     const { candidates } = candidateSet;
     if (candidates.length === 0) {

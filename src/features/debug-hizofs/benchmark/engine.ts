@@ -35,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 10 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 12 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -53,8 +53,26 @@ type BenchmarkMemoryTracker = {
 // read the encrypted object tree between timed cases and accidentally warm the
 // following HizoFS measurement.
 type HizoFSPhysicalDiagnosticTracker = {
+  // Physical immutable containers. In the segmented format one path may hold
+  // many authenticated logical records.
   readonly objectPaths: Set<string>;
   superblockPublications: number;
+};
+
+type BenchmarkSyncAccessHandle = {
+  getSize(): number;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors FileSystemSyncAccessHandle.
+  read(buffer: ArrayBufferView, options?: { at?: number }): number;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors FileSystemSyncAccessHandle.
+  write(buffer: BufferSource, options?: { at?: number }): number;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors FileSystemSyncAccessHandle.
+  truncate(newSize: number): void;
+  flush(): void;
+  close(): void;
+};
+
+type BenchmarkFileHandleWithSyncAccess = FileSystemFileHandle & {
+  createSyncAccessHandle?: () => Promise<BenchmarkSyncAccessHandle>;
 };
 
 type BenchmarkContext = {
@@ -302,7 +320,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 10,
+    schemaVersion: 12,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -325,6 +343,7 @@ async function runHizoFSBenchmarkWithLockHeld({
       hizoFSOwnedResourceDiagnosticsEnabled: true,
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
+      physicalObjectScope: 'immutable_segment_files',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: hizoFSPolicy.fileChunkSize,
         maxDirtyFileBytesPerWriter: hizoFSPolicy.maxDirtyFileBytes,
@@ -334,6 +353,8 @@ async function runHizoFSBenchmarkWithLockHeld({
           hizoFSPolicy.fileChunkReadPrefetchConcurrency,
         backingFileHandleCacheEntryLimitPerRuntime:
           hizoFSPolicy.backingFileHandleCacheEntryLimit,
+        backingFileSnapshotCacheEntryLimitPerRuntime:
+          hizoFSPolicy.backingFileSnapshotCacheEntryLimit,
         maximumPlaintextChunkWriteBytesInFlightPerWriter:
           hizoFSPolicy.fileChunkSize
           * hizoFSPolicy.fileChunkWriteConcurrency,
@@ -1930,6 +1951,10 @@ function subtractHizoFSRuntimeDiagnostics({
         before: before.caches.backingFileHandle,
         after: after.caches.backingFileHandle,
       }),
+      backingFileSnapshot: subtractHizoFSRuntimeCacheDiagnostics({
+        before: before.caches.backingFileSnapshot,
+        after: after.caches.backingFileSnapshot,
+      }),
     },
     resources: {
       writerDirtyChunks: copyHizoFSRuntimeResourceDiagnostics({
@@ -2258,6 +2283,10 @@ function aggregateHizoFSRuntimeDiagnostics({
       backingFileHandle: aggregateHizoFSRuntimeCacheDiagnostics({
         diagnostics: diagnostics.map(value => value.caches.backingFileHandle),
         current: last.caches.backingFileHandle,
+      }),
+      backingFileSnapshot: aggregateHizoFSRuntimeCacheDiagnostics({
+        diagnostics: diagnostics.map(value => value.caches.backingFileSnapshot),
+        current: last.caches.backingFileSnapshot,
       }),
     },
     resources: {
@@ -3364,6 +3393,19 @@ function createCountingFileHandle({
             }),
           });
         };
+      case 'createSyncAccessHandle': {
+        const createSyncAccessHandle = (target as BenchmarkFileHandleWithSyncAccess)
+          .createSyncAccessHandle;
+        if (createSyncAccessHandle === undefined) return undefined;
+        return async () => createCountingSyncAccessHandle({
+          handle: await createSyncAccessHandle.call(target),
+          counters,
+          onCommitted: () => recordCommittedPhysicalWrite({
+            relativePath,
+            physicalDiagnostics,
+          }),
+        });
+      }
       default: {
         const value = Reflect.get(target, property, target);
         return typeof value === 'function' ? value.bind(target) : value;
@@ -3403,6 +3445,49 @@ function createCountingWritable({
       }
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+
+function createCountingSyncAccessHandle({
+  handle,
+  counters,
+  onCommitted,
+}: {
+  handle: BenchmarkSyncAccessHandle;
+  counters: BackingStoreCounters;
+  onCommitted: () => void;
+}): BenchmarkSyncAccessHandle {
+  return new Proxy(handle, {
+    get(target, property) {
+      switch (property) {
+      case 'read':
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemSyncAccessHandle.read.
+        return (buffer: ArrayBufferView, options?: { at?: number }) => {
+          const read = target.read(buffer, options);
+          counters.readOperations += 1;
+          counters.bytesRead += read;
+          return read;
+        };
+      case 'write':
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemSyncAccessHandle.write.
+        return (buffer: BufferSource, options?: { at?: number }) => {
+          const written = target.write(buffer, options);
+          counters.writeOperations += 1;
+          counters.bytesWritten += written;
+          return written;
+        };
+      case 'flush':
+        return () => {
+          target.flush();
+          onCommitted();
+        };
+      default: {
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+      }
     },
   });
 }
@@ -3510,35 +3595,50 @@ async function initializeHizoFSPhysicalDiagnostics({
 }): Promise<void> {
   physicalDiagnostics.objectPaths.clear();
   try {
-    const objectsDirectory = await backingDirectory.getDirectoryHandle('objects');
-    for await (const [shardName, shardHandle] of objectsDirectory.entries()) {
-      const shardKind = shardHandle.kind;
-      switch (shardKind) {
-      case 'file':
-        continue;
-      case 'directory':
-        for await (
-          const [objectName, objectHandle]
-          of (shardHandle as FileSystemDirectoryHandle).entries()
-        ) {
-          const objectKind = objectHandle.kind;
-          switch (objectKind) {
-          case 'file':
-            physicalDiagnostics.objectPaths.add(`objects/${shardName}/${objectName}`);
-            break;
-          case 'directory':
-            break;
-          default: {
-            const _ex: never = objectKind;
-            throw new Error(`Unhandled filesystem handle kind: ${String(_ex)}`);
-          }
-          }
-        }
-        break;
-      default: {
-        const _ex: never = shardKind;
-        throw new Error(`Unhandled filesystem handle kind: ${String(_ex)}`);
+    const segmentsDirectory = await backingDirectory.getDirectoryHandle('segments');
+    for (const segmentType of ['metadata', 'data', 'relocation'] as const) {
+      let typeDirectory: FileSystemDirectoryHandle;
+      try {
+        typeDirectory = await segmentsDirectory.getDirectoryHandle(segmentType);
+      } catch (error) {
+        if (isNotFoundError({ error })) continue;
+        throw error;
       }
+      for await (const [shardName, shardHandle] of typeDirectory.entries()) {
+        switch (shardHandle.kind) {
+        case 'file':
+          continue;
+        case 'directory':
+          for await (
+            const [segmentName, segmentHandle]
+            of (shardHandle as FileSystemDirectoryHandle).entries()
+          ) {
+            switch (segmentHandle.kind) {
+            case 'file':
+              if (segmentName.endsWith('.seg')) {
+                physicalDiagnostics.objectPaths.add(
+                  `segments/${segmentType}/${shardName}/${segmentName}`,
+                );
+              }
+              break;
+            case 'directory':
+              break;
+            default: {
+              const _ex: never = segmentHandle;
+              throw new Error(
+                `Unhandled segment entry kind: ${((_ex satisfies never) as { readonly kind: string }).kind}`,
+              );
+            }
+            }
+          }
+          break;
+        default: {
+          const _ex: never = shardHandle;
+          throw new Error(
+            `Unhandled segment shard kind: ${((_ex satisfies never) as { readonly kind: string }).kind}`,
+          );
+        }
+        }
       }
     }
   } catch (error) {
@@ -3585,7 +3685,7 @@ function isSuperblockPhysicalPath({
   relativePath: readonly string[];
 }): boolean {
   if (relativePath.length !== 1) return false;
-  return relativePath[0] === 'superblock-0.enc' || relativePath[0] === 'superblock-1.enc';
+  return relativePath[0] === 'head-0.hfs' || relativePath[0] === 'head-1.hfs';
 }
 
 function isImmutableObjectPhysicalPath({
@@ -3593,9 +3693,14 @@ function isImmutableObjectPhysicalPath({
 }: {
   relativePath: readonly string[];
 }): boolean {
-  return relativePath.length === 3
-    && relativePath[0] === 'objects'
-    && relativePath[2]?.endsWith('.enc') === true;
+  return relativePath.length === 4
+    && relativePath[0] === 'segments'
+    && (
+      relativePath[1] === 'metadata'
+      || relativePath[1] === 'data'
+      || relativePath[1] === 'relocation'
+    )
+    && relativePath[3]?.endsWith('.seg') === true;
 }
 
 function validateBenchmarkConfiguration({
@@ -3663,4 +3768,5 @@ export const TEST_ONLY = {
   createRandomPositions,
   createPatternBytes,
   createCountingDirectoryHandle,
+  createCountingSyncAccessHandle,
 };

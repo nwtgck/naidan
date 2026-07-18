@@ -14,6 +14,7 @@ async function setup() {
     backingStore: new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     }),
     rootKey: await importHizoFSRootKey({

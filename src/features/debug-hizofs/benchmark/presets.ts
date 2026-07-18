@@ -191,7 +191,7 @@ function createConfiguration({
       fileChunkWriteConcurrency: 4,
       fileChunkReadPrefetchConcurrency: 4,
       backingFileHandleCacheEntryLimit: 1024,
-      fileChunkCacheByteLimit: 16 * 1024 * 1024,
+      fileChunkCacheByteLimit: 16 * 1024 * 1024 + 64 * 1024,
       fileChunkCacheEntryLimit: 2048,
       fileChunkCacheAdmission: 'read_only',
     },

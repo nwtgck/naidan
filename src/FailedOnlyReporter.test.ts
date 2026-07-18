@@ -65,6 +65,25 @@ describe('FailedOnlyReporter', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('1 passed, 0 failed, 1 total'));
   });
 
+  it('should tolerate a skipped file result', async () => {
+    const reporter = new FailedOnlyReporter();
+    const logSpy = vi.fn();
+    const mockVitest = {
+      logger: {
+        log: logSpy,
+      },
+    } as any;
+
+    reporter.onInit(mockVitest);
+
+    await reporter.onFinished([{
+      name: 'skipped.test.ts',
+      result: { state: 'skip' },
+    } as any], []);
+
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'));
+  });
+
   it('should log build errors (file-level errors) via file.result', async () => {
     const reporter = new FailedOnlyReporter();
     const logSpy = vi.fn();

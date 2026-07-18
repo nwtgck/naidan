@@ -1,3 +1,9 @@
+// TODO(hizofs-segment-store): Port this independent Go recovery tool to the
+// segmented HizoFS format before recovery tooling is shipped. The TypeScript
+// runtime now uses authenticated A/B heads and packed segment records; this
+// unreleased object-per-file reader is intentionally not kept as a
+// compatibility path.
+//
 // Naidan HizoFS recovery source.
 //
 // This standalone implementation uses only the Go standard library. It opens

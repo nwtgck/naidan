@@ -22,8 +22,8 @@ function createReport({
   status?: HizoFSBenchmarkReport['status'];
 } = {}): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 10,
-    benchmarkImplementationVersion: 10,
+    schemaVersion: 12,
+    benchmarkImplementationVersion: 12,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
@@ -45,17 +45,19 @@ function createReport({
       hizoFSOwnedResourceDiagnosticsEnabled: true,
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
+      physicalObjectScope: 'immutable_segment_files',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
         fileChunkWriteConcurrencyPerWriter: 4,
         fileChunkReadPrefetchConcurrencyPerReader: 4,
         backingFileHandleCacheEntryLimitPerRuntime: 1024,
+        backingFileSnapshotCacheEntryLimitPerRuntime: 128,
         maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
         maximumPlaintextChunkReadBytesInFlightPerReader: 1024 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
-        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024,
+        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
         fileChunkCacheEntryLimitPerRuntime: 2048,
         fileChunkCacheAdmission: 'read_only',
       },

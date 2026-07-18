@@ -84,7 +84,7 @@ export function createHizoFSBenchmarkStudyReport({
   });
   return hizoFSBenchmarkStudyReportSchema.parse({
     schemaVersion: 1,
-    studyImplementationVersion: 3,
+    studyImplementationVersion: 4,
     reportType: 'hizofs_benchmark_study',
     studyId,
     studyKind,

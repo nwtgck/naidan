@@ -229,6 +229,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     sessionLease: HizoFSMaintenanceLease | undefined;
   }) {
     this.runtime = runtime;
+    this.runtime.retainSession();
     this.rootDirectoryNodeId = rootDirectoryNodeId;
     this.fileSystemId = runtime.core.fileSystemId;
     this.workerMountContext = workerMountContext;
@@ -283,6 +284,11 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       errors.push(error);
     }
     this.runtime.objectStore.clearPlaintextCaches();
+    try {
+      await this.runtime.releaseSession();
+    } catch (error) {
+      errors.push(error);
+    }
     if (errors.length > 0) {
       throw new AggregateError(
         errors,

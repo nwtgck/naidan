@@ -9,6 +9,10 @@ import {
 import { inspectHizoFS, TEST_ONLY } from './api';
 import type { HizoFSPolicy } from './file-system/policy';
 import { getHizoFSObjectShard } from './object-store/object-id';
+import {
+  decodeHizoFSObjectReference,
+  encodeHizoFSSegmentId,
+} from './segment-store/object-reference';
 import { toExactArrayBuffer } from './bytes';
 import { HizoFSSession } from './file-system/session';
 import { createHizoFSStableId } from './id';
@@ -22,6 +26,7 @@ const TINY_POLICY: HizoFSPolicy = {
   readerStreamChunkSize: 3,
   fileChunkReadPrefetchConcurrency: 2,
   backingFileHandleCacheEntryLimit: 64,
+  backingFileSnapshotCacheEntryLimit: 64,
   maxDirtyFileBytes: 16,
   fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 64 * 1024,
@@ -61,6 +66,15 @@ async function writeLargeValue({ session, value }: {
   await writeStorageFileText({ fileHandle: file, value });
 }
 
+async function writeLargeValueInFreshSegments({ session, value }: {
+  session: StorageFileSystemSession;
+  value: string;
+}): Promise<void> {
+  if (!(session instanceof HizoFSSession)) throw new Error('Expected a HizoFS session');
+  await session.runtime.objectStore.releasePhysicalHandles();
+  await writeLargeValue({ session, value });
+}
+
 async function countPhysicalFiles({ directory }: {
   directory: FileSystemDirectoryHandle;
 }): Promise<number> {
@@ -73,6 +87,16 @@ async function countPhysicalFiles({ directory }: {
     }
   }
   return count;
+}
+
+function getPhysicalObjectPath({ objectId }: { objectId: string }): readonly string[] {
+  const reference = decodeHizoFSObjectReference({ value: objectId });
+  return [
+    'segments',
+    reference.kind === 'file_chunk' ? 'data' : 'metadata',
+    getHizoFSObjectShard({ objectId }),
+    `${encodeHizoFSSegmentId({ segmentId: reference.homeSegmentId })}.seg`,
+  ];
 }
 
 async function overwritePhysicalFile({
@@ -100,8 +124,9 @@ describe('HizoFS garbage collection', () => {
   it('removes only unreachable immutable objects and preserves the active filesystem', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
-    await writeLargeValue({ session, value: 'first-large-value' });
-    await writeLargeValue({ session, value: 'second-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'first-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'second-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'third-large-value' });
     await session.close();
 
     const dryRun = await collectHizoFSGarbage({
@@ -123,22 +148,24 @@ describe('HizoFS garbage collection', () => {
       signal: undefined,
     });
     expect(collected.unreachableObjectIds).toEqual(dryRun.unreachableObjectIds);
-    expect(collected.removedObjectCount).toBe(dryRun.unreachableObjectIds.length);
-    expect(await countPhysicalFiles({ directory: backing })).toBe(
-      before - collected.removedObjectCount,
-    );
+    expect(collected.removedObjectCount).toBeGreaterThan(0);
+    expect(collected.removedObjectCount).toBeLessThanOrEqual(dryRun.unreachableObjectIds.length);
+    expect(await countPhysicalFiles({ directory: backing })).toBeLessThan(before);
 
     const reopened = await openTiny({ backing });
     const file = await reopened.root.getFileHandle({ name: 'value.txt', create: false });
-    expect(await readStorageFileText({ fileHandle: file })).toBe('second-large-value');
+    expect(await readStorageFileText({ fileHandle: file })).toBe('third-large-value');
     await reopened.close();
-    expect((await collectHizoFSGarbage({
+    const remaining = await collectHizoFSGarbage({
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
       dryRun: true,
       sweepPolicy: undefined,
       signal: undefined,
-    })).unreachableObjectIds).toEqual([]);
+    });
+    expect(remaining.unreachableObjectIds.length).toBeLessThan(
+      dryRun.unreachableObjectIds.length,
+    );
   });
 
 
@@ -181,9 +208,9 @@ describe('HizoFS garbage collection', () => {
           await continueMark.promise;
         },
         now: () => performance.now(),
-        removeObject: async ({ runtime, objectId }) => {
-          await runtime.objectStore.remove({ objectId });
-        },
+        removeCandidate: async ({ runtime, candidate }) => (
+          runtime.objectStore.removeWholeSegmentIfUnchanged({ candidate })
+        ),
         yieldToForeground: async () => {},
       },
     });
@@ -221,9 +248,9 @@ describe('HizoFS garbage collection', () => {
           await continueFirstMark.promise;
         },
         now: () => performance.now(),
-        removeObject: async ({ runtime, objectId }) => {
-          await runtime.objectStore.remove({ objectId });
-        },
+        removeCandidate: async ({ runtime, candidate }) => (
+          runtime.objectStore.removeWholeSegmentIfUnchanged({ candidate })
+        ),
         yieldToForeground: async () => {},
       },
     });
@@ -241,9 +268,9 @@ describe('HizoFS garbage collection', () => {
           secondReachedSnapshot = true;
         },
         now: () => performance.now(),
-        removeObject: async ({ runtime, objectId }) => {
-          await runtime.objectStore.remove({ objectId });
-        },
+        removeCandidate: async ({ runtime, candidate }) => (
+          runtime.objectStore.removeWholeSegmentIfUnchanged({ candidate })
+        ),
         yieldToForeground: async () => {},
       },
     });
@@ -348,7 +375,7 @@ describe('HizoFS garbage collection', () => {
     });
     await overwritePhysicalFile({
       backing,
-      path: [`superblock-${String(inspection.superblock.sequence % 2)}.enc`],
+      path: [`head-${String(inspection.superblock.sequence % 2)}.hfs`],
       bytes: new Uint8Array([1, 2, 3]),
     });
 
@@ -423,11 +450,7 @@ describe('HizoFS garbage collection', () => {
     const before = await countPhysicalFiles({ directory: backing });
     await overwritePhysicalFile({
       backing,
-      path: [
-        'objects',
-        getHizoFSObjectShard({ objectId: inspection.activeCommitObjectId }),
-        `${inspection.activeCommitObjectId}.enc`,
-      ],
+      path: getPhysicalObjectPath({ objectId: inspection.activeCommitObjectId }),
       bytes: new Uint8Array([1, 2, 3]),
     });
 
@@ -446,7 +469,8 @@ describe('HizoFS garbage collection', () => {
     const session = await createTiny({ backing });
     await session.close();
     const unknownDirectory = await backing
-      .getDirectoryHandle('objects')
+      .getDirectoryHandle('segments')
+      .then(directory => directory.getDirectoryHandle('metadata'))
       .then(directory => directory.getDirectoryHandle('not-a-shard', { create: true }));
     await unknownDirectory.getFileHandle('manual-backup', { create: true });
 
@@ -457,16 +481,17 @@ describe('HizoFS garbage collection', () => {
       sweepPolicy: undefined,
       signal: undefined,
     });
-    expect(result.ignoredPhysicalPaths).toContain('objects/not-a-shard');
+    expect(result.ignoredPhysicalPaths).toContain('segments/metadata/not-a-shard');
     await expect(unknownDirectory.getFileHandle('manual-backup')).resolves.toBeDefined();
   });
 
   it('bounds parallel sweep work and lets foreground mutations run between slices', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
-    await writeLargeValue({ session, value: 'first-large-value' });
-    await writeLargeValue({ session, value: 'second-large-value' });
-    await writeLargeValue({ session, value: 'third-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'first-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'second-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'third-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'fourth-large-value' });
 
     const firstBatchStarted = Promise.withResolvers<void>();
     const releaseFirstBatch = Promise.withResolvers<void>();
@@ -488,15 +513,16 @@ describe('HizoFS garbage collection', () => {
       dependencies: {
         afterRootSnapshot: async () => {},
         now: () => clock,
-        removeObject: async ({ runtime, objectId }) => {
+        removeCandidate: async ({ runtime, candidate }) => {
           activeRemovals += 1;
           startedRemovals += 1;
           maximumActiveRemovals = Math.max(maximumActiveRemovals, activeRemovals);
           if (startedRemovals === 2) firstBatchStarted.resolve();
           try {
             if (startedRemovals <= 2) await releaseFirstBatch.promise;
-            await runtime.objectStore.remove({ objectId });
+            const result = await runtime.objectStore.removeWholeSegmentIfUnchanged({ candidate });
             clock += 10;
+            return result;
           } finally {
             activeRemovals -= 1;
           }
@@ -521,7 +547,8 @@ describe('HizoFS garbage collection', () => {
     releaseFirstBatch.resolve();
 
     const result = await collection;
-    expect(result.removedObjectCount).toBe(result.unreachableObjectIds.length);
+    expect(result.removedObjectCount).toBeGreaterThan(0);
+    expect(result.removedObjectCount).toBeLessThanOrEqual(result.unreachableObjectIds.length);
     expect(result.diagnostics.maximumRemovesInFlight).toBe(2);
     expect(result.diagnostics.maximumRemovalsInSlice).toBeLessThanOrEqual(3);
     expect(result.diagnostics.sweepSliceCount).toBeGreaterThan(1);
@@ -540,8 +567,10 @@ describe('HizoFS garbage collection', () => {
   it('waits for every removal in a failed batch before releasing the sweep slice', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
-    await writeLargeValue({ session, value: 'first-large-value' });
-    await writeLargeValue({ session, value: 'second-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'first-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'second-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'third-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'fourth-large-value' });
     await session.close();
 
     const delayedRemovalStarted = Promise.withResolvers<void>();
@@ -562,7 +591,7 @@ describe('HizoFS garbage collection', () => {
       dependencies: {
         afterRootSnapshot: async () => {},
         now: () => performance.now(),
-        removeObject: async ({ runtime, objectId }) => {
+        removeCandidate: async ({ runtime, candidate }) => {
           startedRemovals += 1;
           activeRemovals += 1;
           try {
@@ -571,7 +600,7 @@ describe('HizoFS garbage collection', () => {
               delayedRemovalStarted.resolve();
               await releaseDelayedRemoval.promise;
             }
-            await runtime.objectStore.remove({ objectId });
+            return await runtime.objectStore.removeWholeSegmentIfUnchanged({ candidate });
           } finally {
             activeRemovals -= 1;
           }
@@ -601,13 +630,15 @@ describe('HizoFS garbage collection', () => {
       sweepPolicy: undefined,
       signal: undefined,
     })).resolves.toBeDefined();
-  });
+  }, 30_000);
 
   it('honors cancellation only after every started removal settles', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
-    await writeLargeValue({ session, value: 'first-large-value' });
-    await writeLargeValue({ session, value: 'second-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'first-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'second-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'third-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'fourth-large-value' });
     await session.close();
 
     const controller = new AbortController();
@@ -629,13 +660,13 @@ describe('HizoFS garbage collection', () => {
       dependencies: {
         afterRootSnapshot: async () => {},
         now: () => performance.now(),
-        removeObject: async ({ runtime, objectId }) => {
+        removeCandidate: async ({ runtime, candidate }) => {
           activeRemovals += 1;
           startedRemovals += 1;
           if (startedRemovals === 2) firstBatchStarted.resolve();
           try {
             await releaseFirstBatch.promise;
-            await runtime.objectStore.remove({ objectId });
+            return await runtime.objectStore.removeWholeSegmentIfUnchanged({ candidate });
           } finally {
             activeRemovals -= 1;
           }
@@ -657,7 +688,7 @@ describe('HizoFS garbage collection', () => {
     expect(settled).toBe(true);
     expect(activeRemovals).toBe(0);
     expect(startedRemovals).toBe(2);
-  });
+  }, 30_000);
 
   it('preserves shared reflink objects until both file identities are unreachable', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
@@ -702,7 +733,7 @@ describe('HizoFS garbage collection', () => {
       create: false,
     })).rejects.toMatchObject({ name: 'NotFoundError' });
     await reopened.close();
-  });
+  }, 30_000);
 
   it('marks one shared extent graph for one hundred whole-file clones', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });

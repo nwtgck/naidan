@@ -15,7 +15,7 @@ export type HizoFSRecordKind =
   | 'file_chunk'
   | 'superblock';
 
-const RECORD_KIND_TO_ID = {
+export const HIZOFS_RECORD_KIND_TO_ID = {
   commit: 1,
   inode_index_page: 2,
   file_inode: 3,
@@ -30,12 +30,25 @@ const RECORD_KIND_TO_ID = {
 function decodeRecordKind({ id }: {
   id: number;
 }): HizoFSRecordKind {
-  for (const [kind, candidateId] of Object.entries(RECORD_KIND_TO_ID)) {
+  for (const [kind, candidateId] of Object.entries(HIZOFS_RECORD_KIND_TO_ID)) {
     if (candidateId === id) {
       return kind as HizoFSRecordKind;
     }
   }
   throw new HizoFSUnsupportedFormatError({ message: `HizoFS record kind is unsupported: ${String(id)}` });
+}
+
+
+export function encodeHizoFSRecordKind({ kind }: {
+  kind: HizoFSRecordKind;
+}): number {
+  return HIZOFS_RECORD_KIND_TO_ID[kind];
+}
+
+export function decodeHizoFSRecordKind({ id }: {
+  id: number;
+}): HizoFSRecordKind {
+  return decodeRecordKind({ id });
 }
 
 export type DecodedHizoFSRecord = {
@@ -45,6 +58,11 @@ export type DecodedHizoFSRecord = {
   readonly binaryPayload: Uint8Array;
 };
 
+// TODO(hizofs): Replace hot metadata JSON and string-encoded identifiers with
+// bounded per-record binary codecs after the segmented physical layer and its
+// recovery tooling stabilize. The conversion must preserve exhaustive versioned
+// decoding, deterministic inspection output, corruption bounds, and independent
+// offline reconstruction; do not introduce an opaque generic serializer.
 export function encodeHizoFSRecord({ kind, recordVersion, metadata, binaryPayload }: {
   kind: HizoFSRecordKind;
   recordVersion: number;
@@ -62,7 +80,7 @@ export function encodeHizoFSRecord({ kind, recordVersion, metadata, binaryPayloa
 
   const header = new Uint8Array(HEADER_BYTE_LENGTH);
   const view = new DataView(header.buffer);
-  header[0] = RECORD_KIND_TO_ID[kind];
+  header[0] = HIZOFS_RECORD_KIND_TO_ID[kind];
   header[1] = PAYLOAD_ENCODING_IDENTITY;
   view.setUint16(2, recordVersion, false);
   view.setUint32(4, metadataBytes.byteLength, false);

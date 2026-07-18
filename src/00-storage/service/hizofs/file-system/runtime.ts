@@ -29,6 +29,9 @@ export type HizoFSRuntime = {
   readonly policy: HizoFSPolicy;
   readonly now: () => number;
   readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  retainSession(): void;
+  releaseSession(): Promise<void>;
+  close(): Promise<void>;
 };
 
 export function createHizoFSRuntime({
@@ -95,6 +98,29 @@ export function createHizoFSRuntime({
     inodeStore,
     diagnostics,
   });
+  let sessionCount = 0;
+  let closePromise: Promise<void> | undefined;
+
+  function close(): Promise<void> {
+    closePromise ??= objectStore.close();
+    return closePromise;
+  }
+
+  function retainSession(): void {
+    if (closePromise !== undefined) {
+      throw new Error('Cannot retain a closed HizoFS runtime');
+    }
+    sessionCount += 1;
+  }
+
+  async function releaseSession(): Promise<void> {
+    if (sessionCount <= 0) {
+      throw new Error('HizoFS runtime session reference count underflow');
+    }
+    sessionCount -= 1;
+    if (sessionCount === 0) await close();
+  }
+
   return {
     core,
     objectStore,
@@ -110,6 +136,9 @@ export function createHizoFSRuntime({
     policy,
     now,
     diagnostics,
+    retainSession,
+    releaseSession,
+    close,
   };
 }
 

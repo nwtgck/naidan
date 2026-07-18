@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// TODO(hizofs-segment-store): Port this independent Node.js recovery tool to
+// the segmented HizoFS format before recovery tooling is shipped. The
+// TypeScript runtime now uses authenticated A/B heads and packed segment
+// records; this unreleased object-per-file reader is intentionally not kept as
+// a compatibility path.
 import { Buffer } from 'node:buffer';
 import { TextDecoder } from 'node:util';
 import console from 'node:console';

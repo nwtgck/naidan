@@ -188,6 +188,12 @@ const hizoFSRuntimeDiagnosticsSchema = z.object({
     backing_create_writable: hizoFSRuntimePhaseCounterSchema,
     backing_write: hizoFSRuntimePhaseCounterSchema,
     backing_close: hizoFSRuntimePhaseCounterSchema,
+    backing_open_random_access: hizoFSRuntimePhaseCounterSchema,
+    backing_read_at: hizoFSRuntimePhaseCounterSchema,
+    backing_write_at: hizoFSRuntimePhaseCounterSchema,
+    backing_truncate: hizoFSRuntimePhaseCounterSchema,
+    backing_flush: hizoFSRuntimePhaseCounterSchema,
+    backing_close_random_access: hizoFSRuntimePhaseCounterSchema,
     backing_failure_verification: hizoFSRuntimePhaseCounterSchema,
     backing_remove: hizoFSRuntimePhaseCounterSchema,
     backing_list: hizoFSRuntimePhaseCounterSchema,
@@ -210,6 +216,7 @@ const hizoFSRuntimeDiagnosticsSchema = z.object({
     metadata: hizoFSRuntimeCacheCounterSchema,
     fileChunk: hizoFSRuntimeCacheCounterSchema,
     backingFileHandle: hizoFSRuntimeCacheCounterSchema,
+    backingFileSnapshot: hizoFSRuntimeCacheCounterSchema,
   }).strict(),
   resources: z.object({
     writerDirtyChunks: hizoFSRuntimeResourceCounterSchema,
@@ -258,6 +265,7 @@ const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
   reachableObjectCount: z.number().int().nonnegative(),
   candidateObjectCount: z.number().int().nonnegative(),
   removedObjectCount: z.number().int().nonnegative(),
+  changedSegmentCount: z.number().int().nonnegative(),
   ignoredPhysicalPathCount: z.number().int().nonnegative(),
   configuredRemoveConcurrency: z.number().int().positive(),
   configuredMaximumRemovalsPerSlice: z.number().int().positive(),
@@ -384,8 +392,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(10),
-  benchmarkImplementationVersion: z.literal(10),
+  schemaVersion: z.literal(12),
+  benchmarkImplementationVersion: z.literal(12),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -411,12 +419,14 @@ export const hizoFSBenchmarkReportSchema = z.object({
     hizoFSOwnedResourceDiagnosticsEnabled: z.literal(true),
     hizoFSRuntimeDiagnosticsEnabled: z.literal(true),
     phaseDurationsAreNested: z.literal(true),
+    physicalObjectScope: z.literal('immutable_segment_files'),
     hizoFSRuntimePolicy: z.object({
       fileChunkSizeBytes: z.number().int().positive(),
       maxDirtyFileBytesPerWriter: z.number().int().positive(),
       fileChunkWriteConcurrencyPerWriter: z.number().int().positive(),
       fileChunkReadPrefetchConcurrencyPerReader: z.number().int().positive(),
       backingFileHandleCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
+      backingFileSnapshotCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       maximumPlaintextChunkWriteBytesInFlightPerWriter: z.number().int().positive(),
       maximumPlaintextChunkReadBytesInFlightPerReader: z.number().int().positive(),
       metadataObjectCacheByteLimitPerRuntime: z.number().int().nonnegative(),
@@ -468,7 +478,7 @@ export const hizoFSBenchmarkStudyKindSchema = z.union([
 
 export const hizoFSBenchmarkStudyReportSchema = z.object({
   schemaVersion: z.literal(1),
-  studyImplementationVersion: z.literal(3),
+  studyImplementationVersion: z.literal(4),
   reportType: z.literal('hizofs_benchmark_study'),
   studyId: z.string(),
   studyKind: hizoFSBenchmarkStudyKindSchema,

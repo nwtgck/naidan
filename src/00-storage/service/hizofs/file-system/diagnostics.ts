@@ -17,6 +17,12 @@ export const HIZOFS_RUNTIME_DIAGNOSTIC_PHASES = [
   'backing_failure_verification',
   'backing_remove',
   'backing_list',
+  'backing_open_random_access',
+  'backing_read_at',
+  'backing_write_at',
+  'backing_truncate',
+  'backing_flush',
+  'backing_close_random_access',
   'index_build',
   'index_update',
   'commit_publication',
@@ -40,7 +46,8 @@ export const HIZOFS_RUNTIME_DIAGNOSTIC_RECORD_KINDS = [
 export type HizoFSRuntimeDiagnosticCacheKind =
   | 'metadata'
   | 'file_chunk'
-  | 'backing_file_handle';
+  | 'backing_file_handle'
+  | 'backing_file_snapshot';
 
 export type HizoFSRuntimeDiagnosticResourceKind =
   | 'writer_dirty_chunks'
@@ -91,6 +98,7 @@ export type HizoFSRuntimeDiagnosticsSnapshot = {
     readonly metadata: HizoFSRuntimeDiagnosticCacheSnapshot;
     readonly fileChunk: HizoFSRuntimeDiagnosticCacheSnapshot;
     readonly backingFileHandle: HizoFSRuntimeDiagnosticCacheSnapshot;
+    readonly backingFileSnapshot: HizoFSRuntimeDiagnosticCacheSnapshot;
   };
   readonly resources: {
     readonly writerDirtyChunks: HizoFSRuntimeDiagnosticResourceSnapshot;
@@ -192,6 +200,7 @@ export class HizoFSRuntimeDiagnostics {
     metadata: createCacheCounter(),
     fileChunk: createCacheCounter(),
     backingFileHandle: createCacheCounter(),
+    backingFileSnapshot: createCacheCounter(),
   };
   private readonly resources = {
     writerDirtyChunks: createResourceCounter(),
@@ -353,6 +362,7 @@ export class HizoFSRuntimeDiagnostics {
         metadata: { ...this.caches.metadata },
         fileChunk: { ...this.caches.fileChunk },
         backingFileHandle: { ...this.caches.backingFileHandle },
+        backingFileSnapshot: { ...this.caches.backingFileSnapshot },
       },
       resources: {
         writerDirtyChunks: { ...this.resources.writerDirtyChunks },
@@ -388,6 +398,8 @@ export class HizoFSRuntimeDiagnostics {
       return this.caches.fileChunk;
     case 'backing_file_handle':
       return this.caches.backingFileHandle;
+    case 'backing_file_snapshot':
+      return this.caches.backingFileSnapshot;
     default: {
       const _ex: never = cache;
       throw new Error(`Unhandled HizoFS diagnostic cache: ${String(_ex)}`);

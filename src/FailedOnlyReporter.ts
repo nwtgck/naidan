@@ -161,7 +161,7 @@ export default class FailedOnlyReporter implements Reporter {
         continue;
       }
 
-      const state = result.state;
+      const state = String(result.state);
       switch (state) {
       case 'fail':
       case 'failed': {
@@ -181,6 +181,7 @@ export default class FailedOnlyReporter implements Reporter {
       case 'run':
       case 'pass':
       case 'passed':
+      case 'skip':
       case 'skipped':
       case 'todo':
       case 'pending':
@@ -189,8 +190,7 @@ export default class FailedOnlyReporter implements Reporter {
         break;
       }
       default: {
-        const _ex: never = state;
-        throw new Error(`Unhandled state: ${_ex}`);
+        throw new Error(`Unhandled state: ${state}`);
       }
       }
     }

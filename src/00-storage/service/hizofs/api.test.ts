@@ -23,6 +23,11 @@ import { createHizoFSInspectionReader } from './inspection';
 import type { HizoFSRecordKind } from './format/record';
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
 import { getHizoFSObjectShard } from './object-store/object-id';
+import {
+  decodeHizoFSObjectReference,
+  encodeHizoFSSegmentId,
+} from './segment-store/object-reference';
+import { HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH } from './segment-store/segment-format';
 import { collectHizoFSGarbage } from './garbage-collector';
 import { TEST_ONLY as MAINTENANCE_LOCK_TEST_ONLY } from './file-system/maintenance-lock';
 
@@ -35,6 +40,7 @@ const TINY_POLICY: HizoFSPolicy = {
   readerStreamChunkSize: 3,
   fileChunkReadPrefetchConcurrency: 2,
   backingFileHandleCacheEntryLimit: 64,
+  backingFileSnapshotCacheEntryLimit: 64,
   maxDirtyFileBytes: 16,
   fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 64 * 1024,
@@ -211,9 +217,9 @@ describe('HizoFS public file-system API', () => {
     for await (const [name] of backing.entries()) physicalNames.push(name);
     expect(physicalNames.sort()).toEqual([
       'descriptor.json',
-      'objects',
-      'superblock-0.enc',
-      'superblock-1.enc',
+      'head-0.hfs',
+      'head-1.hfs',
+      'segments',
     ]);
     expect(session.capabilities).toEqual({
       directBlob: 'unsupported',
@@ -2134,19 +2140,32 @@ describe('HizoFS public file-system API', () => {
       fileSystemRootKey: ROOT_KEY,
     });
     const activeCommitObjectId = inspection.activeCommitObjectId;
-    await new NativeOpfsHizoFSBackingStore({
-      root: backing,
-      fileHandleCacheEntryLimit: 64,
-      diagnostics: undefined,
-    }).remove({
-      path: [
-        'objects',
-        getHizoFSObjectShard({ objectId: activeCommitObjectId }),
-        `${activeCommitObjectId}.enc`,
-      ],
-      recursive: false,
+    const activeCommitReference = decodeHizoFSObjectReference({
+      value: activeCommitObjectId,
     });
     await session.close();
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root: backing,
+      fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
+    const activeCommitPath = [
+      'segments',
+      'metadata',
+      getHizoFSObjectShard({ objectId: activeCommitObjectId }),
+      `${encodeHizoFSSegmentId({ segmentId: activeCommitReference.homeSegmentId })}.seg`,
+    ] as const;
+    const segmentBytes = await backingStore.read({ path: activeCommitPath });
+    if (segmentBytes === undefined) throw new Error('Expected the active metadata segment');
+    const corruptionOffset = activeCommitReference.homeOffset
+      + HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH;
+    const originalCiphertextByte = segmentBytes[corruptionOffset];
+    if (originalCiphertextByte === undefined) {
+      throw new Error('Expected the active commit ciphertext inside its segment');
+    }
+    segmentBytes[corruptionOffset] = originalCiphertextByte ^ 0x01;
+    await backingStore.write({ path: activeCommitPath, bytes: segmentBytes });
 
     const recovered = await openTiny({ root: backing, now: () => 2 });
     const recoveredSession = requireHizoFSSession({ session: recovered });

@@ -56,6 +56,10 @@ class ExtentIndexPageStore implements PersistentIndexPageStore<
     }
   }
 
+  // TODO(hizofs): Encode consecutive chunk references as bounded extent runs
+  // once segment placement is stable and benchmarked. Preserve 256 KiB random
+  // access, sparse holes, reflink identity, and page-local corruption checks; a
+  // run must never require loading or rewriting the complete file extent map.
   async writePage({
     page,
   }: {

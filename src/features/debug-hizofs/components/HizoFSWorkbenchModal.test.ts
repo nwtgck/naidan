@@ -774,7 +774,7 @@ describe("HizoFSWorkbenchModal", () => {
     expect(document.body.textContent).toContain('"activeCommitObjectId": "commit-a"');
     expect(document.body.textContent).toContain("Persisted references");
     expect(document.body.textContent).toContain("activeCommitObjectId");
-    expect(document.body.textContent).not.toContain("Decoded object envelope fields");
+    expect(document.body.textContent).not.toContain("Authenticated persisted frame fields");
 
     const binaryDetails = document.body.querySelector<HTMLDetailsElement>(
       '[data-testid="hizofs-binary-representation-details"]',
@@ -788,7 +788,7 @@ describe("HizoFSWorkbenchModal", () => {
       slot: 0,
       binaryPreviewByteLength: 64 * 1024,
     });
-    expect(document.body.textContent).toContain("Decoded object envelope fields");
+    expect(document.body.textContent).toContain("Authenticated persisted frame fields");
     expect(document.body.textContent).toContain("48 49 5a 4f 46 53 00 00");
 
     wrapper.unmount();
@@ -826,7 +826,7 @@ describe("HizoFSWorkbenchModal", () => {
     expect(document.body.textContent).toContain('"revision": 5');
     expect(document.body.textContent).toContain("Persisted references · continue traversal");
     expect(document.body.textContent).toContain("inode index root");
-    expect(document.body.textContent).not.toContain("Decoded object envelope fields");
+    expect(document.body.textContent).not.toContain("Authenticated persisted frame fields");
     expect(document.body.textContent).not.toContain("48 49 5a 4f 46 53 00 00");
 
     const objectColumnText = document.body.textContent ?? "";
@@ -849,7 +849,7 @@ describe("HizoFSWorkbenchModal", () => {
       objectId: "object-a",
       binaryPreviewByteLength: 64 * 1024,
     });
-    expect(document.body.textContent).toContain("Decoded object envelope fields");
+    expect(document.body.textContent).toContain("Authenticated persisted frame fields");
     expect(document.body.textContent).toContain("48 49 5a 4f 46 53 00 00");
     expect(document.body.textContent).toContain("Metadata JSON encoding");
 
