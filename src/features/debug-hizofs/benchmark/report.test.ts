@@ -12,8 +12,8 @@ import type { HizoFSBenchmarkReport } from './types';
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 13,
-    benchmarkImplementationVersion: 13,
+    schemaVersion: 14,
+    benchmarkImplementationVersion: 14,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -36,6 +36,8 @@ function createReport(): HizoFSBenchmarkReport {
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
       physicalObjectScope: 'immutable_segment_files',
+      backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
+      backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
@@ -110,6 +112,7 @@ function createReport(): HizoFSBenchmarkReport {
           memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: {
             backingStore: {
+              fileSnapshotOperations: 2,
               readOperations: 2,
               writeOperations: 3,
               removeOperations: 0,
@@ -160,6 +163,7 @@ function createReport(): HizoFSBenchmarkReport {
             },
             hizoFSDiagnostics: {
               backingStore: {
+                fileSnapshotOperations: 2,
                 readOperations: 2,
                 writeOperations: 3,
                 removeOperations: 0,
@@ -240,7 +244,7 @@ describe('HizoFS benchmark report serialization', () => {
     expect(summary.results[0]?.backends.rawOpfs.samples).toBeUndefined();
     expect(summary.results[0]?.backends.hizofs.samples).toBeUndefined();
     expect(summary.results[0]?.backends.hizofs.hizoFSDiagnosticsTotals).toMatchObject({
-      backingStore: { writeOperations: 3 },
+      backingStore: { fileSnapshotOperations: 2, writeOperations: 3 },
       commits: { superblockPublications: 1 },
       amplification: {
         backingReadBytesPerLogicalByte: 2,

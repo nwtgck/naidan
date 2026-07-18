@@ -28,6 +28,7 @@ describe('HizoFS benchmark engine', () => {
     let physicalSize = 0;
     let committed = 0;
     const counters = {
+      fileSnapshotOperations: 0,
       readOperations: 0,
       writeOperations: 0,
       removeOperations: 0,
@@ -85,6 +86,46 @@ describe('HizoFS benchmark engine', () => {
     expect(committed).toBe(1);
   });
 
+  it('separates file snapshots from materialized blob reads', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    const source = await root.getFileHandle('value.bin', { create: true });
+    const writable = await source.createWritable();
+    await writable.write(new Uint8Array([1, 2, 3, 4]));
+    await writable.close();
+    const counters = {
+      fileSnapshotOperations: 0,
+      readOperations: 0,
+      writeOperations: 0,
+      removeOperations: 0,
+      listOperations: 0,
+      bytesRead: 0,
+      bytesWritten: 0,
+    };
+    const countedRoot = TEST_ONLY.createCountingDirectoryHandle({
+      directory: root,
+      counters,
+      relativePath: [],
+      physicalDiagnostics: {
+        objectPaths: new Set<string>(),
+        superblockPublications: 0,
+      },
+    });
+
+    const snapshot = await (await countedRoot.getFileHandle('value.bin')).getFile();
+    expect(counters).toMatchObject({
+      fileSnapshotOperations: 1,
+      readOperations: 0,
+      bytesRead: 0,
+    });
+    expect(new Uint8Array(await snapshot.slice(1, 3).arrayBuffer()))
+      .toEqual(new Uint8Array([2, 3]));
+    expect(counters).toMatchObject({
+      fileSnapshotOperations: 1,
+      readOperations: 1,
+      bytesRead: 2,
+    });
+  });
+
   it('compares isolated HizoFS and raw OPFS workloads and deletes run data', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
     const progressMessages: string[] = [];
@@ -108,6 +149,8 @@ describe('HizoFS benchmark engine', () => {
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
       physicalObjectScope: 'immutable_segment_files',
+      backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
+      backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,

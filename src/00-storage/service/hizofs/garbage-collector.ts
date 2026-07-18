@@ -478,6 +478,7 @@ async function snapshotGarbageCollectionRoots({
     | undefined;
   try {
     throwIfAborted({ signal });
+    await runtime.releaseLocalPhysicalHandlesForMaintenance();
 
     const rootSnapshotStartedAt = now();
     const activeState = await runtime.core.loadActiveState();
@@ -599,6 +600,7 @@ async function sweepGarbageCollectionCandidates({
     let abortAfterSlice = false;
     try {
       throwIfAborted({ signal });
+      await runtime.releaseLocalPhysicalHandlesForMaintenance();
       while (
         nextObjectIndex < candidates.length
         && removalsInSlice < sweepPolicy.maximumRemovalsPerSlice

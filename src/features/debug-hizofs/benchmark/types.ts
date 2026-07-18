@@ -99,6 +99,7 @@ const durationSummarySchema = z.object({
 }).strict();
 
 const hizoFSBackingStoreCountersSchema = z.object({
+  fileSnapshotOperations: z.number().int().nonnegative(),
   readOperations: z.number().int().nonnegative(),
   writeOperations: z.number().int().nonnegative(),
   removeOperations: z.number().int().nonnegative(),
@@ -400,8 +401,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(13),
-  benchmarkImplementationVersion: z.literal(13),
+  schemaVersion: z.literal(14),
+  benchmarkImplementationVersion: z.literal(14),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -428,6 +429,8 @@ export const hizoFSBenchmarkReportSchema = z.object({
     hizoFSRuntimeDiagnosticsEnabled: z.literal(true),
     phaseDurationsAreNested: z.literal(true),
     physicalObjectScope: z.literal('immutable_segment_files'),
+    backingStoreFileSnapshotOperationScope: z.literal('get_file_snapshot_calls'),
+    backingStoreReadOperationScope: z.literal('materialized_blob_or_sync_access_reads'),
     hizoFSRuntimePolicy: z.object({
       fileChunkSizeBytes: z.number().int().positive(),
       maxDirtyFileBytesPerWriter: z.number().int().positive(),

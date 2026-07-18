@@ -35,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 13 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 14 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -320,7 +320,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 13,
+    schemaVersion: 14,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -344,6 +344,8 @@ async function runHizoFSBenchmarkWithLockHeld({
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
       physicalObjectScope: 'immutable_segment_files',
+      backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
+      backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: hizoFSPolicy.fileChunkSize,
         maxDirtyFileBytesPerWriter: hizoFSPolicy.maxDirtyFileBytes,
@@ -2192,6 +2194,7 @@ function aggregateHizoFSDiagnosticsTotals({
   let ciphertextBytesWritten = 0;
   let operationCount = 0;
   for (const diagnostic of diagnostics) {
+    backingStore.fileSnapshotOperations += diagnostic.backingStore.fileSnapshotOperations;
     backingStore.readOperations += diagnostic.backingStore.readOperations;
     backingStore.writeOperations += diagnostic.backingStore.writeOperations;
     backingStore.removeOperations += diagnostic.backingStore.removeOperations;
@@ -3209,6 +3212,7 @@ function ratioOptional({
 
 function createEmptyBackingStoreCounters(): BackingStoreCounters {
   return {
+    fileSnapshotOperations: 0,
     readOperations: 0,
     writeOperations: 0,
     removeOperations: 0,
@@ -3329,6 +3333,10 @@ function subtractBackingStoreCounters({
   after: BackingStoreCounters;
 }): BackingStoreCounters {
   return {
+    fileSnapshotOperations: Math.max(
+      after.fileSnapshotOperations - before.fileSnapshotOperations,
+      0,
+    ),
     readOperations: Math.max(after.readOperations - before.readOperations, 0),
     writeOperations: Math.max(after.writeOperations - before.writeOperations, 0),
     removeOperations: Math.max(after.removeOperations - before.removeOperations, 0),
@@ -3428,10 +3436,9 @@ function createCountingFileHandle({
       switch (property) {
       case 'getFile':
         return async () => {
-          const blob = await target.getFile();
-          counters.readOperations += 1;
-          counters.bytesRead += blob.size;
-          return blob;
+          const file = await target.getFile();
+          counters.fileSnapshotOperations += 1;
+          return createCountingBlob({ blob: file, counters });
         };
       case 'createWritable':
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemFileHandle.createWritable.
@@ -3467,6 +3474,72 @@ function createCountingFileHandle({
       }
     },
   });
+}
+
+function createCountingBlob<TBlob extends Blob>({
+  blob,
+  counters,
+}: {
+  blob: TBlob;
+  counters: BackingStoreCounters;
+}): TBlob {
+  return new Proxy(blob, {
+    get(target, property) {
+      switch (property) {
+      case 'arrayBuffer':
+        return async () => {
+          const buffer = await target.arrayBuffer();
+          recordBackingStoreRead({ counters, byteLength: buffer.byteLength });
+          return buffer;
+        };
+      case 'bytes': {
+        const bytes = (target as Blob & {
+          bytes?: () => Promise<Uint8Array>;
+        }).bytes;
+        if (bytes === undefined) return undefined;
+        return async () => {
+          const value = await bytes.call(target);
+          recordBackingStoreRead({ counters, byteLength: value.byteLength });
+          return value;
+        };
+      }
+      case 'slice':
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements Blob.slice.
+        return (start?: number, end?: number, contentType?: string) => createCountingBlob({
+          blob: target.slice(start, end, contentType),
+          counters,
+        });
+      case 'stream':
+        return () => {
+          counters.readOperations += 1;
+          return target.stream().pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+              counters.bytesRead += chunk.byteLength;
+              controller.enqueue(chunk);
+            },
+          }));
+        };
+      case 'text':
+        return async () => {
+          const value = await target.text();
+          recordBackingStoreRead({ counters, byteLength: target.size });
+          return value;
+        };
+      default: {
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+      }
+    },
+  });
+}
+
+function recordBackingStoreRead({ counters, byteLength }: {
+  counters: BackingStoreCounters;
+  byteLength: number;
+}): void {
+  counters.readOperations += 1;
+  counters.bytesRead += byteLength;
 }
 
 function createCountingWritable({
@@ -3520,8 +3593,7 @@ function createCountingSyncAccessHandle({
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemSyncAccessHandle.read.
         return (buffer: ArrayBufferView, options?: { at?: number }) => {
           const read = target.read(buffer, options);
-          counters.readOperations += 1;
-          counters.bytesRead += read;
+          recordBackingStoreRead({ counters, byteLength: read });
           return read;
         };
       case 'write':

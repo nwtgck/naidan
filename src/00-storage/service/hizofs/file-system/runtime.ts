@@ -20,6 +20,94 @@ import {
 } from './active-state';
 import { HizoFSCorruptionError } from '@/00-storage/service/hizofs/errors';
 
+type HizoFSPhysicalHandleParticipant = {
+  releasePhysicalHandles(): Promise<void>;
+};
+
+// Native OPFS SyncAccessHandles can keep an otherwise unreachable segment
+// non-removable after its logical operation has settled. The maintenance lease
+// drains active resources first; this realm-local registry then closes idle
+// segment writers and retained head handles without discarding logical caches.
+const localPhysicalHandleParticipants = new WeakMap<
+  object,
+  Map<string, Set<HizoFSPhysicalHandleParticipant>>
+>();
+
+function getLocalPhysicalHandleParticipants({
+  localCoordinationIdentity,
+  fileSystemId,
+}: {
+  localCoordinationIdentity: object;
+  fileSystemId: string;
+}): Set<HizoFSPhysicalHandleParticipant> {
+  let byFileSystemId = localPhysicalHandleParticipants.get(localCoordinationIdentity);
+  if (byFileSystemId === undefined) {
+    byFileSystemId = new Map();
+    localPhysicalHandleParticipants.set(localCoordinationIdentity, byFileSystemId);
+  }
+  let participants = byFileSystemId.get(fileSystemId);
+  if (participants === undefined) {
+    participants = new Set();
+    byFileSystemId.set(fileSystemId, participants);
+  }
+  return participants;
+}
+
+function deleteLocalPhysicalHandleParticipantsIfEmpty({
+  localCoordinationIdentity,
+  fileSystemId,
+  participants,
+}: {
+  localCoordinationIdentity: object;
+  fileSystemId: string;
+  participants: Set<HizoFSPhysicalHandleParticipant>;
+}): void {
+  if (participants.size !== 0) return;
+  const byFileSystemId = localPhysicalHandleParticipants.get(localCoordinationIdentity);
+  if (byFileSystemId?.get(fileSystemId) !== participants) return;
+  byFileSystemId.delete(fileSystemId);
+  if (byFileSystemId.size === 0) {
+    localPhysicalHandleParticipants.delete(localCoordinationIdentity);
+  }
+}
+
+async function releaseLocalPhysicalHandlesForMaintenance({
+  localCoordinationIdentity,
+  fileSystemId,
+}: {
+  localCoordinationIdentity: object;
+  fileSystemId: string;
+}): Promise<void> {
+  const participants = localPhysicalHandleParticipants
+    .get(localCoordinationIdentity)
+    ?.get(fileSystemId);
+  if (participants === undefined || participants.size === 0) return;
+
+  const outcomes = await Promise.allSettled(
+    [...participants].map(async participant => participant.releasePhysicalHandles()),
+  );
+  const errors: unknown[] = [];
+  for (const outcome of outcomes) {
+    switch (outcome.status) {
+    case 'fulfilled':
+      break;
+    case 'rejected':
+      errors.push(outcome.reason);
+      break;
+    default: {
+      const _ex: never = outcome;
+      throw new Error(`Unhandled HizoFS physical-handle release result: ${String(_ex)}`);
+    }
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      'Failed to release local HizoFS physical handles for maintenance',
+    );
+  }
+}
+
 export type HizoFSRuntime = {
   readonly core: HizoFSCore;
   readonly objectStore: HizoFSObjectStore;
@@ -37,6 +125,7 @@ export type HizoFSRuntime = {
   readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
   retainSession(): void;
   releaseSession(): Promise<void>;
+  releaseLocalPhysicalHandlesForMaintenance(): Promise<void>;
   close(): Promise<void>;
 };
 
@@ -55,6 +144,7 @@ export function createHizoFSRuntime({
   now: () => number;
   diagnostics: HizoFSRuntimeDiagnostics | undefined;
 }): HizoFSRuntime {
+  const localCoordinationIdentity = backingStore.getCoordinationIdentity();
   const objectStore = new HizoFSObjectStore({
     backingStore,
     rootKey,
@@ -97,7 +187,7 @@ export function createHizoFSRuntime({
   });
   const activeStateCoordinator = new HizoFSActiveStateCoordinator({
     fileSystemId,
-    localCoordinationIdentity: backingStore.getCoordinationIdentity(),
+    localCoordinationIdentity,
     loadFromBacking: async () => await loadHizoFSActiveStateFromStores({
       superblockStore,
       commitStore,
@@ -170,6 +260,25 @@ export function createHizoFSRuntime({
   });
   let sessionCount = 0;
   let closePromise: Promise<void> | undefined;
+  const physicalHandleParticipants = getLocalPhysicalHandleParticipants({
+    localCoordinationIdentity,
+    fileSystemId,
+  });
+  const physicalHandleParticipant: HizoFSPhysicalHandleParticipant = {
+    releasePhysicalHandles: async () => {
+      if (closePromise !== undefined) {
+        await closePromise;
+        return;
+      }
+      try {
+        await objectStore.releasePhysicalHandles();
+      } catch (error) {
+        if (closePromise === undefined) throw error;
+        await closePromise;
+      }
+    },
+  };
+  physicalHandleParticipants.add(physicalHandleParticipant);
 
   function close(): Promise<void> {
     closePromise ??= (async () => {
@@ -186,6 +295,13 @@ export function createHizoFSRuntime({
       } catch (error) {
         objectStoreError = error;
       }
+
+      physicalHandleParticipants.delete(physicalHandleParticipant);
+      deleteLocalPhysicalHandleParticipantsIfEmpty({
+        localCoordinationIdentity,
+        fileSystemId,
+        participants: physicalHandleParticipants,
+      });
 
       if (coordinatorError !== undefined && objectStoreError !== undefined) {
         throw new AggregateError(
@@ -204,6 +320,13 @@ export function createHizoFSRuntime({
       throw new Error('Cannot retain a closed HizoFS runtime');
     }
     sessionCount += 1;
+  }
+
+  async function releaseLocalPhysicalHandlesForMaintenanceFromRuntime(): Promise<void> {
+    await releaseLocalPhysicalHandlesForMaintenance({
+      localCoordinationIdentity,
+      fileSystemId,
+    });
   }
 
   async function releaseSession(): Promise<void> {
@@ -231,6 +354,8 @@ export function createHizoFSRuntime({
     diagnostics,
     retainSession,
     releaseSession,
+    releaseLocalPhysicalHandlesForMaintenance:
+      releaseLocalPhysicalHandlesForMaintenanceFromRuntime,
     close,
   };
 }

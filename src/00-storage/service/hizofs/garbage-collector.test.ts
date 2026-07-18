@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { writeStorageFileText, readStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
@@ -169,18 +169,27 @@ describe('HizoFS garbage collection', () => {
   });
 
 
-  it('runs while an idle filesystem session remains open', async () => {
+  it('releases same-realm physical handles while an idle session remains open', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
-    await writeLargeValue({ session, value: 'idle-session-value' });
+    if (!(session instanceof HizoFSSession)) throw new Error('Expected a HizoFS session');
+    await writeLargeValueInFreshSegments({ session, value: 'first-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'second-large-value' });
+    await writeLargeValueInFreshSegments({ session, value: 'third-large-value' });
+    const releaseSpy = vi.spyOn(session.runtime.objectStore, 'releasePhysicalHandles');
 
-    await expect(collectHizoFSGarbage({
+    const result = await collectHizoFSGarbage({
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
-      dryRun: true,
+      dryRun: false,
       sweepPolicy: undefined,
       signal: undefined,
-    })).resolves.toBeDefined();
+    });
+
+    expect(result.removedObjectCount).toBeGreaterThan(0);
+    expect(releaseSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const file = await session.root.getFileHandle({ name: 'value.txt', create: false });
+    expect(await readStorageFileText({ fileHandle: file })).toBe('third-large-value');
     await session.close();
   });
 
