@@ -29,9 +29,10 @@ export type HizoFSPolicy = {
 export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   inlineFileByteLimit: 64 * 1024,
   inlineDirectoryEntryLimit: 32,
-  // One MiB aligns sixteen encrypted chunks with the 16 MiB data-segment
-  // target while keeping the per-writer in-flight plaintext bound at 2 MiB.
-  fileChunkSize: 1024 * 1024,
+  // The browser policy matrix shows that larger chunks save little on
+  // sequential writes while increasing random-read latency. Keep the default
+  // at 256 KiB so random access remains the primary optimization constraint.
+  fileChunkSize: 256 * 1024,
   // Inode-index entries are fixed-size stable IDs plus ObjectRefs. Smaller
   // pages reduce copy-on-write bytes for per-operation inode publications.
   inodeIndexPageEntryLimit: 32,
@@ -48,9 +49,9 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 8 * 1024 * 1024,
   metadataObjectCacheEntryLimit: 16 * 1024,
-  // One encoded 1 MiB chunk includes a small record header and metadata. Keep
-  // the byte bound explicit while allowing one complete 16-chunk working set
-  // to remain resident instead of deterministically evicting the 16th item.
+  // One encoded 256 KiB chunk includes a small record header and metadata.
+  // Keep the byte bound explicit while allowing one complete 64-chunk working
+  // set to remain resident instead of deterministically evicting the last item.
   fileChunkCacheByteLimit: 16 * 1024 * 1024 + 64 * 1024,
   fileChunkCacheEntryLimit: 2048,
   fileChunkCacheAdmission: 'read_only',

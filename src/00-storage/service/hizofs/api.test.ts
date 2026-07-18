@@ -1798,7 +1798,7 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
-  it('writes one immutable chunk per default MiB without timing assertions', async () => {
+  it('writes one immutable chunk per default 256 KiB without timing assertions', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const diagnostics = createHizoFSRuntimeDiagnostics();
     const session = await TEST_ONLY.createHizoFSInternal({
@@ -1822,10 +1822,10 @@ describe('HizoFS public file-system API', () => {
     });
     await writer.close();
 
-    expect(writeSpy).toHaveBeenCalledTimes(4);
+    expect(writeSpy).toHaveBeenCalledTimes(16);
     expect(diagnostics.snapshot().resources.writerPendingChunkWrites)
       .toMatchObject({
-        maximumBytes: 2 * 1024 * 1024,
+        maximumBytes: 512 * 1024,
         maximumOperations: 2,
       });
     await session.close();

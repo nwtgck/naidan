@@ -28,7 +28,7 @@ function createReport({
 } = {}): HizoFSBenchmarkReport {
   return {
     schemaVersion: 17,
-    benchmarkImplementationVersion: 17,
+    benchmarkImplementationVersion: 18,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
