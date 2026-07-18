@@ -35,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 12 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 13 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -320,7 +320,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 12,
+    schemaVersion: 13,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -1967,6 +1967,34 @@ function subtractHizoFSRuntimeDiagnostics({
         after: after.resources.readerPrefetch,
       }),
     },
+    coordinator: {
+      activeStateCacheHits: Math.max(
+        after.coordinator.activeStateCacheHits
+          - before.coordinator.activeStateCacheHits,
+        0,
+      ),
+      durableReloads: Math.max(
+        after.coordinator.durableReloads - before.coordinator.durableReloads,
+        0,
+      ),
+      leadershipAcquisitions: Math.max(
+        after.coordinator.leadershipAcquisitions
+          - before.coordinator.leadershipAcquisitions,
+        0,
+      ),
+      failovers: Math.max(
+        after.coordinator.failovers - before.coordinator.failovers,
+        0,
+      ),
+      localRequests: Math.max(
+        after.coordinator.localRequests - before.coordinator.localRequests,
+        0,
+      ),
+      remoteRequests: Math.max(
+        after.coordinator.remoteRequests - before.coordinator.remoteRequests,
+        0,
+      ),
+    },
   };
 }
 
@@ -2302,6 +2330,32 @@ function aggregateHizoFSRuntimeDiagnostics({
         diagnostics: diagnostics.map(value => value.resources.readerPrefetch),
         current: last.resources.readerPrefetch,
       }),
+    },
+    coordinator: {
+      activeStateCacheHits: diagnostics.reduce(
+        (sum, value) => sum + value.coordinator.activeStateCacheHits,
+        0,
+      ),
+      durableReloads: diagnostics.reduce(
+        (sum, value) => sum + value.coordinator.durableReloads,
+        0,
+      ),
+      leadershipAcquisitions: diagnostics.reduce(
+        (sum, value) => sum + value.coordinator.leadershipAcquisitions,
+        0,
+      ),
+      failovers: diagnostics.reduce(
+        (sum, value) => sum + value.coordinator.failovers,
+        0,
+      ),
+      localRequests: diagnostics.reduce(
+        (sum, value) => sum + value.coordinator.localRequests,
+        0,
+      ),
+      remoteRequests: diagnostics.reduce(
+        (sum, value) => sum + value.coordinator.remoteRequests,
+        0,
+      ),
     },
   };
 }

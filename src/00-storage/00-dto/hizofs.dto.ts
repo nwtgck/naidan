@@ -24,12 +24,14 @@ export const HizoFSSuperblockSchemaDto: z.ZodType<HizoFSSuperblockDto> = z.objec
 
 export type HizoFSCommitDto = {
   readonly revision: number;
+  readonly publicationId: string;
   readonly rootDirectoryNodeId: string;
   readonly inodeIndexRootObjectId: string;
 };
 
 export const HizoFSCommitSchemaDto: z.ZodType<HizoFSCommitDto> = z.object({
   revision: z.number(),
+  publicationId: z.string(),
   rootDirectoryNodeId: z.string(),
   inodeIndexRootObjectId: z.string(),
 });

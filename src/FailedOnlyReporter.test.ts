@@ -84,6 +84,41 @@ describe('FailedOnlyReporter', () => {
     expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'));
   });
 
+  it('tolerates the queued Vitest task state without coercion', async () => {
+    const reporter = new FailedOnlyReporter();
+    const logSpy = vi.fn();
+    const mockVitest = {
+      logger: {
+        log: logSpy,
+      },
+    } as any;
+
+    reporter.onInit(mockVitest);
+
+    await reporter.onFinished([{
+      name: 'queued.test.ts',
+      result: { state: 'queued' },
+    } as any], []);
+
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'));
+  });
+
+  it('rejects non-string file states instead of coercing them', async () => {
+    const reporter = new FailedOnlyReporter();
+    const mockVitest = {
+      logger: {
+        log: vi.fn(),
+      },
+    } as any;
+
+    reporter.onInit(mockVitest);
+
+    await expect(reporter.onFinished([{
+      name: 'invalid.test.ts',
+      result: { state: 42 },
+    } as any], [])).rejects.toThrow('Unhandled task result state: number');
+  });
+
   it('should log build errors (file-level errors) via file.result', async () => {
     const reporter = new FailedOnlyReporter();
     const logSpy = vi.fn();

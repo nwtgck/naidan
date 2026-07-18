@@ -1,5 +1,6 @@
 import type { Reporter } from 'vitest/reporters';
 import type { TestCase, Vitest } from 'vitest/node';
+import { z } from 'zod';
 
 interface LogAny {
   type: string,
@@ -29,9 +30,36 @@ interface ExtendedLogger {
   printCustomError?: (error: VitestError) => Promise<void>,
 }
 
+const TaskResultStateSchema = z.enum([
+  'run',
+  'pass',
+  'fail',
+  'skip',
+  'skipped',
+  'queued',
+  'todo',
+  'pending',
+  'only',
+  'bench',
+  'failed',
+  'passed',
+]);
+
+type TaskResultState = z.infer<typeof TaskResultStateSchema>;
+
 interface TaskResult {
-  state: 'run' | 'pass' | 'fail' | 'skipped' | 'todo' | 'pending' | 'only' | 'bench' | 'failed' | 'passed',
+  state: unknown,
   errors?: VitestError[],
+}
+
+function parseTaskResultState({ state }: { state: unknown }): TaskResultState {
+  const parsed = TaskResultStateSchema.safeParse(state);
+  if (parsed.success) return parsed.data;
+  throw new Error(
+    `Unhandled task result state: ${
+      typeof state === 'string' ? JSON.stringify(state) : typeof state
+    }`,
+  );
 }
 
 interface VitestTask {
@@ -161,7 +189,7 @@ export default class FailedOnlyReporter implements Reporter {
         continue;
       }
 
-      const state = String(result.state);
+      const state = parseTaskResultState({ state: result.state });
       switch (state) {
       case 'fail':
       case 'failed': {
@@ -183,6 +211,7 @@ export default class FailedOnlyReporter implements Reporter {
       case 'passed':
       case 'skip':
       case 'skipped':
+      case 'queued':
       case 'todo':
       case 'pending':
       case 'only':
@@ -190,7 +219,8 @@ export default class FailedOnlyReporter implements Reporter {
         break;
       }
       default: {
-        throw new Error(`Unhandled state: ${state}`);
+        const _ex: never = state;
+        throw new Error(`Unhandled state: ${_ex}`);
       }
       }
     }

@@ -13,6 +13,12 @@ import { HizoFSNodeService } from './node-service';
 import { HizoFSDirectoryStorage } from './directory-storage';
 import { HizoFSCore } from './core';
 import type { HizoFSRuntimeDiagnostics } from './diagnostics';
+import { HizoFSActiveStateCoordinator } from './active-state-coordinator';
+import {
+  loadHizoFSActiveStateFromStores,
+  validateHizoFSCommitRoot,
+} from './active-state';
+import { HizoFSCorruptionError } from '@/00-storage/service/hizofs/errors';
 
 export type HizoFSRuntime = {
   readonly core: HizoFSCore;
@@ -89,6 +95,69 @@ export function createHizoFSRuntime({
     objectStore,
     fileSystemId,
   });
+  const activeStateCoordinator = new HizoFSActiveStateCoordinator({
+    fileSystemId,
+    localCoordinationIdentity: backingStore.getCoordinationIdentity(),
+    loadFromBacking: async () => await loadHizoFSActiveStateFromStores({
+      superblockStore,
+      commitStore,
+      inodeIndex,
+      inodeStore,
+    }),
+    publishFromState: async ({
+      currentState,
+      publicationId,
+      inodeIndexRootObjectId,
+    }) => {
+      switch (currentState.mode) {
+      case 'current':
+        break;
+      case 'fallback_read_only':
+        throw new HizoFSCorruptionError({
+          message:
+            'HizoFS opened an older complete generation in read-only recovery mode',
+          cause: undefined,
+        });
+      default: {
+        const _ex: never = currentState.mode;
+        throw new Error(`Unhandled HizoFS active state mode: ${String(_ex)}`);
+      }
+      }
+      const commit = {
+        revision: currentState.commit.revision + 1,
+        publicationId,
+        rootDirectoryNodeId: currentState.commit.rootDirectoryNodeId,
+        inodeIndexRootObjectId,
+      };
+      // A follower can prepare immutable records in another realm and ask the
+      // leader to publish only their root reference. Authenticate that root
+      // through this leader's object store before making it durable, so a
+      // malformed or stale coordinator message cannot publish an incomplete
+      // filesystem generation.
+      await validateHizoFSCommitRoot({
+        commit,
+        inodeIndex,
+        inodeStore,
+      });
+      const commitObjectId = await commitStore.write({ commit });
+      const superblock = {
+        sequence: currentState.superblock.sequence + 1,
+        fileSystemId,
+        activeCommitObjectId: commitObjectId,
+      };
+      await superblockStore.write({ value: superblock });
+      return {
+        superblock,
+        commitObjectId,
+        commit,
+        mode: 'current',
+      };
+    },
+    setHeadHandleRetention: async ({ retention }) => {
+      await objectStore.setHeadHandleRetention({ retention });
+    },
+    diagnostics,
+  });
   const core = new HizoFSCore({
     fileSystemId,
     objectStore,
@@ -96,13 +165,37 @@ export function createHizoFSRuntime({
     commitStore,
     inodeIndex,
     inodeStore,
+    activeStateCoordinator,
     diagnostics,
   });
   let sessionCount = 0;
   let closePromise: Promise<void> | undefined;
 
   function close(): Promise<void> {
-    closePromise ??= objectStore.close();
+    closePromise ??= (async () => {
+      let coordinatorError: unknown | undefined;
+      try {
+        await activeStateCoordinator.close();
+      } catch (error) {
+        coordinatorError = error;
+      }
+
+      let objectStoreError: unknown | undefined;
+      try {
+        await objectStore.close();
+      } catch (error) {
+        objectStoreError = error;
+      }
+
+      if (coordinatorError !== undefined && objectStoreError !== undefined) {
+        throw new AggregateError(
+          [coordinatorError, objectStoreError],
+          'HizoFS coordinator and object-store cleanup both failed',
+        );
+      }
+      if (coordinatorError !== undefined) throw coordinatorError;
+      if (objectStoreError !== undefined) throw objectStoreError;
+    })();
     return closePromise;
   }
 

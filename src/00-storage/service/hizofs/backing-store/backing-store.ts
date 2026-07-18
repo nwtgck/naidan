@@ -33,6 +33,14 @@ export interface HizoFSRandomAccessFile {
 }
 
 export interface HizoFSBackingStore {
+  /**
+   * Returns a realm-local identity for the backing directory. Reopened
+   * runtimes over the same FileSystemDirectoryHandle share this identity,
+   * while unrelated directories using the same root key remain isolated.
+   * Cross-realm coordination still uses the root-key-derived file-system ID.
+   */
+  getCoordinationIdentity(): object;
+
   read({ path }: {
     path: readonly string[];
   }): Promise<Uint8Array | undefined>;

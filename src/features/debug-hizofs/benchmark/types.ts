@@ -223,6 +223,14 @@ const hizoFSRuntimeDiagnosticsSchema = z.object({
     writerPendingChunkWrites: hizoFSRuntimeResourceCounterSchema,
     readerPrefetch: hizoFSRuntimeResourceCounterSchema,
   }).strict(),
+  coordinator: z.object({
+    activeStateCacheHits: z.number().int().nonnegative(),
+    durableReloads: z.number().int().nonnegative(),
+    leadershipAcquisitions: z.number().int().nonnegative(),
+    failovers: z.number().int().nonnegative(),
+    localRequests: z.number().int().nonnegative(),
+    remoteRequests: z.number().int().nonnegative(),
+  }).strict(),
 }).strict();
 
 const hizoFSBenchmarkDiagnosticsSchema = z.object({
@@ -392,8 +400,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(12),
-  benchmarkImplementationVersion: z.literal(12),
+  schemaVersion: z.literal(13),
+  benchmarkImplementationVersion: z.literal(13),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

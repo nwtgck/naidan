@@ -376,8 +376,9 @@ function createClient({
     fileSystemId,
     activeCommitObjectId: "commit-a",
   };
-  const commitMetadata = {
+  const commitMetadata: OverviewResult["activeCommit"] = {
     revision: 5,
+    publicationId: 'publication-5',
     rootDirectoryNodeId: "root-a",
     inodeIndexRootObjectId: "inode-index-a",
   };
@@ -432,6 +433,7 @@ function createClient({
     activeCommit: commitMetadata,
     activeCommitPersistedDto: {
       revision: 5,
+      publicationId: 'publication-5',
       rootDirectoryNodeId: "root-a",
       inodeIndexRootObjectId: "inode-index-a",
       unknownPersistedField: "must remain visible",
@@ -461,6 +463,7 @@ function createClient({
     rootDirectoryEntryPoint: {
       commitObjectId: "object-a",
       revision: 5,
+      publicationId: 'publication-5',
       rootDirectoryNodeId: "root-a",
       inodeIndexRootObjectId: "inode-index-a",
     },

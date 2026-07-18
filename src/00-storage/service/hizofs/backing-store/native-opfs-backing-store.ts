@@ -536,6 +536,10 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
 
   private readonly root: FileSystemDirectoryHandle;
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
+
+  getCoordinationIdentity(): object {
+    return this.root;
+  }
   private readonly directoryHandlePromises = new Map<string, Promise<FileSystemDirectoryHandle>>();
   private readonly fileHandleCache: HizoFSFileHandleLruCache;
   private readonly fileSnapshotCache: HizoFSFileSnapshotLruCache;

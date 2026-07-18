@@ -15,6 +15,7 @@ import {
   HizoFSUnsupportedFormatError,
 } from './errors';
 import { createHizoFSRuntime } from './file-system/runtime';
+import { loadHizoFSActiveStateFromStores } from './file-system/active-state';
 import { acquireHizoFSResourceLease } from './file-system/maintenance-lock';
 import { DEFAULT_HIZOFS_POLICY } from './file-system/policy';
 import { decodeHizoFSRecord } from './format/record';
@@ -187,7 +188,16 @@ export async function createHizoFSInspectionReader({
     return {
       async readOverview() {
         assertOpen();
-        const activeState = await runtime.core.loadActiveState();
+        // Workbench inspection must describe the persisted HizoFS structure,
+        // not the live coordinator's cached generation. This intentionally
+        // reloads both physical head slots so externally introduced corruption
+        // and fallback selection remain visible while a normal session is open.
+        const activeState = await loadHizoFSActiveStateFromStores({
+          superblockStore: runtime.core.superblockStore,
+          commitStore: runtime.commitStore,
+          inodeIndex: runtime.inodeIndex,
+          inodeStore: runtime.inodeStore,
+        });
         const superblockSlots = await inspectSuperblockSlots({
           objectStore: runtime.objectStore,
           fileSystemId,

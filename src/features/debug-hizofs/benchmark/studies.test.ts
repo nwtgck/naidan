@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 12,
-    benchmarkImplementationVersion: 12,
+    schemaVersion: 13,
+    benchmarkImplementationVersion: 13,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -172,7 +172,7 @@ describe('HizoFS benchmark studies', () => {
           fileSizeBytes: 64 * 1024 * 1024,
           blockSizeBytes: 256 * 1024,
         },
-        writeConcurrency: 4,
+        writeConcurrency: 2,
       },
       ...[1, 2, 4, 8].map(writeConcurrency => ({
         sequentialIo: {

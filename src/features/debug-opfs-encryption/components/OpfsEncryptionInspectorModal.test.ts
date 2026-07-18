@@ -125,11 +125,13 @@ function createSession(): OpfsEncryptionDebugSession {
       activeCommitObjectId: 'commit-a',
       activeCommit: {
         revision: 11,
+        publicationId: 'publication-11',
         rootDirectoryNodeId: 'root-a',
         inodeIndexRootObjectId: 'inode-index-a',
       },
       activeCommitPersistedDto: {
         revision: 11,
+        publicationId: 'publication-11',
         rootDirectoryNodeId: 'root-a',
         inodeIndexRootObjectId: 'inode-index-a',
       },

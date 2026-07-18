@@ -153,9 +153,10 @@ export const hizoFSInspectedObjectViewSchema = z.object({
     z.object({
       commitObjectId: z.string(),
       revision: z.number().int().nonnegative(),
+      publicationId: z.string(),
       rootDirectoryNodeId: z.string(),
       inodeIndexRootObjectId: z.string(),
-    }),
+    }).strict(),
     z.undefined(),
   ]),
 });

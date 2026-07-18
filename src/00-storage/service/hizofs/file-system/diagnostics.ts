@@ -54,6 +54,14 @@ export type HizoFSRuntimeDiagnosticResourceKind =
   | 'writer_pending_chunk_writes'
   | 'reader_prefetch';
 
+export type HizoFSRuntimeDiagnosticCoordinatorEvent =
+  | 'active_state_cache_hit'
+  | 'durable_reload'
+  | 'leadership_acquisition'
+  | 'failover'
+  | 'local_request'
+  | 'remote_request';
+
 export type HizoFSRuntimeDiagnosticPhaseSnapshot = {
   readonly operationCount: number;
   readonly totalDurationMs: number;
@@ -87,6 +95,15 @@ export type HizoFSRuntimeDiagnosticResourceSnapshot = {
   readonly maximumOperations: number;
 };
 
+export type HizoFSRuntimeDiagnosticCoordinatorSnapshot = {
+  readonly activeStateCacheHits: number;
+  readonly durableReloads: number;
+  readonly leadershipAcquisitions: number;
+  readonly failovers: number;
+  readonly localRequests: number;
+  readonly remoteRequests: number;
+};
+
 export type HizoFSRuntimeDiagnosticsSnapshot = {
   readonly phases: Readonly<
     Record<HizoFSRuntimeDiagnosticPhase, HizoFSRuntimeDiagnosticPhaseSnapshot>
@@ -105,6 +122,7 @@ export type HizoFSRuntimeDiagnosticsSnapshot = {
     readonly writerPendingChunkWrites: HizoFSRuntimeDiagnosticResourceSnapshot;
     readonly readerPrefetch: HizoFSRuntimeDiagnosticResourceSnapshot;
   };
+  readonly coordinator: HizoFSRuntimeDiagnosticCoordinatorSnapshot;
 };
 
 type MutablePhaseCounter = {
@@ -206,6 +224,14 @@ export class HizoFSRuntimeDiagnostics {
     writerDirtyChunks: createResourceCounter(),
     writerPendingChunkWrites: createResourceCounter(),
     readerPrefetch: createResourceCounter(),
+  };
+  private readonly coordinator = {
+    activeStateCacheHits: 0,
+    durableReloads: 0,
+    leadershipAcquisitions: 0,
+    failovers: 0,
+    localRequests: 0,
+    remoteRequests: 0,
   };
 
   measureSync<T>({
@@ -334,6 +360,37 @@ export class HizoFSRuntimeDiagnostics {
     );
   }
 
+  recordCoordinatorEvent({
+    event,
+  }: {
+    event: HizoFSRuntimeDiagnosticCoordinatorEvent;
+  }): void {
+    switch (event) {
+    case 'active_state_cache_hit':
+      this.coordinator.activeStateCacheHits += 1;
+      return;
+    case 'durable_reload':
+      this.coordinator.durableReloads += 1;
+      return;
+    case 'leadership_acquisition':
+      this.coordinator.leadershipAcquisitions += 1;
+      return;
+    case 'failover':
+      this.coordinator.failovers += 1;
+      return;
+    case 'local_request':
+      this.coordinator.localRequests += 1;
+      return;
+    case 'remote_request':
+      this.coordinator.remoteRequests += 1;
+      return;
+    default: {
+      const _ex: never = event;
+      throw new Error(`Unhandled HizoFS coordinator diagnostic event: ${_ex}`);
+    }
+    }
+  }
+
   resetResourceHighWaterMarks(): void {
     for (const counter of Object.values(this.resources)) {
       counter.maximumBytes = counter.currentBytes;
@@ -371,6 +428,7 @@ export class HizoFSRuntimeDiagnostics {
         },
         readerPrefetch: { ...this.resources.readerPrefetch },
       },
+      coordinator: { ...this.coordinator },
     };
   }
 

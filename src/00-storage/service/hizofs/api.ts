@@ -291,6 +291,7 @@ async function createHizoFSInternal({
       const commitObjectId = await runtime.commitStore.write({
         commit: {
           revision: 0,
+          publicationId: createHizoFSStableId(),
           rootDirectoryNodeId,
           inodeIndexRootObjectId,
         },

@@ -221,6 +221,16 @@ export class HizoFSObjectStore {
     await this.segmentedStore.releaseActiveWriters();
   }
 
+  async flushPendingRecords(): Promise<void> {
+    await this.segmentedStore.flushPendingRecords();
+  }
+
+  async setHeadHandleRetention({ retention }: {
+    retention: 'ephemeral' | 'persistent';
+  }): Promise<void> {
+    await this.segmentedStore.setHeadHandleRetention({ retention });
+  }
+
   async close(): Promise<void> {
     this.clearPlaintextCaches();
     await this.segmentedStore.close();

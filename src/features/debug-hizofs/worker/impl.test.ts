@@ -187,6 +187,7 @@ describe('HizoFS inspection worker', () => {
   it('keeps the exact record metadata for Raw DTO display while using parsed data for references', () => {
     const metadata = {
       revision: 7,
+      publicationId: 'publication-7',
       rootDirectoryNodeId: 'root-node',
       inodeIndexRootObjectId: 'inode-index-root',
       unknownPersistedField: 'must remain visible',

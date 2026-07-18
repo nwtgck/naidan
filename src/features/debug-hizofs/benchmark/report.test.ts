@@ -12,8 +12,8 @@ import type { HizoFSBenchmarkReport } from './types';
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 12,
-    benchmarkImplementationVersion: 12,
+    schemaVersion: 13,
+    benchmarkImplementationVersion: 13,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -39,7 +39,7 @@ function createReport(): HizoFSBenchmarkReport {
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
-        fileChunkWriteConcurrencyPerWriter: 4,
+        fileChunkWriteConcurrencyPerWriter: 2,
         fileChunkReadPrefetchConcurrencyPerReader: 4,
         backingFileHandleCacheEntryLimitPerRuntime: 1024,
         backingFileSnapshotCacheEntryLimitPerRuntime: 128,

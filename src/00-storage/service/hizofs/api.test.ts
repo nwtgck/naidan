@@ -17,7 +17,6 @@ import type { HizoFSPolicy } from './file-system/policy';
 import { createHizoFSRuntimeDiagnostics } from './file-system/diagnostics';
 import { createQueuedTestLockManager } from './test-lock-manager';
 import { HizoFSSession } from './file-system/session';
-import { TEST_ONLY as MUTATION_LOCK_TEST_ONLY } from './file-system/mutation-lock';
 import type { LoadedHizoFSFile } from './file-system/node-service';
 import { createHizoFSInspectionReader } from './inspection';
 import type { HizoFSRecordKind } from './format/record';
@@ -1193,45 +1192,6 @@ describe('HizoFS public file-system API', () => {
   });
 
 
-  it('prepares immutable file objects before acquiring the global commit lock', async () => {
-    const originalLocks = navigator.locks;
-    Object.defineProperty(navigator, 'locks', {
-      configurable: true,
-      value: undefined,
-    });
-    try {
-      const session = await createTiny({
-        root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
-        now: () => 1,
-      });
-      const hizofs = requireHizoFSSession({ session });
-      const lockName = `hizofs/${hizofs.fileSystemId}/commit`;
-      const originalWriteFile = hizofs.runtime.inodeStore.writeFile.bind(
-        hizofs.runtime.inodeStore,
-      );
-      const observedLockStates: boolean[] = [];
-      vi.spyOn(hizofs.runtime.inodeStore, 'writeFile').mockImplementation(
-        async options => {
-          observedLockStates.push(
-            MUTATION_LOCK_TEST_ONLY.localMutationTails.has(lockName),
-          );
-          return await originalWriteFile(options);
-        },
-      );
-
-      await session.root.getFileHandle({ name: 'prepared.txt', create: true });
-
-      expect(observedLockStates.length).toBeGreaterThan(0);
-      expect(observedLockStates).not.toContain(true);
-      await session.close();
-    } finally {
-      Object.defineProperty(navigator, 'locks', {
-        configurable: true,
-        value: originalLocks,
-      });
-    }
-  });
-
   it('serializes mutations from separate sessions without losing either root update', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const first = await createTiny({ root: backing, now: () => 1 });
@@ -1449,7 +1409,40 @@ describe('HizoFS public file-system API', () => {
     );
   });
 
-  it('reuses immutable metadata while continuing to authenticate mutable superblocks', async () => {
+  it('reuses the coordinator-owned A/B head handles across publications', async () => {
+    const headOpens: string[] = [];
+    const originalOpen = NativeOpfsHizoFSBackingStore.prototype.openRandomAccessFile;
+    const openSpy = vi.spyOn(
+      NativeOpfsHizoFSBackingStore.prototype,
+      'openRandomAccessFile',
+    ).mockImplementation(function (
+      this: NativeOpfsHizoFSBackingStore,
+      arguments_,
+    ) {
+      const name = arguments_.path.at(-1);
+      if (name === 'head-0.hfs' || name === 'head-1.hfs') {
+        headOpens.push(name);
+      }
+      return originalOpen.call(this, arguments_);
+    });
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const initialHeadOpenCount = headOpens.length;
+    try {
+      for (let index = 0; index < 12; index += 1) {
+        await session.root.getFileHandle({
+          name: `persistent-head-${String(index)}`,
+          create: true,
+        });
+      }
+      expect(headOpens.length - initialHeadOpenCount).toBe(2);
+    } finally {
+      await session.close();
+      openSpy.mockRestore();
+    }
+  });
+
+  it('serves repeated lookups from the authoritative active-state cache', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ root: backing, now: () => 1 });
     for (let index = 0; index < 12; index += 1) {
@@ -1470,7 +1463,7 @@ describe('HizoFS public file-system API', () => {
       });
     }
 
-    expect(backingReadSpy).toHaveBeenCalledTimes(20);
+    expect(backingReadSpy).not.toHaveBeenCalled();
     await session.close();
   });
 

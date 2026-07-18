@@ -986,6 +986,7 @@ function parsePersistedDto({ object }: {
         ? {
           commitObjectId: object.objectId,
           revision: (validation.data as HizoFSCommitDto).revision,
+          publicationId: (validation.data as HizoFSCommitDto).publicationId,
           rootDirectoryNodeId: (validation.data as HizoFSCommitDto).rootDirectoryNodeId,
           inodeIndexRootObjectId: (validation.data as HizoFSCommitDto).inodeIndexRootObjectId,
         }

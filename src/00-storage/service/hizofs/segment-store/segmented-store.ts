@@ -390,6 +390,8 @@ export class HizoFSSegmentedStore {
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
   private activeMetadataWriter: HizoFSActiveSegmentWriter | undefined;
   private activeDataWriter: HizoFSActiveSegmentWriter | undefined;
+  private readonly persistentHeadFiles = new Map<0 | 1, HizoFSRandomAccessFile>();
+  private headHandleRetention: 'ephemeral' | 'persistent' = 'ephemeral';
   private committedMetadataSegment: CommittedMetadataSegment | undefined;
   private reservationChain: Promise<void> = Promise.resolve();
   private readonly validatedSegmentKeys = new Set<string>();
@@ -525,6 +527,48 @@ export class HizoFSSegmentedStore {
         return physical.byteLength;
       },
     });
+  }
+
+  async flushPendingRecords(): Promise<void> {
+    this.assertOpen();
+    await this.runWithReservationLock({
+      operation: async () => {
+        if (this.activeDataWriter !== undefined) {
+          await this.activeDataWriter.flush();
+        }
+        if (this.activeMetadataWriter !== undefined) {
+          await this.activeMetadataWriter.flush();
+        }
+      },
+    });
+  }
+
+  async setHeadHandleRetention({ retention }: {
+    retention: 'ephemeral' | 'persistent';
+  }): Promise<void> {
+    this.assertOpen();
+    switch (retention) {
+    case 'ephemeral':
+    case 'persistent':
+      break;
+    default: {
+      const _ex: never = retention;
+      throw new Error(`Unhandled HizoFS head-handle retention: ${_ex}`);
+    }
+    }
+    if (this.headHandleRetention === retention) return;
+    this.headHandleRetention = retention;
+    switch (retention) {
+    case 'ephemeral':
+      await this.closePersistentHeadFiles();
+      return;
+    case 'persistent':
+      return;
+    default: {
+      const _ex: never = retention;
+      throw new Error(`Unhandled HizoFS head-handle retention: ${_ex}`);
+    }
+    }
   }
 
   async readHeadPhysical({ slot }: { slot: 0 | 1 }): Promise<{
@@ -796,7 +840,10 @@ export class HizoFSSegmentedStore {
   releaseActiveWriters(): Promise<void> {
     this.assertOpen();
     return this.runWithReservationLock({
-      operation: async () => this.closeActiveWriters({ flush: false }),
+      operation: async () => {
+        await this.closeActiveWriters({ flush: false });
+        await this.closePersistentHeadFiles();
+      },
     });
   }
 
@@ -804,7 +851,10 @@ export class HizoFSSegmentedStore {
     if (this.closed) return;
     this.closed = true;
     await this.runWithReservationLock({
-      operation: async () => this.closeActiveWriters({ flush: false }),
+      operation: async () => {
+        await this.closeActiveWriters({ flush: false });
+        await this.closePersistentHeadFiles();
+      },
     });
     this.recordKeyPromises.clear();
   }
@@ -913,22 +963,16 @@ export class HizoFSSegmentedStore {
     slot: 0 | 1;
     physical: Uint8Array;
   }): Promise<void> {
-    // TODO(hizofs): Route A/B head ownership through one authoritative
-    // cross-realm storage coordinator before retaining SyncAccessHandles for
-    // the head files or caching active state across public operations. Keeping
-    // those handles in an independent tab or Worker would exclude another
-    // writer, while a realm-local active-state cache would miss external
-    // publications. The coordinator must own durable publication, update its
-    // cached generation only after flush, and rebuild from both head slots on
-    // failover. This per-publication open/close path remains the correctness
-    // fallback until that ownership boundary exists.
     const path = getHeadPath({ slot });
-    const file = await this.backingStore.openRandomAccessFile({
-      path,
-      mode: 'read_write',
-      create: true,
-    });
-    let closed = false;
+    const persistent = this.headHandleRetention === 'persistent';
+    const file = persistent
+      ? await this.ensurePersistentHeadFile({ slot, path })
+      : await this.backingStore.openRandomAccessFile({
+        path,
+        mode: 'read_write',
+        create: true,
+      });
+    let closed = persistent;
     const close = async (): Promise<void> => {
       if (closed) return;
       closed = true;
@@ -938,8 +982,16 @@ export class HizoFSSegmentedStore {
       await file.truncate({ size: 0 });
       await file.writeAt({ offset: 0, bytes: physical });
       await file.flush();
-      await close();
+      if (!persistent) await close();
     } catch (error) {
+      if (persistent && this.persistentHeadFiles.get(slot) === file) {
+        this.persistentHeadFiles.delete(slot);
+        try {
+          await file.close();
+        } catch {
+          // Preserve the original publication error before independent readback.
+        }
+      }
       try {
         await close();
       } catch {
@@ -954,6 +1006,36 @@ export class HizoFSSegmentedStore {
       throw error;
     } finally {
       if (!closed) await close();
+    }
+  }
+
+  private async ensurePersistentHeadFile({
+    slot,
+    path,
+  }: {
+    slot: 0 | 1;
+    path: readonly string[];
+  }): Promise<HizoFSRandomAccessFile> {
+    const existing = this.persistentHeadFiles.get(slot);
+    if (existing !== undefined) return existing;
+    const file = await this.backingStore.openRandomAccessFile({
+      path,
+      mode: 'read_write',
+      create: true,
+    });
+    this.persistentHeadFiles.set(slot, file);
+    return file;
+  }
+
+  private async closePersistentHeadFiles(): Promise<void> {
+    const files = [...this.persistentHeadFiles.values()];
+    this.persistentHeadFiles.clear();
+    const results = await Promise.allSettled(files.map(async file => file.close()));
+    const errors = results
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map(result => result.reason);
+    if (errors.length > 0) {
+      throw new AggregateError(errors, 'Failed to close HizoFS head files');
     }
   }
 

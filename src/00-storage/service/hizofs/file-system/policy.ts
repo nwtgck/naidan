@@ -33,7 +33,7 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   backingFileHandleCacheEntryLimit: 1024,
   backingFileSnapshotCacheEntryLimit: 128,
   maxDirtyFileBytes: 16 * 1024 * 1024,
-  fileChunkWriteConcurrency: 4,
+  fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 8 * 1024 * 1024,
   metadataObjectCacheEntryLimit: 16 * 1024,
   // One encoded 256 KiB chunk includes a small record header and metadata.

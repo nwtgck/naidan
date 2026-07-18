@@ -4,7 +4,14 @@ type QueuedLockRequest = {
   readonly mode: LockMode;
   readonly callback: TestLockCallback;
   readonly acquired: ReturnType<typeof Promise.withResolvers<unknown>>;
+  readonly signal: AbortSignal | undefined;
+  abortListener: (() => void) | undefined;
+  state: 'queued' | 'active' | 'settled';
 };
+
+function createAbortError(): DOMException {
+  return new DOMException('The lock request was aborted', 'AbortError');
+}
 
 export function createQueuedTestLockManager({
   onRequest,
@@ -15,12 +22,31 @@ export function createQueuedTestLockManager({
   const activeShared = new Map<string, number>();
   const activeExclusive = new Set<string>();
 
+  const detachAbortListener = ({ request }: {
+    request: QueuedLockRequest;
+  }): void => {
+    if (request.abortListener === undefined) return;
+    request.signal?.removeEventListener('abort', request.abortListener);
+    request.abortListener = undefined;
+  };
+
+  const activate = ({ request }: { request: QueuedLockRequest }): void => {
+    request.state = 'active';
+    detachAbortListener({ request });
+  };
+
+  const settle = ({ request }: { request: QueuedLockRequest }): void => {
+    request.state = 'settled';
+    detachAbortListener({ request });
+  };
+
   const drain = ({ name }: { name: string }): void => {
     if (activeExclusive.has(name)) {
       return;
     }
     const queue = queues.get(name);
     if (queue === undefined || queue.length === 0) {
+      queues.delete(name);
       return;
     }
     const first = queue[0];
@@ -33,11 +59,13 @@ export function createQueuedTestLockManager({
         return;
       }
       queue.shift();
+      activate({ request: first });
       activeExclusive.add(name);
       void Promise.resolve()
         .then(first.callback)
         .then(first.acquired.resolve, first.acquired.reject)
         .finally(() => {
+          settle({ request: first });
           activeExclusive.delete(name);
           drain({ name });
         });
@@ -55,11 +83,13 @@ export function createQueuedTestLockManager({
       if (request === undefined) {
         break;
       }
+      activate({ request });
       activeShared.set(name, (activeShared.get(name) ?? 0) + 1);
       void Promise.resolve()
         .then(request.callback)
         .then(request.acquired.resolve, request.acquired.reject)
         .finally(() => {
+          settle({ request });
           const remaining = (activeShared.get(name) ?? 1) - 1;
           if (remaining === 0) {
             activeShared.delete(name);
@@ -80,12 +110,44 @@ export function createQueuedTestLockManager({
     const acquired = Promise.withResolvers<unknown>();
     const mode = options.mode ?? 'exclusive';
     onRequest?.({ name, mode });
+    if (options.signal?.aborted === true) {
+      acquired.reject(createAbortError());
+      return acquired.promise;
+    }
     const queue = queues.get(name) ?? [];
-    queue.push({
+    const queuedRequest: QueuedLockRequest = {
       mode,
       callback,
       acquired,
-    });
+      signal: options.signal,
+      abortListener: undefined,
+      state: 'queued',
+    };
+    if (options.signal !== undefined) {
+      queuedRequest.abortListener = () => {
+        switch (queuedRequest.state) {
+        case 'queued':
+          break;
+        case 'active':
+        case 'settled':
+          return;
+        default: {
+          const _ex: never = queuedRequest.state;
+          throw new Error(`Unhandled queued lock request state: ${_ex}`);
+        }
+        }
+        const currentQueue = queues.get(name);
+        const index = currentQueue?.indexOf(queuedRequest) ?? -1;
+        if (index >= 0) currentQueue?.splice(index, 1);
+        settle({ request: queuedRequest });
+        queuedRequest.acquired.reject(createAbortError());
+        drain({ name });
+      };
+      options.signal.addEventListener('abort', queuedRequest.abortListener, {
+        once: true,
+      });
+    }
+    queue.push(queuedRequest);
     queues.set(name, queue);
     drain({ name });
     return acquired.promise;

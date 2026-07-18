@@ -260,15 +260,22 @@ filesystem is therefore an uncertain rollback and forces read-only recovery.
 ```ts
 type HizoFSCommitDto = {
   readonly revision: number;
+  readonly publicationId: string;
   readonly rootDirectoryNodeId: string;
   readonly inodeIndexRootObjectId: string;
 };
 ```
 
-A commit and all objects it references are immutable. The only persistent
-visibility switch for normal mutations is the authenticated superblock slot.
-Before that switch, the old complete commit is authoritative; after it, the
-new complete commit is authoritative.
+A commit and all objects it references are immutable. `publicationId` is a
+fresh stable identifier for one attempted durable publication. If a leader
+fails after flushing the head but before replying, its successor can recognize
+that publication while it remains the active generation. If later generations
+have already replaced it, the coordinator reports an indeterminate publication
+outcome rather than silently replaying a potentially non-idempotent operation.
+
+The only persistent visibility switch for normal mutations is the authenticated
+superblock slot. Before that switch, the old complete commit is authoritative;
+after it, the new complete commit is authoritative.
 
 ## Inode index
 
