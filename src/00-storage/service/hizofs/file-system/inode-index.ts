@@ -22,17 +22,92 @@ class InodeIndexPageStore implements PersistentIndexPageStore<
   string,
   HizoFSInodeIndexEntry
 > {
-  constructor({ recordStore }: { recordStore: HizoFSRecordStore }) {
+  constructor({
+    recordStore,
+    decodedPageCacheEntryLimit,
+    diagnostics,
+  }: {
+    recordStore: HizoFSRecordStore;
+    decodedPageCacheEntryLimit: number;
+    diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  }) {
+    if (
+      !Number.isSafeInteger(decodedPageCacheEntryLimit)
+      || decodedPageCacheEntryLimit < 0
+    ) {
+      throw new Error(
+        'HizoFS decoded inode-index page cache limit must be non-negative',
+      );
+    }
     this.recordStore = recordStore;
+    this.decodedPageCacheEntryLimit = decodedPageCacheEntryLimit;
+    this.diagnostics = diagnostics;
   }
 
   private readonly recordStore: HizoFSRecordStore;
+  private readonly decodedPageCacheEntryLimit: number;
+  private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  private readonly decodedPages = new Map<
+    string,
+    PersistentIndexPage<string, HizoFSInodeIndexEntry>
+  >();
+
+  clear(): void {
+    this.decodedPages.clear();
+    this.recordCacheState();
+  }
+
+  private rememberPage({
+    objectId,
+    page,
+  }: {
+    objectId: string;
+    page: PersistentIndexPage<string, HizoFSInodeIndexEntry>;
+  }): void {
+    if (this.decodedPageCacheEntryLimit === 0) {
+      this.recordCacheState();
+      return;
+    }
+    this.decodedPages.delete(objectId);
+    this.decodedPages.set(objectId, page);
+    while (this.decodedPages.size > this.decodedPageCacheEntryLimit) {
+      const oldestObjectId = this.decodedPages.keys().next().value as
+        | string
+        | undefined;
+      if (oldestObjectId === undefined) break;
+      this.decodedPages.delete(oldestObjectId);
+      this.diagnostics?.recordCacheEviction({
+        cache: 'decoded_inode_index_page',
+      });
+    }
+    this.recordCacheState();
+  }
+
+  private recordCacheState(): void {
+    this.diagnostics?.recordCacheState({
+      cache: 'decoded_inode_index_page',
+      byteLength: 0,
+      entryCount: this.decodedPages.size,
+    });
+  }
 
   async readPage({
     objectId,
   }: {
     objectId: string;
   }): Promise<PersistentIndexPage<string, HizoFSInodeIndexEntry>> {
+    const cached = this.decodedPages.get(objectId);
+    if (cached !== undefined) {
+      this.diagnostics?.recordCacheHit({
+        cache: 'decoded_inode_index_page',
+      });
+      this.decodedPages.delete(objectId);
+      this.decodedPages.set(objectId, cached);
+      return cached;
+    }
+    this.diagnostics?.recordCacheMiss({
+      cache: 'decoded_inode_index_page',
+    });
     const { metadata } = await this.recordStore.read({
       objectId,
       expectedKind: "inode_index_page",
@@ -40,22 +115,26 @@ class InodeIndexPageStore implements PersistentIndexPageStore<
       binaryPayload: "forbidden",
     });
     assertPage({ page: metadata });
-    switch (metadata.type) {
-    case "leaf":
-      return { type: "leaf", entries: metadata.entries };
-    case "branch":
-      return {
-        type: "branch",
-        children: metadata.children.map((child) => ({
-          upperBound: child.upperBoundNodeId,
-          childPageObjectId: child.childPageObjectId,
-        })),
-      };
-    default: {
-      const _ex: never = metadata;
-      throw new Error(`Unhandled inode index page: ${String(_ex)}`);
-    }
-    }
+    const page: PersistentIndexPage<string, HizoFSInodeIndexEntry> = (() => {
+      switch (metadata.type) {
+      case "leaf":
+        return { type: "leaf", entries: metadata.entries };
+      case "branch":
+        return {
+          type: "branch",
+          children: metadata.children.map((child) => ({
+            upperBound: child.upperBoundNodeId,
+            childPageObjectId: child.childPageObjectId,
+          })),
+        };
+      default: {
+        const _ex: never = metadata;
+        throw new Error(`Unhandled inode index page: ${String(_ex)}`);
+      }
+      }
+    })();
+    this.rememberPage({ objectId, page });
+    return page;
   }
 
   async writePage({
@@ -82,11 +161,13 @@ class InodeIndexPageStore implements PersistentIndexPageStore<
       }
     })();
     assertPage({ page: metadata });
-    return this.recordStore.write({
+    const objectId = await this.recordStore.write({
       kind: "inode_index_page",
       metadata,
       binaryPayload: new Uint8Array(),
     });
+    this.rememberPage({ objectId, page });
+    return objectId;
   }
 }
 
@@ -158,13 +239,19 @@ export class HizoFSInodeIndex {
   constructor({
     recordStore,
     maxPageEntries,
+    decodedPageCacheEntryLimit,
     diagnostics,
   }: {
     recordStore: HizoFSRecordStore;
     maxPageEntries: number;
+    decodedPageCacheEntryLimit: number;
     diagnostics?: HizoFSRuntimeDiagnostics;
   }) {
-    this.pageStore = new InodeIndexPageStore({ recordStore });
+    this.pageStore = new InodeIndexPageStore({
+      recordStore,
+      decodedPageCacheEntryLimit,
+      diagnostics,
+    });
     this.diagnostics = diagnostics;
     this.index = new PersistentHizoFSIndex({
       pageStore: this.pageStore,
@@ -243,6 +330,10 @@ export class HizoFSInodeIndex {
       completed.add(objectId);
     };
     await visitPage({ objectId: rootObjectId });
+  }
+
+  clearDecodedPageCache(): void {
+    this.pageStore.clear();
   }
 
   createEmpty(): Promise<string> {

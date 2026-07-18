@@ -14,6 +14,7 @@ const MODEL_POLICY: HizoFSPolicy = {
   inlineFileByteLimit: 9,
   inlineDirectoryEntryLimit: 3,
   fileChunkSize: 5,
+  decodedInodeIndexPageCacheEntryLimit: 16,
   indexPageEntryLimit: 3,
   readerStreamChunkSize: 4,
   fileChunkReadPrefetchConcurrency: 2,

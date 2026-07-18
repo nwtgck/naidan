@@ -11,6 +11,12 @@ describe('HizoFS runtime policy', () => {
     ).toBe(512 * 1024);
   });
 
+  it('bounds the decoded inode-index page cache independently', () => {
+    expect(DEFAULT_HIZOFS_POLICY.decodedInodeIndexPageCacheEntryLimit).toBe(128);
+    expect(DEFAULT_HIZOFS_POLICY.decodedInodeIndexPageCacheEntryLimit)
+      .toBeLessThan(DEFAULT_HIZOFS_POLICY.metadataObjectCacheEntryLimit);
+  });
+
   it('retains one complete 64-chunk read working set without admitting a 65th chunk', () => {
     const encodedChunkByteLength = encodeHizoFSRecord({
       kind: 'file_chunk',

@@ -81,14 +81,23 @@ export function freezeHizoFSActiveState({ state }: {
   });
 }
 
+export type HizoFSValidatedCommitRootCache = {
+  value: {
+    readonly rootDirectoryNodeId: string;
+    readonly rootDirectoryInodeObjectId: string;
+  } | undefined;
+};
+
 export async function validateHizoFSCommitRoot({
   commit,
   inodeIndex,
   inodeStore,
+  validatedRootCache,
 }: {
   commit: HizoFSCommitDto;
   inodeIndex: HizoFSInodeIndex;
   inodeStore: HizoFSInodeStore;
+  validatedRootCache: HizoFSValidatedCommitRootCache | undefined;
 }): Promise<void> {
   const rootIndexEntry = await inodeIndex.get({
     rootObjectId: commit.inodeIndexRootObjectId,
@@ -100,6 +109,16 @@ export async function validateHizoFSCommitRoot({
       cause: undefined,
     });
   }
+  const cached = validatedRootCache?.value;
+  // The new inode-index root is still traversed and authenticated above. The
+  // directory inode is an immutable authenticated object, so an identical
+  // ObjectRef does not need to be decoded again for every unrelated commit.
+  if (
+    cached?.rootDirectoryNodeId === commit.rootDirectoryNodeId
+    && cached.rootDirectoryInodeObjectId === rootIndexEntry.inodeObjectId
+  ) {
+    return;
+  }
   const rootDirectory = await inodeStore.readDirectory({
     objectId: rootIndexEntry.inodeObjectId,
   });
@@ -109,6 +128,12 @@ export async function validateHizoFSCommitRoot({
       cause: undefined,
     });
   }
+  if (validatedRootCache !== undefined) {
+    validatedRootCache.value = {
+      rootDirectoryNodeId: commit.rootDirectoryNodeId,
+      rootDirectoryInodeObjectId: rootIndexEntry.inodeObjectId,
+    };
+  }
 }
 
 export async function loadHizoFSActiveStateFromStores({
@@ -116,11 +141,13 @@ export async function loadHizoFSActiveStateFromStores({
   commitStore,
   inodeIndex,
   inodeStore,
+  validatedRootCache,
 }: {
   superblockStore: HizoFSSuperblockStore;
   commitStore: HizoFSCommitStore;
   inodeIndex: HizoFSInodeIndex;
   inodeStore: HizoFSInodeStore;
+  validatedRootCache: HizoFSValidatedCommitRootCache | undefined;
 }): Promise<HizoFSActiveState> {
   const candidateSet = await superblockStore.readCandidateSet();
   const { candidates } = candidateSet;
@@ -143,6 +170,7 @@ export async function loadHizoFSActiveStateFromStores({
         commit,
         inodeIndex,
         inodeStore,
+        validatedRootCache,
       });
       return freezeHizoFSActiveState({
         state: {

@@ -5,6 +5,7 @@ import { importHizoFSRootKey } from '@/00-storage/service/hizofs/crypto/object-c
 import { createHizoFSStableId } from '@/00-storage/service/hizofs/id';
 import { HizoFSObjectStore } from '@/00-storage/service/hizofs/object-store/object-store';
 import { HizoFSDirectoryIndex } from './directory-index';
+import { createHizoFSRuntimeDiagnostics } from './diagnostics';
 import { HizoFSExtentIndex } from './extent-index';
 import { HizoFSInodeIndex } from './inode-index';
 import { HizoFSRecordStore } from './record-store';
@@ -48,7 +49,11 @@ async function createDummyObject({ objectStore, value }: {
 describe('HizoFS typed persistent indexes', () => {
   it('persists an inode index without exposing node IDs as physical paths', async () => {
     const { objectStore, recordStore } = await setup();
-    const index = new HizoFSInodeIndex({ recordStore, maxPageEntries: 3 });
+    const index = new HizoFSInodeIndex({
+      recordStore,
+      maxPageEntries: 3,
+      decodedPageCacheEntryLimit: 16,
+    });
     const emptyRoot = await index.createEmpty();
     let root = emptyRoot;
     const expected = new Map<string, string>();
@@ -71,6 +76,73 @@ describe('HizoFS typed persistent indexes', () => {
       });
     }
     expect([...await collectInodeEntries({ index, rootObjectId: emptyRoot })]).toEqual([]);
+  });
+
+  it('reuses decoded inode-index pages written by the same runtime', async () => {
+    const { objectStore, recordStore } = await setup();
+    const readRecord = vi.spyOn(recordStore, 'read');
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const cached = new HizoFSInodeIndex({
+      recordStore,
+      maxPageEntries: 3,
+      decodedPageCacheEntryLimit: 16,
+      diagnostics,
+    });
+    let cachedRoot = await cached.createEmpty();
+    let lastNodeId = '';
+    for (let number = 0; number < 6; number += 1) {
+      lastNodeId = createHizoFSStableId();
+      cachedRoot = await cached.set({
+        rootObjectId: cachedRoot,
+        entry: {
+          nodeId: lastNodeId,
+          inodeObjectId: await createDummyObject({
+            objectStore,
+            value: number,
+          }),
+        },
+      });
+    }
+    expect(readRecord).not.toHaveBeenCalled();
+    expect(diagnostics.snapshot().caches.decodedInodeIndexPage).toMatchObject({
+      hits: expect.any(Number),
+      misses: 0,
+      currentEntries: expect.any(Number),
+    });
+    expect(
+      diagnostics.snapshot().caches.decodedInodeIndexPage.hits,
+    ).toBeGreaterThan(0);
+    expect(
+      diagnostics.snapshot().caches.decodedInodeIndexPage.currentEntries,
+    ).toBeLessThanOrEqual(16);
+
+    cached.clearDecodedPageCache();
+    expect(
+      diagnostics.snapshot().caches.decodedInodeIndexPage.currentEntries,
+    ).toBe(0);
+    await expect(cached.get({
+      rootObjectId: cachedRoot,
+      nodeId: lastNodeId,
+    })).resolves.toMatchObject({ nodeId: lastNodeId });
+    expect(readRecord).toHaveBeenCalled();
+    readRecord.mockClear();
+
+    const uncached = new HizoFSInodeIndex({
+      recordStore,
+      maxPageEntries: 3,
+      decodedPageCacheEntryLimit: 0,
+      diagnostics,
+    });
+    let uncachedRoot = await uncached.createEmpty();
+    uncachedRoot = await uncached.set({
+      rootObjectId: uncachedRoot,
+      entry: {
+        nodeId: createHizoFSStableId(),
+        inodeObjectId: await createDummyObject({ objectStore, value: 7 }),
+      },
+    });
+    expect(uncachedRoot).not.toBe('');
+    expect(readRecord).toHaveBeenCalledTimes(1);
   });
 
   it('keeps directory names sorted by canonical UTF-8 bytes across split pages', async () => {

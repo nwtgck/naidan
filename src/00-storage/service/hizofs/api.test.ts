@@ -35,6 +35,7 @@ const TINY_POLICY: HizoFSPolicy = {
   inlineFileByteLimit: 8,
   inlineDirectoryEntryLimit: 2,
   fileChunkSize: 4,
+  decodedInodeIndexPageCacheEntryLimit: 16,
   indexPageEntryLimit: 2,
   readerStreamChunkSize: 3,
   fileChunkReadPrefetchConcurrency: 2,
@@ -1216,6 +1217,125 @@ describe('HizoFS public file-system API', () => {
     await reopened.close();
   });
 
+  it('reuses a directory inode on one handle and invalidates it after another session publishes', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const first = await createTiny({ root: backing, now: () => 1 });
+    const directory = await first.root.getDirectoryHandle({
+      name: 'values',
+      create: true,
+    });
+    await directory.getFileHandle({ name: 'first.txt', create: true });
+    const firstHizoFS = requireHizoFSSession({ session: first });
+    const readDirectory = vi.spyOn(
+      firstHizoFS.runtime.nodeService,
+      'readDirectory',
+    );
+
+    await directory.getFileHandle({ name: 'first.txt', create: false });
+    await directory.getFileHandle({ name: 'first.txt', create: false });
+    expect(readDirectory).not.toHaveBeenCalled();
+
+    const second = await openTiny({ root: backing, now: () => 2 });
+    const secondDirectory = await second.root.getDirectoryHandle({
+      name: 'values',
+      create: false,
+    });
+    await secondDirectory.getFileHandle({ name: 'second.txt', create: true });
+
+    await expect(directory.getFileHandle({
+      name: 'second.txt',
+      create: false,
+    })).resolves.toBeDefined();
+    expect(readDirectory).toHaveBeenCalledTimes(1);
+
+    await first.close();
+    await second.close();
+  });
+
+  it('carries the published directory inode across sequential creates', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const directory = await session.root.getDirectoryHandle({
+      name: 'values',
+      create: true,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const readDirectory = vi.spyOn(
+      hizofs.runtime.nodeService,
+      'readDirectory',
+    );
+
+    for (let index = 0; index < 8; index += 1) {
+      await directory.getFileHandle({
+        name: `value-${String(index)}.txt`,
+        create: true,
+      });
+    }
+
+    expect(readDirectory).not.toHaveBeenCalled();
+    await session.close();
+  });
+
+  it('reuses validation of an unchanged root inode and revalidates a changed root', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const directory = await session.root.getDirectoryHandle({
+      name: 'values',
+      create: true,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const readDirectory = vi.spyOn(hizofs.runtime.inodeStore, 'readDirectory');
+
+    for (let index = 0; index < 8; index += 1) {
+      await directory.getFileHandle({
+        name: `nested-${String(index)}.txt`,
+        create: true,
+      });
+    }
+    expect(readDirectory).not.toHaveBeenCalled();
+
+    await session.root.getFileHandle({ name: 'root.txt', create: true });
+    expect(readDirectory).toHaveBeenCalledTimes(2);
+    await session.close();
+  });
+
+  it('preserves every entry across concurrent creates in one indexed directory', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const directory = await session.root.getDirectoryHandle({
+      name: 'values',
+      create: true,
+    });
+    for (let index = 0; index < 4; index += 1) {
+      await directory.getFileHandle({
+        name: `seed-${String(index)}.txt`,
+        create: true,
+      });
+    }
+
+    const concurrentNames = Array.from(
+      { length: 12 },
+      (_, index) => `parallel-${String(index).padStart(2, '0')}.txt`,
+    );
+    await Promise.all(concurrentNames.map(async (name) => {
+      await directory.getFileHandle({ name, create: true });
+    }));
+
+    const names: string[] = [];
+    for await (const [name] of directory.entries()) names.push(name);
+    expect(names.sort()).toEqual([
+      ...Array.from({ length: 4 }, (_, index) => `seed-${String(index)}.txt`),
+      ...concurrentNames,
+    ].sort());
+    await session.close();
+  });
+
   it('rejects a writer from another session after the file revision changes', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const firstSession = await createTiny({ root: backing, now: () => 1 });
@@ -1366,7 +1486,10 @@ describe('HizoFS public file-system API', () => {
     const directory = await session.root.getDirectoryHandle({ name: 'many', create: true });
     const hizofs = requireHizoFSSession({ session });
     const buildSpy = vi.spyOn(hizofs.runtime.directoryIndex, 'buildFromSortedEntries');
-    const setSpy = vi.spyOn(hizofs.runtime.directoryIndex, 'set');
+    const setSpy = vi.spyOn(
+      hizofs.runtime.directoryIndex,
+      'setWithRightmostPathCache',
+    );
     for (const name of ['z', 'a', 'm', 'b', 'y']) {
       await directory.getFileHandle({ name, create: true });
     }

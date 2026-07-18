@@ -47,7 +47,8 @@ export type HizoFSRuntimeDiagnosticCacheKind =
   | 'metadata'
   | 'file_chunk'
   | 'backing_file_handle'
-  | 'backing_file_snapshot';
+  | 'backing_file_snapshot'
+  | 'decoded_inode_index_page';
 
 export type HizoFSRuntimeDiagnosticResourceKind =
   | 'writer_dirty_chunks'
@@ -116,6 +117,7 @@ export type HizoFSRuntimeDiagnosticsSnapshot = {
     readonly fileChunk: HizoFSRuntimeDiagnosticCacheSnapshot;
     readonly backingFileHandle: HizoFSRuntimeDiagnosticCacheSnapshot;
     readonly backingFileSnapshot: HizoFSRuntimeDiagnosticCacheSnapshot;
+    readonly decodedInodeIndexPage: HizoFSRuntimeDiagnosticCacheSnapshot;
   };
   readonly resources: {
     readonly writerDirtyChunks: HizoFSRuntimeDiagnosticResourceSnapshot;
@@ -219,6 +221,7 @@ export class HizoFSRuntimeDiagnostics {
     fileChunk: createCacheCounter(),
     backingFileHandle: createCacheCounter(),
     backingFileSnapshot: createCacheCounter(),
+    decodedInodeIndexPage: createCacheCounter(),
   };
   private readonly resources = {
     writerDirtyChunks: createResourceCounter(),
@@ -420,6 +423,7 @@ export class HizoFSRuntimeDiagnostics {
         fileChunk: { ...this.caches.fileChunk },
         backingFileHandle: { ...this.caches.backingFileHandle },
         backingFileSnapshot: { ...this.caches.backingFileSnapshot },
+        decodedInodeIndexPage: { ...this.caches.decodedInodeIndexPage },
       },
       resources: {
         writerDirtyChunks: { ...this.resources.writerDirtyChunks },
@@ -458,6 +462,8 @@ export class HizoFSRuntimeDiagnostics {
       return this.caches.backingFileHandle;
     case 'backing_file_snapshot':
       return this.caches.backingFileSnapshot;
+    case 'decoded_inode_index_page':
+      return this.caches.decodedInodeIndexPage;
     default: {
       const _ex: never = cache;
       throw new Error(`Unhandled HizoFS diagnostic cache: ${String(_ex)}`);

@@ -16,6 +16,15 @@ type PersistentIndexBranchPage<TKey> = {
 export type PersistentIndexPage<TKey, TEntry> =
   PersistentIndexLeafPage<TEntry> | PersistentIndexBranchPage<TKey>;
 
+export type PersistentIndexLeafLookupCache<TKey, TEntry> = {
+  value: {
+    readonly rootObjectId: string;
+    readonly lowerBoundExclusive: TKey | undefined;
+    readonly upperBoundInclusive: TKey | undefined;
+    readonly entries: readonly TEntry[];
+  } | undefined;
+};
+
 export interface PersistentIndexPageStore<TKey, TEntry> {
   readPage({
     objectId,
@@ -33,6 +42,21 @@ export interface PersistentIndexPageStore<TKey, TEntry> {
 type PageReference<TKey> = {
   readonly objectId: string;
   readonly upperBound: TKey;
+};
+
+type CachedIndexPage<TKey, TEntry> = {
+  readonly objectId: string;
+  readonly page: PersistentIndexPage<TKey, TEntry>;
+};
+
+type RightmostPathCache<TKey, TEntry> = {
+  readonly rootObjectId: string;
+  readonly maximumKey: TKey | undefined;
+  readonly path: readonly CachedIndexPage<TKey, TEntry>[];
+};
+
+type WrittenIndexPage<TKey, TEntry> = CachedIndexPage<TKey, TEntry> & {
+  readonly reference: PageReference<TKey>;
 };
 
 type DeleteResult<TKey> = {
@@ -73,6 +97,7 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
   }) => number;
   private readonly getEntryKey: ({ entry }: { entry: TEntry }) => TKey;
   private readonly maxPageEntries: number;
+  private rightmostPathCache: RightmostPathCache<TKey, TEntry> | undefined;
 
   async createEmpty(): Promise<string> {
     return this.pageStore.writePage({
@@ -119,7 +144,131 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
     }
   }
 
+  async getWithLeafCache({
+    rootObjectId,
+    key,
+    cache,
+  }: {
+    rootObjectId: string;
+    key: TKey;
+    cache: PersistentIndexLeafLookupCache<TKey, TEntry>;
+  }): Promise<TEntry | undefined> {
+    const cached = cache.value;
+    if (
+      cached?.rootObjectId === rootObjectId
+      && (
+        cached.entries.length === 0
+        || (
+          (
+            cached.lowerBoundExclusive === undefined
+            || this.compare({
+              left: cached.lowerBoundExclusive,
+              right: key,
+            }) < 0
+          )
+          && cached.upperBoundInclusive !== undefined
+          && this.compare({
+            left: key,
+            right: cached.upperBoundInclusive,
+          }) <= 0
+        )
+      )
+    ) {
+      return this.findEntryInLeaf({
+        entries: cached.entries,
+        key,
+      });
+    }
+
+    let objectId = rootObjectId;
+    let lowerBoundExclusive: TKey | undefined;
+    while (true) {
+      const page = await this.pageStore.readPage({ objectId });
+      switch (page.type) {
+      case "leaf": {
+        const lastEntry = page.entries.at(-1);
+        cache.value = {
+          rootObjectId,
+          lowerBoundExclusive,
+          upperBoundInclusive: lastEntry === undefined
+            ? undefined
+            : this.getEntryKey({ entry: lastEntry }),
+          entries: page.entries,
+        };
+        return this.findEntryInLeaf({ entries: page.entries, key });
+      }
+      case "branch": {
+        const childIndex = this.findChildIndex({
+          children: page.children,
+          key,
+        });
+        const child = page.children[childIndex];
+        if (child === undefined) {
+          return undefined;
+        }
+        const previousChild = page.children[childIndex - 1];
+        if (previousChild !== undefined) {
+          lowerBoundExclusive = previousChild.upperBound;
+        }
+        objectId = child.childPageObjectId;
+        break;
+      }
+      default: {
+        const _ex: never = page;
+        throw new Error(`Unhandled persistent index page: ${String(_ex)}`);
+      }
+      }
+    }
+  }
+
   async set({
+    rootObjectId,
+    entry,
+  }: {
+    rootObjectId: string;
+    entry: TEntry;
+  }): Promise<string> {
+    this.rightmostPathCache = undefined;
+    return await this.setWithoutRightmostPathCache({
+      rootObjectId,
+      entry,
+    });
+  }
+
+  async setWithRightmostPathCache({
+    rootObjectId,
+    entry,
+  }: {
+    rootObjectId: string;
+    entry: TEntry;
+  }): Promise<string> {
+    const key = this.getEntryKey({ entry });
+    const cached = this.rightmostPathCache;
+    if (
+      cached?.rootObjectId === rootObjectId
+      && (
+        cached.maximumKey === undefined
+        || this.compare({ left: cached.maximumKey, right: key }) < 0
+      )
+    ) {
+      return await this.appendUsingRightmostPathCache({
+        cache: cached,
+        entry,
+        key,
+      });
+    }
+
+    const nextRootObjectId = await this.setWithoutRightmostPathCache({
+      rootObjectId,
+      entry,
+    });
+    this.rightmostPathCache = await this.loadRightmostPathCache({
+      rootObjectId: nextRootObjectId,
+    });
+    return nextRootObjectId;
+  }
+
+  private async setWithoutRightmostPathCache({
     rootObjectId,
     entry,
   }: {
@@ -148,6 +297,147 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
         })),
       },
     });
+  }
+
+  private async loadRightmostPathCache({
+    rootObjectId,
+  }: {
+    rootObjectId: string;
+  }): Promise<RightmostPathCache<TKey, TEntry>> {
+    const path: CachedIndexPage<TKey, TEntry>[] = [];
+    let objectId = rootObjectId;
+    while (true) {
+      const page = await this.pageStore.readPage({ objectId });
+      path.push({ objectId, page });
+      switch (page.type) {
+      case "leaf": {
+        const lastEntry = page.entries.at(-1);
+        return {
+          rootObjectId,
+          maximumKey: lastEntry === undefined
+            ? undefined
+            : this.getEntryKey({ entry: lastEntry }),
+          path,
+        };
+      }
+      case "branch": {
+        const child = page.children.at(-1);
+        if (child === undefined) {
+          throw new Error(
+            "Persistent index rightmost path encountered an empty branch",
+          );
+        }
+        objectId = child.childPageObjectId;
+        break;
+      }
+      default: {
+        const _ex: never = page;
+        throw new Error(`Unhandled persistent index page: ${String(_ex)}`);
+      }
+      }
+    }
+  }
+
+  private async appendUsingRightmostPathCache({
+    cache,
+    entry,
+    key,
+  }: {
+    cache: RightmostPathCache<TKey, TEntry>;
+    entry: TEntry;
+    key: TKey;
+  }): Promise<string> {
+    const leaf = cache.path.at(-1);
+    if (leaf === undefined || leaf.page.type !== "leaf") {
+      throw new Error(
+        "Persistent index rightmost path must end at a leaf",
+      );
+    }
+
+    let replacements = await this.writeLeafPagesWithMetadata({
+      entries: [...leaf.page.entries, entry],
+    });
+    const rightmostPathFromLeaf: CachedIndexPage<TKey, TEntry>[] = [
+      this.requireRightmostWrittenPage({ pages: replacements }),
+    ];
+
+    for (let pathIndex = cache.path.length - 2; pathIndex >= 0; pathIndex -= 1) {
+      const parent = cache.path[pathIndex];
+      const previousChild = cache.path[pathIndex + 1];
+      if (
+        parent === undefined
+        || previousChild === undefined
+        || parent.page.type !== "branch"
+      ) {
+        throw new Error(
+          "Persistent index rightmost path contains an invalid parent",
+        );
+      }
+      const lastChild = parent.page.children.at(-1);
+      if (lastChild?.childPageObjectId !== previousChild.objectId) {
+        throw new Error(
+          "Persistent index rightmost path is inconsistent with its parent",
+        );
+      }
+      replacements = await this.writeBranchPagesWithMetadata({
+        children: [
+          ...parent.page.children.slice(0, -1),
+          ...replacements.map(({ reference }) => ({
+            upperBound: reference.upperBound,
+            childPageObjectId: reference.objectId,
+          })),
+        ],
+      });
+      rightmostPathFromLeaf.push(
+        this.requireRightmostWrittenPage({ pages: replacements }),
+      );
+    }
+
+    let rootObjectId: string;
+    if (replacements.length === 1) {
+      const root = replacements[0];
+      if (root === undefined) {
+        throw new Error(
+          "Persistent index append produced no root page",
+        );
+      }
+      rootObjectId = root.objectId;
+    } else {
+      const rootPage: PersistentIndexBranchPage<TKey> = {
+        type: "branch",
+        children: replacements.map(({ reference }) => ({
+          upperBound: reference.upperBound,
+          childPageObjectId: reference.objectId,
+        })),
+      };
+      const objectId = await this.pageStore.writePage({ page: rootPage });
+      rootObjectId = objectId;
+      rightmostPathFromLeaf.push({
+        objectId,
+        page: rootPage,
+      });
+    }
+
+    this.rightmostPathCache = {
+      rootObjectId,
+      maximumKey: key,
+      path: rightmostPathFromLeaf.reverse(),
+    };
+    return rootObjectId;
+  }
+
+  private requireRightmostWrittenPage({
+    pages,
+  }: {
+    pages: readonly WrittenIndexPage<TKey, TEntry>[];
+  }): WrittenIndexPage<TKey, TEntry> {
+    const page = pages.at(-1);
+    if (page === undefined) {
+      throw new Error(
+        "Persistent index append produced no rightmost page",
+      );
+    }
+    return page;
   }
 
   async setMany({
@@ -1016,24 +1306,39 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
   }: {
     entries: readonly TEntry[];
   }): Promise<readonly PageReference<TKey>[]> {
+    return (await this.writeLeafPagesWithMetadata({ entries }))
+      .map(({ reference }) => reference);
+  }
+
+  private async writeLeafPagesWithMetadata({
+    entries,
+  }: {
+    entries: readonly TEntry[];
+  }): Promise<readonly WrittenIndexPage<TKey, TEntry>[]> {
     const groups = this.split({ values: entries });
-    const references: PageReference<TKey>[] = [];
+    const pages: WrittenIndexPage<TKey, TEntry>[] = [];
     for (const group of groups) {
-      const objectId = await this.pageStore.writePage({
-        page: { type: "leaf", entries: group },
-      });
-      const last = group[group.length - 1];
+      const page: PersistentIndexLeafPage<TEntry> = {
+        type: "leaf",
+        entries: group,
+      };
+      const objectId = await this.pageStore.writePage({ page });
+      const last = group.at(-1);
       if (last === undefined) {
         throw new Error(
           "Persistent index attempted to write an empty split leaf",
         );
       }
-      references.push({
+      pages.push({
         objectId,
-        upperBound: this.getEntryKey({ entry: last }),
+        page,
+        reference: {
+          objectId,
+          upperBound: this.getEntryKey({ entry: last }),
+        },
       });
     }
-    return references;
+    return pages;
   }
 
   private async writeSplitBranchPages({
@@ -1041,21 +1346,36 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
   }: {
     children: readonly PersistentIndexBranchChild<TKey>[];
   }): Promise<readonly PageReference<TKey>[]> {
+    return (await this.writeBranchPagesWithMetadata({ children }))
+      .map(({ reference }) => reference);
+  }
+
+  private async writeBranchPagesWithMetadata({
+    children,
+  }: {
+    children: readonly PersistentIndexBranchChild<TKey>[];
+  }): Promise<readonly WrittenIndexPage<TKey, TEntry>[]> {
     const groups = this.split({ values: children });
-    const references: PageReference<TKey>[] = [];
+    const pages: WrittenIndexPage<TKey, TEntry>[] = [];
     for (const group of groups) {
-      const objectId = await this.pageStore.writePage({
-        page: { type: "branch", children: group },
-      });
-      const last = group[group.length - 1];
+      const page: PersistentIndexBranchPage<TKey> = {
+        type: "branch",
+        children: group,
+      };
+      const objectId = await this.pageStore.writePage({ page });
+      const last = group.at(-1);
       if (last === undefined) {
         throw new Error(
           "Persistent index attempted to write an empty split branch",
         );
       }
-      references.push({ objectId, upperBound: last.upperBound });
+      pages.push({
+        objectId,
+        page,
+        reference: { objectId, upperBound: last.upperBound },
+      });
     }
-    return references;
+    return pages;
   }
 
   private split<T>({
@@ -1102,6 +1422,24 @@ export class PersistentHizoFSIndex<TKey, TEntry> {
       throw new Error(`Unhandled persistent index page: ${String(_ex)}`);
     }
     }
+  }
+
+  private findEntryInLeaf({
+    entries,
+    key,
+  }: {
+    entries: readonly TEntry[];
+    key: TKey;
+  }): TEntry | undefined {
+    const index = this.findEntryIndex({ entries, key });
+    const entry = entries[index];
+    return entry !== undefined
+      && this.compare({
+        left: this.getEntryKey({ entry }),
+        right: key,
+      }) === 0
+      ? entry
+      : undefined;
   }
 
   private findEntryIndex({

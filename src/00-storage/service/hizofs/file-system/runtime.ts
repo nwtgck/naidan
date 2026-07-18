@@ -17,6 +17,7 @@ import { HizoFSActiveStateCoordinator } from './active-state-coordinator';
 import {
   loadHizoFSActiveStateFromStores,
   validateHizoFSCommitRoot,
+  type HizoFSValidatedCommitRootCache,
 } from './active-state';
 import { HizoFSCorruptionError } from '@/00-storage/service/hizofs/errors';
 
@@ -123,6 +124,7 @@ export type HizoFSRuntime = {
   readonly policy: HizoFSPolicy;
   readonly now: () => number;
   readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  clearPlaintextCaches(): void;
   retainSession(): void;
   releaseSession(): Promise<void>;
   releaseLocalPhysicalHandlesForMaintenance(): Promise<void>;
@@ -161,6 +163,8 @@ export function createHizoFSRuntime({
   const inodeIndex = new HizoFSInodeIndex({
     recordStore,
     maxPageEntries: policy.indexPageEntryLimit,
+    decodedPageCacheEntryLimit:
+      policy.decodedInodeIndexPageCacheEntryLimit,
     diagnostics,
   });
   const directoryIndex = new HizoFSDirectoryIndex({
@@ -181,6 +185,9 @@ export function createHizoFSRuntime({
     directoryIndex,
     inlineEntryLimit: policy.inlineDirectoryEntryLimit,
   });
+  const validatedRootCache: HizoFSValidatedCommitRootCache = {
+    value: undefined,
+  };
   const superblockStore = new HizoFSSuperblockStore({
     objectStore,
     fileSystemId,
@@ -193,6 +200,7 @@ export function createHizoFSRuntime({
       commitStore,
       inodeIndex,
       inodeStore,
+      validatedRootCache,
     }),
     publishFromState: async ({
       currentState,
@@ -228,6 +236,7 @@ export function createHizoFSRuntime({
         commit,
         inodeIndex,
         inodeStore,
+        validatedRootCache,
       });
       const commitObjectId = await commitStore.write({ commit });
       const superblock = {
@@ -280,8 +289,15 @@ export function createHizoFSRuntime({
   };
   physicalHandleParticipants.add(physicalHandleParticipant);
 
+  function clearPlaintextCaches(): void {
+    objectStore.clearPlaintextCaches();
+    inodeIndex.clearDecodedPageCache();
+    validatedRootCache.value = undefined;
+  }
+
   function close(): Promise<void> {
     closePromise ??= (async () => {
+      clearPlaintextCaches();
       let coordinatorError: unknown | undefined;
       try {
         await activeStateCoordinator.close();
@@ -352,6 +368,7 @@ export function createHizoFSRuntime({
     policy,
     now,
     diagnostics,
+    clearPlaintextCaches,
     retainSession,
     releaseSession,
     releaseLocalPhysicalHandlesForMaintenance:

@@ -12,11 +12,13 @@ type Entry = {
 
 class MemoryPageStore implements PersistentIndexPageStore<string, Entry> {
   readonly pages = new Map<string, PersistentIndexPage<string, Entry>>();
+  reads = 0;
   writes = 0;
 
   async readPage({ objectId }: {
     objectId: string;
   }): Promise<PersistentIndexPage<string, Entry>> {
+    this.reads += 1;
     const page = this.pages.get(objectId);
     if (page === undefined) {
       throw new Error(`Missing page: ${objectId}`);
@@ -90,6 +92,84 @@ describe('persistent HizoFS index', () => {
         value,
       });
     }
+  });
+
+  it('reuses the rightmost path for verified monotonic appends', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    let root = await index.createEmpty();
+
+    for (let value = 0; value < 50; value += 1) {
+      root = await index.setWithRightmostPathCache({
+        rootObjectId: root,
+        entry: { key: String(value).padStart(2, '0'), value },
+      });
+    }
+
+    expect(pageStore.reads).toBe(2);
+    expect((await collect({ index, rootObjectId: root })).map(entry => entry.value))
+      .toEqual(Array.from({ length: 50 }, (_, value) => value));
+    await expect(index.validateStructure({ rootObjectId: root })).resolves.toMatchObject({
+      entryCount: 50,
+    });
+
+    root = await index.set({
+      rootObjectId: root,
+      entry: { key: '25', value: 2500 },
+    });
+    root = await index.setWithRightmostPathCache({
+      rootObjectId: root,
+      entry: { key: '50', value: 50 },
+    });
+    await expect(index.get({ rootObjectId: root, key: '25' })).resolves.toEqual({
+      key: '25',
+      value: 2500,
+    });
+    await expect(index.get({ rootObjectId: root, key: '50' })).resolves.toEqual({
+      key: '50',
+      value: 50,
+    });
+  });
+
+  it('reuses one immutable leaf for lookups within its key range', async () => {
+    const pageStore = new MemoryPageStore();
+    const index = createIndex({ pageStore });
+    const root = await index.buildFromSortedEntries({
+      entries: Array.from({ length: 12 }, (_, value) => ({
+        key: String(value).padStart(2, '0'),
+        value,
+      })),
+    });
+    const cache = { value: undefined };
+
+    await expect(index.getWithLeafCache({
+      rootObjectId: root,
+      key: '00',
+      cache,
+    })).resolves.toEqual({ key: '00', value: 0 });
+    const readsAfterFirstLookup = pageStore.reads;
+    await expect(index.getWithLeafCache({
+      rootObjectId: root,
+      key: '01',
+      cache,
+    })).resolves.toEqual({ key: '01', value: 1 });
+    await expect(index.getWithLeafCache({
+      rootObjectId: root,
+      key: '02',
+      cache,
+    })).resolves.toEqual({ key: '02', value: 2 });
+    expect(pageStore.reads).toBe(readsAfterFirstLookup);
+
+    const nextRoot = await index.set({
+      rootObjectId: root,
+      entry: { key: '01', value: 100 },
+    });
+    await expect(index.getWithLeafCache({
+      rootObjectId: nextRoot,
+      key: '01',
+      cache,
+    })).resolves.toEqual({ key: '01', value: 100 });
+    expect(pageStore.reads).toBeGreaterThan(readsAfterFirstLookup);
   });
 
   it('rewrites only one root-to-leaf path for an existing key', async () => {

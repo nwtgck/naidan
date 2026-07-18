@@ -18,6 +18,11 @@ export type HizoFSMutationResult<T> = {
   readonly changed: "yes" | "no";
 };
 
+export type HizoFSPublishedMutation<T> = {
+  readonly result: T;
+  readonly state: HizoFSActiveState;
+};
+
 function assertWritableActiveState({
   state,
 }: {
@@ -91,9 +96,23 @@ export class HizoFSCore {
       state: HizoFSActiveState;
     }) => Promise<HizoFSMutationResult<T>>;
   }): Promise<T> {
+    return (await this.mutateAndReturnState({ operation })).result;
+  }
+
+  async mutateAndReturnState<T>({
+    operation,
+  }: {
+    operation: ({
+      state,
+    }: {
+      state: HizoFSActiveState;
+    }) => Promise<HizoFSMutationResult<T>>;
+  }): Promise<HizoFSPublishedMutation<T>> {
     return runWithHizoFSResourceLease({
       fileSystemId: this.fileSystemId,
-      operation: async () => await this.mutateWithResourceLeaseHeld({ operation }),
+      operation: async () => await this.mutateWithResourceLeaseHeldAndReturnState({
+        operation,
+      }),
     });
   }
 
@@ -113,6 +132,20 @@ export class HizoFSCore {
       state: HizoFSActiveState;
     }) => Promise<HizoFSMutationResult<T>>;
   }): Promise<T> {
+    return (
+      await this.mutateWithResourceLeaseHeldAndReturnState({ operation })
+    ).result;
+  }
+
+  async mutateWithResourceLeaseHeldAndReturnState<T>({
+    operation,
+  }: {
+    operation: ({
+      state,
+    }: {
+      state: HizoFSActiveState;
+    }) => Promise<HizoFSMutationResult<T>>;
+  }): Promise<HizoFSPublishedMutation<T>> {
     while (true) {
       const baseState = await this.loadActiveState();
       assertWritableActiveState({ state: baseState });
@@ -138,7 +171,10 @@ export class HizoFSCore {
             commitObjectId: baseState.commitObjectId,
           })
         ) {
-          return mutation.result;
+          return {
+            result: mutation.result,
+            state: baseState,
+          };
         }
         continue;
       case "yes":
@@ -170,7 +206,10 @@ export class HizoFSCore {
       case "retry":
         continue;
       case "published":
-        return mutation.result;
+        return {
+          result: mutation.result,
+          state: publication.state,
+        };
       default: {
         const _ex: never = publication;
         throw new Error(`Unhandled HizoFS publication state: ${String(_ex)}`);

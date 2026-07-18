@@ -162,6 +162,7 @@ describe('HizoFS benchmark engine', () => {
         maximumPlaintextChunkReadBytesInFlightPerReader: 1024 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
+        decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
         fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
         fileChunkCacheEntryLimitPerRuntime: 2048,
         fileChunkCacheAdmission: 'read_only',

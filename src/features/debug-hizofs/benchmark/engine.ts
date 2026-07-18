@@ -35,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 14 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 15 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -320,7 +320,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 14,
+    schemaVersion: 15,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -367,6 +367,8 @@ async function runHizoFSBenchmarkWithLockHeld({
           hizoFSPolicy.metadataObjectCacheByteLimit,
         metadataObjectCacheEntryLimitPerRuntime:
           hizoFSPolicy.metadataObjectCacheEntryLimit,
+        decodedInodeIndexPageCacheEntryLimitPerRuntime:
+          hizoFSPolicy.decodedInodeIndexPageCacheEntryLimit,
         fileChunkCacheByteLimitPerRuntime:
           hizoFSPolicy.fileChunkCacheByteLimit,
         fileChunkCacheEntryLimitPerRuntime:
@@ -1957,6 +1959,10 @@ function subtractHizoFSRuntimeDiagnostics({
         before: before.caches.backingFileSnapshot,
         after: after.caches.backingFileSnapshot,
       }),
+      decodedInodeIndexPage: subtractHizoFSRuntimeCacheDiagnostics({
+        before: before.caches.decodedInodeIndexPage,
+        after: after.caches.decodedInodeIndexPage,
+      }),
     },
     resources: {
       writerDirtyChunks: copyHizoFSRuntimeResourceDiagnostics({
@@ -2318,6 +2324,10 @@ function aggregateHizoFSRuntimeDiagnostics({
       backingFileSnapshot: aggregateHizoFSRuntimeCacheDiagnostics({
         diagnostics: diagnostics.map(value => value.caches.backingFileSnapshot),
         current: last.caches.backingFileSnapshot,
+      }),
+      decodedInodeIndexPage: aggregateHizoFSRuntimeCacheDiagnostics({
+        diagnostics: diagnostics.map(value => value.caches.decodedInodeIndexPage),
+        current: last.caches.decodedInodeIndexPage,
       }),
     },
     resources: {

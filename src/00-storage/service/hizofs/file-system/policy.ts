@@ -10,6 +10,7 @@ export type HizoFSPolicy = {
   readonly inlineDirectoryEntryLimit: number;
   readonly fileChunkSize: number;
   readonly indexPageEntryLimit: number;
+  readonly decodedInodeIndexPageCacheEntryLimit: number;
   readonly readerStreamChunkSize: number;
   readonly fileChunkReadPrefetchConcurrency: number;
   readonly backingFileHandleCacheEntryLimit: number;
@@ -28,6 +29,9 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   inlineDirectoryEntryLimit: 32,
   fileChunkSize: 256 * 1024,
   indexPageEntryLimit: 64,
+  // Inode-index pages contain only fixed-size stable IDs and ObjectRefs. Keep
+  // this parsed-page cache separate and explicitly bounded per runtime.
+  decodedInodeIndexPageCacheEntryLimit: 128,
   readerStreamChunkSize: 256 * 1024,
   fileChunkReadPrefetchConcurrency: 4,
   backingFileHandleCacheEntryLimit: 1024,

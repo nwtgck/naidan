@@ -197,6 +197,7 @@ export async function createHizoFSInspectionReader({
           commitStore: runtime.commitStore,
           inodeIndex: runtime.inodeIndex,
           inodeStore: runtime.inodeStore,
+          validatedRootCache: undefined,
         });
         const superblockSlots = await inspectSuperblockSlots({
           objectStore: runtime.objectStore,
