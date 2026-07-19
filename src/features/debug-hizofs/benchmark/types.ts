@@ -277,6 +277,9 @@ const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
   candidateObjectCount: z.number().int().nonnegative(),
   removedObjectCount: z.number().int().nonnegative(),
   changedSegmentCount: z.number().int().nonnegative(),
+  compactedSegmentCount: z.number().int().nonnegative(),
+  relocatedObjectCount: z.number().int().nonnegative(),
+  reclaimedCompactionObjectCount: z.number().int().nonnegative(),
   ignoredPhysicalPathCount: z.number().int().nonnegative(),
   configuredRemoveConcurrency: z.number().int().positive(),
   configuredMaximumRemovalsPerSlice: z.number().int().positive(),
@@ -288,6 +291,12 @@ const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
   chunkVerificationDurationMs: z.number().nonnegative(),
   objectListingDurationMs: z.number().nonnegative(),
   candidateBuildDurationMs: z.number().nonnegative(),
+  compactionWallDurationMs: z.number().nonnegative(),
+  compactionLockWaitDurationMs: z.number().nonnegative(),
+  compactionLockHoldDurationMs: z.number().nonnegative(),
+  compactionYieldDurationMs: z.number().nonnegative(),
+  compactionSliceCount: z.number().int().nonnegative(),
+  maximumCompactionSliceDurationMs: z.number().nonnegative(),
   sweepWallDurationMs: z.number().nonnegative(),
   sweepLockWaitDurationMs: z.number().nonnegative(),
   sweepLockHoldDurationMs: z.number().nonnegative(),
@@ -299,6 +308,8 @@ const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
   maximumRemovesInFlight: z.number().int().nonnegative(),
   maximumRemovalsInSlice: z.number().int().nonnegative(),
   sliceDurationBudgetOverrunCount: z.number().int().nonnegative(),
+  resumedFromCheckpoint: z.boolean(),
+  checkpointSequence: z.number().int().nonnegative(),
 }).strict();
 
 const benchmarkForegroundLatencySchema = z.object({

@@ -62,7 +62,9 @@ describe('HizoFS authenticated sealed-segment index', () => {
       },
     });
     const corrupted = bytes.slice();
-    corrupted[corrupted.byteLength - 1] ^= 1;
+    const corruptedLastByte = corrupted.at(-1);
+    if (corruptedLastByte === undefined) throw new Error('Expected non-empty authenticated bytes');
+    corrupted[corrupted.byteLength - 1] = corruptedLastByte ^ 1;
 
     await expect(decodeHizoFSSegmentIndex({
       rootKey,

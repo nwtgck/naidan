@@ -139,12 +139,15 @@ describe('HizoFS immutable object store', () => {
     expect(indexedDataReads).toHaveLength(1);
     readRange.mockClear();
 
-    const corrupted = indexBytes?.slice() ?? new Uint8Array();
-    corrupted[corrupted.byteLength - 1] ^= 1;
+    if (indexBytes === undefined) throw new Error('Expected a sealed-segment index');
+    const corrupted = indexBytes.slice();
+    const corruptedLastByte = corrupted.at(-1);
+    if (corruptedLastByte === undefined) throw new Error('Expected non-empty authenticated bytes');
+    corrupted[corrupted.byteLength - 1] = corruptedLastByte ^ 1;
     await backingStore.write({ path: indexPath, bytes: corrupted });
     const listing = await store.listPhysicalObjects();
     expect(listing.entries.map(entry => entry.objectId)).toEqual(
-      expect.arrayContaining(objectIds),
+      expect.arrayContaining([...objectIds]),
     );
     expect(listing.ignoredPhysicalPaths).toContain(indexPath.join('/'));
     const rebuiltDataReads = readRange.mock.calls.filter(([arguments_]) =>

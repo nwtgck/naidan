@@ -44,8 +44,11 @@ describe('HizoFS garbage-collection checkpoint', () => {
 
     const firstPath = TEST_ONLY.pathForSlot({ slot: 0 });
     const first = await backingStore.read({ path: firstPath });
-    const corrupt = first?.slice() ?? new Uint8Array();
-    corrupt[corrupt.byteLength - 1] ^= 1;
+    if (first === undefined) throw new Error('Expected the first checkpoint slot');
+    const corrupt = first.slice();
+    const corruptLastByte = corrupt.at(-1);
+    if (corruptLastByte === undefined) throw new Error('Expected non-empty authenticated bytes');
+    corrupt[corrupt.byteLength - 1] = corruptLastByte ^ 1;
     await backingStore.write({ path: firstPath, bytes: corrupt });
     const reopened = new HizoFSGarbageCollectionCheckpointStore({ backingStore, rootKey, fileSystemId: FILE_SYSTEM_ID });
     await expect(reopened.read()).resolves.toEqual(checkpoint);

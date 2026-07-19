@@ -51,8 +51,11 @@ describe('HizoFS relocation store', () => {
     await store.publish({ mappings: new Map([[b, c]]) });
     const newestPath = TEST_ONLY.pathForSlot({ slot: 0 });
     const newest = await backing.read({ path: newestPath });
-    const corrupted = newest?.slice() ?? new Uint8Array();
-    corrupted[corrupted.byteLength - 1] ^= 1;
+    if (newest === undefined) throw new Error('Expected the newest relocation slot');
+    const corrupted = newest.slice();
+    const corruptedLastByte = corrupted.at(-1);
+    if (corruptedLastByte === undefined) throw new Error('Expected non-empty authenticated bytes');
+    corrupted[corrupted.byteLength - 1] = corruptedLastByte ^ 1;
     await backing.write({ path: newestPath, bytes: corrupted });
 
     const rootKey = await importHizoFSRootKey({ rawRootKey: new Uint8Array(32).fill(7) });

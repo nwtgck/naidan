@@ -135,6 +135,22 @@ function createSession(): OpfsEncryptionDebugSession {
         rootDirectoryNodeId: 'root-a',
         inodeIndexRootObjectId: 'inode-index-a',
       },
+      maintenance: {
+        segmentIndexes: {
+          discoveredSegmentCount: 0,
+          readableSegmentCount: 0,
+          authenticatedIndexCount: 0,
+          rebuiltMissingIndexCount: 0,
+          rebuiltInvalidIndexCount: 0,
+        },
+        relocationMap: { status: 'valid', sequence: 0, mappingCount: 0 },
+        garbageCollectionCheckpoint: { status: 'absent' },
+        recoveryAssessment: {
+          status: 'healthy',
+          reasons: [],
+          automaticRepairPerformed: false,
+        },
+      },
     },
     hizoFSReader: {} as OpfsEncryptionDebugSession['hizoFSReader'],
     decryptedRoot: {
