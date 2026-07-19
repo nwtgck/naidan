@@ -1013,21 +1013,25 @@ function parsePersistedDto({ object }: {
      * representation that was actually read from the encrypted record.
      * Parsed data is used only for validated reference traversal.
      */
+    const rootDirectoryEntryPoint = object.record.kind === 'commit'
+      ? (() => {
+        const commit = persistedDtoSchemasByRecordKind.commit.parse(validation.data);
+        return {
+          commitObjectId: object.objectId,
+          revision: commit.revision,
+          publicationId: commit.publicationId,
+          rootDirectoryNodeId: commit.rootDirectoryNodeId,
+          inodeIndexRootObjectId: commit.inodeIndexRootObjectId,
+        };
+      })()
+      : undefined;
     return {
       validation: { status: 'valid', persistedDto: object.record.metadata },
       references: deriveReferences({
         kind: object.record.kind,
         persistedDto: validation.data,
       }),
-      rootDirectoryEntryPoint: object.record.kind === 'commit'
-        ? {
-          commitObjectId: object.objectId,
-          revision: (validation.data as HizoFSCommitDto).revision,
-          publicationId: (validation.data as HizoFSCommitDto).publicationId,
-          rootDirectoryNodeId: (validation.data as HizoFSCommitDto).rootDirectoryNodeId,
-          inodeIndexRootObjectId: (validation.data as HizoFSCommitDto).inodeIndexRootObjectId,
-        }
-        : undefined,
+      rootDirectoryEntryPoint,
     };
   } catch (error) {
     return {

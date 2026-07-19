@@ -16,10 +16,37 @@ describe('HizoFS DTO schemas', () => {
     expect(HizoFSDescriptorSchemaDto.parse({
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: 'instance-id',
     })).toEqual({
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: 'instance-id',
     });
+  });
+
+  it('strips unknown persisted fields without weakening required fields', () => {
+    expect(HizoFSDescriptorSchemaDto.parse({
+      format: 'hizofs',
+      formatVersion: 1,
+      instanceId: 'instance-id',
+      addedByNewerNaidan: 'ignored',
+    })).toEqual({
+      format: 'hizofs',
+      formatVersion: 1,
+      instanceId: 'instance-id',
+    });
+    expect(HizoFSSubvolumeDescriptorSchemaDto.parse({
+      subvolumeId: 'writable-subvolume',
+      access: 'read_write',
+      addedByNewerNaidan: true,
+    })).toEqual({
+      subvolumeId: 'writable-subvolume',
+      access: 'read_write',
+    });
+    expect(HizoFSDescriptorSchemaDto.safeParse({
+      format: 'hizofs',
+      formatVersion: 1,
+    }).success).toBe(false);
   });
 
   it('parses the immutable commit root', () => {
@@ -79,7 +106,7 @@ describe('HizoFS DTO schemas', () => {
       access: 'read_only',
       fixedCommitObjectId: 'commit-object',
     }).success).toBe(false);
-    expect(HizoFSSubvolumeMountIndexPageSchemaDto.safeParse({
+    expect(HizoFSSubvolumeMountIndexPageSchemaDto.parse({
       type: 'leaf',
       mounts: [{
         mountId: 'mount-id',
@@ -88,7 +115,15 @@ describe('HizoFS DTO schemas', () => {
         entryName: 'mounted-name',
         access: 'read',
       }],
-    }).success).toBe(false);
+    })).toEqual({
+      type: 'leaf',
+      mounts: [{
+        mountId: 'mount-id',
+        subvolumeDescriptorObjectId: 'descriptor-object',
+        parentDirectoryNodeId: 'parent-directory-node',
+        entryName: 'mounted-name',
+      }],
+    });
     expect(HizoFSSubvolumeMountIndexPageSchemaDto.safeParse({
       type: 'leaf',
       mounts: [{
@@ -159,6 +194,7 @@ describe('HizoFS DTO schemas', () => {
     expect(() => HizoFSDescriptorSchemaDto.parse({
       format: 'hizofs',
       formatVersion: 2,
+      instanceId: 'instance-id',
     })).toThrow();
   });
 

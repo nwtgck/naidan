@@ -1,74 +1,58 @@
 import { z } from 'zod';
 
-export type HizoFSDescriptorDto = {
-  readonly format: 'hizofs';
-  readonly formatVersion: 1;
-  readonly instanceId: string;
-};
+function readonlyArraySchema<ElementSchema extends z.ZodType>({
+  elementSchema,
+}: {
+  elementSchema: ElementSchema;
+}) {
+  return z.array(elementSchema).transform(
+    (elements): readonly z.infer<ElementSchema>[] => elements,
+  );
+}
 
-export const HizoFSDescriptorSchemaDto: z.ZodType<HizoFSDescriptorDto> = z.object({
+export const HizoFSDescriptorSchemaDto = z.object({
   format: z.literal('hizofs'),
   formatVersion: z.literal(1),
   instanceId: z.string(),
 });
 
-export type HizoFSSubvolumeAccessDto =
-  | 'read'
-  | 'read_write';
+export type HizoFSDescriptorDto = z.infer<typeof HizoFSDescriptorSchemaDto>;
 
-export const HizoFSSubvolumeAccessSchemaDto: z.ZodType<
-  HizoFSSubvolumeAccessDto
-> = z.enum(['read', 'read_write']);
+export const HizoFSSubvolumeAccessSchemaDto = z.enum(['read', 'read_write']);
 
-export type HizoFSSubvolumeDescriptorDto =
-  | {
-      readonly subvolumeId: string;
-      readonly access: 'read';
-      readonly fixedCommitObjectId: string;
-    }
-  | {
-      readonly subvolumeId: string;
-      readonly access: 'read_write';
-    };
+export type HizoFSSubvolumeAccessDto = z.infer<
+  typeof HizoFSSubvolumeAccessSchemaDto
+>;
 
-export const HizoFSSubvolumeDescriptorSchemaDto: z.ZodType<
-  HizoFSSubvolumeDescriptorDto
-> = z.discriminatedUnion('access', [
-  z.object({
-    subvolumeId: z.string(),
-    access: z.literal('read'),
-    fixedCommitObjectId: z.string(),
-  }).strict(),
-  z.object({
-    subvolumeId: z.string(),
-    access: z.literal('read_write'),
-  }).strict(),
-]);
+export const HizoFSSubvolumeDescriptorSchemaDto = z.discriminatedUnion(
+  'access',
+  [
+    z.object({
+      subvolumeId: z.string(),
+      access: z.literal('read'),
+      fixedCommitObjectId: z.string(),
+    }),
+    z.object({
+      subvolumeId: z.string(),
+      access: z.literal('read_write'),
+    }),
+  ],
+);
 
-export type HizoFSSuperblockDto = {
-  readonly sequence: number;
-  readonly fileSystemId: string;
-  readonly subvolumeDescriptorObjectId: string;
-  readonly activeCommitObjectId: string;
-};
+export type HizoFSSubvolumeDescriptorDto = z.infer<
+  typeof HizoFSSubvolumeDescriptorSchemaDto
+>;
 
-export const HizoFSSuperblockSchemaDto: z.ZodType<HizoFSSuperblockDto> = z.object({
+export const HizoFSSuperblockSchemaDto = z.object({
   sequence: z.number(),
   fileSystemId: z.string(),
   subvolumeDescriptorObjectId: z.string(),
   activeCommitObjectId: z.string(),
 });
 
-export type HizoFSCommitDto = {
-  readonly revision: number;
-  readonly publicationId: string;
-  readonly subvolumeId: string;
-  readonly rootDirectoryNodeId: string;
-  readonly inodeIndexRootObjectId: string;
-  readonly subvolumeMountIndexRootObjectId: string;
-};
+export type HizoFSSuperblockDto = z.infer<typeof HizoFSSuperblockSchemaDto>;
 
-export const HizoFSCommitSchemaDto: z.ZodType<HizoFSCommitDto> = z.object({
+export const HizoFSCommitSchemaDto = z.object({
   revision: z.number(),
   publicationId: z.string(),
   subvolumeId: z.string(),
@@ -77,104 +61,93 @@ export const HizoFSCommitSchemaDto: z.ZodType<HizoFSCommitDto> = z.object({
   subvolumeMountIndexRootObjectId: z.string(),
 });
 
-export type HizoFSNodeKindDto =
-  | 'file'
-  | 'directory'
-  | 'symlink';
+export type HizoFSCommitDto = z.infer<typeof HizoFSCommitSchemaDto>;
 
-export const HizoFSNodeKindSchemaDto: z.ZodType<HizoFSNodeKindDto> = z.enum([
+export const HizoFSNodeKindSchemaDto = z.enum([
   'file',
   'directory',
   'symlink',
 ]);
 
-export type HizoFSNodeDirectoryEntryDto =
-  | {
-      readonly name: string;
-      readonly kind: 'file';
-      readonly nodeId: string;
-    }
-  | {
-      readonly name: string;
-      readonly kind: 'directory';
-      readonly nodeId: string;
-    }
-  | {
-      readonly name: string;
-      readonly kind: 'symlink';
-      readonly nodeId: string;
-    };
+export type HizoFSNodeKindDto = z.infer<typeof HizoFSNodeKindSchemaDto>;
 
-export type HizoFSSubvolumeDirectoryEntryDto = {
-  readonly name: string;
-  readonly kind: 'subvolume';
-  readonly mountId: string;
-};
+const HizoFSFileDirectoryEntrySchemaDto = z.object({
+  name: z.string(),
+  kind: z.literal('file'),
+  nodeId: z.string(),
+});
 
-export type HizoFSDirectoryEntryDto =
-  | HizoFSNodeDirectoryEntryDto
-  | HizoFSSubvolumeDirectoryEntryDto;
+const HizoFSDirectoryDirectoryEntrySchemaDto = z.object({
+  name: z.string(),
+  kind: z.literal('directory'),
+  nodeId: z.string(),
+});
 
-export const HizoFSDirectoryEntrySchemaDto: z.ZodType<HizoFSDirectoryEntryDto> =
-  z.discriminatedUnion('kind', [
-    z.object({
-      name: z.string(),
-      kind: z.literal('file'),
-      nodeId: z.string(),
-    }).strict(),
-    z.object({
-      name: z.string(),
-      kind: z.literal('directory'),
-      nodeId: z.string(),
-    }).strict(),
-    z.object({
-      name: z.string(),
-      kind: z.literal('symlink'),
-      nodeId: z.string(),
-    }).strict(),
-    z.object({
-      name: z.string(),
-      kind: z.literal('subvolume'),
-      mountId: z.string(),
-    }).strict(),
-  ]);
+const HizoFSSymlinkDirectoryEntrySchemaDto = z.object({
+  name: z.string(),
+  kind: z.literal('symlink'),
+  nodeId: z.string(),
+});
 
-export type HizoFSInlineFileStorageDto = {
-  readonly type: 'inline';
-};
+const HizoFSSubvolumeDirectoryEntrySchemaDto = z.object({
+  name: z.string(),
+  kind: z.literal('subvolume'),
+  mountId: z.string(),
+});
 
-export type HizoFSExtentFileStorageDto = {
-  readonly type: 'extents';
-  readonly chunkSize: number;
-  readonly extentIndexRootObjectId: string;
-};
+const HizoFSNodeDirectoryEntrySchemaDto = z.discriminatedUnion('kind', [
+  HizoFSFileDirectoryEntrySchemaDto,
+  HizoFSDirectoryDirectoryEntrySchemaDto,
+  HizoFSSymlinkDirectoryEntrySchemaDto,
+]);
 
-export type HizoFSFileStorageDto =
-  | HizoFSInlineFileStorageDto
-  | HizoFSExtentFileStorageDto;
+export type HizoFSNodeDirectoryEntryDto = z.infer<
+  typeof HizoFSNodeDirectoryEntrySchemaDto
+>;
 
-export const HizoFSFileStorageSchemaDto: z.ZodType<HizoFSFileStorageDto> =
-  z.discriminatedUnion('type', [
-    z.object({
-      type: z.literal('inline'),
-    }),
-    z.object({
-      type: z.literal('extents'),
-      chunkSize: z.number(),
-      extentIndexRootObjectId: z.string(),
-    }),
-  ]);
+export type HizoFSSubvolumeDirectoryEntryDto = z.infer<
+  typeof HizoFSSubvolumeDirectoryEntrySchemaDto
+>;
 
-export type HizoFSFileInodeDto = {
-  readonly nodeId: string;
-  readonly revision: number;
-  readonly createdAt: number | null;
-  readonly modifiedAt: number | null;
-  readonly size: number;
-  readonly storage: HizoFSFileStorageDto;
-};
+export const HizoFSDirectoryEntrySchemaDto = z.discriminatedUnion('kind', [
+  HizoFSFileDirectoryEntrySchemaDto,
+  HizoFSDirectoryDirectoryEntrySchemaDto,
+  HizoFSSymlinkDirectoryEntrySchemaDto,
+  HizoFSSubvolumeDirectoryEntrySchemaDto,
+]);
 
-export const HizoFSFileInodeSchemaDto: z.ZodType<HizoFSFileInodeDto> = z.object({
+export type HizoFSDirectoryEntryDto = z.infer<
+  typeof HizoFSDirectoryEntrySchemaDto
+>;
+
+const HizoFSInlineFileStorageSchemaDto = z.object({
+  type: z.literal('inline'),
+});
+
+const HizoFSExtentFileStorageSchemaDto = z.object({
+  type: z.literal('extents'),
+  chunkSize: z.number(),
+  extentIndexRootObjectId: z.string(),
+});
+
+export type HizoFSInlineFileStorageDto = z.infer<
+  typeof HizoFSInlineFileStorageSchemaDto
+>;
+
+export type HizoFSExtentFileStorageDto = z.infer<
+  typeof HizoFSExtentFileStorageSchemaDto
+>;
+
+export const HizoFSFileStorageSchemaDto = z.discriminatedUnion('type', [
+  HizoFSInlineFileStorageSchemaDto,
+  HizoFSExtentFileStorageSchemaDto,
+]);
+
+export type HizoFSFileStorageDto = z.infer<
+  typeof HizoFSFileStorageSchemaDto
+>;
+
+export const HizoFSFileInodeSchemaDto = z.object({
   nodeId: z.string(),
   revision: z.number(),
   createdAt: z.number().nullable(),
@@ -183,58 +156,48 @@ export const HizoFSFileInodeSchemaDto: z.ZodType<HizoFSFileInodeDto> = z.object(
   storage: HizoFSFileStorageSchemaDto,
 });
 
-export type HizoFSInlineDirectoryStorageDto = {
-  readonly type: 'inline';
-  readonly entries: readonly HizoFSDirectoryEntryDto[];
-};
+export type HizoFSFileInodeDto = z.infer<typeof HizoFSFileInodeSchemaDto>;
 
-export type HizoFSIndexedDirectoryStorageDto = {
-  readonly type: 'indexed';
-  readonly directoryIndexRootObjectId: string;
-};
+const HizoFSInlineDirectoryStorageSchemaDto = z.object({
+  type: z.literal('inline'),
+  entries: readonlyArraySchema({ elementSchema: HizoFSDirectoryEntrySchemaDto }),
+});
 
-export type HizoFSDirectoryStorageDto =
-  | HizoFSInlineDirectoryStorageDto
-  | HizoFSIndexedDirectoryStorageDto;
+const HizoFSIndexedDirectoryStorageSchemaDto = z.object({
+  type: z.literal('indexed'),
+  directoryIndexRootObjectId: z.string(),
+});
 
-export const HizoFSDirectoryStorageSchemaDto: z.ZodType<HizoFSDirectoryStorageDto> =
-  z.discriminatedUnion('type', [
-    z.object({
-      type: z.literal('inline'),
-      entries: z.array(HizoFSDirectoryEntrySchemaDto),
-    }),
-    z.object({
-      type: z.literal('indexed'),
-      directoryIndexRootObjectId: z.string(),
-    }),
-  ]);
+export type HizoFSInlineDirectoryStorageDto = z.infer<
+  typeof HizoFSInlineDirectoryStorageSchemaDto
+>;
 
-export type HizoFSDirectoryInodeDto = {
-  readonly nodeId: string;
-  readonly revision: number;
-  readonly createdAt: number | null;
-  readonly modifiedAt: number | null;
-  readonly storage: HizoFSDirectoryStorageDto;
-};
+export type HizoFSIndexedDirectoryStorageDto = z.infer<
+  typeof HizoFSIndexedDirectoryStorageSchemaDto
+>;
 
-export const HizoFSDirectoryInodeSchemaDto: z.ZodType<HizoFSDirectoryInodeDto> =
-  z.object({
-    nodeId: z.string(),
-    revision: z.number(),
-    createdAt: z.number().nullable(),
-    modifiedAt: z.number().nullable(),
-    storage: HizoFSDirectoryStorageSchemaDto,
-  });
+export const HizoFSDirectoryStorageSchemaDto = z.discriminatedUnion('type', [
+  HizoFSInlineDirectoryStorageSchemaDto,
+  HizoFSIndexedDirectoryStorageSchemaDto,
+]);
 
-export type HizoFSSymlinkInodeDto = {
-  readonly nodeId: string;
-  readonly revision: number;
-  readonly createdAt: number | null;
-  readonly modifiedAt: number | null;
-  readonly target: string;
-};
+export type HizoFSDirectoryStorageDto = z.infer<
+  typeof HizoFSDirectoryStorageSchemaDto
+>;
 
-export const HizoFSSymlinkInodeSchemaDto: z.ZodType<HizoFSSymlinkInodeDto> = z.object({
+export const HizoFSDirectoryInodeSchemaDto = z.object({
+  nodeId: z.string(),
+  revision: z.number(),
+  createdAt: z.number().nullable(),
+  modifiedAt: z.number().nullable(),
+  storage: HizoFSDirectoryStorageSchemaDto,
+});
+
+export type HizoFSDirectoryInodeDto = z.infer<
+  typeof HizoFSDirectoryInodeSchemaDto
+>;
+
+export const HizoFSSymlinkInodeSchemaDto = z.object({
   nodeId: z.string(),
   revision: z.number(),
   createdAt: z.number().nullable(),
@@ -242,186 +205,139 @@ export const HizoFSSymlinkInodeSchemaDto: z.ZodType<HizoFSSymlinkInodeDto> = z.o
   target: z.string(),
 });
 
-export type HizoFSInodeIndexLeafEntryDto = {
-  readonly nodeId: string;
-  readonly inodeObjectId: string;
-};
+export type HizoFSSymlinkInodeDto = z.infer<
+  typeof HizoFSSymlinkInodeSchemaDto
+>;
 
-export const HizoFSInodeIndexLeafEntrySchemaDto: z.ZodType<
-  HizoFSInodeIndexLeafEntryDto
-> = z.object({
+export const HizoFSInodeIndexLeafEntrySchemaDto = z.object({
   nodeId: z.string(),
   inodeObjectId: z.string(),
 });
 
-export type HizoFSInodeIndexBranchChildDto = {
-  readonly upperBoundNodeId: string;
-  readonly childPageObjectId: string;
-};
+export type HizoFSInodeIndexLeafEntryDto = z.infer<
+  typeof HizoFSInodeIndexLeafEntrySchemaDto
+>;
 
-export const HizoFSInodeIndexBranchChildSchemaDto: z.ZodType<
-  HizoFSInodeIndexBranchChildDto
-> = z.object({
+export const HizoFSInodeIndexBranchChildSchemaDto = z.object({
   upperBoundNodeId: z.string(),
   childPageObjectId: z.string(),
 });
 
-export type HizoFSInodeIndexPageDto =
-  | {
-      readonly type: 'leaf';
-      readonly entries: readonly HizoFSInodeIndexLeafEntryDto[];
-    }
-  | {
-      readonly type: 'branch';
-      readonly children: readonly HizoFSInodeIndexBranchChildDto[];
-    };
+export type HizoFSInodeIndexBranchChildDto = z.infer<
+  typeof HizoFSInodeIndexBranchChildSchemaDto
+>;
 
-export const HizoFSInodeIndexPageSchemaDto: z.ZodType<HizoFSInodeIndexPageDto> =
-  z.discriminatedUnion('type', [
-    z.object({
-      type: z.literal('leaf'),
-      entries: z.array(HizoFSInodeIndexLeafEntrySchemaDto),
-    }),
-    z.object({
-      type: z.literal('branch'),
-      children: z.array(HizoFSInodeIndexBranchChildSchemaDto),
-    }),
-  ]);
+export const HizoFSInodeIndexPageSchemaDto = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('leaf'),
+    entries: readonlyArraySchema({ elementSchema: HizoFSInodeIndexLeafEntrySchemaDto }),
+  }),
+  z.object({
+    type: z.literal('branch'),
+    children: readonlyArraySchema({ elementSchema: HizoFSInodeIndexBranchChildSchemaDto }),
+  }),
+]);
 
-export type HizoFSDirectoryIndexBranchChildDto = {
-  readonly upperBoundName: string;
-  readonly childPageObjectId: string;
-};
+export type HizoFSInodeIndexPageDto = z.infer<
+  typeof HizoFSInodeIndexPageSchemaDto
+>;
 
-export const HizoFSDirectoryIndexBranchChildSchemaDto: z.ZodType<
-  HizoFSDirectoryIndexBranchChildDto
-> = z.object({
+export const HizoFSDirectoryIndexBranchChildSchemaDto = z.object({
   upperBoundName: z.string(),
   childPageObjectId: z.string(),
 });
 
-export type HizoFSDirectoryIndexPageDto =
-  | {
-      readonly type: 'leaf';
-      readonly entries: readonly HizoFSDirectoryEntryDto[];
-    }
-  | {
-      readonly type: 'branch';
-      readonly children: readonly HizoFSDirectoryIndexBranchChildDto[];
-    };
+export type HizoFSDirectoryIndexBranchChildDto = z.infer<
+  typeof HizoFSDirectoryIndexBranchChildSchemaDto
+>;
 
-export const HizoFSDirectoryIndexPageSchemaDto: z.ZodType<
-  HizoFSDirectoryIndexPageDto
-> = z.discriminatedUnion('type', [
+export const HizoFSDirectoryIndexPageSchemaDto = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('leaf'),
-    entries: z.array(HizoFSDirectoryEntrySchemaDto),
+    entries: readonlyArraySchema({ elementSchema: HizoFSDirectoryEntrySchemaDto }),
   }),
   z.object({
     type: z.literal('branch'),
-    children: z.array(HizoFSDirectoryIndexBranchChildSchemaDto),
+    children: readonlyArraySchema({ elementSchema: HizoFSDirectoryIndexBranchChildSchemaDto }),
   }),
 ]);
 
-export type HizoFSSubvolumeMountDto = {
-  readonly mountId: string;
-  readonly subvolumeDescriptorObjectId: string;
-  readonly parentDirectoryNodeId: string;
-  readonly entryName: string;
-};
+export type HizoFSDirectoryIndexPageDto = z.infer<
+  typeof HizoFSDirectoryIndexPageSchemaDto
+>;
 
-export const HizoFSSubvolumeMountSchemaDto: z.ZodType<
-  HizoFSSubvolumeMountDto
-> = z.object({
+export const HizoFSSubvolumeMountSchemaDto = z.object({
   mountId: z.string(),
   subvolumeDescriptorObjectId: z.string(),
   parentDirectoryNodeId: z.string(),
   entryName: z.string(),
-}).strict();
+});
 
-export type HizoFSSubvolumeMountIndexBranchChildDto = {
-  readonly upperBoundMountId: string;
-  readonly childPageObjectId: string;
-};
+export type HizoFSSubvolumeMountDto = z.infer<
+  typeof HizoFSSubvolumeMountSchemaDto
+>;
 
-export const HizoFSSubvolumeMountIndexBranchChildSchemaDto: z.ZodType<
-  HizoFSSubvolumeMountIndexBranchChildDto
-> = z.object({
+export const HizoFSSubvolumeMountIndexBranchChildSchemaDto = z.object({
   upperBoundMountId: z.string(),
   childPageObjectId: z.string(),
-}).strict();
+});
 
-export type HizoFSSubvolumeMountIndexPageDto =
-  | {
-      readonly type: 'leaf';
-      readonly mounts: readonly HizoFSSubvolumeMountDto[];
-    }
-  | {
-      readonly type: 'branch';
-      readonly children: readonly HizoFSSubvolumeMountIndexBranchChildDto[];
-    };
+export type HizoFSSubvolumeMountIndexBranchChildDto = z.infer<
+  typeof HizoFSSubvolumeMountIndexBranchChildSchemaDto
+>;
 
-export const HizoFSSubvolumeMountIndexPageSchemaDto: z.ZodType<
-  HizoFSSubvolumeMountIndexPageDto
-> = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('leaf'),
-    mounts: z.array(HizoFSSubvolumeMountSchemaDto),
-  }).strict(),
-  z.object({
-    type: z.literal('branch'),
-    children: z.array(HizoFSSubvolumeMountIndexBranchChildSchemaDto),
-  }).strict(),
-]);
+export const HizoFSSubvolumeMountIndexPageSchemaDto = z.discriminatedUnion(
+  'type',
+  [
+    z.object({
+      type: z.literal('leaf'),
+      mounts: readonlyArraySchema({ elementSchema: HizoFSSubvolumeMountSchemaDto }),
+    }),
+    z.object({
+      type: z.literal('branch'),
+      children: readonlyArraySchema({ elementSchema: HizoFSSubvolumeMountIndexBranchChildSchemaDto }),
+    }),
+  ],
+);
 
-export type HizoFSFileExtentDto = {
-  readonly chunkIndex: number;
-  readonly chunkObjectId: string;
-};
+export type HizoFSSubvolumeMountIndexPageDto = z.infer<
+  typeof HizoFSSubvolumeMountIndexPageSchemaDto
+>;
 
-export const HizoFSFileExtentSchemaDto: z.ZodType<HizoFSFileExtentDto> = z.object({
+export const HizoFSFileExtentSchemaDto = z.object({
   chunkIndex: z.number(),
   chunkObjectId: z.string(),
 });
 
-export type HizoFSFileExtentBranchChildDto = {
-  readonly upperBoundChunkIndex: number;
-  readonly childPageObjectId: string;
-};
+export type HizoFSFileExtentDto = z.infer<typeof HizoFSFileExtentSchemaDto>;
 
-export const HizoFSFileExtentBranchChildSchemaDto: z.ZodType<
-  HizoFSFileExtentBranchChildDto
-> = z.object({
+export const HizoFSFileExtentBranchChildSchemaDto = z.object({
   upperBoundChunkIndex: z.number(),
   childPageObjectId: z.string(),
 });
 
-export type HizoFSFileExtentPageDto =
-  | {
-      readonly type: 'leaf';
-      readonly extents: readonly HizoFSFileExtentDto[];
-    }
-  | {
-      readonly type: 'branch';
-      readonly children: readonly HizoFSFileExtentBranchChildDto[];
-    };
+export type HizoFSFileExtentBranchChildDto = z.infer<
+  typeof HizoFSFileExtentBranchChildSchemaDto
+>;
 
-export const HizoFSFileExtentPageSchemaDto: z.ZodType<HizoFSFileExtentPageDto> =
-  z.discriminatedUnion('type', [
-    z.object({
-      type: z.literal('leaf'),
-      extents: z.array(HizoFSFileExtentSchemaDto),
-    }),
-    z.object({
-      type: z.literal('branch'),
-      children: z.array(HizoFSFileExtentBranchChildSchemaDto),
-    }),
-  ]);
+export const HizoFSFileExtentPageSchemaDto = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('leaf'),
+    extents: readonlyArraySchema({ elementSchema: HizoFSFileExtentSchemaDto }),
+  }),
+  z.object({
+    type: z.literal('branch'),
+    children: readonlyArraySchema({ elementSchema: HizoFSFileExtentBranchChildSchemaDto }),
+  }),
+]);
 
-export type HizoFSFileChunkDto = Record<string, never>;
+export type HizoFSFileExtentPageDto = z.infer<
+  typeof HizoFSFileExtentPageSchemaDto
+>;
 
-export const HizoFSFileChunkSchemaDto: z.ZodType<HizoFSFileChunkDto> =
-  z.object({}).strict();
+export const HizoFSFileChunkSchemaDto = z.object({});
+
+export type HizoFSFileChunkDto = z.infer<typeof HizoFSFileChunkSchemaDto>;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

@@ -1,91 +1,68 @@
 import { z } from 'zod';
 
-export type OpfsEncryptionKeyDerivationDto = {
-  readonly type: 'pbkdf2_hmac_sha256';
-  readonly salt: string;
-  readonly iterations: number;
-};
+function readonlyArraySchema<ElementSchema extends z.ZodType>({
+  elementSchema,
+}: {
+  elementSchema: ElementSchema;
+}) {
+  return z.array(elementSchema).transform(
+    (elements): readonly z.infer<ElementSchema>[] => elements,
+  );
+}
 
-export const OpfsEncryptionKeyDerivationSchemaDto: z.ZodType<
-  OpfsEncryptionKeyDerivationDto
-> = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('pbkdf2_hmac_sha256'),
-    salt: z.string(),
-    iterations: z.number(),
-  }),
-]);
+export const OpfsEncryptionKeyDerivationSchemaDto = z.discriminatedUnion(
+  'type',
+  [
+    z.object({
+      type: z.literal('pbkdf2_hmac_sha256'),
+      salt: z.string(),
+      iterations: z.number(),
+    }),
+  ],
+);
 
-export type OpfsEncryptionWrappedStorageUnlockKeyDto = {
-  readonly nonce: string;
-  readonly ciphertext: string;
-};
+export type OpfsEncryptionKeyDerivationDto = z.infer<
+  typeof OpfsEncryptionKeyDerivationSchemaDto
+>;
 
-export const OpfsEncryptionWrappedStorageUnlockKeySchemaDto: z.ZodType<
-  OpfsEncryptionWrappedStorageUnlockKeyDto
-> = z.object({
+export const OpfsEncryptionWrappedStorageUnlockKeySchemaDto = z.object({
   nonce: z.string(),
   ciphertext: z.string(),
 });
 
-export type OpfsEncryptionKeySlotDto = {
-  readonly id: string;
-  readonly keyDerivation: OpfsEncryptionKeyDerivationDto;
-  readonly wrappedStorageUnlockKey: OpfsEncryptionWrappedStorageUnlockKeyDto;
-};
+export type OpfsEncryptionWrappedStorageUnlockKeyDto = z.infer<
+  typeof OpfsEncryptionWrappedStorageUnlockKeySchemaDto
+>;
 
-export const OpfsEncryptionKeySlotSchemaDto: z.ZodType<
-  OpfsEncryptionKeySlotDto
-> = z.object({
+export const OpfsEncryptionKeySlotSchemaDto = z.object({
   id: z.string(),
   keyDerivation: OpfsEncryptionKeyDerivationSchemaDto,
   wrappedStorageUnlockKey: OpfsEncryptionWrappedStorageUnlockKeySchemaDto,
 });
 
-export type OpfsEncryptionWrappedFileSystemRootKeyDto = {
-  readonly nonce: string;
-  readonly ciphertext: string;
-};
+export type OpfsEncryptionKeySlotDto = z.infer<
+  typeof OpfsEncryptionKeySlotSchemaDto
+>;
 
-export const OpfsEncryptionWrappedFileSystemRootKeySchemaDto: z.ZodType<
-  OpfsEncryptionWrappedFileSystemRootKeyDto
-> = z.object({
+export const OpfsEncryptionWrappedFileSystemRootKeySchemaDto = z.object({
   nonce: z.string(),
   ciphertext: z.string(),
 });
 
-export type OpfsEncryptionOperationPhaseDto =
-  | 'building_target'
-  | 'cleaning_up_source';
+export type OpfsEncryptionWrappedFileSystemRootKeyDto = z.infer<
+  typeof OpfsEncryptionWrappedFileSystemRootKeySchemaDto
+>;
 
-export const OpfsEncryptionOperationPhaseSchemaDto: z.ZodType<
-  OpfsEncryptionOperationPhaseDto
-> = z.enum([
+export const OpfsEncryptionOperationPhaseSchemaDto = z.enum([
   'building_target',
   'cleaning_up_source',
 ]);
 
-export type OpfsEncryptionOperationDto =
-  | {
-      readonly type: 'encrypting';
-      readonly phase: OpfsEncryptionOperationPhaseDto;
-      readonly targetEncryptedStoreId: string;
-    }
-  | {
-      readonly type: 'decrypting';
-      readonly phase: OpfsEncryptionOperationPhaseDto;
-      readonly sourceEncryptedStoreId: string;
-    }
-  | {
-      readonly type: 'reencrypting';
-      readonly phase: OpfsEncryptionOperationPhaseDto;
-      readonly sourceEncryptedStoreId: string;
-      readonly targetEncryptedStoreId: string;
-    };
+export type OpfsEncryptionOperationPhaseDto = z.infer<
+  typeof OpfsEncryptionOperationPhaseSchemaDto
+>;
 
-export const OpfsEncryptionOperationSchemaDto: z.ZodType<
-  OpfsEncryptionOperationDto
-> = z.discriminatedUnion('type', [
+export const OpfsEncryptionOperationSchemaDto = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('encrypting'),
     phase: OpfsEncryptionOperationPhaseSchemaDto,
@@ -104,55 +81,41 @@ export const OpfsEncryptionOperationSchemaDto: z.ZodType<
   }),
 ]);
 
-export type OpfsEncryptionStateDto =
-  | {
-      readonly formatVersion: 1;
-      readonly sequence: number;
-      readonly state: 'encrypted';
-      readonly keySlots: readonly OpfsEncryptionKeySlotDto[];
-      readonly activeEncryptedStoreId: string;
-    }
-  | {
-      readonly formatVersion: 1;
-      readonly sequence: number;
-      readonly state: 'transitioning';
-      readonly keySlots: readonly OpfsEncryptionKeySlotDto[];
-      readonly operation: OpfsEncryptionOperationDto;
-    };
+export type OpfsEncryptionOperationDto = z.infer<
+  typeof OpfsEncryptionOperationSchemaDto
+>;
 
-export const OpfsEncryptionStateSchemaDto: z.ZodType<OpfsEncryptionStateDto> =
-  z.discriminatedUnion('state', [
-    z.object({
-      formatVersion: z.literal(1),
-      sequence: z.number(),
-      state: z.literal('encrypted'),
-      keySlots: z.array(OpfsEncryptionKeySlotSchemaDto),
-      activeEncryptedStoreId: z.string(),
-    }),
-    z.object({
-      formatVersion: z.literal(1),
-      sequence: z.number(),
-      state: z.literal('transitioning'),
-      keySlots: z.array(OpfsEncryptionKeySlotSchemaDto),
-      operation: OpfsEncryptionOperationSchemaDto,
-    }),
-  ]);
+export const OpfsEncryptionStateSchemaDto = z.discriminatedUnion('state', [
+  z.object({
+    formatVersion: z.literal(1),
+    sequence: z.number(),
+    state: z.literal('encrypted'),
+    keySlots: readonlyArraySchema({ elementSchema: OpfsEncryptionKeySlotSchemaDto }),
+    activeEncryptedStoreId: z.string(),
+  }),
+  z.object({
+    formatVersion: z.literal(1),
+    sequence: z.number(),
+    state: z.literal('transitioning'),
+    keySlots: readonlyArraySchema({ elementSchema: OpfsEncryptionKeySlotSchemaDto }),
+    operation: OpfsEncryptionOperationSchemaDto,
+  }),
+]);
 
-export type OpfsEncryptedStoreHeaderDto = {
-  readonly formatVersion: 1;
-  readonly encryptedStoreId: string;
-  readonly fileSystemId: string;
-  readonly wrappedFileSystemRootKey: OpfsEncryptionWrappedFileSystemRootKeyDto;
-};
+export type OpfsEncryptionStateDto = z.infer<
+  typeof OpfsEncryptionStateSchemaDto
+>;
 
-export const OpfsEncryptedStoreHeaderSchemaDto: z.ZodType<
-  OpfsEncryptedStoreHeaderDto
-> = z.object({
+export const OpfsEncryptedStoreHeaderSchemaDto = z.object({
   formatVersion: z.literal(1),
   encryptedStoreId: z.string(),
   fileSystemId: z.string(),
   wrappedFileSystemRootKey: OpfsEncryptionWrappedFileSystemRootKeySchemaDto,
 });
+
+export type OpfsEncryptedStoreHeaderDto = z.infer<
+  typeof OpfsEncryptedStoreHeaderSchemaDto
+>;
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
