@@ -3,7 +3,44 @@ export type HizoFSBackingStoreEntry = {
   readonly kind: 'file' | 'directory';
 };
 
+export type HizoFSRandomAccessFileMode = 'read_only' | 'read_write';
+
+/**
+ * A bounded random-access file used by the segmented HizoFS physical layer.
+ * Implementations may use a Worker-only sync access handle or an async buffered
+ * fallback, but callers observe the same explicit flush boundary.
+ */
+export interface HizoFSRandomAccessFile {
+  getSize(): Promise<number>;
+
+  readAt({ offset, byteLength }: {
+    offset: number;
+    byteLength: number;
+  }): Promise<Uint8Array>;
+
+  writeAt({ offset, bytes }: {
+    offset: number;
+    bytes: Uint8Array;
+  }): Promise<void>;
+
+  truncate({ size }: {
+    size: number;
+  }): Promise<void>;
+
+  flush(): Promise<void>;
+
+  close(): Promise<void>;
+}
+
 export interface HizoFSBackingStore {
+  /**
+   * Returns a realm-local identity for the backing directory. Reopened
+   * runtimes over the same FileSystemDirectoryHandle share this identity,
+   * while unrelated directories using the same root key remain isolated.
+   * Cross-realm coordination still uses the root-key-derived file-system ID.
+   */
+  getCoordinationIdentity(): object;
+
   read({ path }: {
     path: readonly string[];
   }): Promise<Uint8Array | undefined>;
@@ -21,6 +58,22 @@ export interface HizoFSBackingStore {
   list({ path }: {
     path: readonly string[];
   }): AsyncIterable<HizoFSBackingStoreEntry>;
+
+  openRandomAccessFile({ path, mode, create }: {
+    path: readonly string[];
+    mode: HizoFSRandomAccessFileMode;
+    create: boolean;
+  }): Promise<HizoFSRandomAccessFile>;
+
+  getFileSize({ path }: {
+    path: readonly string[];
+  }): Promise<number | undefined>;
+
+  readRange({ path, offset, byteLength }: {
+    path: readonly string[];
+    offset: number;
+    byteLength: number;
+  }): Promise<Uint8Array | undefined>;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

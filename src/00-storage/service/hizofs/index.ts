@@ -14,6 +14,7 @@ export type {
   HizoFSBinarySlice,
   HizoFSDecodedBinaryField,
   HizoFSInspectionOverview,
+  HizoFSMaintenanceHealth,
   HizoFSInspectionReader,
   HizoFSInspectedObject,
   HizoFSPhysicalObjectEntry,

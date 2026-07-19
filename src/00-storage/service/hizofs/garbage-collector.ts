@@ -16,10 +16,16 @@ import {
   acquireHizoFSMaintenanceLease,
 } from './file-system/maintenance-lock';
 import type { HizoFSRecordKind } from './format/record';
+import { promiseAllKeyed } from '@/utils/promise';
 import {
-  getHizoFSObjectShard,
-  validateHizoFSObjectId,
-} from './object-store/object-id';
+  HizoFSGarbageCollectionCheckpointStore,
+  type HizoFSGarbageCollectionCheckpoint,
+} from './garbage-collection-checkpoint';
+import type {
+  HizoFSWholeSegmentReclaimCandidate,
+  HizoFSWholeSegmentRemovalResult,
+  HizoFSPartialSegmentCompactionCandidate,
+} from './segment-store/segmented-store';
 
 export type HizoFSGarbageCollectionSweepPolicy = {
   readonly removeConcurrency: number;
@@ -34,10 +40,29 @@ export const DEFAULT_HIZOFS_GARBAGE_COLLECTION_SWEEP_POLICY:
     maximumSliceDurationMs: 150,
   };
 
+type HizoFSGarbageCollectionCompactionPolicy = {
+  readonly minimumDeadRecordByteLength: number;
+  readonly maximumLiveRecordByteLength: number;
+  readonly maximumLiveRecordCount: number;
+  readonly maximumCandidateCount: number;
+};
+
+const DEFAULT_HIZOFS_GARBAGE_COLLECTION_COMPACTION_POLICY:
+  HizoFSGarbageCollectionCompactionPolicy = {
+    minimumDeadRecordByteLength: 1024 * 1024,
+    maximumLiveRecordByteLength: 4 * 1024 * 1024,
+    maximumLiveRecordCount: 256,
+    maximumCandidateCount: 4,
+  };
+
 export type HizoFSGarbageCollectionDiagnostics = {
   readonly reachableObjectCount: number;
   readonly candidateObjectCount: number;
   readonly removedObjectCount: number;
+  readonly changedSegmentCount: number;
+  readonly compactedSegmentCount: number;
+  readonly relocatedObjectCount: number;
+  readonly reclaimedCompactionObjectCount: number;
   readonly ignoredPhysicalPathCount: number;
   readonly configuredRemoveConcurrency: number;
   readonly configuredMaximumRemovalsPerSlice: number;
@@ -49,6 +74,12 @@ export type HizoFSGarbageCollectionDiagnostics = {
   readonly chunkVerificationDurationMs: number;
   readonly objectListingDurationMs: number;
   readonly candidateBuildDurationMs: number;
+  readonly compactionWallDurationMs: number;
+  readonly compactionLockWaitDurationMs: number;
+  readonly compactionLockHoldDurationMs: number;
+  readonly compactionYieldDurationMs: number;
+  readonly compactionSliceCount: number;
+  readonly maximumCompactionSliceDurationMs: number;
   readonly sweepWallDurationMs: number;
   readonly sweepLockWaitDurationMs: number;
   readonly sweepLockHoldDurationMs: number;
@@ -60,6 +91,8 @@ export type HizoFSGarbageCollectionDiagnostics = {
   readonly maximumRemovesInFlight: number;
   readonly maximumRemovalsInSlice: number;
   readonly sliceDurationBudgetOverrunCount: number;
+  readonly resumedFromCheckpoint: boolean;
+  readonly checkpointSequence: number;
 };
 
 export type HizoFSGarbageCollectionResult = {
@@ -101,11 +134,12 @@ type HizoFSMarkState = {
 
 type GarbageCollectionDependencies = {
   readonly now: () => number;
+  readonly compactionPolicy?: HizoFSGarbageCollectionCompactionPolicy;
   readonly afterRootSnapshot: () => Promise<void>;
-  readonly removeObject: ({ runtime, objectId }: {
+  readonly removeCandidate: ({ runtime, candidate }: {
     runtime: HizoFSRuntime;
-    objectId: string;
-  }) => Promise<void>;
+    candidate: HizoFSWholeSegmentReclaimCandidate;
+  }) => Promise<HizoFSWholeSegmentRemovalResult>;
   readonly yieldToForeground: () => Promise<void>;
 };
 
@@ -124,13 +158,29 @@ type GarbageCollectionRootSnapshot = {
 type GarbageCollectionPreparation = GarbageCollectionRootSnapshot & {
   readonly reachableObjectCount: number;
   readonly unreachableObjectIds: readonly string[];
+  readonly sweepCandidates: readonly HizoFSWholeSegmentReclaimCandidate[];
+  readonly compactionCandidates: readonly HizoFSPartialSegmentCompactionCandidate[];
   readonly markDurationMs: number;
   readonly chunkVerificationDurationMs: number;
   readonly candidateBuildDurationMs: number;
 };
 
+type GarbageCollectionCompactionMetrics = {
+  readonly compactedSegmentCount: number;
+  readonly relocatedObjectCount: number;
+  readonly reclaimedObjectCount: number;
+  readonly changedSegmentCount: number;
+  readonly wallDurationMs: number;
+  readonly lockWaitDurationMs: number;
+  readonly lockHoldDurationMs: number;
+  readonly yieldDurationMs: number;
+  readonly sliceCount: number;
+  readonly maximumSliceDurationMs: number;
+};
+
 type GarbageCollectionSweepMetrics = {
   readonly removedObjectCount: number;
+  readonly changedSegmentCount: number;
   readonly sweepWallDurationMs: number;
   readonly sweepLockWaitDurationMs: number;
   readonly sweepLockHoldDurationMs: number;
@@ -217,9 +267,9 @@ export async function collectHizoFSGarbage({
     dependencies: {
       now: monotonicNow,
       afterRootSnapshot: async () => {},
-      removeObject: async ({ runtime, objectId }) => {
-        await runtime.objectStore.remove({ objectId });
-      },
+      removeCandidate: async ({ runtime, candidate }) => (
+        runtime.objectStore.removeWholeSegmentIfUnchanged({ candidate })
+      ),
       yieldToForeground,
     },
   });
@@ -250,17 +300,28 @@ async function collectHizoFSGarbageInternal({
     // handle cache would trade memory for little reuse. Keep only a small
     // working set for superblocks and nearby metadata.
     fileHandleCacheEntryLimit: 64,
+    fileSnapshotCacheEntryLimit: 64,
     diagnostics: undefined,
   });
   const rootKey = await importHizoFSRootKey({
     rawRootKey: fileSystemRootKey,
   });
   const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
+  const checkpointStore = new HizoFSGarbageCollectionCheckpointStore({
+    backingStore,
+    rootKey,
+    fileSystemId,
+  });
   const garbageCollectionLease = await acquireHizoFSGarbageCollectionLease({
     fileSystemId,
   });
-  let preparation: GarbageCollectionPreparation;
-  let sweepMetrics: GarbageCollectionSweepMetrics;
+  let preparation: GarbageCollectionPreparation | undefined;
+  let compactionMetrics: GarbageCollectionCompactionMetrics | undefined;
+  let sweepMetrics: GarbageCollectionSweepMetrics | undefined;
+  let operationError: unknown;
+  let checkpoint: HizoFSGarbageCollectionCheckpoint | undefined;
+  let resumedFromCheckpoint = false;
+  let resumedCounters = { relocated: 0, reclaimedCompaction: 0, removedSweep: 0 };
   try {
     preparation = await prepareGarbageCollection({
       backingStore,
@@ -269,6 +330,8 @@ async function collectHizoFSGarbageInternal({
       signal,
       now: dependencies.now,
       afterRootSnapshot: dependencies.afterRootSnapshot,
+      compactionPolicy: dependencies.compactionPolicy
+        ?? DEFAULT_HIZOFS_GARBAGE_COLLECTION_COMPACTION_POLICY,
     });
 
     // Marking authenticates plaintext metadata and file chunks, but sweeping
@@ -276,34 +339,150 @@ async function collectHizoFSGarbageInternal({
     // before a potentially long multi-slice sweep.
     preparation.runtime.objectStore.clearPlaintextCaches();
 
+    if (!dryRun) {
+      const persisted = await checkpointStore.read();
+      resumedFromCheckpoint = persisted?.activeCommitObjectId === preparation.activeCommitObjectId;
+      if (resumedFromCheckpoint && persisted !== undefined) {
+        resumedCounters = {
+          relocated: persisted.relocatedObjectCount,
+          reclaimedCompaction: persisted.reclaimedCompactionObjectCount,
+          removedSweep: persisted.removedSweepObjectCount,
+        };
+      }
+      const base = resumedFromCheckpoint && persisted !== undefined
+        ? persisted
+        : {
+          sequence: persisted?.sequence ?? 0,
+          activeCommitObjectId: preparation.activeCommitObjectId,
+          phase: 'compaction' as const,
+          completedCompactionCandidateCount: 0,
+          completedSweepCandidateCount: 0,
+          relocatedObjectCount: 0,
+          reclaimedCompactionObjectCount: 0,
+          removedSweepObjectCount: 0,
+          lastCompletedCandidateObjectId: null,
+        };
+      checkpoint = {
+        ...base,
+        sequence: base.sequence + 1,
+        activeCommitObjectId: preparation.activeCommitObjectId,
+        phase: 'compaction',
+      };
+      await checkpointStore.write({ checkpoint });
+    }
+
+    compactionMetrics = dryRun
+      ? createEmptyCompactionMetrics()
+      : await compactGarbageCollectionCandidates({
+        runtime: preparation.runtime,
+        fileSystemId,
+        candidates: preparation.compactionCandidates,
+        signal,
+        dependencies,
+        onProgress: async ({ candidate, metrics }) => {
+          if (checkpoint === undefined) return;
+          checkpoint = {
+            ...checkpoint,
+            sequence: checkpoint.sequence + 1,
+            phase: 'compaction',
+            completedCompactionCandidateCount:
+              checkpoint.completedCompactionCandidateCount + 1,
+            relocatedObjectCount: checkpoint.relocatedObjectCount
+              + metrics.lastRelocatedObjectCount,
+            reclaimedCompactionObjectCount:
+              checkpoint.reclaimedCompactionObjectCount
+              + metrics.lastReclaimedObjectCount,
+            lastCompletedCandidateObjectId: candidate.representativeObjectId,
+          };
+          await checkpointStore.write({ checkpoint });
+        },
+      });
+
+    if (!dryRun && checkpoint !== undefined) {
+      checkpoint = {
+        ...checkpoint,
+        sequence: checkpoint.sequence + 1,
+        phase: 'sweep',
+        lastCompletedCandidateObjectId: null,
+      };
+      await checkpointStore.write({ checkpoint });
+    }
+
     sweepMetrics = dryRun
       ? createEmptySweepMetrics()
       : await sweepGarbageCollectionCandidates({
         runtime: preparation.runtime,
         fileSystemId,
-        objectIds: preparation.unreachableObjectIds,
+        candidates: preparation.sweepCandidates,
         sweepPolicy: resolvedSweepPolicy,
         signal,
         dependencies,
+        onProgress: async ({ candidate, removedObjectCount }) => {
+          if (checkpoint === undefined) return;
+          checkpoint = {
+            ...checkpoint,
+            sequence: checkpoint.sequence + 1,
+            phase: 'sweep',
+            completedSweepCandidateCount: checkpoint.completedSweepCandidateCount + 1,
+            removedSweepObjectCount: checkpoint.removedSweepObjectCount + removedObjectCount,
+            lastCompletedCandidateObjectId: candidate.representativeObjectId,
+          };
+          await checkpointStore.write({ checkpoint });
+        },
       });
-  } finally {
-    await garbageCollectionLease.release();
+    if (!dryRun) await checkpointStore.clear();
+  } catch (error) {
+    operationError = error;
   }
+
+  const cleanupErrors: unknown[] = [];
+  if (preparation !== undefined) {
+    try {
+      await preparation.runtime.close();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  }
+  try {
+    await garbageCollectionLease.release();
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  if (operationError !== undefined) throw operationError;
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, 'Failed to release HizoFS garbage-collection resources');
+  }
+
+  if (preparation === undefined || compactionMetrics === undefined || sweepMetrics === undefined) {
+    throw new Error('HizoFS garbage collection completed without metrics');
+  }
+
+  const resumedRelocatedObjectCount = resumedCounters.relocated;
+  const resumedReclaimedCompactionObjectCount = resumedCounters.reclaimedCompaction;
+  const resumedRemovedSweepObjectCount = resumedCounters.removedSweep;
 
   const maximumPauseDurationMs = Math.max(
     preparation.initialFenceHoldDurationMs,
+    compactionMetrics.maximumSliceDurationMs,
     sweepMetrics.maximumSweepSliceDurationMs,
   );
 
   return {
     reachableObjectCount: preparation.reachableObjectCount,
     unreachableObjectIds: preparation.unreachableObjectIds,
-    removedObjectCount: sweepMetrics.removedObjectCount,
+    removedObjectCount: resumedRemovedSweepObjectCount + resumedReclaimedCompactionObjectCount
+      + sweepMetrics.removedObjectCount + compactionMetrics.reclaimedObjectCount,
     ignoredPhysicalPaths: preparation.ignoredPhysicalPaths,
     diagnostics: {
       reachableObjectCount: preparation.reachableObjectCount,
       candidateObjectCount: preparation.unreachableObjectIds.length,
-      removedObjectCount: sweepMetrics.removedObjectCount,
+      removedObjectCount: resumedRemovedSweepObjectCount + resumedReclaimedCompactionObjectCount
+      + sweepMetrics.removedObjectCount + compactionMetrics.reclaimedObjectCount,
+      changedSegmentCount: sweepMetrics.changedSegmentCount + compactionMetrics.changedSegmentCount,
+      compactedSegmentCount: compactionMetrics.compactedSegmentCount,
+      relocatedObjectCount: resumedRelocatedObjectCount + compactionMetrics.relocatedObjectCount,
+      reclaimedCompactionObjectCount: resumedReclaimedCompactionObjectCount
+        + compactionMetrics.reclaimedObjectCount,
       ignoredPhysicalPathCount: preparation.ignoredPhysicalPaths.length,
       configuredRemoveConcurrency: resolvedSweepPolicy.removeConcurrency,
       configuredMaximumRemovalsPerSlice: resolvedSweepPolicy.maximumRemovalsPerSlice,
@@ -315,6 +494,12 @@ async function collectHizoFSGarbageInternal({
       chunkVerificationDurationMs: preparation.chunkVerificationDurationMs,
       objectListingDurationMs: preparation.objectListingDurationMs,
       candidateBuildDurationMs: preparation.candidateBuildDurationMs,
+      compactionWallDurationMs: compactionMetrics.wallDurationMs,
+      compactionLockWaitDurationMs: compactionMetrics.lockWaitDurationMs,
+      compactionLockHoldDurationMs: compactionMetrics.lockHoldDurationMs,
+      compactionYieldDurationMs: compactionMetrics.yieldDurationMs,
+      compactionSliceCount: compactionMetrics.sliceCount,
+      maximumCompactionSliceDurationMs: compactionMetrics.maximumSliceDurationMs,
       sweepWallDurationMs: sweepMetrics.sweepWallDurationMs,
       sweepLockWaitDurationMs: sweepMetrics.sweepLockWaitDurationMs,
       sweepLockHoldDurationMs: sweepMetrics.sweepLockHoldDurationMs,
@@ -326,6 +511,8 @@ async function collectHizoFSGarbageInternal({
       maximumRemovesInFlight: sweepMetrics.maximumRemovesInFlight,
       maximumRemovalsInSlice: sweepMetrics.maximumRemovalsInSlice,
       sliceDurationBudgetOverrunCount: sweepMetrics.sliceDurationBudgetOverrunCount,
+      resumedFromCheckpoint,
+      checkpointSequence: checkpoint?.sequence ?? 0,
     },
   };
 }
@@ -337,6 +524,7 @@ async function prepareGarbageCollection({
   signal,
   now,
   afterRootSnapshot,
+  compactionPolicy,
 }: {
   backingStore: NativeOpfsHizoFSBackingStore;
   rootKey: CryptoKey;
@@ -344,6 +532,7 @@ async function prepareGarbageCollection({
   signal: AbortSignal | undefined;
   now: () => number;
   afterRootSnapshot: () => Promise<void>;
+  compactionPolicy: HizoFSGarbageCollectionCompactionPolicy;
 }): Promise<GarbageCollectionPreparation> {
   const snapshot = await snapshotGarbageCollectionRoots({
     backingStore,
@@ -398,9 +587,24 @@ async function prepareGarbageCollection({
   });
 
   const candidateBuildStartedAt = now();
+  const canonicalReachableObjectIds = new Set<string>();
+  for (const objectId of markState.reachableObjectIds) {
+    canonicalReachableObjectIds.add(await snapshot.runtime.objectStore.resolveObjectId({ objectId }));
+  }
   const unreachableObjectIds = [...snapshot.canonicalObjectIds]
-    .filter(objectId => !markState.reachableObjectIds.has(objectId))
+    .filter(objectId => !canonicalReachableObjectIds.has(objectId))
     .sort();
+  const { sweepCandidates, compactionCandidates } = await promiseAllKeyed({
+    sweepCandidates: snapshot.runtime.objectStore
+      .selectWholeSegmentReclaimCandidates({ unreachableObjectIds }),
+    compactionCandidates: snapshot.runtime.objectStore.selectPartialSegmentCompactionCandidates({
+      reachableObjectIds: [...canonicalReachableObjectIds],
+      minimumDeadRecordByteLength: compactionPolicy.minimumDeadRecordByteLength,
+      maximumLiveRecordByteLength: compactionPolicy.maximumLiveRecordByteLength,
+      maximumLiveRecordCount: compactionPolicy.maximumLiveRecordCount,
+      maximumCandidateCount: compactionPolicy.maximumCandidateCount,
+    }),
+  });
   const candidateBuildDurationMs = elapsed({
     now,
     startedAt: candidateBuildStartedAt,
@@ -410,6 +614,8 @@ async function prepareGarbageCollection({
     ...snapshot,
     reachableObjectCount: markState.reachableObjectIds.size,
     unreachableObjectIds,
+    sweepCandidates,
+    compactionCandidates,
     markDurationMs,
     chunkVerificationDurationMs,
     candidateBuildDurationMs,
@@ -447,6 +653,7 @@ async function snapshotGarbageCollectionRoots({
     | undefined;
   try {
     throwIfAborted({ signal });
+    await runtime.releaseLocalPhysicalHandlesForMaintenance();
 
     const rootSnapshotStartedAt = now();
     const activeState = await runtime.core.loadActiveState();
@@ -476,10 +683,9 @@ async function snapshotGarbageCollectionRoots({
     rootSnapshotDurationMs = elapsed({ now, startedAt: rootSnapshotStartedAt });
 
     const objectListingStartedAt = now();
-    const {
-      canonicalObjectIds,
-      ignoredPhysicalPaths,
-    } = await listPhysicalHizoFSObjects({ backingStore });
+    const listing = await runtime.objectStore.listPhysicalObjects();
+    const canonicalObjectIds = new Set(listing.entries.map(entry => entry.objectId));
+    const { ignoredPhysicalPaths } = listing;
     objectListingDurationMs = elapsed({ now, startedAt: objectListingStartedAt });
 
     snapshot = {
@@ -496,6 +702,7 @@ async function snapshotGarbageCollectionRoots({
     await lease.release();
   }
   if (snapshot === undefined) {
+    await runtime.close();
     throw new Error('HizoFS garbage-collection root snapshot completed without a result');
   }
   return {
@@ -504,9 +711,127 @@ async function snapshotGarbageCollectionRoots({
   };
 }
 
+function createEmptyCompactionMetrics(): GarbageCollectionCompactionMetrics {
+  return {
+    compactedSegmentCount: 0,
+    relocatedObjectCount: 0,
+    reclaimedObjectCount: 0,
+    changedSegmentCount: 0,
+    wallDurationMs: 0,
+    lockWaitDurationMs: 0,
+    lockHoldDurationMs: 0,
+    yieldDurationMs: 0,
+    sliceCount: 0,
+    maximumSliceDurationMs: 0,
+  };
+}
+
+async function compactGarbageCollectionCandidates({
+  runtime,
+  fileSystemId,
+  candidates,
+  signal,
+  dependencies,
+  onProgress,
+}: {
+  runtime: HizoFSRuntime;
+  fileSystemId: string;
+  candidates: readonly HizoFSPartialSegmentCompactionCandidate[];
+  signal: AbortSignal | undefined;
+  dependencies: GarbageCollectionDependencies;
+  onProgress: (({ candidate, metrics }: {
+    candidate: HizoFSPartialSegmentCompactionCandidate;
+    metrics: { lastRelocatedObjectCount: number; lastReclaimedObjectCount: number };
+  }) => Promise<void>) | undefined;
+}): Promise<GarbageCollectionCompactionMetrics> {
+  if (candidates.length === 0) return createEmptyCompactionMetrics();
+  const startedAt = dependencies.now();
+  let compactedSegmentCount = 0;
+  let relocatedObjectCount = 0;
+  let reclaimedObjectCount = 0;
+  let changedSegmentCount = 0;
+  let lockWaitDurationMs = 0;
+  let lockHoldDurationMs = 0;
+  let yieldDurationMs = 0;
+  let sliceCount = 0;
+  let maximumSliceDurationMs = 0;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    throwIfAborted({ signal });
+    const candidate = candidates[index];
+    if (candidate === undefined) continue;
+    const requestedAt = dependencies.now();
+    const lease = await acquireHizoFSMaintenanceLease({ fileSystemId });
+    lockWaitDurationMs += elapsed({ now: dependencies.now, startedAt: requestedAt });
+    const sliceStartedAt = dependencies.now();
+    try {
+      await runtime.releaseLocalPhysicalHandlesForMaintenance();
+      const mappings = await runtime.objectStore.copyObjectsForRelocation({
+        objectIds: candidate.liveObjectIds,
+      });
+      await runtime.objectStore.publishRelocations({ mappings });
+      const result = await runtime.objectStore.removeWholeSegmentIfUnchanged({
+        candidate: {
+          representativeObjectId: candidate.representativeObjectId,
+          objectIds: [...candidate.liveObjectIds, ...candidate.deadObjectIds],
+          physicalPath: candidate.physicalPath,
+          expectedPhysicalByteLength: candidate.expectedPhysicalByteLength,
+        },
+      });
+      relocatedObjectCount += mappings.size;
+      switch (result) {
+      case 'removed':
+      case 'missing':
+        compactedSegmentCount += 1;
+        reclaimedObjectCount += candidate.deadObjectIds.length;
+        break;
+      case 'changed':
+        changedSegmentCount += 1;
+        break;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled HizoFS compaction removal result: ${String(_ex)}`);
+      }
+      }
+      await onProgress?.({
+        candidate,
+        metrics: {
+          lastRelocatedObjectCount: mappings.size,
+          lastReclaimedObjectCount:
+            result === 'removed' || result === 'missing' ? candidate.deadObjectIds.length : 0,
+        },
+      });
+    } finally {
+      await lease.release();
+    }
+    const sliceDurationMs = elapsed({ now: dependencies.now, startedAt: sliceStartedAt });
+    sliceCount += 1;
+    lockHoldDurationMs += sliceDurationMs;
+    maximumSliceDurationMs = Math.max(maximumSliceDurationMs, sliceDurationMs);
+    if (index + 1 < candidates.length) {
+      const yieldStartedAt = dependencies.now();
+      await dependencies.yieldToForeground();
+      yieldDurationMs += elapsed({ now: dependencies.now, startedAt: yieldStartedAt });
+    }
+  }
+  return {
+    compactedSegmentCount,
+    relocatedObjectCount,
+    reclaimedObjectCount,
+    changedSegmentCount,
+    wallDurationMs: elapsed({ now: dependencies.now, startedAt }),
+    lockWaitDurationMs,
+    lockHoldDurationMs,
+    yieldDurationMs,
+    sliceCount,
+    maximumSliceDurationMs,
+  };
+}
+
 function createEmptySweepMetrics(): GarbageCollectionSweepMetrics {
   return {
     removedObjectCount: 0,
+    changedSegmentCount: 0,
     sweepWallDurationMs: 0,
     sweepLockWaitDurationMs: 0,
     sweepLockHoldDurationMs: 0,
@@ -522,23 +847,33 @@ function createEmptySweepMetrics(): GarbageCollectionSweepMetrics {
 async function sweepGarbageCollectionCandidates({
   runtime,
   fileSystemId,
-  objectIds,
+  candidates,
   sweepPolicy,
   signal,
   dependencies,
+  onProgress,
 }: {
   runtime: HizoFSRuntime;
   fileSystemId: string;
-  objectIds: readonly string[];
+  candidates: readonly HizoFSWholeSegmentReclaimCandidate[];
   sweepPolicy: HizoFSGarbageCollectionSweepPolicy;
   signal: AbortSignal | undefined;
   dependencies: GarbageCollectionDependencies;
+  onProgress: (({ candidate, removedObjectCount }: {
+    candidate: HizoFSWholeSegmentReclaimCandidate;
+    removedObjectCount: number;
+  }) => Promise<void>) | undefined;
 }): Promise<GarbageCollectionSweepMetrics> {
-  if (objectIds.length === 0) return createEmptySweepMetrics();
+  // Every resumed invocation performs a fresh authenticated mark. The durable
+  // checkpoint records cumulative progress and the last completed candidate,
+  // but never substitutes stale reachability data for the fresh candidate set.
+  // Started removals always settle before the maintenance lease is released.
+  if (candidates.length === 0) return createEmptySweepMetrics();
 
   const sweepStartedAt = dependencies.now();
   let nextObjectIndex = 0;
   let removedObjectCount = 0;
+  let changedSegmentCount = 0;
   let sweepLockWaitDurationMs = 0;
   let sweepLockHoldDurationMs = 0;
   let yieldDurationMs = 0;
@@ -548,7 +883,7 @@ async function sweepGarbageCollectionCandidates({
   let maximumRemovalsInSlice = 0;
   let sliceDurationBudgetOverrunCount = 0;
 
-  while (nextObjectIndex < objectIds.length) {
+  while (nextObjectIndex < candidates.length) {
     throwIfAborted({ signal });
     const leaseRequestedAt = dependencies.now();
     const lease = await acquireHizoFSMaintenanceLease({ fileSystemId });
@@ -559,38 +894,53 @@ async function sweepGarbageCollectionCandidates({
     let abortAfterSlice = false;
     try {
       throwIfAborted({ signal });
+      await runtime.releaseLocalPhysicalHandlesForMaintenance();
       while (
-        nextObjectIndex < objectIds.length
+        nextObjectIndex < candidates.length
         && removalsInSlice < sweepPolicy.maximumRemovalsPerSlice
       ) {
         const remainingInSlice = sweepPolicy.maximumRemovalsPerSlice - removalsInSlice;
         const batchSize = Math.min(
           sweepPolicy.removeConcurrency,
           remainingInSlice,
-          objectIds.length - nextObjectIndex,
+          candidates.length - nextObjectIndex,
         );
-        const batchObjectIds = objectIds.slice(
+        const batchCandidates = candidates.slice(
           nextObjectIndex,
           nextObjectIndex + batchSize,
         );
-        maximumRemovesInFlight = Math.max(maximumRemovesInFlight, batchObjectIds.length);
-        const outcomes = await Promise.allSettled(batchObjectIds.map(async objectId => {
-          await dependencies.removeObject({ runtime, objectId });
-        }));
+        maximumRemovesInFlight = Math.max(maximumRemovesInFlight, batchCandidates.length);
+        const outcomes = await Promise.allSettled(batchCandidates.map(async candidate => (
+          dependencies.removeCandidate({ runtime, candidate })
+        )));
         const failures: Error[] = [];
         for (let index = 0; index < outcomes.length; index += 1) {
           const outcome = outcomes[index];
-          const objectId = batchObjectIds[index];
-          if (outcome === undefined || objectId === undefined) {
+          const candidate = batchCandidates[index];
+          if (outcome === undefined || candidate === undefined) {
             throw new Error('HizoFS garbage-collection sweep batch lost positional identity');
           }
           switch (outcome.status) {
           case 'fulfilled':
-            removedObjectCount += 1;
+            switch (outcome.value) {
+            case 'removed':
+            case 'missing':
+              removedObjectCount += candidate.objectIds.length;
+              await onProgress?.({ candidate, removedObjectCount: candidate.objectIds.length });
+              break;
+            case 'changed':
+              changedSegmentCount += 1;
+              await onProgress?.({ candidate, removedObjectCount: 0 });
+              break;
+            default: {
+              const _ex: never = outcome.value;
+              throw new Error(`Unhandled HizoFS segment-removal result: ${String(_ex)}`);
+            }
+            }
             break;
           case 'rejected':
             failures.push(new Error(
-              `Failed to remove HizoFS garbage object ${objectId}`,
+              `Failed to remove HizoFS garbage segment ${candidate.physicalPath.join('/')}`,
               { cause: outcome.reason },
             ));
             break;
@@ -600,8 +950,8 @@ async function sweepGarbageCollectionCandidates({
           }
           }
         }
-        nextObjectIndex += batchObjectIds.length;
-        removalsInSlice += batchObjectIds.length;
+        nextObjectIndex += batchCandidates.length;
+        removalsInSlice += batchCandidates.length;
         if (failures.length > 0) {
           sliceFailure = new AggregateError(
             failures,
@@ -635,7 +985,7 @@ async function sweepGarbageCollectionCandidates({
     if (sliceFailure !== undefined) throw sliceFailure;
     if (abortAfterSlice) throwIfAborted({ signal });
 
-    if (nextObjectIndex < objectIds.length) {
+    if (nextObjectIndex < candidates.length) {
       const yieldStartedAt = dependencies.now();
       await dependencies.yieldToForeground();
       yieldDurationMs += elapsed({ now: dependencies.now, startedAt: yieldStartedAt });
@@ -644,6 +994,7 @@ async function sweepGarbageCollectionCandidates({
 
   return {
     removedObjectCount,
+    changedSegmentCount,
     sweepWallDurationMs: elapsed({ now: dependencies.now, startedAt: sweepStartedAt }),
     sweepLockWaitDurationMs,
     sweepLockHoldDurationMs,
@@ -967,49 +1318,6 @@ function assertNodeIdentity({ expectedNodeId, actualNodeId }: {
       cause: undefined,
     });
   }
-}
-
-async function listPhysicalHizoFSObjects({ backingStore }: {
-  backingStore: NativeOpfsHizoFSBackingStore;
-}): Promise<{
-  readonly canonicalObjectIds: ReadonlySet<string>;
-  readonly ignoredPhysicalPaths: readonly string[];
-}> {
-  const canonicalObjectIds = new Set<string>();
-  const ignoredPhysicalPaths: string[] = [];
-  for await (const shardEntry of backingStore.list({ path: ['objects'] })) {
-    const shardPath = `objects/${shardEntry.name}`;
-    if (
-      shardEntry.kind !== 'directory'
-      || !/^[0-9a-f]{2}$/u.test(shardEntry.name)
-    ) {
-      ignoredPhysicalPaths.push(shardPath);
-      continue;
-    }
-    for await (const objectEntry of backingStore.list({ path: ['objects', shardEntry.name] })) {
-      const objectPath = `${shardPath}/${objectEntry.name}`;
-      if (objectEntry.kind !== 'file' || !objectEntry.name.endsWith('.enc')) {
-        ignoredPhysicalPaths.push(objectPath);
-        continue;
-      }
-      const objectId = objectEntry.name.slice(0, -'.enc'.length);
-      try {
-        validateHizoFSObjectId({ objectId });
-        if (getHizoFSObjectShard({ objectId }) !== shardEntry.name) {
-          ignoredPhysicalPaths.push(objectPath);
-          continue;
-        }
-      } catch {
-        ignoredPhysicalPaths.push(objectPath);
-        continue;
-      }
-      canonicalObjectIds.add(objectId);
-    }
-  }
-  return {
-    canonicalObjectIds,
-    ignoredPhysicalPaths: ignoredPhysicalPaths.sort(),
-  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

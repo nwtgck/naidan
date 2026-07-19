@@ -70,6 +70,7 @@ export const hizoFSBenchmarkConfigurationSchema = z.object({
     }).strict(),
   }).strict(),
   hizoFSRuntimePolicy: z.object({
+    fileChunkSize: z.number().int().min(64 * 1024).max(16 * 1024 * 1024),
     fileChunkWriteConcurrency: z.number().int().min(1).max(16),
     fileChunkReadPrefetchConcurrency: z.number().int().min(1).max(16),
     backingFileHandleCacheEntryLimit: z.number().int().min(0).max(1_000_000),
@@ -99,6 +100,7 @@ const durationSummarySchema = z.object({
 }).strict();
 
 const hizoFSBackingStoreCountersSchema = z.object({
+  fileSnapshotOperations: z.number().int().nonnegative(),
   readOperations: z.number().int().nonnegative(),
   writeOperations: z.number().int().nonnegative(),
   removeOperations: z.number().int().nonnegative(),
@@ -188,6 +190,12 @@ const hizoFSRuntimeDiagnosticsSchema = z.object({
     backing_create_writable: hizoFSRuntimePhaseCounterSchema,
     backing_write: hizoFSRuntimePhaseCounterSchema,
     backing_close: hizoFSRuntimePhaseCounterSchema,
+    backing_open_random_access: hizoFSRuntimePhaseCounterSchema,
+    backing_read_at: hizoFSRuntimePhaseCounterSchema,
+    backing_write_at: hizoFSRuntimePhaseCounterSchema,
+    backing_truncate: hizoFSRuntimePhaseCounterSchema,
+    backing_flush: hizoFSRuntimePhaseCounterSchema,
+    backing_close_random_access: hizoFSRuntimePhaseCounterSchema,
     backing_failure_verification: hizoFSRuntimePhaseCounterSchema,
     backing_remove: hizoFSRuntimePhaseCounterSchema,
     backing_list: hizoFSRuntimePhaseCounterSchema,
@@ -210,11 +218,21 @@ const hizoFSRuntimeDiagnosticsSchema = z.object({
     metadata: hizoFSRuntimeCacheCounterSchema,
     fileChunk: hizoFSRuntimeCacheCounterSchema,
     backingFileHandle: hizoFSRuntimeCacheCounterSchema,
+    backingFileSnapshot: hizoFSRuntimeCacheCounterSchema,
+    decodedInodeIndexPage: hizoFSRuntimeCacheCounterSchema,
   }).strict(),
   resources: z.object({
     writerDirtyChunks: hizoFSRuntimeResourceCounterSchema,
     writerPendingChunkWrites: hizoFSRuntimeResourceCounterSchema,
     readerPrefetch: hizoFSRuntimeResourceCounterSchema,
+  }).strict(),
+  coordinator: z.object({
+    activeStateCacheHits: z.number().int().nonnegative(),
+    durableReloads: z.number().int().nonnegative(),
+    leadershipAcquisitions: z.number().int().nonnegative(),
+    failovers: z.number().int().nonnegative(),
+    localRequests: z.number().int().nonnegative(),
+    remoteRequests: z.number().int().nonnegative(),
   }).strict(),
 }).strict();
 
@@ -258,6 +276,10 @@ const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
   reachableObjectCount: z.number().int().nonnegative(),
   candidateObjectCount: z.number().int().nonnegative(),
   removedObjectCount: z.number().int().nonnegative(),
+  changedSegmentCount: z.number().int().nonnegative(),
+  compactedSegmentCount: z.number().int().nonnegative(),
+  relocatedObjectCount: z.number().int().nonnegative(),
+  reclaimedCompactionObjectCount: z.number().int().nonnegative(),
   ignoredPhysicalPathCount: z.number().int().nonnegative(),
   configuredRemoveConcurrency: z.number().int().positive(),
   configuredMaximumRemovalsPerSlice: z.number().int().positive(),
@@ -269,6 +291,12 @@ const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
   chunkVerificationDurationMs: z.number().nonnegative(),
   objectListingDurationMs: z.number().nonnegative(),
   candidateBuildDurationMs: z.number().nonnegative(),
+  compactionWallDurationMs: z.number().nonnegative(),
+  compactionLockWaitDurationMs: z.number().nonnegative(),
+  compactionLockHoldDurationMs: z.number().nonnegative(),
+  compactionYieldDurationMs: z.number().nonnegative(),
+  compactionSliceCount: z.number().int().nonnegative(),
+  maximumCompactionSliceDurationMs: z.number().nonnegative(),
   sweepWallDurationMs: z.number().nonnegative(),
   sweepLockWaitDurationMs: z.number().nonnegative(),
   sweepLockHoldDurationMs: z.number().nonnegative(),
@@ -280,6 +308,8 @@ const hizoFSGarbageCollectionDiagnosticsSchema = z.object({
   maximumRemovesInFlight: z.number().int().nonnegative(),
   maximumRemovalsInSlice: z.number().int().nonnegative(),
   sliceDurationBudgetOverrunCount: z.number().int().nonnegative(),
+  resumedFromCheckpoint: z.boolean(),
+  checkpointSequence: z.number().int().nonnegative(),
 }).strict();
 
 const benchmarkForegroundLatencySchema = z.object({
@@ -384,8 +414,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(10),
-  benchmarkImplementationVersion: z.literal(10),
+  schemaVersion: z.literal(17),
+  benchmarkImplementationVersion: z.literal(19),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -411,16 +441,25 @@ export const hizoFSBenchmarkReportSchema = z.object({
     hizoFSOwnedResourceDiagnosticsEnabled: z.literal(true),
     hizoFSRuntimeDiagnosticsEnabled: z.literal(true),
     phaseDurationsAreNested: z.literal(true),
+    physicalObjectScope: z.literal('immutable_segment_files'),
+    backingStoreFileSnapshotOperationScope: z.literal('get_file_snapshot_calls'),
+    backingStoreReadOperationScope: z.literal('materialized_blob_or_sync_access_reads'),
     hizoFSRuntimePolicy: z.object({
       fileChunkSizeBytes: z.number().int().positive(),
       maxDirtyFileBytesPerWriter: z.number().int().positive(),
       fileChunkWriteConcurrencyPerWriter: z.number().int().positive(),
       fileChunkReadPrefetchConcurrencyPerReader: z.number().int().positive(),
       backingFileHandleCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
+      backingFileSnapshotCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       maximumPlaintextChunkWriteBytesInFlightPerWriter: z.number().int().positive(),
       maximumPlaintextChunkReadBytesInFlightPerReader: z.number().int().positive(),
       metadataObjectCacheByteLimitPerRuntime: z.number().int().nonnegative(),
       metadataObjectCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
+      decodedInodeIndexPageCacheEntryLimitPerRuntime:
+        z.number().int().nonnegative(),
+      inodeIndexPageEntryLimitPerRuntime: z.number().int().positive(),
+      directoryIndexPageEntryLimitPerRuntime: z.number().int().positive(),
+      fileExtentIndexPageEntryLimitPerRuntime: z.number().int().positive(),
       fileChunkCacheByteLimitPerRuntime: z.number().int().nonnegative(),
       fileChunkCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       fileChunkCacheAdmission: z.union([
@@ -468,7 +507,7 @@ export const hizoFSBenchmarkStudyKindSchema = z.union([
 
 export const hizoFSBenchmarkStudyReportSchema = z.object({
   schemaVersion: z.literal(1),
-  studyImplementationVersion: z.literal(3),
+  studyImplementationVersion: z.literal(7),
   reportType: z.literal('hizofs_benchmark_study'),
   studyId: z.string(),
   studyKind: hizoFSBenchmarkStudyKindSchema,

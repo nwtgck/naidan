@@ -376,8 +376,9 @@ function createClient({
     fileSystemId,
     activeCommitObjectId: "commit-a",
   };
-  const commitMetadata = {
+  const commitMetadata: OverviewResult["activeCommit"] = {
     revision: 5,
+    publicationId: 'publication-5',
     rootDirectoryNodeId: "root-a",
     inodeIndexRootObjectId: "inode-index-a",
   };
@@ -432,9 +433,26 @@ function createClient({
     activeCommit: commitMetadata,
     activeCommitPersistedDto: {
       revision: 5,
+      publicationId: 'publication-5',
       rootDirectoryNodeId: "root-a",
       inodeIndexRootObjectId: "inode-index-a",
       unknownPersistedField: "must remain visible",
+    },
+    maintenance: {
+      segmentIndexes: {
+        discoveredSegmentCount: 4,
+        readableSegmentCount: 4,
+        authenticatedIndexCount: 3,
+        rebuiltMissingIndexCount: 1,
+        rebuiltInvalidIndexCount: 0,
+      },
+      relocationMap: { status: 'valid', sequence: 2, mappingCount: 7 },
+      garbageCollectionCheckpoint: { status: 'absent' },
+      recoveryAssessment: {
+        status: 'degraded',
+        reasons: ['one segment index was absent'],
+        automaticRepairPerformed: false,
+      },
     },
   };
   const inspectedObject: Exclude<InspectedObjectResult, undefined> = {
@@ -461,6 +479,7 @@ function createClient({
     rootDirectoryEntryPoint: {
       commitObjectId: "object-a",
       revision: 5,
+      publicationId: 'publication-5',
       rootDirectoryNodeId: "root-a",
       inodeIndexRootObjectId: "inode-index-a",
     },
@@ -774,7 +793,7 @@ describe("HizoFSWorkbenchModal", () => {
     expect(document.body.textContent).toContain('"activeCommitObjectId": "commit-a"');
     expect(document.body.textContent).toContain("Persisted references");
     expect(document.body.textContent).toContain("activeCommitObjectId");
-    expect(document.body.textContent).not.toContain("Decoded object envelope fields");
+    expect(document.body.textContent).not.toContain("Authenticated persisted frame fields");
 
     const binaryDetails = document.body.querySelector<HTMLDetailsElement>(
       '[data-testid="hizofs-binary-representation-details"]',
@@ -788,7 +807,7 @@ describe("HizoFSWorkbenchModal", () => {
       slot: 0,
       binaryPreviewByteLength: 64 * 1024,
     });
-    expect(document.body.textContent).toContain("Decoded object envelope fields");
+    expect(document.body.textContent).toContain("Authenticated persisted frame fields");
     expect(document.body.textContent).toContain("48 49 5a 4f 46 53 00 00");
 
     wrapper.unmount();
@@ -826,7 +845,7 @@ describe("HizoFSWorkbenchModal", () => {
     expect(document.body.textContent).toContain('"revision": 5');
     expect(document.body.textContent).toContain("Persisted references · continue traversal");
     expect(document.body.textContent).toContain("inode index root");
-    expect(document.body.textContent).not.toContain("Decoded object envelope fields");
+    expect(document.body.textContent).not.toContain("Authenticated persisted frame fields");
     expect(document.body.textContent).not.toContain("48 49 5a 4f 46 53 00 00");
 
     const objectColumnText = document.body.textContent ?? "";
@@ -849,7 +868,7 @@ describe("HizoFSWorkbenchModal", () => {
       objectId: "object-a",
       binaryPreviewByteLength: 64 * 1024,
     });
-    expect(document.body.textContent).toContain("Decoded object envelope fields");
+    expect(document.body.textContent).toContain("Authenticated persisted frame fields");
     expect(document.body.textContent).toContain("48 49 5a 4f 46 53 00 00");
     expect(document.body.textContent).toContain("Metadata JSON encoding");
 

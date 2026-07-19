@@ -17,6 +17,12 @@ export const HIZOFS_RUNTIME_DIAGNOSTIC_PHASES = [
   'backing_failure_verification',
   'backing_remove',
   'backing_list',
+  'backing_open_random_access',
+  'backing_read_at',
+  'backing_write_at',
+  'backing_truncate',
+  'backing_flush',
+  'backing_close_random_access',
   'index_build',
   'index_update',
   'commit_publication',
@@ -40,12 +46,22 @@ export const HIZOFS_RUNTIME_DIAGNOSTIC_RECORD_KINDS = [
 export type HizoFSRuntimeDiagnosticCacheKind =
   | 'metadata'
   | 'file_chunk'
-  | 'backing_file_handle';
+  | 'backing_file_handle'
+  | 'backing_file_snapshot'
+  | 'decoded_inode_index_page';
 
 export type HizoFSRuntimeDiagnosticResourceKind =
   | 'writer_dirty_chunks'
   | 'writer_pending_chunk_writes'
   | 'reader_prefetch';
+
+export type HizoFSRuntimeDiagnosticCoordinatorEvent =
+  | 'active_state_cache_hit'
+  | 'durable_reload'
+  | 'leadership_acquisition'
+  | 'failover'
+  | 'local_request'
+  | 'remote_request';
 
 export type HizoFSRuntimeDiagnosticPhaseSnapshot = {
   readonly operationCount: number;
@@ -80,6 +96,15 @@ export type HizoFSRuntimeDiagnosticResourceSnapshot = {
   readonly maximumOperations: number;
 };
 
+export type HizoFSRuntimeDiagnosticCoordinatorSnapshot = {
+  readonly activeStateCacheHits: number;
+  readonly durableReloads: number;
+  readonly leadershipAcquisitions: number;
+  readonly failovers: number;
+  readonly localRequests: number;
+  readonly remoteRequests: number;
+};
+
 export type HizoFSRuntimeDiagnosticsSnapshot = {
   readonly phases: Readonly<
     Record<HizoFSRuntimeDiagnosticPhase, HizoFSRuntimeDiagnosticPhaseSnapshot>
@@ -91,12 +116,15 @@ export type HizoFSRuntimeDiagnosticsSnapshot = {
     readonly metadata: HizoFSRuntimeDiagnosticCacheSnapshot;
     readonly fileChunk: HizoFSRuntimeDiagnosticCacheSnapshot;
     readonly backingFileHandle: HizoFSRuntimeDiagnosticCacheSnapshot;
+    readonly backingFileSnapshot: HizoFSRuntimeDiagnosticCacheSnapshot;
+    readonly decodedInodeIndexPage: HizoFSRuntimeDiagnosticCacheSnapshot;
   };
   readonly resources: {
     readonly writerDirtyChunks: HizoFSRuntimeDiagnosticResourceSnapshot;
     readonly writerPendingChunkWrites: HizoFSRuntimeDiagnosticResourceSnapshot;
     readonly readerPrefetch: HizoFSRuntimeDiagnosticResourceSnapshot;
   };
+  readonly coordinator: HizoFSRuntimeDiagnosticCoordinatorSnapshot;
 };
 
 type MutablePhaseCounter = {
@@ -192,11 +220,21 @@ export class HizoFSRuntimeDiagnostics {
     metadata: createCacheCounter(),
     fileChunk: createCacheCounter(),
     backingFileHandle: createCacheCounter(),
+    backingFileSnapshot: createCacheCounter(),
+    decodedInodeIndexPage: createCacheCounter(),
   };
   private readonly resources = {
     writerDirtyChunks: createResourceCounter(),
     writerPendingChunkWrites: createResourceCounter(),
     readerPrefetch: createResourceCounter(),
+  };
+  private readonly coordinator = {
+    activeStateCacheHits: 0,
+    durableReloads: 0,
+    leadershipAcquisitions: 0,
+    failovers: 0,
+    localRequests: 0,
+    remoteRequests: 0,
   };
 
   measureSync<T>({
@@ -325,6 +363,37 @@ export class HizoFSRuntimeDiagnostics {
     );
   }
 
+  recordCoordinatorEvent({
+    event,
+  }: {
+    event: HizoFSRuntimeDiagnosticCoordinatorEvent;
+  }): void {
+    switch (event) {
+    case 'active_state_cache_hit':
+      this.coordinator.activeStateCacheHits += 1;
+      return;
+    case 'durable_reload':
+      this.coordinator.durableReloads += 1;
+      return;
+    case 'leadership_acquisition':
+      this.coordinator.leadershipAcquisitions += 1;
+      return;
+    case 'failover':
+      this.coordinator.failovers += 1;
+      return;
+    case 'local_request':
+      this.coordinator.localRequests += 1;
+      return;
+    case 'remote_request':
+      this.coordinator.remoteRequests += 1;
+      return;
+    default: {
+      const _ex: never = event;
+      throw new Error(`Unhandled HizoFS coordinator diagnostic event: ${_ex}`);
+    }
+    }
+  }
+
   resetResourceHighWaterMarks(): void {
     for (const counter of Object.values(this.resources)) {
       counter.maximumBytes = counter.currentBytes;
@@ -353,6 +422,8 @@ export class HizoFSRuntimeDiagnostics {
         metadata: { ...this.caches.metadata },
         fileChunk: { ...this.caches.fileChunk },
         backingFileHandle: { ...this.caches.backingFileHandle },
+        backingFileSnapshot: { ...this.caches.backingFileSnapshot },
+        decodedInodeIndexPage: { ...this.caches.decodedInodeIndexPage },
       },
       resources: {
         writerDirtyChunks: { ...this.resources.writerDirtyChunks },
@@ -361,6 +432,7 @@ export class HizoFSRuntimeDiagnostics {
         },
         readerPrefetch: { ...this.resources.readerPrefetch },
       },
+      coordinator: { ...this.coordinator },
     };
   }
 
@@ -388,6 +460,10 @@ export class HizoFSRuntimeDiagnostics {
       return this.caches.fileChunk;
     case 'backing_file_handle':
       return this.caches.backingFileHandle;
+    case 'backing_file_snapshot':
+      return this.caches.backingFileSnapshot;
+    case 'decoded_inode_index_page':
+      return this.caches.decodedInodeIndexPage;
     default: {
       const _ex: never = cache;
       throw new Error(`Unhandled HizoFS diagnostic cache: ${String(_ex)}`);

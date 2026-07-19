@@ -25,18 +25,49 @@ AAD, or object addressing.
 ```text
 <backing-directory>/
 ├── descriptor.json
-├── superblock-0.enc
-├── superblock-1.enc          # both slots exist from initial creation
-└── objects/
-    ├── 00/
-    ├── 01/
-    └── ...
+├── head-0.hfs
+├── head-1.hfs              # both slots exist from initial creation
+├── segments/
+│   ├── metadata/<shard>/<segment-id>.seg
+│   └── data/<shard>/<segment-id>.seg
+├── segment-indexes/
+│   ├── metadata/<shard>/<segment-id>.idx
+│   └── data/<shard>/<segment-id>.idx
+└── maintenance/
+    ├── relocation-0.hfs
+    ├── relocation-1.hfs
+    ├── gc-checkpoint-0.hfs
+    └── gc-checkpoint-1.hfs
 ```
 
-Object shard directories are created lazily. Creation requires an empty backing
-directory because one directory is exclusively owned by one HizoFS instance.
-Unknown physical entries are not part of the format and must not be deleted
-automatically.
+A directory containing this layout is exclusively owned by one HizoFS file
+system. Segment shard directories are created lazily from the first eight bits
+of the segment ID. Unknown physical entries are not part of the format and must
+not be deleted automatically.
+
+Metadata records prepared by one runtime publication are packed into one
+append-only metadata segment. File chunks are packed into bounded private data
+segments. The current writer policy targets 1 MiB of plaintext metadata and 16
+MiB, or 64 default-size chunks, of plaintext file data per segment. These are
+rotation policies rather than compatibility constants; every physical record is
+self-describing and independently authenticated.
+
+
+## Authenticated sealed-segment indexes
+
+A sealed metadata or data segment may have a derived authenticated sidecar at
+`segment-indexes/<type>/<shard>/<segment-id>.idx`. The index binds the file
+system ID, segment type and ID, complete physical segment length, and the
+ordered record kind, offset, and stored length of every frame. It is encrypted
+and authenticated with a domain-separated key derived from the root key.
+
+The sidecar is an acceleration and integrity aid, not the sole authority for
+object existence. A missing index is reconstructed by authenticating the
+segment header and scanning bounded frame headers. An invalid, stale, or
+truncated index is reported and ignored; the segment is scanned independently.
+A reconstructed index may be persisted only for a non-active segment. Segment
+removal removes the corresponding sidecar first, and an absent sidecar never
+makes a segment unsafe to read or reclaim.
 
 ## Descriptor
 
@@ -54,31 +85,46 @@ derivation and does not contain the file-system identity. After a complete
 authenticated generation has been opened with the root key, a missing or
 structurally corrupt descriptor may be replaced with this canonical value.
 I/O and permission failures while reading or repairing it must still propagate.
-An unsupported encrypted record generation must never be made readable by
+An unsupported authenticated generation must never be made readable by
 rewriting the descriptor.
 
-## Identifiers
+## Identifiers and direct object references
 
 Stable node identifiers contain 16 random bytes encoded as canonical unpadded
 Base64URL. The file-system identifier is a stable 128-bit value derived from
 the File System Root Key as specified below; it is not independently random or
 persisted in the descriptor.
 
-Immutable object identifiers are 21-character Nano IDs generated from the
-fixed URL-safe alphabet `A-Z a-z 0-9 _ -`. This provides 126 random bits while
-remaining compact and independently generatable by every tab and Worker.
-Their physical path is:
+Each segment ID contains 16 cryptographically random bytes. A logical object
+reference is the canonical unpadded Base64URL encoding of this fixed 32-byte
+binary value:
 
-```text
-objects/<first-eight-object-id-bits-as-lowercase-hex>/<object-id>.enc
-```
+| Offset | Length | Meaning |
+| ---: | ---: | --- |
+| 0 | 16 | Home segment ID |
+| 16 | 8 | Home byte offset, unsigned big-endian |
+| 24 | 4 | Complete stored frame length, unsigned big-endian |
+| 28 | 1 | Record kind ID |
+| 29 | 3 | Zero reserved bytes |
 
-Paths and logical names never participate in physical object names.
+The encoded reference is exactly 43 characters. The stored length permits one
+exact range read without first reading a separate header. The frame repeats
+and authenticates the segment ID, offset, length, and kind; values in the
+reference are never trusted without that comparison.
 
-## Root key and object keys
+The home reference is a logical identity. Normal records remain at their home
+location and require no relocation lookup beyond the empty-map fast path.
+Partial-segment compaction may publish a chain-free relocation mapping for a
+moved home reference. Every persisted mapping points directly to the current
+canonical frame, preserves the record kind, rejects cycles and self-maps, and
+is authenticated in redundant A/B maintenance slots. Physical offsets are
+intentionally excluded from record key derivation beyond the authenticated
+logical home reference.
 
-The caller provides one 32-byte File System Root Key. HizoFS imports it
-as HKDF key material. It does not persist or manage credentials or key slots.
+## Root key and segmented keys
+
+The caller provides one 32-byte File System Root Key. HizoFS imports it as HKDF
+key material. It does not persist or manage credentials or key slots.
 
 The stable `fileSystemId` is canonical unpadded Base64URL encoding of the first
 128 bits derived with HKDF-SHA-256:
@@ -88,47 +134,90 @@ salt = UTF-8("HizoFS/v1/filesystem-id/salt")
 info = UTF-8("HizoFS/v1/filesystem-id")
 ```
 
-Deriving this identity from the root key removes a plaintext single point of
-failure while retaining domain separation between independent root keys. A
-root key must not be reused for two independent HizoFS instances.
+A root key must not be reused for two independent HizoFS instances.
 
-For each object, an AES-256-GCM key is derived with HKDF-SHA-256:
+A segment-record AES-256-GCM key is derived once per logical home segment. The
+salt is domain-separated and includes the decoded file-system ID; the HKDF info
+includes the home segment ID. Every record uses a fresh random 12-byte nonce
+and a 128-bit tag. Record AAD includes a format domain, the file-system ID, and
+the complete 72-byte record header. Consequently moving a frame to another
+logical reference, record kind, file system, or home segment fails
+authentication, while a future compactor may copy the authenticated frame and
+retain its logical home reference without re-encryption.
 
-```text
-salt = UTF-8("HizoFS/v1/filesystem/" + fileSystemId)
-info = UTF-8("HizoFS/v1/" + area + "/" + objectIdentity)
-```
+Segment headers use a separately derived key scoped to the physical segment ID.
+Their authentication is a zero-length AES-GCM plaintext with a deterministic
+all-zero nonce. This nonce is used once under each independently derived
+segment-header key. Head slots use separate slot-scoped keys and fresh random
+nonces.
 
-`area` is either `object` or `superblock`.
+## Segment header
 
-AES-GCM uses a fresh random 12-byte nonce and a 128-bit tag. Its additional
-authenticated data is:
+Every `.seg` file starts with a fixed 64-byte authenticated header:
 
-```text
-UTF-8("HizoFS/v1/" + area + "/" + fileSystemId + "/" + objectIdentity)
-```
+| Offset | Length | Meaning |
+| ---: | ---: | --- |
+| 0 | 8 | ASCII magic `HZSEG001` |
+| 8 | 2 | Format version, currently `1` |
+| 10 | 2 | Header length, currently `64` |
+| 12 | 1 | Segment type: metadata, data, or relocation |
+| 13 | 3 | Zero reserved bytes |
+| 16 | 16 | Decoded file-system ID |
+| 32 | 16 | Segment ID |
+| 48 | 16 | AES-GCM authentication tag over bytes 0..47 |
 
-For normal objects, `objectIdentity` is the immutable object ID. For
-superblocks it is `superblock-0` or `superblock-1`. Moving ciphertext between
-file systems, object IDs, areas, or superblock slots must fail authentication.
+The segment ID must match both the physical filename and shard. Segment type
+must match the kind of every contained record.
 
-## Encrypted object envelope
+## Authenticated record frame
 
-All normal objects and both superblock slots use the same binary envelope.
+Each immutable logical object is one independently authenticated aligned frame.
 Multi-byte integers are unsigned and big-endian.
 
 | Offset | Length | Meaning |
 | ---: | ---: | --- |
-| 0 | 8 | Magic bytes `48 49 5a 4f 46 53 00 00` (`HIZOFS\0\0`) |
-| 8 | 2 | Envelope version, currently `1` |
-| 10 | 2 | Header byte length, currently `32` |
-| 12 | 12 | AES-GCM nonce |
-| 24 | 8 | Ciphertext byte length, including the 16-byte tag |
-| 32 | variable | Ciphertext and tag |
+| 0 | 8 | ASCII magic `HZREC001` |
+| 8 | 2 | Format version, currently `1` |
+| 10 | 2 | Header length, currently `72` |
+| 12 | 4 | Zero reserved bytes |
+| 16 | 8 | Complete aligned frame length |
+| 24 | 8 | Plaintext record length |
+| 32 | 16 | Logical home segment ID |
+| 48 | 8 | Logical home byte offset |
+| 56 | 12 | Random AES-GCM nonce |
+| 68 | 1 | Record kind ID |
+| 69 | 3 | Zero reserved bytes |
+| 72 | variable | Ciphertext, 16-byte tag, then zero alignment padding |
 
-The physical file length must equal `32 + ciphertextByteLength`. Unknown
-envelope versions or header lengths must fail closed rather than falling back
-to an older interpretation.
+Frames are aligned to eight bytes. The physical segment may be scanned using
+only fixed frame headers; garbage collection does not need to read file-chunk
+ciphertext merely to enumerate logical object references. Record authentication
+isolates a corrupt frame from neighbouring frames, so an invalid newest commit
+can fall back to the older A/B generation even when both records share one
+segment. Losing or replacing an entire segment remains a bounded multi-record
+fault and may affect records shared by both retained generations; A/B head
+publication is not physical replication of every immutable metadata record.
+
+## Authenticated A/B head envelope
+
+`head-0.hfs` and `head-1.hfs` are fixed-slot mutable publications, not segment
+records. Each begins with a 32-byte envelope header:
+
+| Offset | Length | Meaning |
+| ---: | ---: | --- |
+| 0 | 8 | ASCII magic `HZHED001` |
+| 8 | 2 | Format version, currently `1` |
+| 10 | 2 | Header length, currently `32` |
+| 12 | 12 | Random AES-GCM nonce |
+| 24 | 4 | Ciphertext length including the tag |
+| 28 | 4 | Zero reserved bytes |
+
+The authenticated plaintext contains the decoded file-system ID, active
+metadata segment ID, durable metadata tail, encoded superblock-record length,
+and the encoded `superblock` record. A head may reference only records fully
+inside its authenticated durable tail. Data segments are flushed before the
+metadata segment, and the metadata segment is flushed before the alternate
+head slot is replaced and flushed.
 
 ## Authenticated plaintext record
 
@@ -164,7 +253,7 @@ Unknown kinds, payload encodings, and record versions must fail closed.
 
 ## Superblocks
 
-The two superblock slots contain encrypted `superblock` records.
+The two authenticated head slots contain encoded `superblock` records and the durable metadata anchor needed to interpret that generation.
 
 ```ts
 type HizoFSSuperblockDto = {
@@ -198,15 +287,22 @@ filesystem is therefore an uncertain rollback and forces read-only recovery.
 ```ts
 type HizoFSCommitDto = {
   readonly revision: number;
+  readonly publicationId: string;
   readonly rootDirectoryNodeId: string;
   readonly inodeIndexRootObjectId: string;
 };
 ```
 
-A commit and all objects it references are immutable. The only persistent
-visibility switch for normal mutations is the authenticated superblock slot.
-Before that switch, the old complete commit is authoritative; after it, the
-new complete commit is authoritative.
+A commit and all objects it references are immutable. `publicationId` is a
+fresh stable identifier for one attempted durable publication. If a leader
+fails after flushing the head but before replying, its successor can recognize
+that publication while it remains the active generation. If later generations
+have already replaced it, the coordinator reports an indeterminate publication
+outcome rather than silently replaying a potentially non-idempotent operation.
+
+The only persistent visibility switch for normal mutations is the authenticated
+superblock slot. Before that switch, the old complete commit is authoritative;
+after it, the new complete commit is authoritative.
 
 ## Inode index
 
@@ -283,8 +379,14 @@ caller policy and must not silently convert the link into a file.
 
 Normal mutations load a base commit and prepare new immutable objects outside
 the per-file-system commit lock. Under that lock they reload the active state,
-verify that the base commit is still current, write one new commit, and switch
-one superblock slot. If another writer published first, preparation is retried
+verify that the base commit is still current, write one new commit into the
+runtime-owned active metadata segment, flush every referenced data segment and
+the metadata durable tail, and switch one head slot. Each runtime creates fresh
+random segment IDs and never reopens another runtime's active append tail, so it
+may retain its own bounded random-access segment handles across publications
+without allowing independent tabs to allocate the same offset. Head files are
+still reopened for each publication because those two mutable slots are shared
+by every runtime. If another writer published first, preparation is retried
 against the new base. Objects prepared by a losing attempt become ordinary GC
 candidates.
 
@@ -292,8 +394,7 @@ An open writer batches writes, sparse updates, and truncates and performs at
 most one file-system commit on `close()`. A byte-bounded dirty-chunk cache
 coalesces repeated writes to the same logical chunk. When the final extent tree
 is completely determined by prepared chunks, it is built bottom-up once rather
-than publishing intermediate Copy-on-Write pages for every extent. Independent
-chunk objects are encrypted and persisted with explicit bounded concurrency;
+than publishing intermediate Copy-on-Write pages for every extent. Independent chunk frames are encrypted and appended to bounded data segments with explicit bounded concurrency;
 the maintenance lease remains held until every scheduled write has either
 completed or failed. These are runtime policies and do not change the persistent
 format. A conflicting changed inode causes the writer to fail rather than
@@ -312,24 +413,30 @@ remaining session can repopulate them only by authenticating the immutable
 physical objects again.
 
 Readers retain immutable inode and extent roots, providing snapshot reads while
-a later commit is active. Runtime backing stores retain resolved directory
-handles and fixed root-file handles and deduplicate concurrent resolutions, but
-read file contents afresh and invalidate cached handles when their entries are
-removed. Per-object file handles are not retained. Multiple inode-index changes
-belonging to one mutation traverse and rewrite each affected Copy-on-Write path
-once.
+a later commit is active. Runtime backing stores retain resolved directory and
+bounded active segment handles and deduplicate concurrent resolutions.
+Exact-range segment reads also retain a bounded LRU of immutable `File`
+snapshots. A cached snapshot is reused only when it already contains the whole
+requested range; an append beyond its captured size forces a fresh snapshot,
+so previously published frame bytes remain reusable without hiding a later
+append. Same-store replacement and removal invalidate the corresponding
+snapshot entry. An active metadata or data segment is retained only until
+payload rotation, physical failure, explicit handle release, or runtime close;
+sealed older segments are read through exact immutable ranges. Multiple
+inode-index changes belonging to one mutation traverse and rewrite each affected
+Copy-on-Write path once.
 
 ## Bulk construction
 
 A newly created, unpublished target may be populated through the HizoFS bulk
-builder. It streams file contents into immutable chunks, builds directory,
+builder. It streams file contents into authenticated chunk frames, builds directory,
 extent, and inode indexes bottom-up, and publishes the complete imported tree
 with one file-system commit. It is used for encryption and re-encryption
 transitions so file and directory counts do not multiply superblock commits.
 Independent inode and directory-object writes are queued with the same bounded
 immutable-write concurrency used by file chunks. Commit and abort both wait for
 every scheduled write to settle before releasing the maintenance resource
-lease. Failure before publication leaves only unreachable immutable objects in
+lease. Failure before publication leaves only unreachable segment records in
 a target that the transition coordinator may discard.
 
 ## Maintenance and garbage collection
@@ -346,14 +453,31 @@ objects are absent from the fenced physical listing, and later mutations can
 reference only a retained generation or objects created after the fence, so an
 object found unreachable from the snapped roots cannot become reachable later.
 
-Sweep reacquires the exclusive lease only for bounded removal slices. Removals
-within one slice use bounded concurrency, and every started removal settles
-before the lease is released. A soft time budget stops scheduling additional
-removals but never abandons an OPFS operation already in flight. Between slices
-GC releases the lease and yields so queued foreground resources can progress.
-The candidate cursor is intentionally not persistent: after process loss,
-already removed objects remain safely absent and a later GC cycle rediscovers
-all remaining unreachable objects.
+GC first selects bounded partial-live compaction candidates whose dead bytes
+exceed the configured threshold and whose live bytes fit the relocation memory
+bound. One candidate is processed under an exclusive maintenance slice: live
+records are authenticated and copied to new immutable frames, those frames are
+flushed, the complete chain-free relocation map is published to both A/B slots,
+and only then is the source segment removed if its physical length is unchanged.
+A crash before publication leaves unreachable copies; a crash after publication
+leaves either the old segment or the new canonical frames readable. A changed
+source segment is retained for a later cycle.
+
+Whole-dead sweep removes only segments for which every enumerated record is
+unreachable from both retained generations. Because a runtime may retain and
+append to its own active segment after candidate construction, sweep revalidates
+the segment byte length while holding the exclusive maintenance lease. One
+physical remove may reclaim many logical objects. Compaction and sweep reacquire
+the exclusive lease only for bounded slices. Every started copy, publication,
+or remove settles before the lease is released, and GC yields between slices so
+queued foreground resources can progress.
+
+Progress is authenticated in redundant GC checkpoint slots. A resumed
+invocation always performs a fresh authenticated mark and rebuilds candidates;
+the checkpoint never substitutes stale reachability data. When the active commit
+matches, cumulative completed-candidate and reclaimed-object counters are
+retained. A changed root discards stale progress. Successful completion removes
+both checkpoint slots; interruption leaves them for diagnosis and resumption.
 
 GC marks from every valid A/B superblock commit. For each generation it
 validates the persistent inode, directory, and extent indexes, then traverses
@@ -366,24 +490,23 @@ the mark phase before deletion.
 Shared extent pages and chunk objects are authenticated and traversed once by
 object ID even when many reflinked inodes reference the same graph. Retaining
 both valid generations preserves fallback after corruption of the newest slot.
-Only canonical object files in their correct shard are eligible for deletion.
+Only authenticated canonical segment files in their correct type directory and shard are eligible for deletion.
 Unknown physical entries are left untouched and reported. Failure during mark
 performs no sweep.
 
-Unreachable immutable objects are expected after successful Copy-on-Write
-updates, aborted writers, or crashes before the superblock switch; their
+Unreachable segment records are expected after successful Copy-on-Write
+updates, aborted writers, or crashes before the head switch; their
 presence is not itself corruption.
 
 ## Versioning
 
-The descriptor format version, object envelope version, and each record version
-are independent compatibility boundaries. Released readers remain available;
+The descriptor format version, segment/header/frame versions, and each record version are independent compatibility boundaries. Released readers remain available;
 writers normally emit only the current version. Unknown incompatible encrypted
 versions must never be interpreted as empty storage or partially rewritten.
 Raw inspection preserves exact persisted metadata even when a DTO parser uses
 only its known fields. Repairing the non-secret descriptor does not change or
 reinterpret any encrypted generation.
 
-Major format migration is performed by opening the old logical file system,
-copying it to a new backing directory using a new writer, validating the target,
-and switching authority outside HizoFS.
+This format has not been released. The former development-only object-per-file
+layout is not a compatibility boundary and is intentionally neither opened nor
+migrated by the current implementation.

@@ -8,6 +8,15 @@ export class HizoFSCorruptionError extends Error {
   }
 }
 
+export class HizoFSPublicationOutcomeUnknownError extends Error {
+  constructor({ message }: {
+    message: string;
+  }) {
+    super(message);
+    this.name = 'HizoFSPublicationOutcomeUnknownError';
+  }
+}
+
 export class HizoFSUnsupportedFormatError extends Error {
   constructor({ message }: {
     message: string;

@@ -9,6 +9,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
 
@@ -32,6 +33,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
 
@@ -62,6 +64,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics,
     });
 
@@ -87,6 +90,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 1,
+      fileSnapshotCacheEntryLimit: 1,
       diagnostics: undefined,
     });
 
@@ -103,6 +107,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
 
@@ -122,6 +127,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
 
@@ -143,6 +149,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
 
@@ -160,6 +167,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'root' }),
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     expect(await store.read({ path: ['missing'] })).toBeUndefined();
@@ -173,6 +181,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'root' }),
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     await store.write({ path: ['a', 'one'], bytes: new Uint8Array([1]) });
@@ -204,6 +213,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
 
@@ -227,6 +237,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
 
@@ -241,6 +252,7 @@ describe('native OPFS HizoFS backing store', () => {
     const store = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'root' }),
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     await expect(store.write({
@@ -248,4 +260,120 @@ describe('native OPFS HizoFS backing store', () => {
       bytes: new Uint8Array(),
     })).rejects.toThrow('Invalid HizoFS backing-store path segment');
   });
+  it('supports exact range reads and file-size queries for segmented records', async () => {
+    const store = new NativeOpfsHizoFSBackingStore({
+      root: new MockFileSystemDirectoryHandle({ name: 'root' }),
+      fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
+    await store.write({
+      path: ['segments', 'metadata', '00', 'segment.seg'],
+      bytes: new Uint8Array([1, 2, 3, 4, 5]),
+    });
+
+    await expect(store.getFileSize({
+      path: ['segments', 'metadata', '00', 'segment.seg'],
+    })).resolves.toBe(5);
+    await expect(store.readRange({
+      path: ['segments', 'metadata', '00', 'segment.seg'],
+      offset: 1,
+      byteLength: 3,
+    })).resolves.toEqual(new Uint8Array([2, 3, 4]));
+    await expect(store.getFileSize({ path: ['missing'] })).resolves.toBeUndefined();
+  });
+
+  it('reuses immutable File snapshots for repeated segment range reads', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const segments = await root.getDirectoryHandle('segments', { create: true });
+    const metadata = await segments.getDirectoryHandle('metadata', { create: true });
+    const shard = await metadata.getDirectoryHandle('00', { create: true });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
+      diagnostics,
+    });
+    await store.write({
+      path: ['segments', 'metadata', '00', 'segment.seg'],
+      bytes: new Uint8Array([1, 2, 3, 4, 5]),
+    });
+    const handle = await shard.getFileHandle('segment.seg');
+    const getFile = vi.spyOn(handle, 'getFile');
+
+    await expect(store.readRange({
+      path: ['segments', 'metadata', '00', 'segment.seg'],
+      offset: 0,
+      byteLength: 3,
+    })).resolves.toEqual(new Uint8Array([1, 2, 3]));
+    await expect(store.readRange({
+      path: ['segments', 'metadata', '00', 'segment.seg'],
+      offset: 2,
+      byteLength: 3,
+    })).resolves.toEqual(new Uint8Array([3, 4, 5]));
+
+    expect(getFile).toHaveBeenCalledTimes(1);
+    expect(diagnostics.snapshot().caches.backingFileSnapshot).toMatchObject({
+      hits: 1,
+      misses: 1,
+      currentEntries: 1,
+      maximumEntries: 1,
+    });
+  });
+
+  it('refreshes an append-only segment snapshot when a later range exceeds it', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
+    const path = ['segments', 'data', '00', 'segment.seg'] as const;
+    const writer = await store.openRandomAccessFile({
+      path,
+      mode: 'read_write',
+      create: true,
+    });
+    await writer.writeAt({ offset: 0, bytes: new Uint8Array([1, 2, 3]) });
+    await writer.flush();
+    await expect(store.readRange({ path, offset: 0, byteLength: 3 })).resolves.toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
+
+    await writer.writeAt({ offset: 3, bytes: new Uint8Array([4, 5]) });
+    await writer.flush();
+    await expect(store.readRange({ path, offset: 3, byteLength: 2 })).resolves.toEqual(
+      new Uint8Array([4, 5]),
+    );
+    await writer.close();
+  });
+
+  it('provides explicit random-access flush boundaries through the buffered fallback', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const store = new NativeOpfsHizoFSBackingStore({
+      root,
+      fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
+    const file = await store.openRandomAccessFile({
+      path: ['segment.seg'],
+      mode: 'read_write',
+      create: true,
+    });
+    await file.writeAt({ offset: 2, bytes: new Uint8Array([7, 8]) });
+    expect(await file.getSize()).toBe(4);
+    expect(await file.readAt({ offset: 0, byteLength: 4 })).toEqual(
+      new Uint8Array([0, 0, 7, 8]),
+    );
+    await file.flush();
+    await file.close();
+
+    expect(await store.read({ path: ['segment.seg'] })).toEqual(
+      new Uint8Array([0, 0, 7, 8]),
+    );
+  });
+
 });

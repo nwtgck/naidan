@@ -256,9 +256,29 @@ export function assertHizoFSFileChunk({
   binaryPayload: Uint8Array;
   chunkSize: number;
 }): void {
+  assertHizoFSFileChunkByteLength({
+    chunk,
+    binaryPayloadByteLength: binaryPayload.byteLength,
+    chunkSize,
+  });
+}
+
+export function assertHizoFSFileChunkByteLength({
+  chunk,
+  binaryPayloadByteLength,
+  chunkSize,
+}: {
+  chunk: HizoFSFileChunkDto;
+  binaryPayloadByteLength: number;
+  chunkSize: number;
+}): void {
   const { ...unhandledChunk } = chunk;
   unhandledChunk satisfies Record<PropertyKey, never>;
-  if (binaryPayload.byteLength === 0 || binaryPayload.byteLength > chunkSize) {
+  if (
+    !Number.isSafeInteger(binaryPayloadByteLength)
+    || binaryPayloadByteLength <= 0
+    || binaryPayloadByteLength > chunkSize
+  ) {
     throw new Error("HizoFS file chunk payload length is invalid");
   }
 }

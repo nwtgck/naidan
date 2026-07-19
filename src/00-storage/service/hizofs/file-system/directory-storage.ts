@@ -2,7 +2,10 @@ import type {
   HizoFSDirectoryEntryDto,
   HizoFSDirectoryInodeDto,
 } from '@/00-storage/00-dto/hizofs.dto';
-import type { HizoFSDirectoryIndex } from './directory-index';
+import type {
+  HizoFSDirectoryIndex,
+  HizoFSDirectoryIndexLookupCache,
+} from './directory-index';
 import type { HizoFSInodeStore } from './inode-store';
 import { compareHizoFSStrings } from './ordering';
 import { assertHizoFSEntryName } from './semantic-validation';
@@ -39,6 +42,26 @@ export class HizoFSDirectoryStorage {
     inode: HizoFSDirectoryInodeDto;
     name: string;
   }): Promise<HizoFSDirectoryEntryDto | undefined> {
+    return await this.getEntryInternal({
+      inode,
+      name,
+      lookupCache: undefined,
+    });
+  }
+
+  async getEntryWithCache({ inode, name, lookupCache }: {
+    inode: HizoFSDirectoryInodeDto;
+    name: string;
+    lookupCache: HizoFSDirectoryIndexLookupCache;
+  }): Promise<HizoFSDirectoryEntryDto | undefined> {
+    return await this.getEntryInternal({ inode, name, lookupCache });
+  }
+
+  private async getEntryInternal({ inode, name, lookupCache }: {
+    inode: HizoFSDirectoryInodeDto;
+    name: string;
+    lookupCache: HizoFSDirectoryIndexLookupCache | undefined;
+  }): Promise<HizoFSDirectoryEntryDto | undefined> {
     assertHizoFSEntryName({ name });
     switch (inode.storage.type) {
     case 'inline': {
@@ -47,10 +70,16 @@ export class HizoFSDirectoryStorage {
       return entry?.name === name ? entry : undefined;
     }
     case 'indexed':
-      return this.directoryIndex.get({
-        rootObjectId: inode.storage.directoryIndexRootObjectId,
-        name,
-      });
+      return lookupCache === undefined
+        ? this.directoryIndex.get({
+          rootObjectId: inode.storage.directoryIndexRootObjectId,
+          name,
+        })
+        : this.directoryIndex.getWithLeafCache({
+          rootObjectId: inode.storage.directoryIndexRootObjectId,
+          name,
+          cache: lookupCache,
+        });
     default: {
       const _ex: never = inode.storage;
       throw new Error(`Unhandled HizoFS directory storage: ${String(_ex)}`);
@@ -61,14 +90,24 @@ export class HizoFSDirectoryStorage {
   async *entries({ inode }: {
     inode: HizoFSDirectoryInodeDto;
   }): AsyncIterable<HizoFSDirectoryEntryDto> {
+    for await (const batch of this.entryBatches({ inode })) {
+      for (const entry of batch) {
+        yield entry;
+      }
+    }
+  }
+
+  async *entryBatches({ inode }: {
+    inode: HizoFSDirectoryInodeDto;
+  }): AsyncIterable<readonly HizoFSDirectoryEntryDto[]> {
     switch (inode.storage.type) {
     case 'inline':
-      for (const entry of inode.storage.entries) {
-        yield entry;
+      if (inode.storage.entries.length > 0) {
+        yield inode.storage.entries;
       }
       break;
     case 'indexed':
-      yield* this.directoryIndex.entries({
+      yield* this.directoryIndex.entryBatches({
         rootObjectId: inode.storage.directoryIndexRootObjectId,
       });
       break;
@@ -119,7 +158,7 @@ export class HizoFSDirectoryStorage {
       for (const change of changes) {
         switch (change.type) {
         case 'set':
-          rootObjectId = await this.directoryIndex.set({
+          rootObjectId = await this.directoryIndex.setWithRightmostPathCache({
             rootObjectId,
             entry: change.entry,
           });

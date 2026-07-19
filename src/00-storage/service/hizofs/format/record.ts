@@ -15,7 +15,7 @@ export type HizoFSRecordKind =
   | 'file_chunk'
   | 'superblock';
 
-const RECORD_KIND_TO_ID = {
+export const HIZOFS_RECORD_KIND_TO_ID = {
   commit: 1,
   inode_index_page: 2,
   file_inode: 3,
@@ -30,12 +30,25 @@ const RECORD_KIND_TO_ID = {
 function decodeRecordKind({ id }: {
   id: number;
 }): HizoFSRecordKind {
-  for (const [kind, candidateId] of Object.entries(RECORD_KIND_TO_ID)) {
+  for (const [kind, candidateId] of Object.entries(HIZOFS_RECORD_KIND_TO_ID)) {
     if (candidateId === id) {
       return kind as HizoFSRecordKind;
     }
   }
   throw new HizoFSUnsupportedFormatError({ message: `HizoFS record kind is unsupported: ${String(id)}` });
+}
+
+
+export function encodeHizoFSRecordKind({ kind }: {
+  kind: HizoFSRecordKind;
+}): number {
+  return HIZOFS_RECORD_KIND_TO_ID[kind];
+}
+
+export function decodeHizoFSRecordKind({ id }: {
+  id: number;
+}): HizoFSRecordKind {
+  return decodeRecordKind({ id });
 }
 
 export type DecodedHizoFSRecord = {
@@ -45,6 +58,34 @@ export type DecodedHizoFSRecord = {
   readonly binaryPayload: Uint8Array;
 };
 
+export function getHizoFSRecordByteLength({
+  metadata,
+  binaryPayloadByteLength,
+}: {
+  metadata: unknown;
+  binaryPayloadByteLength: number;
+}): number {
+  if (!Number.isSafeInteger(binaryPayloadByteLength) || binaryPayloadByteLength < 0) {
+    throw new Error('HizoFS record binary payload length must be a non-negative safe integer');
+  }
+  const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
+  if (metadataBytes.byteLength > 0xffff_ffff) {
+    throw new Error('HizoFS record metadata is too large');
+  }
+  const totalByteLength = HEADER_BYTE_LENGTH
+    + metadataBytes.byteLength
+    + binaryPayloadByteLength;
+  if (!Number.isSafeInteger(totalByteLength)) {
+    throw new Error('HizoFS record plaintext length exceeds the safe integer range');
+  }
+  return totalByteLength;
+}
+
+// TODO(hizofs): Replace hot metadata JSON and string-encoded identifiers with
+// bounded per-record binary codecs after the segmented physical layer and its
+// recovery tooling stabilize. The conversion must preserve exhaustive versioned
+// decoding, deterministic inspection output, corruption bounds, and independent
+// offline reconstruction; do not introduce an opaque generic serializer.
 export function encodeHizoFSRecord({ kind, recordVersion, metadata, binaryPayload }: {
   kind: HizoFSRecordKind;
   recordVersion: number;
@@ -62,7 +103,7 @@ export function encodeHizoFSRecord({ kind, recordVersion, metadata, binaryPayloa
 
   const header = new Uint8Array(HEADER_BYTE_LENGTH);
   const view = new DataView(header.buffer);
-  header[0] = RECORD_KIND_TO_ID[kind];
+  header[0] = HIZOFS_RECORD_KIND_TO_ID[kind];
   header[1] = PAYLOAD_ENCODING_IDENTITY;
   view.setUint16(2, recordVersion, false);
   view.setUint32(4, metadataBytes.byteLength, false);
@@ -70,9 +111,17 @@ export function encodeHizoFSRecord({ kind, recordVersion, metadata, binaryPayloa
   return concatenateBytes({ parts: [header, metadataBytes, binaryPayload] });
 }
 
-export function decodeHizoFSRecord({ plaintext }: {
+type DecodedHizoFSRecordLayout = {
+  readonly kind: HizoFSRecordKind;
+  readonly recordVersion: number;
+  readonly metadata: unknown;
+  readonly binaryPayloadOffset: number;
+  readonly binaryPayloadByteLength: number;
+};
+
+function decodeHizoFSRecordLayout({ plaintext }: {
   plaintext: Uint8Array;
-}): DecodedHizoFSRecord {
+}): DecodedHizoFSRecordLayout {
   if (plaintext.byteLength < HEADER_BYTE_LENGTH) {
     throw new HizoFSCorruptionError({ message: 'HizoFS record is truncated', cause: undefined });
   }
@@ -89,13 +138,14 @@ export function decodeHizoFSRecord({ plaintext }: {
   if (binaryByteLengthBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new HizoFSCorruptionError({ message: 'HizoFS record binary payload exceeds the safe integer range', cause: undefined });
   }
-  const binaryByteLength = Number(binaryByteLengthBigInt);
-  const expectedByteLength = HEADER_BYTE_LENGTH + metadataByteLength + binaryByteLength;
+  const binaryPayloadByteLength = Number(binaryByteLengthBigInt);
+  const binaryPayloadOffset = HEADER_BYTE_LENGTH + metadataByteLength;
+  const expectedByteLength = binaryPayloadOffset + binaryPayloadByteLength;
   if (plaintext.byteLength !== expectedByteLength) {
     throw new HizoFSCorruptionError({ message: 'HizoFS record lengths do not match the plaintext', cause: undefined });
   }
 
-  const metadataBytes = plaintext.subarray(HEADER_BYTE_LENGTH, HEADER_BYTE_LENGTH + metadataByteLength);
+  const metadataBytes = plaintext.subarray(HEADER_BYTE_LENGTH, binaryPayloadOffset);
   let metadata: unknown;
   try {
     metadata = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(metadataBytes));
@@ -107,7 +157,60 @@ export function decodeHizoFSRecord({ plaintext }: {
     kind,
     recordVersion,
     metadata,
-    binaryPayload: plaintext.slice(HEADER_BYTE_LENGTH + metadataByteLength),
+    binaryPayloadOffset,
+    binaryPayloadByteLength,
+  };
+}
+
+export function decodeHizoFSRecord({ plaintext }: {
+  plaintext: Uint8Array;
+}): DecodedHizoFSRecord {
+  const layout = decodeHizoFSRecordLayout({ plaintext });
+  return {
+    kind: layout.kind,
+    recordVersion: layout.recordVersion,
+    metadata: layout.metadata,
+    binaryPayload: plaintext.slice(layout.binaryPayloadOffset),
+  };
+}
+
+export function decodeHizoFSRecordBinaryPayloadRange({
+  plaintext,
+  offset,
+  length,
+}: {
+  plaintext: Uint8Array;
+  offset: number;
+  length: number;
+}): DecodedHizoFSRecord & {
+  readonly binaryPayloadByteLength: number;
+} {
+  for (const [fieldName, value] of [
+    ['offset', offset],
+    ['length', length],
+  ] as const) {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(
+        `HizoFS record binary range ${fieldName} must be a non-negative safe integer`,
+      );
+    }
+  }
+  const layout = decodeHizoFSRecordLayout({ plaintext });
+  const rangeStart = Math.min(offset, layout.binaryPayloadByteLength);
+  const copiedByteLength = Math.min(
+    layout.binaryPayloadByteLength - rangeStart,
+    length,
+  );
+  const rangeEnd = rangeStart + copiedByteLength;
+  return {
+    kind: layout.kind,
+    recordVersion: layout.recordVersion,
+    metadata: layout.metadata,
+    binaryPayload: plaintext.slice(
+      layout.binaryPayloadOffset + rangeStart,
+      layout.binaryPayloadOffset + rangeEnd,
+    ),
+    binaryPayloadByteLength: layout.binaryPayloadByteLength,
   };
 }
 

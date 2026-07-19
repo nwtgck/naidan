@@ -51,6 +51,10 @@ function assertCommit({ commit }: {
     fieldName: 'HizoFS commit revision',
   });
   validateHizoFSStableId({
+    value: commit.publicationId,
+    fieldName: 'HizoFS publication ID',
+  });
+  validateHizoFSStableId({
     value: commit.rootDirectoryNodeId,
     fieldName: 'HizoFS rootDirectoryNodeId',
   });

@@ -20,9 +20,13 @@ import { createHizoFSStableId } from "@/00-storage/service/hizofs/id";
 import { HizoFSCorruptionError } from "@/00-storage/service/hizofs/errors";
 import type { HizoFSActiveState } from "./core";
 import type { HizoFSDirectoryChange } from "./directory-storage";
+import type { HizoFSDirectoryIndexLookupCache } from "./directory-index";
 import { HizoFSFileReader } from "./file-reader";
 import { HizoFSFileWriter } from "./file-writer";
-import type { LoadedHizoFSFile } from "./node-service";
+import type {
+  LoadedHizoFSDirectory,
+  LoadedHizoFSFile,
+} from "./node-service";
 import type { HizoFSRuntime } from "./runtime";
 import { acquireHizoFSResourceLease } from "./maintenance-lock";
 import type { HizoFSMaintenanceLease } from "./maintenance-lock";
@@ -79,6 +83,77 @@ async function awaitIndependentWrites<Left, Right>({
 
 type HizoFSSessionResource = {
   dispose(): Promise<void>;
+};
+
+type HizoFSDirectoryHandleCache = {
+  loadedDirectory: {
+    readonly commitObjectId: string;
+    readonly commitRevision: number;
+    readonly directory: LoadedHizoFSDirectory;
+  } | undefined;
+  readonly entryLookupCache: HizoFSDirectoryIndexLookupCache;
+};
+
+const DIRECTORY_READ_CACHE_MAXIMUM_ENTRY_COUNT = 64;
+
+class HizoFSDirectoryReadCache {
+  constructor({ entryLimit }: { entryLimit: number }) {
+    if (!Number.isSafeInteger(entryLimit) || entryLimit < 0) {
+      throw new Error(
+        'HizoFS directory read cache entry limit must be non-negative',
+      );
+    }
+    this.entryLimit = entryLimit;
+  }
+
+  private readonly entryLimit: number;
+  private readonly entries = new Map<string, HizoFSDirectoryHandleCache>();
+
+  get({ nodeId }: { nodeId: string }): HizoFSDirectoryHandleCache {
+    const existing = this.entries.get(nodeId);
+    if (existing !== undefined) {
+      this.entries.delete(nodeId);
+      this.entries.set(nodeId, existing);
+      return existing;
+    }
+    const created: HizoFSDirectoryHandleCache = {
+      loadedDirectory: undefined,
+      entryLookupCache: { value: undefined },
+    };
+    if (this.entryLimit === 0) return created;
+    this.entries.set(nodeId, created);
+    while (this.entries.size > this.entryLimit) {
+      const oldestNodeId = this.entries.keys().next().value as string | undefined;
+      if (oldestNodeId === undefined) break;
+      const oldest = this.entries.get(oldestNodeId);
+      if (oldest !== undefined) this.clearEntry({ entry: oldest });
+      this.entries.delete(oldestNodeId);
+    }
+    return created;
+  }
+
+  clear(): void {
+    for (const entry of this.entries.values()) {
+      this.clearEntry({ entry });
+    }
+    this.entries.clear();
+  }
+
+  private clearEntry({ entry }: { entry: HizoFSDirectoryHandleCache }): void {
+    entry.loadedDirectory = undefined;
+    entry.entryLookupCache.value = undefined;
+  }
+}
+
+type HizoFSFileHandleMutationResult = {
+  readonly nodeId: string;
+  readonly directory: LoadedHizoFSDirectory;
+};
+
+type HizoFSDirectoryHandleMutationResult = {
+  readonly nodeId: string;
+  readonly parentDirectory: LoadedHizoFSDirectory;
+  readonly childDirectory: LoadedHizoFSDirectory | undefined;
 };
 
 function requireFileEntry({
@@ -229,6 +304,13 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     sessionLease: HizoFSMaintenanceLease | undefined;
   }) {
     this.runtime = runtime;
+    this.runtime.retainSession();
+    this.directoryReadCache = new HizoFSDirectoryReadCache({
+      entryLimit: Math.min(
+        DIRECTORY_READ_CACHE_MAXIMUM_ENTRY_COUNT,
+        runtime.policy.metadataObjectCacheEntryLimit,
+      ),
+    });
     this.rootDirectoryNodeId = rootDirectoryNodeId;
     this.fileSystemId = runtime.core.fileSystemId;
     this.workerMountContext = workerMountContext;
@@ -251,6 +333,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
   readonly fileSystemId: string;
   readonly rootDirectoryNodeId: string;
   readonly runtime: HizoFSRuntime;
+  private readonly directoryReadCache: HizoFSDirectoryReadCache;
   private readonly fixedState: HizoFSActiveState | undefined;
   private readonly sessionLease: HizoFSMaintenanceLease | undefined;
   private readonly workerMountContext: Omit<
@@ -282,7 +365,13 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     } catch (error) {
       errors.push(error);
     }
-    this.runtime.objectStore.clearPlaintextCaches();
+    this.directoryReadCache.clear();
+    this.runtime.clearPlaintextCaches();
+    try {
+      await this.runtime.releaseSession();
+    } catch (error) {
+      errors.push(error);
+    }
     if (errors.length > 0) {
       throw new AggregateError(
         errors,
@@ -346,6 +435,58 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     }
   }
 
+  private async readDirectory({
+    state,
+    nodeId,
+    directoryCache,
+  }: {
+    state: HizoFSActiveState;
+    nodeId: string;
+    directoryCache: HizoFSDirectoryHandleCache | undefined;
+  }): Promise<LoadedHizoFSDirectory> {
+    const cached = directoryCache?.loadedDirectory;
+    if (cached?.commitObjectId === state.commitObjectId) {
+      return cached.directory;
+    }
+    const directory = await this.runtime.nodeService.readDirectory({
+      state,
+      nodeId,
+    });
+    this.rememberDirectory({
+      state,
+      directory,
+      directoryCache,
+    });
+    return directory;
+  }
+
+  private rememberDirectory({
+    state,
+    directory,
+    directoryCache,
+  }: {
+    state: HizoFSActiveState;
+    directory: LoadedHizoFSDirectory;
+    directoryCache: HizoFSDirectoryHandleCache | undefined;
+  }): void {
+    if (directoryCache === undefined) return;
+    const cached = directoryCache.loadedDirectory;
+    if (
+      cached !== undefined
+      && cached.commitRevision > state.commit.revision
+    ) {
+      return;
+    }
+    if (cached?.directory.inodeObjectId !== directory.inodeObjectId) {
+      directoryCache.entryLookupCache.value = undefined;
+    }
+    directoryCache.loadedDirectory = {
+      commitObjectId: state.commitObjectId,
+      commitRevision: state.commit.revision,
+      directory,
+    };
+  }
+
   createWorkerMountSource({
     rootDirectoryNodeId,
   }: {
@@ -402,19 +543,24 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     create: boolean;
   }): Promise<StorageFileHandle> {
     this.assertOpen();
+    const directoryCache = this.directoryReadCache.get({
+      nodeId: directoryNodeId,
+    });
     assertHizoFSEntryName({ name });
     if (create) this.assertMutable();
     if (!create) {
       return await this.runWithReadLease({
         operation: async () => {
           const state = await this.loadActiveState();
-          const directory = await this.runtime.nodeService.readDirectory({
+          const directory = await this.readDirectory({
             state,
             nodeId: directoryNodeId,
+            directoryCache,
           });
-          const entry = await this.runtime.directoryStorage.getEntry({
+          const entry = await this.runtime.directoryStorage.getEntryWithCache({
             inode: directory.inode,
             name,
+            lookupCache: directoryCache.entryLookupCache,
           });
           if (entry === undefined) {
             throw createStorageEntryNotFoundError({
@@ -431,22 +577,27 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       });
     }
 
-    const nodeId = await this.runtime.core.mutate({
+    const mutation = await this.runtime.core.mutateAndReturnState<HizoFSFileHandleMutationResult>({
       operation: async ({ state }) => {
-        const directory = await this.runtime.nodeService.readDirectory({
+        const directory = await this.readDirectory({
           state,
           nodeId: directoryNodeId,
+          directoryCache,
         });
-        const existing = await this.runtime.directoryStorage.getEntry({
+        const existing = await this.runtime.directoryStorage.getEntryWithCache({
           inode: directory.inode,
           name,
+          lookupCache: directoryCache.entryLookupCache,
         });
         if (existing !== undefined) {
           const fileEntry = requireFileEntry({ entry: existing, name });
           return {
             changed: "no" as const,
             inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
-            result: fileEntry.nodeId,
+            result: {
+              nodeId: fileEntry.nodeId,
+              directory,
+            },
           };
         }
 
@@ -481,17 +632,32 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
           entries: [
             { nodeId: childNodeId, inodeObjectId: fileInodeObjectId },
-            { nodeId: directoryNodeId, inodeObjectId: changedDirectory.inodeObjectId },
+            {
+              nodeId: directoryNodeId,
+              inodeObjectId: changedDirectory.inodeObjectId,
+            },
           ],
         });
         return {
           changed: "yes" as const,
           inodeIndexRootObjectId,
-          result: childNodeId,
+          result: {
+            nodeId: childNodeId,
+            directory: changedDirectory,
+          },
         };
       },
     });
-    return new HizoFSFileHandle({ session: this, nodeId, name });
+    this.rememberDirectory({
+      state: mutation.state,
+      directory: mutation.result.directory,
+      directoryCache,
+    });
+    return new HizoFSFileHandle({
+      session: this,
+      nodeId: mutation.result.nodeId,
+      name,
+    });
   }
 
   async getDirectoryHandle({
@@ -504,19 +670,24 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     create: boolean;
   }): Promise<StorageDirectoryHandle> {
     this.assertOpen();
+    const directoryCache = this.directoryReadCache.get({
+      nodeId: directoryNodeId,
+    });
     assertHizoFSEntryName({ name });
     if (create) this.assertMutable();
     if (!create) {
       return await this.runWithReadLease({
         operation: async () => {
           const state = await this.loadActiveState();
-          const directory = await this.runtime.nodeService.readDirectory({
+          const directory = await this.readDirectory({
             state,
             nodeId: directoryNodeId,
+            directoryCache,
           });
-          const entry = await this.runtime.directoryStorage.getEntry({
+          const entry = await this.runtime.directoryStorage.getEntryWithCache({
             inode: directory.inode,
             name,
+            lookupCache: directoryCache.entryLookupCache,
           });
           if (entry === undefined) {
             throw createStorageEntryNotFoundError({
@@ -533,15 +704,17 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       });
     }
 
-    const nodeId = await this.runtime.core.mutate({
+    const mutation = await this.runtime.core.mutateAndReturnState<HizoFSDirectoryHandleMutationResult>({
       operation: async ({ state }) => {
-        const directory = await this.runtime.nodeService.readDirectory({
+        const directory = await this.readDirectory({
           state,
           nodeId: directoryNodeId,
+          directoryCache,
         });
-        const existing = await this.runtime.directoryStorage.getEntry({
+        const existing = await this.runtime.directoryStorage.getEntryWithCache({
           inode: directory.inode,
           name,
+          lookupCache: directoryCache.entryLookupCache,
         });
         if (existing !== undefined) {
           const directoryEntry = requireDirectoryEntry({
@@ -551,7 +724,11 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           return {
             changed: "no" as const,
             inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
-            result: directoryEntry.nodeId,
+            result: {
+              nodeId: directoryEntry.nodeId,
+              parentDirectory: directory,
+              childDirectory: undefined,
+            },
           };
         }
 
@@ -582,17 +759,45 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
           entries: [
             { nodeId: childNodeId, inodeObjectId: childInodeObjectId },
-            { nodeId: directoryNodeId, inodeObjectId: changedDirectory.inodeObjectId },
+            {
+              nodeId: directoryNodeId,
+              inodeObjectId: changedDirectory.inodeObjectId,
+            },
           ],
         });
         return {
           changed: "yes" as const,
           inodeIndexRootObjectId,
-          result: childNodeId,
+          result: {
+            nodeId: childNodeId,
+            parentDirectory: changedDirectory,
+            childDirectory: {
+              inodeObjectId: childInodeObjectId,
+              inode: childInode,
+            },
+          },
         };
       },
     });
-    return new HizoFSDirectoryHandle({ session: this, nodeId, name });
+    this.rememberDirectory({
+      state: mutation.state,
+      directory: mutation.result.parentDirectory,
+      directoryCache,
+    });
+    if (mutation.result.childDirectory !== undefined) {
+      this.rememberDirectory({
+        state: mutation.state,
+        directory: mutation.result.childDirectory,
+        directoryCache: this.directoryReadCache.get({
+          nodeId: mutation.result.nodeId,
+        }),
+      });
+    }
+    return new HizoFSDirectoryHandle({
+      session: this,
+      nodeId: mutation.result.nodeId,
+      name,
+    });
   }
 
   async *entries({
@@ -612,49 +817,54 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     }
     try {
       const state = await this.loadActiveState();
-      const directory = await this.runtime.nodeService.readDirectory({
+      const directory = await this.readDirectory({
         state,
         nodeId: directoryNodeId,
+        directoryCache: this.directoryReadCache.get({
+          nodeId: directoryNodeId,
+        }),
       });
-      for await (const entry of this.runtime.directoryStorage.entries({
+      for await (const batch of this.runtime.directoryStorage.entryBatches({
         inode: directory.inode,
       })) {
-        this.assertOpen();
-        switch (entry.kind) {
-        case "file":
-          yield [
-            entry.name,
-            new HizoFSFileHandle({
-              session: this,
-              nodeId: entry.nodeId,
-              name: entry.name,
-            }),
-          ];
-          break;
-        case "directory":
-          yield [
-            entry.name,
-            new HizoFSDirectoryHandle({
-              session: this,
-              nodeId: entry.nodeId,
-              name: entry.name,
-            }),
-          ];
-          break;
-        case "symlink":
-          yield [
-            entry.name,
-            new HizoFSSymlinkHandle({
-              session: this,
-              nodeId: entry.nodeId,
-              name: entry.name,
-            }),
-          ];
-          break;
-        default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled HizoFS entry kind: ${String(_ex)}`);
-        }
+        for (const entry of batch) {
+          this.assertOpen();
+          switch (entry.kind) {
+          case "file":
+            yield [
+              entry.name,
+              new HizoFSFileHandle({
+                session: this,
+                nodeId: entry.nodeId,
+                name: entry.name,
+              }),
+            ];
+            break;
+          case "directory":
+            yield [
+              entry.name,
+              new HizoFSDirectoryHandle({
+                session: this,
+                nodeId: entry.nodeId,
+                name: entry.name,
+              }),
+            ];
+            break;
+          case "symlink":
+            yield [
+              entry.name,
+              new HizoFSSymlinkHandle({
+                session: this,
+                nodeId: entry.nodeId,
+                name: entry.name,
+              }),
+            ];
+            break;
+          default: {
+            const _ex: never = entry.kind;
+            throw new Error(`Unhandled HizoFS entry kind: ${String(_ex)}`);
+          }
+          }
         }
       }
     } finally {
@@ -1142,13 +1352,18 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     return await this.runWithReadLease({
       operation: async () => {
         const state = await this.loadActiveState();
-        const directory = await this.runtime.nodeService.readDirectory({
-          state,
+        const directoryCache = this.directoryReadCache.get({
           nodeId: directoryNodeId,
         });
-        const entry = await this.runtime.directoryStorage.getEntry({
+        const directory = await this.readDirectory({
+          state,
+          nodeId: directoryNodeId,
+          directoryCache,
+        });
+        const entry = await this.runtime.directoryStorage.getEntryWithCache({
           inode: directory.inode,
           name,
+          lookupCache: directoryCache.entryLookupCache,
         });
         if (entry === undefined) {
           throw createStorageEntryNotFoundError({
@@ -1191,9 +1406,10 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     return await this.runWithReadLease({
       operation: async () => {
         const state = await this.loadActiveState();
-        const { inode } = await this.runtime.nodeService.readDirectory({
+        const { inode } = await this.readDirectory({
           state,
           nodeId,
+          directoryCache: this.directoryReadCache.get({ nodeId }),
         });
         return {
           size: 0,
@@ -1442,7 +1658,6 @@ class HizoFSDirectoryHandle implements StorageDirectoryHandle {
   readonly session: HizoFSSession;
   readonly nodeId: string;
   readonly name: string;
-
   stat(): Promise<StorageFileStat> {
     return this.session.statDirectory({ nodeId: this.nodeId });
   }

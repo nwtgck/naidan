@@ -5,6 +5,7 @@ import {
 } from '@/00-storage/00-dto/hizofs.dto';
 import {
   PersistentHizoFSIndex,
+  type PersistentIndexLeafLookupCache,
   type PersistentIndexPage,
   type PersistentIndexPageStore,
 } from './persistent-index';
@@ -15,6 +16,9 @@ import {
 } from './semantic-validation';
 import type { HizoFSRecordStore } from './record-store';
 import type { HizoFSRuntimeDiagnostics } from './diagnostics';
+
+export type HizoFSDirectoryIndexLookupCache =
+  PersistentIndexLeafLookupCache<string, HizoFSDirectoryEntryDto>;
 
 class DirectoryIndexPageStore implements PersistentIndexPageStore<
   string,
@@ -207,6 +211,18 @@ export class HizoFSDirectoryIndex {
     return this.index.get({ rootObjectId, key: name });
   }
 
+  getWithLeafCache({ rootObjectId, name, cache }: {
+    rootObjectId: string;
+    name: string;
+    cache: HizoFSDirectoryIndexLookupCache;
+  }): Promise<HizoFSDirectoryEntryDto | undefined> {
+    return this.index.getWithLeafCache({
+      rootObjectId,
+      key: name,
+      cache,
+    });
+  }
+
   set({ rootObjectId, entry }: {
     rootObjectId: string;
     entry: HizoFSDirectoryEntryDto;
@@ -216,6 +232,21 @@ export class HizoFSDirectoryIndex {
       : this.diagnostics.measureAsync({
         phase: 'index_update',
         operation: async () => this.index.set({ rootObjectId, entry }),
+      });
+  }
+
+  setWithRightmostPathCache({ rootObjectId, entry }: {
+    rootObjectId: string;
+    entry: HizoFSDirectoryEntryDto;
+  }): Promise<string> {
+    return this.diagnostics === undefined
+      ? this.index.setWithRightmostPathCache({ rootObjectId, entry })
+      : this.diagnostics.measureAsync({
+        phase: 'index_update',
+        operation: async () => this.index.setWithRightmostPathCache({
+          rootObjectId,
+          entry,
+        }),
       });
   }
 
@@ -235,6 +266,12 @@ export class HizoFSDirectoryIndex {
     rootObjectId: string;
   }): AsyncIterable<HizoFSDirectoryEntryDto> {
     return this.index.entries({ rootObjectId });
+  }
+
+  entryBatches({ rootObjectId }: {
+    rootObjectId: string;
+  }): AsyncIterable<readonly HizoFSDirectoryEntryDto[]> {
+    return this.index.entryBatches({ rootObjectId });
   }
 
   buildFromSortedEntries({ entries }: {

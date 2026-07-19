@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   decodeHizoFSRecord,
+  decodeHizoFSRecordBinaryPayloadRange,
   encodeHizoFSRecord,
 } from './record';
 
@@ -52,4 +53,41 @@ describe('HizoFS record framing', () => {
       'lengths do not match',
     );
   });
+
+  it('copies only the requested binary payload range', () => {
+    const plaintext = encodeHizoFSRecord({
+      kind: 'file_chunk',
+      recordVersion: 1,
+      metadata: {},
+      binaryPayload: new Uint8Array([1, 2, 3, 4, 5]),
+    });
+    const decoded = decodeHizoFSRecordBinaryPayloadRange({
+      plaintext,
+      offset: 1,
+      length: 2,
+    });
+
+    expect(decoded).toEqual({
+      kind: 'file_chunk',
+      recordVersion: 1,
+      metadata: {},
+      binaryPayload: new Uint8Array([2, 3]),
+      binaryPayloadByteLength: 5,
+    });
+    decoded.binaryPayload[0] = 99;
+    expect(decodeHizoFSRecord({ plaintext }).binaryPayload).toEqual(
+      new Uint8Array([1, 2, 3, 4, 5]),
+    );
+    expect(decodeHizoFSRecordBinaryPayloadRange({
+      plaintext,
+      offset: 99,
+      length: 2,
+    }).binaryPayload).toEqual(new Uint8Array());
+    expect(() => decodeHizoFSRecordBinaryPayloadRange({
+      plaintext,
+      offset: -1,
+      length: 1,
+    })).toThrow('offset must be a non-negative safe integer');
+  });
+
 });

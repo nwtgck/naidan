@@ -1,7 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHizoFSBenchmarkPresetConfiguration } from '@/features/debug-hizofs/benchmark/presets';
-import type { HizoFSBenchmarkReport } from '@/features/debug-hizofs/benchmark/types';
+import type {
+  HizoFSBenchmarkConfiguration,
+  HizoFSBenchmarkReport,
+} from '@/features/debug-hizofs/benchmark/types';
 import HizoFSBenchmarkPanel from './HizoFSBenchmarkPanel.vue';
 
 const mocks = vi.hoisted(() => ({
@@ -18,12 +21,14 @@ vi.mock('@/features/debug-hizofs/worker/client', () => ({
 
 function createReport({
   status = 'completed',
+  configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
 }: {
   status?: HizoFSBenchmarkReport['status'];
+  configuration?: HizoFSBenchmarkConfiguration;
 } = {}): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 10,
-    benchmarkImplementationVersion: 10,
+    schemaVersion: 17,
+    benchmarkImplementationVersion: 19,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
@@ -45,22 +50,34 @@ function createReport({
       hizoFSOwnedResourceDiagnosticsEnabled: true,
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
+      physicalObjectScope: 'immutable_segment_files',
+      backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
+      backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
       hizoFSRuntimePolicy: {
-        fileChunkSizeBytes: 256 * 1024,
+        fileChunkSizeBytes: configuration.hizoFSRuntimePolicy.fileChunkSize,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
-        fileChunkWriteConcurrencyPerWriter: 4,
+        fileChunkWriteConcurrencyPerWriter: 2,
         fileChunkReadPrefetchConcurrencyPerReader: 4,
         backingFileHandleCacheEntryLimitPerRuntime: 1024,
-        maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
-        maximumPlaintextChunkReadBytesInFlightPerReader: 1024 * 1024,
+        backingFileSnapshotCacheEntryLimitPerRuntime: 128,
+        maximumPlaintextChunkWriteBytesInFlightPerWriter:
+          configuration.hizoFSRuntimePolicy.fileChunkSize
+          * configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency,
+        maximumPlaintextChunkReadBytesInFlightPerReader:
+          configuration.hizoFSRuntimePolicy.fileChunkSize
+          * configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
-        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024,
+        decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
+        inodeIndexPageEntryLimitPerRuntime: 32,
+        directoryIndexPageEntryLimitPerRuntime: 64,
+        fileExtentIndexPageEntryLimitPerRuntime: 64,
+        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
         fileChunkCacheEntryLimitPerRuntime: 2048,
         fileChunkCacheAdmission: 'read_only',
       },
     },
-    configuration: createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
+    configuration,
     lifecycleEvents: [],
     executionOrder: [],
     results: [{
@@ -115,7 +132,7 @@ describe('HizoFSBenchmarkPanel', () => {
       cleanBenchmarkData: mocks.cleanBenchmarkData,
       dispose: mocks.dispose,
     });
-    mocks.runBenchmark.mockImplementation(async ({ onProgress }) => {
+    mocks.runBenchmark.mockImplementation(async ({ configuration, onProgress }) => {
       onProgress({
         progress: {
           stage: 'measuring',
@@ -128,7 +145,7 @@ describe('HizoFSBenchmarkPanel', () => {
           message: 'Running small files',
         },
       });
-      return createReport();
+      return createReport({ configuration });
     });
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -269,8 +286,11 @@ describe('HizoFSBenchmarkPanel', () => {
 
   it('preserves completed study variants and stops after cancellation', async () => {
     mocks.runBenchmark
-      .mockResolvedValueOnce(createReport())
-      .mockResolvedValueOnce(createReport({ status: 'cancelled' }));
+      .mockImplementationOnce(async ({ configuration }) => createReport({ configuration }))
+      .mockImplementationOnce(async ({ configuration }) => createReport({
+        status: 'cancelled',
+        configuration,
+      }));
     const wrapper = mount(HizoFSBenchmarkPanel);
 
     await wrapper.get('[data-testid="hizofs-benchmark-run-mode"]')
@@ -281,7 +301,8 @@ describe('HizoFSBenchmarkPanel', () => {
     expect(mocks.runBenchmark).toHaveBeenCalledTimes(2);
     const studyResult = wrapper.get('[data-testid="hizofs-benchmark-study-report"]');
     expect(studyResult.text()).toContain('Study result: cancelled');
-    expect(studyResult.text()).toContain('Completed 1 of 17 planned variants');
+    expect(studyResult.text()).toContain('Completed 1 of 22 planned variants');
+    expect(studyResult.text()).toContain('chunk=256.00 KiB');
   });
 
 });

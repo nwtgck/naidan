@@ -12,8 +12,8 @@ import type { HizoFSBenchmarkReport } from './types';
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 10,
-    benchmarkImplementationVersion: 10,
+    schemaVersion: 17,
+    benchmarkImplementationVersion: 19,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -35,17 +35,25 @@ function createReport(): HizoFSBenchmarkReport {
       hizoFSOwnedResourceDiagnosticsEnabled: true,
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
+      physicalObjectScope: 'immutable_segment_files',
+      backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
+      backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
       hizoFSRuntimePolicy: {
-        fileChunkSizeBytes: 256 * 1024,
+        fileChunkSizeBytes: 1024 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
-        fileChunkWriteConcurrencyPerWriter: 4,
+        fileChunkWriteConcurrencyPerWriter: 2,
         fileChunkReadPrefetchConcurrencyPerReader: 4,
         backingFileHandleCacheEntryLimitPerRuntime: 1024,
-        maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
-        maximumPlaintextChunkReadBytesInFlightPerReader: 1024 * 1024,
+        backingFileSnapshotCacheEntryLimitPerRuntime: 128,
+        maximumPlaintextChunkWriteBytesInFlightPerWriter: 2 * 1024 * 1024,
+        maximumPlaintextChunkReadBytesInFlightPerReader: 4 * 1024 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
-        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024,
+        decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
+        inodeIndexPageEntryLimitPerRuntime: 32,
+        directoryIndexPageEntryLimitPerRuntime: 64,
+        fileExtentIndexPageEntryLimitPerRuntime: 64,
+        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
         fileChunkCacheEntryLimitPerRuntime: 2048,
         fileChunkCacheAdmission: 'read_only',
       },
@@ -108,6 +116,7 @@ function createReport(): HizoFSBenchmarkReport {
           memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: {
             backingStore: {
+              fileSnapshotOperations: 2,
               readOperations: 2,
               writeOperations: 3,
               removeOperations: 0,
@@ -158,6 +167,7 @@ function createReport(): HizoFSBenchmarkReport {
             },
             hizoFSDiagnostics: {
               backingStore: {
+                fileSnapshotOperations: 2,
                 readOperations: 2,
                 writeOperations: 3,
                 removeOperations: 0,
@@ -238,7 +248,7 @@ describe('HizoFS benchmark report serialization', () => {
     expect(summary.results[0]?.backends.rawOpfs.samples).toBeUndefined();
     expect(summary.results[0]?.backends.hizofs.samples).toBeUndefined();
     expect(summary.results[0]?.backends.hizofs.hizoFSDiagnosticsTotals).toMatchObject({
-      backingStore: { writeOperations: 3 },
+      backingStore: { fileSnapshotOperations: 2, writeOperations: 3 },
       commits: { superblockPublications: 1 },
       amplification: {
         backingReadBytesPerLogicalByte: 2,

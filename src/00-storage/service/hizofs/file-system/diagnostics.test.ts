@@ -235,6 +235,26 @@ describe('HizoFS runtime diagnostics', () => {
     });
   });
 
+  it('counts coordinator cache, ownership, and failover events', () => {
+    const diagnostics = createDeterministicDiagnostics({ timestamps: [] });
+
+    diagnostics.recordCoordinatorEvent({ event: 'active_state_cache_hit' });
+    diagnostics.recordCoordinatorEvent({ event: 'durable_reload' });
+    diagnostics.recordCoordinatorEvent({ event: 'leadership_acquisition' });
+    diagnostics.recordCoordinatorEvent({ event: 'failover' });
+    diagnostics.recordCoordinatorEvent({ event: 'local_request' });
+    diagnostics.recordCoordinatorEvent({ event: 'remote_request' });
+
+    expect(diagnostics.snapshot().coordinator).toEqual({
+      activeStateCacheHits: 1,
+      durableReloads: 1,
+      leadershipAcquisitions: 1,
+      failovers: 1,
+      localRequests: 1,
+      remoteRequests: 1,
+    });
+  });
+
   it('returns detached snapshots that cannot mutate later counters', () => {
     const diagnostics = createDeterministicDiagnostics({ timestamps: [] });
     const first = diagnostics.snapshot();

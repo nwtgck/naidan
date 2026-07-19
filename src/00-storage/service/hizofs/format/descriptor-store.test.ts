@@ -12,6 +12,7 @@ describe('HizoFS descriptor store', () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root,
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
 
@@ -27,6 +28,7 @@ describe('HizoFS descriptor store', () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     await createHizoFSDescriptor({ backingStore });
@@ -39,6 +41,7 @@ describe('HizoFS descriptor store', () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     await backingStore.write({
@@ -59,6 +62,7 @@ describe('HizoFS descriptor store', () => {
     const backingStore = new NativeOpfsHizoFSBackingStore({
       root: new MockFileSystemDirectoryHandle({ name: 'filesystem.hizofs' }),
       fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
     await backingStore.write({

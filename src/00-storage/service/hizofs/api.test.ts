@@ -13,16 +13,23 @@ import {
   openHizoFSWorkerMount,
   TEST_ONLY,
 } from './api';
-import type { HizoFSPolicy } from './file-system/policy';
+import {
+  DEFAULT_HIZOFS_POLICY,
+  type HizoFSPolicy,
+} from './file-system/policy';
 import { createHizoFSRuntimeDiagnostics } from './file-system/diagnostics';
 import { createQueuedTestLockManager } from './test-lock-manager';
 import { HizoFSSession } from './file-system/session';
-import { TEST_ONLY as MUTATION_LOCK_TEST_ONLY } from './file-system/mutation-lock';
 import type { LoadedHizoFSFile } from './file-system/node-service';
 import { createHizoFSInspectionReader } from './inspection';
 import type { HizoFSRecordKind } from './format/record';
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
 import { getHizoFSObjectShard } from './object-store/object-id';
+import {
+  decodeHizoFSObjectReference,
+  encodeHizoFSSegmentId,
+} from './segment-store/object-reference';
+import { HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH } from './segment-store/segment-format';
 import { collectHizoFSGarbage } from './garbage-collector';
 import { TEST_ONLY as MAINTENANCE_LOCK_TEST_ONLY } from './file-system/maintenance-lock';
 
@@ -31,10 +38,14 @@ const TINY_POLICY: HizoFSPolicy = {
   inlineFileByteLimit: 8,
   inlineDirectoryEntryLimit: 2,
   fileChunkSize: 4,
-  indexPageEntryLimit: 2,
+  decodedInodeIndexPageCacheEntryLimit: 16,
+  inodeIndexPageEntryLimit: 2,
+  directoryIndexPageEntryLimit: 2,
+  fileExtentIndexPageEntryLimit: 2,
   readerStreamChunkSize: 3,
   fileChunkReadPrefetchConcurrency: 2,
   backingFileHandleCacheEntryLimit: 64,
+  backingFileSnapshotCacheEntryLimit: 64,
   maxDirtyFileBytes: 16,
   fileChunkWriteConcurrency: 2,
   metadataObjectCacheByteLimit: 64 * 1024,
@@ -211,9 +222,9 @@ describe('HizoFS public file-system API', () => {
     for await (const [name] of backing.entries()) physicalNames.push(name);
     expect(physicalNames.sort()).toEqual([
       'descriptor.json',
-      'objects',
-      'superblock-0.enc',
-      'superblock-1.enc',
+      'head-0.hfs',
+      'head-1.hfs',
+      'segments',
     ]);
     expect(session.capabilities).toEqual({
       directBlob: 'unsupported',
@@ -1187,45 +1198,6 @@ describe('HizoFS public file-system API', () => {
   });
 
 
-  it('prepares immutable file objects before acquiring the global commit lock', async () => {
-    const originalLocks = navigator.locks;
-    Object.defineProperty(navigator, 'locks', {
-      configurable: true,
-      value: undefined,
-    });
-    try {
-      const session = await createTiny({
-        root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
-        now: () => 1,
-      });
-      const hizofs = requireHizoFSSession({ session });
-      const lockName = `hizofs/${hizofs.fileSystemId}/commit`;
-      const originalWriteFile = hizofs.runtime.inodeStore.writeFile.bind(
-        hizofs.runtime.inodeStore,
-      );
-      const observedLockStates: boolean[] = [];
-      vi.spyOn(hizofs.runtime.inodeStore, 'writeFile').mockImplementation(
-        async options => {
-          observedLockStates.push(
-            MUTATION_LOCK_TEST_ONLY.localMutationTails.has(lockName),
-          );
-          return await originalWriteFile(options);
-        },
-      );
-
-      await session.root.getFileHandle({ name: 'prepared.txt', create: true });
-
-      expect(observedLockStates.length).toBeGreaterThan(0);
-      expect(observedLockStates).not.toContain(true);
-      await session.close();
-    } finally {
-      Object.defineProperty(navigator, 'locks', {
-        configurable: true,
-        value: originalLocks,
-      });
-    }
-  });
-
   it('serializes mutations from separate sessions without losing either root update', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const first = await createTiny({ root: backing, now: () => 1 });
@@ -1248,6 +1220,125 @@ describe('HizoFS public file-system API', () => {
       create: false,
     })).resolves.toBeDefined();
     await reopened.close();
+  });
+
+  it('reuses a directory inode on one handle and invalidates it after another session publishes', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const first = await createTiny({ root: backing, now: () => 1 });
+    const directory = await first.root.getDirectoryHandle({
+      name: 'values',
+      create: true,
+    });
+    await directory.getFileHandle({ name: 'first.txt', create: true });
+    const firstHizoFS = requireHizoFSSession({ session: first });
+    const readDirectory = vi.spyOn(
+      firstHizoFS.runtime.nodeService,
+      'readDirectory',
+    );
+
+    await directory.getFileHandle({ name: 'first.txt', create: false });
+    await directory.getFileHandle({ name: 'first.txt', create: false });
+    expect(readDirectory).not.toHaveBeenCalled();
+
+    const second = await openTiny({ root: backing, now: () => 2 });
+    const secondDirectory = await second.root.getDirectoryHandle({
+      name: 'values',
+      create: false,
+    });
+    await secondDirectory.getFileHandle({ name: 'second.txt', create: true });
+
+    await expect(directory.getFileHandle({
+      name: 'second.txt',
+      create: false,
+    })).resolves.toBeDefined();
+    expect(readDirectory).toHaveBeenCalledTimes(1);
+
+    await first.close();
+    await second.close();
+  });
+
+  it('carries the published directory inode across sequential creates', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const directory = await session.root.getDirectoryHandle({
+      name: 'values',
+      create: true,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const readDirectory = vi.spyOn(
+      hizofs.runtime.nodeService,
+      'readDirectory',
+    );
+
+    for (let index = 0; index < 8; index += 1) {
+      await directory.getFileHandle({
+        name: `value-${String(index)}.txt`,
+        create: true,
+      });
+    }
+
+    expect(readDirectory).not.toHaveBeenCalled();
+    await session.close();
+  });
+
+  it('reuses validation of an unchanged root inode and revalidates a changed root', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const directory = await session.root.getDirectoryHandle({
+      name: 'values',
+      create: true,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const readDirectory = vi.spyOn(hizofs.runtime.inodeStore, 'readDirectory');
+
+    for (let index = 0; index < 8; index += 1) {
+      await directory.getFileHandle({
+        name: `nested-${String(index)}.txt`,
+        create: true,
+      });
+    }
+    expect(readDirectory).not.toHaveBeenCalled();
+
+    await session.root.getFileHandle({ name: 'root.txt', create: true });
+    expect(readDirectory).toHaveBeenCalledTimes(2);
+    await session.close();
+  });
+
+  it('preserves every entry across concurrent creates in one indexed directory', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const directory = await session.root.getDirectoryHandle({
+      name: 'values',
+      create: true,
+    });
+    for (let index = 0; index < 4; index += 1) {
+      await directory.getFileHandle({
+        name: `seed-${String(index)}.txt`,
+        create: true,
+      });
+    }
+
+    const concurrentNames = Array.from(
+      { length: 12 },
+      (_, index) => `parallel-${String(index).padStart(2, '0')}.txt`,
+    );
+    await Promise.all(concurrentNames.map(async (name) => {
+      await directory.getFileHandle({ name, create: true });
+    }));
+
+    const names: string[] = [];
+    for await (const [name] of directory.entries()) names.push(name);
+    expect(names.sort()).toEqual([
+      ...Array.from({ length: 4 }, (_, index) => `seed-${String(index)}.txt`),
+      ...concurrentNames,
+    ].sort());
+    await session.close();
   });
 
   it('rejects a writer from another session after the file revision changes', async () => {
@@ -1400,7 +1491,10 @@ describe('HizoFS public file-system API', () => {
     const directory = await session.root.getDirectoryHandle({ name: 'many', create: true });
     const hizofs = requireHizoFSSession({ session });
     const buildSpy = vi.spyOn(hizofs.runtime.directoryIndex, 'buildFromSortedEntries');
-    const setSpy = vi.spyOn(hizofs.runtime.directoryIndex, 'set');
+    const setSpy = vi.spyOn(
+      hizofs.runtime.directoryIndex,
+      'setWithRightmostPathCache',
+    );
     for (const name of ['z', 'a', 'm', 'b', 'y']) {
       await directory.getFileHandle({ name, create: true });
     }
@@ -1443,7 +1537,40 @@ describe('HizoFS public file-system API', () => {
     );
   });
 
-  it('reuses immutable metadata while continuing to authenticate mutable superblocks', async () => {
+  it('reuses the coordinator-owned A/B head handles across publications', async () => {
+    const headOpens: string[] = [];
+    const originalOpen = NativeOpfsHizoFSBackingStore.prototype.openRandomAccessFile;
+    const openSpy = vi.spyOn(
+      NativeOpfsHizoFSBackingStore.prototype,
+      'openRandomAccessFile',
+    ).mockImplementation(function (
+      this: NativeOpfsHizoFSBackingStore,
+      arguments_,
+    ) {
+      const name = arguments_.path.at(-1);
+      if (name === 'head-0.hfs' || name === 'head-1.hfs') {
+        headOpens.push(name);
+      }
+      return originalOpen.call(this, arguments_);
+    });
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const initialHeadOpenCount = headOpens.length;
+    try {
+      for (let index = 0; index < 12; index += 1) {
+        await session.root.getFileHandle({
+          name: `persistent-head-${String(index)}`,
+          create: true,
+        });
+      }
+      expect(headOpens.length - initialHeadOpenCount).toBe(2);
+    } finally {
+      await session.close();
+      openSpy.mockRestore();
+    }
+  });
+
+  it('serves repeated lookups from the authoritative active-state cache', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ root: backing, now: () => 1 });
     for (let index = 0; index < 12; index += 1) {
@@ -1464,7 +1591,7 @@ describe('HizoFS public file-system API', () => {
       });
     }
 
-    expect(backingReadSpy).toHaveBeenCalledTimes(20);
+    expect(backingReadSpy).not.toHaveBeenCalled();
     await session.close();
   });
 
@@ -1671,8 +1798,95 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
-  it('bounds concurrent immutable chunk writes while overlapping close-time persistence', async () => {
+  it('writes one immutable chunk per default 256 KiB without timing assertions', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await TEST_ONLY.createHizoFSInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      policy: DEFAULT_HIZOFS_POLICY,
+      now: () => 1,
+      diagnostics,
+    });
+    const file = await session.root.getFileHandle({
+      name: 'default-chunk-shape.bin',
+      create: true,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const writeSpy = vi.spyOn(hizofs.runtime.chunkStore, 'write');
+    const writeManyPipelinedSpy = vi.spyOn(
+      hizofs.runtime.chunkStore,
+      'writeManyPipelined',
+    );
+    const writer = await file.createWritable({ keepExistingData: false });
+
+    await writer.write({
+      position: 0,
+      data: new Uint8Array(4 * 1024 * 1024).fill(7),
+    });
+    await writer.close();
+
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(writeManyPipelinedSpy).toHaveBeenCalledTimes(1);
+    expect(writeManyPipelinedSpy).toHaveBeenCalledWith(expect.objectContaining({
+      payloads: expect.any(Array),
+      maximumPlaintextRecordsInFlight: 2,
+    }));
+    expect(writeManyPipelinedSpy.mock.calls[0]?.[0].payloads).toHaveLength(16);
+    expect(diagnostics.snapshot().resources.writerPendingChunkWrites)
+      .toMatchObject({
+        maximumBytes: 512 * 1024,
+        maximumOperations: 2,
+      });
+    await session.close();
+  });
+
+  it('bounds empty-file index write amplification without timing assertions', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await TEST_ONLY.createHizoFSInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      policy: DEFAULT_HIZOFS_POLICY,
+      now: () => 1,
+      diagnostics,
+    });
+    const before = diagnostics.snapshot();
+
+    for (let index = 0; index < 64; index += 1) {
+      await session.root.getFileHandle({
+        name: `empty-${String(index).padStart(2, '0')}`,
+        create: true,
+      });
+    }
+
+    const after = diagnostics.snapshot();
+    expect(
+      after.records.commit.writeOperations
+        - before.records.commit.writeOperations,
+    ).toBe(64);
+    expect(
+      after.records.superblock.writeOperations
+        - before.records.superblock.writeOperations,
+    ).toBe(64);
+    expect(
+      after.records.inode_index_page.writeOperations
+        - before.records.inode_index_page.writeOperations,
+    ).toBeLessThanOrEqual(192);
+    expect(
+      after.records.directory_index_page.writeOperations
+        - before.records.directory_index_page.writeOperations,
+    ).toBeLessThanOrEqual(96);
+    expect(
+      after.phases.object_encrypt.operationCount
+        - before.phases.object_encrypt.operationCount,
+    ).toBeLessThanOrEqual(450);
+    await session.close();
+  });
+
+  it('batches close-time chunk persistence within the configured plaintext bound', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
     const policy: HizoFSPolicy = {
       ...TINY_POLICY,
       fileChunkWriteConcurrency: 2,
@@ -1682,43 +1896,40 @@ describe('HizoFS public file-system API', () => {
       fileSystemRootKey: ROOT_KEY,
       policy,
       now: () => 1,
+      diagnostics,
     });
     const file = await session.root.getFileHandle({
       name: 'concurrent-chunks.bin',
       create: true,
     });
     const hizofs = requireHizoFSSession({ session });
-    const originalWrite = hizofs.runtime.chunkStore.write.bind(hizofs.runtime.chunkStore);
-    const releaseWrites = Promise.withResolvers<void>();
-    const firstWaveStarted = Promise.withResolvers<void>();
-    let activeWrites = 0;
-    let maximumActiveWrites = 0;
-    let startedWrites = 0;
-    vi.spyOn(hizofs.runtime.chunkStore, 'write').mockImplementation(async (arguments_) => {
-      activeWrites += 1;
-      startedWrites += 1;
-      maximumActiveWrites = Math.max(maximumActiveWrites, activeWrites);
-      if (startedWrites === 2) firstWaveStarted.resolve();
-      try {
-        await releaseWrites.promise;
-        return await originalWrite(arguments_);
-      } finally {
-        activeWrites -= 1;
-      }
-    });
+    const originalWriteManyPipelined = hizofs.runtime.chunkStore.writeManyPipelined
+      .bind(hizofs.runtime.chunkStore);
+    const pipelineRequests: {
+      readonly payloadCount: number;
+      readonly maximumPlaintextRecordsInFlight: number;
+    }[] = [];
+    vi.spyOn(hizofs.runtime.chunkStore, 'writeManyPipelined')
+      .mockImplementation(async (arguments_) => {
+        pipelineRequests.push({
+          payloadCount: arguments_.payloads.length,
+          maximumPlaintextRecordsInFlight:
+            arguments_.maximumPlaintextRecordsInFlight,
+        });
+        return originalWriteManyPipelined(arguments_);
+      });
 
     const writer = await file.createWritable({ keepExistingData: false });
     const expected = new Uint8Array(16).map((_, index) => index + 1);
     await writer.write({ position: 0, data: expected });
-    const closePromise = writer.close();
-    await firstWaveStarted.promise;
+    await writer.close();
 
-    expect(maximumActiveWrites).toBe(2);
-    expect(startedWrites).toBe(2);
-    releaseWrites.resolve();
-    await closePromise;
-    expect(maximumActiveWrites).toBe(2);
-    expect(startedWrites).toBe(4);
+    expect(pipelineRequests).toEqual([{
+      payloadCount: 4,
+      maximumPlaintextRecordsInFlight: 2,
+    }]);
+    expect(diagnostics.snapshot().resources.writerPendingChunkWrites)
+      .toMatchObject({ maximumBytes: 8, maximumOperations: 2 });
     expect(await readBytes({ session, path: ['concurrent-chunks.bin'] })).toEqual(expected);
     await session.close();
   });
@@ -1819,14 +2030,16 @@ describe('HizoFS public file-system API', () => {
       create: true,
     });
     const hizofs = requireHizoFSSession({ session });
-    const originalWrite = hizofs.runtime.chunkStore.write.bind(hizofs.runtime.chunkStore);
+    const originalWriteManyPipelined = hizofs.runtime.chunkStore.writeManyPipelined
+      .bind(hizofs.runtime.chunkStore);
     const chunkWriteStarted = Promise.withResolvers<void>();
     const releaseChunkWrites = Promise.withResolvers<void>();
-    vi.spyOn(hizofs.runtime.chunkStore, 'write').mockImplementation(async (arguments_) => {
-      chunkWriteStarted.resolve();
-      await releaseChunkWrites.promise;
-      return originalWrite(arguments_);
-    });
+    vi.spyOn(hizofs.runtime.chunkStore, 'writeManyPipelined')
+      .mockImplementation(async (arguments_) => {
+        chunkWriteStarted.resolve();
+        await releaseChunkWrites.promise;
+        return originalWriteManyPipelined(arguments_);
+      });
 
     const slowWriter = await slowFile.createWritable({ keepExistingData: false });
     await slowWriter.write({
@@ -1935,7 +2148,7 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
-  it('does not prefetch adjacent chunks for non-sequential random reads', async () => {
+  it('reuses one extent leaf without prefetching non-sequential chunks', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const policy: HizoFSPolicy = {
       ...TINY_POLICY,
@@ -1958,32 +2171,43 @@ describe('HizoFS public file-system API', () => {
     });
     await writer.close();
     const hizofs = requireHizoFSSession({ session });
-    const readSpy = vi.spyOn(hizofs.runtime.chunkStore, 'read');
+    const fullChunkReadSpy = vi.spyOn(hizofs.runtime.chunkStore, 'read');
+    const rangeReadSpy = vi.spyOn(hizofs.runtime.chunkStore, 'readRange');
+    const extentPageReadSpy = vi.spyOn(hizofs.runtime.recordStore, 'read');
     const readable = await file.openReadable({ mimeType: 'application/octet-stream' });
-    const buffer = new Uint8Array(4);
+    const buffer = new Uint8Array(2);
 
     await readable.read({
       buffer,
       offset: 0,
-      length: 4,
+      length: 2,
       position: 0,
       signal: undefined,
     });
+    expect(buffer).toEqual(new Uint8Array([1, 2]));
     await readable.read({
       buffer,
       offset: 0,
-      length: 4,
-      position: 8,
+      length: 2,
+      position: 4,
       signal: undefined,
     });
+    expect(buffer).toEqual(new Uint8Array([5, 6]));
 
-    expect(readSpy).toHaveBeenCalledTimes(2);
+    expect(fullChunkReadSpy).not.toHaveBeenCalled();
+    expect(rangeReadSpy).toHaveBeenCalledTimes(2);
+    expect(
+      extentPageReadSpy.mock.calls.filter(([request]) =>
+        request.expectedKind === 'file_extent_page'
+      ),
+    ).toHaveLength(2);
     await readable.close();
     await session.close();
   });
 
-  it('waits for every scheduled chunk write to settle before reporting a close failure', async () => {
+  it('clears unscheduled chunks after a close-time batch write failure', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
     const policy: HizoFSPolicy = {
       ...TINY_POLICY,
       fileChunkWriteConcurrency: 2,
@@ -1993,41 +2217,37 @@ describe('HizoFS public file-system API', () => {
       fileSystemRootKey: ROOT_KEY,
       policy,
       now: () => 1,
+      diagnostics,
     });
     const file = await session.root.getFileHandle({
       name: 'failed-concurrent-chunks.bin',
       create: true,
     });
     const hizofs = requireHizoFSSession({ session });
-    const originalWrite = hizofs.runtime.chunkStore.write.bind(hizofs.runtime.chunkStore);
-    const releaseSuccessfulWrites = Promise.withResolvers<void>();
-    const blockedWritesStarted = Promise.withResolvers<void>();
     let invocation = 0;
-    let blockedWriteCount = 0;
-    vi.spyOn(hizofs.runtime.chunkStore, 'write').mockImplementation(async (arguments_) => {
-      invocation += 1;
-      if (invocation === 1) throw new Error('injected chunk write failure');
-      blockedWriteCount += 1;
-      if (blockedWriteCount === 2) blockedWritesStarted.resolve();
-      await releaseSuccessfulWrites.promise;
-      return originalWrite(arguments_);
-    });
+    vi.spyOn(hizofs.runtime.chunkStore, 'writeManyPipelined')
+      .mockImplementation(async () => {
+        invocation += 1;
+        throw new Error('injected chunk write failure');
+      });
 
     const writer = await file.createWritable({ keepExistingData: false });
     await writer.write({
       position: 0,
       data: new Uint8Array(16).map((_, index) => index + 1),
     });
-    let closeSettled = false;
-    const closePromise = writer.close().finally(() => {
-      closeSettled = true;
+    await expect(writer.close()).rejects.toThrow('injected chunk write failure');
+    expect(invocation).toBe(1);
+    expect(diagnostics.snapshot().resources).toMatchObject({
+      writerDirtyChunks: {
+        currentBytes: 0,
+        currentOperations: 0,
+      },
+      writerPendingChunkWrites: {
+        currentBytes: 0,
+        currentOperations: 0,
+      },
     });
-    await blockedWritesStarted.promise;
-
-    expect(closeSettled).toBe(false);
-    releaseSuccessfulWrites.resolve();
-    await expect(closePromise).rejects.toThrow('injected chunk write failure');
-    expect(invocation).toBe(4);
 
     await expect(session.root.getFileHandle({
       name: 'session-remains-usable.bin',
@@ -2134,19 +2354,32 @@ describe('HizoFS public file-system API', () => {
       fileSystemRootKey: ROOT_KEY,
     });
     const activeCommitObjectId = inspection.activeCommitObjectId;
-    await new NativeOpfsHizoFSBackingStore({
-      root: backing,
-      fileHandleCacheEntryLimit: 64,
-      diagnostics: undefined,
-    }).remove({
-      path: [
-        'objects',
-        getHizoFSObjectShard({ objectId: activeCommitObjectId }),
-        `${activeCommitObjectId}.enc`,
-      ],
-      recursive: false,
+    const activeCommitReference = decodeHizoFSObjectReference({
+      value: activeCommitObjectId,
     });
     await session.close();
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root: backing,
+      fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
+    const activeCommitPath = [
+      'segments',
+      'metadata',
+      getHizoFSObjectShard({ objectId: activeCommitObjectId }),
+      `${encodeHizoFSSegmentId({ segmentId: activeCommitReference.homeSegmentId })}.seg`,
+    ] as const;
+    const segmentBytes = await backingStore.read({ path: activeCommitPath });
+    if (segmentBytes === undefined) throw new Error('Expected the active metadata segment');
+    const corruptionOffset = activeCommitReference.homeOffset
+      + HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH;
+    const originalCiphertextByte = segmentBytes[corruptionOffset];
+    if (originalCiphertextByte === undefined) {
+      throw new Error('Expected the active commit ciphertext inside its segment');
+    }
+    segmentBytes[corruptionOffset] = originalCiphertextByte ^ 0x01;
+    await backingStore.write({ path: activeCommitPath, bytes: segmentBytes });
 
     const recovered = await openTiny({ root: backing, now: () => 2 });
     const recoveredSession = requireHizoFSSession({ session: recovered });

@@ -3,7 +3,10 @@ import { Semaphore } from "@/utils/concurrency";
 import type { StorageWritableFile } from "@/00-storage/service/storage-file-system/types";
 import type { HizoFSCore } from "./core";
 import type { HizoFSExtentIndex } from "./extent-index";
-import type { HizoFSFileChunkStore } from "./file-chunk-store";
+import type {
+  HizoFSFileChunkStore,
+  HizoFSLazyFileChunkPayload,
+} from "./file-chunk-store";
 import type { HizoFSInodeStore } from "./inode-store";
 import type { HizoFSMaintenanceLease } from "./maintenance-lock";
 import type { HizoFSNodeService, LoadedHizoFSFile } from "./node-service";
@@ -547,45 +550,84 @@ export class HizoFSFileWriter implements StorageWritableFile {
 
   private async flushAllWorkingChunks(): Promise<void> {
     await this.waitForAllPendingChunkFlushes({ failureMode: 'throw' });
-    const tasks = [...this.workingChunks.keys()].map(chunkIndex =>
-      this.chunkWriteSemaphore.run({
-        task: async () => this.flushWorkingChunk({
-          chunkIndex,
-          logicalFileSize: this.size,
-        }),
-      }),
-    );
-    const results = await Promise.allSettled(tasks);
-    const failure = results.find(
-      (result): result is PromiseRejectedResult => result.status === 'rejected',
-    );
-    if (failure !== undefined) throw failure.reason;
-  }
+    const payloads: HizoFSLazyFileChunkPayload[] = [];
+    const payloadChunkIndexes: number[] = [];
+    for (const chunkIndex of [...this.workingChunks.keys()]) {
+      const bytes = this.workingChunks.get(chunkIndex);
+      if (bytes === undefined) continue;
+      const logicalLength = Math.max(
+        0,
+        Math.min(this.chunkSize, this.size - chunkIndex * this.chunkSize),
+      );
+      let storedLength = Math.min(logicalLength, bytes.byteLength);
+      while (storedLength > 0 && bytes[storedLength - 1] === 0) {
+        storedLength -= 1;
+      }
+      if (storedLength === 0) {
+        this.takeWorkingChunk({ chunkIndex })?.fill(0);
+        this.preparedChunks.set(chunkIndex, undefined);
+        continue;
+      }
 
-  private async flushWorkingChunk({
-    chunkIndex,
-    logicalFileSize,
-  }: {
-    chunkIndex: number;
-    logicalFileSize: number;
-  }): Promise<void> {
-    const bytes = this.takeWorkingChunk({ chunkIndex });
-    if (bytes === undefined) return;
-    const logicalLength = Math.max(
-      0,
-      Math.min(this.chunkSize, logicalFileSize - chunkIndex * this.chunkSize),
-    );
-    this.adjustPendingChunkWriteUsage({
-      byteDelta: bytes.byteLength,
-      operationDelta: 1,
-    });
-    try {
-      await this.persistWorkingChunk({ chunkIndex, bytes, logicalLength });
-    } finally {
-      this.adjustPendingChunkWriteUsage({
-        byteDelta: -bytes.byteLength,
-        operationDelta: -1,
+      let activeBytes: Uint8Array | undefined;
+      let discarded = false;
+      payloadChunkIndexes.push(chunkIndex);
+      payloads.push({
+        binaryPayloadByteLength: storedLength,
+        createBinaryPayload: async (): Promise<Uint8Array> => {
+          if (discarded || activeBytes !== undefined) {
+            throw new Error('HizoFS file chunk payload factory was reused');
+          }
+          const nextBytes = this.takeWorkingChunk({ chunkIndex });
+          if (nextBytes === undefined) {
+            throw new Error('HizoFS file chunk payload disappeared before encryption');
+          }
+          activeBytes = nextBytes;
+          this.adjustPendingChunkWriteUsage({
+            byteDelta: nextBytes.byteLength,
+            operationDelta: 1,
+          });
+          return nextBytes.subarray(0, storedLength);
+        },
+        discardBinaryPayload: (): void => {
+          if (discarded) return;
+          discarded = true;
+          const nextBytes = activeBytes ?? this.takeWorkingChunk({ chunkIndex });
+          if (nextBytes === undefined) return;
+          if (activeBytes !== undefined) {
+            this.adjustPendingChunkWriteUsage({
+              byteDelta: -nextBytes.byteLength,
+              operationDelta: -1,
+            });
+          }
+          nextBytes.fill(0);
+          activeBytes = undefined;
+        },
       });
+    }
+    if (payloads.length === 0) return;
+
+    try {
+      const chunkObjectIds = await this.chunkStore.writeManyPipelined({
+        payloads,
+        chunkSize: this.chunkSize,
+        maximumPlaintextRecordsInFlight: Math.min(
+          this.policy.fileChunkWriteConcurrency,
+          2,
+        ),
+      });
+      if (chunkObjectIds.length !== payloadChunkIndexes.length) {
+        throw new Error('HizoFS chunk pipeline returned an inconsistent result count');
+      }
+      for (const [index, chunkIndex] of payloadChunkIndexes.entries()) {
+        const chunkObjectId = chunkObjectIds[index];
+        if (chunkObjectId === undefined) {
+          throw new Error('HizoFS chunk pipeline omitted an object identifier');
+        }
+        this.preparedChunks.set(chunkIndex, chunkObjectId);
+      }
+    } finally {
+      for (const payload of payloads) payload.discardBinaryPayload();
     }
   }
 
@@ -808,11 +850,16 @@ export class HizoFSFileWriter implements StorageWritableFile {
         this.preparedChunks.set(chunkIndex, undefined);
         return;
       }
-      const chunkObjectId = await this.chunkStore.write({
-        binaryPayload: bytes.slice(0, storedLength),
-        chunkSize: this.chunkSize,
-      });
-      this.preparedChunks.set(chunkIndex, chunkObjectId);
+      const binaryPayload = bytes.slice(0, storedLength);
+      try {
+        const chunkObjectId = await this.chunkStore.write({
+          binaryPayload,
+          chunkSize: this.chunkSize,
+        });
+        this.preparedChunks.set(chunkIndex, chunkObjectId);
+      } finally {
+        binaryPayload.fill(0);
+      }
     } finally {
       bytes.fill(0);
     }

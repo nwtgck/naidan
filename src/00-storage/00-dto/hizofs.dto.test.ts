@@ -23,10 +23,12 @@ describe('HizoFS DTO schemas', () => {
   it('parses the immutable commit root', () => {
     expect(HizoFSCommitSchemaDto.parse({
       revision: 7,
+      publicationId: 'publication-id',
       rootDirectoryNodeId: 'root-node',
       inodeIndexRootObjectId: 'inode-index-root',
     })).toEqual({
       revision: 7,
+      publicationId: 'publication-id',
       rootDirectoryNodeId: 'root-node',
       inodeIndexRootObjectId: 'inode-index-root',
     });

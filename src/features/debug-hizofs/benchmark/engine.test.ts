@@ -5,7 +5,7 @@ import {
   hizoFSBenchmarkReportSchema,
   type HizoFSBenchmarkConfiguration,
 } from './types';
-import { cleanHizoFSBenchmarkData, runHizoFSBenchmark } from './engine';
+import { cleanHizoFSBenchmarkData, runHizoFSBenchmark, TEST_ONLY } from './engine';
 
 function createTinyConfiguration(): HizoFSBenchmarkConfiguration {
   return {
@@ -22,6 +22,110 @@ function createTinyConfiguration(): HizoFSBenchmarkConfiguration {
 }
 
 describe('HizoFS benchmark engine', () => {
+
+  it('counts random-access segment reads, writes, and durable flushes', () => {
+    const physical = new Uint8Array(16);
+    let physicalSize = 0;
+    let committed = 0;
+    const counters = {
+      fileSnapshotOperations: 0,
+      readOperations: 0,
+      writeOperations: 0,
+      removeOperations: 0,
+      listOperations: 0,
+      bytesRead: 0,
+      bytesWritten: 0,
+    };
+    const handle = TEST_ONLY.createCountingSyncAccessHandle({
+      handle: {
+        getSize: () => physicalSize,
+        read: (buffer, options) => {
+          const destination = new Uint8Array(
+            buffer.buffer,
+            buffer.byteOffset,
+            buffer.byteLength,
+          );
+          const offset = options?.at ?? 0;
+          const length = Math.min(destination.byteLength, physicalSize - offset);
+          destination.set(physical.subarray(offset, offset + length));
+          return length;
+        },
+        write: (buffer, options) => {
+          const source = ArrayBuffer.isView(buffer)
+            ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+            : new Uint8Array(buffer);
+          const offset = options?.at ?? 0;
+          physical.set(source, offset);
+          physicalSize = Math.max(physicalSize, offset + source.byteLength);
+          return source.byteLength;
+        },
+        truncate: (newSize) => {
+          physicalSize = newSize;
+        },
+        flush: () => {},
+        close: () => {},
+      },
+      counters,
+      onCommitted: () => {
+        committed += 1;
+      },
+    });
+
+    expect(handle.write(new Uint8Array([4, 5, 6]), { at: 2 })).toBe(3);
+    const result = new Uint8Array(3);
+    expect(handle.read(result, { at: 2 })).toBe(3);
+    handle.flush();
+
+    expect(result).toEqual(new Uint8Array([4, 5, 6]));
+    expect(counters).toMatchObject({
+      readOperations: 1,
+      writeOperations: 1,
+      bytesRead: 3,
+      bytesWritten: 3,
+    });
+    expect(committed).toBe(1);
+  });
+
+  it('separates file snapshots from materialized blob reads', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    const source = await root.getFileHandle('value.bin', { create: true });
+    const writable = await source.createWritable();
+    await writable.write(new Uint8Array([1, 2, 3, 4]));
+    await writable.close();
+    const counters = {
+      fileSnapshotOperations: 0,
+      readOperations: 0,
+      writeOperations: 0,
+      removeOperations: 0,
+      listOperations: 0,
+      bytesRead: 0,
+      bytesWritten: 0,
+    };
+    const countedRoot = TEST_ONLY.createCountingDirectoryHandle({
+      directory: root,
+      counters,
+      relativePath: [],
+      physicalDiagnostics: {
+        objectPaths: new Set<string>(),
+        superblockPublications: 0,
+      },
+    });
+
+    const snapshot = await (await countedRoot.getFileHandle('value.bin')).getFile();
+    expect(counters).toMatchObject({
+      fileSnapshotOperations: 1,
+      readOperations: 0,
+      bytesRead: 0,
+    });
+    expect(new Uint8Array(await snapshot.slice(1, 3).arrayBuffer()))
+      .toEqual(new Uint8Array([2, 3]));
+    expect(counters).toMatchObject({
+      fileSnapshotOperations: 1,
+      readOperations: 1,
+      bytesRead: 2,
+    });
+  });
+
   it('compares isolated HizoFS and raw OPFS workloads and deletes run data', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
     const progressMessages: string[] = [];
@@ -44,17 +148,25 @@ describe('HizoFS benchmark engine', () => {
       hizoFSOwnedResourceDiagnosticsEnabled: true,
       hizoFSRuntimeDiagnosticsEnabled: true,
       phaseDurationsAreNested: true,
+      physicalObjectScope: 'immutable_segment_files',
+      backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
+      backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
-        fileChunkWriteConcurrencyPerWriter: 4,
+        fileChunkWriteConcurrencyPerWriter: 2,
         fileChunkReadPrefetchConcurrencyPerReader: 4,
         backingFileHandleCacheEntryLimitPerRuntime: 1024,
-        maximumPlaintextChunkWriteBytesInFlightPerWriter: 1024 * 1024,
+        backingFileSnapshotCacheEntryLimitPerRuntime: 128,
+        maximumPlaintextChunkWriteBytesInFlightPerWriter: 512 * 1024,
         maximumPlaintextChunkReadBytesInFlightPerReader: 1024 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
-        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024,
+        decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
+        inodeIndexPageEntryLimitPerRuntime: 32,
+        directoryIndexPageEntryLimitPerRuntime: 64,
+        fileExtentIndexPageEntryLimitPerRuntime: 64,
+        fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
         fileChunkCacheEntryLimitPerRuntime: 2048,
         fileChunkCacheAdmission: 'read_only',
       },
@@ -97,14 +209,14 @@ describe('HizoFS benchmark engine', () => {
       result => result.caseId === 'small_files_create_empty',
     );
     expect(createResult?.backends.hizofs?.samples[0]?.hizoFSDiagnostics).toMatchObject({
-      backingStore: { writeOperations: 15 },
-      objects: { created: 12 },
+      backingStore: { writeOperations: 6 },
+      objects: { created: 0 },
       commits: { superblockPublications: 3 },
-      amplification: { objectCreatesPerOperation: 4 },
+      amplification: { objectCreatesPerOperation: 0 },
       runtime: {
         phases: {
           object_encrypt: { operationCount: expect.any(Number) },
-          backing_close: { operationCount: expect.any(Number) },
+          backing_close_random_access: { operationCount: expect.any(Number) },
           commit_publication: { operationCount: expect.any(Number) },
         },
         records: {
@@ -113,8 +225,20 @@ describe('HizoFS benchmark engine', () => {
           commit: { writeOperations: 3 },
           superblock: { writeOperations: 3 },
         },
+        coordinator: {
+          activeStateCacheHits: expect.any(Number),
+          durableReloads: expect.any(Number),
+          leadershipAcquisitions: expect.any(Number),
+          failovers: 0,
+          localRequests: expect.any(Number),
+          remoteRequests: 0,
+        },
       },
     });
+    expect(
+      createResult?.backends.hizofs?.samples[0]
+        ?.hizoFSDiagnostics?.runtime.coordinator.activeStateCacheHits,
+    ).toBeGreaterThan(0);
     const writeResult = report.results.find(
       result => result.caseId === 'small_files_write_existing',
     );
@@ -151,7 +275,7 @@ describe('HizoFS benchmark engine', () => {
     ).toBeGreaterThan(0);
     expect(
       report.results[0]?.backends.hizofs?.samples[0]
-        ?.hizoFSDiagnostics?.objects.created,
+        ?.hizoFSDiagnostics?.runtime.records.commit.writeOperations,
     ).toBeGreaterThan(0);
     expect(report.cleanup).toEqual({
       attempted: true,
@@ -260,12 +384,16 @@ describe('HizoFS benchmark engine', () => {
       .filter(sample => sample.includedInAggregates) ?? [];
     expect(samples).toHaveLength(2);
     expect(samples[1]?.hizoFSDiagnostics?.objects.before)
-      .toBeGreaterThan(samples[0]?.hizoFSDiagnostics?.objects.before ?? 0);
+      .toBeGreaterThanOrEqual(samples[0]?.hizoFSDiagnostics?.objects.before ?? 0);
+    expect(samples[0]?.hizoFSDiagnostics?.runtime.records.commit.writeOperations)
+      .toBeGreaterThan(0);
+    expect(samples[1]?.hizoFSDiagnostics?.runtime.records.commit.writeOperations)
+      .toBeGreaterThan(0);
     expect(report.lifecycleEvents.filter(event => event.action === 'garbage_collection'))
       .toHaveLength(0);
   });
 
-  it('records structural garbage-collection effects between reused iterations', async () => {
+  it('records structural garbage-collection diagnostics between reused iterations', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
     const configuration: HizoFSBenchmarkConfiguration = {
       ...createTinyConfiguration(),
@@ -296,6 +424,7 @@ describe('HizoFS benchmark engine', () => {
         sweepSliceCount: expect.any(Number),
         maximumPauseDurationMs: expect.any(Number),
         maximumRemovesInFlight: expect.any(Number),
+        changedSegmentCount: expect.any(Number),
       },
       backingStore: {
         readOperations: expect.any(Number),
@@ -303,9 +432,12 @@ describe('HizoFS benchmark engine', () => {
       },
       superblockPublications: expect.any(Number),
     });
-    expect(gcEvents[0]?.hizoFS?.removedObjectCount).toBeGreaterThan(0);
+    expect(gcEvents[0]?.hizoFS?.unreachableObjectCount).toBeGreaterThan(0);
+    expect(gcEvents[0]?.hizoFS?.removedObjectCount).toBeLessThanOrEqual(
+      gcEvents[0]?.hizoFS?.unreachableObjectCount ?? 0,
+    );
     expect(gcEvents[0]?.hizoFS?.objectsAfter)
-      .toBeLessThan(gcEvents[0]?.hizoFS?.objectsBefore ?? 0);
+      .toBeLessThanOrEqual(gcEvents[0]?.hizoFS?.objectsBefore ?? 0);
   });
 
   it('reopens the same HizoFS store between iterations without resetting object state', async () => {

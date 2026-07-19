@@ -85,7 +85,9 @@ export function createHizoFSInspectionWorker(): IHizoFSInspectionWorker {
    * Resolves a node exactly as the selected commit does while retaining every
    * persisted lookup page as navigation provenance. The Workbench may enter
    * here through a shallow root shortcut, but no inode-index layer is collapsed
-   * into an invented high-level filesystem model.
+   * into an invented high-level filesystem model. Preserve that root shortcut
+   * even if future HizoFS structures require this resolver and the surrounding
+   * Workbench navigation to be replaced substantially.
    */
   async function readResolvedNode({
     commitObjectId,
@@ -984,6 +986,7 @@ function parsePersistedDto({ object }: {
         ? {
           commitObjectId: object.objectId,
           revision: (validation.data as HizoFSCommitDto).revision,
+          publicationId: (validation.data as HizoFSCommitDto).publicationId,
           rootDirectoryNodeId: (validation.data as HizoFSCommitDto).rootDirectoryNodeId,
           inodeIndexRootObjectId: (validation.data as HizoFSCommitDto).inodeIndexRootObjectId,
         }
