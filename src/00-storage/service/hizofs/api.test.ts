@@ -10,6 +10,7 @@ import {
   createHizoFSBulkBuilder,
   createHizoFSDiagnosticSession,
   createHizoFSSubvolume,
+  deleteHizoFSSubvolume,
   getHizoFSSubvolumeInfo,
   inspectHizoFS,
   openHizoFS,
@@ -806,7 +807,7 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
-  it('moves a read subvolume entry without rewriting its mount index', async () => {
+  it('moves a read subvolume entry with one matching mount-location update', async () => {
     const diagnostics = createHizoFSRuntimeDiagnostics();
     const session = await createHizoFSDiagnosticSession({
       backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
@@ -830,7 +831,7 @@ describe('HizoFS public file-system API', () => {
 
     const after = diagnostics.snapshot();
     expect(after.records.subvolume_mount_index_page.writeOperations)
-      .toBe(before.records.subvolume_mount_index_page.writeOperations);
+      .toBe(before.records.subvolume_mount_index_page.writeOperations + 1);
     await expect(session.root.getDirectoryHandle({
       name: 'before',
       create: false,
@@ -839,6 +840,113 @@ describe('HizoFS public file-system API', () => {
       name: 'after',
       create: false,
     })).resolves.toMatchObject({ kind: 'directory', name: 'after' });
+    await session.close();
+  });
+
+  it('deletes a leaf subvolume with one topology publication and no file walk', async () => {
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await createHizoFSDiagnosticSession({
+      backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileSystemRootKey: ROOT_KEY,
+      policy: TINY_POLICY,
+      diagnostics,
+    });
+    const child = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'child',
+      access: 'read_write',
+    });
+    const file = await child.getFileHandle({ name: 'value.txt', create: true });
+    await writeStorageFileText({ fileHandle: file, value: 'retained-by-open-handle' });
+    const before = diagnostics.snapshot();
+
+    await deleteHizoFSSubvolume({
+      subvolume: child,
+      recursiveSubvolumes: false,
+    });
+
+    const after = diagnostics.snapshot();
+    expect(after.phases.commit_publication.operationCount)
+      .toBe(before.phases.commit_publication.operationCount + 1);
+    expect(after.records.file_chunk.readOperations)
+      .toBe(before.records.file_chunk.readOperations);
+    expect(after.records.file_chunk.writeOperations)
+      .toBe(before.records.file_chunk.writeOperations);
+    await expect(session.root.getDirectoryHandle({
+      name: 'child',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(readStorageFileText({ fileHandle: file }))
+      .resolves.toBe('retained-by-open-handle');
+    await session.close();
+  });
+
+  it('keeps a subvolume mounted when the delete publication fails', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const child = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'child',
+      access: 'read_write',
+    });
+    const file = await child.getFileHandle({ name: 'value.txt', create: true });
+    await writeStorageFileText({ fileHandle: file, value: 'still-mounted' });
+    const failure = new Error('injected subvolume delete publication failure');
+    vi.spyOn(hizofs.core.superblockStore, 'write').mockRejectedValueOnce(failure);
+
+    await expect(deleteHizoFSSubvolume({
+      subvolume: child,
+      recursiveSubvolumes: false,
+    })).rejects.toBe(failure);
+    const reopened = await session.root.getDirectoryHandle({
+      name: 'child',
+      create: false,
+    });
+    expect(await readStorageFileText({
+      fileHandle: await reopened.getFileHandle({
+        name: 'value.txt',
+        create: false,
+      }),
+    })).toBe('still-mounted');
+    await session.close();
+  });
+
+  it('requires recursive deletion for a subvolume with nested subvolumes', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const parent = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'parent',
+      access: 'read_write',
+    });
+    await createHizoFSSubvolume({
+      destination: parent,
+      name: 'nested',
+      access: 'read',
+    });
+
+    await expect(deleteHizoFSSubvolume({
+      subvolume: parent,
+      recursiveSubvolumes: false,
+    })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    await expect(session.root.getDirectoryHandle({
+      name: 'parent',
+      create: false,
+    })).resolves.toMatchObject({ kind: 'directory' });
+
+    await deleteHizoFSSubvolume({
+      subvolume: parent,
+      recursiveSubvolumes: true,
+    });
+    await expect(session.root.getDirectoryHandle({
+      name: 'parent',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
     await session.close();
   });
 
@@ -1301,6 +1409,43 @@ describe('HizoFS public file-system API', () => {
       })).toBe('scoped child publication');
 
       await workerSession.close();
+      await ownerSession.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+  it('rejects a stale Worker mount source after its subvolume is deleted', async () => {
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({ onRequest: undefined }),
+    });
+    try {
+      const ownerSession = await createHizoFS({
+        backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+        fileSystemRootKey: ROOT_KEY,
+      });
+      const child = await createHizoFSSubvolume({
+        destination: ownerSession.root,
+        name: 'workspace',
+        access: 'read_write',
+      });
+      const source = child.createWorkerMountSource?.();
+      if (source === undefined) {
+        throw new Error('HizoFS subvolume did not expose a Worker mount source');
+      }
+
+      await deleteHizoFSSubvolume({
+        subvolume: child,
+        recursiveSubvolumes: false,
+      });
+      await expect(openHizoFSWorkerMount({ source })).rejects.toMatchObject({
+        name: 'NotFoundError',
+      });
       await ownerSession.close();
     } finally {
       Object.defineProperty(navigator, 'locks', {

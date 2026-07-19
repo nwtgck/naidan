@@ -207,6 +207,8 @@ describe('HizoFS typed persistent indexes', () => {
       const mount = {
         mountId: createHizoFSStableId(),
         subvolumeDescriptorObjectId: descriptorObjectId,
+        parentDirectoryNodeId: createHizoFSStableId(),
+        entryName: `child-${access}`,
       };
       mounts.push(mount);
       root = await index.set({ rootObjectId: root, mount });

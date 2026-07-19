@@ -91,6 +91,13 @@ function assertMount({ mount }: { mount: HizoFSSubvolumeMountDto }): void {
     value: mount.subvolumeDescriptorObjectId,
     fieldName: 'HizoFS subvolume descriptor ObjectRef',
   });
+  validateHizoFSStableId({
+    value: mount.parentDirectoryNodeId,
+    fieldName: 'HizoFS subvolume mount parent directory node ID',
+  });
+  if (mount.entryName.length === 0) {
+    throw new Error('HizoFS subvolume mount entry name must not be empty');
+  }
 }
 
 function assertPage({ page }: { page: HizoFSSubvolumeMountIndexPageDto }): void {

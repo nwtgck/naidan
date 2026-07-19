@@ -113,6 +113,30 @@ async function acquireLocalLease({ lockName, mode }: {
   return acquired.promise;
 }
 
+function tryAcquireLocalExclusiveLease({ lockName }: {
+  lockName: string;
+}): HizoFSMaintenanceLease | undefined {
+  const state = getLocalState({ lockName });
+  if (
+    state.activeSharedCount !== 0
+    || state.exclusiveActive
+    || state.queue.length !== 0
+  ) {
+    maybeDeleteLocalState({ lockName, state });
+    return undefined;
+  }
+  state.exclusiveActive = true;
+  let released = false;
+  return {
+    async release() {
+      if (released) return;
+      released = true;
+      state.exclusiveActive = false;
+      drainLocalQueue({ lockName, state });
+    },
+  };
+}
+
 async function acquireWebLease({ lockName, mode }: {
   lockName: string;
   mode: LocalLockMode;
@@ -138,6 +162,39 @@ async function acquireWebLease({ lockName, mode }: {
   };
 }
 
+async function tryAcquireWebExclusiveLease({ lockName }: {
+  lockName: string;
+}): Promise<HizoFSMaintenanceLease | undefined> {
+  const acquired = Promise.withResolvers<boolean>();
+  const released = Promise.withResolvers<void>();
+  const completed = navigator.locks.request(
+    lockName,
+    { mode: 'exclusive', ifAvailable: true },
+    async lock => {
+      if (lock === null) {
+        acquired.resolve(false);
+        return;
+      }
+      acquired.resolve(true);
+      await released.promise;
+    },
+  );
+  void completed.catch(error => acquired.reject(error));
+  if (!(await acquired.promise)) {
+    await completed;
+    return undefined;
+  }
+  let didRelease = false;
+  return {
+    async release() {
+      if (didRelease) return;
+      didRelease = true;
+      released.resolve();
+      await completed;
+    },
+  };
+}
+
 async function acquireLease({ fileSystemId, mode }: {
   fileSystemId: string;
   mode: LocalLockMode;
@@ -152,10 +209,135 @@ async function acquireNamedLease({ lockName, mode }: {
   lockName: string;
   mode: LocalLockMode;
 }): Promise<HizoFSMaintenanceLease> {
-  if (typeof navigator !== 'undefined' && navigator.locks !== undefined) {
+  if (
+    typeof navigator !== 'undefined'
+    && navigator.locks !== undefined
+    && typeof navigator.locks.request === 'function'
+  ) {
     return acquireWebLease({ lockName, mode });
   }
   return acquireLocalLease({ lockName, mode });
+}
+
+function getSubvolumeRuntimePinLockName({
+  fileSystemId,
+  subvolumeId,
+  subvolumeDescriptorObjectId,
+}: {
+  fileSystemId: string;
+  subvolumeId: string;
+  subvolumeDescriptorObjectId: string;
+}): string {
+  return `hizofs/${fileSystemId}/subvolume-runtime/${subvolumeId}/${
+    encodeURIComponent(subvolumeDescriptorObjectId)
+  }`;
+}
+
+export function acquireHizoFSSubvolumeRuntimePin({
+  fileSystemId,
+  subvolumeId,
+  subvolumeDescriptorObjectId,
+}: {
+  fileSystemId: string;
+  subvolumeId: string;
+  subvolumeDescriptorObjectId: string;
+}): Promise<HizoFSMaintenanceLease> {
+  return acquireNamedLease({
+    lockName: getSubvolumeRuntimePinLockName({
+      fileSystemId,
+      subvolumeId,
+      subvolumeDescriptorObjectId,
+    }),
+    mode: 'shared',
+  });
+}
+
+export function tryAcquireHizoFSSubvolumeRuntimePinExclusively({
+  fileSystemId,
+  subvolumeId,
+  subvolumeDescriptorObjectId,
+}: {
+  fileSystemId: string;
+  subvolumeId: string;
+  subvolumeDescriptorObjectId: string;
+}): Promise<HizoFSMaintenanceLease | undefined> {
+  const lockName = getSubvolumeRuntimePinLockName({
+    fileSystemId,
+    subvolumeId,
+    subvolumeDescriptorObjectId,
+  });
+  if (
+    typeof navigator !== 'undefined'
+    && navigator.locks !== undefined
+    && typeof navigator.locks.request === 'function'
+  ) {
+    return tryAcquireWebExclusiveLease({ lockName });
+  }
+  return Promise.resolve(tryAcquireLocalExclusiveLease({ lockName }));
+}
+
+function parseSubvolumeRuntimePinLockName({
+  fileSystemId,
+  lockName,
+}: {
+  fileSystemId: string;
+  lockName: string;
+}): {
+  readonly subvolumeId: string;
+  readonly subvolumeDescriptorObjectId: string;
+} | undefined {
+  const prefix = `hizofs/${fileSystemId}/subvolume-runtime/`;
+  if (!lockName.startsWith(prefix)) return undefined;
+  const suffix = lockName.slice(prefix.length);
+  const separatorIndex = suffix.indexOf('/');
+  if (separatorIndex <= 0 || separatorIndex === suffix.length - 1) {
+    return undefined;
+  }
+  try {
+    return {
+      subvolumeId: suffix.slice(0, separatorIndex),
+      subvolumeDescriptorObjectId: decodeURIComponent(
+        suffix.slice(separatorIndex + 1),
+      ),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export async function listHizoFSActiveSubvolumeRuntimePins({
+  fileSystemId,
+}: {
+  fileSystemId: string;
+}): Promise<readonly {
+  readonly subvolumeId: string;
+  readonly subvolumeDescriptorObjectId: string;
+}[]> {
+  const lockNames = new Set<string>();
+  if (
+    typeof navigator !== 'undefined'
+    && navigator.locks !== undefined
+    && typeof navigator.locks.query === 'function'
+  ) {
+    const snapshot = await navigator.locks.query();
+    for (const lock of snapshot.held ?? []) {
+      if (typeof lock.name === 'string') lockNames.add(lock.name);
+    }
+  } else {
+    for (const [lockName, state] of localStates) {
+      if (state.activeSharedCount > 0) lockNames.add(lockName);
+    }
+  }
+  const pins = new Map<string, {
+    readonly subvolumeId: string;
+    readonly subvolumeDescriptorObjectId: string;
+  }>();
+  for (const lockName of lockNames) {
+    const pin = parseSubvolumeRuntimePinLockName({ fileSystemId, lockName });
+    if (pin === undefined) continue;
+    pins.set(pin.subvolumeDescriptorObjectId, pin);
+  }
+  return [...pins.values()];
 }
 
 /**

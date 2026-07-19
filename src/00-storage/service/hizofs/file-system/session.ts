@@ -3,6 +3,7 @@ import type {
   HizoFSDirectoryInodeDto,
   HizoFSFileInodeDto,
   HizoFSSubvolumeDescriptorDto,
+  HizoFSSubvolumeMountDto,
   HizoFSSymlinkInodeDto,
 } from "@/00-storage/00-dto/hizofs.dto";
 import type {
@@ -44,6 +45,7 @@ import type { HizoFSRuntime } from "./runtime";
 import {
   acquireHizoFSMaintenanceLease,
   acquireHizoFSResourceLease,
+  acquireHizoFSSubvolumeRuntimePin,
 } from "./maintenance-lock";
 import type { HizoFSMaintenanceLease } from "./maintenance-lock";
 import { assertHizoFSEntryName } from "./semantic-validation";
@@ -275,6 +277,12 @@ type ClonedHizoFSSubvolume = {
   readonly subvolumeDescriptorObjectId: string;
 };
 
+type HizoFSMountedSubvolumeAttachment = {
+  readonly parentSession: HizoFSSession;
+  readonly mountId: string;
+  readonly subvolumeDescriptorObjectId: string;
+};
+
 type HizoFSFileDirectoryEntry = Extract<
   HizoFSDirectoryEntryDto,
   { readonly kind: 'file' }
@@ -446,6 +454,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     workerMountContext,
     fixedState,
     sessionLease,
+    mountedAttachment,
+    subvolumeRuntimePin,
   }: {
     runtime: HizoFSRuntime;
     core: HizoFSCore;
@@ -458,6 +468,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     >;
     fixedState: HizoFSFilesystemState | undefined;
     sessionLease: HizoFSMaintenanceLease | undefined;
+    mountedAttachment: HizoFSMountedSubvolumeAttachment | undefined;
+    subvolumeRuntimePin: HizoFSMaintenanceLease | undefined;
   }) {
     this.runtime = runtime;
     this.core = core;
@@ -474,6 +486,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     this.workerMountContext = workerMountContext;
     this.fixedState = fixedState;
     this.sessionLease = sessionLease;
+    this.mountedAttachment = mountedAttachment;
+    this.subvolumeRuntimePin = subvolumeRuntimePin;
     this.root = new HizoFSDirectoryHandle({
       session: this,
       nodeId: rootDirectoryNodeId,
@@ -496,6 +510,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
   private readonly directoryReadCache: HizoFSDirectoryReadCache;
   private readonly fixedState: HizoFSFilesystemState | undefined;
   private readonly sessionLease: HizoFSMaintenanceLease | undefined;
+  private readonly mountedAttachment: HizoFSMountedSubvolumeAttachment | undefined;
+  private readonly subvolumeRuntimePin: HizoFSMaintenanceLease | undefined;
   private readonly workerMountContext: Omit<
     StorageDirectoryWorkerMountSource,
     "rootDirectoryNodeId"
@@ -529,6 +545,11 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     } catch (error) {
       errors.push(error);
     }
+    try {
+      await this.subvolumeRuntimePin?.release();
+    } catch (error) {
+      errors.push(error);
+    }
     this.directoryReadCache.clear();
     this.runtime.clearPlaintextCaches();
     try {
@@ -549,6 +570,14 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     const sessionLease = await acquireHizoFSResourceLease({
       fileSystemId: this.fileSystemId,
     });
+    const subvolumeRuntimePin = this.mountedAttachment === undefined
+      ? undefined
+      : await acquireHizoFSSubvolumeRuntimePin({
+        fileSystemId: this.fileSystemId,
+        subvolumeId: this.subvolumeId,
+        subvolumeDescriptorObjectId:
+          this.mountedAttachment.subvolumeDescriptorObjectId,
+      });
     try {
       const fixedState = await this.loadFilesystemState();
       return new HizoFSSession({
@@ -560,9 +589,12 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
         workerMountContext: this.workerMountContext,
         fixedState,
         sessionLease,
+        mountedAttachment: this.mountedAttachment,
+        subvolumeRuntimePin,
       });
     } catch (error) {
       await sessionLease.release();
+      await subvolumeRuntimePin?.release();
       throw error;
     }
   }
@@ -753,6 +785,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
                 mount: {
                   mountId,
                   subvolumeDescriptorObjectId,
+                  parentDirectoryNodeId: directoryNodeId,
+                  entryName: name,
                 },
               }),
             });
@@ -779,8 +813,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       directory: mutation.result.parentDirectory,
       directoryCache,
     });
-    const childSession = await this.openMountedSubvolumeSession({
-      state: mutation.state,
+    const childSession = await this.openMountedSubvolumeSessionAfterPublication({
       entry: mutation.result.entry,
     });
     return new HizoFSDirectoryHandle({
@@ -876,6 +909,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
                   mountId,
                   subvolumeDescriptorObjectId:
                     cloned.subvolumeDescriptorObjectId,
+                  parentDirectoryNodeId: directoryNodeId,
+                  entryName: name,
                 },
               }),
             });
@@ -902,8 +937,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       directory: mutation.result.parentDirectory,
       directoryCache,
     });
-    const childSession = await this.openMountedSubvolumeSession({
-      state: mutation.state,
+    const childSession = await this.openMountedSubvolumeSessionAfterPublication({
       entry: mutation.result.entry,
     });
     return new HizoFSDirectoryHandle({
@@ -911,6 +945,145 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       nodeId: childSession.rootDirectoryNodeId,
       name,
     });
+  }
+
+  async deleteSubvolume({
+    recursiveSubvolumes,
+  }: {
+    recursiveSubvolumes: boolean;
+  }): Promise<void> {
+    this.assertOpen();
+    const attachment = this.mountedAttachment;
+    if (attachment === undefined) {
+      throw createNamedError({
+        name: 'InvalidModificationError',
+        message: 'The HizoFS root subvolume cannot be deleted',
+      });
+    }
+    await attachment.parentSession.deleteMountedSubvolume({
+      childSession: this,
+      attachment,
+      recursiveSubvolumes,
+    });
+  }
+
+  private async deleteMountedSubvolume({
+    childSession,
+    attachment,
+    recursiveSubvolumes,
+  }: {
+    childSession: HizoFSSession;
+    attachment: HizoFSMountedSubvolumeAttachment;
+    recursiveSubvolumes: boolean;
+  }): Promise<void> {
+    this.assertOpen();
+    this.assertMutable();
+    childSession.assertOpen();
+    const lease = await acquireHizoFSMaintenanceLease({
+      fileSystemId: this.fileSystemId,
+    });
+    try {
+      await this.core.mutateTopologyWithResourceLeaseHeldAndReturnState({
+        operation: async ({ state }) => {
+          const mount = await this.runtime.subvolumeMountIndex.get({
+            rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+            mountId: attachment.mountId,
+          });
+          if (
+            mount === undefined
+            || mount.subvolumeDescriptorObjectId
+              !== attachment.subvolumeDescriptorObjectId
+          ) {
+            throw createStorageEntryNotFoundError({
+              message: 'The HizoFS subvolume is no longer mounted',
+            });
+          }
+          await this.assertMountedSubvolumeLocation({ state, mount });
+          const childState = await childSession.loadFilesystemState();
+          if (
+            childState.subvolumeDescriptorObjectId
+              !== mount.subvolumeDescriptorObjectId
+          ) {
+            throw new HizoFSCorruptionError({
+              message: 'HizoFS mounted subvolume descriptor identity changed',
+              cause: undefined,
+            });
+          }
+          if (!recursiveSubvolumes) {
+            const structure = await this.runtime.subvolumeMountIndex
+              .validateStructure({
+                rootObjectId:
+                  childState.commit.subvolumeMountIndexRootObjectId,
+              });
+            if (structure.entryCount !== 0) {
+              throw createNamedError({
+                name: 'InvalidModificationError',
+                message: 'The HizoFS subvolume contains child subvolumes',
+              });
+            }
+          }
+
+          const parentDirectory = await this.runtime.nodeService.readDirectory({
+            state,
+            nodeId: mount.parentDirectoryNodeId,
+          });
+          const timestamp = this.runtime.now();
+          const [changedParentDirectory, subvolumeMountIndexRootObjectId] =
+            await awaitIndependentWrites({
+              left: this.runtime.directoryStorage.writeChangedInode({
+                inode: parentDirectory.inode,
+                changes: [{ type: 'delete', name: mount.entryName }],
+                modifiedAt: timestamp,
+              }),
+              right: this.runtime.subvolumeMountIndex.delete({
+                rootObjectId:
+                  state.commit.subvolumeMountIndexRootObjectId,
+                mountId: mount.mountId,
+              }),
+            });
+          const inodeIndexRootObjectId =
+            await this.runtime.nodeService.setInode({
+              inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+              nodeId: mount.parentDirectoryNodeId,
+              inodeObjectId: changedParentDirectory.inodeObjectId,
+            });
+          return {
+            changed: 'yes' as const,
+            inodeIndexRootObjectId,
+            subvolumeMountIndexRootObjectId,
+            result: undefined,
+          };
+        },
+      });
+    } finally {
+      await lease.release();
+    }
+  }
+
+  private async assertMountedSubvolumeLocation({
+    state,
+    mount,
+  }: {
+    state: HizoFSFilesystemState;
+    mount: HizoFSSubvolumeMountDto;
+  }): Promise<void> {
+    const parentDirectory = await this.runtime.nodeService.readDirectory({
+      state,
+      nodeId: mount.parentDirectoryNodeId,
+    });
+    const entry = await this.runtime.directoryStorage.getEntry({
+      inode: parentDirectory.inode,
+      name: mount.entryName,
+    });
+    if (
+      entry?.kind !== 'subvolume'
+      || entry.mountId !== mount.mountId
+    ) {
+      throw new HizoFSCorruptionError({
+        message: 'HizoFS subvolume mount location does not match the namespace',
+        cause: undefined,
+      });
+    }
   }
 
   private async mutateSnapshotTopology<T>({
@@ -1018,6 +1191,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           mountId: sourceMount.mountId,
           subvolumeDescriptorObjectId:
             clonedChild.subvolumeDescriptorObjectId,
+          parentDirectoryNodeId: sourceMount.parentDirectoryNodeId,
+          entryName: sourceMount.entryName,
         });
       }
       const subvolumeId = createHizoFSStableId();
@@ -1139,6 +1314,16 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
         },
         fixedState,
         sessionLease: undefined,
+        mountedAttachment: {
+          parentSession: this,
+          mountId: entry.mountId,
+          subvolumeDescriptorObjectId: mount.subvolumeDescriptorObjectId,
+        },
+        subvolumeRuntimePin: await acquireHizoFSSubvolumeRuntimePin({
+          fileSystemId: this.fileSystemId,
+          subvolumeId: childState.subvolumeDescriptor.subvolumeId,
+          subvolumeDescriptorObjectId: mount.subvolumeDescriptorObjectId,
+        }),
       });
       if (this.closed) {
         await childSession.close();
@@ -1164,6 +1349,24 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
         );
       }
       throw error;
+    }
+  }
+
+  private async openMountedSubvolumeSessionAfterPublication({
+    entry,
+  }: {
+    entry: Extract<HizoFSDirectoryEntryDto, { readonly kind: 'subvolume' }>;
+  }): Promise<HizoFSSession> {
+    const lease = await acquireHizoFSResourceLease({
+      fileSystemId: this.fileSystemId,
+    });
+    try {
+      return await this.openMountedSubvolumeSession({
+        state: await this.loadFilesystemState(),
+        entry,
+      });
+    } finally {
+      await lease.release();
     }
   }
 
@@ -1550,8 +1753,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     });
     switch (mutation.result.type) {
     case 'subvolume': {
-      const childSession = await this.openMountedSubvolumeSession({
-        state: mutation.state,
+      const childSession = await this.openMountedSubvolumeSessionAfterPublication({
         entry: mutation.result.entry,
       });
       return new HizoFSDirectoryHandle({
@@ -1850,7 +2052,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       return;
     }
 
-    await this.core.mutate({
+    await this.core.mutateTopologyAndReturnState({
       operation: async ({ state }) => {
         const sourceDirectory = await this.runtime.nodeService.readDirectory({
           state,
@@ -1997,9 +2199,42 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           inodeIndexRootObjectId,
           nodeIds: new Set(replacedNodeIds),
         });
+        let subvolumeMountIndexRootObjectId =
+          state.commit.subvolumeMountIndexRootObjectId;
+        if (isSubvolumeDirectoryEntry(sourceEntry)) {
+          const mount = await this.runtime.subvolumeMountIndex.get({
+            rootObjectId: subvolumeMountIndexRootObjectId,
+            mountId: sourceEntry.mountId,
+          });
+          if (mount === undefined) {
+            throw new HizoFSCorruptionError({
+              message: 'HizoFS moved subvolume is absent from the mount index',
+              cause: undefined,
+            });
+          }
+          if (
+            mount.parentDirectoryNodeId !== sourceDirectoryNodeId
+            || mount.entryName !== name
+          ) {
+            throw new HizoFSCorruptionError({
+              message: 'HizoFS moved subvolume mount location is inconsistent',
+              cause: undefined,
+            });
+          }
+          subvolumeMountIndexRootObjectId =
+            await this.runtime.subvolumeMountIndex.set({
+              rootObjectId: subvolumeMountIndexRootObjectId,
+              mount: {
+                ...mount,
+                parentDirectoryNodeId: destinationNodeId,
+                entryName: newName,
+              },
+            });
+        }
         return {
           changed: "yes" as const,
           inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId,
           result: undefined,
         };
       },

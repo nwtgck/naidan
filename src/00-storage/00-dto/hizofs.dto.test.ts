@@ -62,12 +62,16 @@ describe('HizoFS DTO schemas', () => {
       mounts: [{
         mountId: 'mount-id',
         subvolumeDescriptorObjectId: 'descriptor-object',
+        parentDirectoryNodeId: 'parent-directory-node',
+        entryName: 'mounted-name',
       }],
     })).toEqual({
       type: 'leaf',
       mounts: [{
         mountId: 'mount-id',
         subvolumeDescriptorObjectId: 'descriptor-object',
+        parentDirectoryNodeId: 'parent-directory-node',
+        entryName: 'mounted-name',
       }],
     });
     expect(HizoFSSubvolumeDescriptorSchemaDto.safeParse({
@@ -80,7 +84,16 @@ describe('HizoFS DTO schemas', () => {
       mounts: [{
         mountId: 'mount-id',
         subvolumeDescriptorObjectId: 'descriptor-object',
+        parentDirectoryNodeId: 'parent-directory-node',
+        entryName: 'mounted-name',
         access: 'read',
+      }],
+    }).success).toBe(false);
+    expect(HizoFSSubvolumeMountIndexPageSchemaDto.safeParse({
+      type: 'leaf',
+      mounts: [{
+        mountId: 'mount-id',
+        subvolumeDescriptorObjectId: 'descriptor-object',
       }],
     }).success).toBe(false);
   });

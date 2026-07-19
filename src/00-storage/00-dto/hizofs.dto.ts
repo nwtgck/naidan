@@ -324,6 +324,8 @@ export const HizoFSDirectoryIndexPageSchemaDto: z.ZodType<
 export type HizoFSSubvolumeMountDto = {
   readonly mountId: string;
   readonly subvolumeDescriptorObjectId: string;
+  readonly parentDirectoryNodeId: string;
+  readonly entryName: string;
 };
 
 export const HizoFSSubvolumeMountSchemaDto: z.ZodType<
@@ -331,6 +333,8 @@ export const HizoFSSubvolumeMountSchemaDto: z.ZodType<
 > = z.object({
   mountId: z.string(),
   subvolumeDescriptorObjectId: z.string(),
+  parentDirectoryNodeId: z.string(),
+  entryName: z.string(),
 }).strict();
 
 export type HizoFSSubvolumeMountIndexBranchChildDto = {

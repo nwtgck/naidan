@@ -358,6 +358,8 @@ an immutable descriptor ObjectRef:
 type HizoFSSubvolumeMountDto = {
   readonly mountId: string;
   readonly subvolumeDescriptorObjectId: string;
+  readonly parentDirectoryNodeId: string;
+  readonly entryName: string;
 };
 ```
 
@@ -389,7 +391,26 @@ indexes, preserves stable mount IDs, and reuses the source inode-index roots.
 For `read_write` output, both scoped head slots are durably initialized before
 the graph is attached. The destination-parent head publication is the sole
 namespace visibility switch. Mount entries contain no access copy;
-descriptor/head/commit identity bindings are validated instead.
+descriptor/head/commit identity bindings are validated instead. The authenticated
+`parentDirectoryNodeId` and `entryName` form a reverse locator for explicit
+subvolume deletion. Moving a subvolume entry updates the directory entry and
+this locator in the same topology publication.
+
+Subvolumes are never removed by ordinary recursive directory deletion. The
+explicit deletion operation validates the locator and removes only the parent
+directory entry and mount-index entry. With recursive deletion disabled, the
+target mount index must be empty. With recursive deletion enabled, disconnecting
+the root mount makes the whole descendant graph unreachable without traversing
+ordinary files, inodes, extents, or chunks.
+
+Garbage collection treats both authenticated A/B generations of every reachable
+`read_write` subvolume as roots. A deleted child may remain reachable through a
+previous parent generation and is retained until that generation is overwritten.
+Open child sessions hold a shared runtime pin; GC may remove orphan child-head
+files only after the descriptor is unreachable and an exclusive pin can be
+acquired. Immutable objects shared by snapshots are marked once through the
+global visited sets and are reclaimed only after every retained generation and
+runtime pin releases them.
 
 ## Inode index
 

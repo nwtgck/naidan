@@ -2,10 +2,13 @@ export {
   createHizoFS,
   createHizoFSBulkBuilder,
   createHizoFSDiagnosticSession,
+  createHizoFSSubvolume,
+  deleteHizoFSSubvolume,
   getHizoFSSubvolumeInfo,
   inspectHizoFS,
   openHizoFS,
   openHizoFSDiagnosticSession,
+  snapshotHizoFSSubvolume,
   deriveHizoFSFileSystemIdFromRawRootKey,
 } from './api';
 export type {
