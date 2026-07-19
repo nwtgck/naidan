@@ -17,6 +17,7 @@ export type StorageDirectoryWorkerMountSource = {
   readonly type: 'hizofs';
   readonly backingDirectory: FileSystemDirectoryHandle;
   readonly fileSystemId: string;
+  readonly instanceId: string;
   readonly rootKey: CryptoKey;
   readonly subvolumeDescriptorObjectId: string;
   readonly rootDirectoryNodeId: string;
@@ -158,6 +159,7 @@ export interface StorageFileSystemSession {
 
 export interface StorageDirectoryWorkerMountSession extends StorageFileSystemSession {
   readonly fileSystemId: string;
+  readonly instanceId: string;
 
   openWorkerMountDirectory({ source }: {
     source: StorageDirectoryWorkerMountSource;

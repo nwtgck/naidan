@@ -109,6 +109,7 @@ function createSession(): OpfsEncryptionDebugSession {
       descriptor: {
         format: 'hizofs',
         formatVersion: 1,
+        instanceId: 'instance-id',
       },
       fileSystemId: 'filesystem-a',
       persistedDescriptorDto: {

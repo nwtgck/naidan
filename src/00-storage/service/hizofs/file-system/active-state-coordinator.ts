@@ -356,6 +356,7 @@ function postCoordinatorMessage({
 export class HizoFSActiveStateCoordinator {
   constructor({
     fileSystemId,
+    fileSystemInstanceId,
     coordinationScope,
     localCoordinationIdentity,
     loadFromBacking,
@@ -364,6 +365,7 @@ export class HizoFSActiveStateCoordinator {
     diagnostics,
   }: {
     fileSystemId: string;
+    fileSystemInstanceId: string;
     coordinationScope: string;
     localCoordinationIdentity: object;
     loadFromBacking: () => Promise<HizoFSActiveState>;
@@ -386,8 +388,9 @@ export class HizoFSActiveStateCoordinator {
     diagnostics: HizoFSRuntimeDiagnostics | undefined;
   }) {
     this.fileSystemId = fileSystemId;
+    this.fileSystemInstanceId = fileSystemInstanceId;
     this.coordinationScope = coordinationScope;
-    this.coordinationKey = `${fileSystemId}/${coordinationScope}`;
+    this.coordinationKey = `${fileSystemInstanceId}/${fileSystemId}/${coordinationScope}`;
     this.localCoordinationIdentity = localCoordinationIdentity;
     this.instanceId = createHizoFSStableId();
     this.loadFromBacking = loadFromBacking;
@@ -397,6 +400,7 @@ export class HizoFSActiveStateCoordinator {
   }
 
   private readonly fileSystemId: string;
+  private readonly fileSystemInstanceId: string;
   private readonly coordinationScope: string;
   private readonly coordinationKey: string;
   private readonly localCoordinationIdentity: object;
@@ -715,7 +719,7 @@ export class HizoFSActiveStateCoordinator {
     if (typeof BroadcastChannel === 'undefined') {
       throw new Error('Cross-realm HizoFS coordination requires BroadcastChannel');
     }
-    this.channel = new BroadcastChannel(`hizofs/${this.fileSystemId}/${this.coordinationScope}/coordinator`);
+    this.channel = new BroadcastChannel(`hizofs/${this.fileSystemInstanceId}/${this.fileSystemId}/${this.coordinationScope}/coordinator`);
     this.channel.addEventListener('message', (event: MessageEvent<unknown>) => {
       this.receiveMessage({ value: event.data });
     });
@@ -726,7 +730,7 @@ export class HizoFSActiveStateCoordinator {
     // before serving requests. A SharedWorker owner may replace this lease when
     // standalone/file-protocol constraints can preserve the same guarantees.
     this.electionPromise = navigator.locks.request(
-      `hizofs/${this.fileSystemId}/${this.coordinationScope}/coordinator-owner`,
+      `hizofs/${this.fileSystemInstanceId}/${this.fileSystemId}/${this.coordinationScope}/coordinator-owner`,
       {
         mode: 'exclusive',
         signal: this.leadershipAbortController.signal,

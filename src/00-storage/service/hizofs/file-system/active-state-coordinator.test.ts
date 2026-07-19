@@ -71,6 +71,7 @@ describe('HizoFS active-state coordinator', () => {
       loadFromBacking: () => Promise<HizoFSActiveState>;
     }) => new HizoFSActiveStateCoordinator({
       fileSystemId,
+      fileSystemInstanceId: fileSystemId,
       coordinationScope,
       localCoordinationIdentity,
       loadFromBacking,
@@ -99,6 +100,87 @@ describe('HizoFS active-state coordinator', () => {
       expect(childLoad).toHaveBeenCalledTimes(1);
     } finally {
       await Promise.all([root.close(), child.close()]);
+    }
+  });
+
+  it('isolates local leaders by both filesystem instance and cryptographic identity', async () => {
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: undefined,
+    });
+    const localCoordinationIdentity = {};
+    const baselineState = createState({
+      sequence: 1,
+      commitObjectId: 'baseline-commit',
+      inodeIndexRootObjectId: 'baseline-index',
+    });
+    const anotherKeyState = createState({
+      sequence: 2,
+      commitObjectId: 'another-key-commit',
+      inodeIndexRootObjectId: 'another-key-index',
+    });
+    const anotherInstanceState = createState({
+      sequence: 3,
+      commitObjectId: 'another-instance-commit',
+      inodeIndexRootObjectId: 'another-instance-index',
+    });
+    const baselineLoad = vi.fn(async () => baselineState);
+    const anotherKeyLoad = vi.fn(async () => anotherKeyState);
+    const anotherInstanceLoad = vi.fn(async () => anotherInstanceState);
+    const createCoordinator = ({
+      fileSystemId,
+      fileSystemInstanceId,
+      loadFromBacking,
+    }: {
+      fileSystemId: string;
+      fileSystemInstanceId: string;
+      loadFromBacking: () => Promise<HizoFSActiveState>;
+    }) => new HizoFSActiveStateCoordinator({
+      fileSystemId,
+      fileSystemInstanceId,
+      coordinationScope: 'root',
+      localCoordinationIdentity,
+      loadFromBacking,
+      publishFromState: async () => {
+        throw new Error('Unexpected publication');
+      },
+      setHeadHandleRetention: async () => {},
+      diagnostics: undefined,
+    });
+    const baseline = createCoordinator({
+      fileSystemId: 'root-key-a',
+      fileSystemInstanceId: 'instance-a',
+      loadFromBacking: baselineLoad,
+    });
+    const anotherKey = createCoordinator({
+      fileSystemId: 'root-key-b',
+      fileSystemInstanceId: 'instance-a',
+      loadFromBacking: anotherKeyLoad,
+    });
+    const anotherInstance = createCoordinator({
+      fileSystemId: 'root-key-a',
+      fileSystemInstanceId: 'instance-b',
+      loadFromBacking: anotherInstanceLoad,
+    });
+    try {
+      await expect(baseline.loadActiveState()).resolves.toMatchObject({
+        commitObjectId: 'baseline-commit',
+      });
+      await expect(anotherKey.loadActiveState()).resolves.toMatchObject({
+        commitObjectId: 'another-key-commit',
+      });
+      await expect(anotherInstance.loadActiveState()).resolves.toMatchObject({
+        commitObjectId: 'another-instance-commit',
+      });
+      expect(baselineLoad).toHaveBeenCalledTimes(1);
+      expect(anotherKeyLoad).toHaveBeenCalledTimes(1);
+      expect(anotherInstanceLoad).toHaveBeenCalledTimes(1);
+    } finally {
+      await Promise.all([
+        baseline.close(),
+        anotherKey.close(),
+        anotherInstance.close(),
+      ]);
     }
   });
 
@@ -135,6 +217,7 @@ describe('HizoFS active-state coordinator', () => {
     const fileSystemId = `coordinator-${crypto.randomUUID()}`;
     const leader = new HizoFSActiveStateCoordinator({
       fileSystemId,
+      fileSystemInstanceId: fileSystemId,
       coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: leaderLoads,
@@ -146,6 +229,7 @@ describe('HizoFS active-state coordinator', () => {
     });
     const follower = new HizoFSActiveStateCoordinator({
       fileSystemId,
+      fileSystemInstanceId: fileSystemId,
       coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: followerLoads,
@@ -206,7 +290,8 @@ describe('HizoFS active-state coordinator', () => {
     });
     const flushPreparedRecords = vi.fn(async () => {});
     const coordinator = new HizoFSActiveStateCoordinator({
-      fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      fileSystemId: 'file-system-id',
+      fileSystemInstanceId: `coordinator-${crypto.randomUUID()}`,
       coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => persistedState,
@@ -252,7 +337,8 @@ describe('HizoFS active-state coordinator', () => {
     const publicationStarted = Promise.withResolvers<void>();
     const releasePublication = Promise.withResolvers<void>();
     const coordinator = new HizoFSActiveStateCoordinator({
-      fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      fileSystemId: 'file-system-id',
+      fileSystemInstanceId: `coordinator-${crypto.randomUUID()}`,
       coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => initialState,
@@ -305,7 +391,8 @@ describe('HizoFS active-state coordinator', () => {
     const publicationStarted = Promise.withResolvers<void>();
     const releasePublication = Promise.withResolvers<void>();
     const coordinator = new HizoFSActiveStateCoordinator({
-      fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      fileSystemId: 'file-system-id',
+      fileSystemInstanceId: `coordinator-${crypto.randomUUID()}`,
       coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => initialState,
@@ -366,7 +453,8 @@ describe('HizoFS active-state coordinator', () => {
       throw new Error('publication must not run twice');
     });
     const coordinator = new HizoFSActiveStateCoordinator({
-      fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      fileSystemId: 'file-system-id',
+      fileSystemInstanceId: `coordinator-${crypto.randomUUID()}`,
       coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => ({
@@ -407,6 +495,7 @@ describe('HizoFS active-state coordinator', () => {
     const fileSystemId = `coordinator-${crypto.randomUUID()}`;
     const coordinator = new HizoFSActiveStateCoordinator({
       fileSystemId,
+      fileSystemInstanceId: fileSystemId,
       coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => createState({
@@ -420,7 +509,7 @@ describe('HizoFS active-state coordinator', () => {
       setHeadHandleRetention: async () => {},
       diagnostics: undefined,
     });
-    const channel = new BroadcastChannel(`hizofs/${fileSystemId}/root/coordinator`);
+    const channel = new BroadcastChannel(`hizofs/${fileSystemId}/${fileSystemId}/root/coordinator`);
 
     try {
       await coordinator.loadActiveState();
@@ -469,7 +558,8 @@ describe('HizoFS active-state coordinator', () => {
       value: undefined,
     });
     const coordinator = new HizoFSActiveStateCoordinator({
-      fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      fileSystemId: 'file-system-id',
+      fileSystemInstanceId: `coordinator-${crypto.randomUUID()}`,
       coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => createState({

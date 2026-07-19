@@ -3,6 +3,9 @@ import {
   type HizoFSDescriptorDto,
 } from '@/00-storage/00-dto/hizofs.dto';
 import type { HizoFSBackingStore } from '@/00-storage/service/hizofs/backing-store/backing-store';
+import {
+  validateHizoFSStableId,
+} from '@/00-storage/service/hizofs/id';
 import { ZodError } from 'zod';
 
 const DESCRIPTOR_PATH = ['descriptor.json'] as const;
@@ -17,12 +20,16 @@ export class HizoFSDescriptorCorruptionError extends Error {
   }
 }
 
-function createCanonicalDescriptor(): HizoFSDescriptorDto {
+function createCanonicalDescriptor({ instanceId }: {
+  instanceId: string;
+}): HizoFSDescriptorDto {
   return {
     format: 'hizofs',
     formatVersion: 1,
+    instanceId,
   };
 }
+
 
 function encodeDescriptor({ descriptor }: {
   descriptor: HizoFSDescriptorDto;
@@ -40,14 +47,19 @@ async function assertBackingStoreIsEmpty({ backingStore }: {
   }
 }
 
-export async function createHizoFSDescriptor({ backingStore }: {
+export async function createHizoFSDescriptor({ backingStore, instanceId }: {
   backingStore: HizoFSBackingStore;
+  instanceId: string;
 }): Promise<HizoFSDescriptorDto> {
   // The complete directory is owned by one HizoFS instance. Requiring an empty
   // directory prevents descriptor loss from turning old encrypted objects into
   // an apparently valid newly-created filesystem.
   await assertBackingStoreIsEmpty({ backingStore });
-  const descriptor = createCanonicalDescriptor();
+  validateHizoFSStableId({
+    value: instanceId,
+    fieldName: 'HizoFS descriptor instanceId',
+  });
+  const descriptor = createCanonicalDescriptor({ instanceId });
   await backingStore.write({
     path: DESCRIPTOR_PATH,
     bytes: encodeDescriptor({ descriptor }),
@@ -73,7 +85,12 @@ export async function readHizoFSDescriptor({ backingStore }: {
     });
   }
   try {
-    return HizoFSDescriptorSchemaDto.parse(raw);
+    const descriptor = HizoFSDescriptorSchemaDto.parse(raw);
+    validateHizoFSStableId({
+      value: descriptor.instanceId,
+      fieldName: 'HizoFS descriptor instanceId',
+    });
+    return descriptor;
   } catch (error) {
     if (error instanceof ZodError) {
       throw new HizoFSDescriptorCorruptionError({
@@ -91,9 +108,14 @@ export async function readHizoFSDescriptor({ backingStore }: {
  * a complete HizoFS generation with the root key. No key-domain information is
  * sourced from this file, so losing it cannot make the filesystem unreadable.
  */
-export async function restoreHizoFSDescriptor({ backingStore }: {
+export async function restoreHizoFSDescriptor({ backingStore, instanceId }: {
   backingStore: HizoFSBackingStore;
+  instanceId: string;
 }): Promise<HizoFSDescriptorDto> {
+  validateHizoFSStableId({
+    value: instanceId,
+    fieldName: 'HizoFS descriptor instanceId',
+  });
   try {
     const existing = await readHizoFSDescriptor({ backingStore });
     if (existing !== undefined) return existing;
@@ -102,7 +124,7 @@ export async function restoreHizoFSDescriptor({ backingStore }: {
       throw error;
     }
   }
-  const descriptor = createCanonicalDescriptor();
+  const descriptor = createCanonicalDescriptor({ instanceId });
   await backingStore.write({
     path: DESCRIPTOR_PATH,
     bytes: encodeDescriptor({ descriptor }),
@@ -110,9 +132,16 @@ export async function restoreHizoFSDescriptor({ backingStore }: {
   return descriptor;
 }
 
-export function getCanonicalHizoFSDescriptor(): HizoFSDescriptorDto {
-  return createCanonicalDescriptor();
+export function getCanonicalHizoFSDescriptor({ instanceId }: {
+  instanceId: string;
+}): HizoFSDescriptorDto {
+  validateHizoFSStableId({
+    value: instanceId,
+    fieldName: 'HizoFS descriptor instanceId',
+  });
+  return createCanonicalDescriptor({ instanceId });
 }
+
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

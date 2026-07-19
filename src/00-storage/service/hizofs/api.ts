@@ -34,11 +34,13 @@ import {
   HizoFSSession,
 } from "./file-system/session";
 import {
+  loadHizoFSActiveStateFromStores,
   loadHizoFSFixedSubvolumeState,
   type HizoFSFilesystemState,
 } from './file-system/active-state';
 import { HizoFSBulkBuilder } from './file-system/bulk-builder';
 import type { HizoFSRuntimeDiagnostics } from './file-system/diagnostics';
+import { collectHizoFSCurrentSubvolumeDescriptorObjectIds } from './file-system/subvolume-graph';
 import {
   acquireHizoFSResourceLease,
   acquireHizoFSSubvolumeRuntimePin,
@@ -54,70 +56,12 @@ async function assertHizoFSSubvolumeDescriptorReachable({
   rootState: HizoFSFilesystemState;
   targetDescriptorObjectId: string;
 }): Promise<void> {
-  if (rootState.subvolumeDescriptorObjectId === targetDescriptorObjectId) return;
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  const visitCommit = async ({ commit }: {
-    commit: HizoFSCommitDto;
-  }): Promise<boolean> => {
-    for await (const mount of runtime.subvolumeMountIndex.entries({
-      rootObjectId: commit.subvolumeMountIndexRootObjectId,
-    })) {
-      if (mount.subvolumeDescriptorObjectId === targetDescriptorObjectId) {
-        return true;
-      }
-      if (visited.has(mount.subvolumeDescriptorObjectId)) continue;
-      if (visiting.has(mount.subvolumeDescriptorObjectId)) {
-        throw new HizoFSCorruptionError({
-          message: 'HizoFS current subvolume graph contains a cycle',
-          cause: undefined,
-        });
-      }
-      visiting.add(mount.subvolumeDescriptorObjectId);
-      try {
-        const descriptor = await runtime.subvolumeDescriptorStore.read({
-          objectId: mount.subvolumeDescriptorObjectId,
-        });
-        let childCommit: HizoFSCommitDto;
-        switch (descriptor.access) {
-        case 'read':
-          childCommit = await runtime.commitStore.read({
-            objectId: descriptor.fixedCommitObjectId,
-          });
-          break;
-        case 'read_write': {
-          const state = await runtime.getReadWriteSubvolumeCore({
-            subvolumeId: descriptor.subvolumeId,
-          }).loadActiveState();
-          if (state.subvolumeDescriptorObjectId !== mount.subvolumeDescriptorObjectId) {
-            throw new HizoFSCorruptionError({
-              message: 'HizoFS current child head references an unexpected descriptor',
-              cause: undefined,
-            });
-          }
-          childCommit = state.commit;
-          break;
-        }
-        default: {
-          const _ex: never = descriptor;
-          throw new Error(`Unhandled HizoFS subvolume descriptor: ${String(_ex)}`);
-        }
-        }
-        if (childCommit.subvolumeId !== descriptor.subvolumeId) {
-          throw new HizoFSCorruptionError({
-            message: 'HizoFS current subvolume descriptor and commit identities do not match',
-            cause: undefined,
-          });
-        }
-        if (await visitCommit({ commit: childCommit })) return true;
-        visited.add(mount.subvolumeDescriptorObjectId);
-      } finally {
-        visiting.delete(mount.subvolumeDescriptorObjectId);
-      }
-    }
-    return false;
-  };
-  if (await visitCommit({ commit: rootState.commit })) return;
+  const descriptorObjectIds =
+    await collectHizoFSCurrentSubvolumeDescriptorObjectIds({
+      runtime,
+      rootState,
+    });
+  if (descriptorObjectIds.has(targetDescriptorObjectId)) return;
   throw new DOMException(
     'The HizoFS subvolume is no longer reachable from the current namespace',
     'NotFoundError',
@@ -386,6 +330,7 @@ export async function openHizoFSWorkerMount({
     return openHizoFSWithImportedRootKey({
       backingDirectory: source.backingDirectory,
       fileSystemId: source.fileSystemId,
+      instanceId: source.instanceId,
       rootKey: source.rootKey,
       subvolumeDescriptorObjectId: source.subvolumeDescriptorObjectId,
       rootDirectoryNodeId: source.rootDirectoryNodeId,
@@ -437,12 +382,12 @@ export async function inspectHizoFS({
   let descriptor: HizoFSDescriptorDto;
   try {
     descriptor = await readHizoFSDescriptor({ backingStore })
-      ?? getCanonicalHizoFSDescriptor();
+      ?? getCanonicalHizoFSDescriptor({ instanceId: createHizoFSStableId() });
   } catch (error) {
     if (!(error instanceof HizoFSDescriptorCorruptionError)) {
       throw error;
     }
-    descriptor = getCanonicalHizoFSDescriptor();
+    descriptor = getCanonicalHizoFSDescriptor({ instanceId: createHizoFSStableId() });
   }
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
   const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
@@ -450,6 +395,7 @@ export async function inspectHizoFS({
     backingStore,
     rootKey,
     fileSystemId,
+    instanceId: descriptor.instanceId,
     policy: DEFAULT_HIZOFS_POLICY,
     now: () => Date.now(),
     diagnostics: undefined,
@@ -515,11 +461,16 @@ async function createHizoFSInternal({
     rawRootKey: fileSystemRootKey,
   });
   const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
-  await createHizoFSDescriptor({ backingStore });
+  const rootSubvolumeId = createHizoFSStableId();
+  const descriptor = await createHizoFSDescriptor({
+    backingStore,
+    instanceId: rootSubvolumeId,
+  });
   const runtime = createHizoFSRuntime({
     backingStore,
     rootKey,
     fileSystemId,
+    instanceId: descriptor.instanceId,
     policy,
     now,
     diagnostics,
@@ -528,7 +479,6 @@ async function createHizoFSInternal({
   return runWithRuntimeInitialization({
     runtime,
     operation: async () => {
-      const rootSubvolumeId = createHizoFSStableId();
       const rootDirectoryNodeId = createHizoFSStableId();
       const timestamp = now();
       const rootInodeObjectId = await runtime.inodeStore.writeDirectory({
@@ -583,6 +533,7 @@ async function createHizoFSInternal({
           type: "hizofs",
           backingDirectory,
           fileSystemId,
+          instanceId: descriptor.instanceId,
           rootKey: workerRootKey,
           subvolumeDescriptorObjectId:
             state.superblock.subvolumeDescriptorObjectId,
@@ -620,10 +571,56 @@ async function openHizoFSInternal({
     rawRootKey: fileSystemRootKey,
   });
   const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
+  let descriptor: HizoFSDescriptorDto | undefined;
+  try {
+    descriptor = await readHizoFSDescriptor({ backingStore });
+  } catch (error) {
+    if (!(error instanceof HizoFSDescriptorCorruptionError)) throw error;
+  }
+  if (descriptor === undefined) {
+    const provisionalRuntime = createHizoFSRuntime({
+      backingStore,
+      rootKey,
+      fileSystemId,
+      instanceId: createHizoFSStableId(),
+      policy,
+      now,
+      diagnostics,
+    });
+    let authenticatedInstanceId: string;
+    try {
+      const state = await loadHizoFSActiveStateFromStores({
+        superblockStore: provisionalRuntime.core.superblockStore,
+        expectedSubvolumeId: undefined,
+        commitStore: provisionalRuntime.commitStore,
+        subvolumeDescriptorStore:
+          provisionalRuntime.subvolumeDescriptorStore,
+        inodeIndex: provisionalRuntime.inodeIndex,
+        inodeStore: provisionalRuntime.inodeStore,
+        validatedRootCache: undefined,
+      });
+      authenticatedInstanceId = state.commit.subvolumeId;
+    } finally {
+      await provisionalRuntime.close();
+    }
+    await restoreHizoFSDescriptor({
+      backingStore,
+      instanceId: authenticatedInstanceId,
+    });
+    return await openHizoFSInternal({
+      backingDirectory,
+      fileSystemRootKey,
+      policy,
+      now,
+      diagnostics,
+    });
+  }
+  const instanceId = descriptor.instanceId;
   const runtime = createHizoFSRuntime({
     backingStore,
     rootKey,
     fileSystemId,
+    instanceId,
     policy,
     now,
     diagnostics,
@@ -632,7 +629,13 @@ async function openHizoFSInternal({
     runtime,
     operation: async () => {
       const state = await runtime.core.loadActiveState();
-      await restoreHizoFSDescriptor({ backingStore });
+      if (state.commit.subvolumeId !== instanceId) {
+        throw new HizoFSCorruptionError({
+          message:
+            'HizoFS descriptor instanceId does not match the authenticated root subvolume identity',
+          cause: undefined,
+        });
+      }
       return new HizoFSSession({
         runtime,
         core: runtime.core,
@@ -643,6 +646,7 @@ async function openHizoFSInternal({
           type: "hizofs",
           backingDirectory,
           fileSystemId,
+          instanceId,
           rootKey: workerRootKey,
           subvolumeDescriptorObjectId:
             state.superblock.subvolumeDescriptorObjectId,
@@ -659,6 +663,7 @@ async function openHizoFSInternal({
 async function openHizoFSWithImportedRootKey({
   backingDirectory,
   fileSystemId,
+  instanceId,
   rootKey,
   subvolumeDescriptorObjectId,
   rootDirectoryNodeId,
@@ -667,6 +672,7 @@ async function openHizoFSWithImportedRootKey({
 }: {
   backingDirectory: FileSystemDirectoryHandle;
   fileSystemId: string;
+  instanceId: string;
   rootKey: CryptoKey;
   subvolumeDescriptorObjectId: string;
   rootDirectoryNodeId: string;
@@ -679,10 +685,18 @@ async function openHizoFSWithImportedRootKey({
     fileSnapshotCacheEntryLimit: policy.backingFileSnapshotCacheEntryLimit,
     diagnostics: undefined,
   });
+  const descriptor = await readHizoFSDescriptor({ backingStore });
+  if (descriptor === undefined || descriptor.instanceId !== instanceId) {
+    throw new DOMException(
+      'The HizoFS Worker mount belongs to a different filesystem instance',
+      'NotFoundError',
+    );
+  }
   const runtime = createHizoFSRuntime({
     backingStore,
     rootKey,
     fileSystemId,
+    instanceId,
     policy,
     now,
     diagnostics: undefined,
@@ -690,7 +704,7 @@ async function openHizoFSWithImportedRootKey({
   return runWithRuntimeInitialization({
     runtime,
     operation: async () => {
-      const resourceLease = await acquireHizoFSResourceLease({ fileSystemId });
+      const resourceLease = await acquireHizoFSResourceLease({ instanceId });
       let subvolumeRuntimePin: HizoFSMaintenanceLease | undefined;
       try {
         const rootState = await runtime.core.loadActiveState();
@@ -712,7 +726,7 @@ async function openHizoFSWithImportedRootKey({
             objectId: subvolumeDescriptorObjectId,
           });
           subvolumeRuntimePin = await acquireHizoFSSubvolumeRuntimePin({
-            fileSystemId,
+            instanceId,
             subvolumeId: descriptor.subvolumeId,
             subvolumeDescriptorObjectId,
           });
@@ -745,7 +759,7 @@ async function openHizoFSWithImportedRootKey({
           }
           }
         }
-        await restoreHizoFSDescriptor({ backingStore });
+        await restoreHizoFSDescriptor({ backingStore, instanceId });
         await runtime.nodeService.readDirectory({
           state,
           nodeId: rootDirectoryNodeId,
@@ -760,6 +774,7 @@ async function openHizoFSWithImportedRootKey({
             type: "hizofs",
             backingDirectory,
             fileSystemId,
+            instanceId,
             rootKey,
             subvolumeDescriptorObjectId,
           },

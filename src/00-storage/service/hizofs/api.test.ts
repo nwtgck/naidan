@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { HizoFSSubvolumeMountDto } from '@/00-storage/00-dto/hizofs.dto';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import {
   readStorageFileText,
   writeStorageFileText,
 } from '@/00-storage/service/storage-file-system/io';
-import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
+import type {
+  StorageDirectoryHandle,
+  StorageFileSystemSession,
+} from '@/00-storage/service/storage-file-system/types';
 import {
   createHizoFS,
   createHizoFSBulkBuilder,
@@ -189,6 +193,162 @@ async function countPhysicalObjectsByKind({ backing, kind }: {
   }
 }
 
+async function getOnlyRootSubvolumeMount({
+  session,
+}: {
+  session: StorageFileSystemSession;
+}): Promise<HizoFSSubvolumeMountDto> {
+  const hizofs = requireHizoFSSession({ session });
+  const state = await hizofs.loadFilesystemState();
+  const mounts: HizoFSSubvolumeMountDto[] = [];
+  for await (const mount of hizofs.runtime.subvolumeMountIndex.entries({
+    rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+  })) {
+    mounts.push(mount);
+  }
+  const mount = mounts[0];
+  if (mount === undefined || mounts.length !== 1) {
+    throw new Error(`Expected exactly one root subvolume mount, found ${mounts.length}`);
+  }
+  return mount;
+}
+
+async function publishRootMountReplacement({
+  session,
+  mount,
+}: {
+  session: StorageFileSystemSession;
+  mount: HizoFSSubvolumeMountDto;
+}): Promise<void> {
+  const hizofs = requireHizoFSSession({ session });
+  await hizofs.core.mutateTopologyAndReturnState({
+    operation: async ({ state }) => ({
+      changed: 'yes' as const,
+      inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+      subvolumeMountIndexRootObjectId:
+        await hizofs.runtime.subvolumeMountIndex.set({
+          rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+          mount,
+        }),
+      result: undefined,
+    }),
+  });
+}
+
+async function publishRootSubvolumeAlias({
+  session,
+  name,
+  subvolumeDescriptorObjectId,
+}: {
+  session: StorageFileSystemSession;
+  name: string;
+  subvolumeDescriptorObjectId: string;
+}): Promise<void> {
+  const hizofs = requireHizoFSSession({ session });
+  const mountId = createHizoFSStableId();
+  await hizofs.core.mutateTopologyAndReturnState({
+    operation: async ({ state }) => {
+      const rootDirectory = await hizofs.runtime.nodeService.readDirectory({
+        state,
+        nodeId: state.commit.rootDirectoryNodeId,
+      });
+      const changedRootDirectory =
+        await hizofs.runtime.directoryStorage.writeChangedInode({
+          inode: rootDirectory.inode,
+          changes: [{
+            type: 'set',
+            entry: {
+              name,
+              kind: 'subvolume',
+              mountId,
+            },
+          }],
+          modifiedAt: 2,
+        });
+      const subvolumeMountIndexRootObjectId =
+        await hizofs.runtime.subvolumeMountIndex.set({
+          rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+          mount: {
+            mountId,
+            subvolumeDescriptorObjectId,
+            parentDirectoryNodeId: state.commit.rootDirectoryNodeId,
+            entryName: name,
+          },
+        });
+      const inodeIndexRootObjectId = await hizofs.runtime.nodeService.setInode({
+        inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+        nodeId: state.commit.rootDirectoryNodeId,
+        inodeObjectId: changedRootDirectory.inodeObjectId,
+      });
+      return {
+        changed: 'yes' as const,
+        inodeIndexRootObjectId,
+        subvolumeMountIndexRootObjectId,
+        result: undefined,
+      };
+    },
+  });
+}
+
+async function publishSubvolumeAlias({
+  destination,
+  name,
+  subvolumeDescriptorObjectId,
+}: {
+  destination: StorageDirectoryHandle;
+  name: string;
+  subvolumeDescriptorObjectId: string;
+}): Promise<void> {
+  const context = getHizoFSDirectoryHandleContext({ handle: destination });
+  if (context === undefined) {
+    throw new Error('Expected a HizoFS destination directory');
+  }
+  const mountId = createHizoFSStableId();
+  await context.session.core.mutateTopologyAndReturnState({
+    operation: async ({ state }) => {
+      const directory = await context.session.runtime.nodeService.readDirectory({
+        state,
+        nodeId: context.nodeId,
+      });
+      const changedDirectory =
+        await context.session.runtime.directoryStorage.writeChangedInode({
+          inode: directory.inode,
+          changes: [{
+            type: 'set',
+            entry: {
+              name,
+              kind: 'subvolume',
+              mountId,
+            },
+          }],
+          modifiedAt: 2,
+        });
+      const subvolumeMountIndexRootObjectId =
+        await context.session.runtime.subvolumeMountIndex.set({
+          rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+          mount: {
+            mountId,
+            subvolumeDescriptorObjectId,
+            parentDirectoryNodeId: context.nodeId,
+            entryName: name,
+          },
+        });
+      const inodeIndexRootObjectId =
+        await context.session.runtime.nodeService.setInode({
+          inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+          nodeId: context.nodeId,
+          inodeObjectId: changedDirectory.inodeObjectId,
+        });
+      return {
+        changed: 'yes' as const,
+        inodeIndexRootObjectId,
+        subvolumeMountIndexRootObjectId,
+        result: undefined,
+      };
+    },
+  });
+}
+
 async function copyNativeDirectory({ source, destination }: {
   source: FileSystemDirectoryHandle;
   destination: FileSystemDirectoryHandle;
@@ -233,9 +393,14 @@ describe('HizoFS public file-system API', () => {
     });
     expect(createdInfo?.subvolumeId).toEqual(expect.any(String));
     const createdId = createdInfo?.subvolumeId;
+    const createdInstanceId = requireHizoFSSession({
+      session: created,
+    }).instanceId;
     await created.close();
 
     const reopened = await openTiny({ root, now: () => 2 });
+    expect(requireHizoFSSession({ session: reopened }).instanceId)
+      .toBe(createdInstanceId);
     await expect(getHizoFSSubvolumeInfo({
       handle: reopened.root,
     })).resolves.toEqual({
@@ -330,6 +495,41 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
+  it('keeps ordinary root operations free of mount metadata I/O after children exist', async () => {
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await createHizoFSDiagnosticSession({
+      backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileSystemRootKey: ROOT_KEY,
+      policy: TINY_POLICY,
+      diagnostics,
+    });
+    await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'archive',
+      access: 'read',
+    });
+    await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'workspace',
+      access: 'read_write',
+    });
+    const before = diagnostics.snapshot();
+
+    await session.root.getFileHandle({ name: 'ordinary', create: true });
+    await session.root.getFileHandle({ name: 'ordinary', create: false });
+
+    const after = diagnostics.snapshot();
+    expect(after.records.subvolume_descriptor.readOperations)
+      .toBe(before.records.subvolume_descriptor.readOperations);
+    expect(after.records.subvolume_descriptor.writeOperations)
+      .toBe(before.records.subvolume_descriptor.writeOperations);
+    expect(after.records.subvolume_mount_index_page.readOperations)
+      .toBe(before.records.subvolume_mount_index_page.readOperations);
+    expect(after.records.subvolume_mount_index_page.writeOperations)
+      .toBe(before.records.subvolume_mount_index_page.writeOperations);
+    await session.close();
+  });
+
   it('opens an empty read subvolume through one stable mount entry', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ root: backing, now: () => 1 });
@@ -371,6 +571,372 @@ describe('HizoFS public file-system API', () => {
       create: true,
     })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
     await reopened.close();
+  });
+
+  it('releases the resource lease when a mounted snapshot cannot acquire its runtime pin', async () => {
+    const ownerSession = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const child = await createHizoFSSubvolume({
+      destination: ownerSession.root,
+      name: 'workspace',
+      access: 'read_write',
+    });
+    const childContext = getHizoFSDirectoryHandleContext({ handle: child });
+    if (childContext === undefined) {
+      throw new Error('Expected a HizoFS child context');
+    }
+    const originalLocks = navigator.locks;
+    const queuedLocks = createQueuedTestLockManager({ onRequest: undefined });
+    const failure = new Error('injected runtime pin acquisition failure');
+    let maintenanceRequestSettled = false;
+    const queuedRequest = queuedLocks.request.bind(queuedLocks) as unknown as (
+      name: string,
+      options: LockOptions,
+      callback: () => Promise<unknown> | unknown,
+    ) => Promise<unknown>;
+    const request = (
+      name: string,
+      options: LockOptions,
+      callback: () => Promise<unknown> | unknown,
+    ): Promise<unknown> => {
+      if (name.includes('/subvolume-runtime/')) {
+        return Promise.reject(failure);
+      }
+      const completion = queuedRequest(name, options, callback);
+      if (name.endsWith('/maintenance')) {
+        void completion.finally(() => {
+          maintenanceRequestSettled = true;
+        });
+      }
+      return completion;
+    };
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request } as unknown as LockManager,
+    });
+    try {
+      await expect(childContext.session.createReadSnapshot()).rejects.toBe(failure);
+      expect(maintenanceRequestSettled).toBe(true);
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+      await ownerSession.close();
+    }
+  });
+
+  it('retries a mounted child after runtime pin acquisition fails once', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const created = await createTiny({ root: backing, now: () => 1 });
+    await createHizoFSSubvolume({
+      destination: created.root,
+      name: 'archive',
+      access: 'read',
+    });
+    await created.close();
+
+    const reopened = await openTiny({ root: backing, now: () => 2 });
+    const originalLocks = navigator.locks;
+    const queuedLocks = createQueuedTestLockManager({ onRequest: undefined });
+    const failure = new Error('injected first runtime pin failure');
+    let failedRuntimePin = false;
+    const queuedRequest = queuedLocks.request.bind(queuedLocks) as unknown as (
+      name: string,
+      options: LockOptions,
+      callback: () => Promise<unknown> | unknown,
+    ) => Promise<unknown>;
+    const request = (
+      name: string,
+      options: LockOptions,
+      callback: () => Promise<unknown> | unknown,
+    ): Promise<unknown> => {
+      if (name.includes('/subvolume-runtime/') && !failedRuntimePin) {
+        failedRuntimePin = true;
+        return Promise.reject(failure);
+      }
+      return queuedRequest(name, options, callback);
+    };
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: { request } as unknown as LockManager,
+    });
+    try {
+      await expect(reopened.root.getDirectoryHandle({
+        name: 'archive',
+        create: false,
+      })).rejects.toBe(failure);
+      const retried = await reopened.root.getDirectoryHandle({
+        name: 'archive',
+        create: false,
+      });
+      await expect(getHizoFSSubvolumeInfo({ handle: retried })).resolves.toMatchObject({
+        access: 'read',
+        root: false,
+      });
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+      await reopened.close();
+    }
+  });
+
+  it('rejects a mount whose authenticated location disagrees with the namespace', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'archive',
+      access: 'read',
+    });
+    const mount = await getOnlyRootSubvolumeMount({ session });
+    await publishRootMountReplacement({
+      session,
+      mount: {
+        ...mount,
+        entryName: 'detached',
+      },
+    });
+
+    await expect(session.root.getDirectoryHandle({
+      name: 'archive',
+      create: false,
+    })).rejects.toThrow('mount location does not match the namespace');
+    await expect((async () => {
+      for await (const _entry of session.root.entries()) {
+        // Iteration itself must validate every mounted entry.
+      }
+    })()).rejects.toThrow('mount location does not match the namespace');
+    await expect(snapshotHizoFSSubvolume({
+      source: session.root,
+      destination: session.root,
+      name: 'snapshot',
+      access: 'read',
+    })).rejects.toThrow('mount location does not match the namespace');
+    await expect(session.root.getDirectoryHandle({
+      name: 'snapshot',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await session.close();
+  });
+
+  it('rejects one subvolume descriptor mounted from multiple current locations', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const child = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'primary',
+      access: 'read_write',
+    });
+    const source = child.createWorkerMountSource?.();
+    if (source === undefined) {
+      throw new Error('Expected a HizoFS Worker mount source');
+    }
+    const hizofs = requireHizoFSSession({ session });
+    const originalMount = await getOnlyRootSubvolumeMount({ session });
+    const aliasMountId = createHizoFSStableId();
+    await hizofs.core.mutateTopologyAndReturnState({
+      operation: async ({ state }) => {
+        const rootDirectory = await hizofs.runtime.nodeService.readDirectory({
+          state,
+          nodeId: state.commit.rootDirectoryNodeId,
+        });
+        const changedRootDirectory =
+          await hizofs.runtime.directoryStorage.writeChangedInode({
+            inode: rootDirectory.inode,
+            changes: [{
+              type: 'set',
+              entry: {
+                name: 'alias',
+                kind: 'subvolume',
+                mountId: aliasMountId,
+              },
+            }],
+            modifiedAt: 2,
+          });
+        const subvolumeMountIndexRootObjectId =
+          await hizofs.runtime.subvolumeMountIndex.set({
+            rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+            mount: {
+              mountId: aliasMountId,
+              subvolumeDescriptorObjectId:
+                originalMount.subvolumeDescriptorObjectId,
+              parentDirectoryNodeId: state.commit.rootDirectoryNodeId,
+              entryName: 'alias',
+            },
+          });
+        const inodeIndexRootObjectId = await hizofs.runtime.nodeService.setInode({
+          inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+          nodeId: state.commit.rootDirectoryNodeId,
+          inodeObjectId: changedRootDirectory.inodeObjectId,
+        });
+        return {
+          changed: 'yes' as const,
+          inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId,
+          result: undefined,
+        };
+      },
+    });
+
+    await expect(session.root.getDirectoryHandle({
+      name: 'alias',
+      create: false,
+    })).rejects.toThrow('descriptor is mounted from multiple locations');
+
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({ onRequest: undefined }),
+    });
+    try {
+      await expect(openHizoFSWorkerMount({ source })).rejects.toThrow(
+        'subvolume graph contains multiple parents',
+      );
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+      await session.close();
+    }
+  });
+
+  it('rejects one descriptor mounted below distinct parent subvolumes', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const firstParent = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'first-parent',
+      access: 'read_write',
+    });
+    const secondParent = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'second-parent',
+      access: 'read_write',
+    });
+    const original = await createHizoFSSubvolume({
+      destination: firstParent,
+      name: 'original',
+      access: 'read',
+    });
+    const originalContext = getHizoFSDirectoryHandleContext({ handle: original });
+    if (originalContext === undefined) {
+      throw new Error('Expected an original subvolume context');
+    }
+    const originalInfo = await getHizoFSSubvolumeInfo({ handle: original });
+    if (originalInfo === undefined) {
+      throw new Error('Expected original subvolume information');
+    }
+    const originalMounts = [];
+    const firstParentContext = getHizoFSDirectoryHandleContext({
+      handle: firstParent,
+    });
+    if (firstParentContext === undefined) {
+      throw new Error('Expected a first parent context');
+    }
+    const firstParentState = await firstParentContext.session.loadFilesystemState();
+    for await (const mount of firstParentContext.session.runtime
+      .subvolumeMountIndex.entries({
+        rootObjectId:
+          firstParentState.commit.subvolumeMountIndexRootObjectId,
+      })) {
+      originalMounts.push(mount);
+    }
+    const originalMount = originalMounts[0];
+    if (originalMount === undefined || originalMounts.length !== 1) {
+      throw new Error('Expected one original child mount');
+    }
+    await publishSubvolumeAlias({
+      destination: secondParent,
+      name: 'alias',
+      subvolumeDescriptorObjectId:
+        originalMount.subvolumeDescriptorObjectId,
+    });
+
+    await expect(secondParent.getDirectoryHandle({
+      name: 'alias',
+      create: false,
+    })).rejects.toThrow('descriptor is mounted from multiple locations');
+    expect(originalContext.session.subvolumeId).toBe(originalInfo.subvolumeId);
+    await session.close();
+  });
+
+  it('rejects one subvolume identity bound to distinct authenticated descriptors', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const child = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'primary',
+      access: 'read',
+    });
+    const source = child.createWorkerMountSource?.();
+    if (source === undefined) {
+      throw new Error('Expected a HizoFS Worker mount source');
+    }
+    const hizofs = requireHizoFSSession({ session });
+    const originalMount = await getOnlyRootSubvolumeMount({ session });
+    const originalDescriptor = await hizofs.runtime.subvolumeDescriptorStore.read({
+      objectId: originalMount.subvolumeDescriptorObjectId,
+    });
+    if (originalDescriptor.access !== 'read') {
+      throw new Error('Expected a read subvolume descriptor');
+    }
+    const originalCommit = await hizofs.runtime.commitStore.read({
+      objectId: originalDescriptor.fixedCommitObjectId,
+    });
+    const conflictingCommitObjectId = await hizofs.runtime.commitStore.write({
+      commit: {
+        ...originalCommit,
+        publicationId: createHizoFSStableId(),
+      },
+    });
+    const conflictingDescriptorObjectId =
+      await hizofs.runtime.subvolumeDescriptorStore.write({
+        descriptor: {
+          subvolumeId: originalDescriptor.subvolumeId,
+          access: 'read',
+          fixedCommitObjectId: conflictingCommitObjectId,
+        },
+      });
+    await hizofs.runtime.objectStore.flushPendingRecords();
+    expect(conflictingDescriptorObjectId)
+      .not.toBe(originalMount.subvolumeDescriptorObjectId);
+    await publishRootSubvolumeAlias({
+      session,
+      name: 'conflicting',
+      subvolumeDescriptorObjectId: conflictingDescriptorObjectId,
+    });
+
+    await expect(session.root.getDirectoryHandle({
+      name: 'conflicting',
+      create: false,
+    })).rejects.toThrow('identity is bound to multiple descriptors');
+
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({ onRequest: undefined }),
+    });
+    try {
+      await expect(openHizoFSWorkerMount({ source })).rejects.toThrow(
+        'identity is bound to multiple descriptors',
+      );
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+      await session.close();
+    }
   });
 
   it('creates independently writable child subvolumes through the public API', async () => {
@@ -439,6 +1005,31 @@ describe('HizoFS public file-system API', () => {
       }),
     })).toBe('independent child state');
     await reopened.close();
+  });
+
+  it('keeps a newly prepared child invisible when its parent publication fails', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const failure = new Error('injected subvolume creation publication failure');
+    vi.spyOn(hizofs.core.superblockStore, 'write').mockRejectedValueOnce(failure);
+
+    await expect(createHizoFSSubvolume({
+      destination: session.root,
+      name: 'must-not-appear',
+      access: 'read_write',
+    })).rejects.toBe(failure);
+    await expect(session.root.getDirectoryHandle({
+      name: 'must-not-appear',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(session.root.getFileHandle({
+      name: 'still-writable.txt',
+      create: true,
+    })).resolves.toBeDefined();
+    await session.close();
   });
 
   it('snapshots one subvolume without copying file or chunk records', async () => {
@@ -696,6 +1287,136 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
+  it('captures one recursive snapshot cut while a later child write waits behind the maintenance fence', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const source = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'source',
+      access: 'read_write',
+    });
+    const nested = await createHizoFSSubvolume({
+      destination: source,
+      name: 'nested',
+      access: 'read_write',
+    });
+    await writeStorageFileText({
+      fileHandle: await nested.getFileHandle({
+        name: 'baseline.txt',
+        create: true,
+      }),
+      value: 'baseline',
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const descriptorWriteStarted = Promise.withResolvers<void>();
+    const releaseDescriptorWrite = Promise.withResolvers<void>();
+    const originalWrite = hizofs.runtime.subvolumeDescriptorStore.write.bind(
+      hizofs.runtime.subvolumeDescriptorStore,
+    );
+    const descriptorWrite = vi.spyOn(
+      hizofs.runtime.subvolumeDescriptorStore,
+      'write',
+    ).mockImplementationOnce(async input => {
+      descriptorWriteStarted.resolve();
+      await releaseDescriptorWrite.promise;
+      return await originalWrite(input);
+    });
+    let laterWriteSettled = false;
+    try {
+      const snapshotPromise = snapshotHizoFSSubvolume({
+        source,
+        destination: session.root,
+        name: 'snapshot',
+        access: 'read',
+      });
+      await descriptorWriteStarted.promise;
+      const laterWrite = (async () => {
+        const fileHandle = await nested.getFileHandle({
+          name: 'later.txt',
+          create: true,
+        });
+        await writeStorageFileText({
+          fileHandle,
+          value: 'later-source-only',
+        });
+      })().finally(() => {
+        laterWriteSettled = true;
+      });
+      await Promise.resolve();
+      expect(laterWriteSettled).toBe(false);
+
+      releaseDescriptorWrite.resolve();
+      const snapshot = await snapshotPromise;
+      await laterWrite;
+      const snapshotNested = await snapshot.getDirectoryHandle({
+        name: 'nested',
+        create: false,
+      });
+      expect(await readStorageFileText({
+        fileHandle: await snapshotNested.getFileHandle({
+          name: 'baseline.txt',
+          create: false,
+        }),
+      })).toBe('baseline');
+      await expect(snapshotNested.getFileHandle({
+        name: 'later.txt',
+        create: false,
+      })).rejects.toMatchObject({ name: 'NotFoundError' });
+      expect(await readStorageFileText({
+        fileHandle: await nested.getFileHandle({
+          name: 'later.txt',
+          create: false,
+        }),
+      })).toBe('later-source-only');
+    } finally {
+      releaseDescriptorWrite.resolve();
+      descriptorWrite.mockRestore();
+      await session.close();
+    }
+  });
+
+  it('keeps a recursive snapshot invisible when its final parent publication fails', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const sourceChild = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'workspace',
+      access: 'read_write',
+    });
+    await writeStorageFileText({
+      fileHandle: await sourceChild.getFileHandle({
+        name: 'source.txt',
+        create: true,
+      }),
+      value: 'source remains reachable',
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const failure = new Error('injected snapshot publication failure');
+    vi.spyOn(hizofs.core.superblockStore, 'write').mockRejectedValueOnce(failure);
+
+    await expect(snapshotHizoFSSubvolume({
+      source: session.root,
+      destination: session.root,
+      name: 'must-not-appear',
+      access: 'read_write',
+    })).rejects.toBe(failure);
+    await expect(session.root.getDirectoryHandle({
+      name: 'must-not-appear',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect(await readStorageFileText({
+      fileHandle: await sourceChild.getFileHandle({
+        name: 'source.txt',
+        create: false,
+      }),
+    })).toBe('source remains reachable');
+    await session.close();
+  });
+
   it('rejects snapshots between distinct stores that use the same root key', async () => {
     const sourceSession = await createTiny({
       root: new MockFileSystemDirectoryHandle({ name: 'source-backing' }),
@@ -816,7 +1537,7 @@ describe('HizoFS public file-system API', () => {
       diagnostics,
     });
     const hizofs = requireHizoFSSession({ session });
-    await hizofs.createReadSubvolume({
+    const child = await hizofs.createReadSubvolume({
       directoryNodeId: hizofs.rootDirectoryNodeId,
       name: 'before',
     });
@@ -840,6 +1561,14 @@ describe('HizoFS public file-system API', () => {
       name: 'after',
       create: false,
     })).resolves.toMatchObject({ kind: 'directory', name: 'after' });
+    await deleteHizoFSSubvolume({
+      subvolume: child,
+      recursiveSubvolumes: false,
+    });
+    await expect(session.root.getDirectoryHandle({
+      name: 'after',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
     await session.close();
   });
 
@@ -950,6 +1679,63 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
+  it('uses the parent access when deleting a nested subvolume entry', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const source = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'source',
+      access: 'read_write',
+    });
+    await createHizoFSSubvolume({
+      destination: source,
+      name: 'nested',
+      access: 'read_write',
+    });
+    const snapshot = await snapshotHizoFSSubvolume({
+      source,
+      destination: session.root,
+      name: 'readonly-tree',
+      access: 'read',
+    });
+    const snapshotNested = await snapshot.getDirectoryHandle({
+      name: 'nested',
+      create: false,
+    });
+
+    await expect(deleteHizoFSSubvolume({
+      subvolume: snapshotNested,
+      recursiveSubvolumes: false,
+    })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+    await deleteHizoFSSubvolume({
+      subvolume: snapshot,
+      recursiveSubvolumes: true,
+    });
+    await expect(session.root.getDirectoryHandle({
+      name: 'readonly-tree',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(session.root.getDirectoryHandle({
+      name: 'source',
+      create: false,
+    })).resolves.toBeDefined();
+    await session.close();
+  });
+
+  it('rejects deleting the root subvolume', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    await expect(deleteHizoFSSubvolume({
+      subvolume: session.root,
+      recursiveSubvolumes: true,
+    })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    await session.close();
+  });
+
   it('rejects atomic moves across a subvolume boundary as EXDEV', async () => {
     const session = await createTiny({
       root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
@@ -975,6 +1761,42 @@ describe('HizoFS public file-system API', () => {
       name: 'value.txt',
       create: false,
     })).resolves.toBeDefined();
+    await session.close();
+  });
+
+  it('rejects moving a subvolume entry into another subvolume as EXDEV', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'archive',
+      access: 'read',
+    });
+    const destination = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'workspace',
+      access: 'read_write',
+    });
+
+    await expect(session.root.moveEntry({
+      name: 'archive',
+      destination,
+      newName: 'archive',
+      replace: false,
+    })).rejects.toMatchObject({
+      name: 'CrossDeviceError',
+      code: 'EXDEV',
+    });
+    await expect(session.root.getDirectoryHandle({
+      name: 'archive',
+      create: false,
+    })).resolves.toBeDefined();
+    await expect(destination.getDirectoryHandle({
+      name: 'archive',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
     await session.close();
   });
 
@@ -1244,6 +2066,11 @@ describe('HizoFS public file-system API', () => {
       fileHandle: await created.root.getFileHandle({ name: 'proof.txt', create: true }),
       value: 'recover descriptor',
     });
+    const originalInstanceId = requireHizoFSSession({ session: created }).instanceId;
+    const staleWorkerSource = created.root.createWorkerMountSource?.();
+    if (staleWorkerSource === undefined) {
+      throw new Error('Expected a HizoFS Worker mount source');
+    }
     await created.close();
     await backing.removeEntry('descriptor.json');
 
@@ -1255,6 +2082,9 @@ describe('HizoFS public file-system API', () => {
       fileHandle: await reopened.root.getFileHandle({ name: 'proof.txt', create: false }),
     })).toBe('recover descriptor');
     expect(await backing.getFileHandle('descriptor.json')).toBeDefined();
+    expect(requireHizoFSSession({ session: reopened }).instanceId)
+      .toBe(originalInstanceId);
+    expect(staleWorkerSource.instanceId).toBe(originalInstanceId);
     await reopened.close();
   });
 
@@ -1268,6 +2098,7 @@ describe('HizoFS public file-system API', () => {
       fileHandle: await created.root.getFileHandle({ name: 'proof.txt', create: true }),
       value: 'recover corrupt descriptor',
     });
+    const originalInstanceId = requireHizoFSSession({ session: created }).instanceId;
     await created.close();
     const descriptorHandle = await backing.getFileHandle('descriptor.json');
     const writable = await descriptorHandle.createWritable();
@@ -1281,11 +2112,41 @@ describe('HizoFS public file-system API', () => {
     expect(await readStorageFileText({
       fileHandle: await reopened.root.getFileHandle({ name: 'proof.txt', create: false }),
     })).toBe('recover corrupt descriptor');
-    expect(JSON.parse(await (await descriptorHandle.getFile()).text())).toEqual({
+    expect(JSON.parse(await (await descriptorHandle.getFile()).text())).toMatchObject({
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: originalInstanceId,
     });
     await reopened.close();
+  });
+
+  it('rejects a canonical descriptor instance identity that does not match the authenticated root', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const created = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    await created.close();
+
+    const descriptorFile = await backing.getFileHandle('descriptor.json');
+    const descriptor = JSON.parse(
+      await (await descriptorFile.getFile()).text(),
+    ) as Record<string, unknown>;
+    const writable = await descriptorFile.createWritable({
+      keepExistingData: false,
+    });
+    await writable.write(JSON.stringify({
+      ...descriptor,
+      instanceId: 'AQEBAQEBAQEBAQEBAQEBAQ',
+    }));
+    await writable.close();
+
+    await expect(openHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    })).rejects.toThrow(
+      'instanceId does not match the authenticated root subvolume identity',
+    );
   });
 
   it('fails closed when a Worker mount cannot coordinate through Web Locks', async () => {
@@ -1563,6 +2424,93 @@ describe('HizoFS public file-system API', () => {
     expect(inspection.superblock.activeCommitObjectId).toBe(inspection.activeCommitObjectId);
     expect(inspection.activeCommit.revision).toBe(2);
     expect(inspection.activeCommit.rootDirectoryNodeId).toBeTruthy();
+  });
+
+  it('isolates distinct backing instances that use the same root key', async () => {
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({ onRequest: undefined }),
+    });
+    const firstBacking = new MockFileSystemDirectoryHandle({ name: 'first-backing' });
+    const secondBacking = new MockFileSystemDirectoryHandle({ name: 'second-backing' });
+    let first: StorageFileSystemSession | undefined;
+    let second: StorageFileSystemSession | undefined;
+    try {
+      first = await createTiny({ root: firstBacking, now: () => 1 });
+      second = await createTiny({ root: secondBacking, now: () => 2 });
+      const firstSession = requireHizoFSSession({ session: first });
+      const secondSession = requireHizoFSSession({ session: second });
+      expect(firstSession.fileSystemId).toBe(secondSession.fileSystemId);
+      expect(firstSession.instanceId).not.toBe(secondSession.instanceId);
+
+      await Promise.all([
+        writeStorageFileText({
+          fileHandle: await first.root.getFileHandle({
+            name: 'first.txt',
+            create: true,
+          }),
+          value: 'first backing',
+        }),
+        writeStorageFileText({
+          fileHandle: await second.root.getFileHandle({
+            name: 'second.txt',
+            create: true,
+          }),
+          value: 'second backing',
+        }),
+      ]);
+
+      await expect(first.root.getFileHandle({
+        name: 'second.txt',
+        create: false,
+      })).rejects.toMatchObject({ name: 'NotFoundError' });
+      await expect(second.root.getFileHandle({
+        name: 'first.txt',
+        create: false,
+      })).rejects.toMatchObject({ name: 'NotFoundError' });
+      await expect(readStorageFileText({
+        fileHandle: await first.root.getFileHandle({
+          name: 'first.txt',
+          create: false,
+        }),
+      })).resolves.toBe('first backing');
+      await expect(readStorageFileText({
+        fileHandle: await second.root.getFileHandle({
+          name: 'second.txt',
+          create: false,
+        }),
+      })).resolves.toBe('second backing');
+    } finally {
+      await Promise.allSettled([first?.close(), second?.close()]);
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+  it('rejects mounting the root descriptor as a nested subvolume', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    try {
+      const hizofs = requireHizoFSSession({ session });
+      const state = await hizofs.loadFilesystemState();
+      await publishRootSubvolumeAlias({
+        session,
+        name: 'root-alias',
+        subvolumeDescriptorObjectId: state.subvolumeDescriptorObjectId,
+      });
+
+      await expect(session.root.getDirectoryHandle({
+        name: 'root-alias',
+        create: false,
+      })).rejects.toThrow('descriptor is mounted from multiple locations');
+    } finally {
+      await session.close();
+    }
   });
 
   it('fails closed when opened with the wrong root key', async () => {
@@ -2076,7 +3024,7 @@ describe('HizoFS public file-system API', () => {
       const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
       const session = await createTiny({ root: backing, now: () => 1 });
       const hizofs = requireHizoFSSession({ session });
-      const lockName = `hizofs/${hizofs.fileSystemId}/maintenance`;
+      const lockName = `hizofs/${hizofs.instanceId}/maintenance`;
       const activeSharedBefore = MAINTENANCE_LOCK_TEST_ONLY.localStates
         .get(lockName)?.activeSharedCount ?? 0;
       const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });

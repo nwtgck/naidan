@@ -1,3 +1,5 @@
+import { validateHizoFSStableId } from '@/00-storage/service/hizofs/id';
+
 type LocalLockMode = 'shared' | 'exclusive';
 
 type LocalLockRequest = {
@@ -195,12 +197,16 @@ async function tryAcquireWebExclusiveLease({ lockName }: {
   };
 }
 
-async function acquireLease({ fileSystemId, mode }: {
-  fileSystemId: string;
+async function acquireLease({ instanceId, mode }: {
+  instanceId: string;
   mode: LocalLockMode;
 }): Promise<HizoFSMaintenanceLease> {
+  validateHizoFSStableId({
+    value: instanceId,
+    fieldName: 'HizoFS instanceId',
+  });
   return acquireNamedLease({
-    lockName: `hizofs/${fileSystemId}/maintenance`,
+    lockName: `hizofs/${instanceId}/maintenance`,
     mode,
   });
 }
@@ -220,31 +226,39 @@ async function acquireNamedLease({ lockName, mode }: {
 }
 
 function getSubvolumeRuntimePinLockName({
-  fileSystemId,
+  instanceId,
   subvolumeId,
   subvolumeDescriptorObjectId,
 }: {
-  fileSystemId: string;
+  instanceId: string;
   subvolumeId: string;
   subvolumeDescriptorObjectId: string;
 }): string {
-  return `hizofs/${fileSystemId}/subvolume-runtime/${subvolumeId}/${
+  validateHizoFSStableId({
+    value: instanceId,
+    fieldName: 'HizoFS instanceId',
+  });
+  validateHizoFSStableId({
+    value: subvolumeId,
+    fieldName: 'HizoFS subvolumeId',
+  });
+  return `hizofs/${instanceId}/subvolume-runtime/${subvolumeId}/${
     encodeURIComponent(subvolumeDescriptorObjectId)
   }`;
 }
 
-export function acquireHizoFSSubvolumeRuntimePin({
-  fileSystemId,
+export async function acquireHizoFSSubvolumeRuntimePin({
+  instanceId,
   subvolumeId,
   subvolumeDescriptorObjectId,
 }: {
-  fileSystemId: string;
+  instanceId: string;
   subvolumeId: string;
   subvolumeDescriptorObjectId: string;
 }): Promise<HizoFSMaintenanceLease> {
-  return acquireNamedLease({
+  return await acquireNamedLease({
     lockName: getSubvolumeRuntimePinLockName({
-      fileSystemId,
+      instanceId,
       subvolumeId,
       subvolumeDescriptorObjectId,
     }),
@@ -253,16 +267,16 @@ export function acquireHizoFSSubvolumeRuntimePin({
 }
 
 export function tryAcquireHizoFSSubvolumeRuntimePinExclusively({
-  fileSystemId,
+  instanceId,
   subvolumeId,
   subvolumeDescriptorObjectId,
 }: {
-  fileSystemId: string;
+  instanceId: string;
   subvolumeId: string;
   subvolumeDescriptorObjectId: string;
 }): Promise<HizoFSMaintenanceLease | undefined> {
   const lockName = getSubvolumeRuntimePinLockName({
-    fileSystemId,
+    instanceId,
     subvolumeId,
     subvolumeDescriptorObjectId,
   });
@@ -277,16 +291,16 @@ export function tryAcquireHizoFSSubvolumeRuntimePinExclusively({
 }
 
 function parseSubvolumeRuntimePinLockName({
-  fileSystemId,
+  instanceId,
   lockName,
 }: {
-  fileSystemId: string;
+  instanceId: string;
   lockName: string;
 }): {
   readonly subvolumeId: string;
   readonly subvolumeDescriptorObjectId: string;
 } | undefined {
-  const prefix = `hizofs/${fileSystemId}/subvolume-runtime/`;
+  const prefix = `hizofs/${instanceId}/subvolume-runtime/`;
   if (!lockName.startsWith(prefix)) return undefined;
   const suffix = lockName.slice(prefix.length);
   const separatorIndex = suffix.indexOf('/');
@@ -306,13 +320,17 @@ function parseSubvolumeRuntimePinLockName({
 }
 
 export async function listHizoFSActiveSubvolumeRuntimePins({
-  fileSystemId,
+  instanceId,
 }: {
-  fileSystemId: string;
+  instanceId: string;
 }): Promise<readonly {
   readonly subvolumeId: string;
   readonly subvolumeDescriptorObjectId: string;
 }[]> {
+  validateHizoFSStableId({
+    value: instanceId,
+    fieldName: 'HizoFS instanceId',
+  });
   const lockNames = new Set<string>();
   if (
     typeof navigator !== 'undefined'
@@ -333,7 +351,7 @@ export async function listHizoFSActiveSubvolumeRuntimePins({
     readonly subvolumeDescriptorObjectId: string;
   }>();
   for (const lockName of lockNames) {
-    const pin = parseSubvolumeRuntimePinLockName({ fileSystemId, lockName });
+    const pin = parseSubvolumeRuntimePinLockName({ instanceId, lockName });
     if (pin === undefined) continue;
     pins.set(pin.subvolumeDescriptorObjectId, pin);
   }
@@ -345,17 +363,17 @@ export async function listHizoFSActiveSubvolumeRuntimePins({
  * Idle sessions intentionally do not hold this lease so maintenance remains
  * runnable during normal application uptime.
  */
-export function acquireHizoFSResourceLease({ fileSystemId }: {
-  fileSystemId: string;
+export function acquireHizoFSResourceLease({ instanceId }: {
+  instanceId: string;
 }): Promise<HizoFSMaintenanceLease> {
-  return acquireLease({ fileSystemId, mode: 'shared' });
+  return acquireLease({ instanceId, mode: 'shared' });
 }
 
-export async function runWithHizoFSResourceLease<T>({ fileSystemId, operation }: {
-  fileSystemId: string;
+export async function runWithHizoFSResourceLease<T>({ instanceId, operation }: {
+  instanceId: string;
   operation: () => Promise<T>;
 }): Promise<T> {
-  const lease = await acquireHizoFSResourceLease({ fileSystemId });
+  const lease = await acquireHizoFSResourceLease({ instanceId });
   try {
     return await operation();
   } finally {
@@ -369,10 +387,10 @@ export async function runWithHizoFSResourceLease<T>({ fileSystemId, operation }:
  * make progress, while every started maintenance operation settles before the
  * lease is released.
  */
-export function acquireHizoFSMaintenanceLease({ fileSystemId }: {
-  fileSystemId: string;
+export function acquireHizoFSMaintenanceLease({ instanceId }: {
+  instanceId: string;
 }): Promise<HizoFSMaintenanceLease> {
-  return acquireLease({ fileSystemId, mode: 'exclusive' });
+  return acquireLease({ instanceId, mode: 'exclusive' });
 }
 
 /**
@@ -381,20 +399,24 @@ export function acquireHizoFSMaintenanceLease({ fileSystemId }: {
  * lock-free mark and every bounded sweep slice so two tabs cannot collect from
  * different root snapshots at the same time.
  */
-export function acquireHizoFSGarbageCollectionLease({ fileSystemId }: {
-  fileSystemId: string;
+export function acquireHizoFSGarbageCollectionLease({ instanceId }: {
+  instanceId: string;
 }): Promise<HizoFSMaintenanceLease> {
+  validateHizoFSStableId({
+    value: instanceId,
+    fieldName: 'HizoFS instanceId',
+  });
   return acquireNamedLease({
-    lockName: `hizofs/${fileSystemId}/garbage-collection`,
+    lockName: `hizofs/${instanceId}/garbage-collection`,
     mode: 'exclusive',
   });
 }
 
-export async function runWithHizoFSMaintenanceLock<T>({ fileSystemId, operation }: {
-  fileSystemId: string;
+export async function runWithHizoFSMaintenanceLock<T>({ instanceId, operation }: {
+  instanceId: string;
   operation: () => Promise<T>;
 }): Promise<T> {
-  const lease = await acquireHizoFSMaintenanceLease({ fileSystemId });
+  const lease = await acquireHizoFSMaintenanceLease({ instanceId });
   try {
     return await operation();
   } finally {

@@ -30,6 +30,8 @@ import type {
   HizoFSPartialSegmentCompactionCandidate,
 } from './segment-store/segmented-store';
 import { getHizoFSHeadPath } from './segment-store/head-scope';
+import { collectHizoFSCurrentSubvolumeDescriptorObjectIds } from './file-system/subvolume-graph';
+import { readHizoFSDescriptor } from './format/descriptor-store';
 
 export type HizoFSGarbageCollectionSweepPolicy = {
   readonly removeConcurrency: number;
@@ -320,13 +322,21 @@ async function collectHizoFSGarbageInternal({
     rawRootKey: fileSystemRootKey,
   });
   const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
+  const descriptor = await readHizoFSDescriptor({ backingStore });
+  if (descriptor === undefined) {
+    throw new HizoFSCorruptionError({
+      message: 'HizoFS descriptor is required for garbage collection coordination',
+      cause: undefined,
+    });
+  }
+  const instanceId = descriptor.instanceId;
   const checkpointStore = new HizoFSGarbageCollectionCheckpointStore({
     backingStore,
     rootKey,
     fileSystemId,
   });
   const garbageCollectionLease = await acquireHizoFSGarbageCollectionLease({
-    fileSystemId,
+    instanceId,
   });
   let preparation: GarbageCollectionPreparation | undefined;
   let compactionMetrics: GarbageCollectionCompactionMetrics | undefined;
@@ -340,6 +350,7 @@ async function collectHizoFSGarbageInternal({
       backingStore,
       rootKey,
       fileSystemId,
+      instanceId,
       dryRun,
       signal,
       now: dependencies.now,
@@ -389,7 +400,6 @@ async function collectHizoFSGarbageInternal({
       ? createEmptyCompactionMetrics()
       : await compactGarbageCollectionCandidates({
         runtime: preparation.runtime,
-        fileSystemId,
         candidates: preparation.compactionCandidates,
         signal,
         dependencies,
@@ -426,7 +436,6 @@ async function collectHizoFSGarbageInternal({
       ? createEmptySweepMetrics()
       : await sweepGarbageCollectionCandidates({
         runtime: preparation.runtime,
-        fileSystemId,
         candidates: preparation.sweepCandidates,
         sweepPolicy: resolvedSweepPolicy,
         signal,
@@ -535,6 +544,7 @@ async function prepareGarbageCollection({
   backingStore,
   rootKey,
   fileSystemId,
+  instanceId,
   dryRun,
   signal,
   now,
@@ -544,6 +554,7 @@ async function prepareGarbageCollection({
   backingStore: NativeOpfsHizoFSBackingStore;
   rootKey: CryptoKey;
   fileSystemId: string;
+  instanceId: string;
   dryRun: boolean;
   signal: AbortSignal | undefined;
   now: () => number;
@@ -554,6 +565,7 @@ async function prepareGarbageCollection({
     backingStore,
     rootKey,
     fileSystemId,
+    instanceId,
     dryRun,
     signal,
     now,
@@ -830,13 +842,11 @@ async function listPhysicalSubvolumeHeadIds({
 async function removeOrRetainOrphanSubvolumeHeads({
   runtime,
   backingStore,
-  fileSystemId,
   dryRun,
   captured,
 }: {
   runtime: HizoFSRuntime;
   backingStore: NativeOpfsHizoFSBackingStore;
-  fileSystemId: string;
   dryRun: boolean;
   captured: CapturedSubvolumeRoots;
 }): Promise<void> {
@@ -878,7 +888,7 @@ async function removeOrRetainOrphanSubvolumeHeads({
     if (descriptorObjectId !== undefined) {
       const exclusivePin =
         await tryAcquireHizoFSSubvolumeRuntimePinExclusively({
-          fileSystemId,
+          instanceId: runtime.instanceId,
           subvolumeId,
           subvolumeDescriptorObjectId: descriptorObjectId,
         });
@@ -915,6 +925,7 @@ async function snapshotGarbageCollectionRoots({
   backingStore,
   rootKey,
   fileSystemId,
+  instanceId,
   dryRun,
   signal,
   now,
@@ -922,6 +933,7 @@ async function snapshotGarbageCollectionRoots({
   backingStore: NativeOpfsHizoFSBackingStore;
   rootKey: CryptoKey;
   fileSystemId: string;
+  instanceId: string;
   dryRun: boolean;
   signal: AbortSignal | undefined;
   now: () => number;
@@ -930,12 +942,13 @@ async function snapshotGarbageCollectionRoots({
     backingStore,
     rootKey,
     fileSystemId,
+    instanceId,
     policy: DEFAULT_HIZOFS_POLICY,
     now: () => Date.now(),
     diagnostics: undefined,
   });
   const fenceRequestedAt = now();
-  const lease = await acquireHizoFSMaintenanceLease({ fileSystemId });
+  const lease = await acquireHizoFSMaintenanceLease({ instanceId });
   const initialFenceWaitDurationMs = elapsed({ now, startedAt: fenceRequestedAt });
   const fenceStartedAt = now();
   let rootSnapshotDurationMs = 0;
@@ -961,6 +974,16 @@ async function snapshotGarbageCollectionRoots({
       throw new Error(`Unhandled HizoFS active state mode: ${String(_ex)}`);
     }
     }
+    if (activeState.commit.subvolumeId !== instanceId) {
+      throw new HizoFSCorruptionError({
+        message: 'HizoFS descriptor instanceId does not match the authenticated root subvolume identity',
+        cause: undefined,
+      });
+    }
+    await collectHizoFSCurrentSubvolumeDescriptorObjectIds({
+      runtime,
+      rootState: activeState,
+    });
     const superblocks = await runtime.core.superblockStore.readCandidates();
     const commitObjectIds = [...new Set(
       superblocks.map(superblock => superblock.activeCommitObjectId),
@@ -1000,7 +1023,7 @@ async function snapshotGarbageCollectionRoots({
       captured,
     });
     const activePins = await listHizoFSActiveSubvolumeRuntimePins({
-      fileSystemId,
+      instanceId,
     });
     for (const pin of activePins) {
       await captureSubvolumeRoots({
@@ -1022,7 +1045,6 @@ async function snapshotGarbageCollectionRoots({
     await removeOrRetainOrphanSubvolumeHeads({
       runtime,
       backingStore,
-      fileSystemId,
       dryRun,
       captured,
     });
@@ -1081,14 +1103,12 @@ function createEmptyCompactionMetrics(): GarbageCollectionCompactionMetrics {
 
 async function compactGarbageCollectionCandidates({
   runtime,
-  fileSystemId,
   candidates,
   signal,
   dependencies,
   onProgress,
 }: {
   runtime: HizoFSRuntime;
-  fileSystemId: string;
   candidates: readonly HizoFSPartialSegmentCompactionCandidate[];
   signal: AbortSignal | undefined;
   dependencies: GarbageCollectionDependencies;
@@ -1114,7 +1134,7 @@ async function compactGarbageCollectionCandidates({
     const candidate = candidates[index];
     if (candidate === undefined) continue;
     const requestedAt = dependencies.now();
-    const lease = await acquireHizoFSMaintenanceLease({ fileSystemId });
+    const lease = await acquireHizoFSMaintenanceLease({ instanceId: runtime.instanceId });
     lockWaitDurationMs += elapsed({ now: dependencies.now, startedAt: requestedAt });
     const sliceStartedAt = dependencies.now();
     try {
@@ -1199,7 +1219,6 @@ function createEmptySweepMetrics(): GarbageCollectionSweepMetrics {
 
 async function sweepGarbageCollectionCandidates({
   runtime,
-  fileSystemId,
   candidates,
   sweepPolicy,
   signal,
@@ -1207,7 +1226,6 @@ async function sweepGarbageCollectionCandidates({
   onProgress,
 }: {
   runtime: HizoFSRuntime;
-  fileSystemId: string;
   candidates: readonly HizoFSWholeSegmentReclaimCandidate[];
   sweepPolicy: HizoFSGarbageCollectionSweepPolicy;
   signal: AbortSignal | undefined;
@@ -1239,7 +1257,7 @@ async function sweepGarbageCollectionCandidates({
   while (nextObjectIndex < candidates.length) {
     throwIfAborted({ signal });
     const leaseRequestedAt = dependencies.now();
-    const lease = await acquireHizoFSMaintenanceLease({ fileSystemId });
+    const lease = await acquireHizoFSMaintenanceLease({ instanceId: runtime.instanceId });
     sweepLockWaitDurationMs += elapsed({ now: dependencies.now, startedAt: leaseRequestedAt });
     const sliceStartedAt = dependencies.now();
     let removalsInSlice = 0;

@@ -129,6 +129,7 @@ export type HizoFSRuntime = {
   readonly policy: HizoFSPolicy;
   readonly now: () => number;
   readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  readonly instanceId: string;
   clearPlaintextCaches(): void;
   getReadWriteSubvolumeCore({ subvolumeId }: {
     subvolumeId: string;
@@ -143,6 +144,7 @@ export function createHizoFSRuntime({
   backingStore,
   rootKey,
   fileSystemId,
+  instanceId,
   policy,
   now,
   diagnostics,
@@ -150,6 +152,7 @@ export function createHizoFSRuntime({
   backingStore: HizoFSBackingStore;
   rootKey: CryptoKey;
   fileSystemId: string;
+  instanceId: string;
   policy: HizoFSPolicy;
   now: () => number;
   diagnostics: HizoFSRuntimeDiagnostics | undefined;
@@ -229,6 +232,7 @@ export function createHizoFSRuntime({
     });
     const coordinator = new HizoFSActiveStateCoordinator({
       fileSystemId,
+      fileSystemInstanceId: instanceId,
       coordinationScope,
       localCoordinationIdentity,
       loadFromBacking: async () => await loadHizoFSActiveStateFromStores({
@@ -323,6 +327,7 @@ export function createHizoFSRuntime({
     });
     const core = new HizoFSCore({
       fileSystemId,
+      instanceId,
       objectStore,
       superblockStore,
       commitStore,
@@ -488,6 +493,7 @@ export function createHizoFSRuntime({
     policy,
     now,
     diagnostics,
+    instanceId,
     clearPlaintextCaches,
     getReadWriteSubvolumeCore,
     retainSession,

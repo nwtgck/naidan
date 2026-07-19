@@ -8,6 +8,10 @@ import {
 } from '@/00-storage/00-dto/hizofs.dto';
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
 import {
+  createHizoFSStableId,
+  validateHizoFSStableId,
+} from './id';
+import {
   deriveHizoFSFileSystemId,
   importHizoFSRootKey,
 } from './crypto/object-crypto';
@@ -317,12 +321,14 @@ export async function createHizoFSInspectionReader({
   const descriptor = descriptorInspection.value;
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
   const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
-  const maintenanceLease = await acquireHizoFSResourceLease({ fileSystemId });
+  const instanceId = descriptor.instanceId;
+  const maintenanceLease = await acquireHizoFSResourceLease({ instanceId });
   try {
     const runtime = createHizoFSRuntime({
       backingStore,
       rootKey,
       fileSystemId,
+      instanceId,
       policy: DEFAULT_HIZOFS_POLICY,
       now: () => Date.now(),
       diagnostics: undefined,
@@ -992,6 +998,7 @@ async function readDescriptorForInspection({ backingStore }: {
     const value: HizoFSDescriptorDto = {
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: createHizoFSStableId(),
     };
     return { value, persistedDto: undefined, validationError: undefined };
   }
@@ -1002,12 +1009,37 @@ async function readDescriptorForInspection({ backingStore }: {
     throw new Error('HizoFS descriptor is invalid UTF-8 JSON', { cause: error });
   }
   const parsed = HizoFSDescriptorSchemaDto.safeParse(persistedDto);
+  if (parsed.success) {
+    try {
+      validateHizoFSStableId({
+        value: parsed.data.instanceId,
+        fieldName: 'HizoFS descriptor instanceId',
+      });
+      return {
+        value: parsed.data,
+        persistedDto,
+        validationError: undefined,
+      };
+    } catch (error) {
+      return {
+        value: {
+          format: 'hizofs',
+          formatVersion: 1,
+          instanceId: createHizoFSStableId(),
+        },
+        persistedDto,
+        validationError: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   return {
-    value: parsed.success
-      ? parsed.data
-      : { format: 'hizofs', formatVersion: 1 },
+    value: {
+      format: 'hizofs',
+      formatVersion: 1,
+      instanceId: createHizoFSStableId(),
+    },
     persistedDto,
-    validationError: parsed.success ? undefined : parsed.error.message,
+    validationError: parsed.error.message,
   };
 }
 

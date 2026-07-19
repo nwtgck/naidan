@@ -13,6 +13,7 @@ import {
   getHizoFSSubvolumeInfo,
   openHizoFS,
   inspectHizoFS,
+  snapshotHizoFSSubvolume,
   TEST_ONLY,
 } from './api';
 import type { HizoFSPolicy } from './file-system/policy';
@@ -157,6 +158,42 @@ async function overwritePhysicalFile({
 }
 
 describe('HizoFS garbage collection', () => {
+  it('rejects a descriptor instance identity mismatch before sweeping physical files', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    await writeLargeValue({ session, value: 'descriptor-instance-mismatch' });
+    await session.root.removeEntry({ name: 'value.txt', recursive: false });
+    await session.root.getFileHandle({ name: 'rotate-a', create: true });
+    await session.root.getFileHandle({ name: 'rotate-b', create: true });
+    await session.close();
+
+    const descriptorFile = await backing.getFileHandle('descriptor.json');
+    const descriptor = JSON.parse(
+      await (await descriptorFile.getFile()).text(),
+    ) as Record<string, unknown>;
+    const writable = await descriptorFile.createWritable({
+      keepExistingData: false,
+    });
+    await writable.write(JSON.stringify({
+      ...descriptor,
+      instanceId: 'AQEBAQEBAQEBAQEBAQEBAQ',
+    }));
+    await writable.close();
+
+    const physicalFileCountBefore = await countPhysicalFiles({ directory: backing });
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    })).rejects.toThrow(
+      'instanceId does not match the authenticated root subvolume identity',
+    );
+    expect(await countPhysicalFiles({ directory: backing }))
+      .toBe(physicalFileCountBefore);
+  });
+
   it('marks both head generations of a mounted read_write subvolume', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
@@ -257,6 +294,204 @@ describe('HizoFS garbage collection', () => {
     })).toEqual([]);
   });
 
+  it('keeps orphan child heads untouched during a dry run and removes them during sweep', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    const child = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'child',
+      access: 'read_write',
+    });
+    const childInfo = await getHizoFSSubvolumeInfo({ handle: child });
+    if (childInfo === undefined) {
+      throw new Error('Expected child subvolume information');
+    }
+    await deleteHizoFSSubvolume({
+      subvolume: child,
+      recursiveSubvolumes: false,
+    });
+    await session.root.getFileHandle({ name: 'advance-root', create: true });
+    await session.close();
+    expect(await listSubvolumeHeadNames({
+      backing,
+      subvolumeId: childInfo.subvolumeId,
+    })).toHaveLength(2);
+    const dryRun = await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: true,
+      sweepPolicy: undefined,
+      signal: undefined,
+    });
+    expect(dryRun.removedObjectCount).toBe(0);
+    expect(await listSubvolumeHeadNames({
+      backing,
+      subvolumeId: childInfo.subvolumeId,
+    })).toHaveLength(2);
+
+    await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    });
+    expect(await listSubvolumeHeadNames({
+      backing,
+      subvolumeId: childInfo.subvolumeId,
+    })).toEqual([]);
+  });
+
+  it('retains every open descendant of a recursively deleted writable subtree, then removes all orphan heads', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    const parent = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'parent',
+      access: 'read_write',
+    });
+    const child = await createHizoFSSubvolume({
+      destination: parent,
+      name: 'child',
+      access: 'read_write',
+    });
+    const grandchild = await createHizoFSSubvolume({
+      destination: child,
+      name: 'grandchild',
+      access: 'read_write',
+    });
+    const infos = await Promise.all([
+      getHizoFSSubvolumeInfo({ handle: parent }),
+      getHizoFSSubvolumeInfo({ handle: child }),
+      getHizoFSSubvolumeInfo({ handle: grandchild }),
+    ]);
+    if (infos.some(info => info === undefined)) {
+      throw new Error('Expected nested subvolume information');
+    }
+    const [parentInfo, childInfo, grandchildInfo] = infos;
+    if (
+      parentInfo === undefined
+      || childInfo === undefined
+      || grandchildInfo === undefined
+    ) {
+      throw new Error('Expected nested subvolume information');
+    }
+    const retainedFile = await grandchild.getFileHandle({
+      name: 'value.txt',
+      create: true,
+    });
+    await writeStorageFileText({ fileHandle: retainedFile, value: 'nested-retained' });
+
+    await deleteHizoFSSubvolume({
+      subvolume: parent,
+      recursiveSubvolumes: true,
+    });
+    await session.root.getFileHandle({ name: 'advance-root', create: true });
+    await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    });
+    expect(await readStorageFileText({ fileHandle: retainedFile }))
+      .toBe('nested-retained');
+    for (const info of [parentInfo, childInfo, grandchildInfo]) {
+      expect(await listSubvolumeHeadNames({
+        backing,
+        subvolumeId: info.subvolumeId,
+      })).toHaveLength(2);
+    }
+
+    await session.close();
+    await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    });
+    for (const info of [parentInfo, childInfo, grandchildInfo]) {
+      expect(await listSubvolumeHeadNames({
+        backing,
+        subvolumeId: info.subvolumeId,
+      })).toEqual([]);
+    }
+  });
+
+  it('preserves shared data through a read snapshot after recursively deleting its writable source', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    const source = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'source',
+      access: 'read_write',
+    });
+    const nested = await createHizoFSSubvolume({
+      destination: source,
+      name: 'nested',
+      access: 'read_write',
+    });
+    const sourceInfo = await getHizoFSSubvolumeInfo({ handle: source });
+    const nestedInfo = await getHizoFSSubvolumeInfo({ handle: nested });
+    if (sourceInfo === undefined || nestedInfo === undefined) {
+      throw new Error('Expected source subvolume information');
+    }
+    await writeStorageFileText({
+      fileHandle: await nested.getFileHandle({ name: 'shared.txt', create: true }),
+      value: 'shared-through-snapshot',
+    });
+    await snapshotHizoFSSubvolume({
+      source,
+      destination: session.root,
+      name: 'backup',
+      access: 'read',
+    });
+
+    await deleteHizoFSSubvolume({
+      subvolume: source,
+      recursiveSubvolumes: true,
+    });
+    await session.root.getFileHandle({ name: 'advance-root', create: true });
+    await session.close();
+    await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    });
+    expect(await listSubvolumeHeadNames({
+      backing,
+      subvolumeId: sourceInfo.subvolumeId,
+    })).toEqual([]);
+    expect(await listSubvolumeHeadNames({
+      backing,
+      subvolumeId: nestedInfo.subvolumeId,
+    })).toEqual([]);
+
+    const reopened = await openTiny({ backing });
+    await expect(reopened.root.getDirectoryHandle({
+      name: 'source',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    const backup = await reopened.root.getDirectoryHandle({
+      name: 'backup',
+      create: false,
+    });
+    const backupNested = await backup.getDirectoryHandle({
+      name: 'nested',
+      create: false,
+    });
+    expect(await readStorageFileText({
+      fileHandle: await backupNested.getFileHandle({
+        name: 'shared.txt',
+        create: false,
+      }),
+    })).toBe('shared-through-snapshot');
+    await reopened.close();
+  });
+
   it('marks a mounted read subvolume through its fixed commit', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
@@ -290,6 +525,271 @@ describe('HizoFS garbage collection', () => {
       create: true,
     })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
     await reopened.close();
+  });
+
+  it('refuses to sweep a current graph that mounts one descriptor from multiple locations', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    if (!(session instanceof HizoFSSession)) {
+      throw new Error('Expected a HizoFS session');
+    }
+    await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'primary',
+      access: 'read_write',
+    });
+    const state = await session.loadFilesystemState();
+    const mounts = [];
+    for await (const mount of session.runtime.subvolumeMountIndex.entries({
+      rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+    })) {
+      mounts.push(mount);
+    }
+    const originalMount = mounts[0];
+    if (originalMount === undefined || mounts.length !== 1) {
+      throw new Error('Expected one mounted child');
+    }
+    const aliasMountId = createHizoFSStableId();
+    await session.core.mutateTopologyAndReturnState({
+      operation: async ({ state: currentState }) => {
+        const rootDirectory = await session.runtime.nodeService.readDirectory({
+          state: currentState,
+          nodeId: currentState.commit.rootDirectoryNodeId,
+        });
+        const changedRootDirectory =
+          await session.runtime.directoryStorage.writeChangedInode({
+            inode: rootDirectory.inode,
+            changes: [{
+              type: 'set',
+              entry: {
+                name: 'alias',
+                kind: 'subvolume',
+                mountId: aliasMountId,
+              },
+            }],
+            modifiedAt: 2,
+          });
+        const subvolumeMountIndexRootObjectId =
+          await session.runtime.subvolumeMountIndex.set({
+            rootObjectId:
+              currentState.commit.subvolumeMountIndexRootObjectId,
+            mount: {
+              mountId: aliasMountId,
+              subvolumeDescriptorObjectId:
+                originalMount.subvolumeDescriptorObjectId,
+              parentDirectoryNodeId:
+                currentState.commit.rootDirectoryNodeId,
+              entryName: 'alias',
+            },
+          });
+        const inodeIndexRootObjectId = await session.runtime.nodeService.setInode({
+          inodeIndexRootObjectId:
+            currentState.commit.inodeIndexRootObjectId,
+          nodeId: currentState.commit.rootDirectoryNodeId,
+          inodeObjectId: changedRootDirectory.inodeObjectId,
+        });
+        return {
+          changed: 'yes' as const,
+          inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId,
+          result: undefined,
+        };
+      },
+    });
+    await session.close();
+    const physicalFileCountBefore = await countPhysicalFiles({ directory: backing });
+
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    })).rejects.toThrow('subvolume graph contains multiple parents');
+    expect(await countPhysicalFiles({ directory: backing }))
+      .toBe(physicalFileCountBefore);
+  });
+
+  it('refuses to sweep a current subvolume graph containing a cycle', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    if (!(session instanceof HizoFSSession)) {
+      throw new Error('Expected a HizoFS session');
+    }
+    const child = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'child',
+      access: 'read_write',
+    });
+    const childContext = getHizoFSDirectoryHandleContext({ handle: child });
+    if (childContext === undefined) {
+      throw new Error('Expected a child subvolume context');
+    }
+    const rootState = await session.loadFilesystemState();
+    const cycleMountId = createHizoFSStableId();
+    await childContext.session.core.mutateTopologyAndReturnState({
+      operation: async ({ state }) => {
+        const rootDirectory =
+          await childContext.session.runtime.nodeService.readDirectory({
+            state,
+            nodeId: state.commit.rootDirectoryNodeId,
+          });
+        const changedRootDirectory =
+          await childContext.session.runtime.directoryStorage.writeChangedInode({
+            inode: rootDirectory.inode,
+            changes: [{
+              type: 'set',
+              entry: {
+                name: 'cycle',
+                kind: 'subvolume',
+                mountId: cycleMountId,
+              },
+            }],
+            modifiedAt: 2,
+          });
+        const subvolumeMountIndexRootObjectId =
+          await childContext.session.runtime.subvolumeMountIndex.set({
+            rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+            mount: {
+              mountId: cycleMountId,
+              subvolumeDescriptorObjectId:
+                rootState.subvolumeDescriptorObjectId,
+              parentDirectoryNodeId: state.commit.rootDirectoryNodeId,
+              entryName: 'cycle',
+            },
+          });
+        const inodeIndexRootObjectId =
+          await childContext.session.runtime.nodeService.setInode({
+            inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+            nodeId: state.commit.rootDirectoryNodeId,
+            inodeObjectId: changedRootDirectory.inodeObjectId,
+          });
+        return {
+          changed: 'yes' as const,
+          inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId,
+          result: undefined,
+        };
+      },
+    });
+    await session.close();
+    const physicalFileCountBefore = await countPhysicalFiles({ directory: backing });
+
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    })).rejects.toThrow('subvolume graph contains a cycle');
+    expect(await countPhysicalFiles({ directory: backing }))
+      .toBe(physicalFileCountBefore);
+  });
+
+  it('refuses to sweep one subvolume identity bound to distinct descriptors', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    if (!(session instanceof HizoFSSession)) {
+      throw new Error('Expected a HizoFS session');
+    }
+    await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'primary',
+      access: 'read',
+    });
+    const state = await session.loadFilesystemState();
+    const mounts = [];
+    for await (const mount of session.runtime.subvolumeMountIndex.entries({
+      rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+    })) {
+      mounts.push(mount);
+    }
+    const originalMount = mounts[0];
+    if (originalMount === undefined || mounts.length !== 1) {
+      throw new Error('Expected one mounted child');
+    }
+    const originalDescriptor = await session.runtime.subvolumeDescriptorStore.read({
+      objectId: originalMount.subvolumeDescriptorObjectId,
+    });
+    if (originalDescriptor.access !== 'read') {
+      throw new Error('Expected a read subvolume descriptor');
+    }
+    const originalCommit = await session.runtime.commitStore.read({
+      objectId: originalDescriptor.fixedCommitObjectId,
+    });
+    const conflictingCommitObjectId = await session.runtime.commitStore.write({
+      commit: {
+        ...originalCommit,
+        publicationId: createHizoFSStableId(),
+      },
+    });
+    const conflictingDescriptorObjectId =
+      await session.runtime.subvolumeDescriptorStore.write({
+        descriptor: {
+          subvolumeId: originalDescriptor.subvolumeId,
+          access: 'read',
+          fixedCommitObjectId: conflictingCommitObjectId,
+        },
+      });
+    await session.runtime.objectStore.flushPendingRecords();
+    const aliasMountId = createHizoFSStableId();
+    await session.core.mutateTopologyAndReturnState({
+      operation: async ({ state: currentState }) => {
+        const rootDirectory = await session.runtime.nodeService.readDirectory({
+          state: currentState,
+          nodeId: currentState.commit.rootDirectoryNodeId,
+        });
+        const changedRootDirectory =
+          await session.runtime.directoryStorage.writeChangedInode({
+            inode: rootDirectory.inode,
+            changes: [{
+              type: 'set',
+              entry: {
+                name: 'conflicting',
+                kind: 'subvolume',
+                mountId: aliasMountId,
+              },
+            }],
+            modifiedAt: 2,
+          });
+        const subvolumeMountIndexRootObjectId =
+          await session.runtime.subvolumeMountIndex.set({
+            rootObjectId:
+              currentState.commit.subvolumeMountIndexRootObjectId,
+            mount: {
+              mountId: aliasMountId,
+              subvolumeDescriptorObjectId: conflictingDescriptorObjectId,
+              parentDirectoryNodeId:
+                currentState.commit.rootDirectoryNodeId,
+              entryName: 'conflicting',
+            },
+          });
+        const inodeIndexRootObjectId = await session.runtime.nodeService.setInode({
+          inodeIndexRootObjectId:
+            currentState.commit.inodeIndexRootObjectId,
+          nodeId: currentState.commit.rootDirectoryNodeId,
+          inodeObjectId: changedRootDirectory.inodeObjectId,
+        });
+        return {
+          changed: 'yes' as const,
+          inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId,
+          result: undefined,
+        };
+      },
+    });
+    await session.close();
+    const physicalFileCountBefore = await countPhysicalFiles({ directory: backing });
+
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    })).rejects.toThrow('identity is bound to multiple descriptors');
+    expect(await countPhysicalFiles({ directory: backing }))
+      .toBe(physicalFileCountBefore);
   });
 
   it('removes only unreachable immutable objects and preserves the active filesystem', async () => {

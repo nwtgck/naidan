@@ -68,7 +68,7 @@ export class HizoFSBulkBuilder {
     rootDirectoryNodeId: string;
   }): Promise<HizoFSBulkBuilder> {
     const maintenanceLease = await acquireHizoFSResourceLease({
-      fileSystemId: runtime.core.fileSystemId,
+      instanceId: runtime.core.instanceId,
     });
     try {
       const baseState = await runtime.core.loadActiveState();

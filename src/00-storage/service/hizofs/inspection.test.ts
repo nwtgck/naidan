@@ -110,6 +110,46 @@ describe('HizoFS inspection reader', () => {
     await session.close();
   });
 
+  it('reports a non-canonical descriptor instance identity without using it for coordination', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    await session.close();
+
+    const descriptorFile = await backing.getFileHandle('descriptor.json');
+    const descriptor = JSON.parse(
+      await (await descriptorFile.getFile()).text(),
+    ) as Record<string, unknown>;
+    const writable = await descriptorFile.createWritable({
+      keepExistingData: false,
+    });
+    await writable.write(JSON.stringify({
+      ...descriptor,
+      instanceId: '../shared-maintenance-lock',
+    }));
+    await writable.close();
+
+    const reader = await createHizoFSInspectionReader({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    try {
+      const overview = await reader.readOverview();
+      expect(overview.persistedDescriptorDto).toMatchObject({
+        instanceId: '../shared-maintenance-lock',
+      });
+      expect(overview.descriptorValidationError).toContain(
+        'instanceId must be canonical Base64URL',
+      );
+      expect(overview.descriptor.instanceId)
+        .not.toBe('../shared-maintenance-lock');
+    } finally {
+      await reader.dispose();
+    }
+  });
+
   it('reports fallback read-only mode when the newest superblock is invalid', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createHizoFS({

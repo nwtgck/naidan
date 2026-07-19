@@ -399,11 +399,16 @@ function createClient({
   });
   const overview: OverviewResult = {
     activeMode: 'fallback',
-    descriptor: { format: 'hizofs', formatVersion: 1 },
+    descriptor: {
+      format: 'hizofs',
+      formatVersion: 1,
+      instanceId: 'instance-id',
+    },
     fileSystemId,
     persistedDescriptorDto: {
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: 'instance-id',
       unknownPersistedField: "must remain visible",
     },
     descriptorValidationError: 'Unrecognized key: unknownPersistedField',

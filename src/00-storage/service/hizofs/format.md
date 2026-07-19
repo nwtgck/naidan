@@ -85,16 +85,28 @@ makes a segment unsafe to read or reclaim.
 type HizoFSDescriptorDto = {
   readonly format: 'hizofs';
   readonly formatVersion: 1;
+  readonly instanceId: string;
 };
 ```
 
-The descriptor is only a non-secret format marker. It is not part of key
-derivation and does not contain the file-system identity. After a complete
-authenticated generation has been opened with the root key, a missing or
-structurally corrupt descriptor may be replaced with this canonical value.
-I/O and permission failures while reading or repairing it must still propagate.
-An unsupported authenticated generation must never be made readable by
-rewriting the descriptor.
+The descriptor is a non-secret format and runtime-instance marker. `instanceId`
+is the canonical 128-bit root-subvolume identity copied from the authenticated
+root commit. Runtime coordination binds both `instanceId` and the
+root-key-derived cryptographic `fileSystemId` into Web Lock, BroadcastChannel,
+maintenance-lease, runtime-pin, and Worker-session namespaces. Independently
+created backing directories that use the same root key therefore remain
+isolated, while opening one backing directory with the wrong root key cannot
+join its valid runtime coordinator. `instanceId` is not part of key derivation,
+AAD, or immutable-object addressing.
+
+After a complete authenticated generation has been opened with the root key, a
+missing or structurally corrupt descriptor may be replaced with a canonical
+descriptor containing that generation's root-subvolume identity. A canonical
+plaintext `instanceId` that disagrees with the authenticated root identity is
+corruption and must be rejected before mutation, garbage-collection sweep, or
+Worker-session reuse. I/O and permission failures while reading or repairing
+the descriptor must still propagate. An unsupported authenticated generation
+must never be made readable by rewriting the descriptor.
 
 ## Identifiers and direct object references
 

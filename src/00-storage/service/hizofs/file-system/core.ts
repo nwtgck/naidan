@@ -51,6 +51,7 @@ function assertWritableActiveState({
 export class HizoFSCore {
   constructor({
     fileSystemId,
+    instanceId,
     objectStore,
     superblockStore,
     commitStore,
@@ -60,6 +61,7 @@ export class HizoFSCore {
     diagnostics,
   }: {
     fileSystemId: string;
+    instanceId: string;
     objectStore: HizoFSObjectStore;
     superblockStore: HizoFSSuperblockStore;
     commitStore: HizoFSCommitStore;
@@ -69,6 +71,7 @@ export class HizoFSCore {
     diagnostics: HizoFSRuntimeDiagnostics | undefined;
   }) {
     this.fileSystemId = fileSystemId;
+    this.instanceId = instanceId;
     this.objectStore = objectStore;
     this.superblockStore = superblockStore;
     this.commitStore = commitStore;
@@ -79,6 +82,7 @@ export class HizoFSCore {
   }
 
   readonly fileSystemId: string;
+  readonly instanceId: string;
   readonly objectStore: HizoFSObjectStore;
   readonly superblockStore: HizoFSSuperblockStore;
   readonly commitStore: HizoFSCommitStore;
@@ -113,7 +117,7 @@ export class HizoFSCore {
     }) => Promise<HizoFSMutationResult<T>>;
   }): Promise<HizoFSPublishedMutation<T>> {
     return runWithHizoFSResourceLease({
-      fileSystemId: this.fileSystemId,
+      instanceId: this.instanceId,
       operation: async () => await this.mutateWithResourceLeaseHeldAndReturnState({
         operation,
       }),
@@ -193,7 +197,7 @@ export class HizoFSCore {
     }) => Promise<HizoFSTopologyMutationResult<T>>;
   }): Promise<HizoFSPublishedMutation<T>> {
     return runWithHizoFSResourceLease({
-      fileSystemId: this.fileSystemId,
+      instanceId: this.instanceId,
       operation: async () =>
         await this.mutateRootsWithResourceLeaseHeldAndReturnState({ operation }),
     });
