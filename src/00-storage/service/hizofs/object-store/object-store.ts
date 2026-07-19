@@ -21,6 +21,7 @@ import {
   type HizoFSPartialSegmentCompactionCandidate,
   type HizoFSWholeSegmentRemovalResult,
 } from '@/00-storage/service/hizofs/segment-store/segmented-store';
+import type { HizoFSHeadScope } from '@/00-storage/service/hizofs/segment-store/head-scope';
 import { decodeHizoFSObjectReference } from '@/00-storage/service/hizofs/segment-store/object-reference';
 import type { HizoFSPhysicalRecord } from '@/00-storage/service/hizofs/segment-store/segmented-store';
 import type { HizoFSDecodedHead } from '@/00-storage/service/hizofs/segment-store/segment-format';
@@ -682,24 +683,29 @@ export class HizoFSObjectStore {
     return this.segmentedStore.readPhysicalRecord({ objectId });
   }
 
-  inspectHeadPhysical({ slot }: { slot: 0 | 1 }): Promise<{
+  inspectHeadPhysical({ scope, slot }: {
+    scope: HizoFSHeadScope;
+    slot: 0 | 1;
+  }): Promise<{
     readonly physicalBytes: Uint8Array;
     readonly physicalPath: readonly string[];
   } | undefined> {
-    return this.segmentedStore.readHeadPhysical({ slot });
+    return this.segmentedStore.readHeadPhysical({ scope, slot });
   }
 
-  inspectHead({ slot }: {
+  inspectHead({ scope, slot }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
   }): Promise<(HizoFSDecodedHead & {
     readonly physicalByteLength: number;
     readonly physicalBytes: Uint8Array;
     readonly physicalPath: readonly string[];
   }) | undefined> {
-    return this.segmentedStore.readHead({ slot });
+    return this.segmentedStore.readHead({ scope, slot });
   }
 
-  async writeSuperblock({ slot, record }: {
+  async writeSuperblock({ scope, slot, record }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
     record: HizoFSObjectStoreRecord;
   }): Promise<void> {
@@ -726,6 +732,7 @@ export class HizoFSObjectStore {
       }
       const superblock = HizoFSSuperblockSchemaDto.parse(record.metadata);
       const physicalByteLength = await this.segmentedStore.writeHead({
+        scope,
         slot,
         sequence: superblock.sequence,
         recordBytes: plaintext,
@@ -740,10 +747,11 @@ export class HizoFSObjectStore {
     }
   }
 
-  async readSuperblock({ slot }: {
+  async readSuperblock({ scope, slot }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
   }): Promise<DecodedHizoFSRecord | undefined> {
-    const head = await this.segmentedStore.readHead({ slot });
+    const head = await this.segmentedStore.readHead({ scope, slot });
     if (head === undefined) return undefined;
     try {
       switch (head.record.kind) {

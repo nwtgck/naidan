@@ -1,3 +1,4 @@
+import { promiseAllKeyed } from '@/utils/promise';
 import type {
   HizoFSCommitDto,
   HizoFSDescriptorDto,
@@ -6,6 +7,7 @@ import type {
   HizoFSSuperblockDto,
 } from "@/00-storage/00-dto/hizofs.dto";
 import type {
+  StorageDirectoryHandle,
   StorageDirectoryWorkerMountSession,
   StorageDirectoryWorkerMountSource,
   StorageFileSystemSession,
@@ -24,9 +26,17 @@ import {
   restoreHizoFSDescriptor,
 } from "./format/descriptor-store";
 import { createHizoFSStableId } from "./id";
+import { HizoFSCorruptionError } from './errors';
 import { DEFAULT_HIZOFS_POLICY, type HizoFSPolicy } from "./file-system/policy";
 import { createHizoFSRuntime, type HizoFSRuntime } from "./file-system/runtime";
-import { HizoFSSession } from "./file-system/session";
+import {
+  getHizoFSDirectoryHandleContext,
+  HizoFSSession,
+} from "./file-system/session";
+import {
+  loadHizoFSFixedSubvolumeState,
+  type HizoFSFilesystemState,
+} from './file-system/active-state';
 import { HizoFSBulkBuilder } from './file-system/bulk-builder';
 import type { HizoFSRuntimeDiagnostics } from './file-system/diagnostics';
 
@@ -123,31 +133,139 @@ export type HizoFSSubvolumeInfo = {
   readonly subvolumeId: string;
   readonly access: HizoFSSubvolumeAccess;
   readonly stateSelection: 'current' | 'fallback';
-  readonly root: true;
+  readonly root: boolean;
 };
 
-// TODO(hizofs-subvolume): Add create, recursive snapshot, and explicit delete
-// APIs after directory entries can carry stable mount identities and child
-// read_write heads have per-subvolume coordinators. Snapshot publication must
-// remain O(subvolume count), must not walk inode/chunk graphs, and must expose
-// the completed graph with one final destination-parent publication. Remove
-// this TODO only after crash injection covers every pre-publication orphan and
-// post-publication outcome, and ordinary non-mount operations retain their
-// pre-subvolume backing I/O, flush, and publication counts.
+function createHizoFSNamedError({
+  name,
+  message,
+}: {
+  name: string;
+  message: string;
+}): Error {
+  const error = new Error(`${name}: ${message}`);
+  error.name = name;
+  return error;
+}
+
+function requireHizoFSDirectoryContext({
+  handle,
+  role,
+}: {
+  handle: StorageDirectoryHandle;
+  role: 'source' | 'destination';
+}): NonNullable<ReturnType<typeof getHizoFSDirectoryHandleContext>> {
+  const context = getHizoFSDirectoryHandleContext({ handle });
+  if (context === undefined) {
+    throw createHizoFSNamedError({
+      name: 'TypeMismatchError',
+      message: `HizoFS subvolume ${role} must be a HizoFS directory`,
+    });
+  }
+  return context;
+}
+
+export async function createHizoFSSubvolume({
+  destination,
+  name,
+  access,
+}: {
+  destination: StorageDirectoryHandle;
+  name: string;
+  access: HizoFSSubvolumeAccess;
+}): Promise<StorageDirectoryHandle> {
+  const destinationContext = requireHizoFSDirectoryContext({
+    handle: destination,
+    role: 'destination',
+  });
+  switch (access) {
+  case 'read':
+    return await destinationContext.session.createReadSubvolume({
+      directoryNodeId: destinationContext.nodeId,
+      name,
+    });
+  case 'read_write':
+    return await destinationContext.session.createReadWriteSubvolume({
+      directoryNodeId: destinationContext.nodeId,
+      name,
+    });
+  default: {
+    const _ex: never = access;
+    throw new Error(`Unhandled HizoFS subvolume access: ${String(_ex)}`);
+  }
+  }
+}
+
+export async function snapshotHizoFSSubvolume({
+  source,
+  destination,
+  name,
+  access,
+}: {
+  source: StorageDirectoryHandle;
+  destination: StorageDirectoryHandle;
+  name: string;
+  access: HizoFSSubvolumeAccess;
+}): Promise<StorageDirectoryHandle> {
+  const sourceContext = requireHizoFSDirectoryContext({
+    handle: source,
+    role: 'source',
+  });
+  if (!sourceContext.subvolumeRoot) {
+    throw createHizoFSNamedError({
+      name: 'InvalidModificationError',
+      message: 'HizoFS snapshots require a subvolume root handle',
+    });
+  }
+  const destinationContext = requireHizoFSDirectoryContext({
+    handle: destination,
+    role: 'destination',
+  });
+  switch (access) {
+  case 'read':
+  case 'read_write':
+    return await destinationContext.session.snapshotSubvolume({
+      sourceSession: sourceContext.session,
+      directoryNodeId: destinationContext.nodeId,
+      name,
+      access,
+    });
+  default: {
+    const _ex: never = access;
+    throw new Error(`Unhandled HizoFS subvolume access: ${String(_ex)}`);
+  }
+  }
+}
+
+// TODO(hizofs-subvolume): Add explicit subvolume deletion after garbage
+// collection retains every reachable read_write child head generation and
+// active runtime pin, then reclaims orphan heads without traversing ordinary
+// file trees during the delete operation. Remove this TODO after crash
+// injection covers pre-publication orphan metadata, post-publication outcomes,
+// previous-generation reachability, and runtime-pinned deleted subvolumes.
 
 export async function getHizoFSSubvolumeInfo({
-  fileSystemSession,
+  handle,
 }: {
-  fileSystemSession: StorageFileSystemSession;
+  handle: StorageDirectoryHandle;
 }): Promise<HizoFSSubvolumeInfo | undefined> {
-  if (!(fileSystemSession instanceof HizoFSSession)) return undefined;
-  fileSystemSession.assertOpen();
-  const state = await fileSystemSession.loadActiveState();
+  const context = getHizoFSDirectoryHandleContext({ handle });
+  if (context === undefined || !context.subvolumeRoot) return undefined;
+  context.session.assertOpen();
+  const { state, rootState } = await promiseAllKeyed({
+    state: context.session.loadFilesystemState(),
+    rootState: context.session.runtime.core.loadActiveState(),
+  });
+  const stateSelection = 'stateSelection' in state
+    ? state.stateSelection
+    : 'current';
   return {
     subvolumeId: state.subvolumeDescriptor.subvolumeId,
     access: state.subvolumeDescriptor.access,
-    stateSelection: state.stateSelection,
-    root: true,
+    stateSelection,
+    root:
+      state.subvolumeDescriptorObjectId
+      === rootState.subvolumeDescriptorObjectId,
   };
 }
 
@@ -360,8 +478,10 @@ async function createHizoFSInternal({
       const state = await runtime.core.loadActiveState();
       return new HizoFSSession({
         runtime,
+        core: runtime.core,
         subvolumeId: state.subvolumeDescriptor.subvolumeId,
         rootDirectoryNodeId,
+        rootName: '',
         workerMountContext: {
           type: "hizofs",
           backingDirectory,
@@ -416,8 +536,10 @@ async function openHizoFSInternal({
       await restoreHizoFSDescriptor({ backingStore });
       return new HizoFSSession({
         runtime,
+        core: runtime.core,
         subvolumeId: state.subvolumeDescriptor.subvolumeId,
         rootDirectoryNodeId: state.commit.rootDirectoryNodeId,
+        rootName: '',
         workerMountContext: {
           type: "hizofs",
           backingDirectory,
@@ -467,14 +589,47 @@ async function openHizoFSWithImportedRootKey({
   return runWithRuntimeInitialization({
     runtime,
     operation: async () => {
-      const state = await runtime.core.loadActiveState();
+      const rootState = await runtime.core.loadActiveState();
+      let core = runtime.core;
+      let fixedState: HizoFSFilesystemState | undefined;
+      let state: HizoFSFilesystemState;
       if (
-        state.superblock.subvolumeDescriptorObjectId
-        !== subvolumeDescriptorObjectId
+        rootState.superblock.subvolumeDescriptorObjectId
+        === subvolumeDescriptorObjectId
       ) {
-        throw new Error(
-          'HizoFS Worker mount belongs to a different root subvolume generation',
-        );
+        state = rootState;
+      } else {
+        const descriptor = await runtime.subvolumeDescriptorStore.read({
+          objectId: subvolumeDescriptorObjectId,
+        });
+        switch (descriptor.access) {
+        case 'read':
+          fixedState = await loadHizoFSFixedSubvolumeState({
+            subvolumeDescriptorObjectId,
+            commitStore: runtime.commitStore,
+            subvolumeDescriptorStore: runtime.subvolumeDescriptorStore,
+            inodeIndex: runtime.inodeIndex,
+            inodeStore: runtime.inodeStore,
+          });
+          state = fixedState;
+          break;
+        case 'read_write':
+          core = runtime.getReadWriteSubvolumeCore({
+            subvolumeId: descriptor.subvolumeId,
+          });
+          state = await core.loadActiveState();
+          if (state.subvolumeDescriptorObjectId !== subvolumeDescriptorObjectId) {
+            throw new HizoFSCorruptionError({
+              message: 'HizoFS worker mount resolved an unexpected child descriptor',
+              cause: undefined,
+            });
+          }
+          break;
+        default: {
+          const _ex: never = descriptor;
+          throw new Error(`Unhandled HizoFS worker subvolume access: ${String(_ex)}`);
+        }
+        }
       }
       await restoreHizoFSDescriptor({ backingStore });
       await runtime.nodeService.readDirectory({
@@ -483,8 +638,10 @@ async function openHizoFSWithImportedRootKey({
       });
       return new HizoFSSession({
         runtime,
+        core,
         subvolumeId: state.subvolumeDescriptor.subvolumeId,
         rootDirectoryNodeId,
+        rootName: '',
         workerMountContext: {
           type: "hizofs",
           backingDirectory,
@@ -492,7 +649,7 @@ async function openHizoFSWithImportedRootKey({
           rootKey,
           subvolumeDescriptorObjectId,
         },
-        fixedState: undefined,
+        fixedState,
         sessionLease: undefined,
       });
     },

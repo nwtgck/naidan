@@ -95,6 +95,9 @@ describe('HizoFS inspection worker', () => {
     const docsEntry = root.directory?.entries.find(({ entry }) => entry.name === 'docs');
     expect(docsEntry).toBeDefined();
     if (docsEntry === undefined) throw new Error('Root directory did not contain docs');
+    if (docsEntry.entry.kind === 'subvolume') {
+      throw new Error('docs unexpectedly resolved to a subvolume');
+    }
 
     const docs = await worker.readNode({
       commitObjectId: root.commitObjectId,
@@ -123,6 +126,9 @@ describe('HizoFS inspection worker', () => {
 
     const readmeEntry = docs.directory?.entries.find(({ entry }) => entry.name === 'readme.txt');
     if (readmeEntry === undefined) throw new Error('docs directory did not contain readme.txt');
+    if (readmeEntry.entry.kind === 'subvolume') {
+      throw new Error('readme.txt unexpectedly resolved to a subvolume');
+    }
     expect(readmeEntry.source).toMatchObject({ type: 'indexed' });
     const limitedDocs = await worker.readNode({
       commitObjectId: root.commitObjectId,
@@ -188,8 +194,10 @@ describe('HizoFS inspection worker', () => {
     const metadata = {
       revision: 7,
       publicationId: 'publication-7',
+      subvolumeId: 'AAAAAAAAAAAAAAAAAAAAAA',
       rootDirectoryNodeId: 'root-node',
       inodeIndexRootObjectId: 'inode-index-root',
+      subvolumeMountIndexRootObjectId: 'subvolume-mount-index-root',
       unknownPersistedField: 'must remain visible',
     };
     const result = TEST_ONLY.parsePersistedDto({

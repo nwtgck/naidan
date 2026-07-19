@@ -16,6 +16,7 @@ function createState({ sequence, commitObjectId, inodeIndexRootObjectId }: {
       subvolumeDescriptorObjectId: 'subvolume-descriptor',
       activeCommitObjectId: commitObjectId,
     },
+    subvolumeDescriptorObjectId: 'descriptor',
     subvolumeDescriptor: {
       subvolumeId: 'root-subvolume',
       access: 'read_write',
@@ -43,6 +44,64 @@ afterEach(() => {
 });
 
 describe('HizoFS active-state coordinator', () => {
+  it('keeps local leaders isolated by subvolume coordination scope', async () => {
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: undefined,
+    });
+    const localCoordinationIdentity = {};
+    const fileSystemId = `coordinator-${crypto.randomUUID()}`;
+    const rootState = createState({
+      sequence: 1,
+      commitObjectId: 'root-commit',
+      inodeIndexRootObjectId: 'root-index',
+    });
+    const childState = createState({
+      sequence: 2,
+      commitObjectId: 'child-commit',
+      inodeIndexRootObjectId: 'child-index',
+    });
+    const rootLoad = vi.fn(async () => rootState);
+    const childLoad = vi.fn(async () => childState);
+    const createCoordinator = ({
+      coordinationScope,
+      loadFromBacking,
+    }: {
+      coordinationScope: string;
+      loadFromBacking: () => Promise<HizoFSActiveState>;
+    }) => new HizoFSActiveStateCoordinator({
+      fileSystemId,
+      coordinationScope,
+      localCoordinationIdentity,
+      loadFromBacking,
+      publishFromState: async () => {
+        throw new Error('Unexpected publication');
+      },
+      setHeadHandleRetention: async () => {},
+      diagnostics: undefined,
+    });
+    const root = createCoordinator({
+      coordinationScope: 'root',
+      loadFromBacking: rootLoad,
+    });
+    const child = createCoordinator({
+      coordinationScope: 'subvolume/child',
+      loadFromBacking: childLoad,
+    });
+    try {
+      await expect(root.loadActiveState()).resolves.toMatchObject({
+        commitObjectId: 'root-commit',
+      });
+      await expect(child.loadActiveState()).resolves.toMatchObject({
+        commitObjectId: 'child-commit',
+      });
+      expect(rootLoad).toHaveBeenCalledTimes(1);
+      expect(childLoad).toHaveBeenCalledTimes(1);
+    } finally {
+      await Promise.all([root.close(), child.close()]);
+    }
+  });
+
   it('serializes slow duplicate remote requests and reloads only on failover', async () => {
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
@@ -76,6 +135,7 @@ describe('HizoFS active-state coordinator', () => {
     const fileSystemId = `coordinator-${crypto.randomUUID()}`;
     const leader = new HizoFSActiveStateCoordinator({
       fileSystemId,
+      coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: leaderLoads,
       publishFromState: publish,
@@ -86,6 +146,7 @@ describe('HizoFS active-state coordinator', () => {
     });
     const follower = new HizoFSActiveStateCoordinator({
       fileSystemId,
+      coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: followerLoads,
       publishFromState: publish,
@@ -112,6 +173,7 @@ describe('HizoFS active-state coordinator', () => {
         expectedCommitObjectId: 'commit-1',
         expectedRevision: 1,
         inodeIndexRootObjectId: 'index-2',
+        subvolumeMountIndexRootObjectId: 'subvolume-mount-index',
         flushPreparedRecords,
       })).resolves.toMatchObject({ type: 'published' });
       expect(flushPreparedRecords).toHaveBeenCalledTimes(1);
@@ -145,6 +207,7 @@ describe('HizoFS active-state coordinator', () => {
     const flushPreparedRecords = vi.fn(async () => {});
     const coordinator = new HizoFSActiveStateCoordinator({
       fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => persistedState,
       publishFromState: async ({ currentState, inodeIndexRootObjectId }) => {
@@ -166,6 +229,7 @@ describe('HizoFS active-state coordinator', () => {
         expectedCommitObjectId: 'commit-1',
         expectedRevision: 1,
         inodeIndexRootObjectId: 'index-2',
+        subvolumeMountIndexRootObjectId: 'subvolume-mount-index',
         flushPreparedRecords,
       })).resolves.toMatchObject({ type: 'published' });
       expect(flushPreparedRecords).not.toHaveBeenCalled();
@@ -189,6 +253,7 @@ describe('HizoFS active-state coordinator', () => {
     const releasePublication = Promise.withResolvers<void>();
     const coordinator = new HizoFSActiveStateCoordinator({
       fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => initialState,
       publishFromState: async ({ currentState, inodeIndexRootObjectId }) => {
@@ -211,6 +276,7 @@ describe('HizoFS active-state coordinator', () => {
         expectedCommitObjectId: 'commit-1',
         expectedRevision: 1,
         inodeIndexRootObjectId: 'index-2',
+        subvolumeMountIndexRootObjectId: 'subvolume-mount-index',
         flushPreparedRecords: async () => {},
       });
       await publicationStarted.promise;
@@ -240,6 +306,7 @@ describe('HizoFS active-state coordinator', () => {
     const releasePublication = Promise.withResolvers<void>();
     const coordinator = new HizoFSActiveStateCoordinator({
       fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => initialState,
       publishFromState: async ({ currentState, inodeIndexRootObjectId }) => {
@@ -262,6 +329,7 @@ describe('HizoFS active-state coordinator', () => {
         expectedCommitObjectId: 'commit-1',
         expectedRevision: 1,
         inodeIndexRootObjectId: 'index-2',
+        subvolumeMountIndexRootObjectId: 'subvolume-mount-index',
         flushPreparedRecords: async () => {},
       });
       await publicationStarted.promise;
@@ -299,6 +367,7 @@ describe('HizoFS active-state coordinator', () => {
     });
     const coordinator = new HizoFSActiveStateCoordinator({
       fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => ({
         ...committedState,
@@ -318,6 +387,7 @@ describe('HizoFS active-state coordinator', () => {
         expectedCommitObjectId: 'commit-1',
         expectedRevision: 1,
         inodeIndexRootObjectId: 'index-2',
+        subvolumeMountIndexRootObjectId: 'subvolume-mount-index',
         flushPreparedRecords: async () => {},
       })).resolves.toMatchObject({
         type: 'published',
@@ -337,6 +407,7 @@ describe('HizoFS active-state coordinator', () => {
     const fileSystemId = `coordinator-${crypto.randomUUID()}`;
     const coordinator = new HizoFSActiveStateCoordinator({
       fileSystemId,
+      coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => createState({
         sequence: 3,
@@ -349,7 +420,7 @@ describe('HizoFS active-state coordinator', () => {
       setHeadHandleRetention: async () => {},
       diagnostics: undefined,
     });
-    const channel = new BroadcastChannel(`hizofs/${fileSystemId}/coordinator`);
+    const channel = new BroadcastChannel(`hizofs/${fileSystemId}/root/coordinator`);
 
     try {
       await coordinator.loadActiveState();
@@ -364,7 +435,7 @@ describe('HizoFS active-state coordinator', () => {
         }
       });
       channel.postMessage({
-        protocolVersion: 1,
+        protocolVersion: 2,
         messageType: 'request',
         requestId: 'request-1',
         senderId: 'external-sender',
@@ -375,6 +446,7 @@ describe('HizoFS active-state coordinator', () => {
           expectedCommitObjectId: 'commit-1',
           expectedRevision: 1,
           inodeIndexRootObjectId: 'index-2',
+          subvolumeMountIndexRootObjectId: 'subvolume-mount-index',
         },
       });
 
@@ -398,6 +470,7 @@ describe('HizoFS active-state coordinator', () => {
     });
     const coordinator = new HizoFSActiveStateCoordinator({
       fileSystemId: `coordinator-${crypto.randomUUID()}`,
+      coordinationScope: 'root',
       localCoordinationIdentity: {},
       loadFromBacking: async () => createState({
         sequence: 1,

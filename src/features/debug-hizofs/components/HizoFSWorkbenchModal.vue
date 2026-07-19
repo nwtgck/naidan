@@ -638,6 +638,22 @@ async function openChildNode({
   entry: NonNullable<HizoFSResolvedNodeView['directory']>['entries'][number]['entry'];
   afterIndex: number;
 }): Promise<void> {
+  switch (entry.kind) {
+  case 'subvolume':
+    errorMessage.value =
+      'Subvolume mount traversal is not available in this Workbench view yet.';
+    return;
+  case 'directory':
+  case 'file':
+  case 'symlink':
+    break;
+  default: {
+    const _ex: never = entry;
+    throw new Error(
+      `Unhandled HizoFS directory entry kind: ${String(((_ex satisfies never) as { readonly kind: string }).kind)}`,
+    );
+  }
+  }
   const logicalPath = parent.logicalPath === '/'
     ? `/${entry.name}`
     : `${parent.logicalPath}/${entry.name}`;
@@ -1474,10 +1490,10 @@ defineExpose({
                     <button type="button" tw-class="flex w-full items-center justify-between rounded border border-gray-300 px-3 py-2 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openObject({ objectId: column.value.directory.directoryIndexRootObjectId, relation: 'Directory index root', afterIndex: columnIndex })"><span>Inspect directory index root</span><ChevronRightIcon tw-class="h-3.5 w-3.5" /></button>
                   </div>
                   <div tw-class="border-t border-gray-200 bg-gray-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-950">Persisted directory entries · {{ column.value.directory.storageType }}</div>
-                  <div v-for="resolvedEntry in column.value.directory.entries" :key="`${resolvedEntry.entry.nodeId}:${resolvedEntry.entry.name}`" tw-class="border-b border-gray-100 p-2 dark:border-gray-800">
+                  <div v-for="resolvedEntry in column.value.directory.entries" :key="`${'nodeId' in resolvedEntry.entry ? resolvedEntry.entry.nodeId : resolvedEntry.entry.mountId}:${resolvedEntry.entry.name}`" tw-class="border-b border-gray-100 p-2 dark:border-gray-800">
                     <button type="button" data-testid="hizofs-open-child-node" tw-class="block w-full rounded px-2 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800" @click="openChildNode({ parent: column.value, entry: resolvedEntry.entry, afterIndex: columnIndex })">
                       <span tw-class="block truncate text-xs font-medium">{{ resolvedEntry.entry.name }}</span>
-                      <span tw-class="mt-1 block font-mono text-[9px] text-gray-500">{{ resolvedEntry.entry.kind }} · {{ resolvedEntry.entry.nodeId }}</span>
+                      <span tw-class="mt-1 block font-mono text-[9px] text-gray-500">{{ resolvedEntry.entry.kind }} · {{ 'nodeId' in resolvedEntry.entry ? resolvedEntry.entry.nodeId : resolvedEntry.entry.mountId }}</span>
                     </button>
                     <button type="button" tw-class="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-left font-mono text-[9px] text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800" @click="openObject({ objectId: getDirectoryEntrySourceObjectId({ source: resolvedEntry.source }), relation: resolvedEntry.source.type === 'inline' ? 'Directory inode containing entry' : 'Directory index leaf containing entry', afterIndex: columnIndex })">source {{ resolvedEntry.source.type }} · {{ getDirectoryEntrySourceObjectId({ source: resolvedEntry.source }) }}</button>
                   </div>

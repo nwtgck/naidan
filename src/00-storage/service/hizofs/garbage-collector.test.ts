@@ -169,9 +169,44 @@ describe('HizoFS garbage collection', () => {
       sweepPolicy: undefined,
       signal: undefined,
     })).rejects.toThrow(
-      'refuses mounted child subvolumes until child-head traversal is enabled',
+      'refuses read_write child subvolumes until child-head traversal is enabled',
     );
     expect(await countPhysicalFiles({ directory: backing })).toBe(before);
+  });
+
+  it('marks a mounted read subvolume through its fixed commit', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    if (!(session instanceof HizoFSSession)) {
+      throw new Error('Expected a HizoFS session');
+    }
+    await session.createReadSubvolume({
+      directoryNodeId: session.rootDirectoryNodeId,
+      name: 'archive',
+    });
+    await session.close();
+
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    })).resolves.toMatchObject({ removedObjectCount: expect.any(Number) });
+
+    const reopened = await openHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const child = await reopened.root.getDirectoryHandle({
+      name: 'archive',
+      create: false,
+    });
+    await expect(child.getFileHandle({
+      name: 'forbidden.txt',
+      create: true,
+    })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+    await reopened.close();
   });
 
   it('removes only unreachable immutable objects and preserves the active filesystem', async () => {

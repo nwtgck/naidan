@@ -349,6 +349,7 @@ export async function createHizoFSInspectionReader({
         // and fallback selection remain visible while a normal session is open.
         const activeState = await loadHizoFSActiveStateFromStores({
           superblockStore: runtime.core.superblockStore,
+          expectedSubvolumeId: undefined,
           commitStore: runtime.commitStore,
           subvolumeDescriptorStore: runtime.subvolumeDescriptorStore,
           inodeIndex: runtime.inodeIndex,
@@ -859,9 +860,9 @@ async function inspectSuperblockSlot({
   const fallbackPhysicalPath = [`head-${String(slot)}.hfs`] as const;
   let head: Awaited<ReturnType<HizoFSObjectStore['inspectHead']>>;
   try {
-    head = await objectStore.inspectHead({ slot });
+    head = await objectStore.inspectHead({ scope: { type: 'root' }, slot });
   } catch (error) {
-    const physicalHead = await objectStore.inspectHeadPhysical({ slot });
+    const physicalHead = await objectStore.inspectHeadPhysical({ scope: { type: 'root' }, slot });
     if (physicalHead === undefined) {
       return {
         slot,

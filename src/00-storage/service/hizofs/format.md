@@ -26,7 +26,12 @@ AAD, or object addressing.
 <backing-directory>/
 ├── descriptor.json
 ├── head-0.hfs
-├── head-1.hfs              # both slots exist from initial creation
+├── head-1.hfs              # root read_write subvolume
+├── subvolume-heads/
+│   └── <subvolume-id-prefix>/
+│       ├── <subvolume-id>-0.hfs
+│       └── <subvolume-id>-1.hfs
+│           # non-root read_write subvolumes; both slots exist before mounting
 ├── segments/
 │   ├── metadata/<shard>/<segment-id>.seg
 │   └── data/<shard>/<segment-id>.seg
@@ -42,8 +47,11 @@ AAD, or object addressing.
 
 A directory containing this layout is exclusively owned by one HizoFS file
 system. Segment shard directories are created lazily from the first eight bits
-of the segment ID. Unknown physical entries are not part of the format and must
-not be deleted automatically.
+of the segment ID. A child-head shard is the first two canonical characters of
+the subvolume ID. Root and child head slots use distinct authenticated scopes;
+a valid ciphertext copied between either scope, between subvolume IDs, or
+between slots must fail authentication. Unknown physical entries are not part
+of the format and must not be deleted automatically.
 
 Metadata records prepared by one runtime publication are packed into one
 append-only metadata segment. File chunks are packed into bounded private data
@@ -285,9 +293,12 @@ later commit writes the next sequence to `sequence % 2`; the alternate slot
 remains as the previous recoverable state. A missing slot in an opened
 filesystem is therefore an uncertain rollback and forces read-only recovery.
 
-The root head is also bound to one immutable `subvolume_descriptor`. The
-descriptor is the single authority for the root subvolume identity and access;
-the active commit must carry the same `subvolumeId`.
+Every head is bound to one immutable `subvolume_descriptor`. The descriptor
+is the single authority for subvolume identity and access; the active commit
+must carry the same `subvolumeId`. Root heads use the fixed root scope. A
+non-root `read_write` descriptor resolves to the scoped A/B files under
+`subvolume-heads/`. A `read` descriptor has no mutable head and names its fixed
+commit directly.
 
 ## Subvolume descriptor
 
@@ -350,11 +361,35 @@ type HizoFSSubvolumeMountDto = {
 };
 ```
 
-Directory metadata will reference `mountId`, not a child `subvolumeId`. This
-indirection allows a recursive snapshot to share ordinary directory metadata
-while rebuilding only the O(number of subvolumes) mount graph. Mount entries
-contain no access copy; descriptor/head/commit identity bindings are validated
-instead.
+Directory metadata references `mountId`, not a child `subvolumeId`:
+
+```ts
+type HizoFSDirectoryEntryDto =
+  | {
+      readonly name: string;
+      readonly kind: 'file' | 'directory' | 'symlink';
+      readonly nodeId: string;
+    }
+  | {
+      readonly name: string;
+      readonly kind: 'subvolume';
+      readonly mountId: string;
+    };
+```
+
+A subvolume entry is not an inode and is not inserted into the parent inode
+index. Ordinary entries continue through the inode-index path without reading
+the mount index. Crossing a subvolume entry resolves the mount, descriptor, and
+then either the fixed commit or the scoped mutable head.
+
+This indirection allows a recursive snapshot to share ordinary directory and
+inode metadata while rebuilding only the O(number of subvolumes) mount graph.
+A snapshot creates fresh subvolume identities, commits, descriptors, and mount
+indexes, preserves stable mount IDs, and reuses the source inode-index roots.
+For `read_write` output, both scoped head slots are durably initialized before
+the graph is attached. The destination-parent head publication is the sole
+namespace visibility switch. Mount entries contain no access copy;
+descriptor/head/commit identity bindings are validated instead.
 
 ## Inode index
 

@@ -86,17 +86,56 @@ export const HizoFSNodeKindSchemaDto: z.ZodType<HizoFSNodeKindDto> = z.enum([
   'symlink',
 ]);
 
-export type HizoFSDirectoryEntryDto = {
+export type HizoFSNodeDirectoryEntryDto =
+  | {
+      readonly name: string;
+      readonly kind: 'file';
+      readonly nodeId: string;
+    }
+  | {
+      readonly name: string;
+      readonly kind: 'directory';
+      readonly nodeId: string;
+    }
+  | {
+      readonly name: string;
+      readonly kind: 'symlink';
+      readonly nodeId: string;
+    };
+
+export type HizoFSSubvolumeDirectoryEntryDto = {
   readonly name: string;
-  readonly kind: HizoFSNodeKindDto;
-  readonly nodeId: string;
+  readonly kind: 'subvolume';
+  readonly mountId: string;
 };
 
-export const HizoFSDirectoryEntrySchemaDto: z.ZodType<HizoFSDirectoryEntryDto> = z.object({
-  name: z.string(),
-  kind: HizoFSNodeKindSchemaDto,
-  nodeId: z.string(),
-});
+export type HizoFSDirectoryEntryDto =
+  | HizoFSNodeDirectoryEntryDto
+  | HizoFSSubvolumeDirectoryEntryDto;
+
+export const HizoFSDirectoryEntrySchemaDto: z.ZodType<HizoFSDirectoryEntryDto> =
+  z.discriminatedUnion('kind', [
+    z.object({
+      name: z.string(),
+      kind: z.literal('file'),
+      nodeId: z.string(),
+    }).strict(),
+    z.object({
+      name: z.string(),
+      kind: z.literal('directory'),
+      nodeId: z.string(),
+    }).strict(),
+    z.object({
+      name: z.string(),
+      kind: z.literal('symlink'),
+      nodeId: z.string(),
+    }).strict(),
+    z.object({
+      name: z.string(),
+      kind: z.literal('subvolume'),
+      mountId: z.string(),
+    }).strict(),
+  ]);
 
 export type HizoFSInlineFileStorageDto = {
   readonly type: 'inline';

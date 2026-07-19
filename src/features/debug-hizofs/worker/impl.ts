@@ -519,7 +519,23 @@ export function createHizoFSInspectionWorker(): IHizoFSInspectionWorker {
         };
       }
       resolvedNodes.push(resolved);
-      nodeId = selectedEntry.entry.nodeId;
+      switch (selectedEntry.entry.kind) {
+      case 'subvolume':
+        throw new Error(
+          `HizoFS Workbench path traversal cannot cross a subvolume mount yet: ${currentPath}`,
+        );
+      case 'directory':
+      case 'file':
+      case 'symlink':
+        nodeId = selectedEntry.entry.nodeId;
+        break;
+      default: {
+        const _ex: never = selectedEntry.entry;
+        throw new Error(
+          `Unhandled HizoFS directory entry kind: ${String(((_ex satisfies never) as { readonly kind: string }).kind)}`,
+        );
+      }
+      }
       currentPath = currentPath === '/' ? `/${segment}` : `${currentPath}/${segment}`;
     }
     return resolvedNodes;
@@ -633,7 +649,28 @@ export function createHizoFSInspectionWorker(): IHizoFSInspectionWorker {
           for (const child of childEntries) {
             if (truncated) break;
             const childPath = path === '/' ? `/${child.name}` : `${path}/${child.name}`;
-            await visitNode({ nodeId: child.nodeId, path: childPath, name: child.name });
+            switch (child.kind) {
+            case 'subvolume':
+              issues.push(
+                `Subvolume mount traversal is not available in this Workbench view: ${childPath}`,
+              );
+              continue;
+            case 'directory':
+            case 'file':
+            case 'symlink':
+              await visitNode({
+                nodeId: child.nodeId,
+                path: childPath,
+                name: child.name,
+              });
+              break;
+            default: {
+              const _ex: never = child;
+              throw new Error(
+                `Unhandled HizoFS directory entry kind: ${String(((_ex satisfies never) as { readonly kind: string }).kind)}`,
+              );
+            }
+            }
           }
           return;
         }

@@ -2,6 +2,7 @@ import type { HizoFSBackingStore } from '@/00-storage/service/hizofs/backing-sto
 import type { HizoFSPolicy } from './policy';
 import { HizoFSObjectStore } from '@/00-storage/service/hizofs/object-store/object-store';
 import { HizoFSSuperblockStore } from '@/00-storage/service/hizofs/object-store/superblock-store';
+import type { HizoFSHeadScope } from '@/00-storage/service/hizofs/segment-store/head-scope';
 import { HizoFSRecordStore } from './record-store';
 import { HizoFSCommitStore } from './commit-store';
 import { HizoFSInodeIndex } from './inode-index';
@@ -129,6 +130,9 @@ export type HizoFSRuntime = {
   readonly now: () => number;
   readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
   clearPlaintextCaches(): void;
+  getReadWriteSubvolumeCore({ subvolumeId }: {
+    subvolumeId: string;
+  }): HizoFSCore;
   retainSession(): void;
   releaseSession(): Promise<void>;
   releaseLocalPhysicalHandlesForMaintenance(): Promise<void>;
@@ -197,95 +201,166 @@ export function createHizoFSRuntime({
     directoryIndex,
     inlineEntryLimit: policy.inlineDirectoryEntryLimit,
   });
-  const validatedRootCache: HizoFSValidatedCommitRootCache = {
-    value: undefined,
+  type WritableCoreBundle = {
+    readonly core: HizoFSCore;
+    readonly coordinator: HizoFSActiveStateCoordinator;
+    readonly validatedRootCache: HizoFSValidatedCommitRootCache;
   };
-  const superblockStore = new HizoFSSuperblockStore({
-    objectStore,
-    fileSystemId,
-  });
-  const activeStateCoordinator = new HizoFSActiveStateCoordinator({
-    fileSystemId,
-    localCoordinationIdentity,
-    loadFromBacking: async () => await loadHizoFSActiveStateFromStores({
-      superblockStore,
-      commitStore,
-      subvolumeDescriptorStore,
-      inodeIndex,
-      inodeStore,
-      validatedRootCache,
-    }),
-    publishFromState: async ({
-      currentState,
-      publicationId,
-      inodeIndexRootObjectId,
-    }) => {
-      switch (currentState.stateSelection) {
-      case 'current':
-        break;
-      case 'fallback':
-        throw new HizoFSCorruptionError({
-          message:
-            'HizoFS opened an older complete generation in read-only recovery mode',
-          cause: undefined,
-        });
-      default: {
-        const _ex: never = currentState.stateSelection;
-        throw new Error(`Unhandled HizoFS active state selection: ${String(_ex)}`);
-      }
-      }
-      const commit = {
-        revision: currentState.commit.revision + 1,
-        publicationId,
-        subvolumeId: currentState.commit.subvolumeId,
-        rootDirectoryNodeId: currentState.commit.rootDirectoryNodeId,
-        inodeIndexRootObjectId,
-        subvolumeMountIndexRootObjectId:
-          currentState.commit.subvolumeMountIndexRootObjectId,
-      };
-      // A follower can prepare immutable records in another realm and ask the
-      // leader to publish only their root reference. Authenticate that root
-      // through this leader's object store before making it durable, so a
-      // malformed or stale coordinator message cannot publish an incomplete
-      // filesystem generation.
-      await validateHizoFSCommitRoot({
-        commit,
+  const writableCoreBundles = new Map<string, WritableCoreBundle>();
+
+  function createWritableCoreBundle({
+    headScope,
+    coordinationScope,
+    expectedSubvolumeId,
+    managePersistentHeadHandles,
+  }: {
+    headScope: HizoFSHeadScope;
+    coordinationScope: string;
+    expectedSubvolumeId: string | undefined;
+    managePersistentHeadHandles: boolean;
+  }): WritableCoreBundle {
+    const validatedRootCache: HizoFSValidatedCommitRootCache = {
+      value: undefined,
+    };
+    const superblockStore = new HizoFSSuperblockStore({
+      objectStore,
+      fileSystemId,
+      headScope,
+    });
+    const coordinator = new HizoFSActiveStateCoordinator({
+      fileSystemId,
+      coordinationScope,
+      localCoordinationIdentity,
+      loadFromBacking: async () => await loadHizoFSActiveStateFromStores({
+        superblockStore,
+        expectedSubvolumeId,
+        commitStore,
+        subvolumeDescriptorStore,
         inodeIndex,
         inodeStore,
         validatedRootCache,
-      });
-      const commitObjectId = await commitStore.write({ commit });
-      const superblock = {
-        sequence: currentState.superblock.sequence + 1,
-        fileSystemId,
-        subvolumeDescriptorObjectId:
-          currentState.superblock.subvolumeDescriptorObjectId,
-        activeCommitObjectId: commitObjectId,
-      };
-      await superblockStore.write({ value: superblock });
-      return {
-        superblock,
-        subvolumeDescriptor: currentState.subvolumeDescriptor,
-        commitObjectId,
-        commit,
-        stateSelection: 'current',
-      };
-    },
-    setHeadHandleRetention: async ({ retention }) => {
-      await objectStore.setHeadHandleRetention({ retention });
-    },
-    diagnostics,
+      }),
+      publishFromState: async ({
+        currentState,
+        publicationId,
+        inodeIndexRootObjectId,
+        subvolumeMountIndexRootObjectId,
+      }) => {
+        switch (currentState.stateSelection) {
+        case 'current':
+          break;
+        case 'fallback':
+          throw new HizoFSCorruptionError({
+            message:
+              'HizoFS opened an older complete generation in read-only recovery mode',
+            cause: undefined,
+          });
+        default: {
+          const _ex: never = currentState.stateSelection;
+          throw new Error(
+            `Unhandled HizoFS active state selection: ${String(_ex)}`,
+          );
+        }
+        }
+        const commit = {
+          revision: currentState.commit.revision + 1,
+          publicationId,
+          subvolumeId: currentState.commit.subvolumeId,
+          rootDirectoryNodeId: currentState.commit.rootDirectoryNodeId,
+          inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId,
+        };
+        await validateHizoFSCommitRoot({
+          commit,
+          inodeIndex,
+          inodeStore,
+          validatedRootCache,
+        });
+        if (
+          subvolumeMountIndexRootObjectId
+          !== currentState.commit.subvolumeMountIndexRootObjectId
+        ) {
+          await subvolumeMountIndex.validateStructure({
+            rootObjectId: subvolumeMountIndexRootObjectId,
+          });
+          const mountedDescriptorObjectIds = new Set<string>();
+          await subvolumeMountIndex.visitReferences({
+            rootObjectId: subvolumeMountIndexRootObjectId,
+            visitPageObjectId: () => {},
+            visitDescriptorObjectId: ({ objectId }) => {
+              mountedDescriptorObjectIds.add(objectId);
+            },
+            visitedPageObjectIds: undefined,
+          });
+          for (const objectId of mountedDescriptorObjectIds) {
+            await subvolumeDescriptorStore.read({ objectId });
+          }
+        }
+        const commitObjectId = await commitStore.write({ commit });
+        const superblock = {
+          sequence: currentState.superblock.sequence + 1,
+          fileSystemId,
+          subvolumeDescriptorObjectId:
+            currentState.superblock.subvolumeDescriptorObjectId,
+          activeCommitObjectId: commitObjectId,
+        };
+        await superblockStore.write({ value: superblock });
+        return {
+          superblock,
+          subvolumeDescriptorObjectId:
+            currentState.subvolumeDescriptorObjectId,
+          subvolumeDescriptor: currentState.subvolumeDescriptor,
+          commitObjectId,
+          commit,
+          stateSelection: 'current' as const,
+        };
+      },
+      setHeadHandleRetention: async ({ retention }) => {
+        if (!managePersistentHeadHandles) return;
+        await objectStore.setHeadHandleRetention({ retention });
+      },
+      diagnostics,
+    });
+    const core = new HizoFSCore({
+      fileSystemId,
+      objectStore,
+      superblockStore,
+      commitStore,
+      inodeIndex,
+      inodeStore,
+      activeStateCoordinator: coordinator,
+      diagnostics,
+    });
+    const bundle = { core, coordinator, validatedRootCache };
+    writableCoreBundles.set(coordinationScope, bundle);
+    return bundle;
+  }
+
+  const rootCoreBundle = createWritableCoreBundle({
+    headScope: { type: 'root' },
+    coordinationScope: 'root',
+    expectedSubvolumeId: undefined,
+    managePersistentHeadHandles: true,
   });
-  const core = new HizoFSCore({
-    fileSystemId,
-    objectStore,
-    superblockStore,
-    commitStore,
-    inodeIndex,
-    inodeStore,
-    activeStateCoordinator,
-    diagnostics,
-  });
+  const core = rootCoreBundle.core;
+
+  function getReadWriteSubvolumeCore({ subvolumeId }: {
+    subvolumeId: string;
+  }): HizoFSCore {
+    const coordinationScope = `subvolume/${subvolumeId}`;
+    const existing = writableCoreBundles.get(coordinationScope);
+    if (existing !== undefined) return existing.core;
+    return createWritableCoreBundle({
+      headScope: { type: 'subvolume', subvolumeId },
+      coordinationScope,
+      expectedSubvolumeId: subvolumeId,
+      // Persistent head-handle retention is currently store-wide. The root
+      // coordinator owns that optimization; child correctness never depends
+      // on retaining a physical handle between operations.
+      managePersistentHeadHandles: false,
+    }).core;
+  }
+
   let sessionCount = 0;
   let closePromise: Promise<void> | undefined;
   const physicalHandleParticipants = getLocalPhysicalHandleParticipants({
@@ -311,18 +386,39 @@ export function createHizoFSRuntime({
   function clearPlaintextCaches(): void {
     objectStore.clearPlaintextCaches();
     inodeIndex.clearDecodedPageCache();
-    validatedRootCache.value = undefined;
+    for (const bundle of writableCoreBundles.values()) {
+      bundle.validatedRootCache.value = undefined;
+    }
+  }
+
+  function getRejectedReason({
+    result,
+  }: {
+    result: PromiseSettledResult<void>;
+  }): readonly unknown[] {
+    switch (result.status) {
+    case 'fulfilled':
+      return [];
+    case 'rejected':
+      return [result.reason];
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled settled coordinator result: ${String(_ex)}`);
+    }
+    }
   }
 
   function close(): Promise<void> {
     closePromise ??= (async () => {
       clearPlaintextCaches();
-      let coordinatorError: unknown | undefined;
-      try {
-        await activeStateCoordinator.close();
-      } catch (error) {
-        coordinatorError = error;
-      }
+      const coordinatorResults = await Promise.allSettled(
+        [...writableCoreBundles.values()].map(
+          async ({ coordinator }) => await coordinator.close(),
+        ),
+      );
+      const coordinatorErrors = coordinatorResults.flatMap(result =>
+        getRejectedReason({ result }),
+      );
 
       let objectStoreError: unknown | undefined;
       try {
@@ -338,14 +434,17 @@ export function createHizoFSRuntime({
         participants: physicalHandleParticipants,
       });
 
-      if (coordinatorError !== undefined && objectStoreError !== undefined) {
+      const cleanupErrors = [
+        ...coordinatorErrors,
+        ...(objectStoreError === undefined ? [] : [objectStoreError]),
+      ];
+      if (cleanupErrors.length === 1) throw cleanupErrors[0];
+      if (cleanupErrors.length > 1) {
         throw new AggregateError(
-          [coordinatorError, objectStoreError],
-          'HizoFS coordinator and object-store cleanup both failed',
+          cleanupErrors,
+          'HizoFS coordinator and object-store cleanup failed',
         );
       }
-      if (coordinatorError !== undefined) throw coordinatorError;
-      if (objectStoreError !== undefined) throw objectStoreError;
     })();
     return closePromise;
   }
@@ -390,6 +489,7 @@ export function createHizoFSRuntime({
     now,
     diagnostics,
     clearPlaintextCaches,
+    getReadWriteSubvolumeCore,
     retainSession,
     releaseSession,
     releaseLocalPhysicalHandlesForMaintenance:

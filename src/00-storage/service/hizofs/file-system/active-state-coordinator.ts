@@ -12,7 +12,7 @@ import {
 } from './active-state';
 import type { HizoFSRuntimeDiagnostics } from './diagnostics';
 
-const COORDINATOR_PROTOCOL_VERSION = 1 as const;
+const COORDINATOR_PROTOCOL_VERSION = 2 as const;
 const COORDINATOR_REQUEST_TIMEOUT_MS = 10_000;
 const COORDINATOR_RETRY_INTERVAL_MS = 25;
 const COORDINATOR_RESPONSE_RETRY_INTERVAL_MS = 1_000;
@@ -40,6 +40,7 @@ type HizoFSCoordinatorOperation =
     readonly expectedCommitObjectId: string;
     readonly expectedRevision: number;
     readonly inodeIndexRootObjectId: string;
+    readonly subvolumeMountIndexRootObjectId: string;
   };
 
 type CoordinatorOperationDelivery =
@@ -131,6 +132,7 @@ const HizoFSCoordinatorOperationSchema: z.ZodType<HizoFSCoordinatorOperation> =
       expectedCommitObjectId: z.string(),
       expectedRevision: z.number().int().nonnegative(),
       inodeIndexRootObjectId: z.string(),
+      subvolumeMountIndexRootObjectId: z.string(),
     }).strict(),
   ]);
 
@@ -240,39 +242,39 @@ const localCoordinatorGroups = new WeakMap<
   Map<string, LocalCoordinatorGroup>
 >();
 
-function getLocalCoordinatorGroup({ localCoordinationIdentity, fileSystemId }: {
+function getLocalCoordinatorGroup({ localCoordinationIdentity, coordinationKey }: {
   localCoordinationIdentity: object;
-  fileSystemId: string;
+  coordinationKey: string;
 }): LocalCoordinatorGroup {
   let byFileSystemId = localCoordinatorGroups.get(localCoordinationIdentity);
   if (byFileSystemId === undefined) {
     byFileSystemId = new Map();
     localCoordinatorGroups.set(localCoordinationIdentity, byFileSystemId);
   }
-  let group = byFileSystemId.get(fileSystemId);
+  let group = byFileSystemId.get(coordinationKey);
   if (group === undefined) {
     group = {
       members: new Set(),
       leader: undefined,
     };
-    byFileSystemId.set(fileSystemId, group);
+    byFileSystemId.set(coordinationKey, group);
   }
   return group;
 }
 
 function deleteLocalCoordinatorGroupIfEmpty({
   localCoordinationIdentity,
-  fileSystemId,
+  coordinationKey,
   group,
 }: {
   localCoordinationIdentity: object;
-  fileSystemId: string;
+  coordinationKey: string;
   group: LocalCoordinatorGroup;
 }): void {
   if (group.members.size !== 0) return;
   const byFileSystemId = localCoordinatorGroups.get(localCoordinationIdentity);
-  if (byFileSystemId?.get(fileSystemId) !== group) return;
-  byFileSystemId.delete(fileSystemId);
+  if (byFileSystemId?.get(coordinationKey) !== group) return;
+  byFileSystemId.delete(coordinationKey);
   if (byFileSystemId.size === 0) {
     localCoordinatorGroups.delete(localCoordinationIdentity);
   }
@@ -354,6 +356,7 @@ function postCoordinatorMessage({
 export class HizoFSActiveStateCoordinator {
   constructor({
     fileSystemId,
+    coordinationScope,
     localCoordinationIdentity,
     loadFromBacking,
     publishFromState,
@@ -361,16 +364,19 @@ export class HizoFSActiveStateCoordinator {
     diagnostics,
   }: {
     fileSystemId: string;
+    coordinationScope: string;
     localCoordinationIdentity: object;
     loadFromBacking: () => Promise<HizoFSActiveState>;
     publishFromState: ({
       currentState,
       publicationId,
       inodeIndexRootObjectId,
+      subvolumeMountIndexRootObjectId,
     }: {
       currentState: HizoFSActiveState;
       publicationId: string;
       inodeIndexRootObjectId: string;
+      subvolumeMountIndexRootObjectId: string;
     }) => Promise<HizoFSActiveState>;
     setHeadHandleRetention: ({
       retention,
@@ -380,6 +386,8 @@ export class HizoFSActiveStateCoordinator {
     diagnostics: HizoFSRuntimeDiagnostics | undefined;
   }) {
     this.fileSystemId = fileSystemId;
+    this.coordinationScope = coordinationScope;
+    this.coordinationKey = `${fileSystemId}/${coordinationScope}`;
     this.localCoordinationIdentity = localCoordinationIdentity;
     this.instanceId = createHizoFSStableId();
     this.loadFromBacking = loadFromBacking;
@@ -389,6 +397,8 @@ export class HizoFSActiveStateCoordinator {
   }
 
   private readonly fileSystemId: string;
+  private readonly coordinationScope: string;
+  private readonly coordinationKey: string;
   private readonly localCoordinationIdentity: object;
   private readonly instanceId: string;
   private readonly loadFromBacking: () => Promise<HizoFSActiveState>;
@@ -396,10 +406,12 @@ export class HizoFSActiveStateCoordinator {
     currentState,
     publicationId,
     inodeIndexRootObjectId,
+    subvolumeMountIndexRootObjectId,
   }: {
     currentState: HizoFSActiveState;
     publicationId: string;
     inodeIndexRootObjectId: string;
+    subvolumeMountIndexRootObjectId: string;
   }) => Promise<HizoFSActiveState>;
   private readonly setHeadHandleRetention: ({
     retention,
@@ -463,18 +475,20 @@ export class HizoFSActiveStateCoordinator {
     expectedCommitObjectId,
     expectedRevision,
     inodeIndexRootObjectId,
+    subvolumeMountIndexRootObjectId,
     flushPreparedRecords,
   }: {
     publicationId: string;
     expectedCommitObjectId: string;
     expectedRevision: number;
     inodeIndexRootObjectId: string;
+    subvolumeMountIndexRootObjectId: string;
     flushPreparedRecords: () => Promise<void>;
   }): Promise<HizoFSCoordinatorPublishResult> {
     await this.ensureStarted();
     const localLeader = getLocalCoordinatorGroup({
       localCoordinationIdentity: this.localCoordinationIdentity,
-      fileSystemId: this.fileSystemId,
+      coordinationKey: this.coordinationKey,
     }).leader;
     if (localLeader !== this) {
       // A leader in another runtime cannot flush frames buffered by this
@@ -490,6 +504,7 @@ export class HizoFSActiveStateCoordinator {
         expectedCommitObjectId,
         expectedRevision,
         inodeIndexRootObjectId,
+        subvolumeMountIndexRootObjectId,
       },
     });
     switch (result.type) {
@@ -541,7 +556,7 @@ export class HizoFSActiveStateCoordinator {
       await this.operationChain;
     }
     this.releaseLeadership.resolve();
-    const group = localCoordinatorGroups.get(this.localCoordinationIdentity)?.get(this.fileSystemId);
+    const group = localCoordinatorGroups.get(this.localCoordinationIdentity)?.get(this.coordinationKey);
     const wasLocalLeader = group?.leader === this;
     group?.members.delete(this);
     if (wasLocalLeader && group !== undefined) {
@@ -579,7 +594,7 @@ export class HizoFSActiveStateCoordinator {
     if (group !== undefined) {
       deleteLocalCoordinatorGroupIfEmpty({
         localCoordinationIdentity: this.localCoordinationIdentity,
-        fileSystemId: this.fileSystemId,
+        coordinationKey: this.coordinationKey,
         group,
       });
     }
@@ -594,7 +609,7 @@ export class HizoFSActiveStateCoordinator {
     await this.ensureStarted();
     const localLeader = getLocalCoordinatorGroup({
       localCoordinationIdentity: this.localCoordinationIdentity,
-      fileSystemId: this.fileSystemId,
+      coordinationKey: this.coordinationKey,
     }).leader;
     if (localLeader !== undefined) {
       if (localLeader !== this) this.hasPreviouslyObservedLeader = true;
@@ -686,7 +701,7 @@ export class HizoFSActiveStateCoordinator {
   private async start(): Promise<void> {
     const group = getLocalCoordinatorGroup({
       localCoordinationIdentity: this.localCoordinationIdentity,
-      fileSystemId: this.fileSystemId,
+      coordinationKey: this.coordinationKey,
     });
     group.members.add(this);
 
@@ -700,7 +715,7 @@ export class HizoFSActiveStateCoordinator {
     if (typeof BroadcastChannel === 'undefined') {
       throw new Error('Cross-realm HizoFS coordination requires BroadcastChannel');
     }
-    this.channel = new BroadcastChannel(`hizofs/${this.fileSystemId}/coordinator`);
+    this.channel = new BroadcastChannel(`hizofs/${this.fileSystemId}/${this.coordinationScope}/coordinator`);
     this.channel.addEventListener('message', (event: MessageEvent<unknown>) => {
       this.receiveMessage({ value: event.data });
     });
@@ -711,7 +726,7 @@ export class HizoFSActiveStateCoordinator {
     // before serving requests. A SharedWorker owner may replace this lease when
     // standalone/file-protocol constraints can preserve the same guarantees.
     this.electionPromise = navigator.locks.request(
-      `hizofs/${this.fileSystemId}/coordinator-owner`,
+      `hizofs/${this.fileSystemId}/${this.coordinationScope}/coordinator-owner`,
       {
         mode: 'exclusive',
         signal: this.leadershipAbortController.signal,
@@ -734,7 +749,7 @@ export class HizoFSActiveStateCoordinator {
     this.leaderInitializationError = undefined;
     const group = getLocalCoordinatorGroup({
       localCoordinationIdentity: this.localCoordinationIdentity,
-      fileSystemId: this.fileSystemId,
+      coordinationKey: this.coordinationKey,
     });
     this.diagnostics?.recordCoordinatorEvent({
       event: this.hasPreviouslyObservedLeader
@@ -789,7 +804,7 @@ export class HizoFSActiveStateCoordinator {
   private async leaveLeadership(): Promise<void> {
     if (!this.isLeader) return;
     this.isLeader = false;
-    const group = localCoordinatorGroups.get(this.localCoordinationIdentity)?.get(this.fileSystemId);
+    const group = localCoordinatorGroups.get(this.localCoordinationIdentity)?.get(this.coordinationKey);
     if (group?.leader === this) group.leader = undefined;
     this.activeState = undefined;
     this.leaderInitializationError = undefined;
@@ -998,6 +1013,8 @@ export class HizoFSActiveStateCoordinator {
             currentState.commit.revision !== operation.expectedRevision + 1
             || currentState.commit.inodeIndexRootObjectId
               !== operation.inodeIndexRootObjectId
+            || currentState.commit.subvolumeMountIndexRootObjectId
+              !== operation.subvolumeMountIndexRootObjectId
           ) {
             throw new HizoFSCorruptionError({
               message: 'HizoFS publication ID is bound to inconsistent commit data',
@@ -1048,6 +1065,8 @@ export class HizoFSActiveStateCoordinator {
           currentState,
           publicationId: operation.publicationId,
           inodeIndexRootObjectId: operation.inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId:
+            operation.subvolumeMountIndexRootObjectId,
         }),
       });
       this.activeState = state;

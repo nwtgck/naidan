@@ -208,6 +208,16 @@ export class HizoFSSubvolumeMountIndex {
     });
   }
 
+  validateStructure({ rootObjectId }: {
+    rootObjectId: string;
+  }): Promise<{
+    readonly pageCount: number;
+    readonly entryCount: number;
+    readonly depth: number;
+  }> {
+    return this.index.validateStructure({ rootObjectId });
+  }
+
   async visitReferences({
     rootObjectId,
     visitPageObjectId,

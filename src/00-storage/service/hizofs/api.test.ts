@@ -9,10 +9,12 @@ import {
   createHizoFS,
   createHizoFSBulkBuilder,
   createHizoFSDiagnosticSession,
+  createHizoFSSubvolume,
   getHizoFSSubvolumeInfo,
   inspectHizoFS,
   openHizoFS,
   openHizoFSWorkerMount,
+  snapshotHizoFSSubvolume,
   TEST_ONLY,
 } from './api';
 import {
@@ -21,7 +23,10 @@ import {
 } from './file-system/policy';
 import { createHizoFSRuntimeDiagnostics } from './file-system/diagnostics';
 import { createQueuedTestLockManager } from './test-lock-manager';
-import { HizoFSSession } from './file-system/session';
+import {
+  getHizoFSDirectoryHandleContext,
+  HizoFSSession,
+} from './file-system/session';
 import type { LoadedHizoFSFile } from './file-system/node-service';
 import { createHizoFSInspectionReader } from './inspection';
 import type { HizoFSRecordKind } from './format/record';
@@ -218,7 +223,7 @@ describe('HizoFS public file-system API', () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const created = await createTiny({ root, now: () => 1 });
     const createdInfo = await getHizoFSSubvolumeInfo({
-      fileSystemSession: created,
+      handle: created.root,
     });
     expect(createdInfo).toMatchObject({
       access: 'read_write',
@@ -231,7 +236,7 @@ describe('HizoFS public file-system API', () => {
 
     const reopened = await openTiny({ root, now: () => 2 });
     await expect(getHizoFSSubvolumeInfo({
-      fileSystemSession: reopened,
+      handle: reopened.root,
     })).resolves.toEqual({
       subvolumeId: createdId,
       access: 'read_write',
@@ -321,6 +326,547 @@ describe('HizoFS public file-system API', () => {
       .toBe(before.records.subvolume_mount_index_page.readOperations);
     expect(after.records.subvolume_mount_index_page.writeOperations)
       .toBe(before.records.subvolume_mount_index_page.writeOperations);
+    await session.close();
+  });
+
+  it('opens an empty read subvolume through one stable mount entry', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const hizofs = requireHizoFSSession({ session });
+    const child = await hizofs.createReadSubvolume({
+      directoryNodeId: hizofs.rootDirectoryNodeId,
+      name: 'archive',
+    });
+
+    await expect(child.getFileHandle({
+      name: 'forbidden.txt',
+      create: true,
+    })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+    await expect(session.root.getDirectoryHandle({
+      name: 'archive',
+      create: false,
+    })).resolves.toMatchObject({ kind: 'directory', name: 'archive' });
+    await expect(session.root.getEntryHandle({ name: 'archive' }))
+      .resolves.toMatchObject({ kind: 'directory', name: 'archive' });
+    const listed: string[] = [];
+    for await (const [name, handle] of session.root.entries()) {
+      if (handle.kind === 'directory') listed.push(name);
+    }
+    expect(listed).toContain('archive');
+
+    await expect(session.root.removeEntry({
+      name: 'archive',
+      recursive: true,
+    })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    await session.close();
+
+    const reopened = await openTiny({ root: backing, now: () => 2 });
+    const reopenedChild = await reopened.root.getDirectoryHandle({
+      name: 'archive',
+      create: false,
+    });
+    await expect(reopenedChild.getFileHandle({
+      name: 'still-forbidden.txt',
+      create: true,
+    })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+    await reopened.close();
+  });
+
+  it('creates independently writable child subvolumes through the public API', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({
+      root: backing,
+      now: () => 1,
+    });
+
+    const child = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'archive',
+      access: 'read',
+    });
+
+    await expect(child.getFileHandle({
+      name: 'forbidden.txt',
+      create: true,
+    })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+    const writable = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'writable',
+      access: 'read_write',
+    });
+    const rootContext = getHizoFSDirectoryHandleContext({
+      handle: session.root,
+    });
+    const writableContext = getHizoFSDirectoryHandleContext({
+      handle: writable,
+    });
+    if (rootContext === undefined || writableContext === undefined) {
+      throw new Error('Expected HizoFS subvolume contexts');
+    }
+    const rootStateBeforeChildWrite = await rootContext.session.loadActiveState();
+    const childStateBeforeWrite = await writableContext.session.loadActiveState();
+    await writeStorageFileText({
+      fileHandle: await writable.getFileHandle({
+        name: 'child.txt',
+        create: true,
+      }),
+      value: 'independent child state',
+    });
+    const rootStateAfterChildWrite = await rootContext.session.loadActiveState();
+    const childStateAfterWrite = await writableContext.session.loadActiveState();
+    expect(rootStateAfterChildWrite.commitObjectId)
+      .toBe(rootStateBeforeChildWrite.commitObjectId);
+    expect(childStateAfterWrite.commit.revision)
+      .toBeGreaterThan(childStateBeforeWrite.commit.revision);
+    expect(await getHizoFSSubvolumeInfo({
+      handle: writable,
+    })).toMatchObject({
+      access: 'read_write',
+      root: false,
+    });
+    await session.close();
+
+    const reopened = await openTiny({ root: backing, now: () => 2 });
+    const reopenedWritable = await reopened.root.getDirectoryHandle({
+      name: 'writable',
+      create: false,
+    });
+    expect(await readStorageFileText({
+      fileHandle: await reopenedWritable.getFileHandle({
+        name: 'child.txt',
+        create: false,
+      }),
+    })).toBe('independent child state');
+    await reopened.close();
+  });
+
+  it('snapshots one subvolume without copying file or chunk records', async () => {
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await createHizoFSDiagnosticSession({
+      backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileSystemRootKey: ROOT_KEY,
+      policy: TINY_POLICY,
+      diagnostics,
+    });
+    await writeStorageFileText({
+      fileHandle: await session.root.getFileHandle({
+        name: 'shared.txt',
+        create: true,
+      }),
+      value: 'shared immutable data',
+    });
+    const sourceSession = requireHizoFSSession({ session });
+    const sourceState = await sourceSession.loadFilesystemState();
+    const before = diagnostics.snapshot();
+
+    const snapshot = await snapshotHizoFSSubvolume({
+      source: session.root,
+      destination: session.root,
+      name: 'snapshot',
+      access: 'read',
+    });
+    const after = diagnostics.snapshot();
+
+    expect(await readStorageFileText({
+      fileHandle: await snapshot.getFileHandle({
+        name: 'shared.txt',
+        create: false,
+      }),
+    })).toBe('shared immutable data');
+    const snapshotContext = getHizoFSDirectoryHandleContext({
+      handle: snapshot,
+    });
+    if (snapshotContext === undefined) {
+      throw new Error('Expected a HizoFS snapshot directory');
+    }
+    const snapshotState = await snapshotContext.session.loadFilesystemState();
+    expect(snapshotState.commit.inodeIndexRootObjectId)
+      .toBe(sourceState.commit.inodeIndexRootObjectId);
+    expect(snapshotState.commit.rootDirectoryNodeId)
+      .toBe(sourceState.commit.rootDirectoryNodeId);
+    expect(snapshotState.commit.subvolumeId)
+      .not.toBe(sourceState.commit.subvolumeId);
+    expect(
+      after.phases.commit_publication.operationCount
+      - before.phases.commit_publication.operationCount,
+    ).toBe(1);
+    expect(
+      after.records.subvolume_descriptor.writeOperations
+      - before.records.subvolume_descriptor.writeOperations,
+    ).toBe(1);
+    expect(
+      after.records.file_inode.readOperations
+      - before.records.file_inode.readOperations,
+    ).toBe(0);
+    expect(
+      after.records.file_inode.writeOperations
+      - before.records.file_inode.writeOperations,
+    ).toBe(0);
+    expect(
+      after.records.file_chunk.readOperations
+      - before.records.file_chunk.readOperations,
+    ).toBe(0);
+    expect(
+      after.records.file_chunk.writeOperations
+      - before.records.file_chunk.writeOperations,
+    ).toBe(0);
+    await expect(snapshot.getFileHandle({
+      name: 'forbidden.txt',
+      create: true,
+    })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+    await session.close();
+  });
+
+  it('recursively snapshots nested read subvolumes with fresh identities', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const sourceChild = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'child',
+      access: 'read',
+    });
+    const sourceChildContext = getHizoFSDirectoryHandleContext({
+      handle: sourceChild,
+    });
+    if (sourceChildContext === undefined) {
+      throw new Error('Expected a HizoFS child subvolume');
+    }
+    const sourceChildId = sourceChildContext.session.subvolumeId;
+
+    const snapshot = await snapshotHizoFSSubvolume({
+      source: session.root,
+      destination: session.root,
+      name: 'recursive-snapshot',
+      access: 'read',
+    });
+    const clonedChild = await snapshot.getDirectoryHandle({
+      name: 'child',
+      create: false,
+    });
+    const snapshotContext = getHizoFSDirectoryHandleContext({
+      handle: snapshot,
+    });
+    const clonedChildContext = getHizoFSDirectoryHandleContext({
+      handle: clonedChild,
+    });
+    if (snapshotContext === undefined || clonedChildContext === undefined) {
+      throw new Error('Expected recursive HizoFS subvolume handles');
+    }
+    const rootContext = getHizoFSDirectoryHandleContext({
+      handle: session.root,
+    });
+    if (rootContext === undefined) {
+      throw new Error('Expected the HizoFS root directory');
+    }
+    expect(snapshotContext.session.subvolumeId)
+      .not.toBe(rootContext.session.subvolumeId);
+    expect(clonedChildContext.session.subvolumeId).not.toBe(sourceChildId);
+    expect(clonedChildContext.session.subvolumeId)
+      .not.toBe(snapshotContext.session.subvolumeId);
+    await session.close();
+  });
+
+  it('freezes nested read_write subvolumes into one recursive read snapshot', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const sourceChild = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'workspace',
+      access: 'read_write',
+    });
+    await writeStorageFileText({
+      fileHandle: await sourceChild.getFileHandle({
+        name: 'value.txt',
+        create: true,
+      }),
+      value: 'captured value',
+    });
+
+    const snapshot = await snapshotHizoFSSubvolume({
+      source: session.root,
+      destination: session.root,
+      name: 'snapshot',
+      access: 'read',
+    });
+    const clonedChild = await snapshot.getDirectoryHandle({
+      name: 'workspace',
+      create: false,
+    });
+    expect(await readStorageFileText({
+      fileHandle: await clonedChild.getFileHandle({
+        name: 'value.txt',
+        create: false,
+      }),
+    })).toBe('captured value');
+    await expect(clonedChild.getFileHandle({
+      name: 'forbidden.txt',
+      create: true,
+    })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+
+    await writeStorageFileText({
+      fileHandle: await sourceChild.getFileHandle({
+        name: 'value.txt',
+        create: false,
+      }),
+      value: 'new source value',
+    });
+    expect(await readStorageFileText({
+      fileHandle: await clonedChild.getFileHandle({
+        name: 'value.txt',
+        create: false,
+      }),
+    })).toBe('captured value');
+    expect(await readStorageFileText({
+      fileHandle: await sourceChild.getFileHandle({
+        name: 'value.txt',
+        create: false,
+      }),
+    })).toBe('new source value');
+    await session.close();
+  });
+
+  it('creates an independently writable recursive snapshot graph', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const sourceChild = await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'workspace',
+      access: 'read_write',
+    });
+    await writeStorageFileText({
+      fileHandle: await sourceChild.getFileHandle({
+        name: 'source.txt',
+        create: true,
+      }),
+      value: 'shared initial state',
+    });
+
+    const snapshot = await snapshotHizoFSSubvolume({
+      source: session.root,
+      destination: session.root,
+      name: 'writable-snapshot',
+      access: 'read_write',
+    });
+    const clonedChild = await snapshot.getDirectoryHandle({
+      name: 'workspace',
+      create: false,
+    });
+    const snapshotContext = getHizoFSDirectoryHandleContext({
+      handle: snapshot,
+    });
+    const clonedChildContext = getHizoFSDirectoryHandleContext({
+      handle: clonedChild,
+    });
+    expect(snapshotContext).toBeDefined();
+    expect(clonedChildContext).toBeDefined();
+    if (snapshotContext === undefined || clonedChildContext === undefined) {
+      throw new Error('Expected HizoFS subvolume directory contexts');
+    }
+    await expect(getHizoFSSubvolumeInfo({
+      handle: snapshot,
+    })).resolves.toMatchObject({ access: 'read_write', root: false });
+    await expect(getHizoFSSubvolumeInfo({
+      handle: clonedChild,
+    })).resolves.toMatchObject({ access: 'read_write', root: false });
+
+    await writeStorageFileText({
+      fileHandle: await clonedChild.getFileHandle({
+        name: 'snapshot-only.txt',
+        create: true,
+      }),
+      value: 'snapshot mutation',
+    });
+    await expect(sourceChild.getFileHandle({
+      name: 'snapshot-only.txt',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    expect(await readStorageFileText({
+      fileHandle: await clonedChild.getFileHandle({
+        name: 'source.txt',
+        create: false,
+      }),
+    })).toBe('shared initial state');
+    await session.close();
+  });
+
+  it('rejects snapshots between distinct stores that use the same root key', async () => {
+    const sourceSession = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'source-backing' }),
+      now: () => 1,
+    });
+    const destinationSession = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'destination-backing' }),
+      now: () => 1,
+    });
+
+    await expect(snapshotHizoFSSubvolume({
+      source: sourceSession.root,
+      destination: destinationSession.root,
+      name: 'must-not-cross',
+      access: 'read',
+    })).rejects.toMatchObject({
+      name: 'CrossDeviceError',
+      code: 'EXDEV',
+    });
+    await expect(destinationSession.root.getDirectoryHandle({
+      name: 'must-not-cross',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await sourceSession.close();
+    await destinationSession.close();
+  });
+
+  it('publishes one bounded metadata-only transaction for an empty read subvolume', async () => {
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await createHizoFSDiagnosticSession({
+      backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileSystemRootKey: ROOT_KEY,
+      policy: TINY_POLICY,
+      diagnostics,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const before = diagnostics.snapshot();
+
+    await hizofs.createReadSubvolume({
+      directoryNodeId: hizofs.rootDirectoryNodeId,
+      name: 'archive',
+    });
+
+    const after = diagnostics.snapshot();
+    expect(
+      after.phases.commit_publication.operationCount
+      - before.phases.commit_publication.operationCount,
+    ).toBe(1);
+    expect(
+      after.records.subvolume_descriptor.writeOperations
+      - before.records.subvolume_descriptor.writeOperations,
+    ).toBe(1);
+    expect(
+      after.records.subvolume_mount_index_page.writeOperations
+      - before.records.subvolume_mount_index_page.writeOperations,
+    ).toBe(2);
+    expect(
+      after.records.commit.writeOperations
+      - before.records.commit.writeOperations,
+    ).toBe(2);
+    expect(
+      after.records.file_chunk.writeOperations
+      - before.records.file_chunk.writeOperations,
+    ).toBe(0);
+    await session.close();
+  });
+
+  it('initializes two child heads before one bounded parent publication', async () => {
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await createHizoFSDiagnosticSession({
+      backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileSystemRootKey: ROOT_KEY,
+      policy: TINY_POLICY,
+      diagnostics,
+    });
+    const before = diagnostics.snapshot();
+
+    await createHizoFSSubvolume({
+      destination: session.root,
+      name: 'writable',
+      access: 'read_write',
+    });
+
+    const after = diagnostics.snapshot();
+    expect(
+      after.phases.commit_publication.operationCount
+      - before.phases.commit_publication.operationCount,
+    ).toBe(1);
+    expect(
+      after.records.subvolume_descriptor.writeOperations
+      - before.records.subvolume_descriptor.writeOperations,
+    ).toBe(1);
+    expect(
+      after.records.subvolume_mount_index_page.writeOperations
+      - before.records.subvolume_mount_index_page.writeOperations,
+    ).toBe(2);
+    expect(
+      after.records.commit.writeOperations
+      - before.records.commit.writeOperations,
+    ).toBe(2);
+    expect(
+      after.records.superblock.writeOperations
+      - before.records.superblock.writeOperations,
+    ).toBe(3);
+    expect(
+      after.records.file_chunk.writeOperations
+      - before.records.file_chunk.writeOperations,
+    ).toBe(0);
+    await session.close();
+  });
+
+  it('moves a read subvolume entry without rewriting its mount index', async () => {
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await createHizoFSDiagnosticSession({
+      backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileSystemRootKey: ROOT_KEY,
+      policy: TINY_POLICY,
+      diagnostics,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    await hizofs.createReadSubvolume({
+      directoryNodeId: hizofs.rootDirectoryNodeId,
+      name: 'before',
+    });
+    const before = diagnostics.snapshot();
+
+    await session.root.moveEntry({
+      name: 'before',
+      destination: session.root,
+      newName: 'after',
+      replace: false,
+    });
+
+    const after = diagnostics.snapshot();
+    expect(after.records.subvolume_mount_index_page.writeOperations)
+      .toBe(before.records.subvolume_mount_index_page.writeOperations);
+    await expect(session.root.getDirectoryHandle({
+      name: 'before',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(session.root.getDirectoryHandle({
+      name: 'after',
+      create: false,
+    })).resolves.toMatchObject({ kind: 'directory', name: 'after' });
+    await session.close();
+  });
+
+  it('rejects atomic moves across a subvolume boundary as EXDEV', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      now: () => 1,
+    });
+    const hizofs = requireHizoFSSession({ session });
+    const child = await hizofs.createReadSubvolume({
+      directoryNodeId: hizofs.rootDirectoryNodeId,
+      name: 'archive',
+    });
+    await session.root.getFileHandle({ name: 'value.txt', create: true });
+
+    await expect(session.root.moveEntry({
+      name: 'value.txt',
+      destination: child,
+      newName: 'value.txt',
+      replace: false,
+    })).rejects.toMatchObject({
+      name: 'CrossDeviceError',
+      code: 'EXDEV',
+    });
+    await expect(session.root.getFileHandle({
+      name: 'value.txt',
+      create: false,
+    })).resolves.toBeDefined();
     await session.close();
   });
 
@@ -653,6 +1199,108 @@ describe('HizoFS public file-system API', () => {
       await expect(openHizoFSWorkerMount({ source })).rejects.toThrow(
         'require the Web Locks API',
       );
+      await ownerSession.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+  it('reopens a read subvolume as an immutable Worker-local session', async () => {
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({ onRequest: undefined }),
+    });
+    try {
+      const ownerSession = await createHizoFS({
+        backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+        fileSystemRootKey: ROOT_KEY,
+      });
+      const hizofs = requireHizoFSSession({ session: ownerSession });
+      const child = await hizofs.createReadSubvolume({
+        directoryNodeId: hizofs.rootDirectoryNodeId,
+        name: 'archive',
+      });
+      const source = child.createWorkerMountSource?.();
+      if (source === undefined) {
+        throw new Error('HizoFS subvolume did not expose a Worker mount source');
+      }
+
+      const workerSession = await openHizoFSWorkerMount({ source });
+      await expect(getHizoFSSubvolumeInfo({
+        handle: workerSession.root,
+      })).resolves.toMatchObject({
+        access: 'read',
+        stateSelection: 'current',
+        root: false,
+      });
+      await expect(workerSession.root.getFileHandle({
+        name: 'forbidden.txt',
+        create: true,
+      })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+      const entries: string[] = [];
+      for await (const [name] of workerSession.root.entries()) {
+        entries.push(name);
+      }
+      expect(entries).toEqual([]);
+
+      await workerSession.close();
+      await ownerSession.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+  it('reopens a read_write subvolume with its scoped Worker coordinator', async () => {
+    const originalLocks = navigator.locks;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({ onRequest: undefined }),
+    });
+    try {
+      const ownerSession = await createHizoFS({
+        backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+        fileSystemRootKey: ROOT_KEY,
+      });
+      const child = await createHizoFSSubvolume({
+        destination: ownerSession.root,
+        name: 'workspace',
+        access: 'read_write',
+      });
+      const source = child.createWorkerMountSource?.();
+      if (source === undefined) {
+        throw new Error('HizoFS subvolume did not expose a Worker mount source');
+      }
+
+      const workerSession = await openHizoFSWorkerMount({ source });
+      await expect(getHizoFSSubvolumeInfo({
+        handle: workerSession.root,
+      })).resolves.toMatchObject({
+        access: 'read_write',
+        stateSelection: 'current',
+        root: false,
+      });
+      await writeStorageFileText({
+        fileHandle: await workerSession.root.getFileHandle({
+          name: 'worker.txt',
+          create: true,
+        }),
+        value: 'scoped child publication',
+      });
+      expect(await readStorageFileText({
+        fileHandle: await child.getFileHandle({
+          name: 'worker.txt',
+          create: false,
+        }),
+      })).toBe('scoped child publication');
+
+      await workerSession.close();
       await ownerSession.close();
     } finally {
       Object.defineProperty(navigator, 'locks', {

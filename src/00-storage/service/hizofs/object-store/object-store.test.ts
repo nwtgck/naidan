@@ -77,6 +77,7 @@ async function publishStore({
   sequence?: number;
 }): Promise<void> {
   await store.writeSuperblock({
+    scope: { type: 'root' },
     slot: (sequence % 2) as 0 | 1,
     record: {
       kind: 'superblock',
@@ -923,6 +924,7 @@ describe('HizoFS immutable object store', () => {
       sequence: number;
     }): Promise<void> => {
       await store.writeSuperblock({
+        scope: { type: 'root' },
         slot: 0,
         record: {
           kind: 'superblock',
@@ -944,7 +946,7 @@ describe('HizoFS immutable object store', () => {
     await write({ activeCommitObjectId: 'c', sequence: 3 });
 
     expect(headTruncates).toBe(1);
-    await expect(store.readSuperblock({ slot: 0 })).resolves.toMatchObject({
+    await expect(store.readSuperblock({ scope: { type: 'root' }, slot: 0 })).resolves.toMatchObject({
       metadata: { sequence: 3, activeCommitObjectId: 'c' },
     });
     await store.close();
@@ -958,6 +960,7 @@ describe('HizoFS immutable object store', () => {
       fileSystemId: FILE_SYSTEM_ID_A,
     });
     await store.writeSuperblock({
+      scope: { type: 'root' },
       slot: 0,
       record: {
         kind: 'superblock',
@@ -973,8 +976,8 @@ describe('HizoFS immutable object store', () => {
     });
     const readSpy = vi.spyOn(backingStore, 'read');
 
-    await store.readSuperblock({ slot: 0 });
-    await store.readSuperblock({ slot: 0 });
+    await store.readSuperblock({ scope: { type: 'root' }, slot: 0 });
+    await store.readSuperblock({ scope: { type: 'root' }, slot: 0 });
 
     expect(readSpy).toHaveBeenCalledTimes(2);
   });
@@ -1087,6 +1090,7 @@ describe('HizoFS immutable object store', () => {
       fileSystemId: FILE_SYSTEM_ID_A,
     });
     await store.writeSuperblock({
+      scope: { type: 'root' },
       slot: 1,
       record: {
         kind: 'superblock',
@@ -1101,7 +1105,7 @@ describe('HizoFS immutable object store', () => {
       },
     });
 
-    expect(await store.readSuperblock({ slot: 1 })).toMatchObject({
+    expect(await store.readSuperblock({ scope: { type: 'root' }, slot: 1 })).toMatchObject({
       kind: 'superblock',
       metadata: { sequence: 5 },
     });
