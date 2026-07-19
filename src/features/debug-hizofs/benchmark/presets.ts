@@ -194,7 +194,7 @@ function createConfiguration({
       backingFileHandleCacheEntryLimit: 1024,
       fileChunkCacheByteLimit: 16 * 1024 * 1024 + 64 * 1024,
       fileChunkCacheEntryLimit: 2048,
-      fileChunkCacheAdmission: 'read_only',
+      fileChunkCacheAdmission: 'read',
     },
     benchmarkDataRetention: 'delete_after_run',
   };

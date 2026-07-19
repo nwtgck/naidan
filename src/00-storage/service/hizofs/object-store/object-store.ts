@@ -148,6 +148,8 @@ function getSegmentRotationPayloadByteLength({
   case 'file_chunk':
     return record.binaryPayload.byteLength;
   case 'superblock':
+  case 'subvolume_descriptor':
+  case 'subvolume_mount_index_page':
   case 'commit':
   case 'inode_index_page':
   case 'file_inode':
@@ -182,11 +184,11 @@ export class HizoFSObjectStore {
     metadataCacheEntryLimit: number;
     fileChunkCacheByteLimit: number;
     fileChunkCacheEntryLimit: number;
-    fileChunkCacheAdmission: 'read_only' | 'read_write';
+    fileChunkCacheAdmission: 'read' | 'read_write';
     diagnostics?: HizoFSRuntimeDiagnostics;
   }) {
     switch (fileChunkCacheAdmission) {
-    case 'read_only':
+    case 'read':
     case 'read_write':
       this.fileChunkCacheAdmission = fileChunkCacheAdmission;
       break;
@@ -217,7 +219,7 @@ export class HizoFSObjectStore {
   }
 
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
-  private readonly fileChunkCacheAdmission: 'read_only' | 'read_write';
+  private readonly fileChunkCacheAdmission: 'read' | 'read_write';
   private readonly metadataCache: HizoFSPlaintextLruCache;
   private readonly fileChunkCache: HizoFSPlaintextLruCache;
   private readonly segmentedStore: HizoFSSegmentedStore;
@@ -409,7 +411,7 @@ export class HizoFSObjectStore {
         }
         return objectIds;
       }
-      case 'read_only':
+      case 'read':
         break;
       default: {
         const _ex: never = this.fileChunkCacheAdmission;
@@ -706,6 +708,8 @@ export class HizoFSObjectStore {
       switch (record.kind) {
       case 'superblock':
         break;
+      case 'subvolume_descriptor':
+      case 'subvolume_mount_index_page':
       case 'commit':
       case 'inode_index_page':
       case 'file_inode':
@@ -745,6 +749,8 @@ export class HizoFSObjectStore {
       switch (head.record.kind) {
       case 'superblock':
         break;
+      case 'subvolume_descriptor':
+      case 'subvolume_mount_index_page':
       case 'commit':
       case 'inode_index_page':
       case 'file_inode':
@@ -892,6 +898,8 @@ export class HizoFSObjectStore {
       break;
     case 'superblock':
       break;
+    case 'subvolume_descriptor':
+    case 'subvolume_mount_index_page':
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':
@@ -921,12 +929,14 @@ export class HizoFSObjectStore {
   }): boolean {
     switch (kind) {
     case 'file_chunk':
-      if (source === 'write' && this.fileChunkCacheAdmission === 'read_only') {
+      if (source === 'write' && this.fileChunkCacheAdmission === 'read') {
         return false;
       }
       return this.fileChunkCache.set({ objectId, plaintext });
     case 'superblock':
       return false;
+    case 'subvolume_descriptor':
+    case 'subvolume_mount_index_page':
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':

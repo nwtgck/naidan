@@ -10,30 +10,69 @@ export const HizoFSDescriptorSchemaDto: z.ZodType<HizoFSDescriptorDto> = z.objec
   formatVersion: z.literal(1),
 });
 
+export type HizoFSSubvolumeAccessDto =
+  | 'read'
+  | 'read_write';
+
+export const HizoFSSubvolumeAccessSchemaDto: z.ZodType<
+  HizoFSSubvolumeAccessDto
+> = z.enum(['read', 'read_write']);
+
+export type HizoFSSubvolumeDescriptorDto =
+  | {
+      readonly subvolumeId: string;
+      readonly access: 'read';
+      readonly fixedCommitObjectId: string;
+    }
+  | {
+      readonly subvolumeId: string;
+      readonly access: 'read_write';
+    };
+
+export const HizoFSSubvolumeDescriptorSchemaDto: z.ZodType<
+  HizoFSSubvolumeDescriptorDto
+> = z.discriminatedUnion('access', [
+  z.object({
+    subvolumeId: z.string(),
+    access: z.literal('read'),
+    fixedCommitObjectId: z.string(),
+  }).strict(),
+  z.object({
+    subvolumeId: z.string(),
+    access: z.literal('read_write'),
+  }).strict(),
+]);
+
 export type HizoFSSuperblockDto = {
   readonly sequence: number;
   readonly fileSystemId: string;
+  readonly subvolumeDescriptorObjectId: string;
   readonly activeCommitObjectId: string;
 };
 
 export const HizoFSSuperblockSchemaDto: z.ZodType<HizoFSSuperblockDto> = z.object({
   sequence: z.number(),
   fileSystemId: z.string(),
+  subvolumeDescriptorObjectId: z.string(),
   activeCommitObjectId: z.string(),
 });
 
 export type HizoFSCommitDto = {
   readonly revision: number;
   readonly publicationId: string;
+  readonly subvolumeId: string;
   readonly rootDirectoryNodeId: string;
   readonly inodeIndexRootObjectId: string;
+  readonly subvolumeMountIndexRootObjectId: string;
 };
 
 export const HizoFSCommitSchemaDto: z.ZodType<HizoFSCommitDto> = z.object({
   revision: z.number(),
   publicationId: z.string(),
+  subvolumeId: z.string(),
   rootDirectoryNodeId: z.string(),
   inodeIndexRootObjectId: z.string(),
+  subvolumeMountIndexRootObjectId: z.string(),
 });
 
 export type HizoFSNodeKindDto =
@@ -241,6 +280,53 @@ export const HizoFSDirectoryIndexPageSchemaDto: z.ZodType<
     type: z.literal('branch'),
     children: z.array(HizoFSDirectoryIndexBranchChildSchemaDto),
   }),
+]);
+
+export type HizoFSSubvolumeMountDto = {
+  readonly mountId: string;
+  readonly subvolumeDescriptorObjectId: string;
+};
+
+export const HizoFSSubvolumeMountSchemaDto: z.ZodType<
+  HizoFSSubvolumeMountDto
+> = z.object({
+  mountId: z.string(),
+  subvolumeDescriptorObjectId: z.string(),
+}).strict();
+
+export type HizoFSSubvolumeMountIndexBranchChildDto = {
+  readonly upperBoundMountId: string;
+  readonly childPageObjectId: string;
+};
+
+export const HizoFSSubvolumeMountIndexBranchChildSchemaDto: z.ZodType<
+  HizoFSSubvolumeMountIndexBranchChildDto
+> = z.object({
+  upperBoundMountId: z.string(),
+  childPageObjectId: z.string(),
+}).strict();
+
+export type HizoFSSubvolumeMountIndexPageDto =
+  | {
+      readonly type: 'leaf';
+      readonly mounts: readonly HizoFSSubvolumeMountDto[];
+    }
+  | {
+      readonly type: 'branch';
+      readonly children: readonly HizoFSSubvolumeMountIndexBranchChildDto[];
+    };
+
+export const HizoFSSubvolumeMountIndexPageSchemaDto: z.ZodType<
+  HizoFSSubvolumeMountIndexPageDto
+> = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('leaf'),
+    mounts: z.array(HizoFSSubvolumeMountSchemaDto),
+  }).strict(),
+  z.object({
+    type: z.literal('branch'),
+    children: z.array(HizoFSSubvolumeMountIndexBranchChildSchemaDto),
+  }).strict(),
 ]);
 
 export type HizoFSFileExtentDto = {

@@ -18,6 +18,7 @@ export type StorageDirectoryWorkerMountSource = {
   readonly backingDirectory: FileSystemDirectoryHandle;
   readonly fileSystemId: string;
   readonly rootKey: CryptoKey;
+  readonly subvolumeDescriptorObjectId: string;
   readonly rootDirectoryNodeId: string;
 };
 

@@ -28,7 +28,7 @@ const MODEL_POLICY: HizoFSPolicy = {
   metadataObjectCacheEntryLimit: 1024,
   fileChunkCacheByteLimit: 64,
   fileChunkCacheEntryLimit: 16,
-  fileChunkCacheAdmission: 'read_only',
+  fileChunkCacheAdmission: 'read',
 };
 
 type ModelEntry =

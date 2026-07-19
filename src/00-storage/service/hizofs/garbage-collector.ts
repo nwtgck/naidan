@@ -127,6 +127,7 @@ type HizoFSMarkState = {
   readonly expectedKinds: Map<string, HizoFSRecordKind>;
   readonly loadedInodes: Map<string, LoadedReferencedInode>;
   readonly visitedDirectoryPageObjectIds: Set<string>;
+  readonly visitedSubvolumeMountPageObjectIds: Set<string>;
   readonly visitedExtentPageObjectIds: Set<string>;
   readonly extentRootChunkSizes: Map<string, number>;
   readonly chunkSizeLimits: Map<string, number>;
@@ -147,6 +148,7 @@ type GarbageCollectionRootSnapshot = {
   readonly runtime: HizoFSRuntime;
   readonly activeCommitObjectId: string;
   readonly commitObjectIds: readonly string[];
+  readonly subvolumeDescriptorObjectIds: readonly string[];
   readonly canonicalObjectIds: ReadonlySet<string>;
   readonly ignoredPhysicalPaths: readonly string[];
   readonly initialFenceWaitDurationMs: number;
@@ -556,10 +558,38 @@ async function prepareGarbageCollection({
     expectedKinds: new Map<string, HizoFSRecordKind>(),
     loadedInodes: new Map<string, LoadedReferencedInode>(),
     visitedDirectoryPageObjectIds: new Set<string>(),
+    visitedSubvolumeMountPageObjectIds: new Set<string>(),
     visitedExtentPageObjectIds: new Set<string>(),
     extentRootChunkSizes: new Map<string, number>(),
     chunkSizeLimits: new Map<string, number>(),
   };
+  for (const descriptorObjectId of snapshot.subvolumeDescriptorObjectIds) {
+    registerObjectReference({
+      markState,
+      objectId: descriptorObjectId,
+      expectedKind: 'subvolume_descriptor',
+    });
+    const descriptor = await snapshot.runtime.subvolumeDescriptorStore.read({
+      objectId: descriptorObjectId,
+    });
+    switch (descriptor.access) {
+    case 'read':
+      throw new HizoFSCorruptionError({
+        message: 'HizoFS root descriptor must be read_write during garbage collection',
+        cause: undefined,
+      });
+    case 'read_write':
+      break;
+    default: {
+      const _ex: never = descriptor;
+      throw new Error(
+        `Unhandled HizoFS root descriptor access: ${
+          ((_ex satisfies never) as { readonly access: string }).access
+        }`,
+      );
+    }
+    }
+  }
   for (const commitObjectId of snapshot.commitObjectIds) {
     throwIfAborted({ signal });
     await markCommitGeneration({
@@ -657,16 +687,16 @@ async function snapshotGarbageCollectionRoots({
 
     const rootSnapshotStartedAt = now();
     const activeState = await runtime.core.loadActiveState();
-    switch (activeState.mode) {
+    switch (activeState.stateSelection) {
     case 'current':
       break;
-    case 'fallback_read_only':
+    case 'fallback':
       throw new HizoFSCorruptionError({
         message: 'HizoFS garbage collection is disabled in read-only recovery mode',
         cause: undefined,
       });
     default: {
-      const _ex: never = activeState.mode;
+      const _ex: never = activeState.stateSelection;
       throw new Error(`Unhandled HizoFS active state mode: ${String(_ex)}`);
     }
     }
@@ -674,6 +704,15 @@ async function snapshotGarbageCollectionRoots({
     const commitObjectIds = [...new Set(
       superblocks.map(superblock => superblock.activeCommitObjectId),
     )];
+    const subvolumeDescriptorObjectIds = [...new Set(
+      superblocks.map(superblock => superblock.subvolumeDescriptorObjectId),
+    )];
+    if (subvolumeDescriptorObjectIds.length !== 1) {
+      throw new HizoFSCorruptionError({
+        message: 'HizoFS root superblock generations disagree on the subvolume descriptor',
+        cause: undefined,
+      });
+    }
     if (!commitObjectIds.includes(activeState.commitObjectId)) {
       throw new HizoFSCorruptionError({
         message: 'HizoFS active commit is absent from the valid superblock candidates',
@@ -692,6 +731,7 @@ async function snapshotGarbageCollectionRoots({
       runtime,
       activeCommitObjectId: activeState.commitObjectId,
       commitObjectIds,
+      subvolumeDescriptorObjectIds,
       canonicalObjectIds,
       ignoredPhysicalPaths,
       initialFenceWaitDurationMs,
@@ -1018,6 +1058,33 @@ async function markCommitGeneration({ runtime, commitObjectId, markState }: {
     expectedKind: 'commit',
   });
   const commit = await runtime.commitStore.read({ objectId: commitObjectId });
+  // TODO(hizofs-subvolume): Traverse each reachable child descriptor exactly
+  // once, mark read descriptors through fixedCommitObjectId, and mark both
+  // valid A/B generations for read_write descriptors. Orphan child heads may
+  // be swept only after previous parent generations and runtime pins are
+  // excluded. Until that complete fail-closed traversal exists, encountering
+  // any child mount must abort GC so shared snapshot data cannot be reclaimed.
+  await runtime.subvolumeMountIndex.visitReferences({
+    rootObjectId: commit.subvolumeMountIndexRootObjectId,
+    visitPageObjectId: ({ objectId }) => registerObjectReference({
+      markState,
+      objectId,
+      expectedKind: 'subvolume_mount_index_page',
+    }),
+    visitDescriptorObjectId: ({ objectId }) => {
+      registerObjectReference({
+        markState,
+        objectId,
+        expectedKind: 'subvolume_descriptor',
+      });
+      throw new HizoFSCorruptionError({
+        message:
+          'HizoFS garbage collection refuses mounted child subvolumes until child-head traversal is enabled',
+        cause: undefined,
+      });
+    },
+    visitedPageObjectIds: markState.visitedSubvolumeMountPageObjectIds,
+  });
   await runtime.inodeIndex.validateStructure({
     rootObjectId: commit.inodeIndexRootObjectId,
   });

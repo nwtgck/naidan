@@ -3,6 +3,7 @@ import {
   HizoFSSuperblockSchemaDto,
   type HizoFSCommitDto,
   type HizoFSDescriptorDto,
+  type HizoFSSubvolumeDescriptorDto,
   type HizoFSSuperblockDto,
 } from '@/00-storage/00-dto/hizofs.dto';
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
@@ -130,13 +131,14 @@ export type HizoFSMaintenanceHealth = {
 };
 
 export type HizoFSInspectionOverview = {
-  readonly activeMode: 'current' | 'fallback_read_only';
+  readonly activeMode: 'current' | 'fallback';
   readonly descriptor: HizoFSDescriptorDto;
   readonly fileSystemId: string;
   readonly persistedDescriptorDto: unknown;
   readonly descriptorValidationError: string | undefined;
   readonly superblockSlots: readonly HizoFSSuperblockSlotInspection[];
   readonly activeSuperblock: HizoFSSuperblockDto;
+  readonly rootSubvolumeDescriptor: HizoFSSubvolumeDescriptorDto;
   readonly activeCommitObjectId: string;
   readonly activeCommit: HizoFSCommitDto;
   readonly activeCommitPersistedDto: unknown;
@@ -201,7 +203,7 @@ async function inspectMaintenanceHealth({
 }: {
   objectStore: HizoFSObjectStore;
   garbageCollectionCheckpointStore: HizoFSGarbageCollectionCheckpointStore;
-  activeMode: 'current' | 'fallback_read_only';
+  activeMode: 'current' | 'fallback';
   superblockSlots: readonly HizoFSSuperblockSlotInspection[];
 }): Promise<HizoFSMaintenanceHealth> {
   const listing = await objectStore.listPhysicalObjects();
@@ -226,7 +228,7 @@ async function inspectMaintenanceHealth({
   switch (activeMode) {
   case 'current':
     break;
-  case 'fallback_read_only':
+  case 'fallback':
     reasons.push('active state uses the older read-only fallback generation');
     break;
   default: {
@@ -348,6 +350,7 @@ export async function createHizoFSInspectionReader({
         const activeState = await loadHizoFSActiveStateFromStores({
           superblockStore: runtime.core.superblockStore,
           commitStore: runtime.commitStore,
+          subvolumeDescriptorStore: runtime.subvolumeDescriptorStore,
           inodeIndex: runtime.inodeIndex,
           inodeStore: runtime.inodeStore,
           validatedRootCache: undefined,
@@ -370,17 +373,18 @@ export async function createHizoFSInspectionReader({
         const maintenance = await inspectMaintenanceHealth({
           objectStore: runtime.objectStore,
           garbageCollectionCheckpointStore,
-          activeMode: activeState.mode,
+          activeMode: activeState.stateSelection,
           superblockSlots,
         });
         return {
-          activeMode: activeState.mode,
+          activeMode: activeState.stateSelection,
           descriptor,
           fileSystemId,
           persistedDescriptorDto: descriptorInspection.persistedDto,
           descriptorValidationError: descriptorInspection.validationError,
           superblockSlots,
           activeSuperblock: activeState.superblock,
+          rootSubvolumeDescriptor: activeState.subvolumeDescriptor,
           activeCommitObjectId: activeState.commitObjectId,
           activeCommit: activeState.commit,
           activeCommitPersistedDto: activeCommitRecord.metadata,
@@ -903,6 +907,8 @@ async function inspectSuperblockSlot({
     switch (record.kind) {
     case 'superblock':
       break;
+    case 'subvolume_descriptor':
+    case 'subvolume_mount_index_page':
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':

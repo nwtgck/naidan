@@ -120,20 +120,29 @@ function createSession(): OpfsEncryptionDebugSession {
       activeSuperblock: {
         sequence: 10,
         fileSystemId: 'filesystem-a',
+        subvolumeDescriptorObjectId: 'subvolume-descriptor-a',
         activeCommitObjectId: 'commit-a',
+      },
+      rootSubvolumeDescriptor: {
+        subvolumeId: 'subvolume-a',
+        access: 'read_write',
       },
       activeCommitObjectId: 'commit-a',
       activeCommit: {
         revision: 11,
         publicationId: 'publication-11',
+        subvolumeId: 'subvolume-a',
         rootDirectoryNodeId: 'root-a',
         inodeIndexRootObjectId: 'inode-index-a',
+        subvolumeMountIndexRootObjectId: 'mount-index-a',
       },
       activeCommitPersistedDto: {
         revision: 11,
         publicationId: 'publication-11',
+        subvolumeId: 'subvolume-a',
         rootDirectoryNodeId: 'root-a',
         inodeIndexRootObjectId: 'inode-index-a',
+        subvolumeMountIndexRootObjectId: 'mount-index-a',
       },
       maintenance: {
         segmentIndexes: {

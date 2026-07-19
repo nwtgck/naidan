@@ -36,7 +36,7 @@ const TINY_POLICY: HizoFSPolicy = {
   metadataObjectCacheEntryLimit: 1024,
   fileChunkCacheByteLimit: 64,
   fileChunkCacheEntryLimit: 16,
-  fileChunkCacheAdmission: 'read_only',
+  fileChunkCacheAdmission: 'read',
 };
 
 function createTiny({ backing }: {
@@ -124,6 +124,56 @@ async function overwritePhysicalFile({
 }
 
 describe('HizoFS garbage collection', () => {
+  it('fails closed before sweeping when a mounted child subvolume is reachable', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ backing });
+    if (!(session instanceof HizoFSSession)) throw new Error('Expected a HizoFS session');
+    const state = await session.loadActiveState();
+    const childDescriptorObjectId =
+      await session.runtime.subvolumeDescriptorStore.write({
+        descriptor: {
+          subvolumeId: createHizoFSStableId(),
+          access: 'read_write',
+        },
+      });
+    const mountRootObjectId = await session.runtime.subvolumeMountIndex.set({
+      rootObjectId: state.commit.subvolumeMountIndexRootObjectId,
+      mount: {
+        mountId: createHizoFSStableId(),
+        subvolumeDescriptorObjectId: childDescriptorObjectId,
+      },
+    });
+    const commitObjectId = await session.runtime.commitStore.write({
+      commit: {
+        ...state.commit,
+        revision: state.commit.revision + 1,
+        publicationId: createHizoFSStableId(),
+        subvolumeMountIndexRootObjectId: mountRootObjectId,
+      },
+    });
+    await session.runtime.objectStore.flushPendingRecords();
+    await session.runtime.core.superblockStore.write({
+      value: {
+        ...state.superblock,
+        sequence: state.superblock.sequence + 1,
+        activeCommitObjectId: commitObjectId,
+      },
+    });
+    await session.close();
+
+    const before = await countPhysicalFiles({ directory: backing });
+    await expect(collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    })).rejects.toThrow(
+      'refuses mounted child subvolumes until child-head traversal is enabled',
+    );
+    expect(await countPhysicalFiles({ directory: backing })).toBe(before);
+  });
+
   it('removes only unreachable immutable objects and preserves the active filesystem', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ backing });
@@ -395,7 +445,7 @@ describe('HizoFS garbage collection', () => {
     if (!(reopened instanceof HizoFSSession)) {
       throw new Error('Expected a HizoFS session');
     }
-    expect((await reopened.loadActiveState()).mode).toBe('fallback_read_only');
+    expect((await reopened.loadActiveState()).stateSelection).toBe('fallback');
     const file = await reopened.root.getFileHandle({ name: 'value.txt', create: false });
     expect(await readStorageFileText({ fileHandle: file })).toBe('first-large-value');
     await reopened.close();

@@ -365,7 +365,7 @@ class NativeSyncHizoFSRandomAccessFile implements HizoFSRandomAccessFile {
     switch (this.mode) {
     case 'read_write':
       return;
-    case 'read_only':
+    case 'read':
       throw new Error('HizoFS random-access file is read-only');
     default: {
       const _ex: never = this.mode;
@@ -499,7 +499,7 @@ class BufferedHizoFSRandomAccessFile implements HizoFSRandomAccessFile {
     switch (this.mode) {
     case 'read_write':
       return;
-    case 'read_only':
+    case 'read':
       throw new Error('HizoFS random-access file is read-only');
     default: {
       const _ex: never = this.mode;
@@ -707,7 +707,7 @@ export class NativeOpfsHizoFSBackingStore implements HizoFSBackingStore {
     case 'read_write':
       this.fileSnapshotCache.delete({ path });
       break;
-    case 'read_only':
+    case 'read':
       break;
     default: {
       const _ex: never = mode;

@@ -148,7 +148,7 @@ describe('HizoFS inspection reader', () => {
       fileSystemRootKey: ROOT_KEY,
     });
     const overview = await reader.readOverview();
-    expect(overview.activeMode).toBe('fallback_read_only');
+    expect(overview.activeMode).toBe('fallback');
     expect(overview.maintenance.recoveryAssessment.status).toBe('degraded');
     expect(overview.maintenance.recoveryAssessment.reasons).toEqual(expect.arrayContaining([
       expect.stringContaining('fallback'),

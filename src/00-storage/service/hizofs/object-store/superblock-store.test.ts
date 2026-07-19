@@ -13,6 +13,17 @@ import { HizoFSSuperblockStore } from './superblock-store';
 const FILE_SYSTEM_ID = encodeBase64Url({ bytes: new Uint8Array(16).fill(0x11) });
 const OTHER_FILE_SYSTEM_ID = encodeBase64Url({ bytes: new Uint8Array(16).fill(0x22) });
 
+function objectId(byte: number): string {
+  const bytes = new Uint8Array(32);
+  bytes.fill(byte, 0, 16);
+  new DataView(bytes.buffer).setBigUint64(16, 64n, false);
+  new DataView(bytes.buffer).setUint32(24, 80, false);
+  bytes[28] = 1;
+  return encodeBase64Url({ bytes });
+}
+
+const SUBVOLUME_DESCRIPTOR_OBJECT_ID = objectId(0x33);
+
 async function setup() {
   const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
   const backingStore = new NativeOpfsHizoFSBackingStore({
@@ -31,7 +42,7 @@ async function setup() {
     metadataCacheEntryLimit: 64,
     fileChunkCacheByteLimit: 1024,
     fileChunkCacheEntryLimit: 64,
-    fileChunkCacheAdmission: 'read_only',
+    fileChunkCacheAdmission: 'read',
   });
   return {
     root,
@@ -51,6 +62,7 @@ describe('HizoFS A/B superblock store', () => {
       value: {
         sequence: 0,
         fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
         activeCommitObjectId: 'commit-0',
       },
     });
@@ -58,12 +70,14 @@ describe('HizoFS A/B superblock store', () => {
       value: {
         sequence: 1,
         fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
         activeCommitObjectId: 'commit-1',
       },
     });
     expect(await superblockStore.read()).toEqual({
       sequence: 1,
       fileSystemId: FILE_SYSTEM_ID,
+      subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
       activeCommitObjectId: 'commit-1',
     });
   });
@@ -74,6 +88,7 @@ describe('HizoFS A/B superblock store', () => {
       value: {
         sequence: 0,
         fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
         activeCommitObjectId: 'commit-0',
       },
     });
@@ -101,6 +116,7 @@ describe('HizoFS A/B superblock store', () => {
       value: {
         sequence: 0,
         fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
         activeCommitObjectId: 'commit-0',
       },
     });
@@ -112,6 +128,7 @@ describe('HizoFS A/B superblock store', () => {
         metadata: {
           sequence: 1,
           fileSystemId: FILE_SYSTEM_ID,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit-1',
         },
         binaryPayload: new Uint8Array(),
@@ -133,6 +150,7 @@ describe('HizoFS A/B superblock store', () => {
           metadata: {
             sequence: 4,
             fileSystemId: FILE_SYSTEM_ID,
+            subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
             activeCommitObjectId: `commit-${String(slot)}`,
           },
           binaryPayload: new Uint8Array(),
@@ -152,6 +170,7 @@ describe('HizoFS A/B superblock store', () => {
         metadata: {
           sequence: 0,
           fileSystemId: OTHER_FILE_SYSTEM_ID,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit',
         },
         binaryPayload: new Uint8Array(),
@@ -188,6 +207,7 @@ describe('HizoFS A/B superblock store', () => {
         metadata: {
           sequence: 0,
           fileSystemId: FILE_SYSTEM_ID,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit-0',
         },
         binaryPayload: new Uint8Array(),
@@ -217,6 +237,7 @@ describe('HizoFS A/B superblock store', () => {
         metadata: {
           sequence: 0,
           fileSystemId: FILE_SYSTEM_ID,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit-0',
         },
         binaryPayload: new Uint8Array(),

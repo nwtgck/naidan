@@ -168,7 +168,7 @@ describe('HizoFS benchmark engine', () => {
         fileExtentIndexPageEntryLimitPerRuntime: 64,
         fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
         fileChunkCacheEntryLimitPerRuntime: 2048,
-        fileChunkCacheAdmission: 'read_only',
+        fileChunkCacheAdmission: 'read',
       },
     });
     expect(report.results.map(result => result.caseId)).toEqual([

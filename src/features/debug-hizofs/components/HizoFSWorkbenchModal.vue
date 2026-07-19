@@ -297,7 +297,7 @@ const fileExplorerRoot = computed<FileExplorerRootDescriptor | undefined>(() => 
     kind: 'storage-directory',
     rootName: `${source.label} root`,
     handle: session.decryptedRoot,
-    readOnly: source.access === 'read_only',
+    readOnly: source.access === 'read',
   };
 });
 const visibleObjectRange = computed(() => {
@@ -1269,7 +1269,7 @@ defineExpose({
                 <dl tw-class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[9px] text-gray-500 dark:text-gray-400">
                   <dt>source</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ selectedSource.type }}</dd>
                   <dt>access</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ selectedSource.access }}</dd>
-                  <dt>generation</dt><dd data-testid="hizofs-active-mode" :tw-class="['truncate', overview.activeMode === 'fallback_read_only' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-700 dark:text-gray-300']">{{ overview.activeMode }}</dd>
+                  <dt>generation</dt><dd data-testid="hizofs-active-mode" :tw-class="['truncate', overview.activeMode === 'fallback' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-700 dark:text-gray-300']">{{ overview.activeMode }}</dd>
                   <dt>backing</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ sourceSession?.physicalPath.join('/') }}</dd>
                   <template v-if="selectedSource.type === 'ephemeral_debug_workspace'">
                     <dt>root key</dt><dd tw-class="text-gray-700 dark:text-gray-300">random · memory only</dd>
@@ -1507,7 +1507,7 @@ defineExpose({
             <div v-else-if="column.kind === 'file_explorer'" tw-class="flex min-h-0 flex-1 flex-col">
               <div tw-class="shrink-0 border-b border-blue-200 bg-blue-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">Derived filesystem view · {{ selectedSource?.access }}</div>
               <Suspense v-if="fileExplorerRoot">
-                <FileExplorer :key="selectedSource?.sourceId" :root="fileExplorerRoot" initial-view-mode="column" initial-preview-visibility="visible" reveal-file-preview="preserve" :initial-path="undefined" :initial-locked="selectedSource?.access === 'read_only'" entry-context-action-label="Inspect HizoFS records" @entry-context-action="inspectFileExplorerEntry" />
+                <FileExplorer :key="selectedSource?.sourceId" :root="fileExplorerRoot" initial-view-mode="column" initial-preview-visibility="visible" reveal-file-preview="preserve" :initial-path="undefined" :initial-locked="selectedSource?.access === 'read'" entry-context-action-label="Inspect HizoFS records" @entry-context-action="inspectFileExplorerEntry" />
                 <template #fallback><div tw-class="flex h-full items-center justify-center gap-2 text-xs text-gray-500"><LoaderCircleIcon tw-class="h-4 w-4 animate-spin" /> Opening decrypted root…</div></template>
               </Suspense>
             </div>
@@ -1551,7 +1551,7 @@ defineExpose({
                 initial-preview-visibility="visible"
                 reveal-file-preview="load"
                 :initial-path="undefined"
-                :initial-locked="selectedSource.access === 'read_only'"
+                :initial-locked="selectedSource.access === 'read'"
                 :reveal-path="companionFollowMode === 'following' ? companionExplorerPath : undefined"
                 entry-context-action-label="Inspect HizoFS records"
                 @entry-context-action="inspectFileExplorerEntry"

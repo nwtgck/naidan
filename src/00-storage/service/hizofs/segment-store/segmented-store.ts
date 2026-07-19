@@ -132,6 +132,8 @@ function segmentTypeForRecordKind({ kind }: {
   case 'file_chunk':
     return 'data';
   case 'superblock':
+  case 'subvolume_descriptor':
+  case 'subvolume_mount_index_page':
   case 'commit':
   case 'inode_index_page':
   case 'file_inode':
@@ -888,6 +890,8 @@ export class HizoFSSegmentedStore {
       });
       break;
     }
+    case 'subvolume_descriptor':
+    case 'subvolume_mount_index_page':
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':

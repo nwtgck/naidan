@@ -28,17 +28,17 @@ function assertWritableActiveState({
 }: {
   state: HizoFSActiveState;
 }): void {
-  switch (state.mode) {
+  switch (state.stateSelection) {
   case "current":
     return;
-  case "fallback_read_only":
+  case "fallback":
     throw new HizoFSCorruptionError({
       message:
           "HizoFS opened an older complete generation in read-only recovery mode",
       cause: undefined,
     });
   default: {
-    const _ex: never = state.mode;
+    const _ex: never = state.stateSelection;
     throw new Error(`Unhandled HizoFS active state mode: ${String(_ex)}`);
   }
   }

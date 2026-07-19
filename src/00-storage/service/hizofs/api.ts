@@ -1,6 +1,8 @@
 import type {
   HizoFSCommitDto,
   HizoFSDescriptorDto,
+  HizoFSSubvolumeAccessDto,
+  HizoFSSubvolumeDescriptorDto,
   HizoFSSuperblockDto,
 } from "@/00-storage/00-dto/hizofs.dto";
 import type {
@@ -115,6 +117,40 @@ export async function createHizoFSBulkBuilder({
   });
 }
 
+export type HizoFSSubvolumeAccess = HizoFSSubvolumeAccessDto;
+
+export type HizoFSSubvolumeInfo = {
+  readonly subvolumeId: string;
+  readonly access: HizoFSSubvolumeAccess;
+  readonly stateSelection: 'current' | 'fallback';
+  readonly root: true;
+};
+
+// TODO(hizofs-subvolume): Add create, recursive snapshot, and explicit delete
+// APIs after directory entries can carry stable mount identities and child
+// read_write heads have per-subvolume coordinators. Snapshot publication must
+// remain O(subvolume count), must not walk inode/chunk graphs, and must expose
+// the completed graph with one final destination-parent publication. Remove
+// this TODO only after crash injection covers every pre-publication orphan and
+// post-publication outcome, and ordinary non-mount operations retain their
+// pre-subvolume backing I/O, flush, and publication counts.
+
+export async function getHizoFSSubvolumeInfo({
+  fileSystemSession,
+}: {
+  fileSystemSession: StorageFileSystemSession;
+}): Promise<HizoFSSubvolumeInfo | undefined> {
+  if (!(fileSystemSession instanceof HizoFSSession)) return undefined;
+  fileSystemSession.assertOpen();
+  const state = await fileSystemSession.loadActiveState();
+  return {
+    subvolumeId: state.subvolumeDescriptor.subvolumeId,
+    access: state.subvolumeDescriptor.access,
+    stateSelection: state.stateSelection,
+    root: true,
+  };
+}
+
 export async function openHizoFSWorkerMount({
   source,
 }: {
@@ -136,6 +172,7 @@ export async function openHizoFSWorkerMount({
       backingDirectory: source.backingDirectory,
       fileSystemId: source.fileSystemId,
       rootKey: source.rootKey,
+      subvolumeDescriptorObjectId: source.subvolumeDescriptorObjectId,
       rootDirectoryNodeId: source.rootDirectoryNodeId,
       policy: DEFAULT_HIZOFS_POLICY,
       now: () => Date.now(),
@@ -162,6 +199,7 @@ export interface HizoFSInspection {
   readonly descriptor: HizoFSDescriptorDto;
   readonly fileSystemId: string;
   readonly superblock: HizoFSSuperblockDto;
+  readonly rootSubvolumeDescriptor: HizoFSSubvolumeDescriptorDto;
   readonly activeCommitObjectId: string;
   readonly activeCommit: HizoFSCommitDto;
 }
@@ -207,6 +245,7 @@ export async function inspectHizoFS({
       descriptor,
       fileSystemId,
       superblock: activeState.superblock,
+      rootSubvolumeDescriptor: activeState.subvolumeDescriptor,
       activeCommitObjectId: activeState.commitObjectId,
       activeCommit: activeState.commit,
     };
@@ -274,6 +313,7 @@ async function createHizoFSInternal({
   return runWithRuntimeInitialization({
     runtime,
     operation: async () => {
+      const rootSubvolumeId = createHizoFSStableId();
       const rootDirectoryNodeId = createHizoFSStableId();
       const timestamp = now();
       const rootInodeObjectId = await runtime.inodeStore.writeDirectory({
@@ -288,12 +328,23 @@ async function createHizoFSInternal({
       const inodeIndexRootObjectId = await runtime.inodeIndex.buildFromSortedEntries({
         entries: [{ nodeId: rootDirectoryNodeId, inodeObjectId: rootInodeObjectId }],
       });
+      const subvolumeMountIndexRootObjectId =
+        await runtime.subvolumeMountIndex.createEmpty();
+      const subvolumeDescriptorObjectId =
+        await runtime.subvolumeDescriptorStore.write({
+          descriptor: {
+            subvolumeId: rootSubvolumeId,
+            access: 'read_write',
+          },
+        });
       const commitObjectId = await runtime.commitStore.write({
         commit: {
           revision: 0,
           publicationId: createHizoFSStableId(),
+          subvolumeId: rootSubvolumeId,
           rootDirectoryNodeId,
           inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId,
         },
       });
       for (const sequence of [0, 1] as const) {
@@ -301,19 +352,23 @@ async function createHizoFSInternal({
           value: {
             sequence,
             fileSystemId,
+            subvolumeDescriptorObjectId,
             activeCommitObjectId: commitObjectId,
           },
         });
       }
-      await runtime.core.loadActiveState();
+      const state = await runtime.core.loadActiveState();
       return new HizoFSSession({
         runtime,
+        subvolumeId: state.subvolumeDescriptor.subvolumeId,
         rootDirectoryNodeId,
         workerMountContext: {
           type: "hizofs",
           backingDirectory,
           fileSystemId,
           rootKey: workerRootKey,
+          subvolumeDescriptorObjectId:
+            state.superblock.subvolumeDescriptorObjectId,
         },
         fixedState: undefined,
         sessionLease: undefined,
@@ -361,12 +416,15 @@ async function openHizoFSInternal({
       await restoreHizoFSDescriptor({ backingStore });
       return new HizoFSSession({
         runtime,
+        subvolumeId: state.subvolumeDescriptor.subvolumeId,
         rootDirectoryNodeId: state.commit.rootDirectoryNodeId,
         workerMountContext: {
           type: "hizofs",
           backingDirectory,
           fileSystemId,
           rootKey: workerRootKey,
+          subvolumeDescriptorObjectId:
+            state.superblock.subvolumeDescriptorObjectId,
         },
         fixedState: undefined,
         sessionLease: undefined,
@@ -379,6 +437,7 @@ async function openHizoFSWithImportedRootKey({
   backingDirectory,
   fileSystemId,
   rootKey,
+  subvolumeDescriptorObjectId,
   rootDirectoryNodeId,
   policy,
   now,
@@ -386,6 +445,7 @@ async function openHizoFSWithImportedRootKey({
   backingDirectory: FileSystemDirectoryHandle;
   fileSystemId: string;
   rootKey: CryptoKey;
+  subvolumeDescriptorObjectId: string;
   rootDirectoryNodeId: string;
   policy: HizoFSPolicy;
   now: () => number;
@@ -408,6 +468,14 @@ async function openHizoFSWithImportedRootKey({
     runtime,
     operation: async () => {
       const state = await runtime.core.loadActiveState();
+      if (
+        state.superblock.subvolumeDescriptorObjectId
+        !== subvolumeDescriptorObjectId
+      ) {
+        throw new Error(
+          'HizoFS Worker mount belongs to a different root subvolume generation',
+        );
+      }
       await restoreHizoFSDescriptor({ backingStore });
       await runtime.nodeService.readDirectory({
         state,
@@ -415,12 +483,14 @@ async function openHizoFSWithImportedRootKey({
       });
       return new HizoFSSession({
         runtime,
+        subvolumeId: state.subvolumeDescriptor.subvolumeId,
         rootDirectoryNodeId,
         workerMountContext: {
           type: "hizofs",
           backingDirectory,
           fileSystemId,
           rootKey,
+          subvolumeDescriptorObjectId,
         },
         fixedState: undefined,
         sessionLease: undefined,

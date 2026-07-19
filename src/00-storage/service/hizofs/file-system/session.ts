@@ -94,6 +94,14 @@ type HizoFSDirectoryHandleCache = {
   readonly entryLookupCache: HizoFSDirectoryIndexLookupCache;
 };
 
+// TODO(hizofs-subvolume): Resolve a directory entry of kind subvolume through
+// the current commit's mount index and open a child context keyed by
+// subvolumeId. Ordinary file/directory/symlink entries must continue through
+// the existing inode-index path without a mount-index read. Cross-subvolume
+// rename must fail as EXDEV, while moving a mount entry inside its writable
+// parent changes only the parent directory entry. Remove this TODO when the
+// namespace boundary and those deterministic I/O/identity tests are complete.
+
 const DIRECTORY_READ_CACHE_MAXIMUM_ENTRY_COUNT = 64;
 
 class HizoFSDirectoryReadCache {
@@ -289,12 +297,14 @@ function createClonedFileRecord({
 export class HizoFSSession implements StorageDirectoryWorkerMountSession {
   constructor({
     runtime,
+    subvolumeId,
     rootDirectoryNodeId,
     workerMountContext,
     fixedState,
     sessionLease,
   }: {
     runtime: HizoFSRuntime;
+    subvolumeId: string;
     rootDirectoryNodeId: string;
     workerMountContext: Omit<
       StorageDirectoryWorkerMountSource,
@@ -312,6 +322,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       ),
     });
     this.rootDirectoryNodeId = rootDirectoryNodeId;
+    this.subvolumeId = subvolumeId;
     this.fileSystemId = runtime.core.fileSystemId;
     this.workerMountContext = workerMountContext;
     this.fixedState = fixedState;
@@ -331,6 +342,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
   };
   readonly root: StorageDirectoryHandle;
   readonly fileSystemId: string;
+  readonly subvolumeId: string;
   readonly rootDirectoryNodeId: string;
   readonly runtime: HizoFSRuntime;
   private readonly directoryReadCache: HizoFSDirectoryReadCache;
@@ -389,6 +401,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       const fixedState = await this.loadActiveState();
       return new HizoFSSession({
         runtime: this.runtime,
+        subvolumeId: this.subvolumeId,
         rootDirectoryNodeId: fixedState.commit.rootDirectoryNodeId,
         workerMountContext: this.workerMountContext,
         fixedState,

@@ -72,13 +72,13 @@ export class HizoFSBulkBuilder {
     });
     try {
       const baseState = await runtime.core.loadActiveState();
-      switch (baseState.mode) {
+      switch (baseState.stateSelection) {
       case 'current':
         break;
-      case 'fallback_read_only':
+      case 'fallback':
         throw new Error('Cannot bulk-build into a fallback HizoFS generation');
       default: {
-        const _ex: never = baseState.mode;
+        const _ex: never = baseState.stateSelection;
         throw new Error(`Unhandled HizoFS active state mode: ${String(_ex)}`);
       }
       }

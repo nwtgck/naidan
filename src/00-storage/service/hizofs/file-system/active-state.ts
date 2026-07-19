@@ -1,7 +1,9 @@
 import {
   HizoFSCommitSchemaDto,
+  HizoFSSubvolumeDescriptorSchemaDto,
   HizoFSSuperblockSchemaDto,
   type HizoFSCommitDto,
+  type HizoFSSubvolumeDescriptorDto,
   type HizoFSSuperblockDto,
 } from '@/00-storage/00-dto/hizofs.dto';
 import {
@@ -13,19 +15,22 @@ import { z } from 'zod';
 import type { HizoFSCommitStore } from './commit-store';
 import type { HizoFSInodeIndex } from './inode-index';
 import type { HizoFSInodeStore } from './inode-store';
+import type { HizoFSSubvolumeDescriptorStore } from './subvolume-descriptor-store';
 
 export type HizoFSActiveState = {
   readonly superblock: HizoFSSuperblockDto;
+  readonly subvolumeDescriptor: HizoFSSubvolumeDescriptorDto;
   readonly commitObjectId: string;
   readonly commit: HizoFSCommitDto;
-  readonly mode: 'current' | 'fallback_read_only';
+  readonly stateSelection: 'current' | 'fallback';
 };
 
 export const HizoFSActiveStateSchema: z.ZodType<HizoFSActiveState> = z.object({
   superblock: HizoFSSuperblockSchemaDto,
+  subvolumeDescriptor: HizoFSSubvolumeDescriptorSchemaDto,
   commitObjectId: z.string(),
   commit: HizoFSCommitSchemaDto,
-  mode: z.enum(['current', 'fallback_read_only']),
+  stateSelection: z.enum(['current', 'fallback']),
 }).strict();
 
 
@@ -42,15 +47,17 @@ export function freezeHizoFSActiveState({ state }: {
 
   const {
     superblock,
+    subvolumeDescriptor,
     commitObjectId,
     commit,
-    mode,
+    stateSelection,
     ...unhandledState
   } = state;
   unhandledState satisfies Record<PropertyKey, never>;
   const {
     sequence,
     fileSystemId,
+    subvolumeDescriptorObjectId,
     activeCommitObjectId,
     ...unhandledSuperblock
   } = superblock;
@@ -58,8 +65,10 @@ export function freezeHizoFSActiveState({ state }: {
   const {
     revision,
     publicationId,
+    subvolumeId,
     rootDirectoryNodeId,
     inodeIndexRootObjectId,
+    subvolumeMountIndexRootObjectId,
     ...unhandledCommit
   } = commit;
   unhandledCommit satisfies Record<PropertyKey, never>;
@@ -68,16 +77,20 @@ export function freezeHizoFSActiveState({ state }: {
     superblock: Object.freeze({
       sequence,
       fileSystemId,
+      subvolumeDescriptorObjectId,
       activeCommitObjectId,
     }),
+    subvolumeDescriptor: Object.freeze(subvolumeDescriptor),
     commitObjectId,
     commit: Object.freeze({
       revision,
       publicationId,
+      subvolumeId,
       rootDirectoryNodeId,
       inodeIndexRootObjectId,
+      subvolumeMountIndexRootObjectId,
     }),
-    mode,
+    stateSelection,
   });
 }
 
@@ -139,12 +152,14 @@ export async function validateHizoFSCommitRoot({
 export async function loadHizoFSActiveStateFromStores({
   superblockStore,
   commitStore,
+  subvolumeDescriptorStore,
   inodeIndex,
   inodeStore,
   validatedRootCache,
 }: {
   superblockStore: HizoFSSuperblockStore;
   commitStore: HizoFSCommitStore;
+  subvolumeDescriptorStore: HizoFSSubvolumeDescriptorStore;
   inodeIndex: HizoFSInodeIndex;
   inodeStore: HizoFSInodeStore;
   validatedRootCache: HizoFSValidatedCommitRootCache | undefined;
@@ -163,9 +178,35 @@ export async function loadHizoFSActiveStateFromStores({
     const superblock = candidates[index];
     if (superblock === undefined) continue;
     try {
+      const subvolumeDescriptor = await subvolumeDescriptorStore.read({
+        objectId: superblock.subvolumeDescriptorObjectId,
+      });
+      switch (subvolumeDescriptor.access) {
+      case 'read':
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS root subvolume descriptor must permit writes',
+          cause: undefined,
+        });
+      case 'read_write':
+        break;
+      default: {
+        const _ex: never = subvolumeDescriptor;
+        throw new Error(
+          `Unhandled HizoFS root subvolume access: ${
+            ((_ex satisfies never) as { readonly access: string }).access
+          }`,
+        );
+      }
+      }
       const commit = await commitStore.read({
         objectId: superblock.activeCommitObjectId,
       });
+      if (commit.subvolumeId !== subvolumeDescriptor.subvolumeId) {
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS root commit belongs to a different subvolume',
+          cause: undefined,
+        });
+      }
       await validateHizoFSCommitRoot({
         commit,
         inodeIndex,
@@ -175,12 +216,13 @@ export async function loadHizoFSActiveStateFromStores({
       return freezeHizoFSActiveState({
         state: {
           superblock,
+          subvolumeDescriptor,
           commitObjectId: superblock.activeCommitObjectId,
           commit,
-          mode:
+          stateSelection:
             index === 0 && candidateSet.unusableSlotCount === 0
               ? 'current'
-              : 'fallback_read_only',
+              : 'fallback',
         },
       });
     } catch (error) {

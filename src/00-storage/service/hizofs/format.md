@@ -248,6 +248,8 @@ Record kind IDs are fixed:
 | 7 | `file_extent_page` |
 | 8 | `file_chunk` |
 | 9 | `superblock` |
+| 10 | `subvolume_descriptor` |
+| 11 | `subvolume_mount_index_page` |
 
 Unknown kinds, payload encodings, and record versions must fail closed.
 
@@ -259,6 +261,7 @@ The two authenticated head slots contain encoded `superblock` records and the du
 type HizoFSSuperblockDto = {
   readonly sequence: number;
   readonly fileSystemId: string;
+  readonly subvolumeDescriptorObjectId: string;
   readonly activeCommitObjectId: string;
 };
 ```
@@ -268,7 +271,7 @@ Two valid slots with the same sequence are ambiguous corruption. For each
 candidate, the reader authenticates and validates the referenced commit, inode
 index root, and root directory inode before selecting it. If the newest
 candidate is structurally corrupt but the older generation is complete, the
-older generation may be opened only in `fallback_read_only` recovery mode. A
+older generation may be opened only in `fallback` recovery mode. A
 valid generation is also treated as fallback when the other physical slot is
 unreadable, because its sequence cannot be proven older. Normal mutations,
 bulk construction, and garbage collection are forbidden in that mode so an
@@ -282,14 +285,40 @@ later commit writes the next sequence to `sequence % 2`; the alternate slot
 remains as the previous recoverable state. A missing slot in an opened
 filesystem is therefore an uncertain rollback and forces read-only recovery.
 
+The root head is also bound to one immutable `subvolume_descriptor`. The
+descriptor is the single authority for the root subvolume identity and access;
+the active commit must carry the same `subvolumeId`.
+
+## Subvolume descriptor
+
+```ts
+type HizoFSSubvolumeDescriptorDto =
+  | {
+      readonly subvolumeId: string;
+      readonly access: 'read';
+      readonly fixedCommitObjectId: string;
+    }
+  | {
+      readonly subvolumeId: string;
+      readonly access: 'read_write';
+    };
+```
+
+`access` is persisted only in this immutable descriptor. Mount records do not
+duplicate it. A `read` descriptor names its immutable commit directly, while a
+`read_write` descriptor is resolved through an authenticated A/B head. The
+root descriptor is always `read_write`.
+
 ## File-system commit
 
 ```ts
 type HizoFSCommitDto = {
   readonly revision: number;
   readonly publicationId: string;
+  readonly subvolumeId: string;
   readonly rootDirectoryNodeId: string;
   readonly inodeIndexRootObjectId: string;
+  readonly subvolumeMountIndexRootObjectId: string;
 };
 ```
 
@@ -303,6 +332,29 @@ outcome rather than silently replaying a potentially non-idempotent operation.
 The only persistent visibility switch for normal mutations is the authenticated
 superblock slot. Before that switch, the old complete commit is authoritative;
 after it, the new complete commit is authoritative.
+
+The mount-index root is immutable and is reused unchanged by ordinary file and
+directory mutations. Consequently subvolume support adds no mount-index read,
+write, flush, ancestor publication, or global catalog update to ordinary
+operations that do not cross a subvolume boundary.
+
+## Subvolume mount index
+
+Each subvolume owns a persistent Copy-on-Write B+tree from stable `mountId` to
+an immutable descriptor ObjectRef:
+
+```ts
+type HizoFSSubvolumeMountDto = {
+  readonly mountId: string;
+  readonly subvolumeDescriptorObjectId: string;
+};
+```
+
+Directory metadata will reference `mountId`, not a child `subvolumeId`. This
+indirection allows a recursive snapshot to share ordinary directory metadata
+while rebuilding only the O(number of subvolumes) mount graph. Mount entries
+contain no access copy; descriptor/head/commit identity bindings are validated
+instead.
 
 ## Inode index
 

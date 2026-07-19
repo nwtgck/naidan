@@ -13,12 +13,14 @@ import {
 
 
 const EXPECTED_OBJECT_RECORD_KINDS = {
+  subvolume_descriptor: true,
   commit: true,
   inode_index_page: true,
   file_inode: true,
   directory_inode: true,
   symlink_inode: true,
   directory_index_page: true,
+  subvolume_mount_index_page: true,
   file_extent_page: true,
   file_chunk: true,
 } as const satisfies Record<Exclude<HizoFSRecordKind, 'superblock'>, true>;

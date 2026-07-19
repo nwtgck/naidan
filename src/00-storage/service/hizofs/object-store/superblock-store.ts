@@ -7,6 +7,7 @@ import {
   HizoFSUnsupportedFormatError,
 } from '@/00-storage/service/hizofs/errors';
 import type { HizoFSObjectStore } from './object-store';
+import { assertHizoFSObjectId } from '@/00-storage/service/hizofs/file-system/semantic-validation';
 
 type Candidate = {
   readonly slot: 0 | 1;
@@ -83,6 +84,10 @@ export class HizoFSSuperblockStore {
             cause: undefined,
           });
         }
+        assertHizoFSObjectId({
+          value: value.subvolumeDescriptorObjectId,
+          fieldName: 'HizoFS root subvolume descriptor ObjectRef',
+        });
         candidates.push({ slot, value });
       } catch (error) {
         if (error instanceof HizoFSUnsupportedFormatError) {
@@ -134,6 +139,10 @@ export class HizoFSSuperblockStore {
     if (!Number.isSafeInteger(value.sequence) || value.sequence < 0) {
       throw new Error('HizoFS superblock sequence must be a non-negative safe integer');
     }
+    assertHizoFSObjectId({
+      value: value.subvolumeDescriptorObjectId,
+      fieldName: 'HizoFS root subvolume descriptor ObjectRef',
+    });
     await this.objectStore.writeSuperblock({
       slot: value.sequence % 2 as 0 | 1,
       record: {

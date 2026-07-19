@@ -157,6 +157,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       backingDirectory,
       fileSystemId: 'filesystem-1',
       rootKey,
+      subvolumeDescriptorObjectId: 'subvolume-descriptor-1',
       rootDirectoryNodeId: 'directory-1',
     };
     const client = await createFileProtocolCompatibleWeshWorkerClient({

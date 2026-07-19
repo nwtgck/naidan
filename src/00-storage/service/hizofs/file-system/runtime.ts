@@ -20,6 +20,8 @@ import {
   type HizoFSValidatedCommitRootCache,
 } from './active-state';
 import { HizoFSCorruptionError } from '@/00-storage/service/hizofs/errors';
+import { HizoFSSubvolumeDescriptorStore } from './subvolume-descriptor-store';
+import { HizoFSSubvolumeMountIndex } from './subvolume-mount-index';
 
 type HizoFSPhysicalHandleParticipant = {
   releasePhysicalHandles(): Promise<void>;
@@ -114,6 +116,8 @@ export type HizoFSRuntime = {
   readonly objectStore: HizoFSObjectStore;
   readonly recordStore: HizoFSRecordStore;
   readonly commitStore: HizoFSCommitStore;
+  readonly subvolumeDescriptorStore: HizoFSSubvolumeDescriptorStore;
+  readonly subvolumeMountIndex: HizoFSSubvolumeMountIndex;
   readonly inodeIndex: HizoFSInodeIndex;
   readonly directoryIndex: HizoFSDirectoryIndex;
   readonly extentIndex: HizoFSExtentIndex;
@@ -160,6 +164,14 @@ export function createHizoFSRuntime({
   });
   const recordStore = new HizoFSRecordStore({ objectStore });
   const commitStore = new HizoFSCommitStore({ recordStore });
+  const subvolumeDescriptorStore = new HizoFSSubvolumeDescriptorStore({
+    recordStore,
+  });
+  const subvolumeMountIndex = new HizoFSSubvolumeMountIndex({
+    recordStore,
+    maxPageEntries: policy.directoryIndexPageEntryLimit,
+    diagnostics,
+  });
   const inodeIndex = new HizoFSInodeIndex({
     recordStore,
     maxPageEntries: policy.inodeIndexPageEntryLimit,
@@ -198,6 +210,7 @@ export function createHizoFSRuntime({
     loadFromBacking: async () => await loadHizoFSActiveStateFromStores({
       superblockStore,
       commitStore,
+      subvolumeDescriptorStore,
       inodeIndex,
       inodeStore,
       validatedRootCache,
@@ -207,25 +220,28 @@ export function createHizoFSRuntime({
       publicationId,
       inodeIndexRootObjectId,
     }) => {
-      switch (currentState.mode) {
+      switch (currentState.stateSelection) {
       case 'current':
         break;
-      case 'fallback_read_only':
+      case 'fallback':
         throw new HizoFSCorruptionError({
           message:
             'HizoFS opened an older complete generation in read-only recovery mode',
           cause: undefined,
         });
       default: {
-        const _ex: never = currentState.mode;
-        throw new Error(`Unhandled HizoFS active state mode: ${String(_ex)}`);
+        const _ex: never = currentState.stateSelection;
+        throw new Error(`Unhandled HizoFS active state selection: ${String(_ex)}`);
       }
       }
       const commit = {
         revision: currentState.commit.revision + 1,
         publicationId,
+        subvolumeId: currentState.commit.subvolumeId,
         rootDirectoryNodeId: currentState.commit.rootDirectoryNodeId,
         inodeIndexRootObjectId,
+        subvolumeMountIndexRootObjectId:
+          currentState.commit.subvolumeMountIndexRootObjectId,
       };
       // A follower can prepare immutable records in another realm and ask the
       // leader to publish only their root reference. Authenticate that root
@@ -242,14 +258,17 @@ export function createHizoFSRuntime({
       const superblock = {
         sequence: currentState.superblock.sequence + 1,
         fileSystemId,
+        subvolumeDescriptorObjectId:
+          currentState.superblock.subvolumeDescriptorObjectId,
         activeCommitObjectId: commitObjectId,
       };
       await superblockStore.write({ value: superblock });
       return {
         superblock,
+        subvolumeDescriptor: currentState.subvolumeDescriptor,
         commitObjectId,
         commit,
-        mode: 'current',
+        stateSelection: 'current',
       };
     },
     setHeadHandleRetention: async ({ retention }) => {
@@ -358,6 +377,8 @@ export function createHizoFSRuntime({
     objectStore,
     recordStore,
     commitStore,
+    subvolumeDescriptorStore,
+    subvolumeMountIndex,
     inodeIndex,
     directoryIndex,
     extentIndex,

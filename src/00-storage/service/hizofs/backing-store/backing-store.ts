@@ -3,7 +3,7 @@ export type HizoFSBackingStoreEntry = {
   readonly kind: 'file' | 'directory';
 };
 
-export type HizoFSRandomAccessFileMode = 'read_only' | 'read_write';
+export type HizoFSRandomAccessFileMode = 'read' | 'read_write';
 
 /**
  * A bounded random-access file used by the segmented HizoFS physical layer.

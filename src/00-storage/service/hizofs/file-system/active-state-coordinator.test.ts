@@ -13,16 +13,23 @@ function createState({ sequence, commitObjectId, inodeIndexRootObjectId }: {
     superblock: {
       sequence,
       fileSystemId: 'coordinator-test-filesystem',
+      subvolumeDescriptorObjectId: 'subvolume-descriptor',
       activeCommitObjectId: commitObjectId,
+    },
+    subvolumeDescriptor: {
+      subvolumeId: 'root-subvolume',
+      access: 'read_write',
     },
     commitObjectId,
     commit: {
       revision: sequence,
       publicationId: `publication-${String(sequence)}`,
+      subvolumeId: 'root-subvolume',
       rootDirectoryNodeId: 'root-directory',
       inodeIndexRootObjectId,
+      subvolumeMountIndexRootObjectId: 'subvolume-mount-index',
     },
-    mode: 'current',
+    stateSelection: 'current',
   };
 }
 

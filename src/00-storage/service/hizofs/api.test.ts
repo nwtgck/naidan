@@ -8,6 +8,8 @@ import type { StorageFileSystemSession } from '@/00-storage/service/storage-file
 import {
   createHizoFS,
   createHizoFSBulkBuilder,
+  createHizoFSDiagnosticSession,
+  getHizoFSSubvolumeInfo,
   inspectHizoFS,
   openHizoFS,
   openHizoFSWorkerMount,
@@ -32,6 +34,7 @@ import {
 import { HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH } from './segment-store/segment-format';
 import { collectHizoFSGarbage } from './garbage-collector';
 import { TEST_ONLY as MAINTENANCE_LOCK_TEST_ONLY } from './file-system/maintenance-lock';
+import { createHizoFSStableId } from './id';
 
 const ROOT_KEY = new Uint8Array(32).fill(9);
 const TINY_POLICY: HizoFSPolicy = {
@@ -52,7 +55,7 @@ const TINY_POLICY: HizoFSPolicy = {
   metadataObjectCacheEntryLimit: 1024,
   fileChunkCacheByteLimit: 64,
   fileChunkCacheEntryLimit: 16,
-  fileChunkCacheAdmission: 'read_only',
+  fileChunkCacheAdmission: 'read',
 };
 
 async function createTiny({ root, now }: {
@@ -211,6 +214,116 @@ async function copyNativeDirectory({ source, destination }: {
 }
 
 describe('HizoFS public file-system API', () => {
+  it('creates and reopens the root as one read_write subvolume', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const created = await createTiny({ root, now: () => 1 });
+    const createdInfo = await getHizoFSSubvolumeInfo({
+      fileSystemSession: created,
+    });
+    expect(createdInfo).toMatchObject({
+      access: 'read_write',
+      stateSelection: 'current',
+      root: true,
+    });
+    expect(createdInfo?.subvolumeId).toEqual(expect.any(String));
+    const createdId = createdInfo?.subvolumeId;
+    await created.close();
+
+    const reopened = await openTiny({ root, now: () => 2 });
+    await expect(getHizoFSSubvolumeInfo({
+      fileSystemSession: reopened,
+    })).resolves.toEqual({
+      subvolumeId: createdId,
+      access: 'read_write',
+      stateSelection: 'current',
+      root: true,
+    });
+    await reopened.close();
+  });
+
+  it('rejects a root whose descriptor is persistently read access', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root, now: () => 1 });
+    if (!(session instanceof HizoFSSession)) throw new Error('Expected a HizoFS session');
+    const state = await session.loadActiveState();
+    const descriptorObjectId = await session.runtime.subvolumeDescriptorStore.write({
+      descriptor: {
+        subvolumeId: state.commit.subvolumeId,
+        access: 'read',
+        fixedCommitObjectId: state.commitObjectId,
+      },
+    });
+    await session.runtime.objectStore.flushPendingRecords();
+    for (const sequence of [state.superblock.sequence + 1, state.superblock.sequence + 2]) {
+      await session.runtime.core.superblockStore.write({
+        value: {
+          ...state.superblock,
+          sequence,
+          subvolumeDescriptorObjectId: descriptorObjectId,
+        },
+      });
+    }
+    await session.close();
+
+    await expect(openTiny({ root, now: () => 2 })).rejects.toThrow(
+      'No complete HizoFS superblock generation remains',
+    );
+  });
+
+  it('rejects a root commit bound to another subvolume identity', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createTiny({ root, now: () => 1 });
+    if (!(session instanceof HizoFSSession)) throw new Error('Expected a HizoFS session');
+    const state = await session.loadActiveState();
+    const foreignCommitObjectId = await session.runtime.commitStore.write({
+      commit: {
+        ...state.commit,
+        publicationId: createHizoFSStableId(),
+        subvolumeId: createHizoFSStableId(),
+      },
+    });
+    await session.runtime.objectStore.flushPendingRecords();
+    for (const sequence of [state.superblock.sequence + 1, state.superblock.sequence + 2]) {
+      await session.runtime.core.superblockStore.write({
+        value: {
+          ...state.superblock,
+          sequence,
+          activeCommitObjectId: foreignCommitObjectId,
+        },
+      });
+    }
+    await session.close();
+
+    await expect(openTiny({ root, now: () => 2 })).rejects.toThrow(
+      'No complete HizoFS superblock generation remains',
+    );
+  });
+
+  it('adds no subvolume metadata I/O to ordinary root operations', async () => {
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const session = await createHizoFSDiagnosticSession({
+      backingDirectory: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileSystemRootKey: ROOT_KEY,
+      policy: TINY_POLICY,
+      diagnostics,
+    });
+    const before = diagnostics.snapshot();
+
+    await session.root.getFileHandle({ name: 'ordinary', create: true });
+    await session.root.getFileHandle({ name: 'ordinary', create: false });
+
+    const after = diagnostics.snapshot();
+    expect(after.records.subvolume_descriptor.readOperations)
+      .toBe(before.records.subvolume_descriptor.readOperations);
+    expect(after.records.subvolume_descriptor.writeOperations)
+      .toBe(before.records.subvolume_descriptor.writeOperations);
+    expect(after.records.subvolume_mount_index_page.readOperations)
+      .toBe(before.records.subvolume_mount_index_page.readOperations);
+    expect(after.records.subvolume_mount_index_page.writeOperations)
+      .toBe(before.records.subvolume_mount_index_page.writeOperations);
+    await session.close();
+  });
+
   it('creates one file system inside exactly the provided backing directory', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'dedicated-backing' });
     const session = await createHizoFS({
@@ -2383,7 +2496,7 @@ describe('HizoFS public file-system API', () => {
 
     const recovered = await openTiny({ root: backing, now: () => 2 });
     const recoveredSession = requireHizoFSSession({ session: recovered });
-    expect((await recoveredSession.loadActiveState()).mode).toBe('fallback_read_only');
+    expect((await recoveredSession.loadActiveState()).stateSelection).toBe('fallback');
     await expect(recovered.root.getFileHandle({
       name: 'must-not-write.txt',
       create: true,

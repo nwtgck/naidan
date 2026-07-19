@@ -2,12 +2,17 @@ export {
   createHizoFS,
   createHizoFSBulkBuilder,
   createHizoFSDiagnosticSession,
+  getHizoFSSubvolumeInfo,
   inspectHizoFS,
   openHizoFS,
   openHizoFSDiagnosticSession,
   deriveHizoFSFileSystemIdFromRawRootKey,
 } from './api';
-export type { HizoFSInspection } from './api';
+export type {
+  HizoFSInspection,
+  HizoFSSubvolumeAccess,
+  HizoFSSubvolumeInfo,
+} from './api';
 export { createHizoFSInspectionReader } from './inspection';
 export type {
   HizoFSBinaryRecordInspection,

@@ -23,7 +23,7 @@ export type HizoFSPolicy = {
   readonly metadataObjectCacheEntryLimit: number;
   readonly fileChunkCacheByteLimit: number;
   readonly fileChunkCacheEntryLimit: number;
-  readonly fileChunkCacheAdmission: 'read_only' | 'read_write';
+  readonly fileChunkCacheAdmission: 'read' | 'read_write';
 };
 
 export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
@@ -54,7 +54,7 @@ export const DEFAULT_HIZOFS_POLICY: HizoFSPolicy = {
   // set to remain resident instead of deterministically evicting the last item.
   fileChunkCacheByteLimit: 16 * 1024 * 1024 + 64 * 1024,
   fileChunkCacheEntryLimit: 2048,
-  fileChunkCacheAdmission: 'read_only',
+  fileChunkCacheAdmission: 'read',
 };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
