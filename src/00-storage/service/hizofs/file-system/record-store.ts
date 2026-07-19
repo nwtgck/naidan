@@ -1,5 +1,9 @@
 import type { ZodType } from 'zod';
-import type { HizoFSObjectStore } from '@/00-storage/service/hizofs/object-store/object-store';
+import type {
+  HizoFSLazyFileChunkRecord,
+  HizoFSObjectStore,
+  HizoFSObjectStoreRecord,
+} from '@/00-storage/service/hizofs/object-store/object-store';
 import type { HizoFSRecordKind } from '@/00-storage/service/hizofs/format/record';
 import {
   HizoFSCorruptionError,
@@ -28,6 +32,78 @@ export class HizoFSRecordStore {
         binaryPayload,
       },
     });
+  }
+
+  async writeMany({ records }: {
+    records: readonly HizoFSObjectStoreRecord[];
+  }): Promise<readonly string[]> {
+    return this.objectStore.createMany({ records });
+  }
+
+  async writeFileChunksPipelined({
+    records,
+    maximumPlaintextRecordsInFlight,
+  }: {
+    records: readonly HizoFSLazyFileChunkRecord[];
+    maximumPlaintextRecordsInFlight: number;
+  }): Promise<readonly string[]> {
+    return this.objectStore.createFileChunksPipelined({
+      records,
+      maximumPlaintextRecordsInFlight,
+    });
+  }
+
+  async readBinaryPayloadRange<T>({
+    objectId,
+    expectedKind,
+    schema,
+    offset,
+    length,
+  }: {
+    objectId: string;
+    expectedKind: HizoFSRecordKind;
+    schema: ZodType<T>;
+    offset: number;
+    length: number;
+  }): Promise<{
+    readonly metadata: T;
+    readonly binaryPayload: Uint8Array;
+    readonly binaryPayloadByteLength: number;
+  }> {
+    const record = await this.objectStore.readBinaryPayloadRange({
+      objectId,
+      offset,
+      length,
+    });
+    if (record === undefined) {
+      throw new HizoFSCorruptionError({
+        message: `HizoFS object is missing: ${objectId}`,
+        cause: undefined,
+      });
+    }
+    if (record.kind !== expectedKind) {
+      throw new HizoFSCorruptionError({
+        message: `HizoFS object kind mismatch: expected ${expectedKind}, received ${record.kind}`,
+        cause: undefined,
+      });
+    }
+    if (record.recordVersion !== 1) {
+      throw new HizoFSUnsupportedFormatError({
+        message: `HizoFS ${expectedKind} record version is unsupported: ${String(record.recordVersion)}`,
+      });
+    }
+    const parsed = schema.safeParse(record.metadata);
+    if (!parsed.success) {
+      throw new HizoFSCorruptionError({
+        message: `HizoFS ${expectedKind} metadata is structurally invalid`,
+        cause: parsed.error,
+      });
+    }
+    return {
+      metadata: parsed.data,
+      binaryPayload: record.binaryPayload,
+      binaryPayloadByteLength: record.binaryPayloadByteLength,
+    };
   }
 
   async read<T>({ objectId, expectedKind, schema, binaryPayload }: {

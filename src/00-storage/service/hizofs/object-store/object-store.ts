@@ -3,7 +3,9 @@ import type { HizoFSBackingStore } from '@/00-storage/service/hizofs/backing-sto
 import { HizoFSCorruptionError } from '@/00-storage/service/hizofs/errors';
 import {
   decodeHizoFSRecord,
+  decodeHizoFSRecordBinaryPayloadRange,
   encodeHizoFSRecord,
+  getHizoFSRecordByteLength,
   type DecodedHizoFSRecord,
   type HizoFSRecordKind,
 } from '@/00-storage/service/hizofs/format/record';
@@ -12,6 +14,7 @@ import type {
   HizoFSRuntimeDiagnostics,
 } from '@/00-storage/service/hizofs/file-system/diagnostics';
 import {
+  HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE,
   HizoFSSegmentedStore,
   type HizoFSPhysicalObjectListing,
   type HizoFSWholeSegmentReclaimCandidate,
@@ -125,6 +128,12 @@ export type HizoFSObjectStoreRecord = {
   readonly recordVersion: number;
   readonly metadata: unknown;
   readonly binaryPayload: Uint8Array;
+};
+
+export type HizoFSLazyFileChunkRecord = {
+  readonly binaryPayloadByteLength: number;
+  readonly createBinaryPayload: () => Promise<Uint8Array>;
+  readonly discardBinaryPayload: () => void;
 };
 
 function getSegmentRotationPayloadByteLength({
@@ -268,6 +277,207 @@ export class HizoFSObjectStore {
     }
   }
 
+  async createMany({ records }: {
+    records: readonly HizoFSObjectStoreRecord[];
+  }): Promise<readonly string[]> {
+    if (records.length === 0) return [];
+    if (records.length > HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE) {
+      throw new Error(
+        `HizoFS object batches may contain at most ${String(HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE)} records`,
+      );
+    }
+    const encoded = records.map(record => ({
+      record,
+      plaintext: this.encodeRecord({ record }),
+      retained: false,
+    }));
+    try {
+      const objectIds = await this.segmentedStore.createRecords({
+        records: encoded.map(({ record, plaintext }) => ({
+          kind: record.kind,
+          plaintext,
+          rotationPayloadByteLength: getSegmentRotationPayloadByteLength({
+            record,
+            encodedRecordByteLength: plaintext.byteLength,
+          }),
+        })),
+      });
+      if (objectIds.length !== encoded.length) {
+        throw new Error('HizoFS object batch returned an inconsistent result count');
+      }
+      for (const [index, entry] of encoded.entries()) {
+        const objectId = objectIds[index];
+        if (objectId === undefined) {
+          throw new Error('HizoFS object batch omitted an object identifier');
+        }
+        const reference = decodeHizoFSObjectReference({ value: objectId });
+        this.diagnostics?.recordRecordWrite({
+          kind: entry.record.kind,
+          plaintextByteLength: entry.plaintext.byteLength,
+          physicalByteLength: reference.storedLength,
+        });
+        entry.retained = this.cachePlaintext({
+          objectId,
+          kind: entry.record.kind,
+          plaintext: entry.plaintext,
+          source: 'write',
+        });
+      }
+      return objectIds;
+    } finally {
+      for (const entry of encoded) {
+        if (!entry.retained) entry.plaintext.fill(0);
+      }
+    }
+  }
+
+  async createFileChunksPipelined({
+    records,
+    maximumPlaintextRecordsInFlight,
+  }: {
+    records: readonly HizoFSLazyFileChunkRecord[];
+    maximumPlaintextRecordsInFlight: number;
+  }): Promise<readonly string[]> {
+    if (records.length === 0) return [];
+    const managedRecords = records.map(record => {
+      let discarded = false;
+      return {
+        ...record,
+        discardBinaryPayload: (): void => {
+          if (discarded) return;
+          discarded = true;
+          record.discardBinaryPayload();
+        },
+      } satisfies HizoFSLazyFileChunkRecord;
+    });
+
+    try {
+      if (
+        !Number.isSafeInteger(maximumPlaintextRecordsInFlight)
+        || maximumPlaintextRecordsInFlight < 1
+      ) {
+        throw new Error(
+          'HizoFS maximum plaintext records in flight must be a positive safe integer',
+        );
+      }
+      for (const record of managedRecords) {
+        if (
+          !Number.isSafeInteger(record.binaryPayloadByteLength)
+          || record.binaryPayloadByteLength < 0
+        ) {
+          throw new Error(
+            'HizoFS lazy file chunk payload length must be a non-negative safe integer',
+          );
+        }
+      }
+      switch (this.fileChunkCacheAdmission) {
+      case 'read_write': {
+        const objectIds: string[] = [];
+        for (
+          let batchStart = 0;
+          batchStart < managedRecords.length;
+          batchStart += HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE
+        ) {
+          const batch = managedRecords.slice(
+            batchStart,
+            batchStart + HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE,
+          );
+          const payloads: Uint8Array[] = [];
+          try {
+            for (const record of batch) {
+              const binaryPayload = await record.createBinaryPayload();
+              if (binaryPayload.byteLength !== record.binaryPayloadByteLength) {
+                throw new Error(
+                  'HizoFS lazy file chunk payload length does not match its declaration',
+                );
+              }
+              payloads.push(binaryPayload);
+            }
+            const batchObjectIds = await this.createMany({
+              records: payloads.map(binaryPayload => ({
+                kind: 'file_chunk',
+                recordVersion: 1,
+                metadata: {},
+                binaryPayload,
+              })),
+            });
+            objectIds.push(...batchObjectIds);
+          } finally {
+            for (const record of batch) record.discardBinaryPayload();
+          }
+        }
+        return objectIds;
+      }
+      case 'read_only':
+        break;
+      default: {
+        const _ex: never = this.fileChunkCacheAdmission;
+        throw new Error(
+          `Unhandled HizoFS file chunk cache admission: ${String(_ex)}`,
+        );
+      }
+      }
+
+      const metadata = {};
+      const plaintextByteLengths = managedRecords.map(record =>
+        getHizoFSRecordByteLength({
+          metadata,
+          binaryPayloadByteLength: record.binaryPayloadByteLength,
+        })
+      );
+      const objectIds = await this.segmentedStore.createRecordsPipelined({
+        records: managedRecords.map((record, index) => {
+          const plaintextByteLength = plaintextByteLengths[index];
+          if (plaintextByteLength === undefined) {
+            throw new Error('HizoFS file chunk pipeline omitted a plaintext length');
+          }
+          return {
+            kind: 'file_chunk',
+            plaintextByteLength,
+            rotationPayloadByteLength: record.binaryPayloadByteLength,
+            createPlaintext: async (): Promise<Uint8Array> => {
+              const binaryPayload = await record.createBinaryPayload();
+              if (binaryPayload.byteLength !== record.binaryPayloadByteLength) {
+                throw new Error(
+                  'HizoFS lazy file chunk payload length does not match its declaration',
+                );
+              }
+              return this.encodeRecord({
+                record: {
+                  kind: 'file_chunk',
+                  recordVersion: 1,
+                  metadata,
+                  binaryPayload,
+                },
+              });
+            },
+            discardPlaintext: record.discardBinaryPayload,
+          };
+        }),
+        maximumPlaintextRecordsInFlight,
+        maximumRecordsPerPhysicalWrite: HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE,
+      });
+      if (objectIds.length !== managedRecords.length) {
+        throw new Error('HizoFS file chunk pipeline returned an inconsistent result count');
+      }
+      for (const [index, objectId] of objectIds.entries()) {
+        const plaintextByteLength = plaintextByteLengths[index];
+        if (plaintextByteLength === undefined) {
+          throw new Error('HizoFS file chunk pipeline omitted diagnostic metadata');
+        }
+        const reference = decodeHizoFSObjectReference({ value: objectId });
+        this.diagnostics?.recordRecordWrite({
+          kind: 'file_chunk',
+          plaintextByteLength,
+          physicalByteLength: reference.storedLength,
+        });
+      }
+      return objectIds;
+    } finally {
+      for (const record of managedRecords) record.discardBinaryPayload();
+    }
+  }
+
   async read({ objectId }: {
     objectId: string;
   }): Promise<DecodedHizoFSRecord | undefined> {
@@ -285,6 +495,70 @@ export class HizoFSObjectStore {
     let plaintextRetained = false;
     try {
       const decoded = this.decodeRecord({ plaintext: loaded.plaintext });
+      if (decoded.kind !== loaded.kind) {
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS decoded record kind does not match its direct object reference',
+          cause: undefined,
+        });
+      }
+      this.diagnostics?.recordRecordRead({
+        kind: decoded.kind,
+        source: 'backing',
+        plaintextByteLength: loaded.plaintext.byteLength,
+        physicalByteLength: loaded.physicalByteLength,
+      });
+      this.recordCacheMiss({ kind: decoded.kind });
+      plaintextRetained = this.cachePlaintext({
+        objectId,
+        kind: decoded.kind,
+        plaintext: loaded.plaintext,
+        source: 'read',
+      });
+      return decoded;
+    } finally {
+      if (!plaintextRetained) loaded.plaintext.fill(0);
+    }
+  }
+
+  async readBinaryPayloadRange({
+    objectId,
+    offset,
+    length,
+  }: {
+    objectId: string;
+    offset: number;
+    length: number;
+  }): Promise<(DecodedHizoFSRecord & {
+    readonly binaryPayloadByteLength: number;
+  }) | undefined> {
+    const cachedMetadata = this.metadataCache.get({ objectId });
+    if (cachedMetadata !== undefined) {
+      return this.decodeCachedRecordRange({
+        plaintext: cachedMetadata,
+        cache: 'metadata',
+        offset,
+        length,
+      });
+    }
+    const cachedChunk = this.fileChunkCache.get({ objectId });
+    if (cachedChunk !== undefined) {
+      return this.decodeCachedRecordRange({
+        plaintext: cachedChunk,
+        cache: 'file_chunk',
+        offset,
+        length,
+      });
+    }
+
+    const loaded = await this.segmentedStore.readRecord({ objectId });
+    if (loaded === undefined) return undefined;
+    let plaintextRetained = false;
+    try {
+      const decoded = this.decodeRecordRange({
+        plaintext: loaded.plaintext,
+        offset,
+        length,
+      });
       if (decoded.kind !== loaded.kind) {
         throw new HizoFSCorruptionError({
           message: 'HizoFS decoded record kind does not match its direct object reference',
@@ -485,6 +759,53 @@ export class HizoFSObjectStore {
         phase: 'record_decode',
         operation: () => decodeHizoFSRecord({ plaintext }),
       });
+  }
+
+  private decodeRecordRange({
+    plaintext,
+    offset,
+    length,
+  }: {
+    plaintext: Uint8Array;
+    offset: number;
+    length: number;
+  }): DecodedHizoFSRecord & {
+    readonly binaryPayloadByteLength: number;
+  } {
+    return this.diagnostics === undefined
+      ? decodeHizoFSRecordBinaryPayloadRange({ plaintext, offset, length })
+      : this.diagnostics.measureSync({
+        phase: 'record_decode',
+        operation: () => decodeHizoFSRecordBinaryPayloadRange({
+          plaintext,
+          offset,
+          length,
+        }),
+      });
+  }
+
+  private decodeCachedRecordRange({
+    plaintext,
+    cache,
+    offset,
+    length,
+  }: {
+    plaintext: Uint8Array;
+    cache: HizoFSRuntimeDiagnosticCacheKind;
+    offset: number;
+    length: number;
+  }): DecodedHizoFSRecord & {
+    readonly binaryPayloadByteLength: number;
+  } {
+    const decoded = this.decodeRecordRange({ plaintext, offset, length });
+    this.diagnostics?.recordCacheHit({ cache });
+    this.diagnostics?.recordRecordRead({
+      kind: decoded.kind,
+      source: 'cache',
+      plaintextByteLength: plaintext.byteLength,
+      physicalByteLength: 0,
+    });
+    return decoded;
   }
 
   private decodeCachedRecord({

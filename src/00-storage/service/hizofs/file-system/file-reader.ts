@@ -1,5 +1,8 @@
 import type { StorageBinaryObjectReadHandle } from '@/00-storage/service/binary-object-io';
-import type { HizoFSExtentIndex } from './extent-index';
+import type {
+  HizoFSExtentIndex,
+  HizoFSExtentIndexLookupCache,
+} from './extent-index';
 import type { HizoFSFileChunkStore } from './file-chunk-store';
 import type { HizoFSMaintenanceLease } from './maintenance-lock';
 import type { LoadedHizoFSFile } from './node-service';
@@ -98,6 +101,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
   private readonly maintenanceLease: HizoFSMaintenanceLease;
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
   private readonly onSettled: () => void;
+  private readonly extentLookupCache: HizoFSExtentIndexLookupCache = { value: undefined };
   private readonly prefetchedChunks = new Map<number, PrefetchedChunk>();
   private readonly prefetchCleanupTasks = new Set<Promise<void>>();
   private lastReadEndPosition: number | undefined;
@@ -218,6 +222,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
       try {
         await this.clearPrefetchedChunks();
       } finally {
+        this.extentLookupCache.value = undefined;
         await this.maintenanceLease.release();
       }
     } finally {
@@ -266,31 +271,27 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
       const chunkIndex = Math.floor(sourcePosition / storage.chunkSize);
       const offsetInChunk = sourcePosition % storage.chunkSize;
       const copyLength = Math.min(remaining, storage.chunkSize - offsetInChunk);
-      const chunk = await this.readChunk({ storage, chunkIndex });
+      const chunkRange = await this.readChunkRange({
+        storage,
+        chunkIndex,
+        offsetInChunk,
+        length: copyLength,
+      });
       try {
-        if (chunk === undefined) {
+        if (chunkRange === undefined) {
           buffer.fill(0, destinationOffset, destinationOffset + copyLength);
         } else {
-          const available = Math.max(
-            0,
-            Math.min(copyLength, chunk.byteLength - offsetInChunk),
-          );
-          if (available > 0) {
-            buffer.set(
-              chunk.subarray(offsetInChunk, offsetInChunk + available),
-              destinationOffset,
-            );
-          }
-          if (available < copyLength) {
+          buffer.set(chunkRange, destinationOffset);
+          if (chunkRange.byteLength < copyLength) {
             buffer.fill(
               0,
-              destinationOffset + available,
+              destinationOffset + chunkRange.byteLength,
               destinationOffset + copyLength,
             );
           }
         }
       } finally {
-        chunk?.fill(0);
+        chunkRange?.fill(0);
       }
       sourcePosition += copyLength;
       destinationOffset += copyLength;
@@ -333,6 +334,42 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     }
   }
 
+  private async readChunkRange({
+    storage,
+    chunkIndex,
+    offsetInChunk,
+    length,
+  }: {
+    storage: Extract<LoadedHizoFSFile['inode']['storage'], { type: 'extents' }>;
+    chunkIndex: number;
+    offsetInChunk: number;
+    length: number;
+  }): Promise<Uint8Array | undefined> {
+    const prefetched = this.prefetchedChunks.get(chunkIndex);
+    if (prefetched === undefined) {
+      const extent = await this.extentIndex.getWithLeafCache({
+        rootObjectId: storage.extentIndexRootObjectId,
+        chunkIndex,
+        cache: this.extentLookupCache,
+      });
+      if (extent === undefined) return undefined;
+      return this.chunkStore.readRange({
+        objectId: extent.chunkObjectId,
+        chunkSize: storage.chunkSize,
+        offset: offsetInChunk,
+        length,
+      });
+    }
+
+    const chunk = await this.readChunk({ storage, chunkIndex });
+    if (chunk === undefined) return undefined;
+    try {
+      return chunk.slice(offsetInChunk, offsetInChunk + length);
+    } finally {
+      chunk.fill(0);
+    }
+  }
+
   private async readChunk({
     storage,
     chunkIndex,
@@ -369,9 +406,10 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     storage: Extract<LoadedHizoFSFile['inode']['storage'], { type: 'extents' }>;
     chunkIndex: number;
   }): Promise<Uint8Array | undefined> {
-    const extent = await this.extentIndex.get({
+    const extent = await this.extentIndex.getWithLeafCache({
       rootObjectId: storage.extentIndexRootObjectId,
       chunkIndex,
+      cache: this.extentLookupCache,
     });
     if (extent === undefined) return undefined;
     return this.chunkStore.read({

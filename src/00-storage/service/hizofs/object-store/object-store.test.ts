@@ -4,6 +4,10 @@ import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { NativeOpfsHizoFSBackingStore } from '@/00-storage/service/hizofs/backing-store/native-opfs-backing-store';
 import { importHizoFSRootKey } from '@/00-storage/service/hizofs/crypto/object-crypto';
 import {
+  createHizoFSRuntimeDiagnostics,
+  type HizoFSRuntimeDiagnostics,
+} from '@/00-storage/service/hizofs/file-system/diagnostics';
+import {
   getHizoFSObjectShard,
   validateHizoFSObjectId,
 } from './object-id';
@@ -17,11 +21,13 @@ async function createStore({
   rootKeyByte,
   fileSystemId,
   fileChunkCacheAdmission = 'read_only',
+  diagnostics,
 }: {
   root: FileSystemDirectoryHandle;
   rootKeyByte: number;
   fileSystemId: string;
   fileChunkCacheAdmission?: 'read_only' | 'read_write';
+  diagnostics?: HizoFSRuntimeDiagnostics;
 }): Promise<{
   readonly backingStore: NativeOpfsHizoFSBackingStore;
   readonly store: HizoFSObjectStore;
@@ -30,7 +36,7 @@ async function createStore({
     root,
     fileHandleCacheEntryLimit: 64,
     fileSnapshotCacheEntryLimit: 64,
-    diagnostics: undefined,
+    diagnostics,
   });
   const rootKey = await importHizoFSRootKey({
     rawRootKey: new Uint8Array(32).fill(rootKeyByte),
@@ -46,6 +52,7 @@ async function createStore({
       fileChunkCacheByteLimit: 1024,
       fileChunkCacheEntryLimit: 64,
       fileChunkCacheAdmission,
+      diagnostics,
     }),
   };
 }
@@ -73,6 +80,144 @@ async function publishStore({
 }
 
 describe('HizoFS immutable object store', () => {
+  it('writes adjacent encrypted records with one bounded segment write', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      fileChunkCacheAdmission: 'read_write',
+      diagnostics,
+    });
+
+    const objectIds = await store.createMany({
+      records: [1, 2].map(value => ({
+        kind: 'file_chunk' as const,
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([value]),
+      })),
+    });
+    const snapshot = diagnostics.snapshot();
+
+    expect(objectIds).toHaveLength(2);
+    expect(snapshot.phases.object_encrypt.operationCount).toBe(2);
+    expect(snapshot.phases.backing_write_at.operationCount).toBe(2);
+    await expect(Promise.all(objectIds.map(objectId => store.read({ objectId }))))
+      .resolves.toEqual([
+        expect.objectContaining({ binaryPayload: new Uint8Array([1]) }),
+        expect.objectContaining({ binaryPayload: new Uint8Array([2]) }),
+      ]);
+  });
+
+  it('starts the next chunk when one encryption slot becomes free', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      fileChunkCacheAdmission: 'read_only',
+      diagnostics,
+    });
+    const releaseFirst = Promise.withResolvers<void>();
+    const releaseSecond = Promise.withResolvers<void>();
+    const firstTwoStarted = Promise.withResolvers<void>();
+    const thirdStarted = Promise.withResolvers<void>();
+    const started: number[] = [];
+    const discarded = [0, 0, 0, 0];
+
+    const write = store.createFileChunksPipelined({
+      records: [0, 1, 2, 3].map(index => ({
+        binaryPayloadByteLength: 1,
+        createBinaryPayload: async (): Promise<Uint8Array> => {
+          started.push(index);
+          if (started.length === 2) firstTwoStarted.resolve();
+          if (index === 2) thirdStarted.resolve();
+          if (index === 0) await releaseFirst.promise;
+          if (index === 1) await releaseSecond.promise;
+          return new Uint8Array([index + 1]);
+        },
+        discardBinaryPayload: (): void => {
+          discarded[index] = (discarded[index] ?? 0) + 1;
+        },
+      })),
+      maximumPlaintextRecordsInFlight: 2,
+    });
+
+    await firstTwoStarted.promise;
+    expect(started).toEqual([0, 1]);
+    releaseFirst.resolve();
+    await thirdStarted.promise;
+    expect(started.slice(0, 3)).toEqual([0, 1, 2]);
+    releaseSecond.resolve();
+
+    await expect(write).resolves.toHaveLength(4);
+    expect(started).toEqual([0, 1, 2, 3]);
+    expect(discarded).toEqual([1, 1, 1, 1]);
+    const snapshot = diagnostics.snapshot();
+    expect(snapshot.phases.object_encrypt.operationCount).toBe(4);
+    expect(snapshot.phases.backing_write_at.operationCount).toBe(3);
+    await store.close();
+  });
+
+  it('discards queued chunk payloads after a pipeline factory fails', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      fileChunkCacheAdmission: 'read_only',
+    });
+    const discarded = [0, 0, 0, 0];
+
+    await expect(store.createFileChunksPipelined({
+      records: [0, 1, 2, 3].map(index => ({
+        binaryPayloadByteLength: 1,
+        createBinaryPayload: async (): Promise<Uint8Array> => {
+          if (index === 0) throw new Error('injected payload factory failure');
+          return new Uint8Array([index + 1]);
+        },
+        discardBinaryPayload: (): void => {
+          discarded[index] = (discarded[index] ?? 0) + 1;
+        },
+      })),
+      maximumPlaintextRecordsInFlight: 2,
+    })).rejects.toThrow('injected payload factory failure');
+
+    expect(discarded).toEqual([1, 1, 1, 1]);
+    await expect(store.create({
+      record: {
+        kind: 'commit',
+        recordVersion: 1,
+        metadata: { revision: 1 },
+        binaryPayload: new Uint8Array(),
+      },
+    })).resolves.toEqual(expect.any(String));
+    await expect(store.close()).rejects.toThrow(
+      'Failed to close HizoFS segment writers',
+    );
+  });
+
+  it('rejects object batches wider than the bounded physical write', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+
+    await expect(store.createMany({
+      records: [1, 2, 3].map(value => ({
+        kind: 'file_chunk' as const,
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([value]),
+      })),
+    })).rejects.toThrow('at most 2 records');
+  });
+
   it('round-trips an authenticated record under a random opaque object ID', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const { store } = await createStore({
@@ -291,7 +436,43 @@ describe('HizoFS immutable object store', () => {
   });
 
 
-  it('admits file chunks on first read without polluting the cache on write', async () => {
+  it('copies only requested bytes from cached file chunks', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { backingStore, store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      fileChunkCacheAdmission: 'read_write',
+    });
+    const objectId = await store.create({
+      record: {
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([1, 2, 3, 4, 5]),
+      },
+    });
+    const backingReadSpy = vi.spyOn(backingStore, 'readRange');
+
+    const first = await store.readBinaryPayloadRange({
+      objectId,
+      offset: 1,
+      length: 2,
+    });
+    if (first === undefined) throw new Error('Expected cached HizoFS object range');
+    first.binaryPayload[0] = 99;
+    const second = await store.readBinaryPayloadRange({
+      objectId,
+      offset: 1,
+      length: 2,
+    });
+
+    expect(backingReadSpy).not.toHaveBeenCalled();
+    expect(first.binaryPayloadByteLength).toBe(5);
+    expect(second?.binaryPayload).toEqual(new Uint8Array([2, 3]));
+  });
+
+  it('admits file chunks on the first range read without caching the write', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const { backingStore, store } = await createStore({
       root,
@@ -311,10 +492,20 @@ describe('HizoFS immutable object store', () => {
     await store.releasePhysicalHandles();
     const readSpy = vi.spyOn(backingStore, 'readRange');
 
-    await store.read({ objectId });
-    await store.read({ objectId });
+    const first = await store.readBinaryPayloadRange({
+      objectId,
+      offset: 0,
+      length: 1,
+    });
+    const second = await store.readBinaryPayloadRange({
+      objectId,
+      offset: 1,
+      length: 2,
+    });
 
     expect(readSpy).toHaveBeenCalledTimes(1);
+    expect(first?.binaryPayload).toEqual(new Uint8Array([1]));
+    expect(second?.binaryPayload).toEqual(new Uint8Array([2, 3]));
   });
 
   it('can retain newly written file chunks for controlled benchmark comparison', async () => {

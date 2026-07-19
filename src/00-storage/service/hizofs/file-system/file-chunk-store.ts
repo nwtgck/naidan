@@ -2,8 +2,17 @@ import {
   HizoFSFileChunkSchemaDto,
   type HizoFSFileChunkDto,
 } from '@/00-storage/00-dto/hizofs.dto';
-import { assertHizoFSFileChunk } from './semantic-validation';
+import {
+  assertHizoFSFileChunk,
+  assertHizoFSFileChunkByteLength,
+} from './semantic-validation';
 import type { HizoFSRecordStore } from './record-store';
+
+export type HizoFSLazyFileChunkPayload = {
+  readonly binaryPayloadByteLength: number;
+  readonly createBinaryPayload: () => Promise<Uint8Array>;
+  readonly discardBinaryPayload: () => void;
+};
 
 export class HizoFSFileChunkStore {
   constructor({ recordStore }: {
@@ -25,6 +34,77 @@ export class HizoFSFileChunkStore {
       metadata: chunk,
       binaryPayload,
     });
+  }
+
+  async writeMany({ binaryPayloads, chunkSize }: {
+    binaryPayloads: readonly Uint8Array[];
+    chunkSize: number;
+  }): Promise<readonly string[]> {
+    const chunk: HizoFSFileChunkDto = {};
+    for (const binaryPayload of binaryPayloads) {
+      assertHizoFSFileChunk({ chunk, binaryPayload, chunkSize });
+    }
+    return this.recordStore.writeMany({
+      records: binaryPayloads.map(binaryPayload => ({
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: chunk,
+        binaryPayload,
+      })),
+    });
+  }
+
+  async writeManyPipelined({
+    payloads,
+    chunkSize,
+    maximumPlaintextRecordsInFlight,
+  }: {
+    payloads: readonly HizoFSLazyFileChunkPayload[];
+    chunkSize: number;
+    maximumPlaintextRecordsInFlight: number;
+  }): Promise<readonly string[]> {
+    const chunk: HizoFSFileChunkDto = {};
+    for (const payload of payloads) {
+      assertHizoFSFileChunkByteLength({
+        chunk,
+        binaryPayloadByteLength: payload.binaryPayloadByteLength,
+        chunkSize,
+      });
+    }
+    return this.recordStore.writeFileChunksPipelined({
+      records: payloads,
+      maximumPlaintextRecordsInFlight,
+    });
+  }
+
+  async readRange({
+    objectId,
+    chunkSize,
+    offset,
+    length,
+  }: {
+    objectId: string;
+    chunkSize: number;
+    offset: number;
+    length: number;
+  }): Promise<Uint8Array> {
+    const {
+      metadata,
+      binaryPayload,
+      binaryPayloadByteLength,
+    } = await this.recordStore.readBinaryPayloadRange({
+      objectId,
+      expectedKind: 'file_chunk',
+      schema: HizoFSFileChunkSchemaDto,
+      offset,
+      length,
+    });
+    assertHizoFSFileChunkByteLength({
+      chunk: metadata,
+      binaryPayloadByteLength,
+      chunkSize,
+    });
+    return binaryPayload;
   }
 
   async read({ objectId, chunkSize }: {

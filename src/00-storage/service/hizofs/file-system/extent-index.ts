@@ -5,6 +5,7 @@ import {
 } from "@/00-storage/00-dto/hizofs.dto";
 import {
   PersistentHizoFSIndex,
+  type PersistentIndexLeafLookupCache,
   type PersistentIndexPage,
   type PersistentIndexPageStore,
 } from "./persistent-index";
@@ -15,6 +16,11 @@ import {
 } from "./semantic-validation";
 import type { HizoFSRecordStore } from "./record-store";
 import type { HizoFSRuntimeDiagnostics } from "./diagnostics";
+
+export type HizoFSExtentIndexLookupCache = PersistentIndexLeafLookupCache<
+  number,
+  HizoFSFileExtentDto
+>;
 
 class ExtentIndexPageStore implements PersistentIndexPageStore<
   number,
@@ -260,6 +266,22 @@ export class HizoFSExtentIndex {
     chunkIndex: number;
   }): Promise<HizoFSFileExtentDto | undefined> {
     return this.index.get({ rootObjectId, key: chunkIndex });
+  }
+
+  getWithLeafCache({
+    rootObjectId,
+    chunkIndex,
+    cache,
+  }: {
+    rootObjectId: string;
+    chunkIndex: number;
+    cache: HizoFSExtentIndexLookupCache;
+  }): Promise<HizoFSFileExtentDto | undefined> {
+    return this.index.getWithLeafCache({
+      rootObjectId,
+      key: chunkIndex,
+      cache,
+    });
   }
 
   set({

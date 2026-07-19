@@ -3,9 +3,13 @@ import type {
   HizoFSBackingStore,
   HizoFSRandomAccessFile,
 } from '@/00-storage/service/hizofs/backing-store/backing-store';
-import { bytesEqual } from '@/00-storage/service/hizofs/bytes';
+import {
+  bytesEqual,
+  concatenateBytes,
+} from '@/00-storage/service/hizofs/bytes';
 import { HizoFSCorruptionError } from '@/00-storage/service/hizofs/errors';
 import type { HizoFSRuntimeDiagnostics } from '@/00-storage/service/hizofs/file-system/diagnostics';
+import { Semaphore } from '@/utils/concurrency';
 import type { HizoFSRecordKind } from '@/00-storage/service/hizofs/format/record';
 import { deriveHizoFSSegmentRecordKey } from '@/00-storage/service/hizofs/segment-store/segment-crypto';
 import {
@@ -34,6 +38,7 @@ import {
 
 const METADATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH = 1024 * 1024;
 const DATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH = 16 * 1024 * 1024;
+export const HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE = 2;
 
 export type HizoFSPhysicalObjectEntry = {
   readonly objectId: string;
@@ -67,6 +72,25 @@ type SegmentReservation = {
   readonly writer: HizoFSActiveSegmentWriter;
   readonly reference: HizoFSObjectReference;
   readonly write: Promise<void>;
+};
+
+type SegmentBatchReservation = {
+  readonly references: readonly HizoFSObjectReference[];
+  readonly writes: readonly Promise<void>[];
+};
+
+export type HizoFSLazySegmentRecord = {
+  readonly kind: HizoFSRecordKind;
+  readonly plaintextByteLength: number;
+  readonly rotationPayloadByteLength: number;
+  readonly createPlaintext: () => Promise<Uint8Array>;
+  readonly discardPlaintext: () => void;
+};
+
+type PipelinedSegmentRecordPlan = {
+  readonly writer: HizoFSActiveSegmentWriter;
+  readonly reference: HizoFSObjectReference;
+  readonly record: HizoFSLazySegmentRecord;
 };
 
 type CommittedMetadataSegment = {
@@ -198,7 +222,7 @@ class HizoFSActiveSegmentWriter {
     backingStore: HizoFSBackingStore;
     rootKey: CryptoKey;
     fileSystemId: string;
-    segmentType: HizoFSSegmentType;
+    segmentType: 'metadata' | 'data';
     diagnostics: HizoFSRuntimeDiagnostics | undefined;
   }): Promise<HizoFSActiveSegmentWriter> {
     const segmentId = createHizoFSSegmentId();
@@ -285,11 +309,15 @@ class HizoFSActiveSegmentWriter {
     reference: HizoFSObjectReference;
     plaintext: Uint8Array;
   }): Promise<void> {
-    this.assertOpen();
-    if (!sameSegmentId({ left: reference.homeSegmentId, right: this.segmentId })) {
-      throw new Error('HizoFS segment writer received a foreign object reference');
-    }
-    const write = (async () => {
+    return this.scheduleBatchWrite({ records: [{ reference, plaintext }] });
+  }
+
+  encodeRecord({ reference, plaintext }: {
+    reference: HizoFSObjectReference;
+    plaintext: Uint8Array;
+  }): Promise<Uint8Array> {
+    this.assertReference({ reference });
+    return (async () => {
       const encode = async () => encodeHizoFSRecordFrame({
         rootKey: this.rootKey,
         fileSystemId: this.fileSystemId,
@@ -299,12 +327,98 @@ class HizoFSActiveSegmentWriter {
       });
       const encoded = this.diagnostics === undefined
         ? await encode()
-        : await this.diagnostics.measureAsync({ phase: 'object_encrypt', operation: encode });
+        : await this.diagnostics.measureAsync({
+          phase: 'object_encrypt',
+          operation: encode,
+        });
+      return encoded.bytes;
+    })();
+  }
+
+  scheduleBatchWrite({ records }: {
+    records: readonly {
+      readonly reference: HizoFSObjectReference;
+      readonly plaintext: Uint8Array;
+    }[];
+  }): Promise<void> {
+    return this.schedulePreparedBatchWrite({
+      records: records.map(({ reference, plaintext }) => ({
+        reference,
+        encodedBytes: this.encodeRecord({ reference, plaintext }),
+      })),
+    });
+  }
+
+  schedulePreparedBatchWrite({ records }: {
+    records: readonly {
+      readonly reference: HizoFSObjectReference;
+      readonly encodedBytes: Promise<Uint8Array>;
+    }[];
+  }): Promise<void> {
+    this.assertOpen();
+    this.assertContiguousReferences({
+      references: records.map(({ reference }) => reference),
+    });
+    const first = records[0];
+    if (first === undefined) {
+      throw new Error('HizoFS segment writer batch unexpectedly became empty');
+    }
+    const write = (async () => {
+      const encodedRecords = await Promise.all(
+        records.map(async ({ reference, encodedBytes }) => {
+          const bytes = await encodedBytes;
+          if (bytes.byteLength !== reference.storedLength) {
+            throw new Error(
+              'HizoFS encoded record length does not match its reservation',
+            );
+          }
+          return bytes;
+        }),
+      );
+      const bytes = encodedRecords.length === 1
+        ? encodedRecords[0]
+        : concatenateBytes({ parts: encodedRecords });
+      if (bytes === undefined) {
+        throw new Error('HizoFS segment writer produced no encoded batch bytes');
+      }
       await this.file.writeAt({
-        offset: reference.homeOffset,
-        bytes: encoded.bytes,
+        offset: first.reference.homeOffset,
+        bytes,
       });
     })();
+    return this.trackWrite({ write });
+  }
+
+  private assertReference({ reference }: {
+    reference: HizoFSObjectReference;
+  }): void {
+    this.assertOpen();
+    if (!sameSegmentId({ left: reference.homeSegmentId, right: this.segmentId })) {
+      throw new Error('HizoFS segment writer received a foreign object reference');
+    }
+  }
+
+  private assertContiguousReferences({ references }: {
+    references: readonly HizoFSObjectReference[];
+  }): void {
+    if (references.length === 0) {
+      throw new Error('HizoFS segment writer batch must contain at least one record');
+    }
+    const first = references[0];
+    if (first === undefined) {
+      throw new Error('HizoFS segment writer batch unexpectedly became empty');
+    }
+    let expectedOffset = first.homeOffset;
+    for (const reference of references) {
+      this.assertReference({ reference });
+      if (reference.homeOffset !== expectedOffset) {
+        throw new Error('HizoFS segment writer batch references must be contiguous');
+      }
+      expectedOffset += reference.storedLength;
+    }
+  }
+
+  private trackWrite({ write }: { write: Promise<void> }): Promise<void> {
     const tracked = write.catch((error: unknown) => {
       this.writeFailure ??= { error };
       throw error;
@@ -412,6 +526,121 @@ export class HizoFSSegmentedStore {
     await reservation.write;
     return encodeHizoFSObjectReference({ reference: reservation.reference });
   }
+
+  async createRecords({ records }: {
+    records: readonly {
+      readonly kind: HizoFSRecordKind;
+      readonly plaintext: Uint8Array;
+      readonly rotationPayloadByteLength: number;
+    }[];
+  }): Promise<readonly string[]> {
+    this.assertOpen();
+    if (records.length === 0) return [];
+    if (records.length > HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE) {
+      throw new Error(
+        `HizoFS record batches may contain at most ${String(HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE)} records`,
+      );
+    }
+    const first = records[0];
+    if (first === undefined) return [];
+    const segmentType = segmentTypeForRecordKind({ kind: first.kind });
+    for (const record of records) {
+      if (segmentTypeForRecordKind({ kind: record.kind }) !== segmentType) {
+        throw new Error(
+          'HizoFS record batches must use one physical segment type',
+        );
+      }
+    }
+    const reservation = await this.reserveAndScheduleBatchWrite({
+      records,
+      segmentType,
+    });
+    await Promise.all(reservation.writes);
+    return reservation.references.map(reference =>
+      encodeHizoFSObjectReference({ reference })
+    );
+  }
+
+  async createRecordsPipelined({
+    records,
+    maximumPlaintextRecordsInFlight,
+    maximumRecordsPerPhysicalWrite,
+  }: {
+    records: readonly HizoFSLazySegmentRecord[];
+    maximumPlaintextRecordsInFlight: number;
+    maximumRecordsPerPhysicalWrite: number;
+  }): Promise<readonly string[]> {
+    this.assertOpen();
+    if (records.length === 0) return [];
+    for (const [fieldName, value] of [
+      ['maximumPlaintextRecordsInFlight', maximumPlaintextRecordsInFlight],
+      ['maximumRecordsPerPhysicalWrite', maximumRecordsPerPhysicalWrite],
+    ] as const) {
+      if (!Number.isSafeInteger(value) || value < 1) {
+        throw new Error(`HizoFS ${fieldName} must be a positive safe integer`);
+      }
+    }
+    if (maximumRecordsPerPhysicalWrite > HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE) {
+      throw new Error(
+        `HizoFS record batches may contain at most ${String(HIZOFS_MAX_COALESCED_RECORDS_PER_WRITE)} records`,
+      );
+    }
+    const first = records[0];
+    if (first === undefined) return [];
+    const segmentType = segmentTypeForRecordKind({ kind: first.kind });
+    for (const record of records) {
+      if (!Number.isSafeInteger(record.plaintextByteLength) || record.plaintextByteLength < 0) {
+        throw new Error(
+          'HizoFS lazy record plaintext length must be a non-negative safe integer',
+        );
+      }
+      if (
+        !Number.isSafeInteger(record.rotationPayloadByteLength)
+        || record.rotationPayloadByteLength < 0
+      ) {
+        throw new Error(
+          'HizoFS lazy record rotation length must be a non-negative safe integer',
+        );
+      }
+      if (segmentTypeForRecordKind({ kind: record.kind }) !== segmentType) {
+        throw new Error('HizoFS record pipelines must use one physical segment type');
+      }
+    }
+    const managedRecords = records.map(record => {
+      let discarded = false;
+      return {
+        ...record,
+        discardPlaintext: (): void => {
+          if (discarded) return;
+          discarded = true;
+          record.discardPlaintext();
+        },
+      } satisfies HizoFSLazySegmentRecord;
+    });
+
+    const objectIds: string[] = [];
+    let nextRecordIndex = 0;
+    try {
+      while (nextRecordIndex < managedRecords.length) {
+        const reservation = await this.reservePipelinedRecordGroup({
+          records: managedRecords,
+          startIndex: nextRecordIndex,
+          segmentType,
+        });
+        const groupObjectIds = await this.writePipelinedRecordGroup({
+          plans: reservation.plans,
+          maximumPlaintextRecordsInFlight,
+          maximumRecordsPerPhysicalWrite,
+        });
+        objectIds.push(...groupObjectIds);
+        nextRecordIndex = reservation.endIndex;
+      }
+      return objectIds;
+    } finally {
+      for (const record of managedRecords) record.discardPlaintext();
+    }
+  }
+
 
   async readRecord({ objectId }: {
     objectId: string;
@@ -867,6 +1096,149 @@ export class HizoFSSegmentedStore {
     });
   }
 
+  private reservePipelinedRecordGroup({
+    records,
+    startIndex,
+    segmentType,
+  }: {
+    records: readonly HizoFSLazySegmentRecord[];
+    startIndex: number;
+    segmentType: 'metadata' | 'data';
+  }): Promise<{
+    readonly plans: readonly PipelinedSegmentRecordPlan[];
+    readonly endIndex: number;
+  }> {
+    return this.runWithReservationLock({
+      operation: async () => {
+        const payloadTargetByteLength = (() => {
+          switch (segmentType) {
+          case 'data':
+            return DATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH;
+          case 'metadata':
+            return METADATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH;
+          default: {
+            const _ex: never = segmentType;
+            throw new Error(
+              `Unhandled HizoFS segment type: ${String(_ex)}`,
+            );
+          }
+          }
+        })();
+        let writer = await this.ensureWriter({ segmentType });
+        const firstRecord = records[startIndex];
+        if (firstRecord === undefined) {
+          return { plans: [], endIndex: startIndex };
+        }
+        if (!writer.canFit({
+          rotationPayloadByteLength: firstRecord.rotationPayloadByteLength,
+          payloadTargetByteLength,
+        })) {
+          await writer.close({ flush: true });
+          this.setActiveWriter({ segmentType, writer: undefined });
+          writer = await this.ensureWriter({ segmentType });
+        }
+
+        const plans: PipelinedSegmentRecordPlan[] = [];
+        let index = startIndex;
+        while (index < records.length) {
+          const record = records[index];
+          if (record === undefined) break;
+          if (!writer.canFit({
+            rotationPayloadByteLength: record.rotationPayloadByteLength,
+            payloadTargetByteLength,
+          })) {
+            break;
+          }
+          const reference = writer.reserve({
+            kind: record.kind,
+            plaintextByteLength: record.plaintextByteLength,
+            rotationPayloadByteLength: record.rotationPayloadByteLength,
+          });
+          plans.push({ writer, reference, record });
+          index += 1;
+        }
+        if (plans.length === 0) {
+          throw new Error('HizoFS record pipeline could not reserve its first record');
+        }
+        return { plans, endIndex: index };
+      },
+    });
+  }
+
+  private async writePipelinedRecordGroup({
+    plans,
+    maximumPlaintextRecordsInFlight,
+    maximumRecordsPerPhysicalWrite,
+  }: {
+    plans: readonly PipelinedSegmentRecordPlan[];
+    maximumPlaintextRecordsInFlight: number;
+    maximumRecordsPerPhysicalWrite: number;
+  }): Promise<readonly string[]> {
+    if (plans.length === 0) return [];
+    const semaphore = new Semaphore({
+      maxConcurrency: maximumPlaintextRecordsInFlight,
+    });
+    let pipelineFailure: unknown | undefined;
+    const encodedRecords = plans.map(plan => semaphore.run({
+      task: async () => {
+        if (pipelineFailure !== undefined) throw pipelineFailure;
+        let plaintext: Uint8Array | undefined;
+        try {
+          plaintext = await plan.record.createPlaintext();
+          if (plaintext.byteLength !== plan.record.plaintextByteLength) {
+            throw new Error(
+              'HizoFS lazy record plaintext length does not match its reservation',
+            );
+          }
+          return await plan.writer.encodeRecord({
+            reference: plan.reference,
+            plaintext,
+          });
+        } catch (error) {
+          pipelineFailure ??= error;
+          throw error;
+        } finally {
+          plaintext?.fill(0);
+          plan.record.discardPlaintext();
+        }
+      },
+    }));
+
+    const writes: Promise<void>[] = [];
+    for (
+      let batchStart = 0;
+      batchStart < plans.length;
+      batchStart += maximumRecordsPerPhysicalWrite
+    ) {
+      const batchPlans = plans.slice(
+        batchStart,
+        batchStart + maximumRecordsPerPhysicalWrite,
+      );
+      const writer = batchPlans[0]?.writer;
+      if (writer === undefined) {
+        throw new Error('HizoFS record pipeline produced an empty write batch');
+      }
+      writes.push(writer.schedulePreparedBatchWrite({
+        records: batchPlans.map((plan, batchIndex) => {
+          const encodedBytes = encodedRecords[batchStart + batchIndex];
+          if (encodedBytes === undefined) {
+            throw new Error('HizoFS record pipeline omitted encoded bytes');
+          }
+          return { reference: plan.reference, encodedBytes };
+        }),
+      }));
+    }
+
+    const results = await Promise.allSettled(writes);
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failure !== undefined) throw failure.reason;
+    return plans.map(({ reference }) =>
+      encodeHizoFSObjectReference({ reference })
+    );
+  }
+
   private reserveAndScheduleWrite({
     kind,
     plaintext,
@@ -911,6 +1283,74 @@ export class HizoFSSegmentedStore {
           reference,
           write: writer.scheduleWrite({ reference, plaintext }),
         };
+      },
+    });
+  }
+
+  private reserveAndScheduleBatchWrite({
+    records,
+    segmentType,
+  }: {
+    records: readonly {
+      readonly kind: HizoFSRecordKind;
+      readonly plaintext: Uint8Array;
+      readonly rotationPayloadByteLength: number;
+    }[];
+    segmentType: 'metadata' | 'data';
+  }): Promise<SegmentBatchReservation> {
+    return this.runWithReservationLock({
+      operation: async () => {
+        this.assertOpen();
+        const payloadTargetByteLength = (() => {
+          switch (segmentType) {
+          case 'data':
+            return DATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH;
+          case 'metadata':
+            return METADATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH;
+          default: {
+            const _ex: never = segmentType;
+            throw new Error(
+              `Unhandled active HizoFS segment type: ${String(_ex)}`,
+            );
+          }
+          }
+        })();
+        let writer = await this.ensureWriter({ segmentType });
+        let pendingRecords: {
+          readonly reference: HizoFSObjectReference;
+          readonly plaintext: Uint8Array;
+        }[] = [];
+        const references: HizoFSObjectReference[] = [];
+        const writes: Promise<void>[] = [];
+        const schedulePending = (): void => {
+          if (pendingRecords.length === 0) return;
+          writes.push(writer.scheduleBatchWrite({ records: pendingRecords }));
+          pendingRecords = [];
+        };
+
+        for (const record of records) {
+          if (!writer.canFit({
+            rotationPayloadByteLength: record.rotationPayloadByteLength,
+            payloadTargetByteLength,
+          })) {
+            schedulePending();
+            await writer.close({ flush: true });
+            this.setActiveWriter({ segmentType, writer: undefined });
+            writer = await this.ensureWriter({ segmentType });
+          }
+          const reference = writer.reserve({
+            kind: record.kind,
+            plaintextByteLength: record.plaintext.byteLength,
+            rotationPayloadByteLength: record.rotationPayloadByteLength,
+          });
+          references.push(reference);
+          pendingRecords.push({
+            reference,
+            plaintext: record.plaintext,
+          });
+        }
+        schedulePending();
+        return { references, writes };
       },
     });
   }
