@@ -3,6 +3,9 @@ import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { writeStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import { createHizoFS } from './api';
 import { createHizoFSInspectionReader } from './inspection';
+import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
+import { deriveHizoFSFileSystemId, importHizoFSRootKey } from './crypto/object-crypto';
+import { HizoFSGarbageCollectionCheckpointStore, TEST_ONLY as CHECKPOINT_TEST_ONLY } from './garbage-collection-checkpoint';
 
 const ROOT_KEY = new Uint8Array(32).fill(23);
 
@@ -45,6 +48,13 @@ describe('HizoFS inspection reader', () => {
       status: 'valid',
       selected: true,
     }));
+    expect(overview.maintenance.relocationMap).toMatchObject({
+      status: 'valid',
+      sequence: 0,
+      mappingCount: 0,
+    });
+    expect(overview.maintenance.garbageCollectionCheckpoint).toEqual({ status: 'absent' });
+    expect(overview.maintenance.recoveryAssessment.automaticRepairPerformed).toBe(false);
     const selectedSuperblockSlot = overview.superblockSlots.find(slot => slot.status === 'valid' && slot.selected);
     if (selectedSuperblockSlot === undefined || selectedSuperblockSlot.status !== 'valid') {
       throw new Error('Selected superblock fixture was missing');
@@ -139,6 +149,11 @@ describe('HizoFS inspection reader', () => {
     });
     const overview = await reader.readOverview();
     expect(overview.activeMode).toBe('fallback_read_only');
+    expect(overview.maintenance.recoveryAssessment.status).toBe('degraded');
+    expect(overview.maintenance.recoveryAssessment.reasons).toEqual(expect.arrayContaining([
+      expect.stringContaining('fallback'),
+      expect.stringContaining('superblock slot'),
+    ]));
     expect(overview.superblockSlots).toContainEqual(expect.objectContaining({
       slot: activeSlot.slot,
       status: 'invalid',
@@ -155,6 +170,74 @@ describe('HizoFS inspection reader', () => {
     }));
     await reader.dispose();
     await session.close();
+  });
+
+  it('reports unusable authenticated GC checkpoint slots without attempting automatic repair', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    await writeStorageFileText({
+      fileHandle: await session.root.getFileHandle({ name: 'value.txt', create: true }),
+      value: 'value',
+    });
+    await session.close();
+
+    const beforeReader = await createHizoFSInspectionReader({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const beforeOverview = await beforeReader.readOverview();
+    await beforeReader.dispose();
+
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root: backing,
+      fileHandleCacheEntryLimit: 8,
+      fileSnapshotCacheEntryLimit: 8,
+      diagnostics: undefined,
+    });
+    const rootKey = await importHizoFSRootKey({ rawRootKey: ROOT_KEY });
+    const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
+    const checkpointStore = new HizoFSGarbageCollectionCheckpointStore({
+      backingStore,
+      rootKey,
+      fileSystemId,
+    });
+    await checkpointStore.write({
+      checkpoint: {
+        sequence: 1,
+        activeCommitObjectId: beforeOverview.activeCommitObjectId,
+        phase: 'sweep',
+        completedCompactionCandidateCount: 0,
+        completedSweepCandidateCount: 0,
+        relocatedObjectCount: 0,
+        reclaimedCompactionObjectCount: 0,
+        removedSweepObjectCount: 0,
+        lastCompletedCandidateObjectId: null,
+      },
+    });
+    for (const slot of [0, 1] as const) {
+      await backingStore.write({
+        path: CHECKPOINT_TEST_ONLY.pathForSlot({ slot }),
+        bytes: new Uint8Array([1, 2, 3]),
+      });
+    }
+
+    const reader = await createHizoFSInspectionReader({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const overview = await reader.readOverview();
+    expect(overview.maintenance.garbageCollectionCheckpoint).toMatchObject({ status: 'invalid' });
+    expect(overview.maintenance.recoveryAssessment).toMatchObject({
+      status: 'manual_review_required',
+      automaticRepairPerformed: false,
+    });
+    expect(overview.maintenance.recoveryAssessment.reasons).toContain(
+      'no authenticated garbage-collection checkpoint slot is usable',
+    );
+    await reader.dispose();
   });
 
   it('paginates physical objects with an opaque shard cursor without duplicates', async () => {

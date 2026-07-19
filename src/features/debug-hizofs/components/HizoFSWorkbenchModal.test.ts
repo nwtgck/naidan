@@ -438,6 +438,22 @@ function createClient({
       inodeIndexRootObjectId: "inode-index-a",
       unknownPersistedField: "must remain visible",
     },
+    maintenance: {
+      segmentIndexes: {
+        discoveredSegmentCount: 4,
+        readableSegmentCount: 4,
+        authenticatedIndexCount: 3,
+        rebuiltMissingIndexCount: 1,
+        rebuiltInvalidIndexCount: 0,
+      },
+      relocationMap: { status: 'valid', sequence: 2, mappingCount: 7 },
+      garbageCollectionCheckpoint: { status: 'absent' },
+      recoveryAssessment: {
+        status: 'degraded',
+        reasons: ['one segment index was absent'],
+        automaticRepairPerformed: false,
+      },
+    },
   };
   const inspectedObject: Exclude<InspectedObjectResult, undefined> = {
     object: {

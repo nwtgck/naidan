@@ -6,7 +6,7 @@ import {
   collectHizoFSGarbage,
   TEST_ONLY as GARBAGE_COLLECTOR_TEST_ONLY,
 } from './garbage-collector';
-import { inspectHizoFS, TEST_ONLY } from './api';
+import { createHizoFS, openHizoFS, inspectHizoFS, TEST_ONLY } from './api';
 import type { HizoFSPolicy } from './file-system/policy';
 import { getHizoFSObjectShard } from './object-store/object-id';
 import {
@@ -635,13 +635,25 @@ describe('HizoFS garbage collection', () => {
     expect(settled).toBe(true);
     expect(activeRemovals).toBe(0);
 
-    await expect(collectHizoFSGarbage({
+    const resumed = await collectHizoFSGarbage({
       backingDirectory: backing,
       fileSystemRootKey: ROOT_KEY,
-      dryRun: true,
+      dryRun: false,
       sweepPolicy: undefined,
       signal: undefined,
-    })).resolves.toBeDefined();
+    });
+    expect(resumed.diagnostics.resumedFromCheckpoint).toBe(true);
+    expect(resumed.diagnostics.checkpointSequence).toBeGreaterThan(0);
+    expect(resumed.removedObjectCount).toBeGreaterThan(0);
+
+    const afterClear = await collectHizoFSGarbage({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+    });
+    expect(afterClear.diagnostics.resumedFromCheckpoint).toBe(false);
   }, 30_000);
 
   it('honors cancellation only after every started removal settles', async () => {
@@ -700,6 +712,70 @@ describe('HizoFS garbage collection', () => {
     expect(settled).toBe(true);
     expect(activeRemovals).toBe(0);
     expect(startedRemovals).toBe(2);
+  }, 30_000);
+
+  it('compacts a partial-live data segment and preserves file bytes after reopen', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const session = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const file = await session.root.getFileHandle({ name: 'large.bin', create: true });
+    const chunkSize = 256 * 1024;
+    const original = new Uint8Array(8 * chunkSize).fill(1);
+    const writer = await file.createWritable({ keepExistingData: false });
+    await writer.write({ position: 0, data: original });
+    await writer.close();
+
+    const replacement = new Uint8Array(6 * chunkSize).fill(2);
+    const replacementWriter = await file.createWritable({ keepExistingData: true });
+    await replacementWriter.write({ position: 0, data: replacement });
+    await replacementWriter.close();
+    await session.root.getFileHandle({ name: 'rotate-a', create: true });
+    await session.root.getFileHandle({ name: 'rotate-b', create: true });
+    await session.close();
+
+    const result = await GARBAGE_COLLECTOR_TEST_ONLY.collectHizoFSGarbageInternal({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+      dryRun: false,
+      sweepPolicy: undefined,
+      signal: undefined,
+      dependencies: {
+        now: () => performance.now(),
+        afterRootSnapshot: async () => {},
+        removeCandidate: async ({ runtime, candidate }) => (
+          runtime.objectStore.removeWholeSegmentIfUnchanged({ candidate })
+        ),
+        yieldToForeground: async () => {},
+        compactionPolicy: {
+          minimumDeadRecordByteLength: 1,
+          maximumLiveRecordByteLength: 1024 * 1024,
+          maximumLiveRecordCount: 16,
+          maximumCandidateCount: 4,
+        },
+      },
+    });
+    expect(result.diagnostics.compactedSegmentCount).toBeGreaterThanOrEqual(1);
+    expect(result.diagnostics.relocatedObjectCount).toBeGreaterThanOrEqual(2);
+    expect(result.diagnostics.reclaimedCompactionObjectCount).toBeGreaterThanOrEqual(6);
+
+    const reopened = await openHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const reopenedFile = await reopened.root.getFileHandle({ name: 'large.bin', create: false });
+    const readable = await reopenedFile.openReadable({ mimeType: 'application/octet-stream' });
+    const bytes = new Uint8Array(await new Response(readable.stream({
+      start: 0,
+      end: undefined,
+      signal: undefined,
+    })).arrayBuffer());
+    await readable.close();
+    expect(bytes.byteLength).toBe(8 * chunkSize);
+    expect(bytes.subarray(0, 6 * chunkSize)).toEqual(replacement);
+    expect(bytes.subarray(6 * chunkSize)).toEqual(original.subarray(6 * chunkSize));
+    await reopened.close();
   }, 30_000);
 
   it('preserves shared reflink objects until both file identities are unreachable', async () => {

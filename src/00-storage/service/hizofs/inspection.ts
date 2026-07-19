@@ -18,6 +18,7 @@ import { createHizoFSRuntime } from './file-system/runtime';
 import { loadHizoFSActiveStateFromStores } from './file-system/active-state';
 import { acquireHizoFSResourceLease } from './file-system/maintenance-lock';
 import { DEFAULT_HIZOFS_POLICY } from './file-system/policy';
+import { HizoFSGarbageCollectionCheckpointStore, type HizoFSGarbageCollectionCheckpoint } from './garbage-collection-checkpoint';
 import { decodeHizoFSRecord } from './format/record';
 import { validateHizoFSObjectId } from './object-store/object-id';
 import type { HizoFSObjectStore } from './object-store/object-store';
@@ -90,6 +91,44 @@ export type HizoFSSuperblockSlotInspection =
       readonly errorMessage: string;
     };
 
+
+export type HizoFSMaintenanceHealth = {
+  readonly segmentIndexes: {
+    readonly discoveredSegmentCount: number;
+    readonly readableSegmentCount: number;
+    readonly authenticatedIndexCount: number;
+    readonly rebuiltMissingIndexCount: number;
+    readonly rebuiltInvalidIndexCount: number;
+  };
+  readonly relocationMap:
+    | {
+        readonly status: 'valid';
+        readonly sequence: number;
+        readonly mappingCount: number;
+      }
+    | {
+        readonly status: 'invalid';
+        readonly errorMessage: string;
+      };
+  readonly garbageCollectionCheckpoint:
+    | {
+        readonly status: 'absent';
+      }
+    | {
+        readonly status: 'valid';
+        readonly checkpoint: HizoFSGarbageCollectionCheckpoint;
+      }
+    | {
+        readonly status: 'invalid';
+        readonly errorMessage: string;
+      };
+  readonly recoveryAssessment: {
+    readonly status: 'healthy' | 'degraded' | 'manual_review_required';
+    readonly reasons: readonly string[];
+    readonly automaticRepairPerformed: false;
+  };
+};
+
 export type HizoFSInspectionOverview = {
   readonly activeMode: 'current' | 'fallback_read_only';
   readonly descriptor: HizoFSDescriptorDto;
@@ -101,6 +140,7 @@ export type HizoFSInspectionOverview = {
   readonly activeCommitObjectId: string;
   readonly activeCommit: HizoFSCommitDto;
   readonly activeCommitPersistedDto: unknown;
+  readonly maintenance: HizoFSMaintenanceHealth;
 };
 
 export type HizoFSPhysicalObjectEntry = {
@@ -148,6 +188,114 @@ export interface HizoFSInspectionReader {
   dispose(): Promise<void>;
 }
 
+
+function errorMessage({ error }: { error: unknown }): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function inspectMaintenanceHealth({
+  objectStore,
+  garbageCollectionCheckpointStore,
+  activeMode,
+  superblockSlots,
+}: {
+  objectStore: HizoFSObjectStore;
+  garbageCollectionCheckpointStore: HizoFSGarbageCollectionCheckpointStore;
+  activeMode: 'current' | 'fallback_read_only';
+  superblockSlots: readonly HizoFSSuperblockSlotInspection[];
+}): Promise<HizoFSMaintenanceHealth> {
+  const listing = await objectStore.listPhysicalObjects();
+  const relocationMap = await objectStore.readRelocationSnapshot().then(snapshot => ({
+    status: 'valid' as const,
+    sequence: snapshot.sequence,
+    mappingCount: snapshot.mappings.size,
+  })).catch((error: unknown) => ({
+    status: 'invalid' as const,
+    errorMessage: errorMessage({ error }),
+  }));
+  const garbageCollectionCheckpoint = await garbageCollectionCheckpointStore.read()
+    .then(checkpoint => checkpoint === undefined
+      ? { status: 'absent' as const }
+      : { status: 'valid' as const, checkpoint })
+    .catch((error: unknown) => ({
+      status: 'invalid' as const,
+      errorMessage: errorMessage({ error }),
+    }));
+
+  const reasons: string[] = [];
+  switch (activeMode) {
+  case 'current':
+    break;
+  case 'fallback_read_only':
+    reasons.push('active state uses the older read-only fallback generation');
+    break;
+  default: {
+    const _ex: never = activeMode;
+    throw new Error(`Unhandled HizoFS active mode: ${String(_ex)}`);
+  }
+  }
+  for (const slot of superblockSlots) {
+    if (slot.status === 'invalid' || slot.status === 'unsupported') {
+      reasons.push(`superblock slot ${String(slot.slot)} is ${slot.status}`);
+    }
+  }
+  const indexes = listing.segmentIndexes;
+  if (indexes.readableSegmentCount !== indexes.discoveredSegmentCount) {
+    reasons.push('one or more physical segments could not be independently indexed');
+  }
+  if (indexes.rebuiltInvalidIndexCount > 0) {
+    reasons.push(`${String(indexes.rebuiltInvalidIndexCount)} invalid segment indexes required authenticated segment scanning`);
+  }
+  if (indexes.rebuiltMissingIndexCount > 0) {
+    reasons.push(`${String(indexes.rebuiltMissingIndexCount)} segment indexes were absent and reconstructed in memory`);
+  }
+  let relocationMapRequiresManualReview: boolean;
+  switch (relocationMap.status) {
+  case 'valid':
+    relocationMapRequiresManualReview = false;
+    break;
+  case 'invalid':
+    reasons.push('no authenticated relocation-map slot is usable');
+    relocationMapRequiresManualReview = true;
+    break;
+  default: {
+    const _ex: never = relocationMap;
+    throw new Error(`Unhandled HizoFS relocation-map status: ${String(_ex)}`);
+  }
+  }
+  let checkpointRequiresManualReview: boolean;
+  switch (garbageCollectionCheckpoint.status) {
+  case 'absent':
+  case 'valid':
+    checkpointRequiresManualReview = false;
+    break;
+  case 'invalid':
+    reasons.push('no authenticated garbage-collection checkpoint slot is usable');
+    checkpointRequiresManualReview = true;
+    break;
+  default: {
+    const _ex: never = garbageCollectionCheckpoint;
+    throw new Error(`Unhandled HizoFS GC checkpoint status: ${String(_ex)}`);
+  }
+  }
+
+  const manualReviewRequired = relocationMapRequiresManualReview
+    || checkpointRequiresManualReview
+    || indexes.readableSegmentCount !== indexes.discoveredSegmentCount;
+  return {
+    segmentIndexes: indexes,
+    relocationMap,
+    garbageCollectionCheckpoint,
+    recoveryAssessment: {
+      status: manualReviewRequired
+        ? 'manual_review_required'
+        : reasons.length === 0 ? 'healthy' : 'degraded',
+      reasons,
+      automaticRepairPerformed: false,
+    },
+  };
+}
+
 export async function createHizoFSInspectionReader({
   backingDirectory,
   fileSystemRootKey,
@@ -176,6 +324,11 @@ export async function createHizoFSInspectionReader({
       policy: DEFAULT_HIZOFS_POLICY,
       now: () => Date.now(),
       diagnostics: undefined,
+    });
+    const garbageCollectionCheckpointStore = new HizoFSGarbageCollectionCheckpointStore({
+      backingStore,
+      rootKey,
+      fileSystemId,
     });
     let disposed = false;
 
@@ -214,6 +367,12 @@ export async function createHizoFSInspectionReader({
             cause: undefined,
           });
         }
+        const maintenance = await inspectMaintenanceHealth({
+          objectStore: runtime.objectStore,
+          garbageCollectionCheckpointStore,
+          activeMode: activeState.mode,
+          superblockSlots,
+        });
         return {
           activeMode: activeState.mode,
           descriptor,
@@ -225,6 +384,7 @@ export async function createHizoFSInspectionReader({
           activeCommitObjectId: activeState.commitObjectId,
           activeCommit: activeState.commit,
           activeCommitPersistedDto: activeCommitRecord.metadata,
+          maintenance,
         };
       },
 

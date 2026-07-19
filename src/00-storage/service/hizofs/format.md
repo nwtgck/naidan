@@ -27,10 +27,17 @@ AAD, or object addressing.
 ├── descriptor.json
 ├── head-0.hfs
 ├── head-1.hfs              # both slots exist from initial creation
-└── segments/
-    ├── metadata/<shard>/<segment-id>.seg
-    ├── data/<shard>/<segment-id>.seg
-    └── relocation/         # reserved for chain-free compaction metadata
+├── segments/
+│   ├── metadata/<shard>/<segment-id>.seg
+│   └── data/<shard>/<segment-id>.seg
+├── segment-indexes/
+│   ├── metadata/<shard>/<segment-id>.idx
+│   └── data/<shard>/<segment-id>.idx
+└── maintenance/
+    ├── relocation-0.hfs
+    ├── relocation-1.hfs
+    ├── gc-checkpoint-0.hfs
+    └── gc-checkpoint-1.hfs
 ```
 
 A directory containing this layout is exclusively owned by one HizoFS file
@@ -44,6 +51,23 @@ segments. The current writer policy targets 1 MiB of plaintext metadata and 16
 MiB, or 64 default-size chunks, of plaintext file data per segment. These are
 rotation policies rather than compatibility constants; every physical record is
 self-describing and independently authenticated.
+
+
+## Authenticated sealed-segment indexes
+
+A sealed metadata or data segment may have a derived authenticated sidecar at
+`segment-indexes/<type>/<shard>/<segment-id>.idx`. The index binds the file
+system ID, segment type and ID, complete physical segment length, and the
+ordered record kind, offset, and stored length of every frame. It is encrypted
+and authenticated with a domain-separated key derived from the root key.
+
+The sidecar is an acceleration and integrity aid, not the sole authority for
+object existence. A missing index is reconstructed by authenticating the
+segment header and scanning bounded frame headers. An invalid, stale, or
+truncated index is reported and ignored; the segment is scanned independently.
+A reconstructed index may be persisted only for a non-active segment. Segment
+removal removes the corresponding sidecar first, and an absent sidecar never
+makes a segment unsafe to read or reclaim.
 
 ## Descriptor
 
@@ -89,10 +113,13 @@ and authenticates the segment ID, offset, length, and kind; values in the
 reference are never trusted without that comparison.
 
 The home reference is a logical identity. Normal records remain at their home
-location and require no global locator lookup. Future partial-segment
-compaction may publish a chain-free relocation mapping for moved home
-references; physical offsets are intentionally excluded from record key
-derivation beyond the authenticated logical home reference.
+location and require no relocation lookup beyond the empty-map fast path.
+Partial-segment compaction may publish a chain-free relocation mapping for a
+moved home reference. Every persisted mapping points directly to the current
+canonical frame, preserves the record kind, rejects cycles and self-maps, and
+is authenticated in redundant A/B maintenance slots. Physical offsets are
+intentionally excluded from record key derivation beyond the authenticated
+logical home reference.
 
 ## Root key and segmented keys
 
@@ -426,20 +453,31 @@ objects are absent from the fenced physical listing, and later mutations can
 reference only a retained generation or objects created after the fence, so an
 object found unreachable from the snapped roots cannot become reachable later.
 
-Sweep currently removes only segments for which every enumerated record is
+GC first selects bounded partial-live compaction candidates whose dead bytes
+exceed the configured threshold and whose live bytes fit the relocation memory
+bound. One candidate is processed under an exclusive maintenance slice: live
+records are authenticated and copied to new immutable frames, those frames are
+flushed, the complete chain-free relocation map is published to both A/B slots,
+and only then is the source segment removed if its physical length is unchanged.
+A crash before publication leaves unreachable copies; a crash after publication
+leaves either the old segment or the new canonical frames readable. A changed
+source segment is retained for a later cycle.
+
+Whole-dead sweep removes only segments for which every enumerated record is
 unreachable from both retained generations. Because a runtime may retain and
 append to its own active segment after candidate construction, sweep revalidates
-the segment byte length while holding the exclusive maintenance lease. A segment
-that grew is skipped and reconsidered by a later collection rather than being
-deleted from a stale candidate. One physical remove may therefore reclaim many
-logical objects. Partially live segments are retained until the chain-free
-relocation compactor is implemented; deleting one record must never delete
-reachable neighbours in the same segment. Sweep reacquires the exclusive lease
-only for bounded segment-removal slices. Every started remove settles
-before the lease is released, and GC yields between slices so queued foreground
-resources can progress. The candidate cursor is intentionally not persistent:
-after process loss, already removed segments remain safely absent and a later
-cycle rediscovers remaining unreachable records.
+the segment byte length while holding the exclusive maintenance lease. One
+physical remove may reclaim many logical objects. Compaction and sweep reacquire
+the exclusive lease only for bounded slices. Every started copy, publication,
+or remove settles before the lease is released, and GC yields between slices so
+queued foreground resources can progress.
+
+Progress is authenticated in redundant GC checkpoint slots. A resumed
+invocation always performs a fresh authenticated mark and rebuilds candidates;
+the checkpoint never substitutes stale reachability data. When the active commit
+matches, cumulative completed-candidate and reclaimed-object counters are
+retained. A changed root discards stale progress. Successful completion removes
+both checkpoint slots; interruption leaves them for diagnosis and resumption.
 
 GC marks from every valid A/B superblock commit. For each generation it
 validates the persistent inode, directory, and extent indexes, then traverses

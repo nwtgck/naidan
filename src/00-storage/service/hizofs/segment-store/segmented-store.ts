@@ -12,6 +12,12 @@ import type { HizoFSRuntimeDiagnostics } from '@/00-storage/service/hizofs/file-
 import { Semaphore } from '@/utils/concurrency';
 import type { HizoFSRecordKind } from '@/00-storage/service/hizofs/format/record';
 import { deriveHizoFSSegmentRecordKey } from '@/00-storage/service/hizofs/segment-store/segment-crypto';
+import { HizoFSRelocationStore, type HizoFSRelocationSnapshot } from '@/00-storage/service/hizofs/segment-store/relocation-store';
+import {
+  decodeHizoFSSegmentIndex,
+  encodeHizoFSSegmentIndex,
+  type HizoFSSegmentIndexEntry,
+} from '@/00-storage/service/hizofs/segment-store/segment-index';
 import {
   decodeHizoFSHead,
   decodeHizoFSRecordFrame,
@@ -46,9 +52,18 @@ export type HizoFSPhysicalObjectEntry = {
   readonly physicalByteLength: number;
 };
 
+export type HizoFSSegmentIndexDiagnostics = {
+  readonly discoveredSegmentCount: number;
+  readonly readableSegmentCount: number;
+  readonly authenticatedIndexCount: number;
+  readonly rebuiltMissingIndexCount: number;
+  readonly rebuiltInvalidIndexCount: number;
+};
+
 export type HizoFSPhysicalObjectListing = {
   readonly entries: readonly HizoFSPhysicalObjectEntry[];
   readonly ignoredPhysicalPaths: readonly string[];
+  readonly segmentIndexes: HizoFSSegmentIndexDiagnostics;
 };
 
 export type HizoFSWholeSegmentReclaimCandidate = {
@@ -58,10 +73,21 @@ export type HizoFSWholeSegmentReclaimCandidate = {
   readonly expectedPhysicalByteLength: number;
 };
 
+export type HizoFSPartialSegmentCompactionCandidate = {
+  readonly representativeObjectId: string;
+  readonly liveObjectIds: readonly string[];
+  readonly deadObjectIds: readonly string[];
+  readonly physicalPath: readonly string[];
+  readonly expectedPhysicalByteLength: number;
+  readonly liveRecordByteLength: number;
+  readonly deadRecordByteLength: number;
+};
+
 export type HizoFSWholeSegmentRemovalResult = 'removed' | 'missing' | 'changed';
 
 export type HizoFSPhysicalRecord = {
   readonly objectId: string;
+  readonly resolvedObjectId: string;
   readonly physicalPath: readonly string[];
   readonly physicalBytes: Uint8Array;
   readonly plaintext: Uint8Array;
@@ -152,6 +178,19 @@ function getSegmentPath({ segmentType, segmentId }: {
 
 function getHeadPath({ slot }: { slot: 0 | 1 }): readonly string[] {
   return [`head-${String(slot)}.hfs`];
+}
+
+function getSegmentIndexPath({ segmentType, segmentId }: {
+  segmentType: HizoFSSegmentType;
+  segmentId: Uint8Array;
+}): readonly string[] {
+  const encodedSegmentId = encodeHizoFSSegmentId({ segmentId });
+  return [
+    'segment-indexes',
+    segmentDirectoryName({ segmentType }),
+    getHizoFSSegmentShard({ segmentId }),
+    `${encodedSegmentId}.idx`,
+  ];
 }
 
 function sameSegmentId({ left, right }: {
@@ -496,12 +535,14 @@ export class HizoFSSegmentedStore {
     this.rootKey = rootKey;
     this.fileSystemId = fileSystemId;
     this.diagnostics = diagnostics;
+    this.relocationStore = new HizoFSRelocationStore({ backingStore, rootKey, fileSystemId });
   }
 
   private readonly backingStore: HizoFSBackingStore;
   private readonly rootKey: CryptoKey;
   private readonly fileSystemId: string;
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
+  private readonly relocationStore: HizoFSRelocationStore;
   private activeMetadataWriter: HizoFSActiveSegmentWriter | undefined;
   private activeDataWriter: HizoFSActiveSegmentWriter | undefined;
   private readonly persistentHeadFiles = new Map<0 | 1, HizoFSRandomAccessFile>();
@@ -662,7 +703,15 @@ export class HizoFSSegmentedStore {
     objectId: string;
   }): Promise<HizoFSPhysicalRecord | undefined> {
     this.assertOpen();
-    const reference = decodeHizoFSObjectReference({ value: objectId });
+    const resolvedObjectId = await this.relocationStore.resolve({ objectId });
+    const logicalReference = decodeHizoFSObjectReference({ value: objectId });
+    const reference = decodeHizoFSObjectReference({ value: resolvedObjectId });
+    if (logicalReference.kind !== reference.kind) {
+      throw new HizoFSCorruptionError({
+        message: 'HizoFS relocated object kind differs from its logical reference',
+        cause: undefined,
+      });
+    }
     const segmentType = segmentTypeForRecordKind({ kind: reference.kind });
     const physicalPath = getSegmentPath({
       segmentType,
@@ -700,6 +749,7 @@ export class HizoFSSegmentedStore {
       : await this.diagnostics.measureAsync({ phase: 'object_decrypt', operation: decode });
     return {
       objectId,
+      resolvedObjectId,
       physicalPath,
       physicalBytes: physical,
       plaintext,
@@ -860,16 +910,34 @@ export class HizoFSSegmentedStore {
     };
   }
 
-  async listPhysicalObjects(): Promise<HizoFSPhysicalObjectListing> {
+  resolveObjectId({ objectId }: { objectId: string }): Promise<string> {
     this.assertOpen();
-    // TODO(hizofs): Seal rotated segments with an authenticated record index
-    // and read that index here instead of scanning every frame header. The
-    // active append-only segment may still be scanned only to the durable tail
-    // named by the selected head. The footer must be independently validated,
-    // bounded, and reconstructible by an offline linear scan so corruption
-    // cannot turn one footer length into an unbounded allocation or range read.
+    return this.relocationStore.resolve({ objectId });
+  }
+
+  publishRelocations({ mappings }: {
+    mappings: ReadonlyMap<string, string>;
+  }): Promise<HizoFSRelocationSnapshot> {
+    this.assertOpen();
+    return this.relocationStore.publish({ mappings });
+  }
+
+  readRelocationSnapshot(): Promise<HizoFSRelocationSnapshot> {
+    this.assertOpen();
+    return this.relocationStore.load();
+  }
+
+  async listPhysicalObjects({ persistMissingSegmentIndexes = false }: {
+    persistMissingSegmentIndexes?: boolean;
+  } = {}): Promise<HizoFSPhysicalObjectListing> {
+    this.assertOpen();
     const entries: HizoFSPhysicalObjectEntry[] = [];
     const ignoredPhysicalPaths: string[] = [];
+    let discoveredSegmentCount = 0;
+    let readableSegmentCount = 0;
+    let authenticatedIndexCount = 0;
+    let rebuiltMissingIndexCount = 0;
+    let rebuiltInvalidIndexCount = 0;
     for (const segmentType of ['metadata', 'data'] as const) {
       const typePath = ['segments', segmentDirectoryName({ segmentType })] as const;
       let shards: readonly {
@@ -913,69 +981,52 @@ export class HizoFSSegmentedStore {
           }
           const physicalByteLength = await this.backingStore.getFileSize({ path: physicalPath });
           if (physicalByteLength === undefined) continue;
+          discoveredSegmentCount += 1;
           try {
-            if (physicalByteLength < HIZOFS_SEGMENT_HEADER_BYTE_LENGTH) {
-              throw new HizoFSCorruptionError({
-                message: 'HizoFS segment is shorter than its header',
-                cause: undefined,
-              });
+            const indexed = await this.readOrRebuildSegmentIndex({
+              segmentType,
+              segmentId,
+              physicalPath,
+              physicalByteLength,
+              persistMissingSegmentIndex:
+                persistMissingSegmentIndexes && !this.isActiveSegment({ segmentType, segmentId }),
+              ignoredPhysicalPaths,
+            });
+            readableSegmentCount += 1;
+            switch (indexed.source) {
+            case 'authenticated':
+              authenticatedIndexCount += 1;
+              break;
+            case 'rebuilt_missing':
+              rebuiltMissingIndexCount += 1;
+              break;
+            case 'rebuilt_invalid':
+              rebuiltInvalidIndexCount += 1;
+              break;
+            default: {
+              const _ex: never = indexed.source;
+              throw new Error(`Unhandled HizoFS segment-index source: ${String(_ex)}`);
             }
-            const segmentHeader = await this.backingStore.readRange({
-              path: physicalPath,
-              offset: 0,
-              byteLength: HIZOFS_SEGMENT_HEADER_BYTE_LENGTH,
-            });
-            if (segmentHeader === undefined) continue;
-            await decodeHizoFSSegmentHeader({
-              rootKey: this.rootKey,
-              fileSystemId: this.fileSystemId,
-              expectedSegmentId: segmentId,
-              bytes: segmentHeader,
-            });
-            let offset = HIZOFS_SEGMENT_HEADER_BYTE_LENGTH;
-            while (offset < physicalByteLength) {
-              if (offset + HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH > physicalByteLength) {
+            }
+            for (const indexedEntry of indexed.entries) {
+              if (segmentTypeForRecordKind({ kind: indexedEntry.kind }) !== segmentType) {
                 throw new HizoFSCorruptionError({
-                  message: 'HizoFS segment has a truncated trailing record header',
-                  cause: undefined,
-                });
-              }
-              const frameHeader = await this.backingStore.readRange({
-                path: physicalPath,
-                offset,
-                byteLength: HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH,
-              });
-              if (frameHeader === undefined) {
-                throw new HizoFSCorruptionError({
-                  message: 'HizoFS segment disappeared while listing records',
-                  cause: undefined,
-                });
-              }
-              const reference = decodeHizoFSRecordFrameReference({
-                headerBytes: frameHeader,
-              });
-              if (
-                !sameSegmentId({ left: reference.homeSegmentId, right: segmentId })
-                || reference.homeOffset !== offset
-                || segmentTypeForRecordKind({ kind: reference.kind }) !== segmentType
-              ) {
-                throw new HizoFSCorruptionError({
-                  message: 'HizoFS segment record reference does not match its physical position',
-                  cause: undefined,
-                });
-              }
-              if (offset + reference.storedLength > physicalByteLength) {
-                throw new HizoFSCorruptionError({
-                  message: 'HizoFS segment record exceeds the physical segment length',
+                  message: 'HizoFS segment-index record kind does not match its segment type',
                   cause: undefined,
                 });
               }
               entries.push({
-                objectId: encodeHizoFSObjectReference({ reference }),
+                objectId: encodeHizoFSObjectReference({
+                  reference: {
+                    kind: indexedEntry.kind,
+                    homeSegmentId: segmentId,
+                    homeOffset: indexedEntry.homeOffset,
+                    storedLength: indexedEntry.storedLength,
+                  },
+                }),
                 physicalPath,
                 physicalByteLength,
               });
-              offset += reference.storedLength;
             }
           } catch {
             ignoredPhysicalPaths.push(physicalPathKey({ path: physicalPath }));
@@ -988,19 +1039,97 @@ export class HizoFSSegmentedStore {
       right: right.objectId,
     }));
     ignoredPhysicalPaths.sort();
-    return { entries, ignoredPhysicalPaths };
+    return {
+      entries,
+      ignoredPhysicalPaths,
+      segmentIndexes: {
+        discoveredSegmentCount,
+        readableSegmentCount,
+        authenticatedIndexCount,
+        rebuiltMissingIndexCount,
+        rebuiltInvalidIndexCount,
+      },
+    };
+  }
+
+  async selectPartialSegmentCompactionCandidates({
+    reachableObjectIds,
+    minimumDeadRecordByteLength,
+    maximumLiveRecordByteLength,
+    maximumLiveRecordCount,
+    maximumCandidateCount,
+  }: {
+    reachableObjectIds: readonly string[];
+    minimumDeadRecordByteLength: number;
+    maximumLiveRecordByteLength: number;
+    maximumLiveRecordCount: number;
+    maximumCandidateCount: number;
+  }): Promise<readonly HizoFSPartialSegmentCompactionCandidate[]> {
+    for (const [field, value] of [
+      ['minimum dead record byte length', minimumDeadRecordByteLength],
+      ['maximum live record byte length', maximumLiveRecordByteLength],
+      ['maximum live record count', maximumLiveRecordCount],
+      ['maximum candidate count', maximumCandidateCount],
+    ] as const) {
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error(`HizoFS compaction ${field} must be a non-negative safe integer`);
+      }
+    }
+    const reachable = new Set(reachableObjectIds);
+    const listing = await this.listPhysicalObjects({ persistMissingSegmentIndexes: true });
+    const byPath = new Map<string, HizoFSPhysicalObjectEntry[]>();
+    for (const entry of listing.entries) {
+      const group = byPath.get(physicalPathKey({ path: entry.physicalPath })) ?? [];
+      group.push(entry);
+      byPath.set(physicalPathKey({ path: entry.physicalPath }), group);
+    }
+    const candidates: HizoFSPartialSegmentCompactionCandidate[] = [];
+    for (const group of byPath.values()) {
+      const sorted = [...group].sort((left, right) => compareCanonicalObjectIds({
+        left: left.objectId,
+        right: right.objectId,
+      }));
+      const representative = sorted[0];
+      if (representative === undefined) continue;
+      const live = sorted.filter(entry => reachable.has(entry.objectId));
+      const dead = sorted.filter(entry => !reachable.has(entry.objectId));
+      if (live.length === 0 || dead.length === 0) continue;
+      const liveRecordByteLength = live.reduce((total, entry) => (
+        total + decodeHizoFSObjectReference({ value: entry.objectId }).storedLength
+      ), 0);
+      const deadRecordByteLength = dead.reduce((total, entry) => (
+        total + decodeHizoFSObjectReference({ value: entry.objectId }).storedLength
+      ), 0);
+      if (deadRecordByteLength < minimumDeadRecordByteLength
+        || liveRecordByteLength > maximumLiveRecordByteLength
+        || live.length > maximumLiveRecordCount) continue;
+      candidates.push({
+        representativeObjectId: representative.objectId,
+        liveObjectIds: live.map(entry => entry.objectId),
+        deadObjectIds: dead.map(entry => entry.objectId),
+        physicalPath: representative.physicalPath,
+        expectedPhysicalByteLength: representative.physicalByteLength,
+        liveRecordByteLength,
+        deadRecordByteLength,
+      });
+    }
+    candidates.sort((left, right) => {
+      if (left.deadRecordByteLength !== right.deadRecordByteLength) {
+        return right.deadRecordByteLength - left.deadRecordByteLength;
+      }
+      return compareCanonicalObjectIds({
+        left: left.representativeObjectId,
+        right: right.representativeObjectId,
+      });
+    });
+    return candidates.slice(0, maximumCandidateCount);
   }
 
   async selectWholeSegmentReclaimCandidates({ unreachableObjectIds }: {
     unreachableObjectIds: readonly string[];
   }): Promise<readonly HizoFSWholeSegmentReclaimCandidate[]> {
-    // TODO(hizofs): Add partial-live segment compaction. Copy reachable frames
-    // without re-encryption, publish a chain-free logical-reference relocation
-    // index atomically, retain the old segment while any previous head/read
-    // lease can still reference it, then remove it. Whole-dead deletion alone
-    // cannot bound long-lived shared metadata segments.
     const unreachable = new Set(unreachableObjectIds);
-    const listing = await this.listPhysicalObjects();
+    const listing = await this.listPhysicalObjects({ persistMissingSegmentIndexes: true });
     const byPath = new Map<string, HizoFSPhysicalObjectEntry[]>();
     for (const entry of listing.entries) {
       const key = physicalPathKey({ path: entry.physicalPath });
@@ -1058,12 +1187,153 @@ export class HizoFSSegmentedStore {
     const actualPhysicalByteLength = await this.backingStore.getFileSize({ path });
     if (actualPhysicalByteLength === undefined) return 'missing';
     if (actualPhysicalByteLength !== expectedPhysicalByteLength) return 'changed';
+    const indexPath = getSegmentIndexPath({ segmentType, segmentId: reference.homeSegmentId });
+    try {
+      await this.backingStore.remove({ path: indexPath, recursive: false });
+    } catch {
+      // The index is derived and reconstructible. A missing or concurrently
+      // removed index must not prevent reclaiming the authenticated segment.
+    }
     await this.backingStore.remove({ path, recursive: false });
     this.validatedSegmentKeys.delete(
       this.getSegmentValidationKey({ segmentType, segmentId: reference.homeSegmentId }),
     );
     this.recordKeyPromises.delete(encodeHizoFSSegmentId({ segmentId: reference.homeSegmentId }));
     return 'removed';
+  }
+
+  private isActiveSegment({ segmentType, segmentId }: {
+    segmentType: 'metadata' | 'data';
+    segmentId: Uint8Array;
+  }): boolean {
+    const writer = this.getActiveWriter({ segmentType });
+    return writer !== undefined && sameSegmentId({ left: writer.segmentId, right: segmentId });
+  }
+
+  private async readOrRebuildSegmentIndex({
+    segmentType,
+    segmentId,
+    physicalPath,
+    physicalByteLength,
+    persistMissingSegmentIndex,
+    ignoredPhysicalPaths,
+  }: {
+    segmentType: 'metadata' | 'data';
+    segmentId: Uint8Array;
+    physicalPath: readonly string[];
+    physicalByteLength: number;
+    persistMissingSegmentIndex: boolean;
+    ignoredPhysicalPaths: string[];
+  }): Promise<{
+    readonly entries: readonly HizoFSSegmentIndexEntry[];
+    readonly source: 'authenticated' | 'rebuilt_missing' | 'rebuilt_invalid';
+  }> {
+    if (physicalByteLength < HIZOFS_SEGMENT_HEADER_BYTE_LENGTH) {
+      throw new HizoFSCorruptionError({
+        message: 'HizoFS segment is shorter than its header',
+        cause: undefined,
+      });
+    }
+    const segmentHeader = await this.backingStore.readRange({
+      path: physicalPath,
+      offset: 0,
+      byteLength: HIZOFS_SEGMENT_HEADER_BYTE_LENGTH,
+    });
+    if (segmentHeader === undefined) {
+      throw new HizoFSCorruptionError({
+        message: 'HizoFS segment disappeared while reading its header',
+        cause: undefined,
+      });
+    }
+    await decodeHizoFSSegmentHeader({
+      rootKey: this.rootKey,
+      fileSystemId: this.fileSystemId,
+      expectedSegmentId: segmentId,
+      bytes: segmentHeader,
+    });
+
+    const indexPath = getSegmentIndexPath({ segmentType, segmentId });
+    const persisted = await this.backingStore.read({ path: indexPath });
+    let persistedIndexWasInvalid = false;
+    if (persisted !== undefined) {
+      try {
+        const decoded = await decodeHizoFSSegmentIndex({
+          rootKey: this.rootKey,
+          fileSystemId: this.fileSystemId,
+          expectedSegmentType: segmentType,
+          expectedSegmentId: segmentId,
+          expectedSegmentByteLength: physicalByteLength,
+          bytes: persisted,
+        });
+        return { entries: decoded.entries, source: 'authenticated' };
+      } catch {
+        persistedIndexWasInvalid = true;
+        ignoredPhysicalPaths.push(physicalPathKey({ path: indexPath }));
+      }
+    }
+
+    const rebuilt: HizoFSSegmentIndexEntry[] = [];
+    let offset = HIZOFS_SEGMENT_HEADER_BYTE_LENGTH;
+    while (offset < physicalByteLength) {
+      if (offset + HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH > physicalByteLength) {
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS segment has a truncated trailing record header',
+          cause: undefined,
+        });
+      }
+      const frameHeader = await this.backingStore.readRange({
+        path: physicalPath,
+        offset,
+        byteLength: HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH,
+      });
+      if (frameHeader === undefined) {
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS segment disappeared while rebuilding its index',
+          cause: undefined,
+        });
+      }
+      const reference = decodeHizoFSRecordFrameReference({ headerBytes: frameHeader });
+      if (
+        !sameSegmentId({ left: reference.homeSegmentId, right: segmentId })
+        || reference.homeOffset !== offset
+        || segmentTypeForRecordKind({ kind: reference.kind }) !== segmentType
+      ) {
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS segment record reference does not match its physical position',
+          cause: undefined,
+        });
+      }
+      const nextOffset = offset + reference.storedLength;
+      if (!Number.isSafeInteger(nextOffset) || nextOffset > physicalByteLength) {
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS segment record exceeds the physical segment length',
+          cause: undefined,
+        });
+      }
+      rebuilt.push({
+        kind: reference.kind,
+        homeOffset: reference.homeOffset,
+        storedLength: reference.storedLength,
+      });
+      offset = nextOffset;
+    }
+    if (persistMissingSegmentIndex) {
+      const encoded = await encodeHizoFSSegmentIndex({
+        rootKey: this.rootKey,
+        fileSystemId: this.fileSystemId,
+        index: {
+          segmentType,
+          segmentId,
+          segmentByteLength: physicalByteLength,
+          entries: rebuilt,
+        },
+      });
+      await this.backingStore.write({ path: indexPath, bytes: encoded });
+    }
+    return {
+      entries: rebuilt,
+      source: persistedIndexWasInvalid ? 'rebuilt_invalid' : 'rebuilt_missing',
+    };
   }
 
   releaseActiveWriters(): Promise<void> {

@@ -18,6 +18,7 @@ import {
   HizoFSSegmentedStore,
   type HizoFSPhysicalObjectListing,
   type HizoFSWholeSegmentReclaimCandidate,
+  type HizoFSPartialSegmentCompactionCandidate,
   type HizoFSWholeSegmentRemovalResult,
 } from '@/00-storage/service/hizofs/segment-store/segmented-store';
 import { decodeHizoFSObjectReference } from '@/00-storage/service/hizofs/segment-store/object-reference';
@@ -584,6 +585,40 @@ export class HizoFSObjectStore {
     }
   }
 
+  resolveObjectId({ objectId }: { objectId: string }): Promise<string> {
+    return this.segmentedStore.resolveObjectId({ objectId });
+  }
+
+  publishRelocations({ mappings }: {
+    mappings: ReadonlyMap<string, string>;
+  }): Promise<void> {
+    return this.segmentedStore.publishRelocations({ mappings }).then(() => undefined);
+  }
+
+  readRelocationSnapshot() {
+    return this.segmentedStore.readRelocationSnapshot();
+  }
+
+  async copyObjectsForRelocation({ objectIds }: {
+    objectIds: readonly string[];
+  }): Promise<ReadonlyMap<string, string>> {
+    const mappings = new Map<string, string>();
+    for (const objectId of objectIds) {
+      const canonical = await this.resolveObjectId({ objectId });
+      const record = await this.read({ objectId: canonical });
+      if (record === undefined) {
+        throw new HizoFSCorruptionError({
+          message: 'HizoFS compaction source object is missing',
+          cause: undefined,
+        });
+      }
+      const relocatedObjectId = await this.create({ record });
+      mappings.set(objectId, relocatedObjectId);
+    }
+    await this.flushPendingRecords();
+    return mappings;
+  }
+
   async removeWholeSegmentIfUnchanged({ candidate }: {
     candidate: HizoFSWholeSegmentReclaimCandidate;
   }): Promise<HizoFSWholeSegmentRemovalResult> {
@@ -607,6 +642,28 @@ export class HizoFSObjectStore {
     }
     }
     return result;
+  }
+
+  selectPartialSegmentCompactionCandidates({
+    reachableObjectIds,
+    minimumDeadRecordByteLength,
+    maximumLiveRecordByteLength,
+    maximumLiveRecordCount,
+    maximumCandidateCount,
+  }: {
+    reachableObjectIds: readonly string[];
+    minimumDeadRecordByteLength: number;
+    maximumLiveRecordByteLength: number;
+    maximumLiveRecordCount: number;
+    maximumCandidateCount: number;
+  }): Promise<readonly HizoFSPartialSegmentCompactionCandidate[]> {
+    return this.segmentedStore.selectPartialSegmentCompactionCandidates({
+      reachableObjectIds,
+      minimumDeadRecordByteLength,
+      maximumLiveRecordByteLength,
+      maximumLiveRecordCount,
+      maximumCandidateCount,
+    });
   }
 
   selectWholeSegmentReclaimCandidates({ unreachableObjectIds }: {
@@ -729,8 +786,10 @@ export class HizoFSObjectStore {
     }
   }
 
-  listPhysicalObjects(): Promise<HizoFSPhysicalObjectListing> {
-    return this.segmentedStore.listPhysicalObjects();
+  listPhysicalObjects({ persistMissingSegmentIndexes = false }: {
+    persistMissingSegmentIndexes?: boolean;
+  } = {}): Promise<HizoFSPhysicalObjectListing> {
+    return this.segmentedStore.listPhysicalObjects({ persistMissingSegmentIndexes });
   }
 
   getObjectPhysicalPath({ objectId }: {

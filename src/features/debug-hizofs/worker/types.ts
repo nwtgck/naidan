@@ -102,6 +102,58 @@ export const hizoFSSuperblockSlotSchema = z.discriminatedUnion('status', [
   }),
 ]);
 
+
+const maintenanceHealthSchema = z.object({
+  segmentIndexes: z.object({
+    discoveredSegmentCount: z.number().int().nonnegative(),
+    readableSegmentCount: z.number().int().nonnegative(),
+    authenticatedIndexCount: z.number().int().nonnegative(),
+    rebuiltMissingIndexCount: z.number().int().nonnegative(),
+    rebuiltInvalidIndexCount: z.number().int().nonnegative(),
+  }),
+  relocationMap: z.discriminatedUnion('status', [
+    z.object({
+      status: z.literal('valid'),
+      sequence: z.number().int().nonnegative(),
+      mappingCount: z.number().int().nonnegative(),
+    }),
+    z.object({
+      status: z.literal('invalid'),
+      errorMessage: z.string(),
+    }),
+  ]),
+  garbageCollectionCheckpoint: z.discriminatedUnion('status', [
+    z.object({ status: z.literal('absent') }),
+    z.object({
+      status: z.literal('valid'),
+      checkpoint: z.object({
+        sequence: z.number().int().nonnegative(),
+        activeCommitObjectId: z.string(),
+        phase: z.union([z.literal('compaction'), z.literal('sweep')]),
+        completedCompactionCandidateCount: z.number().int().nonnegative(),
+        completedSweepCandidateCount: z.number().int().nonnegative(),
+        relocatedObjectCount: z.number().int().nonnegative(),
+        reclaimedCompactionObjectCount: z.number().int().nonnegative(),
+        removedSweepObjectCount: z.number().int().nonnegative(),
+        lastCompletedCandidateObjectId: z.union([z.string(), z.null()]),
+      }),
+    }),
+    z.object({
+      status: z.literal('invalid'),
+      errorMessage: z.string(),
+    }),
+  ]),
+  recoveryAssessment: z.object({
+    status: z.union([
+      z.literal('healthy'),
+      z.literal('degraded'),
+      z.literal('manual_review_required'),
+    ]),
+    reasons: z.array(z.string()),
+    automaticRepairPerformed: z.literal(false),
+  }),
+});
+
 export const hizoFSInspectionOverviewSchema = z.object({
   activeMode: z.union([z.literal('current'), z.literal('fallback_read_only')]),
   descriptor: HizoFSDescriptorSchemaDto,
@@ -113,6 +165,7 @@ export const hizoFSInspectionOverviewSchema = z.object({
   activeCommitObjectId: z.string(),
   activeCommit: HizoFSCommitSchemaDto,
   activeCommitPersistedDto: z.unknown(),
+  maintenance: maintenanceHealthSchema,
 });
 
 export const hizoFSPhysicalObjectPageSchema = z.object({

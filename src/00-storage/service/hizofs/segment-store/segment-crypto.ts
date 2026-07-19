@@ -85,6 +85,72 @@ export async function deriveHizoFSSegmentHeaderKey({
   });
 }
 
+export async function deriveHizoFSSegmentIndexKey({
+  rootKey,
+  fileSystemId,
+  segmentId,
+}: {
+  rootKey: CryptoKey;
+  fileSystemId: string;
+  segmentId: Uint8Array;
+}): Promise<CryptoKey> {
+  assertHizoFSSegmentId({ segmentId });
+  return deriveAesKey({
+    rootKey,
+    salt: concatenateBytes({
+      parts: [
+        UTF8.encode('HizoFS/v1/segment-index/salt/'),
+        decodeFileSystemId({ fileSystemId }),
+      ],
+    }),
+    info: UTF8.encode(
+      `HizoFS/v1/segment-index/${encodeHizoFSSegmentId({ segmentId })}`,
+    ),
+  });
+}
+
+export async function deriveHizoFSGarbageCollectionCheckpointKey({
+  rootKey,
+  fileSystemId,
+  slot,
+}: {
+  rootKey: CryptoKey;
+  fileSystemId: string;
+  slot: 0 | 1;
+}): Promise<CryptoKey> {
+  return deriveAesKey({
+    rootKey,
+    salt: concatenateBytes({
+      parts: [
+        UTF8.encode('HizoFS/v1/gc-checkpoint/salt/'),
+        decodeFileSystemId({ fileSystemId }),
+      ],
+    }),
+    info: UTF8.encode(`HizoFS/v1/gc-checkpoint/${String(slot)}`),
+  });
+}
+
+export async function deriveHizoFSRelocationMapKey({
+  rootKey,
+  fileSystemId,
+  slot,
+}: {
+  rootKey: CryptoKey;
+  fileSystemId: string;
+  slot: 0 | 1;
+}): Promise<CryptoKey> {
+  return deriveAesKey({
+    rootKey,
+    salt: concatenateBytes({
+      parts: [
+        UTF8.encode('HizoFS/v1/relocation-map/salt/'),
+        decodeFileSystemId({ fileSystemId }),
+      ],
+    }),
+    info: UTF8.encode(`HizoFS/v1/relocation-map/${String(slot)}`),
+  });
+}
+
 export async function deriveHizoFSHeadKey({
   rootKey,
   fileSystemId,

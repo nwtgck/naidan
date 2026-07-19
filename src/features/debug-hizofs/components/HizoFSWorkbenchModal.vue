@@ -1282,6 +1282,20 @@ defineExpose({
                   </template>
                 </dl>
               </div>
+              <section data-testid="hizofs-maintenance-health" tw-class="border-b border-gray-200 bg-slate-50 px-3 py-3 dark:border-gray-700 dark:bg-slate-950/30">
+                <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Maintenance and recovery</div>
+                <dl tw-class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[9px] text-gray-500 dark:text-gray-400">
+                  <dt>assessment</dt><dd data-testid="hizofs-recovery-assessment" :tw-class="overview.maintenance.recoveryAssessment.status === 'healthy' ? 'text-emerald-700 dark:text-emerald-300' : overview.maintenance.recoveryAssessment.status === 'degraded' ? 'text-amber-700 dark:text-amber-300' : 'text-red-700 dark:text-red-300'">{{ overview.maintenance.recoveryAssessment.status }}</dd>
+                  <dt>segments</dt><dd tw-class="text-gray-700 dark:text-gray-300">{{ overview.maintenance.segmentIndexes.readableSegmentCount }} / {{ overview.maintenance.segmentIndexes.discoveredSegmentCount }} readable</dd>
+                  <dt>indexes</dt><dd tw-class="text-gray-700 dark:text-gray-300">{{ overview.maintenance.segmentIndexes.authenticatedIndexCount }} authenticated · {{ overview.maintenance.segmentIndexes.rebuiltMissingIndexCount }} missing · {{ overview.maintenance.segmentIndexes.rebuiltInvalidIndexCount }} invalid</dd>
+                  <dt>relocation</dt><dd tw-class="text-gray-700 dark:text-gray-300">{{ overview.maintenance.relocationMap.status === 'valid' ? `sequence ${String(overview.maintenance.relocationMap.sequence)} · ${String(overview.maintenance.relocationMap.mappingCount)} mappings` : overview.maintenance.relocationMap.errorMessage }}</dd>
+                  <dt>GC checkpoint</dt><dd tw-class="text-gray-700 dark:text-gray-300">{{ overview.maintenance.garbageCollectionCheckpoint.status === 'valid' ? `${overview.maintenance.garbageCollectionCheckpoint.checkpoint.phase} · sequence ${String(overview.maintenance.garbageCollectionCheckpoint.checkpoint.sequence)}` : overview.maintenance.garbageCollectionCheckpoint.status }}</dd>
+                  <dt>repair</dt><dd tw-class="text-gray-700 dark:text-gray-300">none · diagnostics only</dd>
+                </dl>
+                <ul v-if="overview.maintenance.recoveryAssessment.reasons.length > 0" tw-class="mt-2 list-disc space-y-1 pl-4 text-[9px] text-amber-700 dark:text-amber-300">
+                  <li v-for="reason in overview.maintenance.recoveryAssessment.reasons" :key="reason">{{ reason }}</li>
+                </ul>
+              </section>
               <section v-if="selectedSource.type === 'ephemeral_debug_workspace'" tw-class="border-b border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/10">
                 <div tw-class="border-b border-amber-200 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:border-amber-900 dark:text-amber-300">Workspace actions</div>
                 <button type="button" data-testid="hizofs-open-comprehensive-fixture" tw-class="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-amber-100/70 disabled:opacity-50 dark:hover:bg-amber-950/30" :disabled="generatingComprehensiveFixture" @click="openComprehensiveFixturePanel">

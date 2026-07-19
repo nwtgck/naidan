@@ -12,6 +12,11 @@ import {
   validateHizoFSObjectId,
 } from './object-id';
 import { HizoFSObjectStore } from './object-store';
+import {
+  decodeHizoFSObjectReference,
+  encodeHizoFSSegmentId,
+  getHizoFSSegmentShard,
+} from '@/00-storage/service/hizofs/segment-store/object-reference';
 
 const FILE_SYSTEM_ID_A = encodeBase64Url({ bytes: new Uint8Array(16).fill(0xa1) });
 const FILE_SYSTEM_ID_B = encodeBase64Url({ bytes: new Uint8Array(16).fill(0xb2) });
@@ -80,6 +85,192 @@ async function publishStore({
 }
 
 describe('HizoFS immutable object store', () => {
+  it('persists authenticated indexes for sealed segments and falls back after index corruption', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const diagnostics = createHizoFSRuntimeDiagnostics();
+    const { backingStore, store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      diagnostics,
+    });
+    const objectIds = await store.createMany({
+      records: [1, 2].map(value => ({
+        kind: 'file_chunk' as const,
+        recordVersion: 1,
+        metadata: {},
+        binaryPayload: new Uint8Array([value]),
+      })),
+    });
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: objectIds[0] ?? '',
+    });
+    await store.releasePhysicalHandles();
+
+    const candidates = await store.selectWholeSegmentReclaimCandidates({
+      unreachableObjectIds: objectIds,
+    });
+    expect(candidates).toHaveLength(1);
+
+    const reference = decodeHizoFSObjectReference({ value: objectIds[0] ?? '' });
+    const encodedSegmentId = encodeHizoFSSegmentId({ segmentId: reference.homeSegmentId });
+    const indexPath = [
+      'segment-indexes',
+      'data',
+      getHizoFSSegmentShard({ segmentId: reference.homeSegmentId }),
+      `${encodedSegmentId}.idx`,
+    ] as const;
+    const indexBytes = await backingStore.read({ path: indexPath });
+    expect(indexBytes).toBeDefined();
+
+    const dataSegmentPath = [
+      'segments',
+      'data',
+      getHizoFSSegmentShard({ segmentId: reference.homeSegmentId }),
+      `${encodedSegmentId}.seg`,
+    ] as const;
+    const readRange = vi.spyOn(backingStore, 'readRange');
+    await store.selectWholeSegmentReclaimCandidates({ unreachableObjectIds: objectIds });
+    const indexedDataReads = readRange.mock.calls.filter(([arguments_]) =>
+      arguments_.path.join('/') === dataSegmentPath.join('/')
+    );
+    expect(indexedDataReads).toHaveLength(1);
+    readRange.mockClear();
+
+    const corrupted = indexBytes?.slice() ?? new Uint8Array();
+    corrupted[corrupted.byteLength - 1] ^= 1;
+    await backingStore.write({ path: indexPath, bytes: corrupted });
+    const listing = await store.listPhysicalObjects();
+    expect(listing.entries.map(entry => entry.objectId)).toEqual(
+      expect.arrayContaining(objectIds),
+    );
+    expect(listing.ignoredPhysicalPaths).toContain(indexPath.join('/'));
+    const rebuiltDataReads = readRange.mock.calls.filter(([arguments_]) =>
+      arguments_.path.join('/') === dataSegmentPath.join('/')
+    );
+    expect(rebuiltDataReads).toHaveLength(3);
+    await store.close();
+  });
+  it('plans and completes partial-live compaction without breaking logical object IDs', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const { store } = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+    const objectIds: string[] = [];
+    for (let batchStart = 0; batchStart < 8; batchStart += 2) {
+      objectIds.push(...await store.createMany({
+        records: [batchStart, batchStart + 1].map(index => ({
+          kind: 'file_chunk' as const,
+          recordVersion: 1,
+          metadata: { chunkSize: 262144 },
+          binaryPayload: new Uint8Array(262144).fill(index + 1),
+        })),
+      }));
+    }
+    await publishStore({
+      store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: objectIds[0] ?? '',
+    });
+    await store.releasePhysicalHandles();
+    const liveObjectIds = objectIds.slice(0, 2);
+    const deadObjectIds = objectIds.slice(2);
+    await expect(store.selectPartialSegmentCompactionCandidates({
+      reachableObjectIds: liveObjectIds,
+      minimumDeadRecordByteLength: 1024 * 1024,
+      maximumLiveRecordByteLength: 1024 * 1024,
+      maximumLiveRecordCount: 1,
+      maximumCandidateCount: 1,
+    })).resolves.toEqual([]);
+    const [candidate] = await store.selectPartialSegmentCompactionCandidates({
+      reachableObjectIds: liveObjectIds,
+      minimumDeadRecordByteLength: 1024 * 1024,
+      maximumLiveRecordByteLength: 1024 * 1024,
+      maximumLiveRecordCount: 16,
+      maximumCandidateCount: 1,
+    });
+    if (candidate === undefined) throw new Error('Expected one partial-live compaction candidate');
+    expect(candidate.liveObjectIds).toEqual(liveObjectIds);
+    expect(candidate.deadObjectIds).toEqual(deadObjectIds);
+
+    const mappings = await store.copyObjectsForRelocation({ objectIds: candidate.liveObjectIds });
+    await store.publishRelocations({ mappings });
+    await expect(store.removeWholeSegmentIfUnchanged({
+      candidate: {
+        representativeObjectId: candidate.representativeObjectId,
+        objectIds,
+        physicalPath: candidate.physicalPath,
+        expectedPhysicalByteLength: candidate.expectedPhysicalByteLength,
+      },
+    })).resolves.toBe('removed');
+    await expect(store.read({ objectId: liveObjectIds[0] ?? '' })).resolves.toMatchObject({
+      kind: 'file_chunk',
+      binaryPayload: new Uint8Array(262144).fill(1),
+    });
+    await expect(store.read({ objectId: deadObjectIds[0] ?? '' })).resolves.toBeUndefined();
+    const relocationTargets = await Promise.all(liveObjectIds.map(async objectId => (
+      store.resolveObjectId({ objectId })
+    )));
+    expect(relocationTargets.every((target, index) => target !== liveObjectIds[index])).toBe(true);
+    await store.close();
+  });
+
+  it('resolves relocated objects after the source segment is removed and after reopening', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
+    const first = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+    const [sourceObjectId] = await first.store.createMany({
+      records: [{
+        kind: 'file_chunk',
+        recordVersion: 1,
+        metadata: { chunkSize: 3 },
+        binaryPayload: new Uint8Array([1, 2, 3]),
+      }],
+    });
+    if (sourceObjectId === undefined) throw new Error('Expected one source object');
+    await publishStore({
+      store: first.store,
+      fileSystemId: FILE_SYSTEM_ID_A,
+      activeCommitObjectId: sourceObjectId,
+    });
+    await first.store.releasePhysicalHandles();
+    const [candidate] = await first.store.selectWholeSegmentReclaimCandidates({
+      unreachableObjectIds: [sourceObjectId],
+    });
+    if (candidate === undefined) throw new Error('Expected one source segment candidate');
+
+    const mappings = await first.store.copyObjectsForRelocation({ objectIds: [sourceObjectId] });
+    const relocatedObjectId = mappings.get(sourceObjectId);
+    if (relocatedObjectId === undefined) throw new Error('Expected one relocation mapping');
+    await first.store.publishRelocations({ mappings });
+    await expect(first.store.removeWholeSegmentIfUnchanged({ candidate })).resolves.toBe('removed');
+    await expect(first.store.read({ objectId: sourceObjectId })).resolves.toMatchObject({
+      kind: 'file_chunk',
+      binaryPayload: new Uint8Array([1, 2, 3]),
+    });
+    expect(await first.store.resolveObjectId({ objectId: sourceObjectId })).toBe(relocatedObjectId);
+    await first.store.close();
+
+    const reopened = await createStore({
+      root,
+      rootKeyByte: 1,
+      fileSystemId: FILE_SYSTEM_ID_A,
+    });
+    await expect(reopened.store.read({ objectId: sourceObjectId })).resolves.toMatchObject({
+      kind: 'file_chunk',
+      binaryPayload: new Uint8Array([1, 2, 3]),
+    });
+    expect(await reopened.store.resolveObjectId({ objectId: sourceObjectId })).toBe(relocatedObjectId);
+    await reopened.store.close();
+  });
+
   it('writes adjacent encrypted records with one bounded segment write', async () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const diagnostics = createHizoFSRuntimeDiagnostics();
