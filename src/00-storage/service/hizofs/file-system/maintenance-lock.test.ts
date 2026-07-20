@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  acquireHizoFSMaintenanceLease,
   acquireHizoFSResourceLease,
   acquireHizoFSSubvolumeRuntimePin,
   listHizoFSActiveSubvolumeRuntimePins,
@@ -37,6 +38,23 @@ describe('HizoFS maintenance lock', () => {
       subvolumeDescriptorObjectId: 'metadata/0/0',
     })).rejects.toThrow('subvolumeId must be canonical Base64URL');
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it('removes an aborted exclusive waiter without blocking later foreground leases', async () => {
+    vi.stubGlobal('navigator', {});
+    const instanceId = 'AAAAAAAAAAAAAAAAAAAAAA';
+    const activeResource = await acquireHizoFSResourceLease({ instanceId });
+    const abortController = new AbortController();
+    const maintenance = acquireHizoFSMaintenanceLease({
+      instanceId,
+      signal: abortController.signal,
+    });
+    abortController.abort(new DOMException('cancelled', 'AbortError'));
+    await expect(maintenance).rejects.toMatchObject({ name: 'AbortError' });
+
+    const laterResource = await acquireHizoFSResourceLease({ instanceId });
+    await laterResource.release();
+    await activeResource.release();
   });
 
   it('retains a subvolume while a shared runtime pin is active', async () => {

@@ -63,9 +63,11 @@ export class HizoFSBulkBuilder {
   static async create({
     runtime,
     rootDirectoryNodeId,
+    onSettled,
   }: {
     runtime: HizoFSRuntime;
     rootDirectoryNodeId: string;
+    onSettled: () => void;
   }): Promise<HizoFSBulkBuilder> {
     const maintenanceLease = await acquireHizoFSResourceLease({
       instanceId: runtime.core.instanceId,
@@ -104,6 +106,7 @@ export class HizoFSBulkBuilder {
         rootCreatedAt: rootDirectory.inode.createdAt,
         rootModifiedAt: rootDirectory.inode.modifiedAt,
         maintenanceLease,
+        onSettled,
       });
     } catch (error) {
       await maintenanceLease.release();
@@ -118,6 +121,7 @@ export class HizoFSBulkBuilder {
     rootCreatedAt,
     rootModifiedAt,
     maintenanceLease,
+    onSettled,
   }: {
     runtime: HizoFSRuntime;
     rootDirectoryNodeId: string;
@@ -125,6 +129,7 @@ export class HizoFSBulkBuilder {
     rootCreatedAt: number | null;
     rootModifiedAt: number | null;
     maintenanceLease: HizoFSMaintenanceLease;
+    onSettled: () => void;
   }) {
     this.runtime = runtime;
     this.rootDirectoryNodeId = rootDirectoryNodeId;
@@ -132,6 +137,7 @@ export class HizoFSBulkBuilder {
     this.rootCreatedAt = rootCreatedAt;
     this.rootModifiedAt = rootModifiedAt;
     this.maintenanceLease = maintenanceLease;
+    this.onSettled = onSettled;
     this.objectWriteConcurrency = runtime.policy.fileChunkWriteConcurrency;
     if (
       !Number.isSafeInteger(this.objectWriteConcurrency)
@@ -147,6 +153,7 @@ export class HizoFSBulkBuilder {
   private rootCreatedAt: number | null;
   private rootModifiedAt: number | null;
   private readonly maintenanceLease: HizoFSMaintenanceLease;
+  private readonly onSettled: () => void;
   private readonly objectWriteConcurrency: number;
   private readonly objectWriteEnqueueSemaphore = new Semaphore({ maxConcurrency: 1 });
   private readonly rootEntries: HizoFSDirectoryEntryDto[] = [];
@@ -156,16 +163,23 @@ export class HizoFSBulkBuilder {
   private nextPendingObjectWriteId = 0;
   private objectWriteFailure: ObjectWriteFailure | undefined;
   private settled = false;
+  private operationActive = false;
+  private operationSettled: PromiseWithResolvers<void> | undefined;
 
   async importRootMetadata({
     source,
   }: {
     source: StorageDirectoryHandle;
   }): Promise<void> {
-    this.assertOpen();
-    const stat = await source.stat();
-    this.rootCreatedAt = stat.createdAt ?? stat.modifiedAt ?? this.rootCreatedAt;
-    this.rootModifiedAt = stat.modifiedAt ?? stat.createdAt ?? this.rootModifiedAt;
+    const finishOperation = this.beginOperation();
+    try {
+      const stat = await source.stat();
+      this.assertOpen();
+      this.rootCreatedAt = stat.createdAt ?? stat.modifiedAt ?? this.rootCreatedAt;
+      this.rootModifiedAt = stat.modifiedAt ?? stat.createdAt ?? this.rootModifiedAt;
+    } finally {
+      finishOperation();
+    }
   }
 
   async importDirectory({
@@ -181,7 +195,7 @@ export class HizoFSBulkBuilder {
     signal: AbortSignal | undefined;
     onProgress: HizoFSBulkImportProgressListener | undefined;
   }): Promise<void> {
-    this.assertOpen();
+    const finishOperation = this.beginOperation();
     this.reserveUniqueRootName({ name });
     try {
       const imported = await this.importDirectoryNode({
@@ -191,10 +205,14 @@ export class HizoFSBulkBuilder {
         signal,
         onProgress,
       });
+      signal?.throwIfAborted();
+      this.assertOpen();
       this.rootEntries.push(imported.entry);
     } catch (error) {
       this.rootEntryNames.delete(name);
       throw error;
+    } finally {
+      finishOperation();
     }
   }
 
@@ -203,7 +221,7 @@ export class HizoFSBulkBuilder {
   }: {
     name: string;
   }): Promise<void> {
-    this.assertOpen();
+    const finishOperation = this.beginOperation();
     this.reserveUniqueRootName({ name });
     try {
       const timestamp = this.runtime.now();
@@ -219,10 +237,13 @@ export class HizoFSBulkBuilder {
         nodeId,
         operation: async () => await this.runtime.inodeStore.writeDirectory({ inode }),
       });
+      this.assertOpen();
       this.rootEntries.push({ name, kind: 'directory', nodeId });
     } catch (error) {
       this.rootEntryNames.delete(name);
       throw error;
+    } finally {
+      finishOperation();
     }
   }
 
@@ -231,7 +252,7 @@ export class HizoFSBulkBuilder {
   }: {
     name: string;
   }): Promise<void> {
-    this.assertOpen();
+    const finishOperation = this.beginOperation();
     this.reserveUniqueRootName({ name });
     try {
       const timestamp = this.runtime.now();
@@ -244,6 +265,7 @@ export class HizoFSBulkBuilder {
         size: 0,
         storage: { type: 'inline' },
       };
+      this.assertOpen();
       await this.scheduleInodeObjectWrite({
         nodeId,
         operation: async () => await this.runtime.inodeStore.writeFile({
@@ -251,16 +273,21 @@ export class HizoFSBulkBuilder {
           binaryPayload: EMPTY_BINARY_PAYLOAD,
         }),
       });
+      this.assertOpen();
       this.rootEntries.push({ name, kind: 'file', nodeId });
     } catch (error) {
       this.rootEntryNames.delete(name);
       throw error;
+    } finally {
+      finishOperation();
     }
   }
 
   async commit(): Promise<void> {
     this.assertOpen();
+    this.assertNoActiveOperation();
     this.settled = true;
+    await this.operationSettled?.promise;
     try {
       await this.waitForAllPendingObjectWrites({ failureMode: 'throw' });
       this.rootEntries.sort((left, right) => compareHizoFSStrings({
@@ -298,7 +325,11 @@ export class HizoFSBulkBuilder {
         },
       });
     } finally {
-      await this.maintenanceLease.release();
+      try {
+        await this.maintenanceLease.release();
+      } finally {
+        this.onSettled();
+      }
     }
   }
 
@@ -308,7 +339,11 @@ export class HizoFSBulkBuilder {
     try {
       await this.waitForAllPendingObjectWrites({ failureMode: 'ignore' });
     } finally {
-      await this.maintenanceLease.release();
+      try {
+        await this.maintenanceLease.release();
+      } finally {
+        this.onSettled();
+      }
     }
   }
 
@@ -356,6 +391,7 @@ export class HizoFSBulkBuilder {
         entries.push((await this.importSymlinkNode({
           source: child,
           name: childName,
+          signal,
           onProgress,
         })).entry);
         break;
@@ -370,6 +406,8 @@ export class HizoFSBulkBuilder {
       right: right.name,
     }));
     const stat = await source.stat();
+    signal?.throwIfAborted();
+    this.assertOpen();
     const now = this.runtime.now();
     await this.scheduleInodeObjectWrite({
       nodeId,
@@ -408,10 +446,14 @@ export class HizoFSBulkBuilder {
   }): Promise<ImportedNode> {
     assertHizoFSEntryName({ name });
     const stat = await source.stat();
+    signal?.throwIfAborted();
+    this.assertOpen();
     const nodeId = createHizoFSStableId();
     const readable = await source.openReadable({
       mimeType: 'application/octet-stream',
     });
+    signal?.throwIfAborted();
+    this.assertOpen();
     try {
       const now = this.runtime.now();
       const createdAt = resolveTimestamp({
@@ -519,14 +561,18 @@ export class HizoFSBulkBuilder {
   private async importSymlinkNode({
     source,
     name,
+    signal,
     onProgress,
   }: {
     source: StorageSymlinkHandle;
     name: string;
+    signal: AbortSignal | undefined;
     onProgress: HizoFSBulkImportProgressListener | undefined;
   }): Promise<ImportedNode> {
     assertHizoFSEntryName({ name });
     const stat = await source.stat();
+    signal?.throwIfAborted();
+    this.assertOpen();
     const now = this.runtime.now();
     const nodeId = createHizoFSStableId();
     const inode: HizoFSSymlinkInodeDto = {
@@ -544,6 +590,8 @@ export class HizoFSBulkBuilder {
       }),
       target: await source.readTarget(),
     };
+    signal?.throwIfAborted();
+    this.assertOpen();
     await this.scheduleInodeObjectWrite({
       nodeId,
       operation: async () => await this.runtime.inodeStore.writeSymlink({ inode }),
@@ -741,11 +789,34 @@ export class HizoFSBulkBuilder {
         position: position + offset,
         signal,
       });
+      signal?.throwIfAborted();
+      this.assertOpen();
       if (result.bytesRead <= 0) {
         throw new Error('HizoFS bulk source ended before its declared size');
       }
       offset += result.bytesRead;
       onBytesRead?.({ byteLength: result.bytesRead });
+    }
+  }
+
+  private beginOperation(): () => void {
+    this.assertOpen();
+    this.assertNoActiveOperation();
+    this.operationActive = true;
+    this.operationSettled = Promise.withResolvers<void>();
+    let finished = false;
+    return () => {
+      if (finished) return;
+      finished = true;
+      this.operationActive = false;
+      this.operationSettled?.resolve();
+      this.operationSettled = undefined;
+    };
+  }
+
+  private assertNoActiveOperation(): void {
+    if (this.operationActive) {
+      throw new Error('HizoFS bulk builder does not allow overlapping operations');
     }
   }
 

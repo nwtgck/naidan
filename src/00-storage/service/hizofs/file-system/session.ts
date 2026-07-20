@@ -37,6 +37,7 @@ import type { HizoFSDirectoryChange } from "./directory-storage";
 import type { HizoFSDirectoryIndexLookupCache } from "./directory-index";
 import { HizoFSFileReader } from "./file-reader";
 import { HizoFSFileWriter } from "./file-writer";
+import { HizoFSBulkBuilder } from './bulk-builder';
 import type {
   LoadedHizoFSDirectory,
   LoadedHizoFSFile,
@@ -179,6 +180,12 @@ async function awaitIndependentWrites<Left, Right>({
 
 type HizoFSSessionResource = {
   dispose(): Promise<void>;
+};
+
+const BORROWED_HIZOFS_MAINTENANCE_LEASE: HizoFSMaintenanceLease = {
+  async release(): Promise<void> {
+    // The owning fixed-view session retains the underlying shared lease.
+  },
 };
 
 type HizoFSDirectoryHandleCache = {
@@ -462,6 +469,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     mountedAttachment,
     subvolumeRuntimePin,
     mountedSubvolumeRegistry,
+    ephemeralSnapshot,
   }: {
     runtime: HizoFSRuntime;
     core: HizoFSCore;
@@ -477,6 +485,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     mountedAttachment: HizoFSMountedSubvolumeAttachment | undefined;
     subvolumeRuntimePin: HizoFSMaintenanceLease | undefined;
     mountedSubvolumeRegistry?: HizoFSMountedSubvolumeRegistry;
+    ephemeralSnapshot: boolean;
   }) {
     this.runtime = runtime;
     this.core = core;
@@ -496,6 +505,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     this.sessionLease = sessionLease;
     this.mountedAttachment = mountedAttachment;
     this.subvolumeRuntimePin = subvolumeRuntimePin;
+    this.ephemeralSnapshot = ephemeralSnapshot;
     this.mountedSubvolumeRegistry = mountedSubvolumeRegistry ?? {
       descriptorObjectIdBySubvolumeId: new Map([[
         subvolumeId,
@@ -531,6 +541,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
   private readonly sessionLease: HizoFSMaintenanceLease | undefined;
   private readonly mountedAttachment: HizoFSMountedSubvolumeAttachment | undefined;
   private readonly subvolumeRuntimePin: HizoFSMaintenanceLease | undefined;
+  private readonly ephemeralSnapshot: boolean;
   private readonly workerMountContext: Omit<
     StorageDirectoryWorkerMountSource,
     "rootDirectoryNodeId"
@@ -543,6 +554,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
   private readonly mountedSubvolumeRegistry: HizoFSMountedSubvolumeRegistry;
   private closed = false;
   private closePromise: Promise<void> | undefined;
+  private activeOperationCount = 0;
+  private activeOperationsSettled: PromiseWithResolvers<void> | undefined;
 
   close(): Promise<void> {
     this.closePromise ??= this.closeInternal();
@@ -551,6 +564,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
 
   private async closeInternal(): Promise<void> {
     this.closed = true;
+    await this.activeOperationsSettled?.promise;
     const results = await Promise.allSettled(
       [...this.resources].map((resource) => resource.dispose()),
     );
@@ -586,62 +600,68 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
   }
 
   async createReadSnapshot(): Promise<StorageFileSystemSession> {
-    this.assertOpen();
-    const sessionLease = await acquireHizoFSResourceLease({
-      instanceId: this.instanceId,
-    });
-    let subvolumeRuntimePin: HizoFSMaintenanceLease | undefined;
+    const finishTrackedOperation = this.beginTrackedOperation();
     try {
-      subvolumeRuntimePin = this.mountedAttachment === undefined
-        ? undefined
-        : await acquireHizoFSSubvolumeRuntimePin({
-          instanceId: this.instanceId,
-          subvolumeId: this.subvolumeId,
-          subvolumeDescriptorObjectId:
-            this.mountedAttachment.subvolumeDescriptorObjectId,
-        });
-      const fixedState = await this.loadFilesystemState();
-      const snapshot = new HizoFSSession({
-        runtime: this.runtime,
-        core: this.core,
-        subvolumeId: this.subvolumeId,
-        rootDirectoryNodeId: fixedState.commit.rootDirectoryNodeId,
-        rootName: this.root.name,
-        workerMountContext: this.workerMountContext,
-        fixedState,
-        sessionLease,
-        mountedAttachment: this.mountedAttachment,
-        subvolumeRuntimePin,
-        mountedSubvolumeRegistry: this.mountedSubvolumeRegistry,
+      const sessionLease = await acquireHizoFSResourceLease({
+        instanceId: this.instanceId,
       });
-      subvolumeRuntimePin = undefined;
-      return snapshot;
-    } catch (error) {
-      const releases = await Promise.allSettled([
-        sessionLease.release(),
-        subvolumeRuntimePin?.release(),
-      ]);
-      const releaseErrors = releases.flatMap(result => {
-        switch (result.status) {
-        case 'fulfilled':
-          return [];
-        case 'rejected':
-          return [result.reason];
-        default: {
-          const _ex: never = result;
-          throw new Error(
-            `Unhandled HizoFS lease release result: ${String(_ex)}`,
+      let subvolumeRuntimePin: HizoFSMaintenanceLease | undefined;
+      try {
+        subvolumeRuntimePin = this.mountedAttachment === undefined
+          ? undefined
+          : await acquireHizoFSSubvolumeRuntimePin({
+            instanceId: this.instanceId,
+            subvolumeId: this.subvolumeId,
+            subvolumeDescriptorObjectId:
+            this.mountedAttachment.subvolumeDescriptorObjectId,
+          });
+        const fixedState = await this.loadFilesystemState();
+        this.assertOpen();
+        const snapshot = new HizoFSSession({
+          runtime: this.runtime,
+          core: this.core,
+          subvolumeId: this.subvolumeId,
+          rootDirectoryNodeId: fixedState.commit.rootDirectoryNodeId,
+          rootName: this.root.name,
+          workerMountContext: this.workerMountContext,
+          fixedState,
+          sessionLease,
+          mountedAttachment: this.mountedAttachment,
+          subvolumeRuntimePin,
+          mountedSubvolumeRegistry: this.mountedSubvolumeRegistry,
+          ephemeralSnapshot: true,
+        });
+        subvolumeRuntimePin = undefined;
+        return snapshot;
+      } catch (error) {
+        const releases = await Promise.allSettled([
+          sessionLease.release(),
+          subvolumeRuntimePin?.release(),
+        ]);
+        const releaseErrors = releases.flatMap(result => {
+          switch (result.status) {
+          case 'fulfilled':
+            return [];
+          case 'rejected':
+            return [result.reason];
+          default: {
+            const _ex: never = result;
+            throw new Error(
+              `Unhandled HizoFS lease release result: ${String(_ex)}`,
+            );
+          }
+          }
+        });
+        if (releaseErrors.length > 0) {
+          throw new AggregateError(
+            [error, ...releaseErrors],
+            'Failed to release HizoFS read snapshot leases after an error',
           );
         }
-        }
-      });
-      if (releaseErrors.length > 0) {
-        throw new AggregateError(
-          [error, ...releaseErrors],
-          'Failed to release HizoFS read snapshot leases after an error',
-        );
+        throw error;
       }
-      throw error;
+    } finally {
+      finishTrackedOperation();
     }
   }
 
@@ -674,6 +694,61 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       return await operation();
     } finally {
       await lease.release();
+    }
+  }
+
+  private beginTrackedOperation(): () => void {
+    this.assertOpen();
+    if (this.activeOperationCount === 0) {
+      this.activeOperationsSettled = Promise.withResolvers<void>();
+    }
+    this.activeOperationCount += 1;
+    let finished = false;
+    return () => {
+      if (finished) return;
+      finished = true;
+      this.activeOperationCount -= 1;
+      if (this.activeOperationCount === 0) {
+        this.activeOperationsSettled?.resolve();
+        this.activeOperationsSettled = undefined;
+      }
+    };
+  }
+
+  isFixedView(): boolean {
+    return this.fixedState !== undefined;
+  }
+
+  async createBulkBuilder(): Promise<HizoFSBulkBuilder | undefined> {
+    const finishTrackedOperation = this.beginTrackedOperation();
+    try {
+      if (this.fixedState !== undefined) return undefined;
+      const resourceHolder: { value?: HizoFSSessionResource } = {};
+      const builder = await HizoFSBulkBuilder.create({
+        runtime: this.runtime,
+        rootDirectoryNodeId: this.rootDirectoryNodeId,
+        onSettled: () => {
+          if (resourceHolder.value !== undefined) {
+            this.resources.delete(resourceHolder.value);
+          }
+        },
+      });
+      try {
+        this.assertOpen();
+      } catch (error) {
+        await builder.abort({ reason: error });
+        throw error;
+      }
+      const resource: HizoFSSessionResource = {
+        dispose: async () => await builder.abort({
+          reason: new Error('HizoFS session closed'),
+        }),
+      };
+      resourceHolder.value = resource;
+      this.resources.add(resource);
+      return builder;
+    } finally {
+      finishTrackedOperation();
     }
   }
 
@@ -934,6 +1009,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           access,
           visitingSubvolumeIds: new Set<string>(),
           completedSubvolumeIds: new Set<string>(),
+          allowLiveWritableChildren: sourceFixedState === undefined,
         });
         const mountId = createHizoFSStableId();
         const timestamp = this.runtime.now();
@@ -1001,6 +1077,12 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     recursiveSubvolumes: boolean;
   }): Promise<void> {
     this.assertOpen();
+    if (this.ephemeralSnapshot) {
+      throw createNamedError({
+        name: 'NoModificationAllowedError',
+        message: 'A fixed HizoFS snapshot cannot delete a subvolume',
+      });
+    }
     const attachment = this.mountedAttachment;
     if (attachment === undefined) {
       throw createNamedError({
@@ -1162,11 +1244,13 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     access,
     visitingSubvolumeIds,
     completedSubvolumeIds,
+    allowLiveWritableChildren,
   }: {
     sourceState: HizoFSFilesystemState;
     access: 'read' | 'read_write';
     visitingSubvolumeIds: Set<string>;
     completedSubvolumeIds: Set<string>;
+    allowLiveWritableChildren: boolean;
   }): Promise<ClonedHizoFSSubvolume> {
     const sourceSubvolumeId = sourceState.subvolumeDescriptor.subvolumeId;
     if (visitingSubvolumeIds.has(sourceSubvolumeId)) {
@@ -1210,6 +1294,13 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           });
           break;
         case 'read_write': {
+          if (!allowLiveWritableChildren) {
+            throw createNamedError({
+              name: 'InvalidModificationError',
+              message:
+                'A fixed HizoFS snapshot cannot recursively capture a writable child subvolume',
+            });
+          }
           const childCore = this.runtime.getReadWriteSubvolumeCore({
             subvolumeId: childDescriptor.subvolumeId,
           });
@@ -1238,6 +1329,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           access,
           visitingSubvolumeIds,
           completedSubvolumeIds,
+          allowLiveWritableChildren,
         });
         clonedMounts.push({
           mountId: sourceMount.mountId,
@@ -1407,6 +1499,9 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           subvolumeId: descriptor.subvolumeId,
         });
         childState = await childCore.loadActiveState();
+        if (this.fixedState !== undefined) {
+          fixedState = childState;
+        }
         if (
           childState.subvolumeDescriptorObjectId
           !== mount.subvolumeDescriptorObjectId
@@ -1446,6 +1541,7 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           subvolumeDescriptorObjectId: mount.subvolumeDescriptorObjectId,
         }),
         mountedSubvolumeRegistry: this.mountedSubvolumeRegistry,
+        ephemeralSnapshot: this.ephemeralSnapshot,
       });
       if (this.closed) {
         await childSession.close();
@@ -1574,6 +1670,12 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     rootDirectoryNodeId: string;
   }): StorageDirectoryWorkerMountSource {
     this.assertOpen();
+    if (this.ephemeralSnapshot) {
+      throw createNamedError({
+        name: 'NoModificationAllowedError',
+        message: 'A fixed HizoFS snapshot cannot create a Worker mount source',
+      });
+    }
     return {
       ...this.workerMountContext,
       rootDirectoryNodeId,
@@ -1669,41 +1771,43 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       });
     }
 
-    const mutation = await this.core.mutateAndReturnState<HizoFSFileHandleMutationResult>({
-      operation: async ({ state }) => {
-        const directory = await this.readDirectory({
-          state,
-          nodeId: directoryNodeId,
-          directoryCache,
-        });
-        const existing = await this.runtime.directoryStorage.getEntryWithCache({
-          inode: directory.inode,
-          name,
-          lookupCache: directoryCache.entryLookupCache,
-        });
-        if (existing !== undefined) {
-          const fileEntry = requireFileEntry({ entry: existing, name });
-          return {
-            changed: "no" as const,
-            inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
-            result: {
-              nodeId: fileEntry.nodeId,
-              directory,
-            },
-          };
-        }
+    const finishTrackedOperation = this.beginTrackedOperation();
+    try {
+      const mutation = await this.core.mutateAndReturnState<HizoFSFileHandleMutationResult>({
+        operation: async ({ state }) => {
+          const directory = await this.readDirectory({
+            state,
+            nodeId: directoryNodeId,
+            directoryCache,
+          });
+          const existing = await this.runtime.directoryStorage.getEntryWithCache({
+            inode: directory.inode,
+            name,
+            lookupCache: directoryCache.entryLookupCache,
+          });
+          if (existing !== undefined) {
+            const fileEntry = requireFileEntry({ entry: existing, name });
+            return {
+              changed: "no" as const,
+              inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+              result: {
+                nodeId: fileEntry.nodeId,
+                directory,
+              },
+            };
+          }
 
-        const childNodeId = createHizoFSStableId();
-        const timestamp = this.runtime.now();
-        const fileInode: HizoFSFileInodeDto = {
-          nodeId: childNodeId,
-          revision: 0,
-          createdAt: timestamp,
-          modifiedAt: timestamp,
-          size: 0,
-          storage: { type: "inline" },
-        };
-        const [fileInodeObjectId, changedDirectory] =
+          const childNodeId = createHizoFSStableId();
+          const timestamp = this.runtime.now();
+          const fileInode: HizoFSFileInodeDto = {
+            nodeId: childNodeId,
+            revision: 0,
+            createdAt: timestamp,
+            modifiedAt: timestamp,
+            size: 0,
+            storage: { type: "inline" },
+          };
+          const [fileInodeObjectId, changedDirectory] =
           await awaitIndependentWrites({
             left: this.runtime.inodeStore.writeFile({
               inode: fileInode,
@@ -1720,36 +1824,40 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
               modifiedAt: timestamp,
             }),
           });
-        const inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
-          inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
-          entries: [
-            { nodeId: childNodeId, inodeObjectId: fileInodeObjectId },
-            {
-              nodeId: directoryNodeId,
-              inodeObjectId: changedDirectory.inodeObjectId,
+          const inodeIndexRootObjectId = await this.runtime.nodeService.setInodes({
+            inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+            entries: [
+              { nodeId: childNodeId, inodeObjectId: fileInodeObjectId },
+              {
+                nodeId: directoryNodeId,
+                inodeObjectId: changedDirectory.inodeObjectId,
+              },
+            ],
+          });
+          return {
+            changed: "yes" as const,
+            inodeIndexRootObjectId,
+            result: {
+              nodeId: childNodeId,
+              directory: changedDirectory,
             },
-          ],
-        });
-        return {
-          changed: "yes" as const,
-          inodeIndexRootObjectId,
-          result: {
-            nodeId: childNodeId,
-            directory: changedDirectory,
-          },
-        };
-      },
-    });
-    this.rememberDirectory({
-      state: mutation.state,
-      directory: mutation.result.directory,
-      directoryCache,
-    });
-    return new HizoFSFileHandle({
-      session: this,
-      nodeId: mutation.result.nodeId,
-      name,
-    });
+          };
+        },
+        assertCanPublish: () => this.assertOpen(),
+      });
+      this.rememberDirectory({
+        state: mutation.state,
+        directory: mutation.result.directory,
+        directoryCache,
+      });
+      return new HizoFSFileHandle({
+        session: this,
+        nodeId: mutation.result.nodeId,
+        name,
+      });
+    } finally {
+      finishTrackedOperation();
+    }
   }
 
   async getDirectoryHandle({
@@ -2200,9 +2308,8 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
       });
     }
     const destinationNodeId = destination.nodeId;
-    if (sourceDirectoryNodeId === destinationNodeId && name === newName) {
-      return;
-    }
+    const samePath =
+      sourceDirectoryNodeId === destinationNodeId && name === newName;
 
     await this.core.mutateTopologyAndReturnState({
       operation: async ({ state }) => {
@@ -2218,6 +2325,15 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
           throw createStorageEntryNotFoundError({
             message: `Entry '${name}' was not found`,
           });
+        }
+        if (samePath) {
+          return {
+            changed: 'no' as const,
+            inodeIndexRootObjectId: state.commit.inodeIndexRootObjectId,
+            subvolumeMountIndexRootObjectId:
+              state.commit.subvolumeMountIndexRootObjectId,
+            result: undefined,
+          };
         }
         const destinationDirectory =
           sourceDirectoryNodeId === destinationNodeId
@@ -2656,32 +2772,37 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     nodeId: string;
     mimeType: string;
   }): Promise<StorageBinaryObjectReadHandle> {
-    this.assertOpen();
-    const maintenanceLease = await acquireHizoFSResourceLease({
-      instanceId: this.instanceId,
-    });
-    let file;
+    const finishTrackedOperation = this.beginTrackedOperation();
     try {
-      const state = await this.loadFilesystemState();
-      file = await this.runtime.nodeService.readFile({ state, nodeId });
-    } catch (error) {
-      await maintenanceLease.release();
-      throw error;
+      const maintenanceLease = this.sessionLease === undefined
+        ? await acquireHizoFSResourceLease({ instanceId: this.instanceId })
+        : BORROWED_HIZOFS_MAINTENANCE_LEASE;
+      let file;
+      try {
+        const state = await this.loadFilesystemState();
+        file = await this.runtime.nodeService.readFile({ state, nodeId });
+        this.assertOpen();
+      } catch (error) {
+        await maintenanceLease.release();
+        throw error;
+      }
+      const reader = new HizoFSFileReader({
+        file,
+        extentIndex: this.runtime.extentIndex,
+        chunkStore: this.runtime.chunkStore,
+        mimeType,
+        streamChunkSize: this.runtime.policy.readerStreamChunkSize,
+        prefetchConcurrency: this.runtime.policy.fileChunkReadPrefetchConcurrency,
+        maintenanceLease,
+        diagnostics: this.runtime.diagnostics,
+        onSettled: () => this.resources.delete(resource),
+      });
+      const resource: HizoFSSessionResource = { dispose: () => reader.close() };
+      this.resources.add(resource);
+      return reader;
+    } finally {
+      finishTrackedOperation();
     }
-    const reader = new HizoFSFileReader({
-      file,
-      extentIndex: this.runtime.extentIndex,
-      chunkStore: this.runtime.chunkStore,
-      mimeType,
-      streamChunkSize: this.runtime.policy.readerStreamChunkSize,
-      prefetchConcurrency: this.runtime.policy.fileChunkReadPrefetchConcurrency,
-      maintenanceLease,
-      diagnostics: this.runtime.diagnostics,
-      onSettled: () => this.resources.delete(resource),
-    });
-    const resource: HizoFSSessionResource = { dispose: () => reader.close() };
-    this.resources.add(resource);
-    return reader;
   }
 
   async createFileWriter({
@@ -2691,39 +2812,44 @@ export class HizoFSSession implements StorageDirectoryWorkerMountSession {
     nodeId: string;
     keepExistingData: boolean;
   }): Promise<StorageWritableFile> {
-    this.assertOpen();
-    this.assertMutable();
-    const maintenanceLease = await acquireHizoFSResourceLease({
-      instanceId: this.instanceId,
-    });
-    let baseFile;
+    const finishTrackedOperation = this.beginTrackedOperation();
     try {
-      const state = await this.loadFilesystemState();
-      baseFile = await this.runtime.nodeService.readFile({ state, nodeId });
-    } catch (error) {
-      await maintenanceLease.release();
-      throw error;
+      this.assertMutable();
+      const maintenanceLease = await acquireHizoFSResourceLease({
+        instanceId: this.instanceId,
+      });
+      let baseFile;
+      try {
+        const state = await this.loadFilesystemState();
+        baseFile = await this.runtime.nodeService.readFile({ state, nodeId });
+        this.assertOpen();
+      } catch (error) {
+        await maintenanceLease.release();
+        throw error;
+      }
+      const writer = new HizoFSFileWriter({
+        core: this.core,
+        nodeService: this.runtime.nodeService,
+        inodeStore: this.runtime.inodeStore,
+        extentIndex: this.runtime.extentIndex,
+        chunkStore: this.runtime.chunkStore,
+        policy: this.runtime.policy,
+        baseFile,
+        keepExistingData,
+        now: this.runtime.now,
+        maintenanceLease,
+        diagnostics: this.runtime.diagnostics,
+        onSettled: () => this.resources.delete(resource),
+      });
+      const resource: HizoFSSessionResource = {
+        dispose: () =>
+          writer.abort({ reason: new Error("HizoFS session closed") }),
+      };
+      this.resources.add(resource);
+      return writer;
+    } finally {
+      finishTrackedOperation();
     }
-    const writer = new HizoFSFileWriter({
-      core: this.core,
-      nodeService: this.runtime.nodeService,
-      inodeStore: this.runtime.inodeStore,
-      extentIndex: this.runtime.extentIndex,
-      chunkStore: this.runtime.chunkStore,
-      policy: this.runtime.policy,
-      baseFile,
-      keepExistingData,
-      now: this.runtime.now,
-      maintenanceLease,
-      diagnostics: this.runtime.diagnostics,
-      onSettled: () => this.resources.delete(resource),
-    });
-    const resource: HizoFSSessionResource = {
-      dispose: () =>
-        writer.abort({ reason: new Error("HizoFS session closed") }),
-    };
-    this.resources.add(resource);
-    return writer;
   }
 
   async statSymlink({ nodeId }: { nodeId: string }): Promise<StorageFileStat> {

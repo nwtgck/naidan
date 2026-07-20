@@ -337,6 +337,7 @@ async function collectHizoFSGarbageInternal({
   });
   const garbageCollectionLease = await acquireHizoFSGarbageCollectionLease({
     instanceId,
+    signal,
   });
   let preparation: GarbageCollectionPreparation | undefined;
   let compactionMetrics: GarbageCollectionCompactionMetrics | undefined;
@@ -948,7 +949,7 @@ async function snapshotGarbageCollectionRoots({
     diagnostics: undefined,
   });
   const fenceRequestedAt = now();
-  const lease = await acquireHizoFSMaintenanceLease({ instanceId });
+  const lease = await acquireHizoFSMaintenanceLease({ instanceId, signal });
   const initialFenceWaitDurationMs = elapsed({ now, startedAt: fenceRequestedAt });
   const fenceStartedAt = now();
   let rootSnapshotDurationMs = 0;
@@ -1134,7 +1135,10 @@ async function compactGarbageCollectionCandidates({
     const candidate = candidates[index];
     if (candidate === undefined) continue;
     const requestedAt = dependencies.now();
-    const lease = await acquireHizoFSMaintenanceLease({ instanceId: runtime.instanceId });
+    const lease = await acquireHizoFSMaintenanceLease({
+      instanceId: runtime.instanceId,
+      signal,
+    });
     lockWaitDurationMs += elapsed({ now: dependencies.now, startedAt: requestedAt });
     const sliceStartedAt = dependencies.now();
     try {
@@ -1257,7 +1261,10 @@ async function sweepGarbageCollectionCandidates({
   while (nextObjectIndex < candidates.length) {
     throwIfAborted({ signal });
     const leaseRequestedAt = dependencies.now();
-    const lease = await acquireHizoFSMaintenanceLease({ instanceId: runtime.instanceId });
+    const lease = await acquireHizoFSMaintenanceLease({
+      instanceId: runtime.instanceId,
+      signal,
+    });
     sweepLockWaitDurationMs += elapsed({ now: dependencies.now, startedAt: leaseRequestedAt });
     const sliceStartedAt = dependencies.now();
     let removalsInSlice = 0;

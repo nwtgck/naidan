@@ -50,6 +50,38 @@ function assertReadArguments({
   }
 }
 
+async function awaitAbortableRead<T>({
+  operation,
+  signal,
+  disposeLateValue,
+  trackLateCleanup,
+}: {
+  operation: Promise<T>;
+  signal: AbortSignal | undefined;
+  disposeLateValue: ({ value }: { value: T }) => void;
+  trackLateCleanup: ({ cleanup }: { cleanup: Promise<void> }) => void;
+}): Promise<T> {
+  if (signal === undefined) return await operation;
+  signal.throwIfAborted();
+  const aborted = Promise.withResolvers<never>();
+  const onAbort = () => aborted.reject(signal.reason);
+  signal.addEventListener('abort', onAbort, { once: true });
+  try {
+    return await Promise.race([operation, aborted.promise]);
+  } catch (error) {
+    if (signal.aborted) {
+      const cleanup = operation.then(
+        value => disposeLateValue({ value }),
+        () => undefined,
+      );
+      trackLateCleanup({ cleanup });
+    }
+    throw error;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
 export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
   constructor({
     file,
@@ -104,8 +136,12 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
   private readonly extentLookupCache: HizoFSExtentIndexLookupCache = { value: undefined };
   private readonly prefetchedChunks = new Map<number, PrefetchedChunk>();
   private readonly prefetchCleanupTasks = new Set<Promise<void>>();
+  private readonly lateReadCleanupTasks = new Set<Promise<void>>();
   private lastReadEndPosition: number | undefined;
   private closed = false;
+  private closePromise: Promise<void> | undefined;
+  private activeReadCount = 0;
+  private activeReadsSettled: PromiseWithResolvers<void> | undefined;
 
   async read({
     buffer,
@@ -120,46 +156,50 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
     position: number;
     signal: AbortSignal | undefined;
   }): Promise<{ bytesRead: number }> {
-    this.assertOpen();
-    assertReadArguments({ buffer, offset, length, position });
-    signal?.throwIfAborted();
-    const bytesRead = Math.max(0, Math.min(length, this.size - position));
-    if (bytesRead === 0) {
-      this.lastReadEndPosition = position;
-      return { bytesRead: 0 };
-    }
+    const finishRead = this.beginRead();
+    try {
+      assertReadArguments({ buffer, offset, length, position });
+      signal?.throwIfAborted();
+      const bytesRead = Math.max(0, Math.min(length, this.size - position));
+      if (bytesRead === 0) {
+        this.lastReadEndPosition = position;
+        return { bytesRead: 0 };
+      }
 
-    const enableSequentialPrefetch = this.prefetchConcurrency > 1
+      const enableSequentialPrefetch = this.prefetchConcurrency > 1
       && this.lastReadEndPosition === position;
-    if (this.prefetchConcurrency > 1 && !enableSequentialPrefetch) {
-      this.discardPrefetchedChunks();
-    }
+      if (this.prefetchConcurrency > 1 && !enableSequentialPrefetch) {
+        this.discardPrefetchedChunks();
+      }
 
-    switch (this.file.inode.storage.type) {
-    case 'inline':
-      buffer.set(
-        this.file.binaryPayload.subarray(position, position + bytesRead),
-        offset,
-      );
-      break;
-    case 'extents':
-      await this.readExtents({
-        buffer,
-        offset,
-        length: bytesRead,
-        position,
-        signal,
-        enableSequentialPrefetch,
-      });
-      break;
-    default: {
-      const _ex: never = this.file.inode.storage;
-      throw new Error(`Unhandled HizoFS file storage: ${String(_ex)}`);
+      switch (this.file.inode.storage.type) {
+      case 'inline':
+        buffer.set(
+          this.file.binaryPayload.subarray(position, position + bytesRead),
+          offset,
+        );
+        break;
+      case 'extents':
+        await this.readExtents({
+          buffer,
+          offset,
+          length: bytesRead,
+          position,
+          signal,
+          enableSequentialPrefetch,
+        });
+        break;
+      default: {
+        const _ex: never = this.file.inode.storage;
+        throw new Error(`Unhandled HizoFS file storage: ${String(_ex)}`);
+      }
+      }
+      signal?.throwIfAborted();
+      this.lastReadEndPosition = position + bytesRead;
+      return { bytesRead };
+    } finally {
+      finishRead();
     }
-    }
-    signal?.throwIfAborted();
-    this.lastReadEndPosition = position + bytesRead;
-    return { bytesRead };
   }
 
   stream({
@@ -182,12 +222,16 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
         'HizoFS stream end must be a safe integer not smaller than start',
       );
     }
+    const streamAbortController = new AbortController();
+    const readSignal = signal === undefined
+      ? streamAbortController.signal
+      : AbortSignal.any([signal, streamAbortController.signal]);
     const finalEnd = Math.min(end ?? this.size, this.size);
     let position = Math.min(start, finalEnd);
     return new ReadableStream<Uint8Array>({
       pull: async (controller) => {
         try {
-          signal?.throwIfAborted();
+          readSignal.throwIfAborted();
           if (position >= finalEnd) {
             controller.close();
             return;
@@ -200,7 +244,7 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
             offset: 0,
             length: bytes.byteLength,
             position,
-            signal,
+            signal: readSignal,
           });
           position += bytesRead;
           controller.enqueue(
@@ -212,12 +256,23 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
           controller.error(error);
         }
       },
+      cancel: () => {
+        streamAbortController.abort(
+          new DOMException('HizoFS stream was cancelled', 'AbortError'),
+        );
+      },
     });
   }
 
-  async close(): Promise<void> {
-    if (this.closed) return;
+  close(): Promise<void> {
+    this.closePromise ??= this.closeInternal();
+    return this.closePromise;
+  }
+
+  private async closeInternal(): Promise<void> {
     this.closed = true;
+    await this.activeReadsSettled?.promise;
+    await Promise.all([...this.lateReadCleanupTasks]);
     try {
       try {
         await this.clearPrefetchedChunks();
@@ -271,13 +326,23 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
       const chunkIndex = Math.floor(sourcePosition / storage.chunkSize);
       const offsetInChunk = sourcePosition % storage.chunkSize;
       const copyLength = Math.min(remaining, storage.chunkSize - offsetInChunk);
-      const chunkRange = await this.readChunkRange({
-        storage,
-        chunkIndex,
-        offsetInChunk,
-        length: copyLength,
+      const chunkRange = await awaitAbortableRead({
+        operation: this.readChunkRange({
+          storage,
+          chunkIndex,
+          offsetInChunk,
+          length: copyLength,
+        }),
+        signal,
+        disposeLateValue: ({ value }) => value?.fill(0),
+        trackLateCleanup: ({ cleanup }) => {
+          this.lateReadCleanupTasks.add(cleanup);
+          void cleanup.finally(() => this.lateReadCleanupTasks.delete(cleanup));
+        },
       });
       try {
+        signal?.throwIfAborted();
+        this.assertOpen();
         if (chunkRange === undefined) {
           buffer.fill(0, destinationOffset, destinationOffset + copyLength);
         } else {
@@ -534,6 +599,24 @@ export class HizoFSFileReader implements StorageBinaryObjectReadHandle {
       throw new Error(`Unhandled HizoFS prefetch result: ${String(_ex)}`);
     }
     }
+  }
+
+  private beginRead(): () => void {
+    this.assertOpen();
+    if (this.activeReadCount === 0) {
+      this.activeReadsSettled = Promise.withResolvers<void>();
+    }
+    this.activeReadCount += 1;
+    let finished = false;
+    return () => {
+      if (finished) return;
+      finished = true;
+      this.activeReadCount -= 1;
+      if (this.activeReadCount === 0) {
+        this.activeReadsSettled?.resolve();
+        this.activeReadsSettled = undefined;
+      }
+    };
   }
 
   private assertOpen(): void {

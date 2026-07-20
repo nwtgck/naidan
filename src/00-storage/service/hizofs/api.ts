@@ -148,11 +148,7 @@ export async function createHizoFSBulkBuilder({
   if (!(fileSystemSession instanceof HizoFSSession)) {
     return undefined;
   }
-  fileSystemSession.assertOpen();
-  return await HizoFSBulkBuilder.create({
-    runtime: fileSystemSession.runtime,
-    rootDirectoryNodeId: fileSystemSession.rootDirectoryNodeId,
-  });
+  return await fileSystemSession.createBulkBuilder();
 }
 
 export type HizoFSSubvolumeAccess = HizoFSSubvolumeAccessDto;
@@ -542,6 +538,7 @@ async function createHizoFSInternal({
         sessionLease: undefined,
         mountedAttachment: undefined,
         subvolumeRuntimePin: undefined,
+        ephemeralSnapshot: false,
       });
     },
   });
@@ -655,6 +652,7 @@ async function openHizoFSInternal({
         sessionLease: undefined,
         mountedAttachment: undefined,
         subvolumeRuntimePin: undefined,
+        ephemeralSnapshot: false,
       });
     },
   });
@@ -782,6 +780,7 @@ async function openHizoFSWithImportedRootKey({
           sessionLease: undefined,
           mountedAttachment: undefined,
           subvolumeRuntimePin,
+          ephemeralSnapshot: false,
         });
         subvolumeRuntimePin = undefined;
         return session;

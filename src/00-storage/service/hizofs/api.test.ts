@@ -1908,6 +1908,75 @@ describe('HizoFS public file-system API', () => {
     await session.close();
   });
 
+  it('rejects commit while a bulk metadata import is still in flight', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'bulk-metadata-race' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });
+    if (builder === undefined) throw new Error('Expected a HizoFS bulk builder');
+    const statStarted = Promise.withResolvers<void>();
+    const releaseStat = Promise.withResolvers<void>();
+    const source = {
+      stat: async () => {
+        statStarted.resolve();
+        await releaseStat.promise;
+        return { createdAt: 9000, modifiedAt: 9001 };
+      },
+    } as unknown as StorageDirectoryHandle;
+
+    const metadataImport = builder.importRootMetadata({ source });
+    await statStarted.promise;
+    await expect(builder.commit()).rejects.toThrow('overlapping operations');
+    releaseStat.resolve();
+    await metadataImport;
+    await builder.commit();
+
+    expect(await session.root.stat()).toMatchObject({
+      createdAt: 9000,
+      modifiedAt: 9001,
+    });
+    await session.close();
+  });
+
+  it('does not retain metadata-only bulk imports that resume after abort', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'bulk-import-abort' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });
+    if (builder === undefined) throw new Error('Expected a HizoFS bulk builder');
+    const statStarted = Promise.withResolvers<void>();
+    const releaseStat = Promise.withResolvers<void>();
+    const source = {
+      kind: 'directory' as const,
+      name: 'source',
+      entries: async function* () {
+        // Empty metadata-only directory.
+      },
+      stat: async () => {
+        statStarted.resolve();
+        await releaseStat.promise;
+        return { createdAt: 10, modifiedAt: 11 };
+      },
+    } as unknown as StorageDirectoryHandle;
+    const abortController = new AbortController();
+
+    const imported = builder.importDirectory({
+      source,
+      name: 'cancelled',
+      excludedNames: new Set(),
+      signal: abortController.signal,
+      onProgress: undefined,
+    });
+    await statStarted.promise;
+    abortController.abort(new DOMException('cancelled', 'AbortError'));
+    releaseStat.resolve();
+    await expect(imported).rejects.toMatchObject({ name: 'AbortError' });
+    await builder.commit();
+    await expect(session.root.getDirectoryHandle({
+      name: 'cancelled',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await session.close();
+  });
+
   it('bounds bulk inode-object writes before one-commit publication', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'backing' });
     const session = await createTiny({ root: backing, now: () => 1 });
@@ -4245,4 +4314,386 @@ describe('HizoFS public file-system API', () => {
     await recovered.close();
   });
 
+});
+
+describe('HizoFS bug-hunt regression boundaries', () => {
+  it('validates a missing source before treating a same-path move as a no-op', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'same-path-missing' }),
+      now: () => 1,
+    });
+    await expect(session.root.moveEntry({
+      name: 'missing.bin',
+      destination: session.root,
+      newName: 'missing.bin',
+      replace: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await session.close();
+  });
+
+  it('keeps immutable snapshots from minting mutable capabilities', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'fixed-capabilities' });
+    const owner = await createHizoFS({
+      backingDirectory: backing,
+      fileSystemRootKey: ROOT_KEY,
+    });
+    const child = await createHizoFSSubvolume({
+      destination: owner.root,
+      name: 'workspace',
+      access: 'read_write',
+    });
+    const snapshot = await requireHizoFSSession({ session: owner }).createReadSnapshot();
+    try {
+      expect(() => snapshot.root.createWorkerMountSource?.()).toThrowError(
+        expect.objectContaining({ name: 'NoModificationAllowedError' }),
+      );
+      await expect(createHizoFSBulkBuilder({
+        fileSystemSession: snapshot,
+      })).resolves.toBeUndefined();
+      const fixedChild = await snapshot.root.getDirectoryHandle({
+        name: 'workspace',
+        create: false,
+      });
+      await expect(fixedChild.getFileHandle({
+        name: 'must-not-exist.bin',
+        create: true,
+      })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+      await expect(child.getFileHandle({
+        name: 'must-not-exist.bin',
+        create: false,
+      })).rejects.toMatchObject({ name: 'NotFoundError' });
+    } finally {
+      await snapshot.close();
+      await owner.close();
+    }
+  });
+
+  it('reuses a fixed snapshot lifetime lease while an exclusive GC waits', async () => {
+    const originalLocks = navigator.locks;
+    const exclusiveRequested = Promise.withResolvers<void>();
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({
+        onRequest: ({ name, mode }) => {
+          if (name.endsWith('/maintenance') && mode === 'exclusive') {
+            exclusiveRequested.resolve();
+          }
+        },
+      }),
+    });
+    try {
+      const backing = new MockFileSystemDirectoryHandle({ name: 'fixed-reader-gc' });
+      const owner = await createHizoFS({
+        backingDirectory: backing,
+        fileSystemRootKey: ROOT_KEY,
+      });
+      const file = await owner.root.getFileHandle({ name: 'value.bin', create: true });
+      const writer = await file.createWritable({ keepExistingData: false });
+      await writer.write({ position: 0, data: Uint8Array.from([1, 2, 3, 4]) });
+      await writer.close();
+      const snapshot = await requireHizoFSSession({ session: owner }).createReadSnapshot();
+      const snapshotFile = await snapshot.root.getFileHandle({
+        name: 'value.bin',
+        create: false,
+      });
+      const garbageCollection = collectHizoFSGarbage({
+        backingDirectory: backing,
+        fileSystemRootKey: ROOT_KEY,
+        dryRun: true,
+        sweepPolicy: undefined,
+        signal: undefined,
+      });
+      await exclusiveRequested.promise;
+      const reader = await snapshotFile.openReadable({
+        mimeType: 'application/octet-stream',
+      });
+      const buffer = new Uint8Array(4);
+      expect(await reader.read({
+        buffer,
+        offset: 0,
+        length: buffer.byteLength,
+        position: 0,
+        signal: undefined,
+      })).toEqual({ bytesRead: 4 });
+      expect([...buffer]).toEqual([1, 2, 3, 4]);
+      await reader.close();
+      await snapshot.close();
+      await garbageCollection;
+      await owner.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+  it('rejects deletion through a fixed snapshot before requesting maintenance', async () => {
+    const originalLocks = navigator.locks;
+    let exclusiveRequests = 0;
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: createQueuedTestLockManager({
+        onRequest: ({ name, mode }) => {
+          if (name.endsWith('/maintenance') && mode === 'exclusive') {
+            exclusiveRequests += 1;
+          }
+        },
+      }),
+    });
+    try {
+      const owner = await createHizoFS({
+        backingDirectory: new MockFileSystemDirectoryHandle({ name: 'fixed-delete' }),
+        fileSystemRootKey: ROOT_KEY,
+      });
+      const child = await createHizoFSSubvolume({
+        destination: owner.root,
+        name: 'child',
+        access: 'read_write',
+      });
+      const childContext = getHizoFSDirectoryHandleContext({ handle: child });
+      if (childContext === undefined) throw new Error('Expected child context');
+      const snapshot = await childContext.session.createReadSnapshot();
+      await expect(deleteHizoFSSubvolume({
+        subvolume: snapshot.root,
+        recursiveSubvolumes: false,
+      })).rejects.toMatchObject({ name: 'NoModificationAllowedError' });
+      expect(exclusiveRequests).toBe(0);
+      await snapshot.close();
+      await owner.close();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: originalLocks,
+      });
+    }
+  });
+
+  it('fails closed when recursively snapshotting writable children from a fixed view', async () => {
+    const owner = await createHizoFS({
+      backingDirectory: new MockFileSystemDirectoryHandle({ name: 'fixed-recursive' }),
+      fileSystemRootKey: ROOT_KEY,
+    });
+    await createHizoFSSubvolume({
+      destination: owner.root,
+      name: 'child',
+      access: 'read_write',
+    });
+    const fixed = await requireHizoFSSession({ session: owner }).createReadSnapshot();
+    await expect(snapshotHizoFSSubvolume({
+      source: fixed.root,
+      destination: owner.root,
+      name: 'must-not-be-torn',
+      access: 'read',
+    })).rejects.toMatchObject({ name: 'InvalidModificationError' });
+    await expect(owner.root.getDirectoryHandle({
+      name: 'must-not-be-torn',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await fixed.close();
+    await owner.close();
+  });
+});
+
+describe('HizoFS session capability revocation regressions', () => {
+  it('waits for an in-flight create and prevents publication after close starts', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'close-create' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const hizofs = requireHizoFSSession({ session });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const originalWrite = hizofs.runtime.inodeStore.writeFile
+      .bind(hizofs.runtime.inodeStore);
+    let blocked = false;
+    vi.spyOn(hizofs.runtime.inodeStore, 'writeFile').mockImplementation(
+      async arguments_ => {
+        if (!blocked) {
+          blocked = true;
+          entered.resolve();
+          await release.promise;
+        }
+        return await originalWrite(arguments_);
+      },
+    );
+
+    const create = session.root.getFileHandle({ name: 'late.bin', create: true });
+    await entered.promise;
+    let closeSettled = false;
+    const close = session.close().finally(() => {
+      closeSettled = true;
+    });
+    await Promise.resolve();
+    expect(closeSettled).toBe(false);
+    release.resolve();
+    await expect(create).rejects.toThrow('session is closed');
+    await close;
+
+    const reopened = await openTiny({ root: backing, now: () => 2 });
+    await expect(reopened.root.getFileHandle({
+      name: 'late.bin',
+      create: false,
+    })).rejects.toMatchObject({ name: 'NotFoundError' });
+    await reopened.close();
+  });
+
+  it('does not return a writer after its owner session starts closing', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'close-writer-create' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const hizofs = requireHizoFSSession({ session });
+    const file = await session.root.getFileHandle({ name: 'value.bin', create: true });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const originalRead = hizofs.runtime.nodeService.readFile
+      .bind(hizofs.runtime.nodeService);
+    let blocked = false;
+    vi.spyOn(hizofs.runtime.nodeService, 'readFile').mockImplementation(
+      async arguments_ => {
+        if (!blocked) {
+          blocked = true;
+          entered.resolve();
+          await release.promise;
+        }
+        return await originalRead(arguments_);
+      },
+    );
+
+    const pendingWriter = file.createWritable({ keepExistingData: false });
+    await entered.promise;
+    let closeSettled = false;
+    const close = session.close().finally(() => {
+      closeSettled = true;
+    });
+    await Promise.resolve();
+    expect(closeSettled).toBe(false);
+    release.resolve();
+    await expect(pendingWriter).rejects.toThrow('session is closed');
+    await close;
+
+    const reopened = await openTiny({ root: backing, now: () => 2 });
+    expect((await (await reopened.root.getFileHandle({
+      name: 'value.bin',
+      create: false,
+    })).stat()).size).toBe(0);
+    await reopened.close();
+  });
+
+  it('does not return a reader or nested snapshot after owner close starts', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'close-read-capabilities' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const hizofs = requireHizoFSSession({ session });
+    const file = await session.root.getFileHandle({ name: 'value.bin', create: true });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const originalRead = hizofs.runtime.nodeService.readFile
+      .bind(hizofs.runtime.nodeService);
+    let blocked = false;
+    vi.spyOn(hizofs.runtime.nodeService, 'readFile').mockImplementation(
+      async arguments_ => {
+        if (!blocked) {
+          blocked = true;
+          entered.resolve();
+          await release.promise;
+        }
+        return await originalRead(arguments_);
+      },
+    );
+
+    const pendingReader = file.openReadable({ mimeType: 'application/octet-stream' });
+    await entered.promise;
+    const close = session.close();
+    release.resolve();
+    await expect(pendingReader).rejects.toThrow('session is closed');
+    await close;
+
+    const second = await openTiny({ root: backing, now: () => 2 });
+    const secondHizofs = requireHizoFSSession({ session: second });
+    const snapshotEntered = Promise.withResolvers<void>();
+    const snapshotRelease = Promise.withResolvers<void>();
+    const originalLoad = secondHizofs.core.loadActiveState.bind(secondHizofs.core);
+    let loadBlocked = false;
+    vi.spyOn(secondHizofs.core, 'loadActiveState').mockImplementation(async () => {
+      if (!loadBlocked) {
+        loadBlocked = true;
+        snapshotEntered.resolve();
+        await snapshotRelease.promise;
+      }
+      return await originalLoad();
+    });
+    const pendingSnapshot = secondHizofs.createReadSnapshot();
+    await snapshotEntered.promise;
+    const secondClose = second.close();
+    snapshotRelease.resolve();
+    await expect(pendingSnapshot).rejects.toThrow('session is closed');
+    await secondClose;
+  });
+
+  it('rejects overlapping writer operations and aborts a blocked write without publishing it', async () => {
+    const backing = new MockFileSystemDirectoryHandle({ name: 'writer-operation-revocation' });
+    const session = await createTiny({ root: backing, now: () => 1 });
+    const file = await session.root.getFileHandle({ name: 'value.bin', create: true });
+    const initialWriter = await file.createWritable({ keepExistingData: false });
+    await initialWriter.write({
+      position: 0,
+      data: Uint8Array.from({ length: 12 }, (_, index) => index + 1),
+    });
+    await initialWriter.close();
+
+    const hizofs = requireHizoFSSession({ session });
+    const originalRead = hizofs.runtime.chunkStore.read.bind(hizofs.runtime.chunkStore);
+    const readStarted = Promise.withResolvers<void>();
+    const releaseRead = Promise.withResolvers<void>();
+    let blocked = false;
+    vi.spyOn(hizofs.runtime.chunkStore, 'read').mockImplementation(
+      async arguments_ => {
+        if (!blocked) {
+          blocked = true;
+          readStarted.resolve();
+          await releaseRead.promise;
+        }
+        return await originalRead(arguments_);
+      },
+    );
+
+    const writer = await file.createWritable({ keepExistingData: true });
+    const firstWrite = writer.write({
+      position: 0,
+      data: Uint8Array.from([99]),
+    });
+    await readStarted.promise;
+    await expect(writer.write({
+      position: 1,
+      data: Uint8Array.from([88]),
+    })).rejects.toThrow('overlapping operations');
+
+    const abort = writer.abort({ reason: new Error('cancel blocked write') });
+    releaseRead.resolve();
+    await expect(firstWrite).rejects.toThrow('closed or aborted');
+    await abort;
+
+    const reader = await file.openReadable({ mimeType: 'application/octet-stream' });
+    const actual = new Uint8Array(12);
+    expect(await reader.read({
+      buffer: actual,
+      offset: 0,
+      length: actual.byteLength,
+      position: 0,
+      signal: undefined,
+    })).toEqual({ bytesRead: 12 });
+    expect([...actual]).toEqual(Array.from({ length: 12 }, (_, index) => index + 1));
+    await reader.close();
+    await session.close();
+  });
+
+  it('revokes an owned bulk builder when its session closes', async () => {
+    const session = await createTiny({
+      root: new MockFileSystemDirectoryHandle({ name: 'close-bulk-builder' }),
+      now: () => 1,
+    });
+    const builder = await createHizoFSBulkBuilder({ fileSystemSession: session });
+    if (builder === undefined) throw new Error('Expected HizoFS bulk builder');
+    await session.close();
+    await expect(builder.createEmptyFile({ name: 'late.bin' }))
+      .rejects.toThrow();
+    await expect(builder.commit()).rejects.toThrow();
+  });
 });

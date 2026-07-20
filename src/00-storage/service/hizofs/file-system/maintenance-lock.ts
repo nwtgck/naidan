@@ -104,15 +104,30 @@ function drainLocalQueue({ lockName, state }: {
   }
 }
 
-async function acquireLocalLease({ lockName, mode }: {
+async function acquireLocalLease({ lockName, mode, signal }: {
   lockName: string;
   mode: LocalLockMode;
+  signal: AbortSignal | undefined;
 }): Promise<HizoFSMaintenanceLease> {
+  signal?.throwIfAborted();
   const state = getLocalState({ lockName });
   const acquired = Promise.withResolvers<HizoFSMaintenanceLease>();
-  state.queue.push({ mode, acquired });
+  const request: LocalLockRequest = { mode, acquired };
+  const onAbort = () => {
+    const index = state.queue.indexOf(request);
+    if (index < 0) return;
+    state.queue.splice(index, 1);
+    acquired.reject(signal?.reason);
+    drainLocalQueue({ lockName, state });
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
+  state.queue.push(request);
   drainLocalQueue({ lockName, state });
-  return acquired.promise;
+  try {
+    return await acquired.promise;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 function tryAcquireLocalExclusiveLease({ lockName }: {
@@ -139,13 +154,18 @@ function tryAcquireLocalExclusiveLease({ lockName }: {
   };
 }
 
-async function acquireWebLease({ lockName, mode }: {
+async function acquireWebLease({ lockName, mode, signal }: {
   lockName: string;
   mode: LocalLockMode;
+  signal: AbortSignal | undefined;
 }): Promise<HizoFSMaintenanceLease> {
+  signal?.throwIfAborted();
   const acquired = Promise.withResolvers<void>();
   const released = Promise.withResolvers<void>();
-  const completed = navigator.locks.request(lockName, { mode }, async () => {
+  const completed = navigator.locks.request(lockName, {
+    mode,
+    ...(signal === undefined ? {} : { signal }),
+  }, async () => {
     acquired.resolve();
     await released.promise;
   });
@@ -197,9 +217,10 @@ async function tryAcquireWebExclusiveLease({ lockName }: {
   };
 }
 
-async function acquireLease({ instanceId, mode }: {
+async function acquireLease({ instanceId, mode, signal }: {
   instanceId: string;
   mode: LocalLockMode;
+  signal: AbortSignal | undefined;
 }): Promise<HizoFSMaintenanceLease> {
   validateHizoFSStableId({
     value: instanceId,
@@ -208,21 +229,23 @@ async function acquireLease({ instanceId, mode }: {
   return acquireNamedLease({
     lockName: `hizofs/${instanceId}/maintenance`,
     mode,
+    signal,
   });
 }
 
-async function acquireNamedLease({ lockName, mode }: {
+async function acquireNamedLease({ lockName, mode, signal }: {
   lockName: string;
   mode: LocalLockMode;
+  signal: AbortSignal | undefined;
 }): Promise<HizoFSMaintenanceLease> {
   if (
     typeof navigator !== 'undefined'
     && navigator.locks !== undefined
     && typeof navigator.locks.request === 'function'
   ) {
-    return acquireWebLease({ lockName, mode });
+    return acquireWebLease({ lockName, mode, signal });
   }
-  return acquireLocalLease({ lockName, mode });
+  return acquireLocalLease({ lockName, mode, signal });
 }
 
 function getSubvolumeRuntimePinLockName({
@@ -263,6 +286,7 @@ export async function acquireHizoFSSubvolumeRuntimePin({
       subvolumeDescriptorObjectId,
     }),
     mode: 'shared',
+    signal: undefined,
   });
 }
 
@@ -366,7 +390,7 @@ export async function listHizoFSActiveSubvolumeRuntimePins({
 export function acquireHizoFSResourceLease({ instanceId }: {
   instanceId: string;
 }): Promise<HizoFSMaintenanceLease> {
-  return acquireLease({ instanceId, mode: 'shared' });
+  return acquireLease({ instanceId, mode: 'shared', signal: undefined });
 }
 
 export async function runWithHizoFSResourceLease<T>({ instanceId, operation }: {
@@ -387,10 +411,11 @@ export async function runWithHizoFSResourceLease<T>({ instanceId, operation }: {
  * make progress, while every started maintenance operation settles before the
  * lease is released.
  */
-export function acquireHizoFSMaintenanceLease({ instanceId }: {
+export function acquireHizoFSMaintenanceLease({ instanceId, signal }: {
   instanceId: string;
+  signal?: AbortSignal | undefined;
 }): Promise<HizoFSMaintenanceLease> {
-  return acquireLease({ instanceId, mode: 'exclusive' });
+  return acquireLease({ instanceId, mode: 'exclusive', signal });
 }
 
 /**
@@ -399,8 +424,9 @@ export function acquireHizoFSMaintenanceLease({ instanceId }: {
  * lock-free mark and every bounded sweep slice so two tabs cannot collect from
  * different root snapshots at the same time.
  */
-export function acquireHizoFSGarbageCollectionLease({ instanceId }: {
+export function acquireHizoFSGarbageCollectionLease({ instanceId, signal }: {
   instanceId: string;
+  signal?: AbortSignal | undefined;
 }): Promise<HizoFSMaintenanceLease> {
   validateHizoFSStableId({
     value: instanceId,
@@ -409,6 +435,7 @@ export function acquireHizoFSGarbageCollectionLease({ instanceId }: {
   return acquireNamedLease({
     lockName: `hizofs/${instanceId}/garbage-collection`,
     mode: 'exclusive',
+    signal,
   });
 }
 
