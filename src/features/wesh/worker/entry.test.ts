@@ -196,7 +196,7 @@ worker-local HizoFSshared runtime/mnt/search/a.txt:needle
       }
       await expect(Promise.race([
         runWithHizoFSMaintenanceLock({
-          fileSystemId,
+          instanceId: fileSystemId,
           operation: async () => 'acquired' as const,
         }),
         new Promise<'timed_out'>(resolve => {

@@ -32,12 +32,14 @@ export type HizoFSRuntimeDiagnosticPhase =
   (typeof HIZOFS_RUNTIME_DIAGNOSTIC_PHASES)[number];
 
 export const HIZOFS_RUNTIME_DIAGNOSTIC_RECORD_KINDS = [
+  'subvolume_descriptor',
   'commit',
   'inode_index_page',
   'file_inode',
   'directory_inode',
   'symlink_inode',
   'directory_index_page',
+  'subvolume_mount_index_page',
   'file_extent_page',
   'file_chunk',
   'superblock',

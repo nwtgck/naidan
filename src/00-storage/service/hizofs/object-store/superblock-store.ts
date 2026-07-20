@@ -7,6 +7,8 @@ import {
   HizoFSUnsupportedFormatError,
 } from '@/00-storage/service/hizofs/errors';
 import type { HizoFSObjectStore } from './object-store';
+import { assertHizoFSObjectId } from '@/00-storage/service/hizofs/file-system/semantic-validation';
+import type { HizoFSHeadScope } from '@/00-storage/service/hizofs/segment-store/head-scope';
 
 type Candidate = {
   readonly slot: 0 | 1;
@@ -19,16 +21,19 @@ export type HizoFSSuperblockCandidateSet = {
 };
 
 export class HizoFSSuperblockStore {
-  constructor({ objectStore, fileSystemId }: {
+  constructor({ objectStore, fileSystemId, headScope }: {
     objectStore: HizoFSObjectStore;
     fileSystemId: string;
+    headScope: HizoFSHeadScope;
   }) {
     this.objectStore = objectStore;
     this.fileSystemId = fileSystemId;
+    this.headScope = headScope;
   }
 
   private readonly objectStore: HizoFSObjectStore;
   private readonly fileSystemId: string;
+  readonly headScope: HizoFSHeadScope;
 
   async read(): Promise<HizoFSSuperblockDto | undefined> {
     return (await this.readCandidateSet()).candidates[0];
@@ -45,7 +50,10 @@ export class HizoFSSuperblockStore {
 
     for (const slot of [0, 1] as const) {
       try {
-        const record = await this.objectStore.readSuperblock({ slot });
+        const record = await this.objectStore.readSuperblock({
+          scope: this.headScope,
+          slot,
+        });
         if (record === undefined) {
           missingSlotCount += 1;
           continue;
@@ -83,6 +91,10 @@ export class HizoFSSuperblockStore {
             cause: undefined,
           });
         }
+        assertHizoFSObjectId({
+          value: value.subvolumeDescriptorObjectId,
+          fieldName: 'HizoFS root subvolume descriptor ObjectRef',
+        });
         candidates.push({ slot, value });
       } catch (error) {
         if (error instanceof HizoFSUnsupportedFormatError) {
@@ -134,7 +146,12 @@ export class HizoFSSuperblockStore {
     if (!Number.isSafeInteger(value.sequence) || value.sequence < 0) {
       throw new Error('HizoFS superblock sequence must be a non-negative safe integer');
     }
+    assertHizoFSObjectId({
+      value: value.subvolumeDescriptorObjectId,
+      fieldName: 'HizoFS root subvolume descriptor ObjectRef',
+    });
     await this.objectStore.writeSuperblock({
+      scope: this.headScope,
       slot: value.sequence % 2 as 0 | 1,
       record: {
         kind: 'superblock',

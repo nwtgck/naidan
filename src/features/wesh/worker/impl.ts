@@ -234,14 +234,14 @@ export function createWeshWorker(): IWeshWorker {
           case 'storage_directory': {
             if (mount.workerSource !== undefined) {
               let session = localStorageFileSystemSessions.get(
-                mount.workerSource.fileSystemId,
+                mount.workerSource.instanceId,
               );
               let root: StorageDirectoryHandle;
               if (session === undefined) {
                 session = await openStorageDirectoryWorkerMount({
                   source: mount.workerSource,
                 });
-                localStorageFileSystemSessions.set(session.fileSystemId, session);
+                localStorageFileSystemSessions.set(session.instanceId, session);
                 root = session.root;
               } else {
                 root = await session.openWorkerMountDirectory({

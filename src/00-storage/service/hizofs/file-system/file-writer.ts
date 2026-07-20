@@ -123,6 +123,8 @@ export class HizoFSFileWriter implements StorageWritableFile {
   private size: number;
   private dirty: "yes" | "no";
   private settled = false;
+  private dataOperationActive = false;
+  private dataOperationSettled: PromiseWithResolvers<void> | undefined;
 
   async write({
     position,
@@ -131,83 +133,97 @@ export class HizoFSFileWriter implements StorageWritableFile {
     position: number;
     data: Uint8Array;
   }): Promise<void> {
-    this.assertOpen();
-    assertNonNegativeSafeInteger({
-      value: position,
-      fieldName: "Write position",
-    });
-    if (position + data.byteLength > Number.MAX_SAFE_INTEGER) {
-      throw new Error("HizoFS write end exceeds the safe integer range");
-    }
-    if (data.byteLength === 0) return;
-
-    const nextSize = Math.max(this.size, position + data.byteLength);
-    let sourceOffset = 0;
-    let targetPosition = position;
-    while (sourceOffset < data.byteLength) {
-      const chunkIndex = Math.floor(targetPosition / this.chunkSize);
-      const offsetInChunk = targetPosition % this.chunkSize;
-      const copyLength = Math.min(
-        data.byteLength - sourceOffset,
-        this.chunkSize - offsetInChunk,
-      );
-      const chunk = await this.loadWorkingChunk({ chunkIndex });
-      chunk.set(
-        data.subarray(sourceOffset, sourceOffset + copyLength),
-        offsetInChunk,
-      );
-      await this.retainWorkingChunk({
-        chunkIndex,
-        bytes: chunk,
-        logicalFileSize: nextSize,
+    const finishDataOperation = this.beginDataOperation();
+    try {
+      assertNonNegativeSafeInteger({
+        value: position,
+        fieldName: "Write position",
       });
-      sourceOffset += copyLength;
-      targetPosition += copyLength;
-    }
-    this.size = nextSize;
-    this.dirty = "yes";
-  }
-
-  async truncate({ size }: { size: number }): Promise<void> {
-    this.assertOpen();
-    assertNonNegativeSafeInteger({ value: size, fieldName: "Truncate size" });
-    if (size === this.size) return;
-    await this.waitForAllPendingChunkFlushes({ failureMode: 'throw' });
-
-    if (size < this.size) {
-      this.baseRetainedSize = Math.min(this.baseRetainedSize, size);
-      const retainedChunkCount = Math.ceil(size / this.chunkSize);
-      for (const chunkIndex of [...this.workingChunks.keys()]) {
-        if (chunkIndex >= retainedChunkCount) {
-          this.takeWorkingChunk({ chunkIndex })?.fill(0);
-          this.preparedChunks.set(chunkIndex, undefined);
-        }
+      if (position + data.byteLength > Number.MAX_SAFE_INTEGER) {
+        throw new Error("HizoFS write end exceeds the safe integer range");
       }
-      for (const chunkIndex of this.preparedChunks.keys()) {
-        if (chunkIndex >= retainedChunkCount) {
-          this.preparedChunks.set(chunkIndex, undefined);
-        }
-      }
-      const remainder = size % this.chunkSize;
-      if (size > 0 && remainder !== 0) {
-        const chunkIndex = Math.floor(size / this.chunkSize);
+      if (data.byteLength === 0) return;
+
+      const nextSize = Math.max(this.size, position + data.byteLength);
+      let sourceOffset = 0;
+      let targetPosition = position;
+      while (sourceOffset < data.byteLength) {
+        const chunkIndex = Math.floor(targetPosition / this.chunkSize);
+        const offsetInChunk = targetPosition % this.chunkSize;
+        const copyLength = Math.min(
+          data.byteLength - sourceOffset,
+          this.chunkSize - offsetInChunk,
+        );
         const chunk = await this.loadWorkingChunk({ chunkIndex });
-        chunk.fill(0, remainder);
+        this.assertOpen();
+        chunk.set(
+          data.subarray(sourceOffset, sourceOffset + copyLength),
+          offsetInChunk,
+        );
         await this.retainWorkingChunk({
           chunkIndex,
           bytes: chunk,
-          logicalFileSize: size,
+          logicalFileSize: nextSize,
         });
+        this.assertOpen();
+        sourceOffset += copyLength;
+        targetPosition += copyLength;
       }
+      this.size = nextSize;
+      this.dirty = "yes";
+    } finally {
+      finishDataOperation();
     }
+  }
 
-    this.size = size;
-    this.dirty = "yes";
+  async truncate({ size }: { size: number }): Promise<void> {
+    const finishDataOperation = this.beginDataOperation();
+    try {
+      assertNonNegativeSafeInteger({ value: size, fieldName: "Truncate size" });
+      if (size === this.size) return;
+      await this.waitForAllPendingChunkFlushes({ failureMode: 'throw' });
+      this.assertOpen();
+
+      if (size < this.size) {
+        this.baseRetainedSize = Math.min(this.baseRetainedSize, size);
+        const retainedChunkCount = Math.ceil(size / this.chunkSize);
+        for (const chunkIndex of [...this.workingChunks.keys()]) {
+          if (chunkIndex >= retainedChunkCount) {
+            this.takeWorkingChunk({ chunkIndex })?.fill(0);
+            this.preparedChunks.set(chunkIndex, undefined);
+          }
+        }
+        for (const chunkIndex of this.preparedChunks.keys()) {
+          if (chunkIndex >= retainedChunkCount) {
+            this.preparedChunks.set(chunkIndex, undefined);
+          }
+        }
+        const remainder = size % this.chunkSize;
+        if (size > 0 && remainder !== 0) {
+          const chunkIndex = Math.floor(size / this.chunkSize);
+          const chunk = await this.loadWorkingChunk({ chunkIndex });
+          this.assertOpen();
+          chunk.fill(0, remainder);
+          await this.retainWorkingChunk({
+            chunkIndex,
+            bytes: chunk,
+            logicalFileSize: size,
+          });
+          this.assertOpen();
+        }
+      }
+
+      this.size = size;
+      this.dirty = "yes";
+    } finally {
+      finishDataOperation();
+    }
   }
 
   async close(): Promise<void> {
     this.assertOpen();
     this.settled = true;
+    await this.dataOperationSettled?.promise;
     try {
       switch (this.dirty) {
       case 'no':
@@ -257,6 +273,7 @@ export class HizoFSFileWriter implements StorageWritableFile {
   async abort({ reason: _reason }: { reason: unknown }): Promise<void> {
     if (this.settled) return;
     this.settled = true;
+    await this.dataOperationSettled?.promise;
     try {
       await this.releaseResources();
     } finally {
@@ -881,6 +898,24 @@ export class HizoFSFileWriter implements StorageWritableFile {
     } finally {
       this.workingChunks.clear();
     }
+  }
+
+
+  private beginDataOperation(): () => void {
+    this.assertOpen();
+    if (this.dataOperationActive) {
+      throw new Error('HizoFS file writer does not allow overlapping operations');
+    }
+    this.dataOperationActive = true;
+    this.dataOperationSettled = Promise.withResolvers<void>();
+    let finished = false;
+    return () => {
+      if (finished) return;
+      finished = true;
+      this.dataOperationActive = false;
+      this.dataOperationSettled?.resolve();
+      this.dataOperationSettled = undefined;
+    };
   }
 
   private assertOpen(): void {

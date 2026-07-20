@@ -3,7 +3,7 @@ import type {
   HizoFSSymlinkInodeDto,
 } from '@/00-storage/00-dto/hizofs.dto';
 import { HizoFSCorruptionError } from '@/00-storage/service/hizofs/errors';
-import type { HizoFSActiveState } from './core';
+import type { HizoFSFilesystemState } from './active-state';
 import type { HizoFSInodeIndex } from './inode-index';
 import type {
   HizoFSFileInodeRecord,
@@ -37,7 +37,7 @@ export class HizoFSNodeService {
   private readonly inodeStore: HizoFSInodeStore;
 
   async readFile({ state, nodeId }: {
-    state: HizoFSActiveState;
+    state: HizoFSFilesystemState;
     nodeId: string;
   }): Promise<LoadedHizoFSFile> {
     const inodeObjectId = await this.requireInodeObjectId({ state, nodeId });
@@ -52,7 +52,7 @@ export class HizoFSNodeService {
   }
 
   async readDirectory({ state, nodeId }: {
-    state: HizoFSActiveState;
+    state: HizoFSFilesystemState;
     nodeId: string;
   }): Promise<LoadedHizoFSDirectory> {
     const inodeObjectId = await this.requireInodeObjectId({ state, nodeId });
@@ -67,7 +67,7 @@ export class HizoFSNodeService {
   }
 
   async readSymlink({ state, nodeId }: {
-    state: HizoFSActiveState;
+    state: HizoFSFilesystemState;
     nodeId: string;
   }): Promise<LoadedHizoFSSymlink> {
     const inodeObjectId = await this.requireInodeObjectId({ state, nodeId });
@@ -126,7 +126,7 @@ export class HizoFSNodeService {
   }
 
   private async requireInodeObjectId({ state, nodeId }: {
-    state: HizoFSActiveState;
+    state: HizoFSFilesystemState;
     nodeId: string;
   }): Promise<string> {
     const entry = await this.inodeIndex.get({

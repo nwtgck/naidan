@@ -12,6 +12,18 @@ import { HizoFSSuperblockStore } from './superblock-store';
 
 const FILE_SYSTEM_ID = encodeBase64Url({ bytes: new Uint8Array(16).fill(0x11) });
 const OTHER_FILE_SYSTEM_ID = encodeBase64Url({ bytes: new Uint8Array(16).fill(0x22) });
+const CHILD_SUBVOLUME_ID = encodeBase64Url({ bytes: new Uint8Array(16).fill(0x44) });
+
+function objectId(byte: number): string {
+  const bytes = new Uint8Array(32);
+  bytes.fill(byte, 0, 16);
+  new DataView(bytes.buffer).setBigUint64(16, 64n, false);
+  new DataView(bytes.buffer).setUint32(24, 80, false);
+  bytes[28] = 1;
+  return encodeBase64Url({ bytes });
+}
+
+const SUBVOLUME_DESCRIPTOR_OBJECT_ID = objectId(0x33);
 
 async function setup() {
   const root = new MockFileSystemDirectoryHandle({ name: 'backing' });
@@ -31,7 +43,7 @@ async function setup() {
     metadataCacheEntryLimit: 64,
     fileChunkCacheByteLimit: 1024,
     fileChunkCacheEntryLimit: 64,
-    fileChunkCacheAdmission: 'read_only',
+    fileChunkCacheAdmission: 'read',
   });
   return {
     root,
@@ -40,6 +52,7 @@ async function setup() {
     superblockStore: new HizoFSSuperblockStore({
       objectStore,
       fileSystemId: FILE_SYSTEM_ID,
+      headScope: { type: 'root' },
     }),
   };
 }
@@ -51,6 +64,7 @@ describe('HizoFS A/B superblock store', () => {
       value: {
         sequence: 0,
         fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
         activeCommitObjectId: 'commit-0',
       },
     });
@@ -58,14 +72,62 @@ describe('HizoFS A/B superblock store', () => {
       value: {
         sequence: 1,
         fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
         activeCommitObjectId: 'commit-1',
       },
     });
     expect(await superblockStore.read()).toEqual({
       sequence: 1,
       fileSystemId: FILE_SYSTEM_ID,
+      subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
       activeCommitObjectId: 'commit-1',
     });
+  });
+
+  it('isolates root and child-subvolume head paths and authentication scopes', async () => {
+    const { backingStore, objectStore, superblockStore } = await setup();
+    const childStore = new HizoFSSuperblockStore({
+      objectStore,
+      fileSystemId: FILE_SYSTEM_ID,
+      headScope: { type: 'subvolume', subvolumeId: CHILD_SUBVOLUME_ID },
+    });
+    await superblockStore.write({
+      value: {
+        sequence: 0,
+        fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
+        activeCommitObjectId: 'root-commit',
+      },
+    });
+    await childStore.write({
+      value: {
+        sequence: 0,
+        fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
+        activeCommitObjectId: 'child-commit',
+      },
+    });
+
+    await expect(superblockStore.read()).resolves.toMatchObject({
+      activeCommitObjectId: 'root-commit',
+    });
+    await expect(childStore.read()).resolves.toMatchObject({
+      activeCommitObjectId: 'child-commit',
+    });
+
+    const childPath = [
+      'subvolume-heads',
+      CHILD_SUBVOLUME_ID.slice(0, 2),
+      `${CHILD_SUBVOLUME_ID}-0.hfs`,
+    ];
+    const childBytes = await backingStore.read({ path: childPath });
+    if (childBytes === undefined) throw new Error('Child head is missing');
+    await backingStore.write({ path: ['head-0.hfs'], bytes: childBytes });
+    await backingStore.remove({ path: childPath, recursive: false });
+
+    await expect(superblockStore.read()).rejects.toBeInstanceOf(
+      HizoFSCorruptionError,
+    );
   });
 
   it('uses the other slot when one physical slot is corrupt', async () => {
@@ -74,6 +136,7 @@ describe('HizoFS A/B superblock store', () => {
       value: {
         sequence: 0,
         fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
         activeCommitObjectId: 'commit-0',
       },
     });
@@ -101,10 +164,12 @@ describe('HizoFS A/B superblock store', () => {
       value: {
         sequence: 0,
         fileSystemId: FILE_SYSTEM_ID,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
         activeCommitObjectId: 'commit-0',
       },
     });
     await objectStore.writeSuperblock({
+      scope: { type: 'root' },
       slot: 1,
       record: {
         kind: 'superblock',
@@ -112,6 +177,7 @@ describe('HizoFS A/B superblock store', () => {
         metadata: {
           sequence: 1,
           fileSystemId: FILE_SYSTEM_ID,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit-1',
         },
         binaryPayload: new Uint8Array(),
@@ -126,6 +192,7 @@ describe('HizoFS A/B superblock store', () => {
     const { objectStore, superblockStore } = await setup();
     for (const slot of [0, 1] as const) {
       await objectStore.writeSuperblock({
+        scope: { type: 'root' },
         slot,
         record: {
           kind: 'superblock',
@@ -133,6 +200,7 @@ describe('HizoFS A/B superblock store', () => {
           metadata: {
             sequence: 4,
             fileSystemId: FILE_SYSTEM_ID,
+            subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
             activeCommitObjectId: `commit-${String(slot)}`,
           },
           binaryPayload: new Uint8Array(),
@@ -145,6 +213,7 @@ describe('HizoFS A/B superblock store', () => {
   it('rejects a superblock belonging to another root-key-derived identity', async () => {
     const { objectStore } = await setup();
     await objectStore.writeSuperblock({
+      scope: { type: 'root' },
       slot: 0,
       record: {
         kind: 'superblock',
@@ -152,6 +221,7 @@ describe('HizoFS A/B superblock store', () => {
         metadata: {
           sequence: 0,
           fileSystemId: OTHER_FILE_SYSTEM_ID,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit',
         },
         binaryPayload: new Uint8Array(),
@@ -160,6 +230,7 @@ describe('HizoFS A/B superblock store', () => {
     const superblockStore = new HizoFSSuperblockStore({
       objectStore,
       fileSystemId: FILE_SYSTEM_ID,
+      headScope: { type: 'root' },
     });
     await expect(superblockStore.read()).rejects.toThrow(
       'does not match the root-key-derived file system ID',
@@ -181,6 +252,7 @@ describe('HizoFS A/B superblock store', () => {
     });
 
     await expect(objectStore.writeSuperblock({
+      scope: { type: 'root' },
       slot: 0,
       record: {
         kind: 'superblock',
@@ -188,14 +260,16 @@ describe('HizoFS A/B superblock store', () => {
         metadata: {
           sequence: 0,
           fileSystemId: FILE_SYSTEM_ID,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit-0',
         },
         binaryPayload: new Uint8Array(),
       },
     })).resolves.toBeUndefined();
-    await expect(objectStore.readSuperblock({ slot: 0 })).resolves.toMatchObject({
-      metadata: { sequence: 0 },
-    });
+    await expect(objectStore.readSuperblock({
+      scope: { type: 'root' },
+      slot: 0,
+    })).resolves.toMatchObject({ metadata: { sequence: 0 } });
   });
 
   it('preserves a head flush error when independent read-back cannot prove completion', async () => {
@@ -210,6 +284,7 @@ describe('HizoFS A/B superblock store', () => {
     });
 
     await expect(objectStore.writeSuperblock({
+      scope: { type: 'root' },
       slot: 0,
       record: {
         kind: 'superblock',
@@ -217,6 +292,7 @@ describe('HizoFS A/B superblock store', () => {
         metadata: {
           sequence: 0,
           fileSystemId: FILE_SYSTEM_ID,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit-0',
         },
         binaryPayload: new Uint8Array(),

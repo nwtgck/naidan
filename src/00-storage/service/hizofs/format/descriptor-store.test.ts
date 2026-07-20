@@ -16,10 +16,14 @@ describe('HizoFS descriptor store', () => {
       diagnostics: undefined,
     });
 
-    const descriptor = await createHizoFSDescriptor({ backingStore });
-    expect(descriptor).toEqual({
+    const descriptor = await createHizoFSDescriptor({
+      backingStore,
+      instanceId: 'AAAAAAAAAAAAAAAAAAAAAA',
+    });
+    expect(descriptor).toMatchObject({
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: expect.any(String),
     });
     expect(await readHizoFSDescriptor({ backingStore })).toEqual(descriptor);
   });
@@ -31,8 +35,14 @@ describe('HizoFS descriptor store', () => {
       fileSnapshotCacheEntryLimit: 64,
       diagnostics: undefined,
     });
-    await createHizoFSDescriptor({ backingStore });
-    await expect(createHizoFSDescriptor({ backingStore })).rejects.toThrow(
+    await createHizoFSDescriptor({
+      backingStore,
+      instanceId: 'AAAAAAAAAAAAAAAAAAAAAA',
+    });
+    await expect(createHizoFSDescriptor({
+      backingStore,
+      instanceId: 'AAAAAAAAAAAAAAAAAAAAAA',
+    })).rejects.toThrow(
       'backing directory must be empty',
     );
   });
@@ -49,13 +59,35 @@ describe('HizoFS descriptor store', () => {
       bytes: new TextEncoder().encode(JSON.stringify({
         format: 'hizofs',
         formatVersion: 1,
+        instanceId: 'AAAAAAAAAAAAAAAAAAAAAA',
         fileSystemId: 'not-an-id',
       })),
     });
     await expect(readHizoFSDescriptor({ backingStore })).resolves.toEqual({
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: 'AAAAAAAAAAAAAAAAAAAAAA',
     });
+  });
+
+  it('rejects a non-canonical filesystem instance identity', async () => {
+    const backingStore = new NativeOpfsHizoFSBackingStore({
+      root: new MockFileSystemDirectoryHandle({ name: 'backing' }),
+      fileHandleCacheEntryLimit: 64,
+      fileSnapshotCacheEntryLimit: 64,
+      diagnostics: undefined,
+    });
+    await backingStore.write({
+      path: ['descriptor.json'],
+      bytes: new TextEncoder().encode(JSON.stringify({
+        format: 'hizofs',
+        formatVersion: 1,
+        instanceId: '../shared-lock',
+      })),
+    });
+    await expect(readHizoFSDescriptor({ backingStore })).rejects.toThrow(
+      'instanceId must be canonical Base64URL',
+    );
   });
 
   it('rejects a directory whose descriptor does not identify HizoFS', async () => {

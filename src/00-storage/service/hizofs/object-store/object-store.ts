@@ -21,6 +21,7 @@ import {
   type HizoFSPartialSegmentCompactionCandidate,
   type HizoFSWholeSegmentRemovalResult,
 } from '@/00-storage/service/hizofs/segment-store/segmented-store';
+import type { HizoFSHeadScope } from '@/00-storage/service/hizofs/segment-store/head-scope';
 import { decodeHizoFSObjectReference } from '@/00-storage/service/hizofs/segment-store/object-reference';
 import type { HizoFSPhysicalRecord } from '@/00-storage/service/hizofs/segment-store/segmented-store';
 import type { HizoFSDecodedHead } from '@/00-storage/service/hizofs/segment-store/segment-format';
@@ -148,6 +149,8 @@ function getSegmentRotationPayloadByteLength({
   case 'file_chunk':
     return record.binaryPayload.byteLength;
   case 'superblock':
+  case 'subvolume_descriptor':
+  case 'subvolume_mount_index_page':
   case 'commit':
   case 'inode_index_page':
   case 'file_inode':
@@ -182,11 +185,11 @@ export class HizoFSObjectStore {
     metadataCacheEntryLimit: number;
     fileChunkCacheByteLimit: number;
     fileChunkCacheEntryLimit: number;
-    fileChunkCacheAdmission: 'read_only' | 'read_write';
+    fileChunkCacheAdmission: 'read' | 'read_write';
     diagnostics?: HizoFSRuntimeDiagnostics;
   }) {
     switch (fileChunkCacheAdmission) {
-    case 'read_only':
+    case 'read':
     case 'read_write':
       this.fileChunkCacheAdmission = fileChunkCacheAdmission;
       break;
@@ -217,7 +220,7 @@ export class HizoFSObjectStore {
   }
 
   private readonly diagnostics: HizoFSRuntimeDiagnostics | undefined;
-  private readonly fileChunkCacheAdmission: 'read_only' | 'read_write';
+  private readonly fileChunkCacheAdmission: 'read' | 'read_write';
   private readonly metadataCache: HizoFSPlaintextLruCache;
   private readonly fileChunkCache: HizoFSPlaintextLruCache;
   private readonly segmentedStore: HizoFSSegmentedStore;
@@ -409,7 +412,7 @@ export class HizoFSObjectStore {
         }
         return objectIds;
       }
-      case 'read_only':
+      case 'read':
         break;
       default: {
         const _ex: never = this.fileChunkCacheAdmission;
@@ -680,24 +683,29 @@ export class HizoFSObjectStore {
     return this.segmentedStore.readPhysicalRecord({ objectId });
   }
 
-  inspectHeadPhysical({ slot }: { slot: 0 | 1 }): Promise<{
+  inspectHeadPhysical({ scope, slot }: {
+    scope: HizoFSHeadScope;
+    slot: 0 | 1;
+  }): Promise<{
     readonly physicalBytes: Uint8Array;
     readonly physicalPath: readonly string[];
   } | undefined> {
-    return this.segmentedStore.readHeadPhysical({ slot });
+    return this.segmentedStore.readHeadPhysical({ scope, slot });
   }
 
-  inspectHead({ slot }: {
+  inspectHead({ scope, slot }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
   }): Promise<(HizoFSDecodedHead & {
     readonly physicalByteLength: number;
     readonly physicalBytes: Uint8Array;
     readonly physicalPath: readonly string[];
   }) | undefined> {
-    return this.segmentedStore.readHead({ slot });
+    return this.segmentedStore.readHead({ scope, slot });
   }
 
-  async writeSuperblock({ slot, record }: {
+  async writeSuperblock({ scope, slot, record }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
     record: HizoFSObjectStoreRecord;
   }): Promise<void> {
@@ -706,6 +714,8 @@ export class HizoFSObjectStore {
       switch (record.kind) {
       case 'superblock':
         break;
+      case 'subvolume_descriptor':
+      case 'subvolume_mount_index_page':
       case 'commit':
       case 'inode_index_page':
       case 'file_inode':
@@ -722,6 +732,7 @@ export class HizoFSObjectStore {
       }
       const superblock = HizoFSSuperblockSchemaDto.parse(record.metadata);
       const physicalByteLength = await this.segmentedStore.writeHead({
+        scope,
         slot,
         sequence: superblock.sequence,
         recordBytes: plaintext,
@@ -736,15 +747,18 @@ export class HizoFSObjectStore {
     }
   }
 
-  async readSuperblock({ slot }: {
+  async readSuperblock({ scope, slot }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
   }): Promise<DecodedHizoFSRecord | undefined> {
-    const head = await this.segmentedStore.readHead({ slot });
+    const head = await this.segmentedStore.readHead({ scope, slot });
     if (head === undefined) return undefined;
     try {
       switch (head.record.kind) {
       case 'superblock':
         break;
+      case 'subvolume_descriptor':
+      case 'subvolume_mount_index_page':
       case 'commit':
       case 'inode_index_page':
       case 'file_inode':
@@ -892,6 +906,8 @@ export class HizoFSObjectStore {
       break;
     case 'superblock':
       break;
+    case 'subvolume_descriptor':
+    case 'subvolume_mount_index_page':
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':
@@ -921,12 +937,14 @@ export class HizoFSObjectStore {
   }): boolean {
     switch (kind) {
     case 'file_chunk':
-      if (source === 'write' && this.fileChunkCacheAdmission === 'read_only') {
+      if (source === 'write' && this.fileChunkCacheAdmission === 'read') {
         return false;
       }
       return this.fileChunkCache.set({ objectId, plaintext });
     case 'superblock':
       return false;
+    case 'subvolume_descriptor':
+    case 'subvolume_mount_index_page':
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':

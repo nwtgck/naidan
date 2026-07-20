@@ -105,10 +105,26 @@ export function assertHizoFSDirectoryEntries({
   let previousName: string | undefined;
   for (const entry of entries) {
     assertHizoFSEntryName({ name: entry.name });
-    validateHizoFSStableId({
-      value: entry.nodeId,
-      fieldName: "HizoFS directory entry nodeId",
-    });
+    switch (entry.kind) {
+    case 'file':
+    case 'directory':
+    case 'symlink':
+      validateHizoFSStableId({
+        value: entry.nodeId,
+        fieldName: 'HizoFS directory entry nodeId',
+      });
+      break;
+    case 'subvolume':
+      validateHizoFSStableId({
+        value: entry.mountId,
+        fieldName: 'HizoFS directory entry mountId',
+      });
+      break;
+    default: {
+      const _ex: never = entry;
+      throw new Error(`Unhandled HizoFS directory entry: ${String(_ex)}`);
+    }
+    }
     if (
       previousName !== undefined &&
       compareHizoFSStrings({ left: previousName, right: entry.name }) >= 0

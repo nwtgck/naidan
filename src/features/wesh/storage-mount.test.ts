@@ -14,7 +14,9 @@ describe('createWeshStorageMount', () => {
       type: 'hizofs',
       backingDirectory: {} as FileSystemDirectoryHandle,
       fileSystemId: 'filesystem-1',
+      instanceId: 'instance-1',
       rootKey: {} as CryptoKey,
+      subvolumeDescriptorObjectId: 'subvolume-descriptor',
       rootDirectoryNodeId: 'directory-1',
     };
     const createWorkerMountSource = vi.fn(() => workerSource);
@@ -44,7 +46,9 @@ describe('createWeshStorageMount', () => {
       type: 'hizofs',
       backingDirectory: {} as FileSystemDirectoryHandle,
       fileSystemId: 'filesystem-1',
+      instanceId: 'instance-1',
       rootKey: {} as CryptoKey,
+      subvolumeDescriptorObjectId: 'subvolume-descriptor',
       rootDirectoryNodeId: 'directory-1',
     };
     const handle = {} as StorageDirectoryHandle;

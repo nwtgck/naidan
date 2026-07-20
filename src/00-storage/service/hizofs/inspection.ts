@@ -3,9 +3,14 @@ import {
   HizoFSSuperblockSchemaDto,
   type HizoFSCommitDto,
   type HizoFSDescriptorDto,
+  type HizoFSSubvolumeDescriptorDto,
   type HizoFSSuperblockDto,
 } from '@/00-storage/00-dto/hizofs.dto';
 import { NativeOpfsHizoFSBackingStore } from './backing-store/native-opfs-backing-store';
+import {
+  createHizoFSStableId,
+  validateHizoFSStableId,
+} from './id';
 import {
   deriveHizoFSFileSystemId,
   importHizoFSRootKey,
@@ -130,13 +135,14 @@ export type HizoFSMaintenanceHealth = {
 };
 
 export type HizoFSInspectionOverview = {
-  readonly activeMode: 'current' | 'fallback_read_only';
+  readonly activeMode: 'current' | 'fallback';
   readonly descriptor: HizoFSDescriptorDto;
   readonly fileSystemId: string;
   readonly persistedDescriptorDto: unknown;
   readonly descriptorValidationError: string | undefined;
   readonly superblockSlots: readonly HizoFSSuperblockSlotInspection[];
   readonly activeSuperblock: HizoFSSuperblockDto;
+  readonly rootSubvolumeDescriptor: HizoFSSubvolumeDescriptorDto;
   readonly activeCommitObjectId: string;
   readonly activeCommit: HizoFSCommitDto;
   readonly activeCommitPersistedDto: unknown;
@@ -201,7 +207,7 @@ async function inspectMaintenanceHealth({
 }: {
   objectStore: HizoFSObjectStore;
   garbageCollectionCheckpointStore: HizoFSGarbageCollectionCheckpointStore;
-  activeMode: 'current' | 'fallback_read_only';
+  activeMode: 'current' | 'fallback';
   superblockSlots: readonly HizoFSSuperblockSlotInspection[];
 }): Promise<HizoFSMaintenanceHealth> {
   const listing = await objectStore.listPhysicalObjects();
@@ -226,7 +232,7 @@ async function inspectMaintenanceHealth({
   switch (activeMode) {
   case 'current':
     break;
-  case 'fallback_read_only':
+  case 'fallback':
     reasons.push('active state uses the older read-only fallback generation');
     break;
   default: {
@@ -315,12 +321,14 @@ export async function createHizoFSInspectionReader({
   const descriptor = descriptorInspection.value;
   const rootKey = await importHizoFSRootKey({ rawRootKey: fileSystemRootKey });
   const fileSystemId = await deriveHizoFSFileSystemId({ rootKey });
-  const maintenanceLease = await acquireHizoFSResourceLease({ fileSystemId });
+  const instanceId = descriptor.instanceId;
+  const maintenanceLease = await acquireHizoFSResourceLease({ instanceId });
   try {
     const runtime = createHizoFSRuntime({
       backingStore,
       rootKey,
       fileSystemId,
+      instanceId,
       policy: DEFAULT_HIZOFS_POLICY,
       now: () => Date.now(),
       diagnostics: undefined,
@@ -347,7 +355,9 @@ export async function createHizoFSInspectionReader({
         // and fallback selection remain visible while a normal session is open.
         const activeState = await loadHizoFSActiveStateFromStores({
           superblockStore: runtime.core.superblockStore,
+          expectedSubvolumeId: undefined,
           commitStore: runtime.commitStore,
+          subvolumeDescriptorStore: runtime.subvolumeDescriptorStore,
           inodeIndex: runtime.inodeIndex,
           inodeStore: runtime.inodeStore,
           validatedRootCache: undefined,
@@ -370,17 +380,18 @@ export async function createHizoFSInspectionReader({
         const maintenance = await inspectMaintenanceHealth({
           objectStore: runtime.objectStore,
           garbageCollectionCheckpointStore,
-          activeMode: activeState.mode,
+          activeMode: activeState.stateSelection,
           superblockSlots,
         });
         return {
-          activeMode: activeState.mode,
+          activeMode: activeState.stateSelection,
           descriptor,
           fileSystemId,
           persistedDescriptorDto: descriptorInspection.persistedDto,
           descriptorValidationError: descriptorInspection.validationError,
           superblockSlots,
           activeSuperblock: activeState.superblock,
+          rootSubvolumeDescriptor: activeState.subvolumeDescriptor,
           activeCommitObjectId: activeState.commitObjectId,
           activeCommit: activeState.commit,
           activeCommitPersistedDto: activeCommitRecord.metadata,
@@ -855,9 +866,9 @@ async function inspectSuperblockSlot({
   const fallbackPhysicalPath = [`head-${String(slot)}.hfs`] as const;
   let head: Awaited<ReturnType<HizoFSObjectStore['inspectHead']>>;
   try {
-    head = await objectStore.inspectHead({ slot });
+    head = await objectStore.inspectHead({ scope: { type: 'root' }, slot });
   } catch (error) {
-    const physicalHead = await objectStore.inspectHeadPhysical({ slot });
+    const physicalHead = await objectStore.inspectHeadPhysical({ scope: { type: 'root' }, slot });
     if (physicalHead === undefined) {
       return {
         slot,
@@ -903,6 +914,8 @@ async function inspectSuperblockSlot({
     switch (record.kind) {
     case 'superblock':
       break;
+    case 'subvolume_descriptor':
+    case 'subvolume_mount_index_page':
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':
@@ -985,6 +998,7 @@ async function readDescriptorForInspection({ backingStore }: {
     const value: HizoFSDescriptorDto = {
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: createHizoFSStableId(),
     };
     return { value, persistedDto: undefined, validationError: undefined };
   }
@@ -995,12 +1009,37 @@ async function readDescriptorForInspection({ backingStore }: {
     throw new Error('HizoFS descriptor is invalid UTF-8 JSON', { cause: error });
   }
   const parsed = HizoFSDescriptorSchemaDto.safeParse(persistedDto);
+  if (parsed.success) {
+    try {
+      validateHizoFSStableId({
+        value: parsed.data.instanceId,
+        fieldName: 'HizoFS descriptor instanceId',
+      });
+      return {
+        value: parsed.data,
+        persistedDto,
+        validationError: undefined,
+      };
+    } catch (error) {
+      return {
+        value: {
+          format: 'hizofs',
+          formatVersion: 1,
+          instanceId: createHizoFSStableId(),
+        },
+        persistedDto,
+        validationError: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   return {
-    value: parsed.success
-      ? parsed.data
-      : { format: 'hizofs', formatVersion: 1 },
+    value: {
+      format: 'hizofs',
+      formatVersion: 1,
+      instanceId: createHizoFSStableId(),
+    },
     persistedDto,
-    validationError: parsed.success ? undefined : parsed.error.message,
+    validationError: parsed.error.message,
   };
 }
 

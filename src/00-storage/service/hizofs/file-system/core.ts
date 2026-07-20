@@ -18,6 +18,10 @@ export type HizoFSMutationResult<T> = {
   readonly changed: "yes" | "no";
 };
 
+export type HizoFSTopologyMutationResult<T> = HizoFSMutationResult<T> & {
+  readonly subvolumeMountIndexRootObjectId: string;
+};
+
 export type HizoFSPublishedMutation<T> = {
   readonly result: T;
   readonly state: HizoFSActiveState;
@@ -28,17 +32,17 @@ function assertWritableActiveState({
 }: {
   state: HizoFSActiveState;
 }): void {
-  switch (state.mode) {
+  switch (state.stateSelection) {
   case "current":
     return;
-  case "fallback_read_only":
+  case "fallback":
     throw new HizoFSCorruptionError({
       message:
           "HizoFS opened an older complete generation in read-only recovery mode",
       cause: undefined,
     });
   default: {
-    const _ex: never = state.mode;
+    const _ex: never = state.stateSelection;
     throw new Error(`Unhandled HizoFS active state mode: ${String(_ex)}`);
   }
   }
@@ -47,6 +51,7 @@ function assertWritableActiveState({
 export class HizoFSCore {
   constructor({
     fileSystemId,
+    instanceId,
     objectStore,
     superblockStore,
     commitStore,
@@ -56,6 +61,7 @@ export class HizoFSCore {
     diagnostics,
   }: {
     fileSystemId: string;
+    instanceId: string;
     objectStore: HizoFSObjectStore;
     superblockStore: HizoFSSuperblockStore;
     commitStore: HizoFSCommitStore;
@@ -65,6 +71,7 @@ export class HizoFSCore {
     diagnostics: HizoFSRuntimeDiagnostics | undefined;
   }) {
     this.fileSystemId = fileSystemId;
+    this.instanceId = instanceId;
     this.objectStore = objectStore;
     this.superblockStore = superblockStore;
     this.commitStore = commitStore;
@@ -75,6 +82,7 @@ export class HizoFSCore {
   }
 
   readonly fileSystemId: string;
+  readonly instanceId: string;
   readonly objectStore: HizoFSObjectStore;
   readonly superblockStore: HizoFSSuperblockStore;
   readonly commitStore: HizoFSCommitStore;
@@ -89,29 +97,37 @@ export class HizoFSCore {
 
   async mutate<T>({
     operation,
+    assertCanPublish,
   }: {
     operation: ({
       state,
     }: {
       state: HizoFSActiveState;
     }) => Promise<HizoFSMutationResult<T>>;
+    assertCanPublish?: () => void;
   }): Promise<T> {
-    return (await this.mutateAndReturnState({ operation })).result;
+    return (await this.mutateAndReturnState({
+      operation,
+      assertCanPublish,
+    })).result;
   }
 
   async mutateAndReturnState<T>({
     operation,
+    assertCanPublish,
   }: {
     operation: ({
       state,
     }: {
       state: HizoFSActiveState;
     }) => Promise<HizoFSMutationResult<T>>;
+    assertCanPublish?: () => void;
   }): Promise<HizoFSPublishedMutation<T>> {
     return runWithHizoFSResourceLease({
-      fileSystemId: this.fileSystemId,
+      instanceId: this.instanceId,
       operation: async () => await this.mutateWithResourceLeaseHeldAndReturnState({
         operation,
+        assertCanPublish,
       }),
     });
   }
@@ -125,34 +141,130 @@ export class HizoFSCore {
    */
   async mutateWithResourceLeaseHeld<T>({
     operation,
+    assertCanPublish,
   }: {
     operation: ({
       state,
     }: {
       state: HizoFSActiveState;
     }) => Promise<HizoFSMutationResult<T>>;
+    assertCanPublish?: () => void;
   }): Promise<T> {
     return (
-      await this.mutateWithResourceLeaseHeldAndReturnState({ operation })
+      await this.mutateWithResourceLeaseHeldAndReturnState({
+        operation,
+        assertCanPublish,
+      })
     ).result;
   }
 
   async mutateWithResourceLeaseHeldAndReturnState<T>({
     operation,
+    assertCanPublish,
   }: {
     operation: ({
       state,
     }: {
       state: HizoFSActiveState;
     }) => Promise<HizoFSMutationResult<T>>;
+    assertCanPublish?: () => void;
+  }): Promise<HizoFSPublishedMutation<T>> {
+    return await this.mutateRootsWithResourceLeaseHeldAndReturnState({
+      operation: async ({ state }) => {
+        const mutation = await operation({ state });
+        const {
+          inodeIndexRootObjectId,
+          result,
+          changed,
+          ...unhandledMutation
+        } = mutation;
+        unhandledMutation satisfies Record<PropertyKey, never>;
+        return {
+          inodeIndexRootObjectId,
+          subvolumeMountIndexRootObjectId:
+            state.commit.subvolumeMountIndexRootObjectId,
+          result,
+          changed,
+        };
+      },
+      assertCanPublish,
+    });
+  }
+
+  async mutateTopology<T>({
+    operation,
+    assertCanPublish,
+  }: {
+    operation: ({
+      state,
+    }: {
+      state: HizoFSActiveState;
+    }) => Promise<HizoFSTopologyMutationResult<T>>;
+    assertCanPublish?: () => void;
+  }): Promise<T> {
+    return (await this.mutateTopologyAndReturnState({
+      operation,
+      assertCanPublish,
+    })).result;
+  }
+
+  async mutateTopologyAndReturnState<T>({
+    operation,
+    assertCanPublish,
+  }: {
+    operation: ({
+      state,
+    }: {
+      state: HizoFSActiveState;
+    }) => Promise<HizoFSTopologyMutationResult<T>>;
+    assertCanPublish?: () => void;
+  }): Promise<HizoFSPublishedMutation<T>> {
+    return runWithHizoFSResourceLease({
+      instanceId: this.instanceId,
+      operation: async () =>
+        await this.mutateRootsWithResourceLeaseHeldAndReturnState({
+          operation,
+          assertCanPublish,
+        }),
+    });
+  }
+
+  async mutateTopologyWithResourceLeaseHeldAndReturnState<T>({
+    operation,
+    assertCanPublish,
+  }: {
+    operation: ({
+      state,
+    }: {
+      state: HizoFSActiveState;
+    }) => Promise<HizoFSTopologyMutationResult<T>>;
+    assertCanPublish?: () => void;
+  }): Promise<HizoFSPublishedMutation<T>> {
+    return await this.mutateRootsWithResourceLeaseHeldAndReturnState({
+      operation,
+      assertCanPublish,
+    });
+  }
+
+  private async mutateRootsWithResourceLeaseHeldAndReturnState<T>({
+    operation,
+    assertCanPublish,
+  }: {
+    operation: ({
+      state,
+    }: {
+      state: HizoFSActiveState;
+    }) => Promise<HizoFSTopologyMutationResult<T>>;
+    assertCanPublish?: () => void;
   }): Promise<HizoFSPublishedMutation<T>> {
     while (true) {
       const baseState = await this.loadActiveState();
       assertWritableActiveState({ state: baseState });
 
-      let mutation: HizoFSMutationResult<T>;
+      let mutation: HizoFSTopologyMutationResult<T>;
       try {
         mutation = await operation({ state: baseState });
+        assertCanPublish?.();
       } catch (error) {
         if (
           !(await this.activeStateCoordinator.isCurrent({
@@ -191,6 +303,8 @@ export class HizoFSCore {
         expectedCommitObjectId: baseState.commitObjectId,
         expectedRevision: baseState.commit.revision,
         inodeIndexRootObjectId: mutation.inodeIndexRootObjectId,
+        subvolumeMountIndexRootObjectId:
+          mutation.subvolumeMountIndexRootObjectId,
         flushPreparedRecords: async () => {
           await this.objectStore.flushPendingRecords();
         },

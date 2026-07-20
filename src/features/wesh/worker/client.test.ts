@@ -156,7 +156,9 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       type: 'hizofs' as const,
       backingDirectory,
       fileSystemId: 'filesystem-1',
+      instanceId: 'instance-1',
       rootKey,
+      subvolumeDescriptorObjectId: 'subvolume-descriptor-1',
       rootDirectoryNodeId: 'directory-1',
     };
     const client = await createFileProtocolCompatibleWeshWorkerClient({

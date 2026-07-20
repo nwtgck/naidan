@@ -26,6 +26,15 @@ export class HizoFSUnsupportedFormatError extends Error {
   }
 }
 
+export class HizoFSCrossDeviceError extends Error {
+  constructor({ message }: { message: string }) {
+    super(message);
+    this.name = 'CrossDeviceError';
+  }
+
+  readonly code = 'EXDEV' as const;
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {

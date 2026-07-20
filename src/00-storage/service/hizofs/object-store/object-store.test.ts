@@ -20,18 +20,21 @@ import {
 
 const FILE_SYSTEM_ID_A = encodeBase64Url({ bytes: new Uint8Array(16).fill(0xa1) });
 const FILE_SYSTEM_ID_B = encodeBase64Url({ bytes: new Uint8Array(16).fill(0xb2) });
+const SUBVOLUME_DESCRIPTOR_OBJECT_ID = encodeBase64Url({
+  bytes: new Uint8Array(32).fill(0xc3),
+});
 
 async function createStore({
   root,
   rootKeyByte,
   fileSystemId,
-  fileChunkCacheAdmission = 'read_only',
+  fileChunkCacheAdmission = 'read',
   diagnostics,
 }: {
   root: FileSystemDirectoryHandle;
   rootKeyByte: number;
   fileSystemId: string;
-  fileChunkCacheAdmission?: 'read_only' | 'read_write';
+  fileChunkCacheAdmission?: 'read' | 'read_write';
   diagnostics?: HizoFSRuntimeDiagnostics;
 }): Promise<{
   readonly backingStore: NativeOpfsHizoFSBackingStore;
@@ -74,11 +77,17 @@ async function publishStore({
   sequence?: number;
 }): Promise<void> {
   await store.writeSuperblock({
+    scope: { type: 'root' },
     slot: (sequence % 2) as 0 | 1,
     record: {
       kind: 'superblock',
       recordVersion: 1,
-      metadata: { sequence, fileSystemId, activeCommitObjectId },
+      metadata: {
+        sequence,
+        fileSystemId,
+        subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
+        activeCommitObjectId,
+      },
       binaryPayload: new Uint8Array(),
     },
   });
@@ -312,7 +321,7 @@ describe('HizoFS immutable object store', () => {
       root,
       rootKeyByte: 1,
       fileSystemId: FILE_SYSTEM_ID_A,
-      fileChunkCacheAdmission: 'read_only',
+      fileChunkCacheAdmission: 'read',
       diagnostics,
     });
     const releaseFirst = Promise.withResolvers<void>();
@@ -362,7 +371,7 @@ describe('HizoFS immutable object store', () => {
       root,
       rootKeyByte: 1,
       fileSystemId: FILE_SYSTEM_ID_A,
-      fileChunkCacheAdmission: 'read_only',
+      fileChunkCacheAdmission: 'read',
     });
     const discarded = [0, 0, 0, 0];
 
@@ -550,7 +559,7 @@ describe('HizoFS immutable object store', () => {
       metadataCacheEntryLimit: 64,
       fileChunkCacheByteLimit: 1024,
       fileChunkCacheEntryLimit: 64,
-      fileChunkCacheAdmission: 'read_only',
+      fileChunkCacheAdmission: 'read',
     });
     const firstObjectId = await store.create({
       record: {
@@ -672,7 +681,7 @@ describe('HizoFS immutable object store', () => {
       root,
       rootKeyByte: 1,
       fileSystemId: FILE_SYSTEM_ID_A,
-      fileChunkCacheAdmission: 'read_only',
+      fileChunkCacheAdmission: 'read',
     });
     const objectId = await store.create({
       record: {
@@ -743,7 +752,7 @@ describe('HizoFS immutable object store', () => {
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 0,
       fileChunkCacheEntryLimit: 0,
-      fileChunkCacheAdmission: 'read_only',
+      fileChunkCacheAdmission: 'read',
     });
     const objectId = await store.create({
       record: {
@@ -781,7 +790,7 @@ describe('HizoFS immutable object store', () => {
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 64,
       fileChunkCacheEntryLimit: 64,
-      fileChunkCacheAdmission: 'read_only',
+      fileChunkCacheAdmission: 'read',
     });
     const firstObjectId = await store.create({
       record: {
@@ -831,7 +840,7 @@ describe('HizoFS immutable object store', () => {
       metadataCacheEntryLimit: 0,
       fileChunkCacheByteLimit: 1024,
       fileChunkCacheEntryLimit: 1,
-      fileChunkCacheAdmission: 'read_only',
+      fileChunkCacheAdmission: 'read',
     });
     const firstObjectId = await store.create({
       record: {
@@ -915,6 +924,7 @@ describe('HizoFS immutable object store', () => {
       sequence: number;
     }): Promise<void> => {
       await store.writeSuperblock({
+        scope: { type: 'root' },
         slot: 0,
         record: {
           kind: 'superblock',
@@ -922,6 +932,7 @@ describe('HizoFS immutable object store', () => {
           metadata: {
             sequence,
             fileSystemId: FILE_SYSTEM_ID_A,
+            subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
             activeCommitObjectId,
           },
           binaryPayload: new Uint8Array(),
@@ -935,7 +946,7 @@ describe('HizoFS immutable object store', () => {
     await write({ activeCommitObjectId: 'c', sequence: 3 });
 
     expect(headTruncates).toBe(1);
-    await expect(store.readSuperblock({ slot: 0 })).resolves.toMatchObject({
+    await expect(store.readSuperblock({ scope: { type: 'root' }, slot: 0 })).resolves.toMatchObject({
       metadata: { sequence: 3, activeCommitObjectId: 'c' },
     });
     await store.close();
@@ -949,6 +960,7 @@ describe('HizoFS immutable object store', () => {
       fileSystemId: FILE_SYSTEM_ID_A,
     });
     await store.writeSuperblock({
+      scope: { type: 'root' },
       slot: 0,
       record: {
         kind: 'superblock',
@@ -956,6 +968,7 @@ describe('HizoFS immutable object store', () => {
         metadata: {
           sequence: 0,
           fileSystemId: FILE_SYSTEM_ID_A,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit',
         },
         binaryPayload: new Uint8Array(),
@@ -963,8 +976,8 @@ describe('HizoFS immutable object store', () => {
     });
     const readSpy = vi.spyOn(backingStore, 'read');
 
-    await store.readSuperblock({ slot: 0 });
-    await store.readSuperblock({ slot: 0 });
+    await store.readSuperblock({ scope: { type: 'root' }, slot: 0 });
+    await store.readSuperblock({ scope: { type: 'root' }, slot: 0 });
 
     expect(readSpy).toHaveBeenCalledTimes(2);
   });
@@ -1077,6 +1090,7 @@ describe('HizoFS immutable object store', () => {
       fileSystemId: FILE_SYSTEM_ID_A,
     });
     await store.writeSuperblock({
+      scope: { type: 'root' },
       slot: 1,
       record: {
         kind: 'superblock',
@@ -1084,13 +1098,14 @@ describe('HizoFS immutable object store', () => {
         metadata: {
           sequence: 5,
           fileSystemId: FILE_SYSTEM_ID_A,
+          subvolumeDescriptorObjectId: SUBVOLUME_DESCRIPTOR_OBJECT_ID,
           activeCommitObjectId: 'commit',
         },
         binaryPayload: new Uint8Array(),
       },
     });
 
-    expect(await store.readSuperblock({ slot: 1 })).toMatchObject({
+    expect(await store.readSuperblock({ scope: { type: 'root' }, slot: 1 })).toMatchObject({
       kind: 'superblock',
       metadata: { sequence: 5 },
     });

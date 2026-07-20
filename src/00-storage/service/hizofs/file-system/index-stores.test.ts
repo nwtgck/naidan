@@ -9,6 +9,9 @@ import { createHizoFSRuntimeDiagnostics } from './diagnostics';
 import { HizoFSExtentIndex } from './extent-index';
 import { HizoFSInodeIndex } from './inode-index';
 import { HizoFSRecordStore } from './record-store';
+import { HizoFSSubvolumeDescriptorStore } from './subvolume-descriptor-store';
+import { HizoFSSubvolumeMountIndex } from './subvolume-mount-index';
+import { compareHizoFSStrings } from './ordering';
 
 async function setup() {
   const objectStore = new HizoFSObjectStore({
@@ -26,7 +29,7 @@ async function setup() {
     metadataCacheEntryLimit: 64,
     fileChunkCacheByteLimit: 1024,
     fileChunkCacheEntryLimit: 64,
-    fileChunkCacheAdmission: 'read_only',
+    fileChunkCacheAdmission: 'read',
   });
   const recordStore = new HizoFSRecordStore({ objectStore });
   return { objectStore, recordStore };
@@ -175,6 +178,87 @@ describe('HizoFS typed persistent indexes', () => {
       return leftBytes.length - rightBytes.length;
     });
     expect(names).toEqual(expected);
+  });
+
+  it('stores mount identities separately from subvolume access authority', async () => {
+    const { objectStore, recordStore } = await setup();
+    const descriptors = new HizoFSSubvolumeDescriptorStore({ recordStore });
+    const index = new HizoFSSubvolumeMountIndex({
+      recordStore,
+      maxPageEntries: 2,
+      diagnostics: undefined,
+    });
+    let root = await index.createEmpty();
+    const mounts = [];
+    for (const access of ['read', 'read_write'] as const) {
+      const subvolumeId = createHizoFSStableId();
+      const descriptorObjectId = await descriptors.write({
+        descriptor: access === 'read'
+          ? {
+            subvolumeId,
+            access,
+            fixedCommitObjectId: await createDummyObject({
+              objectStore,
+              value: mounts.length + 1,
+            }),
+          }
+          : { subvolumeId, access },
+      });
+      const mount = {
+        mountId: createHizoFSStableId(),
+        subvolumeDescriptorObjectId: descriptorObjectId,
+        parentDirectoryNodeId: createHizoFSStableId(),
+        entryName: `child-${access}`,
+      };
+      mounts.push(mount);
+      root = await index.set({ rootObjectId: root, mount });
+    }
+
+    const loaded = [];
+    for await (const mount of index.entries({ rootObjectId: root })) {
+      loaded.push(mount);
+      const descriptor = await descriptors.read({
+        objectId: mount.subvolumeDescriptorObjectId,
+      });
+      expect(descriptor.access === 'read' || descriptor.access === 'read_write')
+        .toBe(true);
+    }
+    expect(loaded).toHaveLength(2);
+    expect(loaded.every(mount => !('access' in mount))).toBe(true);
+  });
+
+  it('rejects duplicate page references in a subvolume mount index', async () => {
+    const { recordStore } = await setup();
+    const index = new HizoFSSubvolumeMountIndex({
+      recordStore,
+      maxPageEntries: 2,
+      diagnostics: undefined,
+    });
+    const sharedLeafObjectId = await recordStore.write({
+      kind: 'subvolume_mount_index_page',
+      metadata: { type: 'leaf', mounts: [] },
+      binaryPayload: new Uint8Array(),
+    });
+    const bounds = [createHizoFSStableId(), createHizoFSStableId()]
+      .sort((left, right) => compareHizoFSStrings({ left, right }));
+    const rootObjectId = await recordStore.write({
+      kind: 'subvolume_mount_index_page',
+      metadata: {
+        type: 'branch',
+        children: bounds.map(upperBoundMountId => ({
+          upperBoundMountId,
+          childPageObjectId: sharedLeafObjectId,
+        })),
+      },
+      binaryPayload: new Uint8Array(),
+    });
+
+    await expect(index.visitReferences({
+      rootObjectId,
+      visitPageObjectId: () => {},
+      visitDescriptorObjectId: () => {},
+      visitedPageObjectIds: undefined,
+    })).rejects.toThrow('contains a duplicate page reference');
   });
 
   it('stores sparse extents without entries for holes', async () => {

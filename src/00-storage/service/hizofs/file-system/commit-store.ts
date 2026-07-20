@@ -55,12 +55,20 @@ function assertCommit({ commit }: {
     fieldName: 'HizoFS publication ID',
   });
   validateHizoFSStableId({
+    value: commit.subvolumeId,
+    fieldName: 'HizoFS commit subvolume ID',
+  });
+  validateHizoFSStableId({
     value: commit.rootDirectoryNodeId,
     fieldName: 'HizoFS rootDirectoryNodeId',
   });
   assertHizoFSObjectId({
     value: commit.inodeIndexRootObjectId,
     fieldName: 'HizoFS inodeIndexRootObjectId',
+  });
+  assertHizoFSObjectId({
+    value: commit.subvolumeMountIndexRootObjectId,
+    fieldName: 'HizoFS subvolumeMountIndexRootObjectId',
   });
 }
 

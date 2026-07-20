@@ -519,7 +519,23 @@ export function createHizoFSInspectionWorker(): IHizoFSInspectionWorker {
         };
       }
       resolvedNodes.push(resolved);
-      nodeId = selectedEntry.entry.nodeId;
+      switch (selectedEntry.entry.kind) {
+      case 'subvolume':
+        throw new Error(
+          `HizoFS Workbench path traversal cannot cross a subvolume mount yet: ${currentPath}`,
+        );
+      case 'directory':
+      case 'file':
+      case 'symlink':
+        nodeId = selectedEntry.entry.nodeId;
+        break;
+      default: {
+        const _ex: never = selectedEntry.entry;
+        throw new Error(
+          `Unhandled HizoFS directory entry kind: ${String(((_ex satisfies never) as { readonly kind: string }).kind)}`,
+        );
+      }
+      }
       currentPath = currentPath === '/' ? `/${segment}` : `${currentPath}/${segment}`;
     }
     return resolvedNodes;
@@ -633,7 +649,28 @@ export function createHizoFSInspectionWorker(): IHizoFSInspectionWorker {
           for (const child of childEntries) {
             if (truncated) break;
             const childPath = path === '/' ? `/${child.name}` : `${path}/${child.name}`;
-            await visitNode({ nodeId: child.nodeId, path: childPath, name: child.name });
+            switch (child.kind) {
+            case 'subvolume':
+              issues.push(
+                `Subvolume mount traversal is not available in this Workbench view: ${childPath}`,
+              );
+              continue;
+            case 'directory':
+            case 'file':
+            case 'symlink':
+              await visitNode({
+                nodeId: child.nodeId,
+                path: childPath,
+                name: child.name,
+              });
+              break;
+            default: {
+              const _ex: never = child;
+              throw new Error(
+                `Unhandled HizoFS directory entry kind: ${String(((_ex satisfies never) as { readonly kind: string }).kind)}`,
+              );
+            }
+            }
           }
           return;
         }
@@ -976,21 +1013,25 @@ function parsePersistedDto({ object }: {
      * representation that was actually read from the encrypted record.
      * Parsed data is used only for validated reference traversal.
      */
+    const rootDirectoryEntryPoint = object.record.kind === 'commit'
+      ? (() => {
+        const commit = persistedDtoSchemasByRecordKind.commit.parse(validation.data);
+        return {
+          commitObjectId: object.objectId,
+          revision: commit.revision,
+          publicationId: commit.publicationId,
+          rootDirectoryNodeId: commit.rootDirectoryNodeId,
+          inodeIndexRootObjectId: commit.inodeIndexRootObjectId,
+        };
+      })()
+      : undefined;
     return {
       validation: { status: 'valid', persistedDto: object.record.metadata },
       references: deriveReferences({
         kind: object.record.kind,
         persistedDto: validation.data,
       }),
-      rootDirectoryEntryPoint: object.record.kind === 'commit'
-        ? {
-          commitObjectId: object.objectId,
-          revision: (validation.data as HizoFSCommitDto).revision,
-          publicationId: (validation.data as HizoFSCommitDto).publicationId,
-          rootDirectoryNodeId: (validation.data as HizoFSCommitDto).rootDirectoryNodeId,
-          inodeIndexRootObjectId: (validation.data as HizoFSCommitDto).inodeIndexRootObjectId,
-        }
-        : undefined,
+      rootDirectoryEntryPoint,
     };
   } catch (error) {
     return {

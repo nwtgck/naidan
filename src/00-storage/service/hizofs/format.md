@@ -26,7 +26,12 @@ AAD, or object addressing.
 <backing-directory>/
 ├── descriptor.json
 ├── head-0.hfs
-├── head-1.hfs              # both slots exist from initial creation
+├── head-1.hfs              # root read_write subvolume
+├── subvolume-heads/
+│   └── <subvolume-id-prefix>/
+│       ├── <subvolume-id>-0.hfs
+│       └── <subvolume-id>-1.hfs
+│           # non-root read_write subvolumes; both slots exist before mounting
 ├── segments/
 │   ├── metadata/<shard>/<segment-id>.seg
 │   └── data/<shard>/<segment-id>.seg
@@ -42,8 +47,11 @@ AAD, or object addressing.
 
 A directory containing this layout is exclusively owned by one HizoFS file
 system. Segment shard directories are created lazily from the first eight bits
-of the segment ID. Unknown physical entries are not part of the format and must
-not be deleted automatically.
+of the segment ID. A child-head shard is the first two canonical characters of
+the subvolume ID. Root and child head slots use distinct authenticated scopes;
+a valid ciphertext copied between either scope, between subvolume IDs, or
+between slots must fail authentication. Unknown physical entries are not part
+of the format and must not be deleted automatically.
 
 Metadata records prepared by one runtime publication are packed into one
 append-only metadata segment. File chunks are packed into bounded private data
@@ -77,16 +85,28 @@ makes a segment unsafe to read or reclaim.
 type HizoFSDescriptorDto = {
   readonly format: 'hizofs';
   readonly formatVersion: 1;
+  readonly instanceId: string;
 };
 ```
 
-The descriptor is only a non-secret format marker. It is not part of key
-derivation and does not contain the file-system identity. After a complete
-authenticated generation has been opened with the root key, a missing or
-structurally corrupt descriptor may be replaced with this canonical value.
-I/O and permission failures while reading or repairing it must still propagate.
-An unsupported authenticated generation must never be made readable by
-rewriting the descriptor.
+The descriptor is a non-secret format and runtime-instance marker. `instanceId`
+is the canonical 128-bit root-subvolume identity copied from the authenticated
+root commit. Runtime coordination binds both `instanceId` and the
+root-key-derived cryptographic `fileSystemId` into Web Lock, BroadcastChannel,
+maintenance-lease, runtime-pin, and Worker-session namespaces. Independently
+created backing directories that use the same root key therefore remain
+isolated, while opening one backing directory with the wrong root key cannot
+join its valid runtime coordinator. `instanceId` is not part of key derivation,
+AAD, or immutable-object addressing.
+
+After a complete authenticated generation has been opened with the root key, a
+missing or structurally corrupt descriptor may be replaced with a canonical
+descriptor containing that generation's root-subvolume identity. A canonical
+plaintext `instanceId` that disagrees with the authenticated root identity is
+corruption and must be rejected before mutation, garbage-collection sweep, or
+Worker-session reuse. I/O and permission failures while reading or repairing
+the descriptor must still propagate. An unsupported authenticated generation
+must never be made readable by rewriting the descriptor.
 
 ## Identifiers and direct object references
 
@@ -248,6 +268,8 @@ Record kind IDs are fixed:
 | 7 | `file_extent_page` |
 | 8 | `file_chunk` |
 | 9 | `superblock` |
+| 10 | `subvolume_descriptor` |
+| 11 | `subvolume_mount_index_page` |
 
 Unknown kinds, payload encodings, and record versions must fail closed.
 
@@ -259,6 +281,7 @@ The two authenticated head slots contain encoded `superblock` records and the du
 type HizoFSSuperblockDto = {
   readonly sequence: number;
   readonly fileSystemId: string;
+  readonly subvolumeDescriptorObjectId: string;
   readonly activeCommitObjectId: string;
 };
 ```
@@ -268,7 +291,7 @@ Two valid slots with the same sequence are ambiguous corruption. For each
 candidate, the reader authenticates and validates the referenced commit, inode
 index root, and root directory inode before selecting it. If the newest
 candidate is structurally corrupt but the older generation is complete, the
-older generation may be opened only in `fallback_read_only` recovery mode. A
+older generation may be opened only in `fallback` recovery mode. A
 valid generation is also treated as fallback when the other physical slot is
 unreadable, because its sequence cannot be proven older. Normal mutations,
 bulk construction, and garbage collection are forbidden in that mode so an
@@ -282,14 +305,43 @@ later commit writes the next sequence to `sequence % 2`; the alternate slot
 remains as the previous recoverable state. A missing slot in an opened
 filesystem is therefore an uncertain rollback and forces read-only recovery.
 
+Every head is bound to one immutable `subvolume_descriptor`. The descriptor
+is the single authority for subvolume identity and access; the active commit
+must carry the same `subvolumeId`. Root heads use the fixed root scope. A
+non-root `read_write` descriptor resolves to the scoped A/B files under
+`subvolume-heads/`. A `read` descriptor has no mutable head and names its fixed
+commit directly.
+
+## Subvolume descriptor
+
+```ts
+type HizoFSSubvolumeDescriptorDto =
+  | {
+      readonly subvolumeId: string;
+      readonly access: 'read';
+      readonly fixedCommitObjectId: string;
+    }
+  | {
+      readonly subvolumeId: string;
+      readonly access: 'read_write';
+    };
+```
+
+`access` is persisted only in this immutable descriptor. Mount records do not
+duplicate it. A `read` descriptor names its immutable commit directly, while a
+`read_write` descriptor is resolved through an authenticated A/B head. The
+root descriptor is always `read_write`.
+
 ## File-system commit
 
 ```ts
 type HizoFSCommitDto = {
   readonly revision: number;
   readonly publicationId: string;
+  readonly subvolumeId: string;
   readonly rootDirectoryNodeId: string;
   readonly inodeIndexRootObjectId: string;
+  readonly subvolumeMountIndexRootObjectId: string;
 };
 ```
 
@@ -303,6 +355,74 @@ outcome rather than silently replaying a potentially non-idempotent operation.
 The only persistent visibility switch for normal mutations is the authenticated
 superblock slot. Before that switch, the old complete commit is authoritative;
 after it, the new complete commit is authoritative.
+
+The mount-index root is immutable and is reused unchanged by ordinary file and
+directory mutations. Consequently subvolume support adds no mount-index read,
+write, flush, ancestor publication, or global catalog update to ordinary
+operations that do not cross a subvolume boundary.
+
+## Subvolume mount index
+
+Each subvolume owns a persistent Copy-on-Write B+tree from stable `mountId` to
+an immutable descriptor ObjectRef:
+
+```ts
+type HizoFSSubvolumeMountDto = {
+  readonly mountId: string;
+  readonly subvolumeDescriptorObjectId: string;
+  readonly parentDirectoryNodeId: string;
+  readonly entryName: string;
+};
+```
+
+Directory metadata references `mountId`, not a child `subvolumeId`:
+
+```ts
+type HizoFSDirectoryEntryDto =
+  | {
+      readonly name: string;
+      readonly kind: 'file' | 'directory' | 'symlink';
+      readonly nodeId: string;
+    }
+  | {
+      readonly name: string;
+      readonly kind: 'subvolume';
+      readonly mountId: string;
+    };
+```
+
+A subvolume entry is not an inode and is not inserted into the parent inode
+index. Ordinary entries continue through the inode-index path without reading
+the mount index. Crossing a subvolume entry resolves the mount, descriptor, and
+then either the fixed commit or the scoped mutable head.
+
+This indirection allows a recursive snapshot to share ordinary directory and
+inode metadata while rebuilding only the O(number of subvolumes) mount graph.
+A snapshot creates fresh subvolume identities, commits, descriptors, and mount
+indexes, preserves stable mount IDs, and reuses the source inode-index roots.
+For `read_write` output, both scoped head slots are durably initialized before
+the graph is attached. The destination-parent head publication is the sole
+namespace visibility switch. Mount entries contain no access copy;
+descriptor/head/commit identity bindings are validated instead. The authenticated
+`parentDirectoryNodeId` and `entryName` form a reverse locator for explicit
+subvolume deletion. Moving a subvolume entry updates the directory entry and
+this locator in the same topology publication.
+
+Subvolumes are never removed by ordinary recursive directory deletion. The
+explicit deletion operation validates the locator and removes only the parent
+directory entry and mount-index entry. With recursive deletion disabled, the
+target mount index must be empty. With recursive deletion enabled, disconnecting
+the root mount makes the whole descendant graph unreachable without traversing
+ordinary files, inodes, extents, or chunks.
+
+Garbage collection treats both authenticated A/B generations of every reachable
+`read_write` subvolume as roots. A deleted child may remain reachable through a
+previous parent generation and is retained until that generation is overwritten.
+Open child sessions hold a shared runtime pin; GC may remove orphan child-head
+files only after the descriptor is unreachable and an exclusive pin can be
+acquired. Immutable objects shared by snapshots are marked once through the
+global visited sets and are reclaimed only after every retained generation and
+runtime pin releases them.
 
 ## Inode index
 

@@ -77,7 +77,7 @@ export const hizoFSBenchmarkConfigurationSchema = z.object({
     fileChunkCacheByteLimit: z.number().int().min(0).max(1024 * 1024 * 1024),
     fileChunkCacheEntryLimit: z.number().int().min(0).max(1_000_000),
     fileChunkCacheAdmission: z.union([
-      z.literal('read_only'),
+      z.literal('read'),
       z.literal('read_write'),
     ]),
   }).strict(),
@@ -204,12 +204,14 @@ const hizoFSRuntimeDiagnosticsSchema = z.object({
     commit_publication: hizoFSRuntimePhaseCounterSchema,
   }).strict(),
   records: z.object({
+    subvolume_descriptor: hizoFSRuntimeRecordCounterSchema,
     commit: hizoFSRuntimeRecordCounterSchema,
     inode_index_page: hizoFSRuntimeRecordCounterSchema,
     file_inode: hizoFSRuntimeRecordCounterSchema,
     directory_inode: hizoFSRuntimeRecordCounterSchema,
     symlink_inode: hizoFSRuntimeRecordCounterSchema,
     directory_index_page: hizoFSRuntimeRecordCounterSchema,
+    subvolume_mount_index_page: hizoFSRuntimeRecordCounterSchema,
     file_extent_page: hizoFSRuntimeRecordCounterSchema,
     file_chunk: hizoFSRuntimeRecordCounterSchema,
     superblock: hizoFSRuntimeRecordCounterSchema,
@@ -414,8 +416,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(17),
-  benchmarkImplementationVersion: z.literal(19),
+  schemaVersion: z.literal(18),
+  benchmarkImplementationVersion: z.literal(23),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -463,7 +465,7 @@ export const hizoFSBenchmarkReportSchema = z.object({
       fileChunkCacheByteLimitPerRuntime: z.number().int().nonnegative(),
       fileChunkCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       fileChunkCacheAdmission: z.union([
-        z.literal('read_only'),
+        z.literal('read'),
         z.literal('read_write'),
       ]),
     }).strict(),
@@ -507,7 +509,7 @@ export const hizoFSBenchmarkStudyKindSchema = z.union([
 
 export const hizoFSBenchmarkStudyReportSchema = z.object({
   schemaVersion: z.literal(1),
-  studyImplementationVersion: z.literal(7),
+  studyImplementationVersion: z.literal(8),
   reportType: z.literal('hizofs_benchmark_study'),
   studyId: z.string(),
   studyKind: hizoFSBenchmarkStudyKindSchema,

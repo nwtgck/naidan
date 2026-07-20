@@ -28,6 +28,10 @@ import {
   objectReferencesEqual,
   type HizoFSObjectReference,
 } from '@/00-storage/service/hizofs/segment-store/object-reference';
+import {
+  encodeHizoFSHeadScopeBytes,
+  type HizoFSHeadScope,
+} from '@/00-storage/service/hizofs/segment-store/head-scope';
 
 export const HIZOFS_SEGMENT_HEADER_BYTE_LENGTH = 64;
 export const HIZOFS_RECORD_FRAME_HEADER_BYTE_LENGTH = 72;
@@ -550,6 +554,7 @@ function createHeadEnvelopeHeader({ nonce, ciphertextByteLength }: {
 export async function encodeHizoFSHead({
   rootKey,
   fileSystemId,
+  scope,
   slot,
   activeMetadataSegmentId,
   activeMetadataDurableTail,
@@ -557,6 +562,7 @@ export async function encodeHizoFSHead({
 }: {
   rootKey: CryptoKey;
   fileSystemId: string;
+  scope: HizoFSHeadScope;
   slot: 0 | 1;
   activeMetadataSegmentId: Uint8Array;
   activeMetadataDurableTail: number;
@@ -583,13 +589,25 @@ export async function encodeHizoFSHead({
     nonce,
     ciphertextByteLength: plaintext.byteLength + HIZOFS_AES_GCM_TAG_BYTE_LENGTH,
   });
-  const key = await deriveHizoFSHeadKey({ rootKey, fileSystemId, slot });
+  const scopeBytes = encodeHizoFSHeadScopeBytes({ scope });
+  const key = await deriveHizoFSHeadKey({
+    rootKey,
+    fileSystemId,
+    scope,
+    slot,
+  });
   const ciphertext = await encryptHizoFSAesGcm({
     key,
     nonce,
     plaintext,
     additionalData: concatenateBytes({
-      parts: [HEAD_AAD_DOMAIN, decodeFileSystemIdBytes({ fileSystemId }), Uint8Array.of(slot), envelopeHeader],
+      parts: [
+        HEAD_AAD_DOMAIN,
+        decodeFileSystemIdBytes({ fileSystemId }),
+        scopeBytes,
+        Uint8Array.of(slot),
+        envelopeHeader,
+      ],
     }),
   });
   plaintext.fill(0);
@@ -599,11 +617,13 @@ export async function encodeHizoFSHead({
 export async function decodeHizoFSHead({
   rootKey,
   fileSystemId,
+  scope,
   slot,
   bytes,
 }: {
   rootKey: CryptoKey;
   fileSystemId: string;
+  scope: HizoFSHeadScope;
   slot: 0 | 1;
   bytes: Uint8Array;
 }): Promise<HizoFSDecodedHead> {
@@ -626,7 +646,13 @@ export async function decodeHizoFSHead({
     throw new HizoFSCorruptionError({ message: 'HizoFS head ciphertext length is invalid', cause: undefined });
   }
   const nonce = header.subarray(12, 24);
-  const key = await deriveHizoFSHeadKey({ rootKey, fileSystemId, slot });
+  const scopeBytes = encodeHizoFSHeadScopeBytes({ scope });
+  const key = await deriveHizoFSHeadKey({
+    rootKey,
+    fileSystemId,
+    scope,
+    slot,
+  });
   let plaintext: Uint8Array;
   try {
     plaintext = await decryptHizoFSAesGcm({
@@ -634,7 +660,13 @@ export async function decodeHizoFSHead({
       nonce,
       ciphertext: bytes.subarray(HIZOFS_HEAD_ENVELOPE_HEADER_BYTE_LENGTH),
       additionalData: concatenateBytes({
-        parts: [HEAD_AAD_DOMAIN, decodeFileSystemIdBytes({ fileSystemId }), Uint8Array.of(slot), header],
+        parts: [
+          HEAD_AAD_DOMAIN,
+          decodeFileSystemIdBytes({ fileSystemId }),
+          scopeBytes,
+          Uint8Array.of(slot),
+          header,
+        ],
       }),
     });
   } catch (error) {

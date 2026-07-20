@@ -14,7 +14,7 @@ export type HizoFSWorkbenchSource =
       readonly type: 'naidan_active_store';
       readonly sourceId: 'naidan-active-store';
       readonly label: string;
-      readonly access: 'read_only';
+      readonly access: 'read';
       readonly encryptedStoreId: string;
     }
   | {
@@ -58,7 +58,7 @@ export async function listHizoFSWorkbenchSources(): Promise<readonly HizoFSWorkb
         type: 'naidan_active_store',
         sourceId: 'naidan-active-store',
         label: 'Naidan active encrypted store',
-        access: 'read_only',
+        access: 'read',
         encryptedStoreId: inspection.state.activeEncryptedStoreId,
       });
       break;

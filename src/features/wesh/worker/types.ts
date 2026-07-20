@@ -22,7 +22,9 @@ export const weshWorkerStorageDirectoryMountSourceSchema = z.object({
   type: z.literal('hizofs'),
   backingDirectory: z.custom<FileSystemDirectoryHandle>(),
   fileSystemId: z.string().min(1),
+  instanceId: z.string().min(1),
   rootKey: z.custom<CryptoKey>(),
+  subvolumeDescriptorObjectId: z.string().min(1),
   rootDirectoryNodeId: z.string().min(1),
 }) satisfies z.ZodType<StorageDirectoryWorkerMountSource>;
 

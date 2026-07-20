@@ -4,6 +4,10 @@ import {
   assertHizoFSSegmentId,
   encodeHizoFSSegmentId,
 } from '@/00-storage/service/hizofs/segment-store/object-reference';
+import {
+  encodeHizoFSHeadScope,
+  type HizoFSHeadScope,
+} from '@/00-storage/service/hizofs/segment-store/head-scope';
 
 const UTF8 = new TextEncoder();
 const HIZOFS_NONCE_BYTE_LENGTH = 12;
@@ -154,10 +158,12 @@ export async function deriveHizoFSRelocationMapKey({
 export async function deriveHizoFSHeadKey({
   rootKey,
   fileSystemId,
+  scope,
   slot,
 }: {
   rootKey: CryptoKey;
   fileSystemId: string;
+  scope: HizoFSHeadScope;
   slot: 0 | 1;
 }): Promise<CryptoKey> {
   return deriveAesKey({
@@ -168,7 +174,9 @@ export async function deriveHizoFSHeadKey({
         decodeFileSystemId({ fileSystemId }),
       ],
     }),
-    info: UTF8.encode(`HizoFS/v1/head/${String(slot)}`),
+    info: UTF8.encode(
+      `HizoFS/v1/head/${encodeHizoFSHeadScope({ scope })}/${String(slot)}`,
+    ),
   });
 }
 

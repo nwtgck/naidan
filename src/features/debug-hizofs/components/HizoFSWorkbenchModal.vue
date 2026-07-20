@@ -297,7 +297,7 @@ const fileExplorerRoot = computed<FileExplorerRootDescriptor | undefined>(() => 
     kind: 'storage-directory',
     rootName: `${source.label} root`,
     handle: session.decryptedRoot,
-    readOnly: source.access === 'read_only',
+    readOnly: source.access === 'read',
   };
 });
 const visibleObjectRange = computed(() => {
@@ -638,6 +638,22 @@ async function openChildNode({
   entry: NonNullable<HizoFSResolvedNodeView['directory']>['entries'][number]['entry'];
   afterIndex: number;
 }): Promise<void> {
+  switch (entry.kind) {
+  case 'subvolume':
+    errorMessage.value =
+      'Subvolume mount traversal is not available in this Workbench view yet.';
+    return;
+  case 'directory':
+  case 'file':
+  case 'symlink':
+    break;
+  default: {
+    const _ex: never = entry;
+    throw new Error(
+      `Unhandled HizoFS directory entry kind: ${String(((_ex satisfies never) as { readonly kind: string }).kind)}`,
+    );
+  }
+  }
   const logicalPath = parent.logicalPath === '/'
     ? `/${entry.name}`
     : `${parent.logicalPath}/${entry.name}`;
@@ -1269,7 +1285,7 @@ defineExpose({
                 <dl tw-class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-[9px] text-gray-500 dark:text-gray-400">
                   <dt>source</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ selectedSource.type }}</dd>
                   <dt>access</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ selectedSource.access }}</dd>
-                  <dt>generation</dt><dd data-testid="hizofs-active-mode" :tw-class="['truncate', overview.activeMode === 'fallback_read_only' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-700 dark:text-gray-300']">{{ overview.activeMode }}</dd>
+                  <dt>generation</dt><dd data-testid="hizofs-active-mode" :tw-class="['truncate', overview.activeMode === 'fallback' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-700 dark:text-gray-300']">{{ overview.activeMode }}</dd>
                   <dt>backing</dt><dd tw-class="truncate text-gray-700 dark:text-gray-300">{{ sourceSession?.physicalPath.join('/') }}</dd>
                   <template v-if="selectedSource.type === 'ephemeral_debug_workspace'">
                     <dt>root key</dt><dd tw-class="text-gray-700 dark:text-gray-300">random · memory only</dd>
@@ -1474,10 +1490,10 @@ defineExpose({
                     <button type="button" tw-class="flex w-full items-center justify-between rounded border border-gray-300 px-3 py-2 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="openObject({ objectId: column.value.directory.directoryIndexRootObjectId, relation: 'Directory index root', afterIndex: columnIndex })"><span>Inspect directory index root</span><ChevronRightIcon tw-class="h-3.5 w-3.5" /></button>
                   </div>
                   <div tw-class="border-t border-gray-200 bg-gray-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-950">Persisted directory entries · {{ column.value.directory.storageType }}</div>
-                  <div v-for="resolvedEntry in column.value.directory.entries" :key="`${resolvedEntry.entry.nodeId}:${resolvedEntry.entry.name}`" tw-class="border-b border-gray-100 p-2 dark:border-gray-800">
+                  <div v-for="resolvedEntry in column.value.directory.entries" :key="`${'nodeId' in resolvedEntry.entry ? resolvedEntry.entry.nodeId : resolvedEntry.entry.mountId}:${resolvedEntry.entry.name}`" tw-class="border-b border-gray-100 p-2 dark:border-gray-800">
                     <button type="button" data-testid="hizofs-open-child-node" tw-class="block w-full rounded px-2 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800" @click="openChildNode({ parent: column.value, entry: resolvedEntry.entry, afterIndex: columnIndex })">
                       <span tw-class="block truncate text-xs font-medium">{{ resolvedEntry.entry.name }}</span>
-                      <span tw-class="mt-1 block font-mono text-[9px] text-gray-500">{{ resolvedEntry.entry.kind }} · {{ resolvedEntry.entry.nodeId }}</span>
+                      <span tw-class="mt-1 block font-mono text-[9px] text-gray-500">{{ resolvedEntry.entry.kind }} · {{ 'nodeId' in resolvedEntry.entry ? resolvedEntry.entry.nodeId : resolvedEntry.entry.mountId }}</span>
                     </button>
                     <button type="button" tw-class="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-left font-mono text-[9px] text-gray-500 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800" @click="openObject({ objectId: getDirectoryEntrySourceObjectId({ source: resolvedEntry.source }), relation: resolvedEntry.source.type === 'inline' ? 'Directory inode containing entry' : 'Directory index leaf containing entry', afterIndex: columnIndex })">source {{ resolvedEntry.source.type }} · {{ getDirectoryEntrySourceObjectId({ source: resolvedEntry.source }) }}</button>
                   </div>
@@ -1507,7 +1523,7 @@ defineExpose({
             <div v-else-if="column.kind === 'file_explorer'" tw-class="flex min-h-0 flex-1 flex-col">
               <div tw-class="shrink-0 border-b border-blue-200 bg-blue-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">Derived filesystem view · {{ selectedSource?.access }}</div>
               <Suspense v-if="fileExplorerRoot">
-                <FileExplorer :key="selectedSource?.sourceId" :root="fileExplorerRoot" initial-view-mode="column" initial-preview-visibility="visible" reveal-file-preview="preserve" :initial-path="undefined" :initial-locked="selectedSource?.access === 'read_only'" entry-context-action-label="Inspect HizoFS records" @entry-context-action="inspectFileExplorerEntry" />
+                <FileExplorer :key="selectedSource?.sourceId" :root="fileExplorerRoot" initial-view-mode="column" initial-preview-visibility="visible" reveal-file-preview="preserve" :initial-path="undefined" :initial-locked="selectedSource?.access === 'read'" entry-context-action-label="Inspect HizoFS records" @entry-context-action="inspectFileExplorerEntry" />
                 <template #fallback><div tw-class="flex h-full items-center justify-center gap-2 text-xs text-gray-500"><LoaderCircleIcon tw-class="h-4 w-4 animate-spin" /> Opening decrypted root…</div></template>
               </Suspense>
             </div>
@@ -1551,7 +1567,7 @@ defineExpose({
                 initial-preview-visibility="visible"
                 reveal-file-preview="load"
                 :initial-path="undefined"
-                :initial-locked="selectedSource.access === 'read_only'"
+                :initial-locked="selectedSource.access === 'read'"
                 :reveal-path="companionFollowMode === 'following' ? companionExplorerPath : undefined"
                 entry-context-action-label="Inspect HizoFS records"
                 @entry-context-action="inspectFileExplorerEntry"

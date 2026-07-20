@@ -324,7 +324,7 @@ const activeSource: Extract<
   type: "naidan_active_store",
   sourceId: "naidan-active-store",
   label: "Naidan active encrypted store",
-  access: "read_only",
+  access: "read",
   encryptedStoreId: "store-a",
 };
 
@@ -374,13 +374,16 @@ function createClient({
   const superblockMetadata = {
     sequence: 4,
     fileSystemId,
+    subvolumeDescriptorObjectId: "subvolume-descriptor-a",
     activeCommitObjectId: "commit-a",
   };
   const commitMetadata: OverviewResult["activeCommit"] = {
     revision: 5,
     publicationId: 'publication-5',
+    subvolumeId: 'subvolume-a',
     rootDirectoryNodeId: "root-a",
     inodeIndexRootObjectId: "inode-index-a",
+    subvolumeMountIndexRootObjectId: 'mount-index-a',
   };
   const fullSuperblockBinary = createBinaryRecordInspection({
     recordKindId: 9,
@@ -395,12 +398,17 @@ function createClient({
     binaryPayload: new Uint8Array([0xde, 0xad, 0xbe, 0xef]),
   });
   const overview: OverviewResult = {
-    activeMode: 'fallback_read_only',
-    descriptor: { format: 'hizofs', formatVersion: 1 },
+    activeMode: 'fallback',
+    descriptor: {
+      format: 'hizofs',
+      formatVersion: 1,
+      instanceId: 'instance-id',
+    },
     fileSystemId,
     persistedDescriptorDto: {
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: 'instance-id',
       unknownPersistedField: "must remain visible",
     },
     descriptorValidationError: 'Unrecognized key: unknownPersistedField',
@@ -427,15 +435,22 @@ function createClient({
     activeSuperblock: {
       sequence: 4,
       fileSystemId,
+      subvolumeDescriptorObjectId: "subvolume-descriptor-a",
       activeCommitObjectId: "commit-a",
+    },
+    rootSubvolumeDescriptor: {
+      subvolumeId: 'subvolume-a',
+      access: 'read_write',
     },
     activeCommitObjectId: "commit-a",
     activeCommit: commitMetadata,
     activeCommitPersistedDto: {
       revision: 5,
       publicationId: 'publication-5',
+      subvolumeId: 'subvolume-a',
       rootDirectoryNodeId: "root-a",
       inodeIndexRootObjectId: "inode-index-a",
+      subvolumeMountIndexRootObjectId: 'mount-index-a',
       unknownPersistedField: "must remain visible",
     },
     maintenance: {
@@ -690,7 +705,7 @@ describe("HizoFSWorkbenchModal", () => {
     expect(document.body.textContent).toContain("Physical object store");
     expect(document.body.textContent).toContain("Logical filesystem views");
     expect(document.body.textContent).toContain("mutationdisabled in Workbench");
-    expect(document.body.textContent).toContain("fallback_read_only");
+    expect(document.body.textContent).toContain("fallback");
 
     document.body
       .querySelector<HTMLButtonElement>(
@@ -731,7 +746,7 @@ describe("HizoFSWorkbenchModal", () => {
     await flushPromises();
 
     expect(document.body.textContent).toContain(
-      "Derived filesystem view · read_only",
+      "Derived filesystem view · read",
     );
     expect(document.body.textContent).toContain(
       "storage-directory:Naidan active encrypted store root:true",

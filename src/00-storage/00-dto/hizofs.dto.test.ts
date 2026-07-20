@@ -6,6 +6,8 @@ import {
   HizoFSFileExtentPageSchemaDto,
   HizoFSFileInodeSchemaDto,
   HizoFSInodeIndexPageSchemaDto,
+  HizoFSSubvolumeDescriptorSchemaDto,
+  HizoFSSubvolumeMountIndexPageSchemaDto,
   HizoFSSuperblockSchemaDto,
 } from './hizofs.dto';
 
@@ -14,24 +16,121 @@ describe('HizoFS DTO schemas', () => {
     expect(HizoFSDescriptorSchemaDto.parse({
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: 'instance-id',
     })).toEqual({
       format: 'hizofs',
       formatVersion: 1,
+      instanceId: 'instance-id',
     });
+  });
+
+  it('strips unknown persisted fields without weakening required fields', () => {
+    expect(HizoFSDescriptorSchemaDto.parse({
+      format: 'hizofs',
+      formatVersion: 1,
+      instanceId: 'instance-id',
+      addedByNewerNaidan: 'ignored',
+    })).toEqual({
+      format: 'hizofs',
+      formatVersion: 1,
+      instanceId: 'instance-id',
+    });
+    expect(HizoFSSubvolumeDescriptorSchemaDto.parse({
+      subvolumeId: 'writable-subvolume',
+      access: 'read_write',
+      addedByNewerNaidan: true,
+    })).toEqual({
+      subvolumeId: 'writable-subvolume',
+      access: 'read_write',
+    });
+    expect(HizoFSDescriptorSchemaDto.safeParse({
+      format: 'hizofs',
+      formatVersion: 1,
+    }).success).toBe(false);
   });
 
   it('parses the immutable commit root', () => {
     expect(HizoFSCommitSchemaDto.parse({
       revision: 7,
       publicationId: 'publication-id',
+      subvolumeId: 'subvolume-id',
       rootDirectoryNodeId: 'root-node',
       inodeIndexRootObjectId: 'inode-index-root',
+      subvolumeMountIndexRootObjectId: 'mount-index-root',
     })).toEqual({
       revision: 7,
       publicationId: 'publication-id',
+      subvolumeId: 'subvolume-id',
       rootDirectoryNodeId: 'root-node',
       inodeIndexRootObjectId: 'inode-index-root',
+      subvolumeMountIndexRootObjectId: 'mount-index-root',
     });
+  });
+
+  it('parses subvolume access and mount records with one access authority', () => {
+    expect(HizoFSSubvolumeDescriptorSchemaDto.parse({
+      subvolumeId: 'read-subvolume',
+      access: 'read',
+      fixedCommitObjectId: 'commit-object',
+    })).toEqual({
+      subvolumeId: 'read-subvolume',
+      access: 'read',
+      fixedCommitObjectId: 'commit-object',
+    });
+    expect(HizoFSSubvolumeDescriptorSchemaDto.parse({
+      subvolumeId: 'writable-subvolume',
+      access: 'read_write',
+    })).toEqual({
+      subvolumeId: 'writable-subvolume',
+      access: 'read_write',
+    });
+    expect(HizoFSSubvolumeMountIndexPageSchemaDto.parse({
+      type: 'leaf',
+      mounts: [{
+        mountId: 'mount-id',
+        subvolumeDescriptorObjectId: 'descriptor-object',
+        parentDirectoryNodeId: 'parent-directory-node',
+        entryName: 'mounted-name',
+      }],
+    })).toEqual({
+      type: 'leaf',
+      mounts: [{
+        mountId: 'mount-id',
+        subvolumeDescriptorObjectId: 'descriptor-object',
+        parentDirectoryNodeId: 'parent-directory-node',
+        entryName: 'mounted-name',
+      }],
+    });
+    expect(HizoFSSubvolumeDescriptorSchemaDto.safeParse({
+      subvolumeId: 'legacy-subvolume',
+      access: 'read_only',
+      fixedCommitObjectId: 'commit-object',
+    }).success).toBe(false);
+    expect(HizoFSSubvolumeMountIndexPageSchemaDto.parse({
+      type: 'leaf',
+      mounts: [{
+        mountId: 'mount-id',
+        subvolumeDescriptorObjectId: 'descriptor-object',
+        parentDirectoryNodeId: 'parent-directory-node',
+        entryName: 'mounted-name',
+        access: 'read',
+      }],
+    })).toEqual({
+      type: 'leaf',
+      mounts: [{
+        mountId: 'mount-id',
+        subvolumeDescriptorObjectId: 'descriptor-object',
+        parentDirectoryNodeId: 'parent-directory-node',
+        entryName: 'mounted-name',
+      }],
+    });
+    expect(HizoFSSubvolumeMountIndexPageSchemaDto.safeParse({
+      type: 'leaf',
+      mounts: [{
+        mountId: 'mount-id',
+        subvolumeDescriptorObjectId: 'descriptor-object',
+      }],
+    }).success).toBe(false);
   });
 
   it('parses an inline file inode', () => {
@@ -95,6 +194,7 @@ describe('HizoFS DTO schemas', () => {
     expect(() => HizoFSDescriptorSchemaDto.parse({
       format: 'hizofs',
       formatVersion: 2,
+      instanceId: 'instance-id',
     })).toThrow();
   });
 
@@ -102,10 +202,12 @@ describe('HizoFS DTO schemas', () => {
     expect(HizoFSSuperblockSchemaDto.parse({
       sequence: 9,
       fileSystemId: 'filesystem-id',
+      subvolumeDescriptorObjectId: 'descriptor',
       activeCommitObjectId: 'commit',
     })).toEqual({
       sequence: 9,
       fileSystemId: 'filesystem-id',
+      subvolumeDescriptorObjectId: 'descriptor',
       activeCommitObjectId: 'commit',
     });
   });

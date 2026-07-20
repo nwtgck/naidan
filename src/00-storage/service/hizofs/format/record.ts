@@ -5,23 +5,27 @@ const HEADER_BYTE_LENGTH = 16;
 const PAYLOAD_ENCODING_IDENTITY = 0;
 
 export type HizoFSRecordKind =
+  | 'subvolume_descriptor'
   | 'commit'
   | 'inode_index_page'
   | 'file_inode'
   | 'directory_inode'
   | 'symlink_inode'
   | 'directory_index_page'
+  | 'subvolume_mount_index_page'
   | 'file_extent_page'
   | 'file_chunk'
   | 'superblock';
 
 export const HIZOFS_RECORD_KIND_TO_ID = {
+  subvolume_descriptor: 10,
   commit: 1,
   inode_index_page: 2,
   file_inode: 3,
   directory_inode: 4,
   symlink_inode: 5,
   directory_index_page: 6,
+  subvolume_mount_index_page: 11,
   file_extent_page: 7,
   file_chunk: 8,
   superblock: 9,

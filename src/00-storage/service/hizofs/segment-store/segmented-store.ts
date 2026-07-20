@@ -41,6 +41,10 @@ import {
   getHizoFSSegmentShard,
   type HizoFSObjectReference,
 } from '@/00-storage/service/hizofs/segment-store/object-reference';
+import {
+  getHizoFSHeadPath,
+  type HizoFSHeadScope,
+} from '@/00-storage/service/hizofs/segment-store/head-scope';
 
 const METADATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH = 1024 * 1024;
 const DATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH = 16 * 1024 * 1024;
@@ -132,6 +136,8 @@ function segmentTypeForRecordKind({ kind }: {
   case 'file_chunk':
     return 'data';
   case 'superblock':
+  case 'subvolume_descriptor':
+  case 'subvolume_mount_index_page':
   case 'commit':
   case 'inode_index_page':
   case 'file_inode':
@@ -174,10 +180,6 @@ function getSegmentPath({ segmentType, segmentId }: {
     getHizoFSSegmentShard({ segmentId }),
     `${encodeHizoFSSegmentId({ segmentId })}.seg`,
   ];
-}
-
-function getHeadPath({ slot }: { slot: 0 | 1 }): readonly string[] {
-  return [`head-${String(slot)}.hfs`];
 }
 
 function getSegmentIndexPath({ segmentType, segmentId }: {
@@ -545,7 +547,7 @@ export class HizoFSSegmentedStore {
   private readonly relocationStore: HizoFSRelocationStore;
   private activeMetadataWriter: HizoFSActiveSegmentWriter | undefined;
   private activeDataWriter: HizoFSActiveSegmentWriter | undefined;
-  private readonly persistentHeadFiles = new Map<0 | 1, HizoFSRandomAccessFile>();
+  private readonly persistentHeadFiles = new Map<string, HizoFSRandomAccessFile>();
   private headHandleRetention: 'ephemeral' | 'persistent' = 'ephemeral';
   private committedMetadataSegment: CommittedMetadataSegment | undefined;
   private reservationChain: Promise<void> = Promise.resolve();
@@ -757,7 +759,8 @@ export class HizoFSSegmentedStore {
     };
   }
 
-  async writeHead({ slot, sequence, recordBytes }: {
+  async writeHead({ scope, slot, sequence, recordBytes }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
     sequence: number;
     recordBytes: Uint8Array;
@@ -792,12 +795,13 @@ export class HizoFSSegmentedStore {
         const physical = await encodeHizoFSHead({
           rootKey: this.rootKey,
           fileSystemId: this.fileSystemId,
+          scope,
           slot,
           activeMetadataSegmentId: metadataSegmentId,
           activeMetadataDurableTail: metadataDurableTail,
           recordBytes,
         });
-        await this.replaceHead({ slot, physical });
+        await this.replaceHead({ scope, slot, physical });
         this.observeCommittedMetadataSegment({
           sequence,
           segmentId: metadataSegmentId,
@@ -850,18 +854,22 @@ export class HizoFSSegmentedStore {
     }
   }
 
-  async readHeadPhysical({ slot }: { slot: 0 | 1 }): Promise<{
+  async readHeadPhysical({ scope, slot }: {
+    scope: HizoFSHeadScope;
+    slot: 0 | 1;
+  }): Promise<{
     readonly physicalBytes: Uint8Array;
     readonly physicalPath: readonly string[];
   } | undefined> {
     this.assertOpen();
-    const physicalPath = getHeadPath({ slot });
+    const physicalPath = getHizoFSHeadPath({ scope, slot });
     const physicalBytes = await this.backingStore.read({ path: physicalPath });
     if (physicalBytes === undefined) return undefined;
     return { physicalBytes, physicalPath };
   }
 
-  async readHead({ slot }: {
+  async readHead({ scope, slot }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
   }): Promise<(HizoFSDecodedHead & {
     readonly physicalByteLength: number;
@@ -869,12 +877,13 @@ export class HizoFSSegmentedStore {
     readonly physicalPath: readonly string[];
   }) | undefined> {
     this.assertOpen();
-    const physicalPath = getHeadPath({ slot });
+    const physicalPath = getHizoFSHeadPath({ scope, slot });
     const physical = await this.backingStore.read({ path: physicalPath });
     if (physical === undefined) return undefined;
     const decoded = await decodeHizoFSHead({
       rootKey: this.rootKey,
       fileSystemId: this.fileSystemId,
+      scope,
       slot,
       bytes: physical,
     });
@@ -888,6 +897,8 @@ export class HizoFSSegmentedStore {
       });
       break;
     }
+    case 'subvolume_descriptor':
+    case 'subvolume_mount_index_page':
     case 'commit':
     case 'inode_index_page':
     case 'file_inode':
@@ -1669,14 +1680,16 @@ export class HizoFSSegmentedStore {
     return writer;
   }
 
-  private async replaceHead({ slot, physical }: {
+  private async replaceHead({ scope, slot, physical }: {
+    scope: HizoFSHeadScope;
     slot: 0 | 1;
     physical: Uint8Array;
   }): Promise<void> {
-    const path = getHeadPath({ slot });
+    const path = getHizoFSHeadPath({ scope, slot });
+    const pathKey = physicalPathKey({ path });
     const persistent = this.headHandleRetention === 'persistent';
     const file = persistent
-      ? await this.ensurePersistentHeadFile({ slot, path })
+      ? await this.ensurePersistentHeadFile({ path, pathKey })
       : await this.backingStore.openRandomAccessFile({
         path,
         mode: 'read_write',
@@ -1697,8 +1710,8 @@ export class HizoFSSegmentedStore {
       await file.flush();
       if (!persistent) await close();
     } catch (error) {
-      if (persistent && this.persistentHeadFiles.get(slot) === file) {
-        this.persistentHeadFiles.delete(slot);
+      if (persistent && this.persistentHeadFiles.get(pathKey) === file) {
+        this.persistentHeadFiles.delete(pathKey);
         try {
           await file.close();
         } catch {
@@ -1723,20 +1736,20 @@ export class HizoFSSegmentedStore {
   }
 
   private async ensurePersistentHeadFile({
-    slot,
     path,
+    pathKey,
   }: {
-    slot: 0 | 1;
     path: readonly string[];
+    pathKey: string;
   }): Promise<HizoFSRandomAccessFile> {
-    const existing = this.persistentHeadFiles.get(slot);
+    const existing = this.persistentHeadFiles.get(pathKey);
     if (existing !== undefined) return existing;
     const file = await this.backingStore.openRandomAccessFile({
       path,
       mode: 'read_write',
       create: true,
     });
-    this.persistentHeadFiles.set(slot, file);
+    this.persistentHeadFiles.set(pathKey, file);
     return file;
   }
 
@@ -1886,6 +1899,6 @@ export class HizoFSSegmentedStore {
 export const TEST_ONLY = {
   DATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH,
   METADATA_SEGMENT_PAYLOAD_TARGET_BYTE_LENGTH,
-  getHeadPath,
+  getHizoFSHeadPath,
   getSegmentPath,
 };

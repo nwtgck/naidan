@@ -84,7 +84,7 @@ export function createHizoFSBenchmarkStudyReport({
   });
   return hizoFSBenchmarkStudyReportSchema.parse({
     schemaVersion: 1,
-    studyImplementationVersion: 7,
+    studyImplementationVersion: 8,
     reportType: 'hizofs_benchmark_study',
     studyId,
     studyKind,
@@ -190,28 +190,28 @@ function createPolicyMatrix({
       label: 'File chunk cache disabled',
       byteLimit: 0,
       entryLimit: 0,
-      admission: 'read_only' as const,
+      admission: 'read' as const,
     },
     {
       variantId: 'chunk-cache-8mib-read-only',
       label: 'File chunk cache 8 MiB, read only',
       byteLimit: 8 * 1024 * 1024,
       entryLimit: 1024,
-      admission: 'read_only' as const,
+      admission: 'read' as const,
     },
     {
       variantId: 'chunk-cache-16mib-read-only',
       label: 'File chunk cache 16 MiB, read only',
       byteLimit: 16 * 1024 * 1024,
       entryLimit: 2048,
-      admission: 'read_only' as const,
+      admission: 'read' as const,
     },
     {
       variantId: 'chunk-cache-32mib-read-only',
       label: 'File chunk cache 32 MiB, read only',
       byteLimit: 32 * 1024 * 1024,
       entryLimit: 4096,
-      admission: 'read_only' as const,
+      admission: 'read' as const,
     },
     {
       variantId: 'chunk-cache-8mib-read-write',

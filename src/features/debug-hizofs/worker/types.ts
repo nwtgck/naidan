@@ -10,6 +10,7 @@ import {
   HizoFSFileExtentPageSchemaDto,
   HizoFSFileInodeSchemaDto,
   HizoFSInodeIndexPageSchemaDto,
+  HizoFSSubvolumeDescriptorSchemaDto,
   HizoFSSuperblockSchemaDto,
   HizoFSSymlinkInodeSchemaDto,
 } from '@/00-storage/00-dto/hizofs.dto';
@@ -155,13 +156,14 @@ const maintenanceHealthSchema = z.object({
 });
 
 export const hizoFSInspectionOverviewSchema = z.object({
-  activeMode: z.union([z.literal('current'), z.literal('fallback_read_only')]),
+  activeMode: z.union([z.literal('current'), z.literal('fallback')]),
   descriptor: HizoFSDescriptorSchemaDto,
   fileSystemId: z.string(),
   persistedDescriptorDto: z.unknown(),
   descriptorValidationError: z.union([z.string(), z.undefined()]),
   superblockSlots: z.array(hizoFSSuperblockSlotSchema),
   activeSuperblock: HizoFSSuperblockSchemaDto,
+  rootSubvolumeDescriptor: HizoFSSubvolumeDescriptorSchemaDto,
   activeCommitObjectId: z.string(),
   activeCommit: HizoFSCommitSchemaDto,
   activeCommitPersistedDto: z.unknown(),
