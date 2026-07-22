@@ -102,6 +102,56 @@ jobs:
           cd naidan-server.py
           ./run_test.sh
 
+  archive_node_modules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        uses: ./.github/actions/retry-npm-ci
+
+      - name: Create maximum-compression node_modules archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_dir="$RUNNER_TEMP/node-modules-archive"
+          archive_path="$archive_dir/node_modules.tar.xz"
+          contents_path="$archive_dir/node_modules.contents.txt"
+          mkdir -p "$archive_dir"
+
+          tar \
+            --exclude='node_modules/onnxruntime-node/bin' \
+            -cf - \
+            node_modules \
+            | xz \
+                -T1 \
+                --lzma2=preset=9e,dict=384MiB \
+                -c \
+                > "$archive_path"
+
+          test -s "$archive_path"
+          tar -tJf "$archive_path" > "$contents_path"
+          if grep -q '^node_modules/onnxruntime-node/bin/' "$contents_path"; then
+            echo "Excluded onnxruntime-node/bin files were found in the archive." >&2
+            exit 1
+          fi
+          rm "$contents_path"
+
+      - name: Upload maximum-compression node_modules archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-modules-without-onnxruntime-bin
+          path: ${{ runner.temp }}/node-modules-archive/node_modules.tar.xz
+          if-no-files-found: error
+          compression-level: 0
+
   build:
     runs-on: ubuntu-latest
     steps:
