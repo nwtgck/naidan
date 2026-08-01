@@ -88,6 +88,39 @@ describe('OPFS Persistence Control runtime composition', () => {
     });
   });
 
+  it('fails closed when a plain authority conflicts with an installed HizoFS session', () => {
+    const fileSystemId = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
+      fileSystemId: '0123456789_ABCDEFGHIJ',
+    }).mode.activeFileSystemId;
+    const unlockedSession = { fileSystemId } as OpfsPersistenceUnlockedSession;
+
+    expect(OPFS_STORAGE_TEST_ONLY.projectEncryptionSettingsInspection({
+      inspection: { type: 'plain' },
+      unlockedSession,
+    })).toMatchObject({
+      error: { message: 'Plain Persistence Control authority conflicts with an installed HizoFS session' },
+      type: 'recovery_required',
+    });
+  });
+
+  it('fails closed when the unlocked HizoFS session does not match the selected authority', () => {
+    const inspection = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
+      fileSystemId: '0123456789_ABCDEFGHIJ',
+    });
+    const differentFileSystemId = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
+      fileSystemId: 'ZYXWVUTSRQ_9876543210',
+    }).mode.activeFileSystemId;
+    const unlockedSession = { fileSystemId: differentFileSystemId } as OpfsPersistenceUnlockedSession;
+
+    expect(OPFS_STORAGE_TEST_ONLY.projectEncryptionSettingsInspection({
+      inspection,
+      unlockedSession,
+    })).toMatchObject({
+      error: { message: 'Authenticated HizoFS session does not match the selected Persistence Control authority' },
+      type: 'recovery_required',
+    });
+  });
+
   it('does not request the Persistence Control runtime for a plain namespace', async () => {
     const createRuntime = vi.fn<() => Promise<OpfsPersistenceRuntime>>();
     installOpfsPersistenceRuntimeFactory({ factory: createRuntime });
@@ -383,9 +416,18 @@ describe('OPFS Persistence Control runtime composition', () => {
     unhandledInspection satisfies Record<PropertyKey, never>;
     expect({ blockingReason, candidates, type }).toEqual(inspection);
     expect('mode' in inspection).toBe(false);
+    await expect(provider.inspectEncryptionSettings()).resolves.toEqual({
+      access: 'locked',
+      type: 'encrypted',
+    });
 
     await provider.unlockWithPassphrase({ passphrase: 'correct horse battery staple' });
 
+    await expect(provider.inspectEncryptionSettings()).resolves.toEqual({
+      access: 'unlocked',
+      fileSystemId: session.fileSystemId,
+      type: 'encrypted',
+    });
     expect(runtime.unlockWithPassphrase).toHaveBeenCalledWith({
       passphrase: 'correct horse battery staple',
       storageRoot,

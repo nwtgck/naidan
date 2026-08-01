@@ -11,7 +11,7 @@ import {
   ShieldAlertIcon,
 } from 'lucide-vue-next';
 import { storageService } from '@/00-storage/service';
-import type { OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
+import type { OpfsEncryptionSettingsInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import { validateEncryptionPassphrase } from '@/00-storage/service/naidan-opfs/passphrase';
 import { useConfirm } from '@/composables/useConfirm';
 import { useOpfsEncryptionTransition } from '@/features/opfs-encryption/composables/useOpfsEncryptionTransition';
@@ -28,7 +28,7 @@ const {
   updateProgress,
   finishLocalOperation,
 } = useOpfsEncryptionTransition();
-const inspection = ref<OpfsEncryptionInspection>({ type: 'plain' });
+const inspection = ref<OpfsEncryptionSettingsInspection>({ type: 'plain' });
 const loading = ref(false);
 const setupOpen = ref(false);
 const passphraseChangeOpen = ref(false);
@@ -47,11 +47,20 @@ const errorMessage = ref<string>();
 const experimentalAccepted = ref(false);
 
 const available = computed(() => props.storageType === 'opfs');
-const enabled = computed(() => inspection.value.type === 'encrypted');
-const operationLocked = computed(() => (
-  inspection.value.type === 'credential_required'
-  || inspection.value.type === 'transitioning'
+const toggleChecked = computed(() => inspection.value.type === 'encrypted');
+const isUnlockedEncrypted = computed(() => (
+  inspection.value.type === 'encrypted' && inspection.value.access === 'unlocked'
 ));
+const operationLocked = computed(() => {
+  const currentInspection = inspection.value;
+  switch (currentInspection.type) {
+  case 'plain': return false;
+  case 'encrypted': return currentInspection.access === 'locked';
+  case 'transitioning':
+  case 'recovery_required': return true;
+  default: return currentInspection satisfies never;
+  }
+});
 const passphraseValidation = computed(() => validateEncryptionPassphrase({
   passphrase: passphrase.value,
 }));
@@ -99,7 +108,7 @@ async function refreshInspection(): Promise<'updated' | 'failed'> {
   loading.value = true;
   errorMessage.value = undefined;
   try {
-    inspection.value = await storageService.inspectOpfsEncryption();
+    inspection.value = await storageService.inspectOpfsEncryptionSettings();
     return 'updated';
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
@@ -203,7 +212,6 @@ function finishFailedLocalOperation({
   const currentInspection = inspection.value;
   switch (currentInspection.type) {
   case 'plain':
-  case 'credential_required':
   case 'encrypted':
     finishLocalOperation({
       outcome: 'rolled_back',
@@ -229,7 +237,7 @@ async function refreshExpectedInspection({
 }: {
   expectedType: 'plain' | 'encrypted',
 }): Promise<void> {
-  const nextInspection = await storageService.inspectOpfsEncryption();
+  const nextInspection = await storageService.inspectOpfsEncryptionSettings();
   inspection.value = nextInspection;
   if (nextInspection.type !== expectedType) {
     throw new Error(
@@ -242,7 +250,7 @@ async function handleToggle(): Promise<void> {
   if (!available.value || loading.value || operationLocked.value) {
     return;
   }
-  if (!enabled.value) {
+  if (!toggleChecked.value) {
     setupOpen.value = true;
     return;
   }
@@ -319,7 +327,7 @@ async function changePassphrase(): Promise<void> {
 }
 
 async function reencrypt(): Promise<void> {
-  if (!enabled.value || !reencryptCanSubmit.value) {
+  if (!isUnlockedEncrypted.value || !reencryptCanSubmit.value) {
     return;
   }
   loading.value = true;
@@ -369,7 +377,7 @@ defineExpose({
   <div tw-class="rounded-3xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 p-5 sm:p-6 shadow-sm space-y-4">
     <div tw-class="flex items-start justify-between gap-5">
       <div tw-class="flex items-start gap-3 min-w-0">
-        <div tw-class="mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center" :class="enabled ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'">
+        <div tw-class="mt-0.5 w-9 h-9 rounded-xl flex items-center justify-center" :class="toggleChecked ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'">
           <LockKeyholeIcon tw-class="w-4.5 h-4.5" />
         </div>
         <div tw-class="min-w-0 space-y-1">
@@ -386,16 +394,16 @@ defineExpose({
       <button
         type="button"
         role="switch"
-        :aria-checked="enabled"
+        :aria-checked="toggleChecked"
         :disabled="!available || loading || operationLocked"
         data-testid="opfs-encryption-toggle"
         tw-class="relative inline-flex shrink-0 w-12 h-7 items-center rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        :class="enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
+        :class="toggleChecked ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
         @click="handleToggle"
       >
         <span
           tw-class="block w-5 h-5 rounded-full bg-white shadow transition-transform"
-          :class="enabled ? 'translate-x-6' : 'translate-x-1'"
+          :class="toggleChecked ? 'translate-x-6' : 'translate-x-1'"
         />
       </button>
     </div>
@@ -404,7 +412,7 @@ defineExpose({
       {{ lazyStrings.opfsEncryption__select_opfs_as_active_storage_to_enable_encryption() }}
     </div>
 
-    <div v-else-if="inspection.type === 'credential_required'" tw-class="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+    <div v-else-if="inspection.type === 'encrypted' && inspection.access === 'locked'" tw-class="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
       <KeyRoundIcon tw-class="w-4 h-4 shrink-0" />
       {{ lazyStrings.opfsEncryption__enter_passphrase_for_opfs_storage() }}
     </div>
@@ -425,7 +433,7 @@ defineExpose({
 
     <div v-if="available" tw-class="flex flex-wrap gap-2 pt-1">
       <button
-        v-if="enabled"
+        v-if="isUnlockedEncrypted"
         type="button"
         :disabled="loading"
         tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 px-3.5 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 disabled:opacity-50"
@@ -436,7 +444,7 @@ defineExpose({
         {{ lazyStrings.opfsEncryption__change_passphrase() }}
       </button>
       <button
-        v-if="enabled"
+        v-if="isUnlockedEncrypted"
         type="button"
         :disabled="loading"
         tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 px-3.5 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 disabled:opacity-50"

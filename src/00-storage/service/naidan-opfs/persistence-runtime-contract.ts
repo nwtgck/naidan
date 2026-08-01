@@ -42,6 +42,13 @@ export type OpfsEncryptionInspection =
     }
   | { readonly type: 'recovery_required'; readonly error: unknown };
 
+export type OpfsEncryptionSettingsInspection =
+  | { readonly type: 'plain' }
+  | { readonly access: 'locked'; readonly type: 'encrypted' }
+  | { readonly access: 'unlocked'; readonly fileSystemId: FileSystemId; readonly type: 'encrypted' }
+  | { readonly inspection: Extract<OpfsEncryptionInspection, { type: 'transitioning' }>; readonly type: 'transitioning' }
+  | { readonly error: unknown; readonly type: 'recovery_required' };
+
 export type OpfsPersistenceWritableProfile = 'development-unverified' | 'release-qualified';
 
 export type OpfsPersistenceUnlockedMaintenanceResult =

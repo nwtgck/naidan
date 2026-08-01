@@ -7,7 +7,10 @@ import { OPFSStorageProvider } from './opfs-storage';
 import { NaidanOpfsStorageBackend } from './naidan-opfs/backend';
 import { HostVolumeDB } from './opfs/host-volume-db';
 import { createNativeOpfsFileSystemSession } from './storage-file-system/native-opfs';
-import type { OpfsEncryptionInspection } from './naidan-opfs/persistence-runtime-contract';
+import type {
+  OpfsEncryptionInspection,
+  OpfsEncryptionSettingsInspection,
+} from './naidan-opfs/persistence-runtime-contract';
 import type { OpfsEncryptionTransitionProgressListener } from './naidan-opfs/transition-progress';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
 import {
@@ -511,6 +514,21 @@ export class StorageService {
       return { type: 'plain' };
     case 'opfs':
       return await this.getOpfsProvider().inspectEncryption();
+    default: {
+      const _ex: never = currentType;
+      throw new Error(`Unhandled storage type: ${String(_ex)}`);
+    }
+    }
+  }
+
+  async inspectOpfsEncryptionSettings(): Promise<OpfsEncryptionSettingsInspection> {
+    const currentType = this.getCurrentType();
+    switch (currentType) {
+    case 'local':
+    case 'memory':
+      return { type: 'plain' };
+    case 'opfs':
+      return await this.getOpfsProvider().inspectEncryptionSettings();
     default: {
       const _ex: never = currentType;
       throw new Error(`Unhandled storage type: ${String(_ex)}`);

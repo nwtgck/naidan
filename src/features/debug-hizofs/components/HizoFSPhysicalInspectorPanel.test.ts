@@ -512,9 +512,12 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     expect((wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').element as HTMLInputElement).value).toBe("");
   });
 
-  it("emits close without disposing or retaining the injected worker", async () => {
+  it("renders as the embedded Physical Inspector panel without a nested portable modal", () => {
     const wrapper = mount(HizoFSPhysicalInspectorPanel, { props: { inspector: createWorker() } });
-    await wrapper.get('[data-testid="hizofs-physical-inspector-close"]').trigger("click");
-    expect(wrapper.emitted("close")).toHaveLength(1);
+
+    expect(wrapper.text()).toContain("Physical Inspector");
+    expect(wrapper.text()).not.toContain("Portable HizoFS Inspector");
+    expect(wrapper.attributes("aria-modal")).toBeUndefined();
+    expect(wrapper.find('[data-testid="hizofs-physical-inspector-close"]').exists()).toBe(false);
   });
 });

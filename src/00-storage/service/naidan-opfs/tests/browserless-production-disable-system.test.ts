@@ -82,7 +82,17 @@ describe("browserless production HizoFS disable system", () => {
       });
 
       const encryptedAfterReload = new OPFSStorageProvider();
+      await expect(encryptedAfterReload.inspectEncryptionSettings()).resolves.toEqual({
+        access: "locked",
+        type: "encrypted",
+      });
       await encryptedAfterReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      const unlockedSettingsInspection = await encryptedAfterReload.inspectEncryptionSettings();
+      expect(unlockedSettingsInspection.type).toBe("encrypted");
+      if (unlockedSettingsInspection.type !== "encrypted") {
+        throw new Error("Expected unlocked encrypted settings inspection");
+      }
+      expect(unlockedSettingsInspection.access).toBe("unlocked");
       await vi.waitFor(async () => {
         await expect(listNativePlainApplicationNamespaceEntryNames({
           nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
@@ -117,6 +127,7 @@ describe("browserless production HizoFS disable system", () => {
       // provider must discover stable plain authority without a credential.
       const plainAfterReload = new OPFSStorageProvider();
       await expect(plainAfterReload.inspectEncryption()).resolves.toMatchObject({ type: "plain" });
+      await expect(plainAfterReload.inspectEncryptionSettings()).resolves.toEqual({ type: "plain" });
       await plainAfterReload.init();
       expect(await plainAfterReload.loadSettings()).toMatchObject({
         endpoint: { url: "http://encrypted-before-disable" },

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { LoaderCircleIcon, RefreshCwIcon, SearchIcon, XIcon } from "lucide-vue-next";
+import { LoaderCircleIcon, RefreshCwIcon, SearchIcon } from "lucide-vue-next";
 import { createHizoFSNamespaceInspectionView } from "@/features/debug-hizofs/logic/namespace-inspection-view";
 import {
   formatHizoFSInspectorNamespacePath,
@@ -21,9 +21,6 @@ const props = defineProps<{
   inspector: HizoFSPhysicalInspectionWorker;
 }>();
 
-const emit = defineEmits<{
-  close: [];
-}>();
 
 const passphrase = ref("");
 const namespacePath = ref("/");
@@ -345,17 +342,14 @@ defineExpose({
 </script>
 
 <template>
-  <div tw-class="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-3 sm:p-6" @click.self="emit('close')">
-    <section role="dialog" aria-modal="true" aria-labelledby="hizofs-physical-inspector-title" tw-class="flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+  <div tw-class="min-h-full">
+    <section aria-labelledby="hizofs-physical-inspector-title" tw-class="flex min-h-full w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
       <header tw-class="flex shrink-0 items-center gap-3 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
         <SearchIcon tw-class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
         <div tw-class="min-w-0 flex-1">
-          <h2 id="hizofs-physical-inspector-title" tw-class="text-sm font-semibold text-gray-900 dark:text-gray-100">Portable HizoFS Inspector</h2>
+          <h2 id="hizofs-physical-inspector-title" tw-class="text-sm font-semibold text-gray-900 dark:text-gray-100">Physical Inspector</h2>
           <p tw-class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">One-shot physical authority and namespace inspection. Secrets are not retained.</p>
         </div>
-        <button type="button" aria-label="Close portable HizoFS Inspector" data-testid="hizofs-physical-inspector-close" tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="emit('close')">
-          <XIcon tw-class="h-4 w-4" />
-        </button>
       </header>
 
       <div tw-class="grid shrink-0 gap-3 border-b border-gray-200 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] dark:border-gray-700">

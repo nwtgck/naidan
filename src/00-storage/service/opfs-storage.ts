@@ -46,6 +46,7 @@ import {
 } from './opfs/opfs-special-file-system';
 import type {
   OpfsEncryptionInspection,
+  OpfsEncryptionSettingsInspection,
   OpfsPersistenceRuntime,
   OpfsPersistenceTransitionRequest,
   OpfsPersistenceTransitionResult,
@@ -120,6 +121,47 @@ function exposeStorageVolumeAccess({ access }: {
   default: {
     const _ex: never = access;
     throw new Error(`Unhandled storage volume access: ${String(_ex)}`);
+  }
+  }
+}
+
+function projectEncryptionSettingsInspection({
+  inspection,
+  unlockedSession,
+}: {
+  inspection: OpfsEncryptionInspection;
+  unlockedSession: OpfsPersistenceUnlockedSession | undefined;
+}): OpfsEncryptionSettingsInspection {
+  switch (inspection.type) {
+  case 'plain':
+    return unlockedSession === undefined
+      ? { type: 'plain' }
+      : {
+        error: new Error('Plain Persistence Control authority conflicts with an installed HizoFS session'),
+        type: 'recovery_required',
+      };
+  case 'credential_required':
+    return unlockedSession === undefined
+      ? { access: 'locked', type: 'encrypted' }
+      : { access: 'unlocked', fileSystemId: unlockedSession.fileSystemId, type: 'encrypted' };
+  case 'encrypted':
+    if (unlockedSession === undefined) {
+      return { access: 'locked', type: 'encrypted' };
+    }
+    if (unlockedSession.fileSystemId !== inspection.mode.activeFileSystemId) {
+      return {
+        error: new Error('Authenticated HizoFS session does not match the selected Persistence Control authority'),
+        type: 'recovery_required',
+      };
+    }
+    return { access: 'unlocked', fileSystemId: unlockedSession.fileSystemId, type: 'encrypted' };
+  case 'transitioning':
+    return { inspection, type: 'transitioning' };
+  case 'recovery_required':
+    return inspection;
+  default: {
+    const _ex: never = inspection;
+    throw new Error(`Unhandled OPFS encryption inspection: ${String(_ex)}`);
   }
   }
 }
@@ -446,6 +488,13 @@ export class OPFSStorageProvider extends IStorageProvider {
     } catch (error) {
       return { type: 'recovery_required', error };
     }
+  }
+
+  async inspectEncryptionSettings(): Promise<OpfsEncryptionSettingsInspection> {
+    return projectEncryptionSettingsInspection({
+      inspection: await this.inspectEncryption(),
+      unlockedSession: this.unlockedEncryptionSession,
+    });
   }
 
   async unlockWithPassphrase({ passphrase }: { passphrase: string }): Promise<void> {
@@ -1207,4 +1256,5 @@ export const TEST_ONLY = {
   getOrCreateStorageRoot,
   getStorageRootIfPresent,
   hasPersistenceControlDirectory,
+  projectEncryptionSettingsInspection,
 };

@@ -12,7 +12,7 @@ const mockFinishLocalOperation = vi.fn();
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    inspectOpfsEncryption: vi.fn(),
+    inspectOpfsEncryptionSettings: vi.fn(),
     enableOpfsEncryption: vi.fn(),
     changeOpfsEncryptionPassphrase: vi.fn(),
     disableOpfsEncryption: vi.fn(),
@@ -80,7 +80,7 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('location', { reload: vi.fn() });
-  vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue({ type: 'plain' });
+  vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue({ type: 'plain' });
   vi.mocked(storageService.enableOpfsEncryption).mockResolvedValue(undefined);
   vi.mocked(prepareForOpfsEncryptionTransition).mockResolvedValue(undefined);
 });
@@ -94,21 +94,20 @@ describe('OpfsEncryptionSettingsPanel', () => {
       expect(wrapper.text()).toContain('OPFS encryption');
       expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('disabled')).toBeDefined();
       expect(wrapper.text()).toContain('Select OPFS as the active storage provider');
-      expect(storageService.inspectOpfsEncryption).not.toHaveBeenCalled();
+      expect(storageService.inspectOpfsEncryptionSettings).not.toHaveBeenCalled();
     },
   );
 
   it('keeps transition controls disabled while storage requires a credential', async () => {
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
-      PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
-        firstSequence: 2,
-        secondSequence: 1,
-      }),
-    );
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue({
+      access: 'locked',
+      type: 'encrypted',
+    });
 
     const wrapper = await mountPanel({ storageType: 'opfs' });
 
     expect(wrapper.text()).toContain('Enter the passphrase for this OPFS storage');
+    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
     expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-testid="opfs-encryption-change-passphrase"]').exists()).toBe(false);
   });
@@ -141,8 +140,8 @@ describe('OpfsEncryptionSettingsPanel', () => {
     await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
     await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
     await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce(
-      createEncryptedInspection(),
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValueOnce(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
 
     expect(document.body.textContent).toContain(
@@ -174,8 +173,8 @@ describe('OpfsEncryptionSettingsPanel', () => {
       await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
       await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
       await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
-      vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce(
-        createEncryptedInspection(),
+      vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValueOnce(
+        { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
       );
 
       await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
@@ -194,7 +193,7 @@ describe('OpfsEncryptionSettingsPanel', () => {
   );
 
   it('refreshes the stable inspection after an encryption transition fails', async () => {
-    vi.mocked(storageService.inspectOpfsEncryption)
+    vi.mocked(storageService.inspectOpfsEncryptionSettings)
       .mockReset()
       .mockResolvedValue({ type: 'plain' });
     vi.mocked(storageService.enableOpfsEncryption).mockRejectedValueOnce(
@@ -213,7 +212,7 @@ describe('OpfsEncryptionSettingsPanel', () => {
       outcome: 'rolled_back',
       errorMessage: 'Transferred settings do not match their source',
     });
-    expect(storageService.inspectOpfsEncryption).toHaveBeenCalledTimes(2);
+    expect(storageService.inspectOpfsEncryptionSettings).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).toContain(
       'Transferred settings do not match their source',
     );
@@ -241,8 +240,8 @@ line two`,
   });
 
   it('changes the passphrase without starting a storage transition', async () => {
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
-      createEncryptedInspection(),
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
     const wrapper = await mountPanel({ storageType: 'opfs' });
     await wrapper.get('[data-testid="opfs-encryption-change-passphrase"]').trigger('click');
@@ -261,8 +260,8 @@ line two`,
   });
 
   it('toggles visibility for a changed passphrase', async () => {
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
-      createEncryptedInspection(),
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
     const wrapper = await mountPanel({ storageType: 'opfs' });
     await wrapper.get('[data-testid="opfs-encryption-change-passphrase"]').trigger('click');
@@ -280,15 +279,18 @@ line two`,
   });
 
   it('disables encryption in place without reloading the initiating tab', async () => {
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
-      createEncryptedInspection(),
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
     vi.mocked(storageService.disableOpfsEncryption).mockResolvedValue(undefined);
     mockShowConfirm.mockResolvedValue(true);
     const wrapper = await mountPanel({ storageType: 'opfs' });
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce({ type: 'plain' });
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValueOnce({ type: 'plain' });
+    const toggle = wrapper.get('[data-testid="opfs-encryption-toggle"]');
+    expect(toggle.attributes('aria-checked')).toBe('true');
+    expect(toggle.attributes('disabled')).toBeUndefined();
 
-    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+    await toggle.trigger('click');
     await flushPromises();
 
     expect(storageService.disableOpfsEncryption).toHaveBeenCalledWith({
@@ -303,13 +305,13 @@ line two`,
   });
 
   it('re-encrypts in place without reloading the initiating tab', async () => {
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
-      createEncryptedInspection(),
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
     vi.mocked(storageService.reencryptOpfsEncryption).mockResolvedValue(undefined);
     const wrapper = await mountPanel({ storageType: 'opfs' });
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce(
-      createEncryptedInspection(),
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValueOnce(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
 
     await wrapper.get('[data-testid="opfs-encryption-reencrypt"]').trigger('click');
@@ -332,8 +334,8 @@ line two`,
   });
 
   it('requires confirmation before decrypting and a current passphrase before re-encrypting storage', async () => {
-    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
-      createEncryptedInspection(),
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
     mockShowConfirm.mockResolvedValue(false);
     const wrapper = await mountPanel({ storageType: 'opfs' });
