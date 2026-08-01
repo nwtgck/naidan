@@ -98,7 +98,7 @@ import {
   NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
 } from './native-plain-disable-transition-driver';
 import { NativePlainTransitionRuntimeState } from './native-plain-transition-runtime-state';
-import { RuntimeHizoFSTransitionProgress } from './runtime-hizofs-transition-progress';
+import { RuntimeHizoFSTransitionImportState } from './runtime-hizofs-transition-import-state';
 import { projectNativePlainTransitionSource } from './native-plain-transition-namespace';
 import {
   createNativePlainEnableTransitionDriver,
@@ -244,8 +244,7 @@ export async function createNativeHizoFSEnableTransitionTarget({
 type NativeHizoFSEnableTargetSessionOpener = typeof openBrowserHizoFSTransitionTargetEndpointSession;
 type NativeHizoFSEnableTargetPublisher = typeof publishBrowserHizoFSTransitionTargetCandidate;
 type NativeHizoFSEnableTargetNormalOpenVerifier = typeof verifyBrowserHizoFSTransitionTargetNormalOpen;
-type NativeHizoFSEnableTargetJournalBinding = Parameters<NativeHizoFSEnableTargetSessionOpener>[0]['binding'];
-type NativeHizoFSEnableTargetJournalPort = Parameters<NativeHizoFSEnableTargetSessionOpener>[0]['journalPort'];
+type NativeHizoFSEnableTargetImportStatePort = Parameters<NativeHizoFSEnableTargetSessionOpener>[0]['runtimeStatePort'];
 type NativeHizoFSEnableTargetLimits = Parameters<NativeHizoFSEnableTargetSessionOpener>[0]['limits'];
 type NativeHizoFSEnableTargetProofVerifier = Parameters<NativeHizoFSEnableTargetSessionOpener>[0]['verifyProofAuthority'];
 
@@ -287,9 +286,8 @@ function createNativeHizoFSEnableTransitionDriverWith({
   binding,
   exclusiveGate,
   initialOpenProfile,
+  importStatePort,
   inspectTarget,
-  journalBinding,
-  journalPort,
   limits,
   normalOpenVerificationPassphrases,
   operationPassphrase,
@@ -302,11 +300,10 @@ function createNativeHizoFSEnableTransitionDriverWith({
   binding: TransitionTargetOperationBinding;
   exclusiveGate: NaidanPersistenceControlExclusiveGate;
   initialOpenProfile: CredentialCandidateOpenProfile;
+  importStatePort: NativeHizoFSEnableTargetImportStatePort;
   inspectTarget: ({ openProfile }: {
     openProfile: CredentialCandidateOpenProfile;
   }) => Promise<TransitionEndpointReadiness>;
-  journalBinding: NativeHizoFSEnableTargetJournalBinding;
-  journalPort: NativeHizoFSEnableTargetJournalPort;
   limits: NativeHizoFSEnableTargetLimits;
   normalOpenVerificationPassphrases: readonly string[];
   operationPassphrase: string;
@@ -362,10 +359,10 @@ function createNativeHizoFSEnableTransitionDriverWith({
             }
             publicationGuardChecks += 1;
           },
-          binding: journalBinding,
           containerRoot: await containerRoot(),
-          journalPort,
+          operationIdentity: binding.operationId,
           passphrase: operationPassphrase,
+          runtimeStatePort: importStatePort,
           verifyProofAuthority,
         });
         if (publicationGuardChecks === 0) {
@@ -387,11 +384,11 @@ function createNativeHizoFSEnableTransitionDriverWith({
       requireBinding({ actual });
       return await runtime.openTargetSession({
         authorityIdentity,
-        binding: journalBinding,
         containerRoot: await containerRoot(),
-        journalPort,
         limits,
+        operationIdentity: binding.operationId,
         passphrase: operationPassphrase,
+        runtimeStatePort: importStatePort,
         verifyProofAuthority,
       });
     },
@@ -437,9 +434,8 @@ export function createNativeHizoFSEnableTransitionDriver({
   binding,
   exclusiveGate,
   initialOpenProfile,
+  importStatePort,
   inspectTarget,
-  journalBinding,
-  journalPort,
   limits,
   passphrase,
   storageRoot,
@@ -454,9 +450,8 @@ export function createNativeHizoFSEnableTransitionDriver({
     binding,
     exclusiveGate,
     initialOpenProfile,
+    importStatePort,
     inspectTarget,
-    journalBinding,
-    journalPort,
     limits,
     normalOpenVerificationPassphrases: [passphrase],
     operationPassphrase: passphrase,
@@ -2041,16 +2036,8 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
       targetAuthorityIdentity,
       targetEndpoint: binding.target,
     } as const;
-    const journalBinding = {
-      operationIdentity: binding.operationId,
-      sourceAuthorityIdentity,
-      sourceEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.source }),
-      targetAuthorityIdentity,
-      targetEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.target }),
-    } as const;
-    const bridge = new RuntimeHizoFSTransitionProgress({
+    const runtimeState = new RuntimeHizoFSTransitionImportState({
       binding: runtimeBinding,
-      journalBinding,
     });
     const recheckPublicationAllowed = async (): Promise<void> => {
       const state = await control.readState();
@@ -2063,14 +2050,13 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
       binding,
       exclusiveGate,
       initialOpenProfile: 'root_key_proof',
+      importStatePort: runtimeState.importStatePort,
       inspectTarget: async ({ openProfile }) => await inspectNativeHizoFSEndpoint({
         fileSystemId: targetFileSystemId,
         nativeNamespaceRoot,
         openProfile,
         passphrase: operationPassphrase,
       }),
-      journalBinding,
-      journalPort: bridge.providerJournalPort,
       limits: NATIVE_ENABLE_TARGET_IMPORT_LIMITS,
       normalOpenVerificationPassphrases: passphrases,
       operationPassphrase,
@@ -2098,7 +2084,7 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
       const result = await advancePersistenceTransition({
         control,
         policy: NATIVE_ENABLE_TRANSITION_POLICY,
-        progressPort: bridge.progressPort,
+        progressPort: runtimeState.progressPort,
         provider,
         signal,
       });
@@ -2313,16 +2299,8 @@ export async function runNativeHizoFSEnableTransition({
       targetAuthorityIdentity,
       targetEndpoint: binding.target,
     } as const;
-    const journalBinding = {
-      operationIdentity: operationId,
-      sourceAuthorityIdentity: NATIVE_PLAIN_ENABLE_AUTHORITY_IDENTITY,
-      sourceEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.source }),
-      targetAuthorityIdentity,
-      targetEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.target }),
-    } as const;
-    const bridge = new RuntimeHizoFSTransitionProgress({
+    const runtimeState = new RuntimeHizoFSTransitionImportState({
       binding: runtimeBinding,
-      journalBinding,
     });
     const recheckPublicationAllowed = async (): Promise<void> => {
       const state = await control.readState();
@@ -2336,14 +2314,13 @@ export async function runNativeHizoFSEnableTransition({
         binding,
         exclusiveGate,
         initialOpenProfile: 'root_key_proof',
+        importStatePort: runtimeState.importStatePort,
         inspectTarget: async ({ openProfile }) => await inspectNativeHizoFSEndpoint({
           fileSystemId,
           nativeNamespaceRoot,
           openProfile,
           passphrase,
         }),
-        journalBinding,
-        journalPort: bridge.providerJournalPort,
         limits: NATIVE_ENABLE_TARGET_IMPORT_LIMITS,
         passphrase,
         recheckPublicationAllowed,
@@ -2365,7 +2342,7 @@ export async function runNativeHizoFSEnableTransition({
       const result = await advancePersistenceTransition({
         control,
         policy: NATIVE_ENABLE_TRANSITION_POLICY,
-        progressPort: bridge.progressPort,
+        progressPort: runtimeState.progressPort,
         provider,
         signal,
       });

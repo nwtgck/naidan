@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { HizoFSTransitionImportJournalPort } from "@/00-storage/service/hizofs/api";
+import type { HizoFSTransitionImportStatePort } from "@/00-storage/service/hizofs/api";
 import { parseTransitionOperationId } from "@/00-storage/service/naidan-persistence-control/00-format";
 import type { TransitionTargetOperationBinding } from "@/00-storage/service/naidan-persistence-control/transition/transition-provider-adapter";
 import { TEST_ONLY } from "@/00-storage/service/naidan-opfs/production-persistence-runtime";
@@ -53,21 +53,18 @@ function driver({
   const inspectTarget = vi.fn(async ({ openProfile }: { openProfile: "normal_read" | "root_key_proof" }) => (
     openProfile === "normal_read" ? "fully_verified" as const : readiness
   ));
+  const importStatePort: HizoFSTransitionImportStatePort = {
+    loadCandidate: async () => undefined,
+    stageCandidate: async () => undefined,
+  };
   const result = TEST_ONLY.createNativeHizoFSEnableTransitionDriverWith({
     recheckPublicationAllowed,
     authorityIdentity: "target-authority",
     binding,
     exclusiveGate: { runExclusive: async ({ operation }) => await operation() },
     initialOpenProfile: "root_key_proof",
+    importStatePort,
     inspectTarget,
-    journalBinding: {
-      operationIdentity: OPERATION_ID,
-      sourceAuthorityIdentity: "plain-authority",
-      sourceEndpointIdentity: "plain",
-      targetAuthorityIdentity: "target-authority",
-      targetEndpointIdentity: `hizofs:${FILE_SYSTEM_ID}`,
-    },
-    journalPort: Object.freeze({}) as HizoFSTransitionImportJournalPort,
     limits: {
       directory: { maximumEntryMutationsPerBatch: 2 },
       file: { maximumExtentMutationsPerBatch: 2 },

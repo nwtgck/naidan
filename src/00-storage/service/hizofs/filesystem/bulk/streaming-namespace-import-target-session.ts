@@ -6,12 +6,12 @@ import {
   StreamingNamespaceImport,
   type SealedStreamingNamespaceImport,
   type StreamingNamespaceImportCheckpoint,
+  validateSealedStreamingNamespaceImport,
 } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import";
 import {
-  StreamingNamespaceImportJournal,
-  type StreamingNamespaceImportJournalBinding,
-  type StreamingNamespaceImportJournalPort,
-} from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-journal";
+  type StreamingNamespaceImportRuntimeCandidate,
+  type StreamingNamespaceImportRuntimeStatePort,
+} from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-runtime-state";
 import type {
   TransitionNamespaceMetadata,
   TransitionNamespaceTargetPort,
@@ -74,75 +74,82 @@ function rootMetadataFromCheckpoint({ checkpoint }: {
 }
 
 /**
- * Owns one bounded target slice and persists either an active checkpoint or a
- * sealed private root. The root metadata handshake creates the private importer
- * only after the source supplied exact timestamps, so no target can synthesize
- * or silently discard root-directory metadata.
+ * Owns one bounded target slice and stages either an active checkpoint or a
+ * sealed private root in invocation-scoped typed state. The root metadata
+ * handshake creates the private importer only after the source supplied exact
+ * timestamps, so no target can synthesize or silently discard root metadata.
  */
 export class StreamingNamespaceImportTargetSession {
   readonly #createImport: ({ rootMetadata }: {
     rootMetadata: TransitionNamespaceMetadata;
   }) => StreamingNamespaceImportActor;
-  readonly #journal: StreamingNamespaceImportJournal;
+  readonly #operationIdentity: string;
+  readonly #runtimeStatePort: StreamingNamespaceImportRuntimeStatePort;
   #actor: StreamingNamespaceImportActor | undefined;
   #rootMetadata: TransitionNamespaceMetadata | undefined;
   #sealed: SealedStreamingNamespaceImport | undefined;
   #state: StreamingNamespaceImportTargetSessionState;
 
-  private constructor({ actor, createImport, journal, rootMetadata, sealed }: {
+  private constructor({ actor, createImport, operationIdentity, rootMetadata, runtimeStatePort, sealed }: {
     actor: StreamingNamespaceImportActor | undefined;
     createImport: ({ rootMetadata }: {
       rootMetadata: TransitionNamespaceMetadata;
     }) => StreamingNamespaceImportActor;
-    journal: StreamingNamespaceImportJournal;
+    operationIdentity: string;
     rootMetadata: TransitionNamespaceMetadata | undefined;
+    runtimeStatePort: StreamingNamespaceImportRuntimeStatePort;
     sealed: SealedStreamingNamespaceImport | undefined;
   }) {
     this.#actor = actor;
     this.#createImport = createImport;
-    this.#journal = journal;
+    this.#operationIdentity = operationIdentity;
     this.#rootMetadata = rootMetadata === undefined ? undefined : cloneMetadata({ metadata: rootMetadata });
-    this.#sealed = sealed === undefined ? undefined : structuredClone(sealed);
+    this.#runtimeStatePort = runtimeStatePort;
+    this.#sealed = sealed;
     this.#state = sealed !== undefined ? "sealed" : actor === undefined ? "awaiting_root" : "active";
   }
 
-  static async open({ binding, createImport, journalPort, restoreImport }: {
-    binding: StreamingNamespaceImportJournalBinding;
+  static async open({ createImport, operationIdentity, restoreImport, runtimeStatePort }: {
     createImport: ({ rootMetadata }: {
       rootMetadata: TransitionNamespaceMetadata;
     }) => StreamingNamespaceImportActor;
-    journalPort: StreamingNamespaceImportJournalPort;
+    operationIdentity: string;
     restoreImport: ({ checkpoint }: {
       checkpoint: StreamingNamespaceImportCheckpoint;
     }) => StreamingNamespaceImportActor;
+    runtimeStatePort: StreamingNamespaceImportRuntimeStatePort;
   }): Promise<StreamingNamespaceImportTargetSession> {
-    const opened = await StreamingNamespaceImportJournal.open({ binding, port: journalPort });
-    switch (opened.candidate?.type) {
+    const candidate = await runtimeStatePort.loadCandidate({ operationIdentity });
+    switch (candidate?.type) {
     case undefined:
       return new StreamingNamespaceImportTargetSession({
         actor: undefined,
         createImport,
-        journal: opened.journal,
+        operationIdentity,
         rootMetadata: undefined,
+        runtimeStatePort,
         sealed: undefined,
       });
     case "active":
       return new StreamingNamespaceImportTargetSession({
-        actor: restoreImport({ checkpoint: opened.candidate.checkpoint }),
+        actor: restoreImport({ checkpoint: candidate.checkpoint }),
         createImport,
-        journal: opened.journal,
-        rootMetadata: rootMetadataFromCheckpoint({ checkpoint: opened.candidate.checkpoint }),
+        operationIdentity,
+        rootMetadata: rootMetadataFromCheckpoint({ checkpoint: candidate.checkpoint }),
+        runtimeStatePort,
         sealed: undefined,
       });
     case "sealed":
+      validateSealedStreamingNamespaceImport({ sealed: candidate.sealed });
       return new StreamingNamespaceImportTargetSession({
         actor: undefined,
         createImport,
-        journal: opened.journal,
+        operationIdentity,
         rootMetadata: undefined,
-        sealed: opened.candidate.sealed,
+        runtimeStatePort,
+        sealed: candidate.sealed,
       });
-    default: return opened.candidate satisfies never;
+    default: return candidate satisfies never;
     }
   }
 
@@ -222,7 +229,8 @@ export class StreamingNamespaceImportTargetSession {
       });
       case "active": {
         const sealed = await this.#requireActiveActor().finalize();
-        this.#sealed = structuredClone(sealed);
+        validateSealedStreamingNamespaceImport({ sealed });
+        this.#sealed = sealed;
         this.#actor = undefined;
         this.#state = "sealing";
         break;
@@ -261,7 +269,14 @@ export class StreamingNamespaceImportTargetSession {
   async #saveSealedCandidate(): Promise<void> {
     const sealed = this.#sealed;
     if (sealed === undefined) throw new Error("sealing transition import session lost its private root");
-    await this.#journal.saveSealed({ sealed });
+    const candidate: StreamingNamespaceImportRuntimeCandidate = {
+      sealed,
+      type: "sealed",
+    };
+    await this.#runtimeStatePort.stageCandidate({
+      candidate,
+      operationIdentity: this.#operationIdentity,
+    });
   }
 
   async close(): Promise<void> {
@@ -279,7 +294,14 @@ export class StreamingNamespaceImportTargetSession {
       return;
     case "active": {
       const actor = this.#requireActiveActor();
-      await this.#journal.saveActive({ checkpoint: await actor.checkpoint() });
+      const candidate: StreamingNamespaceImportRuntimeCandidate = {
+        checkpoint: await actor.checkpoint(),
+        type: "active",
+      };
+      await this.#runtimeStatePort.stageCandidate({
+        candidate,
+        operationIdentity: this.#operationIdentity,
+      });
       this.#actor = undefined;
       this.#state = "closed";
       return;

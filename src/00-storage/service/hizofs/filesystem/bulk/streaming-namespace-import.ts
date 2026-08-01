@@ -1,8 +1,14 @@
 import {
+  HIZOFS_V1_FORMAT_CONSTANTS,
   UINT64_MAXIMUM,
+  compareUnsignedBytes,
   createFileOffset,
   createInodeNumber,
   createInodeRevision,
+  createTimestampMilliseconds,
+  encodeDirectoryEntry,
+  encodeFilenameComponent,
+  encodeHomeRecordReference,
   type HomeRecordReference,
   type InodeLeafEntry,
   type InodeNumber,
@@ -30,6 +36,7 @@ export type StreamingNamespaceImportErrorCode =
   | "allocator_exhausted"
   | "already_finalized"
   | "import_failed"
+  | "invalid_checkpoint"
   | "invalid_path"
   | "non_depth_first_path";
 
@@ -92,6 +99,211 @@ type ActiveFile = {
 
 type StreamingNamespaceImportState = "active" | "failed" | "finalized";
 
+const MAXIMUM_RUNTIME_IMPORT_PATH_COMPONENTS = 1_024;
+
+function requireReferenceKind({ expectedRecordKind, label, reference }: {
+  expectedRecordKind: number;
+  label: string;
+  reference: HomeRecordReference;
+}): void {
+  encodeHomeRecordReference({ reference });
+  if (reference.recordKind !== expectedRecordKind) {
+    throw new StreamingNamespaceImportError({
+      code: "invalid_checkpoint",
+      message: `${label} has the wrong physical record kind`,
+    });
+  }
+}
+
+function requireCheckpointPath({ allowRoot, maximumPathComponents, path }: {
+  allowRoot: boolean;
+  maximumPathComponents: number;
+  path: readonly string[];
+}): void {
+  if ((!allowRoot && path.length === 0) || path.length > maximumPathComponents) {
+    throw new StreamingNamespaceImportError({
+      code: "invalid_path",
+      message: "streaming namespace checkpoint path is outside its component bound",
+    });
+  }
+  for (const component of path) encodeFilenameComponent({ value: component });
+}
+
+function validateTimestamps({ timestamps }: {
+  timestamps: InodeTimestamps;
+}): void {
+  if (timestamps.createdAt !== null) createTimestampMilliseconds({ value: timestamps.createdAt });
+  if (timestamps.modifiedAt !== null) createTimestampMilliseconds({ value: timestamps.modifiedAt });
+}
+
+function validateDirectoryCheckpoint({ checkpoint, nextInodeNumber }: {
+  checkpoint: StreamingDirectoryImportCheckpoint;
+  nextInodeNumber: InodeNumber;
+}): void {
+  createInodeNumber({ value: checkpoint.inodeNumber });
+  createInodeRevision({ value: checkpoint.inodeRevision });
+  if (checkpoint.inodeNumber >= nextInodeNumber) {
+    throw new StreamingNamespaceImportError({
+      code: "invalid_checkpoint",
+      message: "streaming namespace checkpoint directory Inode Number is outside the allocated range",
+    });
+  }
+  if (checkpoint.previousName !== undefined) encodeFilenameComponent({ value: checkpoint.previousName });
+  validateTimestamps({ timestamps: checkpoint.timestamps });
+  switch (checkpoint.content.type) {
+  case "inline": {
+    let encodedBytes = 0;
+    let previousBytes: Uint8Array | undefined;
+    for (const entry of checkpoint.content.entries) {
+      switch (entry.targetType) {
+      case "inode": break;
+      case "subvolume": throw new StreamingNamespaceImportError({
+        code: "invalid_checkpoint",
+        message: "streaming namespace checkpoint cannot contain a nested Subvolume entry",
+      });
+      default: entry satisfies never;
+      }
+      createInodeNumber({ value: entry.inodeNumber });
+      if (entry.inodeNumber >= nextInodeNumber) {
+        throw new StreamingNamespaceImportError({
+          code: "invalid_checkpoint",
+          message: "streaming namespace checkpoint entry Inode Number is outside the allocated range",
+        });
+      }
+      const nameBytes = encodeFilenameComponent({ value: entry.name });
+      if (previousBytes !== undefined && compareUnsignedBytes({ left: previousBytes, right: nameBytes }) >= 0) {
+        throw new StreamingNamespaceImportError({
+          code: "invalid_checkpoint",
+          message: "streaming namespace checkpoint directory entries are not canonically ordered",
+        });
+      }
+      previousBytes = nameBytes;
+      encodedBytes += encodeDirectoryEntry({ entry }).byteLength;
+    }
+    if (encodedBytes > HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes) {
+      throw new StreamingNamespaceImportError({
+        code: "invalid_checkpoint",
+        message: "streaming namespace checkpoint inline directory exceeds the format bound",
+      });
+    }
+    if (checkpoint.content.entries.at(-1)?.name !== checkpoint.previousName) {
+      throw new StreamingNamespaceImportError({
+        code: "invalid_checkpoint",
+        message: "streaming namespace checkpoint previous name does not match its final inline entry",
+      });
+    }
+    return;
+  }
+  case "tree":
+    requireReferenceKind({
+      expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
+      label: "streaming namespace checkpoint Directory Page root",
+      reference: checkpoint.content.directoryTreeRootHomeRef,
+    });
+    return;
+  default: return checkpoint.content satisfies never;
+  }
+}
+
+export function validateStreamingNamespaceImportCheckpoint({ checkpoint }: {
+  checkpoint: StreamingNamespaceImportCheckpoint;
+}): void {
+  const maximumPathComponents = MAXIMUM_RUNTIME_IMPORT_PATH_COMPONENTS;
+  createInodeNumber({ value: checkpoint.nextInodeNumber });
+  createInodeNumber({ value: checkpoint.rootDirectoryInodeNumber });
+  if (checkpoint.nextInodeNumber <= checkpoint.rootDirectoryInodeNumber) {
+    throw new StreamingNamespaceImportError({
+      code: "invalid_checkpoint",
+      message: "streaming namespace checkpoint allocator does not follow the root Inode Number",
+    });
+  }
+  requireReferenceKind({
+    expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    label: "streaming namespace checkpoint Inode Table root",
+    reference: checkpoint.rootInodeTableRootHomeRef,
+  });
+  if (checkpoint.directories.length === 0
+    || checkpoint.directories.length > maximumPathComponents + 1
+    || checkpoint.directories[0]?.path.length !== 0) {
+    throw new StreamingNamespaceImportError({
+      code: "invalid_path",
+      message: "streaming namespace checkpoint must begin with one bounded root directory stack",
+    });
+  }
+  for (let index = 0; index < checkpoint.directories.length; index += 1) {
+    const frame = checkpoint.directories[index];
+    if (frame === undefined) {
+      throw new StreamingNamespaceImportError({
+        code: "invalid_checkpoint",
+        message: "streaming namespace checkpoint directory frame is missing",
+      });
+    }
+    requireCheckpointPath({ allowRoot: index === 0, maximumPathComponents, path: frame.path });
+    validateDirectoryCheckpoint({ checkpoint: frame.directory, nextInodeNumber: checkpoint.nextInodeNumber });
+    if (index === 0 && frame.directory.inodeNumber !== checkpoint.rootDirectoryInodeNumber) {
+      throw new StreamingNamespaceImportError({
+        code: "invalid_checkpoint",
+        message: "streaming namespace checkpoint root directory identity changed",
+      });
+    }
+    if (index > 0) {
+      const parent = checkpoint.directories[index - 1]?.path;
+      if (parent === undefined
+        || frame.path.length !== parent.length + 1
+        || !parent.every((component, componentIndex) => component === frame.path[componentIndex])) {
+        throw new StreamingNamespaceImportError({
+          code: "non_depth_first_path",
+          message: "streaming namespace checkpoint directory frames are not one depth-first path",
+        });
+      }
+    }
+  }
+  const activeFile = checkpoint.activeFile;
+  if (activeFile === undefined) return;
+  requireCheckpointPath({ allowRoot: false, maximumPathComponents, path: activeFile.path });
+  createInodeNumber({ value: activeFile.inodeNumber });
+  if (activeFile.inodeNumber >= checkpoint.nextInodeNumber) {
+    throw new StreamingNamespaceImportError({
+      code: "invalid_checkpoint",
+      message: "streaming namespace checkpoint file Inode Number is outside the allocated range",
+    });
+  }
+  if (activeFile.file.extentRoot !== undefined) {
+    requireReferenceKind({
+      expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      label: "streaming namespace checkpoint File Extent Page root",
+      reference: activeFile.file.extentRoot,
+    });
+  }
+  createFileOffset({ value: activeFile.file.nextOffset });
+  const currentDirectory = checkpoint.directories.at(-1)?.path;
+  const activeParent = activeFile.path.slice(0, -1);
+  if (currentDirectory === undefined || !pathsEqual({ left: activeParent, right: currentDirectory })) {
+    throw new StreamingNamespaceImportError({
+      code: "non_depth_first_path",
+      message: "streaming namespace checkpoint active file is not owned by the current directory",
+    });
+  }
+}
+
+export function validateSealedStreamingNamespaceImport({ sealed }: {
+  sealed: SealedStreamingNamespaceImport;
+}): void {
+  createInodeNumber({ value: sealed.nextInodeNumber });
+  createInodeNumber({ value: sealed.rootDirectoryInodeNumber });
+  if (sealed.nextInodeNumber <= sealed.rootDirectoryInodeNumber) {
+    throw new StreamingNamespaceImportError({
+      code: "invalid_checkpoint",
+      message: "sealed streaming namespace allocator does not follow the root Inode Number",
+    });
+  }
+  requireReferenceKind({
+    expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    label: "sealed streaming namespace Inode Table root",
+    reference: sealed.rootInodeTableRootHomeRef,
+  });
+}
+
 function clonePath({ path }: { path: readonly string[] }): readonly string[] {
   return [...path];
 }
@@ -140,6 +352,14 @@ export class StreamingNamespaceImport {
     }>;
     rootInodeTableRootHomeRef: HomeRecordReference;
   }) {
+    createInodeNumber({ value: nextInodeNumber });
+    createInodeNumber({ value: rootDirectory.inodeNumber });
+    validateTimestamps({ timestamps: rootDirectory.timestamps });
+    requireReferenceKind({
+      expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      label: "streaming namespace import Inode Table root",
+      reference: rootInodeTableRootHomeRef,
+    });
     if (nextInodeNumber <= rootDirectory.inodeNumber) {
       throw new StreamingNamespaceImportError({
         code: "invalid_path",
@@ -168,13 +388,9 @@ export class StreamingNamespaceImport {
     limits: StreamingNamespaceImportLimits;
     port: StreamingNamespaceImportPort;
   }): StreamingNamespaceImport {
+    validateStreamingNamespaceImportCheckpoint({ checkpoint });
     const root = checkpoint.directories[0];
-    if (root === undefined || root.path.length !== 0) {
-      throw new StreamingNamespaceImportError({
-        code: "invalid_path",
-        message: "streaming namespace checkpoint must begin with the root directory frame",
-      });
-    }
+    if (root === undefined) throw new Error("validated streaming namespace checkpoint lost its root frame");
     const value = new StreamingNamespaceImport({
       limits,
       nextInodeNumber: checkpoint.nextInodeNumber,
@@ -292,7 +508,11 @@ export class StreamingNamespaceImport {
         message: "streaming namespace cannot leave an unfinished file",
       });
     }
-    entryName({ path });
+    requireCheckpointPath({
+      allowRoot: false,
+      maximumPathComponents: MAXIMUM_RUNTIME_IMPORT_PATH_COMPONENTS,
+      path,
+    });
     const parentPath = path.slice(0, -1);
     while ((this.#directories.at(-1)?.path.length ?? -1) > parentPath.length) {
       await this.#closeCurrentDirectory();

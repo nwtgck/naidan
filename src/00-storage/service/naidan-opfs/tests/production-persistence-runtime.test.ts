@@ -407,9 +407,8 @@ describe('native re-encrypt endpoint helpers', () => {
       binding,
       exclusiveGate: { runExclusive: async ({ operation }) => await operation() },
       initialOpenProfile: 'root_key_proof',
+      importStatePort: {} as never,
       inspectTarget: async () => 'root_key_ready',
-      journalBinding: {} as never,
-      journalPort: {} as never,
       limits: {
         directory: { maximumEntryMutationsPerBatch: 2 },
         file: { maximumExtentMutationsPerBatch: 2 },
@@ -453,9 +452,8 @@ describe('native re-encrypt endpoint helpers', () => {
       binding,
       exclusiveGate: { runExclusive: async ({ operation }) => await operation() },
       initialOpenProfile: 'root_key_proof',
+      importStatePort: {} as never,
       inspectTarget: async () => 'root_key_ready',
-      journalBinding: {} as never,
-      journalPort: {} as never,
       limits: {
         directory: { maximumEntryMutationsPerBatch: 2 },
         file: { maximumExtentMutationsPerBatch: 2 },

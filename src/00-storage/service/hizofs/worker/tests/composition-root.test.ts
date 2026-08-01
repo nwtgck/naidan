@@ -14,8 +14,8 @@ import {
   parseSegmentId,
 } from "@/00-storage/service/hizofs/00-format";
 import type {
-  HizoFSTransitionImportJournalPort,
-  HizoFSTransitionImportJournalRecord,
+  HizoFSTransitionImportCandidate,
+  HizoFSTransitionImportStatePort,
 } from "@/00-storage/service/hizofs/api";
 import { HizoFSStorageFileSystemSession } from "@/00-storage/service/hizofs/api/storage-file-system-session";
 import {
@@ -2125,35 +2125,28 @@ describe("HizoFS worker composition root", () => {
     const fileSystemId = created.fileSystemId;
     created.rootKey.destroy();
 
-    const binding = {
-      operationIdentity: "transition-operation",
-      sourceAuthorityIdentity: "plain-source",
-      sourceEndpointIdentity: "plain",
-      targetAuthorityIdentity: "hizofs-target",
-      targetEndpointIdentity: `hizofs:${fileSystemId}`,
-    } as const;
-    let record: HizoFSTransitionImportJournalRecord | undefined;
-    const journalPort: HizoFSTransitionImportJournalPort = {
-      clear: async ({ expectedGeneration }) => {
-        if (record?.generation !== expectedGeneration) throw new TypeError("journal clear generation mismatch");
-        record = undefined;
+    const operationIdentity = "transition-operation";
+    let candidate: HizoFSTransitionImportCandidate | undefined;
+    const runtimeStatePort: HizoFSTransitionImportStatePort = {
+      loadCandidate: async ({ operationIdentity: requestedOperation }) => {
+        if (requestedOperation !== operationIdentity) throw new TypeError("runtime state operation mismatch");
+        return structuredClone(candidate);
       },
-      load: async () => record === undefined ? undefined : structuredClone(record),
-      publish: async ({ expectedGeneration, record: next }) => {
-        if (record?.generation !== expectedGeneration) throw new TypeError("journal publish generation mismatch");
-        record = structuredClone(next);
+      stageCandidate: async ({ candidate: next, operationIdentity: requestedOperation }) => {
+        if (requestedOperation !== operationIdentity) throw new TypeError("runtime state operation mismatch");
+        candidate = structuredClone(next);
       },
     };
     const open = async () => await openBrowserHizoFSTransitionTargetEndpointSession({
       authorityIdentity: "hizofs-target",
-      binding,
       containerRoot: root as unknown as FileSystemDirectoryHandle,
-      journalPort,
       limits: {
         directory: { maximumEntryMutationsPerBatch: 2 },
         file: { maximumExtentMutationsPerBatch: 2 },
       },
+      operationIdentity,
       passphrase: "transition passphrase",
+      runtimeStatePort,
       verifyProofAuthority: async ({ fileSystemId: openedId }) => {
         expect(openedId).toBe(fileSystemId);
       },
@@ -2206,35 +2199,28 @@ describe("HizoFS worker composition root", () => {
     const fileSystemId = created.fileSystemId;
     created.rootKey.destroy();
 
-    const binding = {
-      operationIdentity: "transition-publication-operation",
-      sourceAuthorityIdentity: "plain-source",
-      sourceEndpointIdentity: "plain",
-      targetAuthorityIdentity: "hizofs-target",
-      targetEndpointIdentity: `hizofs:${fileSystemId}`,
-    } as const;
-    let record: HizoFSTransitionImportJournalRecord | undefined;
-    const journalPort: HizoFSTransitionImportJournalPort = {
-      clear: async ({ expectedGeneration }) => {
-        if (record?.generation !== expectedGeneration) throw new TypeError("journal clear generation mismatch");
-        record = undefined;
+    const operationIdentity = "transition-publication-operation";
+    let candidate: HizoFSTransitionImportCandidate | undefined;
+    const runtimeStatePort: HizoFSTransitionImportStatePort = {
+      loadCandidate: async ({ operationIdentity: requestedOperation }) => {
+        if (requestedOperation !== operationIdentity) throw new TypeError("runtime state operation mismatch");
+        return structuredClone(candidate);
       },
-      load: async () => record === undefined ? undefined : structuredClone(record),
-      publish: async ({ expectedGeneration, record: next }) => {
-        if (record?.generation !== expectedGeneration) throw new TypeError("journal publish generation mismatch");
-        record = structuredClone(next);
+      stageCandidate: async ({ candidate: next, operationIdentity: requestedOperation }) => {
+        if (requestedOperation !== operationIdentity) throw new TypeError("runtime state operation mismatch");
+        candidate = structuredClone(next);
       },
     };
     const target = await openBrowserHizoFSTransitionTargetEndpointSession({
       authorityIdentity: "hizofs-target",
-      binding,
       containerRoot: root as unknown as FileSystemDirectoryHandle,
-      journalPort,
       limits: {
         directory: { maximumEntryMutationsPerBatch: 2 },
         file: { maximumExtentMutationsPerBatch: 2 },
       },
+      operationIdentity,
       passphrase: "transition passphrase",
+      runtimeStatePort,
       verifyProofAuthority: async ({ fileSystemId: openedId }) => {
         expect(openedId).toBe(fileSystemId);
       },
@@ -2251,11 +2237,11 @@ describe("HizoFS worker composition root", () => {
 
     const publish = async () => await publishBrowserHizoFSTransitionTargetCandidate({
       assertPublicationAllowed: () => undefined,
-      binding,
       containerRoot: root as unknown as FileSystemDirectoryHandle,
-      journalPort,
+      operationIdentity,
       passphrase: "transition passphrase",
       randomSource: deterministicRandomSource(),
+      runtimeStatePort,
       verifyProofAuthority: async ({ fileSystemId: openedId }) => {
         expect(openedId).toBe(fileSystemId);
       },
@@ -2280,7 +2266,7 @@ describe("HizoFS worker composition root", () => {
         expect(openedId).toBe(fileSystemId);
       },
     })).resolves.toEqual({ credentialSlotCount: 1 });
-    expect(record?.candidate.type).toBe("sealed");
+    expect(candidate?.type).toBe("sealed");
   });
 
   it("connects browser benchmark composition to physical and persisted-record diagnostics", async () => {

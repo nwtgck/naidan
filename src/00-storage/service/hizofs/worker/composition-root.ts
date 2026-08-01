@@ -11,13 +11,11 @@ import {
 } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import {
   HizoFSStorageFileSystemSession,
-  HizoFSTransitionImportJournal,
   type HizoFSApplicationPreparedExplicitBulk,
   type HizoFSApplicationPreparedWritable,
   type HizoFSApplicationSessionNamespace,
+  type HizoFSTransitionImportStatePort,
   type HizoFSWorkerMountGrantIssuer,
-  type HizoFSTransitionImportJournalBinding,
-  type HizoFSTransitionImportJournalPort,
 } from "@/00-storage/service/hizofs/api";
 import { createHizoFSTransitionNamespaceSource } from "@/00-storage/service/hizofs/api/transition-namespace-source";
 import {
@@ -80,6 +78,7 @@ import {
   StreamingNamespaceImport,
   type SealedStreamingNamespaceImport,
   type StreamingNamespaceImportLimits,
+  validateSealedStreamingNamespaceImport,
 } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import";
 import { ExplicitBulkBuilder } from "@/00-storage/service/hizofs/filesystem/bulk/explicit-bulk-builder";
 import { prepareExplicitBulkCommit } from "@/00-storage/service/hizofs/filesystem/bulk/explicit-bulk-commit";
@@ -3279,19 +3278,19 @@ const BROWSER_BENCHMARK_RUNTIME_POLICY: HizoFSRuntimePolicy = Object.freeze({
 
 export async function openBrowserHizoFSTransitionTargetEndpointSession({
   authorityIdentity,
-  binding,
   containerRoot,
-  journalPort,
   limits,
+  operationIdentity,
   passphrase,
+  runtimeStatePort,
   verifyProofAuthority,
 }: {
   authorityIdentity: string;
-  binding: HizoFSTransitionImportJournalBinding;
   containerRoot: FileSystemDirectoryHandle;
-  journalPort: HizoFSTransitionImportJournalPort;
   limits: StreamingNamespaceImportLimits;
+  operationIdentity: string;
   passphrase: string;
+  runtimeStatePort: HizoFSTransitionImportStatePort;
   verifyProofAuthority: ({ fileSystemId, rootKeyProof }: {
     fileSystemId: FileSystemId;
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
@@ -3338,7 +3337,6 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
       } }),
     };
     const targetSession = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport: ({ rootMetadata }) => new StreamingNamespaceImport({
         limits,
         nextInodeNumber: opened.commit.nextInodeNumber,
@@ -3356,8 +3354,9 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
         },
         rootInodeTableRootHomeRef: opened.commit.rootInodeTableRootHomeRef,
       }),
-      journalPort,
+      operationIdentity,
       restoreImport: ({ checkpoint }) => StreamingNamespaceImport.restore({ checkpoint, limits, port }),
+      runtimeStatePort,
     });
     let privateSource: ReturnType<typeof createHizoFSTransitionNamespaceSource> | undefined;
     const source = (): ReturnType<typeof createHizoFSTransitionNamespaceSource> => {
@@ -3500,25 +3499,26 @@ export type PublishedBrowserHizoFSTransitionTarget = Readonly<{
 /**
  * Publishes one verified private namespace as the target's only active Commit.
  *
- * The sealed journal remains present until Naidan Persistence Control switches
- * authority. A retry first compares the authenticated active Commit with the
- * sealed root, so a lost success response cannot append a second Commit.
+ * The sealed runtime candidate remains available until Naidan Persistence
+ * Control switches authority. A same-invocation retry first compares the
+ * authenticated active Commit with the sealed root, so a lost publication
+ * response cannot append a second Commit.
  */
 export async function publishBrowserHizoFSTransitionTargetCandidate({
   assertPublicationAllowed,
-  binding,
   containerRoot,
-  journalPort,
+  operationIdentity,
   passphrase,
   randomSource,
+  runtimeStatePort,
   verifyProofAuthority,
 }: {
   assertPublicationAllowed: () => void;
-  binding: HizoFSTransitionImportJournalBinding;
   containerRoot: FileSystemDirectoryHandle;
-  journalPort: HizoFSTransitionImportJournalPort;
+  operationIdentity: string;
   passphrase: string;
   randomSource?: RandomByteSource;
+  runtimeStatePort: HizoFSTransitionImportStatePort;
   verifyProofAuthority: ({ fileSystemId, rootKeyProof }: {
     fileSystemId: FileSystemId;
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
@@ -3546,15 +3546,16 @@ export async function publishBrowserHizoFSTransitionTargetCandidate({
         rootKeyProof: capability,
       }),
     });
-    const journal = await HizoFSTransitionImportJournal.open({ binding, port: journalPort });
+    const candidate = await runtimeStatePort.loadCandidate({ operationIdentity });
     const sealed = (() => {
-      switch (journal.candidate?.type) {
-      case "sealed": return journal.candidate.sealed;
+      switch (candidate?.type) {
+      case "sealed": return candidate.sealed;
       case "active": throw new TypeError("transition target cannot publish an active import checkpoint");
       case undefined: throw new TypeError("transition target has no sealed import checkpoint");
-      default: return journal.candidate satisfies never;
+      default: return candidate satisfies never;
       }
     })();
+    validateSealedStreamingNamespaceImport({ sealed });
     if (commitMatchesSealedTransitionImport({ commit: opened.commit, sealed })) {
       return { commitSequence: opened.commit.commitSequence, fileSystemId: opened.fileSystemId };
     }

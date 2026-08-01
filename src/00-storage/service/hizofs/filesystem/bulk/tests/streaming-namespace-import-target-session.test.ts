@@ -17,10 +17,9 @@ import type {
   StreamingNamespaceImportCheckpoint,
 } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import";
 import type {
-  StreamingNamespaceImportJournalBinding,
-  StreamingNamespaceImportJournalPort,
-  StreamingNamespaceImportJournalRecord,
-} from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-journal";
+  StreamingNamespaceImportRuntimeCandidate,
+  StreamingNamespaceImportRuntimeStatePort,
+} from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-runtime-state";
 import { describe, expect, it, vi } from "vitest";
 
 function homeReference({ offset }: { offset: bigint }): HomeRecordReference {
@@ -32,13 +31,7 @@ function homeReference({ offset }: { offset: bigint }): HomeRecordReference {
   } });
 }
 
-const binding: StreamingNamespaceImportJournalBinding = {
-  operationIdentity: "operation-a",
-  sourceAuthorityIdentity: "source-authority-a",
-  sourceEndpointIdentity: "plain",
-  targetAuthorityIdentity: "target-authority-a",
-  targetEndpointIdentity: "hizofs-a",
-};
+const operationIdentity = "operation-a";
 
 const checkpoint = (): StreamingNamespaceImportCheckpoint => ({
   activeFile: undefined,
@@ -63,24 +56,22 @@ const sealed = (): SealedStreamingNamespaceImport => ({
   rootInodeTableRootHomeRef: homeReference({ offset: 256n }),
 });
 
-class MemoryPort implements StreamingNamespaceImportJournalPort {
-  record: StreamingNamespaceImportJournalRecord | undefined;
+class MemoryPort implements StreamingNamespaceImportRuntimeStatePort {
+  candidate: StreamingNamespaceImportRuntimeCandidate | undefined;
 
-  async clear({ expectedGeneration }: { binding: StreamingNamespaceImportJournalBinding; expectedGeneration: bigint }): Promise<void> {
-    if (this.record?.generation !== expectedGeneration) throw new Error("journal compare-and-swap conflict");
-    this.record = undefined;
+  async loadCandidate({ operationIdentity: requestedOperation }: {
+    operationIdentity: string;
+  }): Promise<StreamingNamespaceImportRuntimeCandidate | undefined> {
+    if (requestedOperation !== operationIdentity) throw new Error("runtime state belongs to another operation");
+    return structuredClone(this.candidate);
   }
 
-  async load({ operationIdentity }: { operationIdentity: string }): Promise<StreamingNamespaceImportJournalRecord | undefined> {
-    return this.record?.binding.operationIdentity === operationIdentity ? structuredClone(this.record) : undefined;
-  }
-
-  async publish({ expectedGeneration, record }: {
-    expectedGeneration: bigint | undefined;
-    record: StreamingNamespaceImportJournalRecord;
+  async stageCandidate({ candidate, operationIdentity: requestedOperation }: {
+    candidate: StreamingNamespaceImportRuntimeCandidate;
+    operationIdentity: string;
   }): Promise<void> {
-    if (this.record?.generation !== expectedGeneration) throw new Error("journal compare-and-swap conflict");
-    this.record = structuredClone(record);
+    if (requestedOperation !== operationIdentity) throw new Error("runtime state belongs to another operation");
+    this.candidate = structuredClone(candidate);
   }
 }
 
@@ -103,12 +94,12 @@ describe("StreamingNamespaceImportTargetSession", () => {
     const port = new MemoryPort();
     const firstActor = actor();
     const session = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport: () => firstActor,
-      journalPort: port,
+      operationIdentity,
       restoreImport: () => {
         throw new Error("unexpected restore");
       },
+      runtimeStatePort: port,
     });
     await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
     await session.target.ensureDirectory({
@@ -137,7 +128,7 @@ describe("StreamingNamespaceImportTargetSession", () => {
       size: 2n,
       timestamps: { createdAt: null, modifiedAt: createTimestampMilliseconds({ value: 20n }) },
     });
-    expect(port.record?.candidate.type).toBe("active");
+    expect(port.candidate?.type).toBe("active");
 
     const restoredActor = actor();
     let restoredCheckpoint: StreamingNamespaceImportCheckpoint | undefined;
@@ -146,12 +137,12 @@ describe("StreamingNamespaceImportTargetSession", () => {
       return restoredActor;
     });
     const reopened = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport: () => {
         throw new Error("unexpected create");
       },
-      journalPort: port,
+      operationIdentity,
       restoreImport,
+      runtimeStatePort: port,
     });
     expect(restoreImport).toHaveBeenCalledTimes(1);
     expect(restoredCheckpoint?.nextInodeNumber).toBe(checkpoint().nextInodeNumber);
@@ -161,16 +152,16 @@ describe("StreamingNamespaceImportTargetSession", () => {
     await reopened.close();
   });
 
-  it("seals once, journals the private root, and reopens without recreating an importer", async () => {
+  it("seals once, stages the private root, and reopens without recreating an importer", async () => {
     const port = new MemoryPort();
     const firstActor = actor();
     const session = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport: () => firstActor,
-      journalPort: port,
+      operationIdentity,
       restoreImport: () => {
         throw new Error("unexpected restore");
       },
+      runtimeStatePort: port,
     });
     await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
     await session.target.completeNamespace();
@@ -180,16 +171,16 @@ describe("StreamingNamespaceImportTargetSession", () => {
     expect(firstSealed.nextInodeNumber).toBe(sealed().nextInodeNumber);
     expect(encodeHomeRecordReference({ reference: firstSealed.rootInodeTableRootHomeRef }))
       .toEqual(encodeHomeRecordReference({ reference: sealed().rootInodeTableRootHomeRef }));
-    expect(port.record?.candidate.type).toBe("sealed");
+    expect(port.candidate?.type).toBe("sealed");
     await session.close();
 
     const createImport = vi.fn(() => actor());
     const restoreImport = vi.fn(() => actor());
     const reopened = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport,
-      journalPort: port,
+      operationIdentity,
       restoreImport,
+      runtimeStatePort: port,
     });
     expect(createImport).not.toHaveBeenCalled();
     expect(restoreImport).not.toHaveBeenCalled();
@@ -204,39 +195,39 @@ describe("StreamingNamespaceImportTargetSession", () => {
   });
 
 
-  it("retries sealing after a pre-commit journal failure without finalizing twice", async () => {
+  it("retries sealing after a candidate staging failure without finalizing twice", async () => {
     class FailBeforeCommitPort extends MemoryPort {
       failNextPublish = true;
 
-      override async publish({ expectedGeneration, record }: {
-        expectedGeneration: bigint | undefined;
-        record: StreamingNamespaceImportJournalRecord;
+      override async stageCandidate({ candidate, operationIdentity: requestedOperation }: {
+        candidate: StreamingNamespaceImportRuntimeCandidate;
+        operationIdentity: string;
       }): Promise<void> {
         if (this.failNextPublish) {
           this.failNextPublish = false;
-          throw new Error("injected journal write failure");
+          throw new Error("injected runtime staging failure");
         }
-        await super.publish({ expectedGeneration, record });
+        await super.stageCandidate({ candidate, operationIdentity: requestedOperation });
       }
     }
 
     const port = new FailBeforeCommitPort();
     const firstActor = actor();
     const session = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport: () => firstActor,
-      journalPort: port,
+      operationIdentity,
       restoreImport: () => {
         throw new Error("unexpected restore");
       },
+      runtimeStatePort: port,
     });
     await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
 
-    await expect(session.target.completeNamespace()).rejects.toThrow("injected journal write failure");
+    await expect(session.target.completeNamespace()).rejects.toThrow("injected runtime staging failure");
     await session.target.completeNamespace();
 
     expect(firstActor.finalize).toHaveBeenCalledTimes(1);
-    expect(port.record?.candidate.type).toBe("sealed");
+    expect(port.candidate?.type).toBe("sealed");
   });
 
   it("requires one exact root metadata handshake and rejects changes after initialization", async () => {
@@ -244,12 +235,12 @@ describe("StreamingNamespaceImportTargetSession", () => {
     const firstActor = actor();
     const createImport = vi.fn(() => firstActor);
     const session = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport,
-      journalPort: port,
+      operationIdentity,
       restoreImport: () => {
         throw new Error("unexpected restore");
       },
+      runtimeStatePort: port,
     });
 
     await expect(session.target.ensureDirectory({
@@ -267,16 +258,16 @@ describe("StreamingNamespaceImportTargetSession", () => {
     })).rejects.toMatchObject({ code: "root_metadata_conflict" });
   });
 
-  it("revokes an active session only after its checkpoint is durable", async () => {
+  it("revokes an active session only after its checkpoint is staged", async () => {
     const port = new MemoryPort();
     const firstActor = actor();
     const session = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport: () => firstActor,
-      journalPort: port,
+      operationIdentity,
       restoreImport: () => {
         throw new Error("unexpected restore");
       },
+      runtimeStatePort: port,
     });
     await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
     await session.close();
