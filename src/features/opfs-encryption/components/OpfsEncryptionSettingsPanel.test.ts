@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
 import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY, type OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import { ensureStrings } from '@/strings';
-import { prepareForOpfsEncryptionTransition } from '@/features/opfs-encryption/prepare-for-storage-transition';
 import OpfsEncryptionSettingsPanel from './OpfsEncryptionSettingsPanel.vue';
 
 const mockShowConfirm = vi.fn();
@@ -33,10 +32,6 @@ vi.mock('@/features/opfs-encryption/composables/useOpfsEncryptionTransition', ()
     finishLocalOperation: mockFinishLocalOperation,
     updateProgress: mockUpdateProgress,
   }),
-}));
-
-vi.mock('@/features/opfs-encryption/prepare-for-storage-transition', () => ({
-  prepareForOpfsEncryptionTransition: vi.fn(),
 }));
 
 function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 'encrypted' }> {
@@ -84,7 +79,6 @@ beforeEach(() => {
   vi.stubGlobal('location', { reload: vi.fn() });
   vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue({ type: 'plain' });
   vi.mocked(storageService.enableOpfsEncryption).mockResolvedValue(undefined);
-  vi.mocked(prepareForOpfsEncryptionTransition).mockResolvedValue(undefined);
 });
 
 describe('OpfsEncryptionSettingsPanel', () => {
@@ -148,7 +142,6 @@ describe('OpfsEncryptionSettingsPanel', () => {
     await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
     await flushPromises();
 
-    expect(prepareForOpfsEncryptionTransition).toHaveBeenCalledOnce();
     expect(storageService.enableOpfsEncryption).toHaveBeenCalledWith({
       onProgress: mockUpdateProgress,
       passphrase,
@@ -209,9 +202,9 @@ describe('OpfsEncryptionSettingsPanel', () => {
     expect(document.body.textContent).not.toContain('Transferred settings do not match their source');
   });
 
-  it('reports preparation failure in place without starting storage mutation', async () => {
+  it('delegates preflight failure settlement to StorageService', async () => {
     const failure = new Error('Unable to suspend local storage access');
-    vi.mocked(prepareForOpfsEncryptionTransition).mockRejectedValueOnce(failure);
+    vi.mocked(storageService.enableOpfsEncryption).mockRejectedValueOnce(failure);
     const wrapper = await mountPanel({ storageType: 'opfs' });
     await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
     await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue('q');
@@ -222,9 +215,9 @@ describe('OpfsEncryptionSettingsPanel', () => {
     await flushPromises();
 
     expect(mockBeginLocalOperation).toHaveBeenCalledOnce();
-    expect(mockFinishLocalOperation).toHaveBeenCalledWith({ outcome: 'preparation_failed' });
-    expect(storageService.enableOpfsEncryption).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain(failure.message);
+    expect(mockFinishLocalOperation).toHaveBeenCalledWith({ outcome: 'settled_for_reload' });
+    expect(storageService.enableOpfsEncryption).toHaveBeenCalledOnce();
+    expect(document.body.textContent).not.toContain(failure.message);
   });
 
   it('rejects pasted line breaks rather than silently changing the passphrase', async () => {
@@ -264,7 +257,6 @@ line two`,
     expect(storageService.changeOpfsEncryptionPassphrase).toHaveBeenCalledWith({
       passphrase,
     });
-    expect(prepareForOpfsEncryptionTransition).not.toHaveBeenCalled();
     expect(mockBeginLocalOperation).not.toHaveBeenCalled();
   });
 
@@ -354,6 +346,6 @@ line two`,
     expect(document.body.querySelector('[data-testid="opfs-encryption-reencrypt-dialog"]')).not.toBeNull();
     expect(storageService.disableOpfsEncryption).not.toHaveBeenCalled();
     expect(storageService.reencryptOpfsEncryption).not.toHaveBeenCalled();
-    expect(prepareForOpfsEncryptionTransition).not.toHaveBeenCalled();
+    expect(mockBeginLocalOperation).not.toHaveBeenCalled();
   });
 });

@@ -40,7 +40,10 @@ vi.mock('@/features/wesh/worker/client-registry', () => ({
   disposeAllWeshWorkerClientsForStorageTransition: mocks.disposeWeshClients,
 }));
 
-import { prepareForOpfsEncryptionTransition } from './prepare-for-storage-transition';
+import {
+  prepareForOpfsEncryptionTransition,
+  TEST_ONLY,
+} from './prepare-for-storage-transition';
 
 beforeEach(() => {
   mocks.calls.length = 0;
@@ -79,6 +82,40 @@ describe('prepareForOpfsEncryptionTransition', () => {
     expect(mocks.calls.indexOf('close-file-explorer')).toBeLessThan(
       mocks.calls.indexOf('dispose-file-explorer-workers'),
     );
+  });
+
+  it('settles every worker cleanup and preserves both failures', async () => {
+    const fileExplorerFailure = new Error('file explorer cleanup failed');
+    const weshFailure = new Error('wesh cleanup failed');
+    mocks.disposeFileExplorerClients.mockRejectedValueOnce(fileExplorerFailure);
+    mocks.disposeWeshClients.mockRejectedValueOnce(weshFailure);
+
+    await expect(prepareForOpfsEncryptionTransition()).rejects.toMatchObject({
+      errors: [fileExplorerFailure, weshFailure],
+      name: 'AggregateError',
+    });
+    expect(mocks.disposeFileExplorerClients).toHaveBeenCalledOnce();
+    expect(mocks.disposeWeshClients).toHaveBeenCalledOnce();
+  });
+
+  it('continues every available cleanup when one lazy module import fails', async () => {
+    const importFailure = new Error('file explorer UI import failed');
+
+    await expect(TEST_ONLY.prepareForOpfsEncryptionTransitionWith({
+      loaders: {
+        ...TEST_ONLY.browserLoaders,
+        loadFileExplorer: async () => {
+          throw importFailure;
+        },
+      },
+    })).rejects.toBe(importFailure);
+
+    expect(mocks.abortAllChatProcessingForStorageTransition).toHaveBeenCalledOnce();
+    expect(mocks.closeDebugHizoFSWorkbench).toHaveBeenCalledOnce();
+    expect(mocks.closePersistenceControlInspector).toHaveBeenCalledOnce();
+    expect(mocks.closeFileExplorer).not.toHaveBeenCalled();
+    expect(mocks.disposeFileExplorerClients).toHaveBeenCalledOnce();
+    expect(mocks.disposeWeshClients).toHaveBeenCalledOnce();
   });
 
 });

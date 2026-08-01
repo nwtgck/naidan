@@ -19,6 +19,53 @@ interface OpfsStorageTransitionRegistration {
 
 const registrations = new Set<OpfsStorageTransitionRegistration>();
 
+function throwRegistrationFailures({ failures, message }: {
+  failures: readonly unknown[];
+  message: string;
+}): void {
+  if (failures.length === 0) return;
+  if (failures.length === 1) throw failures[0];
+  throw new AggregateError(failures, message);
+}
+
+function runEveryRegistrationCallback({
+  message,
+  run,
+}: {
+  message: string;
+  run: ({ registration }: { registration: OpfsStorageTransitionRegistration }) => void;
+}): void {
+  const failures: unknown[] = [];
+  for (const registration of registrations) {
+    try {
+      run({ registration });
+    } catch (cause: unknown) {
+      failures.push(cause);
+    }
+  }
+  throwRegistrationFailures({ failures, message });
+}
+
+async function runEveryRegistrationCallbackAsync({
+  message,
+  run,
+}: {
+  message: string;
+  run: ({ registration }: { registration: OpfsStorageTransitionRegistration }) => Promise<void>;
+}): Promise<void> {
+  const results = await Promise.allSettled(
+    [...registrations].map(async registration => await run({ registration })),
+  );
+  const failures = results.flatMap(result => {
+    switch (result.status) {
+    case 'fulfilled': return [];
+    case 'rejected': return [result.reason];
+    default: return result satisfies never;
+    }
+  });
+  throwRegistrationFailures({ failures, message });
+}
+
 /**
  * Registers application-owned lifecycle work around an external OPFS storage
  * transition. Storage owns synchronization and shared-lock release, while the
@@ -51,21 +98,24 @@ export function registerOpfsStorageTransitionPreparation({
 }
 
 export function notifyRegisteredOpfsLocalTransitionStarting(): void {
-  for (const registration of registrations) {
-    registration.localTransitionStarting();
-  }
+  runEveryRegistrationCallback({
+    message: 'Multiple local OPFS transition start callbacks failed',
+    run: ({ registration }) => registration.localTransitionStarting(),
+  });
 }
 
 export async function notifyRegisteredOpfsExternalTransitionStarting(): Promise<void> {
-  for (const registration of registrations) {
-    await registration.externalTransitionStarting();
-  }
+  await runEveryRegistrationCallbackAsync({
+    message: 'Multiple external OPFS transition start callbacks failed',
+    run: async ({ registration }) => await registration.externalTransitionStarting(),
+  });
 }
 
 export async function prepareRegisteredOpfsStorageTransition(): Promise<void> {
-  for (const registration of registrations) {
-    await registration.prepare();
-  }
+  await runEveryRegistrationCallbackAsync({
+    message: 'Multiple OPFS transition safety preparations failed',
+    run: async ({ registration }) => await registration.prepare(),
+  });
 }
 
 export function notifyRegisteredOpfsLocalTransitionSettled({
@@ -73,9 +123,10 @@ export function notifyRegisteredOpfsLocalTransitionSettled({
 }: {
   settlement: OpfsExternalTransitionSettlement,
 }): void {
-  for (const registration of registrations) {
-    registration.localTransitionSettled({ settlement });
-  }
+  runEveryRegistrationCallback({
+    message: 'Multiple local OPFS transition settlement callbacks failed',
+    run: ({ registration }) => registration.localTransitionSettled({ settlement }),
+  });
 }
 
 export function notifyRegisteredOpfsExternalTransitionSettled({
@@ -83,13 +134,15 @@ export function notifyRegisteredOpfsExternalTransitionSettled({
 }: {
   settlement: OpfsExternalTransitionSettlement,
 }): void {
-  for (const registration of registrations) {
-    registration.externalTransitionSettled({ settlement });
-  }
+  runEveryRegistrationCallback({
+    message: 'Multiple external OPFS transition settlement callbacks failed',
+    run: ({ registration }) => registration.externalTransitionSettled({ settlement }),
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   registrations,
+  throwRegistrationFailures,
 };

@@ -140,13 +140,6 @@ function resetReencrypt(): void {
   errorMessage.value = undefined;
 }
 
-async function prepareForStorageTransition(): Promise<void> {
-  const transitionPreparation = await import(
-    '@/features/opfs-encryption/prepare-for-storage-transition'
-  );
-  await transitionPreparation.prepareForOpfsEncryptionTransition();
-}
-
 async function rejectLineBreakPaste({ event }: { event: ClipboardEvent }): Promise<void> {
   const pastedText = event.clipboardData?.getData('text') ?? '';
   const validation = validateEncryptionPassphrase({ passphrase: pastedText });
@@ -162,17 +155,6 @@ async function rejectLineBreakPaste({ event }: { event: ClipboardEvent }): Promi
     const _ex: never = validation;
     throw new Error(`Unhandled passphrase validation result: ${String(_ex)}`);
   }
-  }
-}
-
-async function prepareLocalTransition(): Promise<'prepared' | 'failed'> {
-  try {
-    await prepareForStorageTransition();
-    return 'prepared';
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : String(error);
-    finishLocalOperation({ outcome: 'preparation_failed' });
-    return 'failed';
   }
 }
 
@@ -197,14 +179,6 @@ async function handleToggle(): Promise<void> {
   loading.value = true;
   errorMessage.value = undefined;
   beginLocalOperation();
-  const preparation = await prepareLocalTransition();
-  switch (preparation) {
-  case 'failed':
-    loading.value = false;
-    return;
-  case 'prepared': break;
-  default: preparation satisfies never;
-  }
   try {
     await storageService.disableOpfsEncryption({
       signal: undefined,
@@ -225,14 +199,6 @@ async function enableEncryption(): Promise<void> {
   loading.value = true;
   errorMessage.value = undefined;
   beginLocalOperation();
-  const preparation = await prepareLocalTransition();
-  switch (preparation) {
-  case 'failed':
-    loading.value = false;
-    return;
-  case 'prepared': break;
-  default: preparation satisfies never;
-  }
   try {
     await storageService.enableOpfsEncryption({
       passphrase: passphrase.value,
@@ -272,14 +238,6 @@ async function reencrypt(): Promise<void> {
   loading.value = true;
   errorMessage.value = undefined;
   beginLocalOperation();
-  const preparation = await prepareLocalTransition();
-  switch (preparation) {
-  case 'failed':
-    loading.value = false;
-    return;
-  case 'prepared': break;
-  default: preparation satisfies never;
-  }
   try {
     await storageService.reencryptOpfsEncryption({
       passphrase: reencryptPassphrase.value,

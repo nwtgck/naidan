@@ -39,6 +39,35 @@ describe('OPFS storage transition preparation registry', () => {
     expect(events).toEqual(['started', 'finished']);
   });
 
+  it('starts every registered safety preparation and preserves every failure', async () => {
+    const firstFailure = new Error('first preparation failed');
+    const secondFailure = new Error('second preparation failed');
+    const firstStarted = vi.fn();
+    const secondStarted = vi.fn();
+    for (const [started, failure] of [
+      [firstStarted, firstFailure],
+      [secondStarted, secondFailure],
+    ] as const) {
+      registerOpfsStorageTransitionPreparation({
+        localTransitionStarting: () => {},
+        externalTransitionStarting: async () => {},
+        prepare: async () => {
+          started();
+          throw failure;
+        },
+        localTransitionSettled: () => {},
+        externalTransitionSettled: () => {},
+      });
+    }
+
+    await expect(prepareRegisteredOpfsStorageTransition()).rejects.toMatchObject({
+      errors: [firstFailure, secondFailure],
+      name: 'AggregateError',
+    });
+    expect(firstStarted).toHaveBeenCalledOnce();
+    expect(secondStarted).toHaveBeenCalledOnce();
+  });
+
   it('does not call an unregistered preparation', async () => {
     const prepare = vi.fn(async () => {});
     const unregister = registerOpfsStorageTransitionPreparation({
@@ -103,6 +132,30 @@ describe('OPFS storage transition preparation registry', () => {
 
     expect(localTransitionStarting).toHaveBeenCalledOnce();
     expect(localTransitionSettled).toHaveBeenCalledWith({ settlement: 'failed' });
+  });
+
+  it('notifies every local start callback when an earlier registration throws', () => {
+    const failure = new Error('local presentation failed');
+    const laterStart = vi.fn();
+    registerOpfsStorageTransitionPreparation({
+      localTransitionStarting: () => {
+        throw failure;
+      },
+      externalTransitionStarting: async () => {},
+      prepare: async () => {},
+      localTransitionSettled: () => {},
+      externalTransitionSettled: () => {},
+    });
+    registerOpfsStorageTransitionPreparation({
+      localTransitionStarting: laterStart,
+      externalTransitionStarting: async () => {},
+      prepare: async () => {},
+      localTransitionSettled: () => {},
+      externalTransitionSettled: () => {},
+    });
+
+    expect(() => notifyRegisteredOpfsLocalTransitionStarting()).toThrow(failure);
+    expect(laterStart).toHaveBeenCalledOnce();
   });
 
 });

@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   inspectOpfsEncryption: vi.fn(),
   createInterruptedOpfsEncryptionForDebug: vi.fn(),
   createInterruptedOpfsDecryptionForDebug: vi.fn(),
-  prepareForOpfsEncryptionTransition: vi.fn(),
 }));
 
 vi.mock('@/00-storage/service', () => ({
@@ -18,10 +17,6 @@ vi.mock('@/00-storage/service', () => ({
     createInterruptedOpfsEncryptionForDebug: mocks.createInterruptedOpfsEncryptionForDebug,
     createInterruptedOpfsDecryptionForDebug: mocks.createInterruptedOpfsDecryptionForDebug,
   },
-}));
-
-vi.mock('@/features/opfs-encryption/prepare-for-storage-transition', () => ({
-  prepareForOpfsEncryptionTransition: mocks.prepareForOpfsEncryptionTransition,
 }));
 
 vi.mock('@/composables/useConfirm', () => ({
@@ -38,7 +33,6 @@ describe('DeveloperOpfsEncryptionInterruptionPanel', () => {
     vi.stubGlobal('location', { reload });
     (useConfirm as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ showConfirm });
     showConfirm.mockResolvedValue(true);
-    mocks.prepareForOpfsEncryptionTransition.mockResolvedValue(undefined);
     mocks.createInterruptedOpfsEncryptionForDebug.mockResolvedValue(undefined);
     mocks.createInterruptedOpfsDecryptionForDebug.mockResolvedValue(undefined);
   });
@@ -59,7 +53,6 @@ describe('DeveloperOpfsEncryptionInterruptionPanel', () => {
     await wrapper.get('[data-testid="developer-create-interrupted-encryption"]').trigger('click');
     await flushPromises();
 
-    expect(mocks.prepareForOpfsEncryptionTransition).toHaveBeenCalledOnce();
     expect(mocks.createInterruptedOpfsEncryptionForDebug).toHaveBeenCalledWith({
       passphrase: 'developer passphrase',
       signal: undefined,
@@ -107,7 +100,6 @@ describe('DeveloperOpfsEncryptionInterruptionPanel', () => {
     await wrapper.get('[data-testid="developer-create-interrupted-decryption"]').trigger('click');
     await flushPromises();
 
-    expect(mocks.prepareForOpfsEncryptionTransition).toHaveBeenCalledOnce();
     expect(mocks.createInterruptedOpfsDecryptionForDebug).toHaveBeenCalledWith({ signal: undefined });
     expect(reload).toHaveBeenCalledOnce();
   });

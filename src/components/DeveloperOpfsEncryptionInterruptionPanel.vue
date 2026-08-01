@@ -62,12 +62,6 @@ async function refreshInspection(): Promise<void> {
   }
 }
 
-async function prepareForStorageTransition(): Promise<void> {
-  const module = await import('@/features/opfs-encryption/prepare-for-storage-transition');
-  await module.prepareForOpfsEncryptionTransition();
-}
-
-
 async function handlePassphrasePaste({
   event,
 }: {
@@ -106,7 +100,6 @@ async function createInterruptedEncryption(): Promise<void> {
   loading.value = true;
   errorMessage.value = undefined;
   try {
-    await prepareForStorageTransition();
     await storageService.createInterruptedOpfsEncryptionForDebug({
       passphrase: passphrase.value,
       signal: undefined,
@@ -137,7 +130,6 @@ async function createInterruptedDecryption(): Promise<void> {
   loading.value = true;
   errorMessage.value = undefined;
   try {
-    await prepareForStorageTransition();
     await storageService.createInterruptedOpfsDecryptionForDebug({ signal: undefined });
     window.location.reload();
   } catch (error) {

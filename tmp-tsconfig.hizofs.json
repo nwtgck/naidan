@@ -11,6 +11,8 @@
   "include": [
     "src/env.d.ts",
     "src/utils/virtual-naidan-tailwind.d.ts",
+    "src/components/DeveloperOpfsEncryptionInterruptionPanel.vue",
+    "src/components/DeveloperOpfsEncryptionInterruptionPanel.test.ts",
     "src/components/SidebarDebugControls.vue",
     "src/features/debug-hizofs/composables/useDebugHizoFSWorkbench.ts",
     "src/features/debug-hizofs/composables/useDebugHizoFSWorkbench.test.ts",
