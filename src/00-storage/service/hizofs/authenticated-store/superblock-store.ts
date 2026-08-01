@@ -1027,7 +1027,7 @@ export class SuperblockUnlockFloorPublicationError extends Error {
   }
 }
 
-function sameLogicalStateExceptMinimumUnlockSequence({ left, right }: {
+export function sameSuperblockLogicalStateExceptMinimumUnlockSequence({ left, right }: {
   left: SuperblockLogicalState;
   right: SuperblockLogicalState;
 }): boolean {
@@ -1047,7 +1047,7 @@ function assertUnlockFloorPublicationTransition({ base, firstPublicationSequence
     || secondPublicationSequence !== base.maximumStructurallyObservedPublicationSequence + 2n) {
     throw new RangeError("reserved Publication Sequences must be exactly F + 1 and F + 2");
   }
-  if (!sameLogicalStateExceptMinimumUnlockSequence({ left: base.logicalState, right: logicalState })) {
+  if (!sameSuperblockLogicalStateExceptMinimumUnlockSequence({ left: base.logicalState, right: logicalState })) {
     throw new TypeError("credential floor publication must preserve Commit, Mutation, fallback, relocation, and feature authority");
   }
   if (logicalState.minimumUnlockSequence <= base.logicalState.minimumUnlockSequence) {

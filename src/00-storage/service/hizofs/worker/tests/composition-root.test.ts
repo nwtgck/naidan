@@ -1695,6 +1695,10 @@ describe("HizoFS worker composition root", () => {
       session,
     })).resolves.toBe(session);
     expect(updateRechecks).toBe(2);
+    await expect(session.root.getFileHandle({
+      create: true,
+      name: "after-credential-update.bin",
+    })).resolves.toBeDefined();
 
     await capability.releaseResources();
     await session.close();

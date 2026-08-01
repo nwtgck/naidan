@@ -66,6 +66,7 @@ import {
 import { createAuthenticatedNamespaceRecordSource } from "@/00-storage/service/hizofs/authenticated-store/namespace-record-source";
 import {
   openSuperblockCopies,
+  sameSuperblockLogicalStateExceptMinimumUnlockSequence,
   type OpenedSuperblockCopies,
 } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
 import { readBootstrapRoot } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
@@ -327,14 +328,20 @@ async function issueHizoFSWorkerMountGrant({
   accessMode,
   canonicalBackingLocation,
   currentResolver,
-  opened,
+  fileSystemId,
   path,
+  rootKey,
+  unlockingSlotId,
+  unlockSequence,
 }: {
   accessMode: StorageDirectoryWorkerMountAccessMode;
   canonicalBackingLocation: string;
   currentResolver: () => ReadOnlyNamespaceResolver;
-  opened: OpenedEmptyEncryptedContainer;
+  fileSystemId: FileSystemId;
   path: readonly string[];
+  rootKey: FileSystemRootKey;
+  unlockingSlotId: import("@/00-storage/service/hizofs/00-format").CredentialSlotId;
+  unlockSequence: import("@/00-storage/service/hizofs/00-format").UnlockSequence;
 }): Promise<StorageDirectoryWorkerMountGrant> {
   const stat = await currentResolver().stat({ pathComponents: [...path] });
   switch (stat.kind) {
@@ -357,18 +364,18 @@ async function issueHizoFSWorkerMountGrant({
   let plaintextBytes: Uint8Array | undefined;
   try {
     plaintextBytes = await withFileSystemRootKeyBytes({
-      rootKey: opened.rootKey,
+      rootKey,
       useBytes: ({ bytes }) => encodeWorkerMountGrantCleartext({
         metadata: {
           accessMode,
           canonicalBackingLocation,
-          fileSystemId: opened.fileSystemId,
+          fileSystemId,
           grantId,
           inodeNumber: stat.inodeNumber.toString(),
           scopePath: [...path],
           type: "hizofs_worker_mount_grant",
-          unlockingSlotId: opened.unlockingSlotId,
-          unlockSequence: opened.unlockSequence.toString(),
+          unlockingSlotId,
+          unlockSequence: unlockSequence.toString(),
           version: 1,
         },
         rootKeyBytes: bytes,
@@ -659,6 +666,7 @@ type PrivateDevelopmentWritableCapabilityState =
 const openedDevelopmentWritableAuthorityByCapability = new WeakMap<object, PrivateDevelopmentWritableCapabilityState>();
 
 type DevelopmentWritableCredentialSessionState = {
+  readonly credentialAuthorityUpdater: AuthenticatedCredentialAuthorityUpdater;
   readonly backend: HizoFSDevelopmentWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   readonly opened: OpenedEmptyEncryptedContainer;
   readonly recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
@@ -879,9 +887,16 @@ export async function replaceAuthenticatedDevelopmentWritableSessionPassphrase({
         supportedFeatureBits,
         unlockingSlotId: state.unlockingSlotId,
       });
-      state.unlockingSlotId = published.unlockingSlotId;
       state.lifecycle = "recovery_required";
       await recheckAuthority();
+      state.credentialAuthorityUpdater({
+        update: {
+          superblock: published.superblock,
+          unlockingSlotId: published.unlockingSlotId,
+          unlockSequence: published.credentialAuthority.unlockSequence,
+        },
+      });
+      state.unlockingSlotId = published.unlockingSlotId;
       state.lifecycle = "open";
       return session;
     } catch (cause: unknown) {
@@ -895,15 +910,24 @@ export async function replaceAuthenticatedDevelopmentWritableSessionPassphrase({
       });
       switch (resolution.type) {
       case "not_published": throw cause;
-      case "published":
-        state.unlockingSlotId = replacementSlotId({
+      case "published": {
+        const unlockingSlotId = replacementSlotId({
           previousSlotIds,
           slots: resolution.credentialAuthority.credentialSlots,
         });
         state.lifecycle = "recovery_required";
         await recheckAuthority();
+        state.credentialAuthorityUpdater({
+          update: {
+            superblock: resolution.superblock,
+            unlockingSlotId,
+            unlockSequence: resolution.credentialAuthority.unlockSequence,
+          },
+        });
+        state.unlockingSlotId = unlockingSlotId;
         state.lifecycle = "open";
         return session;
+      }
       case "credential_published_floor_pending":
       case "publication_conflict":
       case "published_redundancy_degraded":
@@ -1457,6 +1481,16 @@ type AuthenticatedWritableApplicationGeneration = Readonly<{
   superblock: OpenedSuperblockCopies;
 }>;
 
+type AuthenticatedCredentialAuthorityUpdate = Readonly<{
+  superblock: OpenedSuperblockCopies;
+  unlockingSlotId: import("@/00-storage/service/hizofs/00-format").CredentialSlotId;
+  unlockSequence: import("@/00-storage/service/hizofs/00-format").UnlockSequence;
+}>;
+
+type AuthenticatedCredentialAuthorityUpdater = ({ update }: {
+  update: AuthenticatedCredentialAuthorityUpdate;
+}) => void;
+
 export type AuthenticatedApplicationReadWriteSessionResources = Readonly<{
   createReadSnapshotResources: () => Readonly<{
     commitReference: HomeRecordReference;
@@ -1633,6 +1667,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   operationTimestamp,
   randomSource,
   recordDiagnostics,
+  registerCredentialAuthorityUpdater,
   removalLimits,
   recheckGenerationAuthority,
   rootSubvolumeId,
@@ -1640,6 +1675,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   supportedFeatureBits,
   writableProfile,
 }: AuthenticatedOpenedWritableApplicationAuthority & Readonly<{
+  registerCredentialAuthorityUpdater?: ({ updater }: {
+    updater: AuthenticatedCredentialAuthorityUpdater;
+  }) => void;
   runtimeHost: Pick<
     import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost,
     "acquireWriterDependencyRoot"
@@ -1682,6 +1720,39 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     recordDiagnostics,
     rootKey: opened.rootKey,
     superblock: opened.superblock,
+  });
+  let activeUnlockingSlotId = opened.unlockingSlotId;
+  let activeUnlockSequence = opened.unlockSequence;
+  registerCredentialAuthorityUpdater?.({
+    updater: ({ update }) => {
+      if (released) throw new TypeError("cannot update credential authority for a released application session");
+      switch (update.superblock.copyState) {
+      case "normal": break;
+      case "superblock_redundancy_degraded":
+        throw new TypeError("application session credential authority update requires converged Superblock copies");
+      default: return update.superblock.copyState satisfies never;
+      }
+      if (!sameSuperblockLogicalStateExceptMinimumUnlockSequence({
+        left: generation.superblock.logicalState,
+        right: update.superblock.logicalState,
+      })) {
+        throw new TypeError("credential authority update changed filesystem generation state");
+      }
+      if (update.unlockSequence !== update.superblock.logicalState.minimumUnlockSequence
+        || update.unlockSequence <= activeUnlockSequence) {
+        throw new TypeError("credential authority update did not advance the active Unlock Sequence");
+      }
+      generation = writableGeneration({
+        backend,
+        commit: generation.commit,
+        fileSystemId: opened.fileSystemId,
+        recordDiagnostics,
+        rootKey: opened.rootKey,
+        superblock: update.superblock,
+      });
+      activeUnlockingSlotId = update.unlockingSlotId;
+      activeUnlockSequence = update.unlockSequence;
+    },
   });
   const usedMutationIds = new Set<string>([
     mutationIdentity({ mutationId: generation.commit.mutationId }),
@@ -2759,8 +2830,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       accessMode,
       canonicalBackingLocation,
       currentResolver: () => generation.resolver,
-      opened,
+      fileSystemId: opened.fileSystemId,
       path,
+      rootKey: opened.rootKey,
+      unlockingSlotId: activeUnlockingSlotId,
+      unlockSequence: activeUnlockSequence,
     }),
   };
 }
@@ -2768,6 +2842,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
 export async function openAuthenticatedReadWriteApplicationSession<Captured>({
   captureAuthority,
   recheckAuthority,
+  registerCredentialAuthorityUpdater,
   rootName,
   rootPath,
   runtimeHost,
@@ -2775,6 +2850,9 @@ export async function openAuthenticatedReadWriteApplicationSession<Captured>({
 }: {
   captureAuthority: () => Promise<Captured>;
   recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
+  registerCredentialAuthorityUpdater?: ({ updater }: {
+    updater: AuthenticatedCredentialAuthorityUpdater;
+  }) => void;
   rootName?: string;
   rootPath?: readonly string[];
   runtimeHost: import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost;
@@ -2783,7 +2861,11 @@ export async function openAuthenticatedReadWriteApplicationSession<Captured>({
   return await runtimeHost.openApplicationSession({
     captureAuthority,
     createApplicationSessionResources: ({ verified }) => (
-      createAuthenticatedApplicationReadWriteSessionResources({ ...verified, runtimeHost })
+      createAuthenticatedApplicationReadWriteSessionResources({
+        ...verified,
+        registerCredentialAuthorityUpdater,
+        runtimeHost,
+      })
     ),
     recheckAuthority,
     rootName,
@@ -2856,11 +2938,18 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
   const { authority: openedAuthority, backend } = lifecycle;
   const supportedFeatureBits = createFeatureBits({ value: 0n });
   try {
+    let credentialAuthorityUpdater: AuthenticatedCredentialAuthorityUpdater | undefined;
     const underlyingSession = await openAuthenticatedReadWriteApplicationSession({
       captureAuthority: async () => authority,
       recheckAuthority: async ({ captured }) => {
         if (captured !== authority) throw new TypeError("runtime authority capture does not match the transferred capability");
         await recheckAuthority();
+      },
+      registerCredentialAuthorityUpdater: ({ updater }) => {
+        if (credentialAuthorityUpdater !== undefined) {
+          throw new TypeError("application session registered more than one credential authority updater");
+        }
+        credentialAuthorityUpdater = updater;
       },
       rootName,
       runtimeHost,
@@ -2899,9 +2988,14 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
         };
       },
     });
+    if (credentialAuthorityUpdater === undefined) {
+      await underlyingSession.close();
+      throw new Error("writable application session did not register its credential authority updater");
+    }
     return wrapDevelopmentWritableCredentialSession({
       state: {
         backend,
+        credentialAuthorityUpdater,
         lifecycle: "open",
         opened: openedAuthority.opened,
         recordDiagnostics: openedAuthority.recordDiagnostics,
