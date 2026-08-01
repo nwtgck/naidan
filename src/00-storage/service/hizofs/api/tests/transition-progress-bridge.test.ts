@@ -1,7 +1,4 @@
-import {
-  HizoFSTransitionImportJournal,
-  type HizoFSTransitionImportJournalBinding,
-} from "@/00-storage/service/hizofs/api";
+import { describe, expect, it } from 'vitest';
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createHomeRecordReference,
@@ -10,27 +7,33 @@ import {
   createUInt64,
   parseFileSystemId,
   parseSegmentId,
-} from "@/00-storage/service/hizofs/00-format";
-import type { StreamingNamespaceImportCheckpoint } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import";
-import { parseTransitionOperationId } from "@/00-storage/service/naidan-persistence-control/00-format";
-import type {
-  AuthenticatedTransitionProgressBinding,
-  AuthenticatedTransitionProgressSnapshot,
-} from "@/00-storage/service/naidan-persistence-control/transition/authenticated-transition-progress-companion";
-import { createTransitionNamespaceCopyCursor } from "@/00-storage/service/naidan-persistence-control/transition/namespace-copy";
-import type { TransitionRuntimeProgress } from "@/00-storage/service/naidan-persistence-control/transition/transition-coordinator";
-import { HizoFSTransitionProgressBridge } from "@/00-storage/service/naidan-opfs/hizofs-transition-progress-bridge";
-import { describe, expect, it, vi } from "vitest";
+} from '@/00-storage/service/hizofs/00-format';
+import {
+  HizoFSTransitionImportJournal,
+  type HizoFSTransitionImportJournalBinding,
+} from '@/00-storage/service/hizofs/api';
+import type { StreamingNamespaceImportCheckpoint } from '@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import';
+import { parseTransitionOperationId } from '@/00-storage/service/naidan-persistence-control/00-format';
+import { createTransitionNamespaceCopyCursor } from '@/00-storage/service/naidan-persistence-control/transition/namespace-copy';
+import type { TransitionRuntimeProgress } from '@/00-storage/service/naidan-persistence-control/transition/transition-coordinator';
+import { RuntimeHizoFSTransitionProgress } from '@/00-storage/service/naidan-opfs/runtime-hizofs-transition-progress';
+import type { RuntimeTransitionBinding } from '@/00-storage/service/naidan-opfs/runtime-transition-binding';
 
-const operationId = parseTransitionOperationId({ value: "operation000000000001" });
-const targetFileSystemId = parseFileSystemId({ value: "abcdefghijklmnopqrstu" });
-const binding: AuthenticatedTransitionProgressBinding = {
+const operationId = parseTransitionOperationId({ value: 'operation000000000001' });
+const targetFileSystemId = parseFileSystemId({ value: 'abcdefghijklmnopqrstu' });
+const binding: RuntimeTransitionBinding = {
   operationId,
-  providerCheckpointCodec: "hizofs-streaming-namespace-import-v1",
-  sourceAuthorityIdentity: "plain-authority-1",
-  sourceEndpoint: { type: "plain" },
-  targetAuthorityIdentity: "hizofs-candidate-1",
-  targetEndpoint: { fileSystemId: targetFileSystemId, type: "hizofs" },
+  sourceAuthorityIdentity: 'plain-authority-1',
+  sourceEndpoint: { type: 'plain' },
+  targetAuthorityIdentity: 'hizofs-candidate-1',
+  targetEndpoint: { fileSystemId: targetFileSystemId, type: 'hizofs' },
+};
+const journalBinding: HizoFSTransitionImportJournalBinding = {
+  operationIdentity: operationId,
+  sourceAuthorityIdentity: binding.sourceAuthorityIdentity,
+  sourceEndpointIdentity: '{"type":"plain"}',
+  targetAuthorityIdentity: binding.targetAuthorityIdentity,
+  targetEndpointIdentity: `{"type":"hizofs","fileSystemId":"${targetFileSystemId}"}`,
 };
 
 function checkpoint(): StreamingNamespaceImportCheckpoint {
@@ -44,7 +47,7 @@ function checkpoint(): StreamingNamespaceImportCheckpoint {
     activeFile: undefined,
     directories: [{
       directory: {
-        content: { entries: [], type: "inline" },
+        content: { entries: [], type: 'inline' },
         inodeNumber: createInodeNumber({ value: 1n }),
         inodeRevision: createInodeRevision({ value: 1n }),
         previousName: undefined,
@@ -58,136 +61,96 @@ function checkpoint(): StreamingNamespaceImportCheckpoint {
   };
 }
 
-function progress(): TransitionRuntimeProgress {
+function copyingProgress({ completedEntries }: {
+  completedEntries: bigint;
+}): TransitionRuntimeProgress {
   return {
-    copyCursor: createTransitionNamespaceCopyCursor(),
+    copyCursor: { ...createTransitionNamespaceCopyCursor(), completedEntries },
     operationId,
-    source: { type: "plain" },
+    source: binding.sourceEndpoint,
     sourceAuthorityIdentity: binding.sourceAuthorityIdentity,
-    stage: "copying",
+    stage: 'copying',
     target: binding.targetEndpoint,
   };
 }
 
-class MemoryCompanion {
-  snapshot: AuthenticatedTransitionProgressSnapshot | undefined;
-  readonly publish = vi.fn(async ({ expectedJournalGeneration, progress: next }: {
-    expectedJournalGeneration: bigint | undefined;
-    progress: AuthenticatedTransitionProgressSnapshot;
-  }) => {
-    if (this.snapshot?.journalGeneration !== expectedJournalGeneration) throw new Error("companion CAS conflict");
-    this.snapshot = structuredClone(next);
-    return structuredClone(next);
-  });
-  readonly load = vi.fn(async () => structuredClone(this.snapshot));
-  readonly clear = vi.fn(async ({ expectedJournalGeneration }: { expectedJournalGeneration: bigint }) => {
-    if (this.snapshot?.journalGeneration !== expectedJournalGeneration) throw new Error("companion clear conflict");
-    this.snapshot = undefined;
-  });
+function runtime(): RuntimeHizoFSTransitionProgress {
+  return new RuntimeHizoFSTransitionProgress({ binding, journalBinding });
 }
 
-function journalBinding(): HizoFSTransitionImportJournalBinding {
-  return {
-    operationIdentity: operationId,
-    sourceAuthorityIdentity: binding.sourceAuthorityIdentity,
-    sourceEndpointIdentity: "{\"type\":\"plain\"}",
-    targetAuthorityIdentity: binding.targetAuthorityIdentity,
-    targetEndpointIdentity: `{"type":"hizofs","fileSystemId":"${targetFileSystemId}"}`,
-  };
-}
-
-describe("HizoFS transition-progress bridge", () => {
-  it("publishes portable progress and a staged provider checkpoint as one generation", async () => {
-    const companion = new MemoryCompanion();
-    const bridge = new HizoFSTransitionProgressBridge({ binding, companion });
+describe('runtime-only HizoFS transition progress', () => {
+  it('commits a staged provider checkpoint with the matching portable cursor', async () => {
+    const progress = runtime();
     const opened = await HizoFSTransitionImportJournal.open({
-      binding: journalBinding(),
-      port: bridge.providerJournalPort,
+      binding: journalBinding,
+      port: progress.providerJournalPort,
     });
 
     await opened.journal.saveActive({ checkpoint: checkpoint() });
-    expect(companion.publish).not.toHaveBeenCalled();
-    await bridge.progressPort.save({ progress: progress() });
+    await expect(progress.progressPort.load({ operationId })).resolves.toBeUndefined();
+    await progress.progressPort.save({ progress: copyingProgress({ completedEntries: 0n }) });
 
-    expect(companion.publish).toHaveBeenCalledTimes(1);
-    expect(companion.snapshot?.journalGeneration).toBe(0n);
-    const resumed = new HizoFSTransitionProgressBridge({ binding, companion });
-    await expect(resumed.progressPort.load({ operationId })).resolves.toEqual(progress());
+    await expect(progress.progressPort.load({ operationId }))
+      .resolves.toEqual(copyingProgress({ completedEntries: 0n }));
     const reopened = await HizoFSTransitionImportJournal.open({
-      binding: journalBinding(),
-      port: resumed.providerJournalPort,
+      binding: journalBinding,
+      port: progress.providerJournalPort,
     });
-    expect(reopened.candidate?.type).toBe("active");
+    expect(reopened.candidate?.type).toBe('active');
   });
 
-  it("does not persist a provider checkpoint if the process stops before portable progress publication", async () => {
-    const companion = new MemoryCompanion();
-    const bridge = new HizoFSTransitionProgressBridge({ binding, companion });
+  it('continues bounded slices only while the same runtime owner is alive', async () => {
+    const progress = runtime();
     const opened = await HizoFSTransitionImportJournal.open({
-      binding: journalBinding(),
-      port: bridge.providerJournalPort,
-    });
-    await opened.journal.saveActive({ checkpoint: checkpoint() });
-
-    const restarted = new HizoFSTransitionProgressBridge({ binding, companion });
-    await expect(restarted.progressPort.load({ operationId })).resolves.toBeUndefined();
-    const journal = await HizoFSTransitionImportJournal.open({
-      binding: journalBinding(),
-      port: restarted.providerJournalPort,
-    });
-    expect(journal.candidate).toBeUndefined();
-  });
-
-  it("advances portable verification progress without changing the sealed candidate", async () => {
-    const companion = new MemoryCompanion();
-    const bridge = new HizoFSTransitionProgressBridge({ binding, companion });
-    const opened = await HizoFSTransitionImportJournal.open({
-      binding: journalBinding(),
-      port: bridge.providerJournalPort,
+      binding: journalBinding,
+      port: progress.providerJournalPort,
     });
     await opened.journal.saveSealed({ sealed: {
       nextInodeNumber: createInodeNumber({ value: 2n }),
       rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
       rootInodeTableRootHomeRef: checkpoint().rootInodeTableRootHomeRef,
     } });
-    await bridge.progressPort.save({ progress: progress() });
+    await progress.progressPort.save({ progress: copyingProgress({ completedEntries: 0n }) });
+    await progress.progressPort.save({ progress: copyingProgress({ completedEntries: 7n }) });
 
-    const resumed = new HizoFSTransitionProgressBridge({ binding, companion });
-    const loadedJournal = await HizoFSTransitionImportJournal.open({
-      binding: journalBinding(),
-      port: resumed.providerJournalPort,
+    await expect(progress.progressPort.load({ operationId }))
+      .resolves.toEqual(copyingProgress({ completedEntries: 7n }));
+    const reopened = await HizoFSTransitionImportJournal.open({
+      binding: journalBinding,
+      port: progress.providerJournalPort,
     });
-    expect(loadedJournal.candidate?.type).toBe("sealed");
-    const nextProgress = { ...progress(), copyCursor: { ...createTransitionNamespaceCopyCursor(), completedEntries: 1n } };
-    await resumed.progressPort.save({ progress: nextProgress });
-    expect(companion.snapshot?.journalGeneration).toBe(1n);
-
-    const secondResume = new HizoFSTransitionProgressBridge({ binding, companion });
-    const stillSealed = await HizoFSTransitionImportJournal.open({
-      binding: journalBinding(),
-      port: secondResume.providerJournalPort,
-    });
-    expect(stillSealed.candidate?.type).toBe("sealed");
+    expect(reopened.candidate?.type).toBe('sealed');
   });
 
-  it("rejects portable progress before any provider checkpoint is staged", async () => {
-    const companion = new MemoryCompanion();
-    const bridge = new HizoFSTransitionProgressBridge({ binding, companion });
-    await expect(bridge.progressPort.save({ progress: progress() }))
-      .rejects.toThrow("before the target checkpoint is staged");
-  });
-
-  it("clears only the exact authenticated companion generation", async () => {
-    const companion = new MemoryCompanion();
-    const bridge = new HizoFSTransitionProgressBridge({ binding, companion });
+  it('loses both cursors and private candidates with a new runtime owner', async () => {
+    const first = runtime();
     const opened = await HizoFSTransitionImportJournal.open({
-      binding: journalBinding(),
-      port: bridge.providerJournalPort,
+      binding: journalBinding,
+      port: first.providerJournalPort,
     });
     await opened.journal.saveActive({ checkpoint: checkpoint() });
-    await bridge.progressPort.save({ progress: progress() });
-    await bridge.progressPort.clear({ operationId });
-    expect(companion.snapshot).toBeUndefined();
-    expect(companion.clear).toHaveBeenCalledWith({ expectedJournalGeneration: 0n });
+    await first.progressPort.save({ progress: copyingProgress({ completedEntries: 0n }) });
+
+    const afterProcessLoss = runtime();
+    await expect(afterProcessLoss.progressPort.load({ operationId })).resolves.toBeUndefined();
+    const reopened = await HizoFSTransitionImportJournal.open({
+      binding: journalBinding,
+      port: afterProcessLoss.providerJournalPort,
+    });
+    expect(reopened.candidate).toBeUndefined();
+  });
+
+  it('rejects unstaged progress and another operation or binding', async () => {
+    const progress = runtime();
+    await expect(progress.progressPort.save({ progress: copyingProgress({ completedEntries: 0n }) }))
+      .rejects.toThrow('before the target checkpoint is staged');
+    await expect(progress.progressPort.load({
+      operationId: parseTransitionOperationId({ value: 'another-operation-001' }),
+    }))
+      .rejects.toThrow('another operation');
+    expect(() => new RuntimeHizoFSTransitionProgress({
+      binding,
+      journalBinding: { ...journalBinding, targetAuthorityIdentity: 'another-target' },
+    })).toThrow('binding disagrees');
   });
 });

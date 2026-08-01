@@ -58,15 +58,10 @@ import {
   type TransitionAdvanceResult,
   type TransitionControlPort,
   type TransitionCoordinatorPolicy,
-  type TransitionProgressPort,
   type TransitionSemanticState,
 } from '@/00-storage/service/naidan-persistence-control/transition/transition-coordinator';
 import { createPersistenceControlTransitionPort } from '@/00-storage/service/naidan-persistence-control/transition/persistence-control-transition-port';
 import { createStorageFileSystemTransitionSource } from '@/00-storage/service/naidan-persistence-control/transition/storage-file-system-transition-source';
-import {
-  AuthenticatedTransitionProgressCompanion,
-  type TransitionProgressRootKeyProofScope,
-} from '@/00-storage/service/naidan-persistence-control/transition/authenticated-transition-progress-companion';
 import type { TransitionEndpointReadiness } from '@/00-storage/service/naidan-persistence-control/transition/transition-endpoint-readiness';
 import { createNativeOpfsFileSystemSession } from '@/00-storage/service/storage-file-system/native-opfs';
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
@@ -94,16 +89,16 @@ import {
 
 import {
   createBrowserNaidanPersistenceControlExclusiveGate,
-  createOpfsTransitionProgressPhysicalPort,
   type NaidanPersistenceControlExclusiveGate,
-} from './opfs-transition-progress-physical-port';
+} from './persistence-control-exclusive-gate';
+import { cleanupRetiredLocalTransitionProgress } from './retired-local-transition-progress-cleanup';
 import { createOpfsPersistenceControlPhysicalPort } from './opfs-persistence-control-readable-port';
-import { HizoFSTransitionProgressBridge } from './hizofs-transition-progress-bridge';
 import {
   createNativePlainDisableTransitionDriver,
   NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
 } from './native-plain-disable-transition-driver';
-import { NativePlainTransitionProgressBridge } from './native-plain-transition-progress-bridge';
+import { NativePlainTransitionRuntimeState } from './native-plain-transition-runtime-state';
+import { RuntimeHizoFSTransitionProgress } from './runtime-hizofs-transition-progress';
 import { projectNativePlainTransitionSource } from './native-plain-transition-namespace';
 import {
   createNativePlainEnableTransitionDriver,
@@ -126,6 +121,15 @@ import type { OpfsEncryptionTransitionProgressListener } from './transition-prog
 
 type HizoFSMode = Extract<NaidanPersistenceControlV1['mode'], { readonly type: 'hizofs' }>;
 type FileSystemId = HizoFSMode['activeFileSystemId'];
+
+interface NativeHizoFSRootKeyProofScope {
+  withRootKeyProof<T>({ fileSystemId, operation }: {
+    fileSystemId: FileSystemId;
+    operation: ({ rootKey }: {
+      rootKey: PersistenceControlRootKeyDerivationCapability;
+    }) => Promise<T>;
+  }): Promise<T>;
+}
 
 function reportNativeEnableTrialFailure({ cause, fileSystemId, operationId, stage }: {
   cause: unknown;
@@ -810,7 +814,7 @@ function createNativeHizoFSRootKeyProofScope({ fileSystemId, nativeNamespaceRoot
   nativeNamespaceRoot: FileSystemDirectoryHandle;
   openProfile: CredentialCandidateOpenProfile;
   passphrase: string;
-}): TransitionProgressRootKeyProofScope {
+}): NativeHizoFSRootKeyProofScope {
   return {
     async withRootKeyProof<T>({ fileSystemId: requestedFileSystemId, operation }: {
       fileSystemId: FileSystemId;
@@ -868,7 +872,7 @@ function createCallbackScopedPersistenceControlTransitionPort({
   physical: PersistenceControlPhysicalPort;
   proofScopeForProfile: ({ openProfile }: {
     openProfile: CredentialCandidateOpenProfile;
-  }) => TransitionProgressRootKeyProofScope;
+  }) => NativeHizoFSRootKeyProofScope;
 }): TransitionControlPort {
   let currentOpenProfile = initialOpenProfile;
   let scopedOpenProfile: CredentialCandidateOpenProfile | undefined;
@@ -968,7 +972,7 @@ function createNativeHizoFSReencryptControl({
   sourceFileSystemId: FileSystemId;
   sourceRootKeyProof: PersistenceControlRootKeyDerivationCapability;
   targetFileSystemId: FileSystemId;
-  targetProofScope: TransitionProgressRootKeyProofScope;
+  targetProofScope: NativeHizoFSRootKeyProofScope;
 }): NativeHizoFSReencryptControl {
   if (sourceFileSystemId === targetFileSystemId) {
     throw new TypeError('native re-encrypt control requires distinct source and target File System IDs');
@@ -1172,14 +1176,9 @@ function reportNativeDisableProgress({ onProgress, result }: {
 export type NativeHizoFSConvergenceResult =
   | { readonly type: 'credential_rejected' }
   | { readonly fileSystemId: FileSystemId; readonly type: 'converged_encrypted' }
-  | { readonly fileSystemSession: StorageFileSystemSession; readonly type: 'converged_plain' };
+  | { readonly type: 'converged_plain' };
 
-export type NativeHizoFSResumeTransitionResult =
-  | { readonly type: 'credential_rejected' }
-  | { readonly fileSystemId: FileSystemId; readonly type: 'resumed_encrypted' }
-  | { readonly fileSystemSession: StorageFileSystemSession; readonly type: 'resumed_plain' };
-
-type NativeHizoFSResumeAuthority =
+type NativeHizoFSConvergenceAuthority =
   | Readonly<{
       binding: TransitionTargetOperationBinding;
       fileSystemId: FileSystemId;
@@ -1208,17 +1207,17 @@ function nativeEncryptTransitionBinding({ control }: {
   switch (mode.type) {
   case 'transitioning': break;
   case 'hizofs':
-  case 'plain': throw new TypeError('native resume requires an active Persistence Control transition');
+  case 'plain': throw new TypeError('native convergence requires an active Persistence Control transition');
   default: return mode satisfies never;
   }
   switch (mode.operation) {
   case 'encrypt': break;
-  case 'decrypt': throw new TypeError('native enable resume received an interrupted disable transition');
-  case 're_encrypt': throw new TypeError('native enable resume received an interrupted re-encrypt transition');
+  case 'decrypt': throw new TypeError('native enable convergence received an interrupted disable transition');
+  case 're_encrypt': throw new TypeError('native enable convergence received an interrupted re-encrypt transition');
   default: return mode.operation satisfies never;
   }
   if (mode.phase.source.type !== 'plain' || mode.phase.target.type !== 'hizofs') {
-    throw new TypeError('native enable resume requires a plain source and HizoFS target');
+    throw new TypeError('native enable convergence requires a plain source and HizoFS target');
   }
   return {
     operationId: mode.operationId,
@@ -1234,17 +1233,17 @@ function nativeDecryptTransitionBinding({ control }: {
   switch (mode.type) {
   case 'transitioning': break;
   case 'hizofs':
-  case 'plain': throw new TypeError('native resume requires an active Persistence Control transition');
+  case 'plain': throw new TypeError('native convergence requires an active Persistence Control transition');
   default: return mode satisfies never;
   }
   switch (mode.operation) {
   case 'decrypt': break;
-  case 'encrypt': throw new TypeError('native decrypt resume received an interrupted enable transition');
-  case 're_encrypt': throw new TypeError('native disable resume received an interrupted re-encrypt transition');
+  case 'encrypt': throw new TypeError('native decrypt convergence received an interrupted enable transition');
+  case 're_encrypt': throw new TypeError('native disable convergence received an interrupted re-encrypt transition');
   default: return mode.operation satisfies never;
   }
   if (mode.phase.source.type !== 'hizofs' || mode.phase.target.type !== 'plain') {
-    throw new TypeError('native disable resume requires a HizoFS source and plain target');
+    throw new TypeError('native disable convergence requires a HizoFS source and plain target');
   }
   return {
     operationId: mode.operationId,
@@ -1260,19 +1259,19 @@ function nativeReencryptTransitionBinding({ control }: {
   switch (mode.type) {
   case 'transitioning': break;
   case 'hizofs':
-  case 'plain': throw new TypeError('native resume requires an active Persistence Control transition');
+  case 'plain': throw new TypeError('native convergence requires an active Persistence Control transition');
   default: return mode satisfies never;
   }
   switch (mode.operation) {
   case 're_encrypt': break;
-  case 'decrypt': throw new TypeError('native re-encrypt resume received an interrupted disable transition');
-  case 'encrypt': throw new TypeError('native re-encrypt resume received an interrupted enable transition');
+  case 'decrypt': throw new TypeError('native re-encrypt convergence received an interrupted disable transition');
+  case 'encrypt': throw new TypeError('native re-encrypt convergence received an interrupted enable transition');
   default: return mode.operation satisfies never;
   }
   if (mode.phase.source.type !== 'hizofs'
     || mode.phase.target.type !== 'hizofs'
     || mode.phase.source.fileSystemId === mode.phase.target.fileSystemId) {
-    throw new TypeError('native re-encrypt resume requires distinct HizoFS source and target endpoints');
+    throw new TypeError('native re-encrypt convergence requires distinct HizoFS source and target endpoints');
   }
   return {
     operationId: mode.operationId,
@@ -1281,15 +1280,15 @@ function nativeReencryptTransitionBinding({ control }: {
   };
 }
 
-function nativeResumeAuthority({ control, fileSystemId }: {
+function nativeConvergenceAuthority({ control, fileSystemId }: {
   control: NaidanPersistenceControlV1;
   fileSystemId: FileSystemId;
-}): NativeHizoFSResumeAuthority {
+}): NativeHizoFSConvergenceAuthority {
   const mode = control.mode;
   switch (mode.type) {
   case 'transitioning': break;
   case 'hizofs':
-  case 'plain': throw new TypeError('native resume requires an active Persistence Control transition');
+  case 'plain': throw new TypeError('native convergence requires an active Persistence Control transition');
   default: return mode satisfies never;
   }
   const openProfile = credentialCandidateOpenProfile({ control });
@@ -1302,7 +1301,7 @@ function nativeResumeAuthority({ control, fileSystemId }: {
         throw new TypeError('credential proof belongs to another native enable target');
       }
       return { binding, fileSystemId, openProfile, operation: 'encrypt' };
-    case 'plain': throw new TypeError('native enable resume target is not HizoFS');
+    case 'plain': throw new TypeError('native enable convergence target is not HizoFS');
     default: return binding.target satisfies never;
     }
   }
@@ -1314,7 +1313,7 @@ function nativeResumeAuthority({ control, fileSystemId }: {
         throw new TypeError('credential proof belongs to another native disable source');
       }
       return { binding, fileSystemId, openProfile, operation: 'decrypt', phase: mode.phase.type };
-    case 'plain': throw new TypeError('native disable resume source is not HizoFS');
+    case 'plain': throw new TypeError('native disable convergence source is not HizoFS');
     default: return binding.source satisfies never;
     }
   }
@@ -1394,512 +1393,6 @@ async function runWithCredentialAuthorityRelease<T>({ failureMessage, operation,
   return value as T;
 }
 
-async function snapshotAndReleaseCredentialAuthority<T>({ operation, releaseResources }: {
-  operation: () => T;
-  releaseResources: () => Promise<void>;
-}): Promise<T> {
-  return await runWithCredentialAuthorityRelease({
-    failureMessage: 'credential authority snapshot and release both failed',
-    operation: async () => operation(),
-    releaseResources,
-  });
-}
-
-type ReopenedNativeDecryptResumeSource = Readonly<{
-  authoritativeEndpoint: NaidanPersistenceEndpointV1;
-  fileSystemSession: StorageFileSystemSession;
-  selected: Readonly<{ control: NaidanPersistenceControlV1 }>;
-}>;
-
-async function acceptNativeDecryptResumeSource({ binding, opened }: {
-  binding: TransitionTargetOperationBinding;
-  opened: ReopenedNativeDecryptResumeSource;
-}): Promise<StorageFileSystemSession> {
-  let rejection: TypeError | undefined;
-  if (!sameNativeDecryptTransition({
-    actual: {
-      mode: opened.selected.control.mode,
-      retiredFileSystemIds: opened.selected.control.retiredFileSystemIds,
-    },
-    binding,
-  })) {
-    rejection = new TypeError('Persistence Control transition changed while reopening the native disable source');
-  } else if (!sameTransitionEndpoint({ actual: opened.authoritativeEndpoint, expected: binding.source })) {
-    rejection = new TypeError('native disable resume did not reopen its authoritative HizoFS source');
-  }
-  if (rejection === undefined) return opened.fileSystemSession;
-  try {
-    await opened.fileSystemSession.close();
-  } catch (closeCause: unknown) {
-    throw new AggregateError([rejection, closeCause], 'native disable resume source rejection and session cleanup both failed');
-  }
-  throw rejection;
-}
-
-async function runNativeHizoFSDecryptResumeTransition({
-  authority,
-  captured,
-  exclusiveGate,
-  lockManager,
-  nativeNamespaceRoot,
-  onProgress,
-  passphrase,
-  physical,
-  runtimePolicy,
-  signal,
-  storageRoot,
-}: {
-  authority: Extract<NativeHizoFSResumeAuthority, { readonly operation: 'decrypt' }>;
-  captured: CapturedPersistenceControlAuthority;
-  exclusiveGate: NaidanPersistenceControlExclusiveGate;
-  lockManager: BrowserHizoFSRuntimeHostOptions['lockManager'];
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  onProgress: OpfsEncryptionTransitionProgressListener | undefined;
-  passphrase: string;
-  physical: PersistenceControlPhysicalPort;
-  runtimePolicy: BrowserHizoFSRuntimeHostOptions['policy'];
-  signal: AbortSignal | undefined;
-  storageRoot: FileSystemDirectoryHandle;
-}): Promise<Extract<NativeHizoFSResumeTransitionResult, { readonly type: 'resumed_plain' }>> {
-  const { binding, fileSystemId, openProfile, phase } = authority;
-  let sourceSession: StorageFileSystemSession | undefined;
-  switch (phase) {
-  case 'building_target': {
-    const openedSource = await openNativeCredentialRequiredApplicationSession({
-      captured,
-      lockManager,
-      nativeNamespaceRoot,
-      passphrase,
-      physical,
-      runtimePolicy,
-    });
-    switch (openedSource.type) {
-    case 'credential_rejected': throw new TypeError('native disable credential was rejected after initial proof');
-    case 'opened':
-      sourceSession = await acceptNativeDecryptResumeSource({ binding, opened: openedSource });
-      break;
-    default: return openedSource satisfies never;
-    }
-    break;
-  }
-  case 'cleaning_up_source': break;
-  default: phase satisfies never;
-  }
-
-  let transitionFailure: unknown;
-  try {
-    await (async () => {
-      const proofScopeForProfile = ({ openProfile: requestedOpenProfile }: {
-        openProfile: CredentialCandidateOpenProfile;
-      }): TransitionProgressRootKeyProofScope => createNativeHizoFSRootKeyProofScope({
-        fileSystemId,
-        nativeNamespaceRoot,
-        openProfile: requestedOpenProfile,
-        passphrase,
-      });
-      const endpointInspectionPort = createNativePhaseSpecificEndpointInspectionPort({
-        nativeNamespaceRoot,
-        openContainer: openBrowserAuthenticatedReadOnlyContainerCapability,
-        passphrase,
-      });
-      const baseControl = createCallbackScopedPersistenceControlTransitionPort({
-        bootstrapAuthorization: undefined,
-        endpointInspectionPort,
-        fileSystemId,
-        initialOpenProfile: openProfile,
-        physical,
-        proofScopeForProfile,
-      });
-      const sourceDriver = createNativeHizoFSDisableSourceDriver({
-        binding,
-        exclusiveGate,
-        nativeNamespaceRoot,
-        session: sourceSession,
-      });
-      switch (phase) {
-      case 'building_target': break;
-      case 'cleaning_up_source': sourceDriver.markAuthoritySwitched(); break;
-      default: phase satisfies never;
-      }
-      const control: TransitionControlPort = {
-        publishState: async ({ state }) => {
-          await baseControl.publishState({ state });
-          if (state.mode.type === 'transitioning'
-            && state.mode.operation === 'decrypt'
-            && state.mode.phase.type === 'cleaning_up_source') {
-            sourceDriver.markAuthoritySwitched();
-          }
-        },
-        readState: async () => await baseControl.readState(),
-      };
-      const current = await control.readState();
-      if (!sameNativeDecryptTransition({ actual: current, binding })) {
-        throw new TypeError('Persistence Control transition changed after native disable credential proof');
-      }
-      const companionBinding = {
-        operationId: binding.operationId,
-        providerCheckpointCodec: 'naidan-opfs-plain-target-v1',
-        sourceAuthorityIdentity: nativeDisableSourceAuthorityIdentity({ fileSystemId }),
-        sourceEndpoint: binding.source,
-        targetAuthorityIdentity: NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
-        targetEndpoint: binding.target,
-      } as const;
-      const companion = new AuthenticatedTransitionProgressCompanion({
-        binding: companionBinding,
-        physical: createOpfsTransitionProgressPhysicalPort({ exclusiveGate, storageRoot }),
-        proofScope: proofScopeForProfile({ openProfile: 'root_key_proof' }),
-        randomSource: undefined,
-      });
-      const bridge = new NativePlainTransitionProgressBridge({ binding: companionBinding, companion });
-      const provider = new TransitionProviderAdapter({
-        hizofs: sourceDriver.driver,
-        plain: createNativePlainDisableTransitionDriver({
-          binding,
-          bridge,
-          nativeNamespaceRoot,
-          verificationPageSize: NATIVE_ENABLE_TRANSITION_POLICY.verification.maximumDirectoryEntriesPerRead,
-        }),
-      });
-
-      for (;;) {
-        signal?.throwIfAborted();
-        const result = await advancePersistenceTransition({
-          control,
-          policy: NATIVE_ENABLE_TRANSITION_POLICY,
-          progressPort: bridge.progressPort,
-          provider,
-          signal,
-        });
-        reportNativeDisableProgress({ onProgress, result });
-        switch (result.state) {
-        case 'retired_cleanup': {
-          const stable = await control.readState();
-          switch (stable.mode.type) {
-          case 'plain': break;
-          case 'hizofs':
-          case 'transitioning': throw new TypeError('resumed native disable did not publish stable plain authority');
-          default: stable.mode satisfies never;
-          }
-          const readiness = await inspectNativePlainEndpoint({ nativeNamespaceRoot });
-          switch (readiness) {
-          case 'fully_verified': break;
-          case 'invalid': throw new TypeError('resumed native disable stable plain authority failed normal traversal');
-          default: readiness satisfies never;
-          }
-          await bridge.progressPort.clear({ operationId: binding.operationId });
-          return;
-        }
-        case 'authority_switched':
-        case 'copying':
-        case 'verifying': break;
-        case 'stable': throw new TypeError('resumed native disable reached stable state before retiring its HizoFS source');
-        default: return result satisfies never;
-        }
-      }
-    })();
-  } catch (cause: unknown) {
-    transitionFailure = cause;
-  }
-  try {
-    await sourceSession?.close();
-  } catch (closeFailure: unknown) {
-    if (transitionFailure !== undefined) {
-      throw new AggregateError([transitionFailure, closeFailure], 'native disable resume and source close both failed');
-    }
-    throw closeFailure;
-  }
-  if (transitionFailure !== undefined) throw transitionFailure;
-  // WHY: stable plain authority and normal traversal were proven before the
-  // source session closed. Retired-source deletion is retryable maintenance;
-  // it must not block Naidan restart or change the transition result.
-  return { fileSystemSession: createNativeOpfsFileSystemSession({ root: nativeNamespaceRoot }), type: 'resumed_plain' };
-}
-
-
-type OpenedNativeCredentialRequiredPersistenceRuntime = Extract<
-  Awaited<ReturnType<typeof openNativeCapturedCredentialRequiredPersistenceRuntime>>,
-  { readonly type: 'opened' }
->;
-
-async function registerNativeResumeApplicationSession({
-  captured,
-  lockManager,
-  nativeNamespaceRoot,
-  opened,
-  physical,
-  runtimePolicy,
-}: {
-  captured: CapturedPersistenceControlAuthority;
-  lockManager: BrowserHizoFSRuntimeHostOptions['lockManager'];
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  opened: OpenedNativeCredentialRequiredPersistenceRuntime;
-  physical: PersistenceControlReadablePhysicalPort;
-  runtimePolicy: BrowserHizoFSRuntimeHostOptions['policy'];
-}): Promise<Extract<CredentialBoundApplicationSessionOpenResult, { readonly type: 'opened' }>> {
-  const application = await registerCredentialBoundApplicationSession({
-    captured,
-    opened,
-    openHizoFSApplicationSession: async ({ authority, fileSystemId, recheckAuthority }) => {
-      const scope = await browserNativeHizoFSRuntimePort.createCoordinationScope({
-        canonicalBackingLocation: naidanOpfsContainerOriginRelativePath({ fileSystemId }),
-      });
-      const runtimeHost = browserNativeHizoFSRuntimePort.createRuntimeHost({
-        lockManager,
-        policy: runtimePolicy,
-        scope,
-      });
-      return await browserNativeHizoFSRuntimePort.openApplicationSessionFromCapability({
-        authority,
-        canonicalBackingLocation: naidanOpfsContainerOriginRelativePath({ fileSystemId }),
-        recheckAuthority,
-        runtimeHost,
-      });
-    },
-    openPlainApplicationSession: async ({ recheckAuthority }) => {
-      await recheckAuthority();
-      return createNativeOpfsFileSystemSession({ root: nativeNamespaceRoot });
-    },
-    physical,
-  });
-  switch (application.type) {
-  case 'opened': return application;
-  case 'credential_rejected': throw new Error('proved native resume authority was rejected during application-session registration');
-  default: return application satisfies never;
-  }
-}
-
-function targetRetainedCredentialsForResume({ retainedCredentials }: {
-  retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-}): readonly NativeRetainedPassphraseCredentialProof[] {
-  return retainedCredentials.map(({ passphrase, sourceSlotId: _sourceSlotId, ...unhandledCredential }) => {
-    unhandledCredential satisfies Record<PropertyKey, never>;
-    return { passphrase };
-  });
-}
-
-type NativeHizoFSReencryptResumeRuntime = Readonly<{
-  completeCleanup({ binding, operationPassphrase }: {
-    binding: TransitionTargetOperationBinding;
-    operationPassphrase: string;
-  }): Promise<FileSystemId>;
-  proveCleanupCredentials({ binding, retainedCredentials, targetSession }: {
-    binding: TransitionTargetOperationBinding;
-    retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-    targetSession: StorageFileSystemSession;
-  }): Promise<string>;
-  registerApplicationSession(): Promise<Extract<CredentialBoundApplicationSessionOpenResult, { readonly type: 'opened' }>>;
-  resumeBuilding({ binding, retainedCredentials, sourceSession }: {
-    binding: TransitionTargetOperationBinding;
-    retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-    sourceSession: StorageFileSystemSession;
-  }): Promise<string>;
-}>;
-
-async function runNativeHizoFSReencryptResumeTransitionWith({
-  authority,
-  retainedCredentials,
-  runtime,
-}: {
-  authority: Extract<NativeHizoFSResumeAuthority, { readonly operation: 're_encrypt' }>;
-  retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-  runtime: NativeHizoFSReencryptResumeRuntime;
-}): Promise<Extract<NativeHizoFSResumeTransitionResult, { readonly type: 'resumed_encrypted' }>> {
-  const application = await runtime.registerApplicationSession();
-  if (application.fileSystemId !== authority.fileSystemId) {
-    return await runWithCredentialAuthorityRelease({
-      failureMessage: 'native re-encrypt resume application authority mismatch and session cleanup both failed',
-      operation: async () => {
-        throw new TypeError('native re-encrypt resume application session belongs to another File System ID');
-      },
-      releaseResources: async () => await application.fileSystemSession.close(),
-    });
-  }
-
-  const { targetFileSystemId } = nativeHizoFSReencryptBindingFileSystemIds({ binding: authority.binding });
-  const operationPassphrase = await runWithCredentialAuthorityRelease({
-    failureMessage: 'native re-encrypt resume failed and authoritative session cleanup also failed',
-    operation: async () => {
-      switch (authority.phase) {
-      case 'building_target': return await runtime.resumeBuilding({
-        binding: authority.binding,
-        retainedCredentials,
-        sourceSession: application.fileSystemSession,
-      });
-      case 'cleaning_up_source': return await runtime.proveCleanupCredentials({
-        binding: authority.binding,
-        retainedCredentials,
-        targetSession: application.fileSystemSession,
-      });
-      default: return authority.phase satisfies never;
-      }
-    },
-    releaseResources: async () => await application.fileSystemSession.close(),
-  });
-
-  const fileSystemId = await runtime.completeCleanup({
-    binding: authority.binding,
-    operationPassphrase,
-  });
-  if (fileSystemId !== targetFileSystemId) {
-    throw new TypeError('native re-encrypt resume cleanup returned another target File System ID');
-  }
-  return { fileSystemId, type: 'resumed_encrypted' };
-}
-
-async function runNativeHizoFSReencryptResumeTransition({
-  authority,
-  captured,
-  exclusiveGate,
-  lockManager,
-  nativeNamespaceRoot,
-  onProgress,
-  opened,
-  physical,
-  retainedCredentials,
-  runtimePolicy,
-  signal,
-  storageRoot,
-}: {
-  authority: Extract<NativeHizoFSResumeAuthority, { readonly operation: 're_encrypt' }>;
-  captured: CapturedPersistenceControlAuthority;
-  exclusiveGate: NaidanPersistenceControlExclusiveGate;
-  lockManager: BrowserHizoFSRuntimeHostOptions['lockManager'];
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  onProgress: OpfsEncryptionTransitionProgressListener | undefined;
-  opened: OpenedNativeCredentialRequiredPersistenceRuntime;
-  physical: PersistenceControlPhysicalPort;
-  retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-  runtimePolicy: BrowserHizoFSRuntimeHostOptions['policy'];
-  signal: AbortSignal | undefined;
-  storageRoot: FileSystemDirectoryHandle;
-}): Promise<Extract<NativeHizoFSResumeTransitionResult, { readonly type: 'resumed_encrypted' }>> {
-  return await runNativeHizoFSReencryptResumeTransitionWith({
-    authority,
-    retainedCredentials,
-    runtime: {
-      completeCleanup: async ({ binding, operationPassphrase }) => await completeNativeHizoFSReencryptCleanup({
-        binding,
-        exclusiveGate,
-        nativeNamespaceRoot,
-        onProgress,
-        operationPassphrase,
-        physical,
-        signal,
-        storageRoot,
-      }),
-      proveCleanupCredentials: async ({ binding, retainedCredentials: actualCredentials, targetSession }) => {
-        const { targetFileSystemId } = nativeHizoFSReencryptBindingFileSystemIds({ binding });
-        return await withAuthenticatedDevelopmentWritableSessionRetainedCredentials({
-          operation: async ({ credentialSlotCount, fileSystemId, retainedCredentials: provenCredentials }) => {
-            if (fileSystemId !== targetFileSystemId) {
-              throw new TypeError('native re-encrypt cleanup resume credential proof belongs to another target');
-            }
-            if (credentialSlotCount !== provenCredentials.length) {
-              throw new RangeError('native re-encrypt cleanup resume requires every target Credential Slot proof');
-            }
-            const firstPassphrase = provenCredentials[0]?.passphrase;
-            if (firstPassphrase === undefined) {
-              throw new RangeError('native re-encrypt cleanup resume credential proof returned an empty set');
-            }
-            return firstPassphrase;
-          },
-          recheckAuthority: async () => await recheckPersistenceControlAuthority({ captured, physical }),
-          retainedCredentials: targetRetainedCredentialsForResume({ retainedCredentials: actualCredentials }),
-          session: targetSession,
-        });
-      },
-      registerApplicationSession: async () => await registerNativeResumeApplicationSession({
-        captured,
-        lockManager,
-        nativeNamespaceRoot,
-        opened,
-        physical,
-        runtimePolicy,
-      }),
-      resumeBuilding: async ({ binding, retainedCredentials: actualCredentials, sourceSession }) => {
-        const { sourceFileSystemId } = nativeHizoFSReencryptBindingFileSystemIds({ binding });
-        return await withAuthenticatedDevelopmentWritableSessionRetainedCredentials({
-          operation: async ({ fileSystemId, retainedCredentials: provenCredentials, rootKeyProof }) => {
-            if (fileSystemId !== sourceFileSystemId) {
-              throw new TypeError('native re-encrypt building resume credential proof belongs to another source');
-            }
-            const passphrases = provenCredentials.map(({ passphrase }) => passphrase);
-            const firstPassphrase = passphrases[0];
-            if (firstPassphrase === undefined) {
-              throw new RangeError('native re-encrypt building resume credential proof returned an empty set');
-            }
-            await advanceNativeHizoFSReencryptBuildingTransition({
-              binding,
-              exclusiveGate,
-              nativeNamespaceRoot,
-              onProgress,
-              passphrases,
-              physical,
-              sourceRootKeyProof: rootKeyProof,
-              sourceSession,
-              start: { type: 'resume' },
-              signal,
-              storageRoot,
-            });
-            return firstPassphrase;
-          },
-          recheckAuthority: async () => await recheckPersistenceControlAuthority({ captured, physical }),
-          retainedCredentials: normalizeNativeRetainedCredentials({ retainedCredentials: actualCredentials }),
-          session: sourceSession,
-        });
-      },
-    },
-  });
-}
-
-function createNativeDecryptConvergenceProgressPort({
-  authority,
-  exclusiveGate,
-  nativeNamespaceRoot,
-  passphrase,
-  storageRoot,
-}: {
-  authority: Extract<NativeHizoFSResumeAuthority, { readonly operation: 'decrypt' }>;
-  exclusiveGate: NaidanPersistenceControlExclusiveGate;
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  passphrase: string;
-  storageRoot: FileSystemDirectoryHandle;
-}): TransitionProgressPort {
-  const binding = {
-    operationId: authority.binding.operationId,
-    providerCheckpointCodec: 'naidan-opfs-plain-target-v1',
-    sourceAuthorityIdentity: nativeDisableSourceAuthorityIdentity({ fileSystemId: authority.fileSystemId }),
-    sourceEndpoint: authority.binding.source,
-    targetAuthorityIdentity: NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
-    targetEndpoint: authority.binding.target,
-  } as const;
-  const companion = new AuthenticatedTransitionProgressCompanion({
-    binding,
-    physical: createOpfsTransitionProgressPhysicalPort({ exclusiveGate, storageRoot }),
-    proofScope: createNativeHizoFSRootKeyProofScope({
-      fileSystemId: authority.fileSystemId,
-      nativeNamespaceRoot,
-      openProfile: 'root_key_proof',
-      passphrase,
-    }),
-    randomSource: undefined,
-  });
-  const progressPort = new NativePlainTransitionProgressBridge({ binding, companion }).progressPort;
-  return {
-    clear: async ({ operationId }) => {
-      // Native plain target ownership deliberately advances through
-      // sealed -> published -> absent. Startup convergence has already
-      // published the stable authority, so drain both authenticated steps to
-      // prevent a later from-scratch disable from colliding with this retired
-      // operation ID.
-      await progressPort.clear({ operationId });
-      await progressPort.clear({ operationId });
-    },
-    load: progressPort.load,
-    save: progressPort.save,
-  };
-}
-
 export async function runNativeHizoFSConvergeTransition({
   lockManager,
   nativeNamespaceRoot,
@@ -1940,7 +1433,7 @@ export async function runNativeHizoFSConvergeTransition({
   case 'transitioning': break;
   default: return selectedMode satisfies never;
   }
-  const authority = nativeResumeAuthority({
+  const authority = nativeConvergenceAuthority({
     control: opened.selected.control,
     fileSystemId: opened.fileSystemId,
   });
@@ -1970,6 +1463,20 @@ export async function runNativeHizoFSConvergeTransition({
           if (authenticationFileSystemId !== undefined
             && authenticationFileSystemId !== authority.fileSystemId) {
             throw new TypeError('Persistence Control convergence selected another authentication endpoint');
+          }
+          switch (control.mode.type) {
+          case 'plain':
+            return await validatePhaseSpecificPersistenceEndpointReadiness({
+              control,
+              openedAuthenticationEndpoint: {
+                fileSystemId: authority.fileSystemId,
+                openProfile: authority.openProfile,
+              },
+              port: endpointInspectionPort,
+            });
+          case 'hizofs':
+          case 'transitioning': break;
+          default: return control.mode satisfies never;
           }
           const requiredOpenProfile = credentialCandidateOpenProfileFromMode({ mode: control.mode });
           const projectedOpenProfile: CredentialCandidateOpenProfile = authority.openProfile === requiredOpenProfile
@@ -2003,246 +1510,22 @@ export async function runNativeHizoFSConvergeTransition({
         || !sameTransitionEndpoint({ actual: current.mode.phase.target, expected: authority.binding.target })) {
         throw new TypeError('Persistence Control transition changed after convergence credential proof');
       }
-      const progressPort = (() => {
-        switch (authority.operation) {
-        case 'decrypt': return createNativeDecryptConvergenceProgressPort({
-          authority,
-          exclusiveGate,
-          nativeNamespaceRoot,
-          passphrase,
-          storageRoot,
-        });
-        case 'encrypt':
-        case 're_encrypt': return undefined;
-        default: return authority satisfies never;
-        }
-      })();
       return await convergeInterruptedPersistenceTransition({
         control,
-        // Startup convergence deliberately discards detailed resume state.
-        // Decrypt progress must still be authenticated and cleared so a later
-        // from-scratch disable cannot collide with the retired operation ID.
-        progressPort,
+        progressPort: undefined,
       });
     },
   });
+  await cleanupRetiredLocalTransitionProgress({ exclusiveGate, storageRoot });
 
   switch (convergence.stableState.mode.type) {
-  case 'plain': return {
-    fileSystemSession: createNativeOpfsFileSystemSession({ root: nativeNamespaceRoot }),
-    type: 'converged_plain',
-  };
+  case 'plain': return { type: 'converged_plain' };
   case 'hizofs': return {
     fileSystemId: convergence.stableState.mode.activeFileSystemId,
     type: 'converged_encrypted',
   };
   case 'transitioning': throw new TypeError('native convergence returned a transitioning authority');
   default: return convergence.stableState.mode satisfies never;
-  }
-}
-
-export async function runNativeHizoFSResumeTransition({
-  lockManager,
-  nativeNamespaceRoot,
-  onProgress,
-  retainedCredentials,
-  runtimePolicy,
-  signal,
-  storageRoot,
-}: {
-  lockManager: BrowserHizoFSRuntimeHostOptions['lockManager'];
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  onProgress: OpfsEncryptionTransitionProgressListener | undefined;
-  retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-  runtimePolicy: BrowserHizoFSRuntimeHostOptions['policy'];
-  signal: AbortSignal | undefined;
-  storageRoot: FileSystemDirectoryHandle;
-}): Promise<NativeHizoFSResumeTransitionResult> {
-  const authenticationCredential = retainedCredentials[0];
-  if (authenticationCredential === undefined) {
-    throw new RangeError('native transition resume requires at least one credential');
-  }
-  const passphrase = authenticationCredential.passphrase;
-  const exclusiveGate = createBrowserNaidanPersistenceControlExclusiveGate({ lockManager });
-  const physical = createOpfsPersistenceControlPhysicalPort({ exclusiveGate, storageRoot });
-  const captured = await capturePersistenceControlAuthority({ physical });
-  const opened = await openNativeCapturedCredentialRequiredPersistenceRuntime({
-    captured,
-    nativeNamespaceRoot,
-    passphrase,
-    physical,
-  });
-  switch (opened.type) {
-  case 'credential_rejected': return opened;
-  case 'opened': break;
-  default: return opened satisfies never;
-  }
-
-  let provedResumeAuthority: NativeHizoFSResumeAuthority;
-  try {
-    provedResumeAuthority = nativeResumeAuthority({
-      control: opened.selected.control,
-      fileSystemId: opened.fileSystemId,
-    });
-  } catch (cause: unknown) {
-    return await runWithCredentialAuthorityRelease({
-      failureMessage: 'native resume authority validation and credential authority release both failed',
-      operation: async () => {
-        throw cause;
-      },
-      releaseResources: opened.releaseResources,
-    });
-  }
-
-  switch (provedResumeAuthority.operation) {
-  case 're_encrypt':
-    return await runNativeHizoFSReencryptResumeTransition({
-      authority: provedResumeAuthority,
-      captured,
-      exclusiveGate,
-      lockManager,
-      nativeNamespaceRoot,
-      onProgress,
-      opened,
-      physical,
-      retainedCredentials,
-      runtimePolicy,
-      signal,
-      storageRoot,
-    });
-  case 'decrypt':
-  case 'encrypt': break;
-  default: return provedResumeAuthority satisfies never;
-  }
-
-  const resumeAuthority = await snapshotAndReleaseCredentialAuthority({
-    operation: () => provedResumeAuthority,
-    releaseResources: opened.releaseResources,
-  });
-  switch (resumeAuthority.operation) {
-  case 'decrypt':
-    if (retainedCredentials.length !== 1) {
-      throw new RangeError('native disable resume accepts exactly one credential');
-    }
-    return await runNativeHizoFSDecryptResumeTransition({
-      authority: resumeAuthority,
-      captured,
-      exclusiveGate,
-      lockManager,
-      nativeNamespaceRoot,
-      onProgress,
-      passphrase,
-      physical,
-      runtimePolicy,
-      signal,
-      storageRoot,
-    });
-  case 'encrypt':
-    if (retainedCredentials.length !== 1) {
-      throw new RangeError('native enable resume accepts exactly one credential');
-    }
-    break;
-  default: return resumeAuthority satisfies never;
-  }
-  const { binding, fileSystemId, openProfile } = resumeAuthority;
-
-  const targetAuthorityIdentity = nativeEnableTargetAuthorityIdentity({ fileSystemId });
-  const proofScopeForProfile = ({ openProfile: requestedOpenProfile }: {
-    openProfile: CredentialCandidateOpenProfile;
-  }): TransitionProgressRootKeyProofScope => createNativeHizoFSRootKeyProofScope({
-    fileSystemId,
-    nativeNamespaceRoot,
-    openProfile: requestedOpenProfile,
-    passphrase,
-  });
-  const progressProofScope = proofScopeForProfile({ openProfile: 'root_key_proof' });
-  const endpointInspectionPort = createNativePhaseSpecificEndpointInspectionPort({
-    nativeNamespaceRoot,
-    openContainer: openBrowserAuthenticatedReadOnlyContainerCapability,
-    passphrase,
-  });
-  const control = createCallbackScopedPersistenceControlTransitionPort({
-    bootstrapAuthorization: undefined,
-    endpointInspectionPort,
-    fileSystemId,
-    initialOpenProfile: openProfile,
-    physical,
-    proofScopeForProfile,
-  });
-  const current = await control.readState();
-  if (!sameNativeEncryptTransition({ actual: current, binding })) {
-    throw new TypeError('Persistence Control transition changed after credential proof');
-  }
-  const companionBinding = {
-    operationId: binding.operationId,
-    providerCheckpointCodec: 'hizofs-streaming-namespace-import-v1',
-    sourceAuthorityIdentity: NATIVE_PLAIN_ENABLE_AUTHORITY_IDENTITY,
-    sourceEndpoint: binding.source,
-    targetAuthorityIdentity,
-    targetEndpoint: binding.target,
-  } as const;
-  const companion = new AuthenticatedTransitionProgressCompanion({
-    binding: companionBinding,
-    physical: createOpfsTransitionProgressPhysicalPort({ exclusiveGate, storageRoot }),
-    proofScope: progressProofScope,
-    randomSource: undefined,
-  });
-  const bridge = new HizoFSTransitionProgressBridge({ binding: companionBinding, companion });
-  const recheckPublicationAllowed = async (): Promise<void> => {
-    const state = await control.readState();
-    if (!sameSemanticTransitionState({ actual: state, binding })) {
-      throw new TypeError('Persistence Control no longer authorizes the resumed native enable target publication');
-    }
-  };
-  const provider = new TransitionProviderAdapter({
-    hizofs: createNativeHizoFSEnableTransitionDriver({
-      authorityIdentity: targetAuthorityIdentity,
-      binding,
-      exclusiveGate,
-      initialOpenProfile: openProfile,
-      inspectTarget: async ({ openProfile: requestedOpenProfile }) => await inspectNativeHizoFSEndpoint({
-        fileSystemId,
-        nativeNamespaceRoot,
-        openProfile: requestedOpenProfile,
-        passphrase,
-      }),
-      journalBinding: {
-        operationIdentity: binding.operationId,
-        sourceAuthorityIdentity: NATIVE_PLAIN_ENABLE_AUTHORITY_IDENTITY,
-        sourceEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.source }),
-        targetAuthorityIdentity,
-        targetEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.target }),
-      },
-      journalPort: bridge.providerJournalPort,
-      limits: NATIVE_ENABLE_TARGET_IMPORT_LIMITS,
-      passphrase,
-      recheckPublicationAllowed,
-      storageRoot: nativeNamespaceRoot,
-      verifyProofAuthority: async ({ fileSystemId: openedFileSystemId }) => {
-        if (openedFileSystemId !== fileSystemId) throw new TypeError('resumed native enable target opened with another File System ID');
-      },
-    }),
-    plain: createNativePlainEnableTransitionDriver({ nativeNamespaceRoot }),
-  });
-
-  for (;;) {
-    signal?.throwIfAborted();
-    const result = await advancePersistenceTransition({
-      control,
-      policy: NATIVE_ENABLE_TRANSITION_POLICY,
-      progressPort: bridge.progressPort,
-      provider,
-      signal,
-    });
-    reportNativeEnableProgress({ onProgress, result });
-    switch (result.state) {
-    case 'stable': return { fileSystemId, type: 'resumed_encrypted' };
-    case 'authority_switched':
-    case 'copying':
-    case 'retired_cleanup':
-    case 'verifying': break;
-    default: return result satisfies never;
-    }
   }
 }
 
@@ -2266,7 +1549,7 @@ export async function runNativeHizoFSDisableTransition({
   session: NativeHizoFSDisableTransitionSession;
   signal: AbortSignal | undefined;
   storageRoot: FileSystemDirectoryHandle;
-}): Promise<StorageFileSystemSession> {
+}): Promise<void> {
   const exclusiveGate = createBrowserNaidanPersistenceControlExclusiveGate({ lockManager });
   const operationId: TransitionOperationId = parseTransitionOperationId({ value: nanoid() });
   const fileSystemId = session.fileSystemId;
@@ -2288,19 +1571,6 @@ export async function runNativeHizoFSDisableTransition({
       if (provenFileSystemId !== fileSystemId) {
         throw new TypeError('native disable session proof belongs to another File System ID');
       }
-      const proofScope: TransitionProgressRootKeyProofScope = {
-        async withRootKeyProof<T>({ fileSystemId: requestedFileSystemId, operation }: {
-          fileSystemId: FileSystemId;
-          operation: ({ rootKey }: {
-            rootKey: PersistenceControlRootKeyDerivationCapability;
-          }) => Promise<T>;
-        }): Promise<T> {
-          if (requestedFileSystemId !== fileSystemId) {
-            throw new TypeError('native disable proof scope belongs to another HizoFS endpoint');
-          }
-          return await operation({ rootKey: rootKeyProof });
-        },
-      };
       const endpointInspectionPort: PhaseSpecificEndpointInspectionPort = {
         inspectHizoFSEndpoint: async ({ fileSystemId: requestedFileSystemId, openProfile }) => {
           if (requestedFileSystemId !== fileSystemId) return 'absent';
@@ -2376,27 +1646,20 @@ export async function runNativeHizoFSDisableTransition({
         throw cause;
       }
       trialStage = 'prepare_transition_runtime';
-      const companionBinding = {
+      const runtimeBinding = {
         operationId,
-        providerCheckpointCodec: 'naidan-opfs-plain-target-v1',
         sourceAuthorityIdentity,
         sourceEndpoint: binding.source,
         targetAuthorityIdentity: NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
         targetEndpoint: binding.target,
       } as const;
-      const companion = new AuthenticatedTransitionProgressCompanion({
-        binding: companionBinding,
-        physical: createOpfsTransitionProgressPhysicalPort({ exclusiveGate, storageRoot }),
-        proofScope,
-        randomSource: undefined,
-      });
-      const bridge = new NativePlainTransitionProgressBridge({ binding: companionBinding, companion });
+      const runtime = new NativePlainTransitionRuntimeState({ binding: runtimeBinding });
       const provider = new TransitionProviderAdapter({
         hizofs: sourceDriver.driver,
         plain: createNativePlainDisableTransitionDriver({
           binding,
-          bridge,
           nativeNamespaceRoot,
+          runtime,
           verificationPageSize: NATIVE_ENABLE_TRANSITION_POLICY.verification.maximumDirectoryEntriesPerRead,
         }),
       });
@@ -2411,7 +1674,7 @@ export async function runNativeHizoFSDisableTransition({
         const result = await advancePersistenceTransition({
           control,
           policy: NATIVE_ENABLE_TRANSITION_POLICY,
-          progressPort: bridge.progressPort,
+          progressPort: runtime.progressPort,
           provider,
           signal,
         });
@@ -2438,7 +1701,8 @@ export async function runNativeHizoFSDisableTransition({
           case 'invalid': throw new TypeError('native disable stable plain authority failed normal traversal');
           default: plainReadiness satisfies never;
           }
-          await bridge.progressPort.clear({ operationId });
+          await runtime.progressPort.clear({ operationId });
+          await cleanupRetiredLocalTransitionProgress({ exclusiveGate, storageRoot });
           reportHizoFSTrialDebug({
             detail: { event: 'native_disable', fileSystemId, operationId, stage: 'stable' },
             level: 'info',
@@ -2505,12 +1769,12 @@ export async function runNativeHizoFSDisableTransition({
   // WHY: source deletion is not part of the user-visible authority switch.
   // The stable plain control record retains the source File System ID so
   // detached maintenance can retry cleanup without blocking Naidan.
-  return createNativeOpfsFileSystemSession({ root: nativeNamespaceRoot });
+  return;
 }
 
 export type NativeHizoFSReturnToPlainTransitionResult =
   | { readonly type: 'credential_rejected' }
-  | { readonly fileSystemSession: StorageFileSystemSession; readonly type: 'returned_plain' };
+  | { readonly type: 'returned_plain' };
 
 type OpenedNativeReturnToPlainSession = Readonly<{
   authoritativeEndpoint: NaidanPersistenceEndpointV1;
@@ -2519,18 +1783,18 @@ type OpenedNativeReturnToPlainSession = Readonly<{
 }>;
 
 async function completeNativeHizoFSReturnToPlainWith({
+  convergedFileSystemId,
   opened,
-  resumedFileSystemId,
   runDisable,
 }: {
+  convergedFileSystemId: FileSystemId;
   opened: OpenedNativeReturnToPlainSession;
-  resumedFileSystemId: FileSystemId;
-  runDisable: ({ session }: { session: NativeHizoFSDisableTransitionSession }) => Promise<StorageFileSystemSession>;
-}): Promise<StorageFileSystemSession> {
-  if (opened.fileSystemId !== resumedFileSystemId
+  runDisable: ({ session }: { session: NativeHizoFSDisableTransitionSession }) => Promise<void>;
+}): Promise<void> {
+  if (opened.fileSystemId !== convergedFileSystemId
     || !sameTransitionEndpoint({
       actual: opened.authoritativeEndpoint,
-      expected: { fileSystemId: resumedFileSystemId, type: 'hizofs' },
+      expected: { fileSystemId: convergedFileSystemId, type: 'hizofs' },
     })) {
     const cause = new TypeError('return-to-plain reopened a different encrypted authority');
     try {
@@ -2551,7 +1815,7 @@ async function completeNativeHizoFSReturnToPlainWith({
     },
   };
   try {
-    return await runDisable({ session: transientSession });
+    await runDisable({ session: transientSession });
   } catch (cause: unknown) {
     try {
       await transientSession.close();
@@ -2580,20 +1844,17 @@ export async function runNativeHizoFSReturnToPlainTransition({
   storageRoot: FileSystemDirectoryHandle;
 }): Promise<NativeHizoFSReturnToPlainTransitionResult> {
   signal?.throwIfAborted();
-  const resumed = await runNativeHizoFSResumeTransition({
+  const converged = await runNativeHizoFSConvergeTransition({
     lockManager,
     nativeNamespaceRoot,
-    onProgress,
-    retainedCredentials: [{ passphrase }],
-    runtimePolicy,
-    signal,
+    passphrase,
     storageRoot,
   });
-  switch (resumed.type) {
-  case 'credential_rejected': return resumed;
-  case 'resumed_plain': throw new TypeError('return-to-plain cannot adopt an unrelated interrupted decrypt transition');
-  case 'resumed_encrypted': break;
-  default: return resumed satisfies never;
+  switch (converged.type) {
+  case 'credential_rejected': return converged;
+  case 'converged_plain': return { type: 'returned_plain' };
+  case 'converged_encrypted': break;
+  default: return converged satisfies never;
   }
 
   const exclusiveGate = createBrowserNaidanPersistenceControlExclusiveGate({ lockManager });
@@ -2612,19 +1873,37 @@ export async function runNativeHizoFSReturnToPlainTransition({
   case 'opened': break;
   default: return opened satisfies never;
   }
-  const fileSystemSession = await completeNativeHizoFSReturnToPlainWith({
+  await completeNativeHizoFSReturnToPlainWith({
+    convergedFileSystemId: converged.fileSystemId,
     opened,
-    resumedFileSystemId: resumed.fileSystemId,
-    runDisable: async ({ session }) => await runNativeHizoFSDisableTransition({
-      lockManager,
-      nativeNamespaceRoot,
-      onProgress,
-      session,
-      signal,
-      storageRoot,
-    }),
+    runDisable: async ({ session }) => {
+      const cleanup = await runNativeStableHizoFSRetiredPlainCleanup({
+        lockManager,
+        nativeNamespaceRoot,
+        session,
+        storageRoot,
+      });
+      switch (cleanup.state) {
+      case 'completed':
+        if (cleanup.remainingEntryCount !== 0) {
+          throw new TypeError('return-to-plain could not clear the retired plain source');
+        }
+        break;
+      case 'plain_namespace_in_use':
+        throw new TypeError('return-to-plain plain target remains leased by another runtime');
+      default: cleanup satisfies never;
+      }
+      await runNativeHizoFSDisableTransition({
+        lockManager,
+        nativeNamespaceRoot,
+        onProgress,
+        session,
+        signal,
+        storageRoot,
+      });
+    },
   });
-  return { fileSystemSession, type: 'returned_plain' };
+  return { type: 'returned_plain' };
 }
 
 
@@ -2647,13 +1926,10 @@ function normalizeNativeRetainedCredentials({ retainedCredentials }: {
 }
 
 
-type NativeHizoFSReencryptBuildingStart =
-  | Readonly<{
-      onStarted(): void;
-      removeUnreferencedTarget(): Promise<void>;
-      type: 'start';
-    }>
-  | Readonly<{ type: 'resume' }>;
+type NativeHizoFSReencryptBuildingStart = Readonly<{
+  onStarted(): void;
+  removeUnreferencedTarget(): Promise<void>;
+}>;
 
 function nativeHizoFSReencryptBindingFileSystemIds({ binding }: {
   binding: TransitionTargetOperationBinding;
@@ -2689,7 +1965,6 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
   sourceSession,
   start,
   signal,
-  storageRoot,
 }: {
   binding: TransitionTargetOperationBinding;
   exclusiveGate: NaidanPersistenceControlExclusiveGate;
@@ -2701,7 +1976,6 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
   sourceSession: StorageFileSystemSession;
   start: NativeHizoFSReencryptBuildingStart;
   signal: AbortSignal | undefined;
-  storageRoot: FileSystemDirectoryHandle;
 }): Promise<void> {
   const operationPassphrase = passphrases[0];
   if (operationPassphrase === undefined) {
@@ -2716,7 +1990,7 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
   });
   const targetProofScopeForProfile = ({ openProfile }: {
     openProfile: CredentialCandidateOpenProfile;
-  }): TransitionProgressRootKeyProofScope => createNativeHizoFSRootKeyProofScope({
+  }): NativeHizoFSRootKeyProofScope => createNativeHizoFSRootKeyProofScope({
     fileSystemId: targetFileSystemId,
     nativeNamespaceRoot,
     openProfile,
@@ -2747,46 +2021,37 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
     readState: async () => await reencryptControl.control.readState(),
   };
 
-  let transitionStarted = start.type === 'resume';
+  let transitionStarted = false;
   try {
-    switch (start.type) {
-    case 'start':
-      await startPersistenceTransition({
-        control,
-        operationId: binding.operationId,
-        source: binding.source,
-        target: binding.target,
-      });
-      transitionStarted = true;
-      start.onStarted();
-      break;
-    case 'resume': {
-      const current = await control.readState();
-      if (!sameNativeReencryptTransition({ actual: current, binding })) {
-        throw new TypeError('Persistence Control transition changed after native re-encrypt resume credential proof');
-      }
-      break;
-    }
-    default: start satisfies never;
-    }
+    await startPersistenceTransition({
+      control,
+      operationId: binding.operationId,
+      source: binding.source,
+      target: binding.target,
+    });
+    transitionStarted = true;
+    start.onStarted();
 
     const sourceAuthorityIdentity = nativeReencryptSourceAuthorityIdentity({ fileSystemId: sourceFileSystemId });
     const targetAuthorityIdentity = nativeReencryptTargetAuthorityIdentity({ fileSystemId: targetFileSystemId });
-    const companionBinding = {
+    const runtimeBinding = {
       operationId: binding.operationId,
-      providerCheckpointCodec: 'hizofs-streaming-namespace-import-v1',
       sourceAuthorityIdentity,
       sourceEndpoint: binding.source,
       targetAuthorityIdentity,
       targetEndpoint: binding.target,
     } as const;
-    const companion = new AuthenticatedTransitionProgressCompanion({
-      binding: companionBinding,
-      physical: createOpfsTransitionProgressPhysicalPort({ exclusiveGate, storageRoot }),
-      proofScope: targetProofScopeForProfile({ openProfile: 'root_key_proof' }),
-      randomSource: undefined,
+    const journalBinding = {
+      operationIdentity: binding.operationId,
+      sourceAuthorityIdentity,
+      sourceEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.source }),
+      targetAuthorityIdentity,
+      targetEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.target }),
+    } as const;
+    const bridge = new RuntimeHizoFSTransitionProgress({
+      binding: runtimeBinding,
+      journalBinding,
     });
-    const bridge = new HizoFSTransitionProgressBridge({ binding: companionBinding, companion });
     const recheckPublicationAllowed = async (): Promise<void> => {
       const state = await control.readState();
       if (!sameNativeReencryptTransition({ actual: state, binding })) {
@@ -2804,13 +2069,7 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
         openProfile,
         passphrase: operationPassphrase,
       }),
-      journalBinding: {
-        operationIdentity: binding.operationId,
-        sourceAuthorityIdentity,
-        sourceEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.source }),
-        targetAuthorityIdentity,
-        targetEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.target }),
-      },
+      journalBinding,
       journalPort: bridge.providerJournalPort,
       limits: NATIVE_ENABLE_TARGET_IMPORT_LIMITS,
       normalOpenVerificationPassphrases: passphrases,
@@ -2854,7 +2113,7 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
       }
     }
   } catch (cause: unknown) {
-    if (start.type === 'start' && !transitionStarted) {
+    if (!transitionStarted) {
       try {
         await settleNativeHizoFSReencryptTargetAfterStartFailure({
           binding,
@@ -2871,148 +2130,6 @@ async function advanceNativeHizoFSReencryptBuildingTransition({
     }
     throw cause;
   }
-}
-
-type NativeHizoFSReencryptCleanupRuntime = Readonly<{
-  advance(): Promise<TransitionAdvanceResult>;
-  clearProgress(): Promise<void>;
-  readState(): Promise<TransitionSemanticState>;
-}>;
-
-async function completeNativeHizoFSReencryptCleanupWith({
-  binding,
-  onProgress,
-  runtime,
-}: {
-  binding: TransitionTargetOperationBinding;
-  onProgress: OpfsEncryptionTransitionProgressListener | undefined;
-  runtime: NativeHizoFSReencryptCleanupRuntime;
-}): Promise<FileSystemId> {
-  const { sourceFileSystemId, targetFileSystemId } = nativeHizoFSReencryptBindingFileSystemIds({ binding });
-  const current = await runtime.readState();
-  switch (current.mode.type) {
-  case 'transitioning':
-    if (current.mode.operation !== 're_encrypt'
-      || current.mode.operationId !== binding.operationId
-      || current.mode.phase.type !== 'cleaning_up_source'
-      || !sameTransitionEndpoint({ actual: current.mode.phase.source, expected: binding.source })
-      || !sameTransitionEndpoint({ actual: current.mode.phase.target, expected: binding.target })) {
-      throw new TypeError('Persistence Control no longer authorizes the native re-encrypt retired-source cleanup');
-    }
-    break;
-  case 'hizofs':
-    if (current.mode.activeFileSystemId !== targetFileSystemId) {
-      throw new TypeError('native re-encrypt cleanup stable authority belongs to another target');
-    }
-    if (current.retiredFileSystemIds.length > 1
-      || (current.retiredFileSystemIds.length === 1 && current.retiredFileSystemIds[0] !== sourceFileSystemId)) {
-      throw new TypeError('native re-encrypt cleanup found an unrelated retired File System ID');
-    }
-    // Stable authority can be observed after Persistence Control publication
-    // while transition-progress clearing is unresolved. Clear the stale
-    // checkpoint, but leave physical source deletion to retryable maintenance.
-    await runtime.clearProgress();
-    return targetFileSystemId;
-  case 'plain':
-    throw new TypeError('native re-encrypt cleanup cannot continue from stable plain authority');
-  default: current.mode satisfies never;
-  }
-
-  const completionResult = await runtime.advance();
-  reportNativeReencryptProgress({ onProgress, result: completionResult });
-  switch (completionResult.state) {
-  case 'retired_cleanup':
-  case 'stable':
-    await runtime.clearProgress();
-    return targetFileSystemId;
-  case 'authority_switched':
-  case 'copying':
-  case 'verifying': throw new TypeError('native re-encrypt completion unexpectedly re-entered transition building');
-  default: return completionResult satisfies never;
-  }
-}
-
-async function completeNativeHizoFSReencryptCleanup({
-  binding,
-  exclusiveGate,
-  nativeNamespaceRoot,
-  onProgress,
-  operationPassphrase,
-  physical,
-  signal,
-  storageRoot,
-}: {
-  binding: TransitionTargetOperationBinding;
-  exclusiveGate: NaidanPersistenceControlExclusiveGate;
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  onProgress: OpfsEncryptionTransitionProgressListener | undefined;
-  operationPassphrase: string;
-  physical: PersistenceControlPhysicalPort;
-  signal: AbortSignal | undefined;
-  storageRoot: FileSystemDirectoryHandle;
-}): Promise<FileSystemId> {
-  const { sourceFileSystemId, targetFileSystemId } = nativeHizoFSReencryptBindingFileSystemIds({ binding });
-  const targetProofScopeForProfile = ({ openProfile }: {
-    openProfile: CredentialCandidateOpenProfile;
-  }): TransitionProgressRootKeyProofScope => createNativeHizoFSRootKeyProofScope({
-    fileSystemId: targetFileSystemId,
-    nativeNamespaceRoot,
-    openProfile,
-    passphrase: operationPassphrase,
-  });
-  const cleanupControl = createCallbackScopedPersistenceControlTransitionPort({
-    bootstrapAuthorization: undefined,
-    endpointInspectionPort: createNativePhaseSpecificEndpointInspectionPort({
-      nativeNamespaceRoot,
-      openContainer: openBrowserAuthenticatedReadOnlyContainerCapability,
-      passphrase: operationPassphrase,
-    }),
-    fileSystemId: targetFileSystemId,
-    initialOpenProfile: 'normal_read',
-    physical,
-    proofScopeForProfile: targetProofScopeForProfile,
-  });
-  const companionBinding = {
-    operationId: binding.operationId,
-    providerCheckpointCodec: 'hizofs-streaming-namespace-import-v1',
-    sourceAuthorityIdentity: nativeReencryptSourceAuthorityIdentity({ fileSystemId: sourceFileSystemId }),
-    sourceEndpoint: binding.source,
-    targetAuthorityIdentity: nativeReencryptTargetAuthorityIdentity({ fileSystemId: targetFileSystemId }),
-    targetEndpoint: binding.target,
-  } as const;
-  const companion = new AuthenticatedTransitionProgressCompanion({
-    binding: companionBinding,
-    physical: createOpfsTransitionProgressPhysicalPort({ exclusiveGate, storageRoot }),
-    proofScope: targetProofScopeForProfile({ openProfile: 'root_key_proof' }),
-    randomSource: undefined,
-  });
-  const bridge = new HizoFSTransitionProgressBridge({ binding: companionBinding, companion });
-  const sourceDriver = createNativeHizoFSReencryptSourceDriver({
-    binding,
-    exclusiveGate,
-    nativeNamespaceRoot,
-    session: undefined,
-  });
-  sourceDriver.markAuthoritySwitched();
-  const provider = new TransitionProviderAdapter({
-    hizofs: sourceDriver.driver,
-    plain: createNativePlainEnableTransitionDriver({ nativeNamespaceRoot }),
-  });
-  return await completeNativeHizoFSReencryptCleanupWith({
-    binding,
-    onProgress,
-    runtime: {
-      advance: async () => await advancePersistenceTransition({
-        control: cleanupControl,
-        policy: NATIVE_ENABLE_TRANSITION_POLICY,
-        progressPort: bridge.progressPort,
-        provider,
-        signal,
-      }),
-      clearProgress: async () => await bridge.progressPort.clear({ operationId: binding.operationId }),
-      readState: async () => await cleanupControl.readState(),
-    },
-  });
 }
 
 export async function runNativeHizoFSReencryptTransition({
@@ -3085,10 +2202,8 @@ export async function runNativeHizoFSReencryptTransition({
             fileSystemId: targetFileSystemId,
             storageRoot: nativeNamespaceRoot,
           }),
-          type: 'start',
         },
         signal,
-        storageRoot,
       });
       return { binding, operationPassphrase, targetFileSystemId };
     },
@@ -3116,19 +2231,10 @@ export async function runNativeHizoFSReencryptTransition({
   default: return transitionAttempt satisfies never;
   }
 
-  const { binding, operationPassphrase } = transitionAttempt.value;
+  const { targetFileSystemId } = transitionAttempt.value;
   await session.close();
-  return await completeNativeHizoFSReencryptCleanup({
-    binding,
-    exclusiveGate,
-    nativeNamespaceRoot,
-    onProgress,
-    operationPassphrase,
-    physical,
-    signal,
-    storageRoot,
-  });
-
+  await cleanupRetiredLocalTransitionProgress({ exclusiveGate, storageRoot });
+  return targetFileSystemId;
 }
 
 export async function runNativeHizoFSEnableTransition({
@@ -3171,13 +2277,12 @@ export async function runNativeHizoFSEnableTransition({
   const targetAuthorityIdentity = nativeEnableTargetAuthorityIdentity({ fileSystemId });
   const proofScopeForProfile = ({ openProfile }: {
     openProfile: CredentialCandidateOpenProfile;
-  }): TransitionProgressRootKeyProofScope => createNativeHizoFSRootKeyProofScope({
+  }): NativeHizoFSRootKeyProofScope => createNativeHizoFSRootKeyProofScope({
     fileSystemId,
     nativeNamespaceRoot,
     openProfile,
     passphrase,
   });
-  const progressProofScope = proofScopeForProfile({ openProfile: 'root_key_proof' });
   const endpointInspectionPort = createNativePhaseSpecificEndpointInspectionPort({
     nativeNamespaceRoot,
     openContainer: openBrowserAuthenticatedReadOnlyContainerCapability,
@@ -3201,21 +2306,24 @@ export async function runNativeHizoFSEnableTransition({
       level: 'info',
     });
     trialStage = 'prepare_transition_runtime';
-    const companionBinding = {
+    const runtimeBinding = {
       operationId,
-      providerCheckpointCodec: 'hizofs-streaming-namespace-import-v1',
       sourceAuthorityIdentity: NATIVE_PLAIN_ENABLE_AUTHORITY_IDENTITY,
       sourceEndpoint: binding.source,
       targetAuthorityIdentity,
       targetEndpoint: binding.target,
     } as const;
-    const companion = new AuthenticatedTransitionProgressCompanion({
-      binding: companionBinding,
-      physical: createOpfsTransitionProgressPhysicalPort({ exclusiveGate, storageRoot }),
-      proofScope: progressProofScope,
-      randomSource: undefined,
+    const journalBinding = {
+      operationIdentity: operationId,
+      sourceAuthorityIdentity: NATIVE_PLAIN_ENABLE_AUTHORITY_IDENTITY,
+      sourceEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.source }),
+      targetAuthorityIdentity,
+      targetEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.target }),
+    } as const;
+    const bridge = new RuntimeHizoFSTransitionProgress({
+      binding: runtimeBinding,
+      journalBinding,
     });
-    const bridge = new HizoFSTransitionProgressBridge({ binding: companionBinding, companion });
     const recheckPublicationAllowed = async (): Promise<void> => {
       const state = await control.readState();
       if (!sameSemanticTransitionState({ actual: state, binding })) {
@@ -3234,13 +2342,7 @@ export async function runNativeHizoFSEnableTransition({
           openProfile,
           passphrase,
         }),
-        journalBinding: {
-          operationIdentity: operationId,
-          sourceAuthorityIdentity: NATIVE_PLAIN_ENABLE_AUTHORITY_IDENTITY,
-          sourceEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.source }),
-          targetAuthorityIdentity,
-          targetEndpointIdentity: encodePersistenceEndpoint({ endpoint: binding.target }),
-        },
+        journalBinding,
         journalPort: bridge.providerJournalPort,
         limits: NATIVE_ENABLE_TARGET_IMPORT_LIMITS,
         passphrase,
@@ -3276,7 +2378,10 @@ export async function runNativeHizoFSEnableTransition({
         });
       }
       switch (result.state) {
-      case 'stable': return fileSystemId;
+      case 'stable': {
+        await cleanupRetiredLocalTransitionProgress({ exclusiveGate, storageRoot });
+        return fileSystemId;
+      }
       case 'authority_switched':
       case 'copying':
       case 'retired_cleanup':
@@ -4375,7 +3480,7 @@ export async function runNativeStableHizoFSRetiredPlainCleanup({
 }: {
   lockManager: Pick<LockManager, 'request'>;
   nativeNamespaceRoot: FileSystemDirectoryHandle;
-  session: OpfsPersistenceUnlockedSession;
+  session: Pick<OpfsPersistenceUnlockedSession, 'fileSystemId' | 'fileSystemSession'>;
   storageRoot: FileSystemDirectoryHandle;
 }): Promise<OpfsPersistenceUnlockedMaintenanceResult> {
   let remainingEntryCount: number | undefined;
@@ -4632,8 +3737,6 @@ export async function inspectCredentialAwarePersistenceRuntime({
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   reportNativeEnableTrialFailure,
-  acceptNativeDecryptResumeSource,
-  completeNativeHizoFSReencryptCleanupWith,
   completeNativeHizoFSReturnToPlainWith,
   consumeOneNativePlainDirectoryKey,
   createCallbackScopedPersistenceControlTransitionPort,
@@ -4654,18 +3757,16 @@ export const TEST_ONLY = {
   nativeDecryptTransitionBinding,
   nativeEncryptTransitionBinding,
   nativeReencryptTransitionBinding,
-  nativeResumeAuthority,
+  nativeConvergenceAuthority,
   sameNativeDecryptTransition,
   sameNativeEncryptTransition,
   nativeHizoFSDisableSourceRemainsAuthoritativeAfterStartFailure,
+  normalizeNativeRetainedCredentials,
   sameTransitionEndpoint,
   sameTransitionTargetBinding,
   settleNativeHizoFSEnableTargetAfterStartFailure,
   settleNativeHizoFSReencryptTargetAfterStartFailure,
-  snapshotAndReleaseCredentialAuthority,
-  runNativeHizoFSReencryptResumeTransitionWith,
   runNativeStableHizoFSRetiredContainerCleanupWith,
   runNativeStablePlainRetiredCleanupWith,
   runWithCredentialAuthorityRelease,
-  targetRetainedCredentialsForResume,
 };

@@ -1,5 +1,44 @@
 export const OPFS_STORAGE_SESSION_LOCK_KEY = 'naidan:sync:lock:opfs_storage_session';
 export const OPFS_PLAIN_NAMESPACE_SESSION_LOCK_KEY = 'naidan:sync:lock:opfs_plain_namespace_session';
+const OPFS_STORAGE_SESSION_EXCLUSIVE_FENCE_TIMEOUT_MILLISECONDS = 30_000;
+
+type FenceAcquisitionSignal = Readonly<{
+  dispose(): void;
+  signal: AbortSignal;
+}>;
+
+function createFenceAcquisitionSignal({ signal, timeoutMilliseconds }: {
+  signal: AbortSignal | undefined;
+  timeoutMilliseconds: number;
+}): FenceAcquisitionSignal {
+  if (!Number.isSafeInteger(timeoutMilliseconds) || timeoutMilliseconds <= 0) {
+    throw new RangeError('OPFS storage-session fence timeout must be a positive safe integer');
+  }
+  const controller = new AbortController();
+  const forwardAbort = (): void => {
+    controller.abort(signal?.reason);
+  };
+  if (signal?.aborted === true) {
+    forwardAbort();
+  } else {
+    signal?.addEventListener('abort', forwardAbort, { once: true });
+  }
+  const timeout = setTimeout(() => {
+    const timeoutError = new Error('Timed out waiting for the exclusive OPFS storage-session fence');
+    timeoutError.name = 'TimeoutError';
+    controller.abort(timeoutError);
+  }, timeoutMilliseconds);
+  let disposed = false;
+  return {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', forwardAbort);
+    },
+    signal: controller.signal,
+  };
+}
 
 
 export async function runWithExclusiveOpfsStorageSessionFence<T>({
@@ -17,15 +56,24 @@ export async function runWithExclusiveOpfsStorageSessionFence<T>({
   if (signal?.aborted === true) {
     throw signal.reason;
   }
-
-  return await lockManager.request(
-    OPFS_STORAGE_SESSION_LOCK_KEY,
-    {
-      mode: 'exclusive',
-      ...(signal === undefined ? {} : { signal }),
-    },
-    async () => await run(),
-  );
+  const acquisition = createFenceAcquisitionSignal({
+    signal,
+    timeoutMilliseconds: OPFS_STORAGE_SESSION_EXCLUSIVE_FENCE_TIMEOUT_MILLISECONDS,
+  });
+  try {
+    return await lockManager.request(
+      OPFS_STORAGE_SESSION_LOCK_KEY,
+      { mode: 'exclusive', signal: acquisition.signal },
+      async lock => {
+        acquisition.dispose();
+        if (lock === null) throw new Error('Exclusive OPFS storage-session fence was not acquired');
+        acquisition.signal.throwIfAborted();
+        return await run();
+      },
+    );
+  } finally {
+    acquisition.dispose();
+  }
 }
 
 export type OpportunisticPlainNamespaceFenceResult<T> =
@@ -260,4 +308,6 @@ export class OpfsPlainNamespaceSessionLock extends OpfsNamedSessionLock {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  createFenceAcquisitionSignal,
+  exclusiveFenceTimeoutMilliseconds: OPFS_STORAGE_SESSION_EXCLUSIVE_FENCE_TIMEOUT_MILLISECONDS,
 };

@@ -9,6 +9,7 @@ import OpfsEncryptionSettingsPanel from './OpfsEncryptionSettingsPanel.vue';
 const mockShowConfirm = vi.fn();
 const mockBeginLocalOperation = vi.fn();
 const mockFinishLocalOperation = vi.fn();
+const mockUpdateProgress = vi.fn();
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
@@ -30,6 +31,7 @@ vi.mock('@/features/opfs-encryption/composables/useOpfsEncryptionTransition', ()
   useOpfsEncryptionTransition: () => ({
     beginLocalOperation: mockBeginLocalOperation,
     finishLocalOperation: mockFinishLocalOperation,
+    updateProgress: mockUpdateProgress,
   }),
 }));
 
@@ -140,10 +142,6 @@ describe('OpfsEncryptionSettingsPanel', () => {
     await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
     await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
     await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
-    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValueOnce(
-      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
-    );
-
     expect(document.body.textContent).toContain(
       'Leading or trailing whitespace is part of the passphrase and will not be removed.',
     );
@@ -152,16 +150,16 @@ describe('OpfsEncryptionSettingsPanel', () => {
 
     expect(prepareForOpfsEncryptionTransition).toHaveBeenCalledOnce();
     expect(storageService.enableOpfsEncryption).toHaveBeenCalledWith({
+      onProgress: mockUpdateProgress,
       passphrase,
       signal: undefined,
     });
     expect(mockBeginLocalOperation).toHaveBeenCalledOnce();
     expect(mockFinishLocalOperation).toHaveBeenCalledWith({
-      outcome: 'completed',
-      errorMessage: undefined,
+      outcome: 'settled_for_reload',
     });
-    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
-    expect(document.body.querySelector('[data-testid="opfs-encryption-setup-dialog"]')).toBeNull();
+    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('false');
+    expect(storageService.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
     expect(location.reload).not.toHaveBeenCalled();
   });
 
@@ -173,26 +171,22 @@ describe('OpfsEncryptionSettingsPanel', () => {
       await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue(passphrase);
       await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue(passphrase);
       await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
-      vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValueOnce(
-        { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
-      );
-
       await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
       await flushPromises();
 
       expect(storageService.enableOpfsEncryption).toHaveBeenCalledWith({
+        onProgress: mockUpdateProgress,
         passphrase,
         signal: undefined,
       });
       expect(mockFinishLocalOperation).toHaveBeenCalledWith({
-        outcome: 'completed',
-        errorMessage: undefined,
+        outcome: 'settled_for_reload',
       });
-      expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
+      expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('false');
     },
   );
 
-  it('refreshes the stable inspection after an encryption transition fails', async () => {
+  it('does not inspect or recover in place after a started encryption transition fails', async () => {
     vi.mocked(storageService.inspectOpfsEncryptionSettings)
       .mockReset()
       .mockResolvedValue({ type: 'plain' });
@@ -209,13 +203,28 @@ describe('OpfsEncryptionSettingsPanel', () => {
     await flushPromises();
 
     expect(mockFinishLocalOperation).toHaveBeenCalledWith({
-      outcome: 'rolled_back',
-      errorMessage: 'Transferred settings do not match their source',
+      outcome: 'settled_for_reload',
     });
-    expect(storageService.inspectOpfsEncryptionSettings).toHaveBeenCalledTimes(2);
-    expect(document.body.textContent).toContain(
-      'Transferred settings do not match their source',
-    );
+    expect(storageService.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
+    expect(document.body.textContent).not.toContain('Transferred settings do not match their source');
+  });
+
+  it('reports preparation failure in place without starting storage mutation', async () => {
+    const failure = new Error('Unable to suspend local storage access');
+    vi.mocked(prepareForOpfsEncryptionTransition).mockRejectedValueOnce(failure);
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+    await getTeleportedElement('[data-testid="opfs-encryption-passphrase"]').setValue('q');
+    await getTeleportedElement('[data-testid="opfs-encryption-passphrase-confirmation"]').setValue('q');
+    await getTeleportedElement('[data-testid="opfs-encryption-experimental-accepted"]').setValue(true);
+
+    await getTeleportedElement('[data-testid="opfs-encryption-enable"]').trigger('click');
+    await flushPromises();
+
+    expect(mockBeginLocalOperation).toHaveBeenCalledOnce();
+    expect(mockFinishLocalOperation).toHaveBeenCalledWith({ outcome: 'preparation_failed' });
+    expect(storageService.enableOpfsEncryption).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(failure.message);
   });
 
   it('rejects pasted line breaks rather than silently changing the passphrase', async () => {
@@ -278,14 +287,13 @@ line two`,
     expect(confirmationInput.attributes('type')).toBe('text');
   });
 
-  it('disables encryption in place without reloading the initiating tab', async () => {
+  it('keeps the encrypted inspection unchanged until disable settlement reloads', async () => {
     vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
       { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
     vi.mocked(storageService.disableOpfsEncryption).mockResolvedValue(undefined);
     mockShowConfirm.mockResolvedValue(true);
     const wrapper = await mountPanel({ storageType: 'opfs' });
-    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValueOnce({ type: 'plain' });
     const toggle = wrapper.get('[data-testid="opfs-encryption-toggle"]');
     expect(toggle.attributes('aria-checked')).toBe('true');
     expect(toggle.attributes('disabled')).toBeUndefined();
@@ -294,26 +302,23 @@ line two`,
     await flushPromises();
 
     expect(storageService.disableOpfsEncryption).toHaveBeenCalledWith({
+      onProgress: mockUpdateProgress,
       signal: undefined,
     });
     expect(mockFinishLocalOperation).toHaveBeenCalledWith({
-      outcome: 'completed',
-      errorMessage: undefined,
+      outcome: 'settled_for_reload',
     });
-    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('false');
+    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
+    expect(storageService.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
     expect(location.reload).not.toHaveBeenCalled();
   });
 
-  it('re-encrypts in place without reloading the initiating tab', async () => {
+  it('does not reopen or re-inspect storage after re-encryption settlement', async () => {
     vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
       { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
     );
     vi.mocked(storageService.reencryptOpfsEncryption).mockResolvedValue(undefined);
     const wrapper = await mountPanel({ storageType: 'opfs' });
-    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValueOnce(
-      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
-    );
-
     await wrapper.get('[data-testid="opfs-encryption-reencrypt"]').trigger('click');
     const dialog = getTeleportedElement('[data-testid="opfs-encryption-reencrypt-dialog"]');
     expect(dialog.text()).toContain('every other key slot will be removed after re-encryption');
@@ -322,14 +327,15 @@ line two`,
     await flushPromises();
 
     expect(storageService.reencryptOpfsEncryption).toHaveBeenCalledWith({
+      onProgress: mockUpdateProgress,
       passphrase: 'current passphrase',
       signal: undefined,
     });
     expect(mockFinishLocalOperation).toHaveBeenCalledWith({
-      outcome: 'completed',
-      errorMessage: undefined,
+      outcome: 'settled_for_reload',
     });
     expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
+    expect(storageService.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
     expect(location.reload).not.toHaveBeenCalled();
   });
 

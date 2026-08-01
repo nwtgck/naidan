@@ -88,6 +88,34 @@ describe('OPFS Persistence Control runtime composition', () => {
     });
   });
 
+  it('allows return-to-plain authentication for an unresolved interrupted transition', () => {
+    expect(() => OPFS_STORAGE_TEST_ONLY.requireReturnToPlainInspection({
+      inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitionCredentialRequiredInspection({
+        firstSequence: 3,
+        secondSequence: 2,
+      }),
+    })).not.toThrow();
+  });
+
+  it('rejects stable unlock and known decrypt or re-encrypt transitions before return-to-plain', () => {
+    expect(() => OPFS_STORAGE_TEST_ONLY.requireReturnToPlainInspection({
+      inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+        firstSequence: 3,
+        secondSequence: 2,
+      }),
+    })).toThrow('Stable encrypted OPFS storage');
+    for (const operation of ['decrypt', 're_encrypt'] as const) {
+      expect(() => OPFS_STORAGE_TEST_ONLY.requireReturnToPlainInspection({
+        inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+          operation,
+          phase: 'building_target',
+          sourceFileSystemId: 'returnPlainSource001',
+          targetFileSystemId: operation === 're_encrypt' ? 'returnPlainTarget001' : undefined,
+        }),
+      })).toThrow('Only interrupted OPFS encryption');
+    }
+  });
+
   it('fails closed when a plain authority conflicts with an installed HizoFS session', () => {
     const fileSystemId = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
       fileSystemId: '0123456789_ABCDEFGHIJ',
@@ -188,34 +216,34 @@ describe('OPFS Persistence Control runtime composition', () => {
     expect(suspend).toHaveBeenCalledOnce();
   });
 
-  it('preserves transition failure when provider recovery succeeds', async () => {
+  it('preserves transition failure when provider shutdown succeeds', async () => {
     const transitionFailure = new Error('transition failed');
-    const recover = vi.fn(async () => undefined);
+    const settle = vi.fn(async () => undefined);
 
-    await expect(OPFS_STORAGE_TEST_ONLY.recoverProviderAfterTransitionFailure({
+    await expect(OPFS_STORAGE_TEST_ONLY.settleProviderAfterTransitionFailure({
       cause: transitionFailure,
-      message: 'transition and provider recovery both failed',
-      recover,
+      message: 'transition and provider shutdown both failed',
+      settle,
     })).rejects.toBe(transitionFailure);
-    expect(recover).toHaveBeenCalledOnce();
+    expect(settle).toHaveBeenCalledOnce();
   });
 
-  it('preserves transition and provider recovery failures together', async () => {
+  it('preserves transition and provider shutdown failures together', async () => {
     const transitionFailure = new Error('transition failed');
-    const recoveryFailure = new Error('provider recovery failed');
-    const recover = vi.fn(async () => {
-      throw recoveryFailure;
+    const settlementFailure = new Error('provider shutdown failed');
+    const settle = vi.fn(async () => {
+      throw settlementFailure;
     });
 
-    await expect(OPFS_STORAGE_TEST_ONLY.recoverProviderAfterTransitionFailure({
+    await expect(OPFS_STORAGE_TEST_ONLY.settleProviderAfterTransitionFailure({
       cause: transitionFailure,
-      message: 'transition and provider recovery both failed',
-      recover,
+      message: 'transition and provider shutdown both failed',
+      settle,
     })).rejects.toMatchObject({
-      errors: [transitionFailure, recoveryFailure],
-      message: 'transition and provider recovery both failed',
+      errors: [transitionFailure, settlementFailure],
+      message: 'transition and provider shutdown both failed',
     });
-    expect(recover).toHaveBeenCalledOnce();
+    expect(settle).toHaveBeenCalledOnce();
   });
 
   it('runs every provider shutdown step and preserves a single failure', async () => {
@@ -293,74 +321,33 @@ describe('OPFS Persistence Control runtime composition', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it('preserves plain transition installation failure when candidate cleanup succeeds', async () => {
-    const installationFailure = new Error('plain transition installation failed');
-    const close = vi.fn(async () => undefined);
-
-    await expect(OPFS_STORAGE_TEST_ONLY.closePlainTransitionSessionAfterInstallFailure({
-      cause: installationFailure,
-      fileSystemSession: { close },
-    })).rejects.toBe(installationFailure);
-    expect(close).toHaveBeenCalledOnce();
-  });
-
-  it('preserves plain transition installation and candidate cleanup failures together', async () => {
-    const installationFailure = new Error('plain transition installation failed');
-    const cleanupFailure = new Error('plain transition session cleanup failed');
-    const close = vi.fn(async () => {
-      throw cleanupFailure;
-    });
-
-    await expect(OPFS_STORAGE_TEST_ONLY.closePlainTransitionSessionAfterInstallFailure({
-      cause: installationFailure,
-      fileSystemSession: { close },
-    })).rejects.toMatchObject({
-      errors: [installationFailure, cleanupFailure],
-      message: 'plain transition result installation and candidate cleanup both failed',
-    });
-    expect(close).toHaveBeenCalledOnce();
-  });
-
-
-  it('closes a stable encrypted transition candidate instead of installing it on the same page', async () => {
-    const close = vi.fn(async () => undefined);
-
-    await OPFS_STORAGE_TEST_ONLY.closePersistenceTransitionResultForReload({
-      result: {
-        session: { close } as unknown as OpfsPersistenceUnlockedSession,
-        type: 'encrypted',
-      },
-    });
-
-    expect(close).toHaveBeenCalledOnce();
-  });
-
-  it('closes both parts of a stable plain transition candidate before reload', async () => {
-    const dispose = vi.fn(async () => undefined);
-    const close = vi.fn(async () => undefined);
-
-    await OPFS_STORAGE_TEST_ONLY.closePersistenceTransitionResultForReload({
-      result: {
-        backend: { dispose } as unknown as import('./interface').IStorageProvider,
-        fileSystemSession: { close } as unknown as import('./storage-file-system/types').StorageFileSystemSession,
-        type: 'plain',
-      },
-    });
-
-    expect(dispose).toHaveBeenCalledOnce();
-    expect(close).toHaveBeenCalledOnce();
-  });
-
-  it('settles the current provider even when transition candidate cleanup fails', async () => {
-    const candidateFailure = new Error('candidate cleanup failed');
+  it('settles only the current provider at the reload boundary', async () => {
     const settleProvider = vi.fn(async () => undefined);
 
     await expect(OPFS_STORAGE_TEST_ONLY.settleProviderForReloadAfterTransition({
-      closeResult: async () => {
-        throw candidateFailure;
-      },
       settleProvider,
-    })).rejects.toBe(candidateFailure);
+    })).resolves.toBeUndefined();
+
+    expect(settleProvider).toHaveBeenCalledOnce();
+  });
+
+  it('propagates current-provider settlement failure before reload', async () => {
+    const settlementFailure = new Error('current provider settlement failed');
+
+    await expect(OPFS_STORAGE_TEST_ONLY.settleProviderForReloadAfterTransition({
+      settleProvider: async () => {
+        throw settlementFailure;
+      },
+    })).rejects.toBe(settlementFailure);
+  });
+
+  it('has no transition-result session cleanup hook at the reload boundary', async () => {
+    const resultSessionClose = vi.fn(async () => undefined);
+    const settleProvider = vi.fn(async () => undefined);
+
+    await OPFS_STORAGE_TEST_ONLY.settleProviderForReloadAfterTransition({ settleProvider });
+
+    expect(resultSessionClose).not.toHaveBeenCalled();
     expect(settleProvider).toHaveBeenCalledOnce();
   });
 
@@ -412,9 +399,9 @@ describe('OPFS Persistence Control runtime composition', () => {
     const uninstall = installOpfsPersistenceRuntimeFactory({ factory: async () => runtime });
     const provider = new OPFSStorageProvider();
 
-    const { blockingReason, candidates, type, ...unhandledInspection } = inspection;
+    const { blockingReason, candidates, requiredAction, type, ...unhandledInspection } = inspection;
     unhandledInspection satisfies Record<PropertyKey, never>;
-    expect({ blockingReason, candidates, type }).toEqual(inspection);
+    expect({ blockingReason, candidates, requiredAction, type }).toEqual(inspection);
     expect('mode' in inspection).toBe(false);
     await expect(provider.inspectEncryptionSettings()).resolves.toEqual({
       access: 'locked',

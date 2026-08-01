@@ -17,32 +17,26 @@ afterEach(() => {
 });
 
 describe('useOpfsEncryptionTransition', () => {
-  it('blocks and unblocks the local app around a successful operation', () => {
+  it('keeps the local app blocked after transition settlement until reload', () => {
     const transition = useOpfsEncryptionTransition();
 
     transition.beginLocalOperation();
     expect(transition.active.value).toBe(true);
-    expect(transition.failed.value).toBe(false);
-
     transition.finishLocalOperation({
-      outcome: 'completed',
-      errorMessage: undefined,
+      outcome: 'settled_for_reload',
     });
-    expect(transition.active.value).toBe(false);
-    expect(transition.failed.value).toBe(false);
+    expect(transition.active.value).toBe(true);
   });
 
-  it('unblocks the local app after a failed operation rolls back safely', () => {
+  it('unblocks the local app when preparation fails before transition start', () => {
     const transition = useOpfsEncryptionTransition();
 
     transition.beginLocalOperation();
     transition.finishLocalOperation({
-      outcome: 'rolled_back',
-      errorMessage: 'copy failed',
+      outcome: 'preparation_failed',
     });
 
     expect(transition.active.value).toBe(false);
-    expect(transition.failed.value).toBe(false);
   });
 
   it('reuses a pending local overlay when another tab wins the transition lock', () => {
@@ -57,24 +51,20 @@ describe('useOpfsEncryptionTransition', () => {
     expect(globalOverlay.value).toBe(overlayBeforeExternalStart);
 
     transition.finishLocalOperation({
-      outcome: 'rolled_back',
-      errorMessage: 'the local attempt lost the transition lock',
+      outcome: 'preparation_failed',
     });
     expect(transition.active.value).toBe(true);
     expect(globalOverlay.value).toBe(overlayBeforeExternalStart);
   });
 
-  it('keeps the local app blocked when the provider cannot prove a stable backend', () => {
+  it('keeps the local app blocked when a failed transition settles for reload', () => {
     const transition = useOpfsEncryptionTransition();
 
     transition.beginLocalOperation();
     transition.finishLocalOperation({
-      outcome: 'recovery_required',
-      errorMessage: 'storage state is uncertain',
+      outcome: 'settled_for_reload',
     });
 
     expect(transition.active.value).toBe(true);
-    expect(transition.failed.value).toBe(true);
-    expect(transition.failureMessage.value).toBe('storage state is uncertain');
   });
 });

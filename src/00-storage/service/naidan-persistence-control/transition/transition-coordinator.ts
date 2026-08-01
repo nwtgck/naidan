@@ -250,9 +250,9 @@ export async function convergeInterruptedPersistenceTransition({
     }
   })();
 
-  // The stable authority is published before obsolete detailed progress is
-  // cleared. A lost response can therefore leave only harmless stale progress;
-  // startup never uses that progress to choose authority or resume a copy.
+  // Publish stable authority before releasing invocation-local work state.
+  // Startup derives authority only from Persistence Control and starts any
+  // later copy from the beginning.
   await control.publishState({ state: convergence.stableState });
   await progressPort?.clear({ operationId: mode.operationId });
   return convergence;

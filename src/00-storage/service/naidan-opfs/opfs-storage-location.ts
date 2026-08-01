@@ -4,7 +4,7 @@ import {
 } from "@/00-storage/service/naidan-persistence-control/00-format";
 import type {
   NaidanPersistenceControlExclusiveGate,
-} from "@/00-storage/service/naidan-opfs/opfs-transition-progress-physical-port";
+} from "@/00-storage/service/naidan-opfs/persistence-control-exclusive-gate";
 
 type HizoFSMode = Extract<NaidanPersistenceModeV1, { readonly type: "hizofs" }>;
 type FileSystemId = HizoFSMode["activeFileSystemId"];

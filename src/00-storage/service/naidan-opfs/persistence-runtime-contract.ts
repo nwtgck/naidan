@@ -85,10 +85,6 @@ export type OpfsPersistenceTransitionRequest =
       readonly session: OpfsPersistenceUnlockedSession;
     }
   | {
-      readonly operation: 'resume';
-      readonly retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-    }
-  | {
       readonly operation: 'converge';
       readonly retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
     }
@@ -97,8 +93,7 @@ export type OpfsPersistenceTransitionRequest =
   | { readonly operation: 'debug_interrupt_disable'; readonly session: OpfsPersistenceUnlockedSession };
 
 export type OpfsPersistenceTransitionResult =
-  | { readonly type: 'plain'; readonly backend: IStorageProvider; readonly fileSystemSession: StorageFileSystemSession }
-  | { readonly type: 'encrypted'; readonly session: OpfsPersistenceUnlockedSession }
+  | { readonly type: 'completed' }
   | { readonly type: 'interrupted' };
 
 /**

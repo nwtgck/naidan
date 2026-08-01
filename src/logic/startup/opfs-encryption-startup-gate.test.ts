@@ -65,35 +65,42 @@ describe('createOpfsEncryptionStartupGate', () => {
     });
 
     await gate.unlockWithPassphrase({ passphrase: 'transition passphrase' });
-    await gate.wait();
+    let gateCompleted = false;
+    void gate.wait().then(() => {
+      gateCompleted = true;
+    });
+    await Promise.resolve();
 
     expect(converge).toHaveBeenCalledWith({
       passphrase: 'transition passphrase',
       signal: undefined,
     });
     expect(unlock).not.toHaveBeenCalled();
-    expect(gate.phase.value).toBe('preparing_application');
+    expect(gate.phase.value).toBe('unlocking');
+    expect(gateCompleted).toBe(false);
   });
 
-  it('converges an interrupted transition without selecting detailed resume progress', async () => {
+  it('converges an interrupted transition without selecting saved work progress', async () => {
     const converge = vi.spyOn(storageService, 'convergeOpfsEncryptionTransitionWithPassphrase')
       .mockResolvedValue(undefined);
-    const resume = vi.spyOn(storageService, 'resumeOpfsEncryptionTransitionWithPassphrase')
-      .mockRejectedValue(new Error('detailed resume must not be selected during startup'));
     const gate = createOpfsEncryptionStartupGate({
       inspection: createTransitioningInspection(),
     });
 
     await gate.unlockWithPassphrase({ passphrase: 'transition passphrase' });
-    await gate.wait();
+    let gateCompleted = false;
+    void gate.wait().then(() => {
+      gateCompleted = true;
+    });
+    await Promise.resolve();
 
     expect(converge).toHaveBeenCalledWith({
       passphrase: 'transition passphrase',
       signal: undefined,
     });
-    expect(resume).not.toHaveBeenCalled();
     expect(gate.progress.value).toBeUndefined();
-    expect(gate.phase.value).toBe('preparing_application');
+    expect(gate.phase.value).toBe('unlocking');
+    expect(gateCompleted).toBe(false);
   });
 
 
@@ -110,14 +117,19 @@ describe('createOpfsEncryptionStartupGate', () => {
     });
 
     await gate.returnInterruptedEncryptionToPlain({ passphrase: 'existing passphrase' });
-    await gate.wait();
+    let gateCompleted = false;
+    void gate.wait().then(() => {
+      gateCompleted = true;
+    });
+    await Promise.resolve();
 
     expect(returnToPlain).toHaveBeenCalledWith({
       passphrase: 'existing passphrase',
       signal: undefined,
       onProgress: expect.any(Function),
     });
-    expect(gate.phase.value).toBe('preparing_application');
+    expect(gate.phase.value).toBe('unlocking');
+    expect(gateCompleted).toBe(false);
   });
 
   it('returns to the locked phase when passphrase unlock fails', async () => {

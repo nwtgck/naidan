@@ -6,6 +6,7 @@ import {
 } from "@/00-storage/service/naidan-opfs/development-persistence-runtime";
 import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from "@/00-storage/service/naidan-opfs/opfs-storage-location";
 import { HIZOFS_TRIAL_DEBUG_MARKER } from "@/00-storage/service/naidan-opfs/trial-debug";
+import { TEST_ONLY as RETIRED_PROGRESS_TEST_ONLY } from "@/00-storage/service/naidan-opfs/retired-local-transition-progress-cleanup";
 import { listNativePlainApplicationNamespaceEntryNames } from "@/00-storage/service/naidan-opfs/native-plain-application-namespace";
 import {
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
@@ -47,6 +48,19 @@ async function listEntryNames({ directory }: {
   const names: string[] = [];
   for await (const [name] of directory.entries()) names.push(name);
   return names.toSorted();
+}
+
+async function expectNoPersistentTransitionProgress({ storageRoot }: {
+  storageRoot: FileSystemDirectoryHandle;
+}): Promise<void> {
+  const collection = await storageRoot.getDirectoryHandle(
+    NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName,
+    { create: false },
+  );
+  await expect(collection.getDirectoryHandle(
+    RETIRED_PROGRESS_TEST_ONLY.directoryName,
+    { create: false },
+  )).rejects.toMatchObject({ name: "NotFoundError" });
 }
 
 afterEach(() => {
@@ -122,6 +136,9 @@ describe("browserless production HizoFS disable system", () => {
       await encryptedAfterReload.disableEncryption({
         onProgress: undefined,
         signal: undefined,
+      });
+      await expectNoPersistentTransitionProgress({
+        storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
       });
 
       // The initiating encrypted provider is settled for reload. A fresh

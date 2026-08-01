@@ -441,6 +441,39 @@ describe('StorageService Synchronization Wrapper', () => {
     });
   });
 
+  it('settles a follower for reload after an external transition failure', async () => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+    const listener = mockSubscribe.mock.calls.at(-1)?.[0]?.listener as ((args: {
+      event: {
+        type: 'opfs_encryption',
+        status: 'transition_started' | 'transition_failed',
+        operationId: string,
+        initiatorTabId: string,
+        timestamp: number,
+      },
+    }) => void) | undefined;
+    if (listener === undefined) {
+      throw new Error('Expected storage synchronization listener');
+    }
+    const baseEvent = {
+      type: 'opfs_encryption' as const,
+      operationId: 'external-failed-operation',
+      initiatorTabId: 'external-tab',
+      timestamp: 1,
+    };
+
+    listener({ event: { ...baseEvent, status: 'transition_started' } });
+    await vi.waitFor(() => {
+      expect(mockSuspendStorageSession).toHaveBeenCalledOnce();
+    });
+    listener({ event: { ...baseEvent, status: 'transition_failed' } });
+
+    await vi.waitFor(() => {
+      expect(mockExternalTransitionSettled).toHaveBeenCalledWith({ settlement: 'failed' });
+    });
+  });
+
   it('ignores a delayed duplicate start after the same external operation settled', async () => {
     service = new StorageService();
     await service.init({ type: 'opfs' });

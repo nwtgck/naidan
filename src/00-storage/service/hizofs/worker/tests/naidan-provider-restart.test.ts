@@ -182,9 +182,6 @@ async function createTestRuntimePort({
     runReturnToPlainTransition: async () => {
       throw new Error('return-to-plain transition is not used by the restart fixture');
     },
-    runResumeTransition: async () => {
-      throw new Error('resume transition is not used by the restart fixture');
-    },
     runStableHizoFSRetiredContainerCleanup: async () => {
       throw new Error('stable-HizoFS retired-container cleanup is not used by the restart fixture');
     },

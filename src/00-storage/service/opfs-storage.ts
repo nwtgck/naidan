@@ -49,7 +49,6 @@ import type {
   OpfsEncryptionSettingsInspection,
   OpfsPersistenceRuntime,
   OpfsPersistenceTransitionRequest,
-  OpfsPersistenceTransitionResult,
   OpfsPersistenceUnlockedSession,
 } from './naidan-opfs/persistence-runtime-contract';
 import { createInstalledOpfsPersistenceRuntime } from './naidan-opfs/persistence-runtime-registry';
@@ -210,19 +209,31 @@ function requirePlainInspection({
   }
 }
 
-function requireTransitioningInspection({
+function requireReturnToPlainInspection({
   inspection,
 }: {
   inspection: OpfsEncryptionInspection,
-}): Extract<OpfsEncryptionInspection, { type: 'transitioning' }> {
+}): void {
   switch (inspection.type) {
-  case 'transitioning':
-    return inspection;
-  case 'plain':
   case 'credential_required':
+    switch (inspection.requiredAction) {
+    case 'converge_transition': return;
+    case 'unlock': throw new Error('Stable encrypted OPFS storage cannot return through interrupted encryption recovery');
+    default: inspection.requiredAction satisfies never;
+    }
+    return;
+  case 'transitioning':
+    switch (inspection.mode.operation) {
+    case 'encrypt': return;
+    case 'decrypt':
+    case 're_encrypt': throw new Error('Only interrupted OPFS encryption can return directly to plain storage');
+    default: inspection.mode.operation satisfies never;
+    }
+    return;
+  case 'plain':
   case 'encrypted':
   case 'recovery_required':
-    throw new Error(`OPFS transition cannot be resumed from state: ${inspection.type}`);
+    throw new Error(`Interrupted OPFS encryption cannot return to plain from state: ${inspection.type}`);
   default: {
     const _ex: never = inspection;
     throw new Error(
@@ -242,21 +253,6 @@ async function closePlainSessionAfterBackendInitializationFailure({ cause, fileS
     throw new AggregateError(
       [cause, cleanupFailure],
       'plain OPFS backend initialization and session cleanup both failed',
-    );
-  }
-  throw cause;
-}
-
-async function closePlainTransitionSessionAfterInstallFailure({ cause, fileSystemSession }: {
-  cause: unknown;
-  fileSystemSession: Pick<StorageFileSystemSession, 'close'>;
-}): Promise<never> {
-  try {
-    await fileSystemSession.close();
-  } catch (cleanupFailure: unknown) {
-    throw new AggregateError(
-      [cause, cleanupFailure],
-      'plain transition result installation and candidate cleanup both failed',
     );
   }
   throw cause;
@@ -290,79 +286,25 @@ async function suspendStorageSessionAfterFailure({ cause, message, suspend }: {
   throw cause;
 }
 
-async function recoverProviderAfterTransitionFailure({ cause, message, recover }: {
+async function settleProviderAfterTransitionFailure({ cause, message, settle }: {
   cause: unknown;
   message: string;
-  recover: () => Promise<void>;
+  settle: () => Promise<void>;
 }): Promise<never> {
   try {
-    await recover();
-  } catch (recoveryFailure: unknown) {
-    throw new AggregateError([cause, recoveryFailure], message);
+    await settle();
+  } catch (settlementFailure: unknown) {
+    throw new AggregateError([cause, settlementFailure], message);
   }
   throw cause;
 }
 
-
-async function closePersistenceTransitionResultForReload({
-  result,
-}: {
-  result: OpfsPersistenceTransitionResult;
-}): Promise<void> {
-  switch (result.type) {
-  case 'plain': {
-    const failures: unknown[] = [];
-    try {
-      await result.backend.dispose();
-    } catch (cause: unknown) {
-      failures.push(cause);
-    }
-    try {
-      await result.fileSystemSession.close();
-    } catch (cause: unknown) {
-      failures.push(cause);
-    }
-    if (failures.length === 1) {
-      throw failures[0];
-    }
-    if (failures.length > 1) {
-      throw new AggregateError(failures, 'plain transition result cleanup failed before reload');
-    }
-    return;
-  }
-  case 'encrypted':
-    await result.session.close();
-    return;
-  case 'interrupted':
-    throw new Error('Interrupted transition result cannot be accepted as a stable reload boundary');
-  default: return result satisfies never;
-  }
-}
-
 async function settleProviderForReloadAfterTransition({
-  closeResult,
   settleProvider,
 }: {
-  closeResult: () => Promise<void>;
   settleProvider: () => Promise<void>;
 }): Promise<void> {
-  const failures: unknown[] = [];
-  try {
-    await closeResult();
-  } catch (cause: unknown) {
-    failures.push(cause);
-  }
-  try {
-    await settleProvider();
-  } catch (cause: unknown) {
-    failures.push(cause);
-  }
-  if (failures.length === 1) {
-    throw failures[0];
-  }
-  if (failures.length > 1) {
-    throw new AggregateError(failures, 'transition result and current provider cleanup both failed');
-  }
+  await settleProvider();
 }
 
 async function settleStorageProviderShutdown({
@@ -636,32 +578,12 @@ export class OPFSStorageProvider extends IStorageProvider {
     });
   }
 
-  async resumeTransitionWithPassphrase({ passphrase, signal, onProgress }: {
-    passphrase: string;
-    signal: AbortSignal | undefined;
-    onProgress?: OpfsEncryptionTransitionProgressListener;
-  }): Promise<void> {
-    requireTransitioningInspection({ inspection: await this.inspectEncryption() });
-    await this.runPersistenceTransition({
-      onProgress,
-      request: { operation: 'resume', retainedCredentials: [{ passphrase }] },
-      signal,
-    });
-  }
-
   async returnInterruptedEncryptionToPlain({ passphrase, signal, onProgress }: {
     passphrase: string;
     signal: AbortSignal | undefined;
     onProgress?: OpfsEncryptionTransitionProgressListener;
   }): Promise<void> {
-    const inspection = requireTransitioningInspection({ inspection: await this.inspectEncryption() });
-    switch (inspection.mode.operation) {
-    case 'encrypt': break;
-    case 'decrypt':
-    case 're_encrypt':
-      throw new Error('Only interrupted OPFS encryption can return directly to plain storage');
-    default: inspection.mode.operation satisfies never;
-    }
+    requireReturnToPlainInspection({ inspection: await this.inspectEncryption() });
     await this.runPersistenceTransition({
       onProgress,
       request: { operation: 'return_to_plain', passphrase },
@@ -1002,8 +924,12 @@ export class OPFSStorageProvider extends IStorageProvider {
         }),
         signal,
       });
+      switch (result.type) {
+      case 'completed': break;
+      case 'interrupted': throw new Error('Interrupted transition result cannot be accepted as a stable reload boundary');
+      default: result satisfies never;
+      }
       await settleProviderForReloadAfterTransition({
-        closeResult: async () => await closePersistenceTransitionResultForReload({ result }),
         settleProvider: async () => await settleStorageProviderShutdown({
           clearBackend: () => {
             this.backend = undefined;
@@ -1015,10 +941,10 @@ export class OPFSStorageProvider extends IStorageProvider {
         }),
       });
     } catch (error) {
-      await recoverProviderAfterTransitionFailure({
+      await settleProviderAfterTransitionFailure({
         cause: error,
         message: 'OPFS persistence transition and reload shutdown both failed',
-        recover: async () => await settleStorageProviderShutdown({
+        settle: async () => await settleStorageProviderShutdown({
           clearBackend: () => {
             this.backend = undefined;
           },
@@ -1047,8 +973,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       switch (result.type) {
       case 'interrupted':
         break;
-      case 'plain':
-      case 'encrypted':
+      case 'completed':
         throw new Error(`Expected interrupted transition state, received: ${result.type}`);
       default: result satisfies never;
       }
@@ -1056,48 +981,19 @@ export class OPFSStorageProvider extends IStorageProvider {
       await this.closeFileSystemSession();
       this.backend = undefined;
     } catch (error) {
-      await recoverProviderAfterTransitionFailure({
+      await settleProviderAfterTransitionFailure({
         cause: error,
-        message: 'OPFS interrupted transition setup and provider recovery both failed',
-        recover: async () => await this.recoverAfterFailedTransition(),
-      });
-    }
-  }
-
-  private async recoverAfterFailedTransition(): Promise<void> {
-    const previousSession = this.unlockedEncryptionSession;
-    const inspection = await this.inspectEncryption();
-    switch (inspection.type) {
-    case 'plain':
-      await this.clearPersistenceSession();
-      await this.storageSessionLock.acquire();
-      await this.plainNamespaceSessionLock.acquire();
-      try {
-        this.backend = await this.storageSessionLock.run({ run: async () => await this.createPlainBackend() });
-      } catch (error) {
-        await suspendStorageSessionAfterFailure({
-          cause: error,
-          message: 'OPFS transition recovery and session suspension both failed',
+        message: 'OPFS interrupted transition setup and provider shutdown both failed',
+        settle: async () => await settleStorageProviderShutdown({
+          clearBackend: () => {
+            this.backend = undefined;
+          },
+          clearFileSystemSession: async () => await this.closeFileSystemSession(),
+          clearPersistenceSession: async () => await this.clearPersistenceSession(),
+          message: 'OPFS provider shutdown after interrupted transition failure failed',
           suspend: async () => await this.suspendSessionLocks(),
-        });
-      }
-      return;
-    case 'encrypted':
-      if (previousSession !== undefined && previousSession.fileSystemId === inspection.mode.activeFileSystemId) {
-        this.backend = previousSession.backend;
-        await this.storageSessionLock.acquire();
-        return;
-      }
-      await this.clearPersistenceSession();
-      this.backend = undefined;
-      return;
-    case 'credential_required':
-    case 'transitioning':
-    case 'recovery_required':
-      await this.clearPersistenceSession();
-      this.backend = undefined;
-      return;
-    default: return inspection satisfies never;
+        }),
+      });
     }
   }
 
@@ -1262,10 +1158,9 @@ export class OPFSStorageProvider extends IStorageProvider {
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   closePersistenceSessionAfterInstallFailure,
-  closePersistenceTransitionResultForReload,
   closePlainSessionAfterBackendInitializationFailure,
-  closePlainTransitionSessionAfterInstallFailure,
-  recoverProviderAfterTransitionFailure,
+  requireReturnToPlainInspection,
+  settleProviderAfterTransitionFailure,
   settleProviderForReloadAfterTransition,
   settleStorageProviderShutdown,
   suspendStorageSessionAfterFailure,

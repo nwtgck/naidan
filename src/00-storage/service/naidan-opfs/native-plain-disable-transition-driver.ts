@@ -15,7 +15,7 @@ import {
   createNativePlainTransitionNamespaceSession,
   projectNativePlainTransitionSource,
 } from '@/00-storage/service/naidan-opfs/native-plain-transition-namespace';
-import type { NativePlainTransitionProgressBridge } from '@/00-storage/service/naidan-opfs/native-plain-transition-progress-bridge';
+import type { NativePlainTransitionRuntime } from '@/00-storage/service/naidan-opfs/native-plain-transition-runtime-state';
 import { createStorageFileSystemTransitionSource } from '@/00-storage/service/naidan-persistence-control/transition/storage-file-system-transition-source';
 
 export const NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY = 'naidan-plain-opfs-v1';
@@ -44,10 +44,10 @@ function requireBinding({ actual, expected }: {
   }
 }
 
-export function createNativePlainDisableTransitionDriver({ binding, bridge, nativeNamespaceRoot, verificationPageSize }: {
+export function createNativePlainDisableTransitionDriver({ binding, nativeNamespaceRoot, runtime, verificationPageSize }: {
   binding: TransitionTargetOperationBinding;
-  bridge: NativePlainTransitionProgressBridge;
   nativeNamespaceRoot: FileSystemDirectoryHandle;
+  runtime: NativePlainTransitionRuntime;
   verificationPageSize: number;
 }): TransitionEndpointDriver {
   if (!Number.isSafeInteger(verificationPageSize) || verificationPageSize < 1) {
@@ -61,7 +61,7 @@ export function createNativePlainDisableTransitionDriver({ binding, bridge, nati
   }
 
   const inspect = async () => {
-    const lifecycle = await bridge.currentLifecycle();
+    const lifecycle = await runtime.currentLifecycle();
     if (lifecycle === undefined) {
       return await isNativePlainApplicationNamespaceEmpty({ nativeNamespaceRoot }) ? 'absent' : 'invalid';
     }
@@ -77,14 +77,14 @@ export function createNativePlainDisableTransitionDriver({ binding, bridge, nati
   return {
     cleanupEndpoint: async ({ endpoint }) => {
       requirePlainEndpoint({ endpoint });
-      if (await bridge.currentLifecycle() === undefined) {
-        throw new TypeError('native plain target cleanup requires its authenticated operation marker');
+      if (await runtime.currentLifecycle() === undefined) {
+        throw new TypeError('native plain target cleanup requires its runtime ownership marker');
       }
       await cleanupNativePlainApplicationNamespace({ nativeNamespaceRoot });
     },
     finalizeTarget: async ({ binding: actual }) => {
       requireBinding({ actual, expected: binding });
-      const lifecycle = await bridge.currentLifecycle();
+      const lifecycle = await runtime.currentLifecycle();
       switch (lifecycle) {
       case 'sealed': return;
       case 'active':
@@ -106,7 +106,7 @@ export function createNativePlainDisableTransitionDriver({ binding, bridge, nati
       const mutationSession = createNativeOpfsFileSystemSession({ root: nativeNamespaceRoot });
       const verificationSession = createNativePlainApplicationNamespaceSession({ nativeNamespaceRoot });
       const namespace = createNativePlainTransitionNamespaceSession({
-        bridge,
+        bridge: runtime,
         session: mutationSession,
         verificationSession,
       });
@@ -119,12 +119,12 @@ export function createNativePlainDisableTransitionDriver({ binding, bridge, nati
     },
     prepareTarget: async ({ binding: actual }) => {
       requireBinding({ actual, expected: binding });
-      const current = await bridge.currentLifecycle();
+      const current = await runtime.currentLifecycle();
       if (current === undefined) {
         if (!await isNativePlainApplicationNamespaceEmpty({ nativeNamespaceRoot })) {
           throw new TypeError('native plain target contains unowned application bytes');
         }
-        await bridge.prepareTarget();
+        await runtime.prepareTarget();
         return;
       }
       switch (current) {
@@ -137,7 +137,7 @@ export function createNativePlainDisableTransitionDriver({ binding, bridge, nati
     },
     verifyNormalOpen: async ({ binding: actual }) => {
       requireBinding({ actual, expected: binding });
-      const lifecycle = await bridge.currentLifecycle();
+      const lifecycle = await runtime.currentLifecycle();
       switch (lifecycle) {
       case 'sealed':
       case 'published': break;

@@ -4,6 +4,7 @@ import {
   installDevelopmentUnverifiedOpfsPersistenceRuntime,
 } from '@/00-storage/service/naidan-opfs/development-persistence-runtime';
 import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
+import { TEST_ONLY as RETIRED_PROGRESS_TEST_ONLY } from '@/00-storage/service/naidan-opfs/retired-local-transition-progress-cleanup';
 import {
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
 } from '@/00-storage/service/naidan-persistence-control/00-format';
@@ -50,6 +51,19 @@ function containerEntryNames({ entries }: { entries: readonly string[] }): reado
   const persistenceControlDirectoryName =
     NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName;
   return entries.filter(name => name !== persistenceControlDirectoryName);
+}
+
+async function expectNoPersistentTransitionProgress({ storageRoot }: {
+  storageRoot: FileSystemDirectoryHandle;
+}): Promise<void> {
+  const collection = await storageRoot.getDirectoryHandle(
+    NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName,
+    { create: false },
+  );
+  await expect(collection.getDirectoryHandle(
+    RETIRED_PROGRESS_TEST_ONLY.directoryName,
+    { create: false },
+  )).rejects.toMatchObject({ name: 'NotFoundError' });
 }
 
 afterEach(() => {
@@ -108,6 +122,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
         },
         retainedCredentials: [{ passphrase: PASSPHRASE }],
         signal: undefined,
+      });
+      await expectNoPersistentTransitionProgress({
+        storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
       });
 
       const targetAfterReload = new OPFSStorageProvider();

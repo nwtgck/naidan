@@ -1,5 +1,4 @@
 import { shallowMount } from '@vue/test-utils';
-import { shallowRef } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_ONLY as appBlockingTestOnly } from '@/composables/useAppBlockingOperation';
 import { TEST_ONLY as overlayTestOnly } from '@/composables/useGlobalBlockingOverlay';
@@ -10,19 +9,10 @@ import {
 import { ensureStrings } from '@/strings';
 import OpfsEncryptionTransitionView from './OpfsEncryptionTransitionView.vue';
 
-const openFileExplorer = vi.hoisted(() => vi.fn());
-
-vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({
-  useFileExplorerModal: () => ({
-    isFileExplorerOpen: shallowRef(false),
-    openFileExplorer,
-  }),
-}));
-
 beforeEach(async () => {
-  await ensureStrings.opfsEncryption__encrypted_storage_needs_recovery();
-  await ensureStrings.opfsEncryption__raw_opfs_access_does_not_decrypt();
-  await ensureStrings.opfsEncryption__open_raw_opfs_explorer();
+  await ensureStrings.opfsEncryption__updating_encrypted_storage();
+  await ensureStrings.opfsEncryption__copying_and_verifying_complete_opfs_storage();
+  await ensureStrings.opfsEncryption__source_remains_until_verified();
 });
 
 afterEach(() => {
@@ -33,21 +23,15 @@ afterEach(() => {
 });
 
 describe('OpfsEncryptionTransitionView', () => {
-  it('keeps raw OPFS recovery access visible when local state is uncertain', async () => {
+  it('keeps the transition presentation in place after settlement until reload', () => {
     const transition = useOpfsEncryptionTransition();
     transition.beginLocalOperation();
     transition.finishLocalOperation({
-      outcome: 'recovery_required',
-      errorMessage: 'Could not prove a stable OPFS backend',
+      outcome: 'settled_for_reload',
     });
     const wrapper = shallowMount(OpfsEncryptionTransitionView);
 
-    expect(wrapper.text()).toContain('Could not prove a stable OPFS backend');
-    const button = wrapper.get('[data-testid="opfs-encryption-transition-open-raw-opfs"]');
-    await button.trigger('click');
-
-    expect(openFileExplorer).toHaveBeenCalledWith({
-      options: { kind: 'opfs-root' },
-    });
+    expect(wrapper.text()).toContain('Updating encrypted storage');
+    expect(wrapper.find('[data-testid="opfs-encryption-transition-open-raw-opfs"]').exists()).toBe(false);
   });
 });

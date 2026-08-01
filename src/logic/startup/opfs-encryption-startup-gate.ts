@@ -75,6 +75,7 @@ export function createOpfsEncryptionStartupGate({
     phase.value = 'unlocking';
     applicationError.value = undefined;
     progress.value = undefined;
+    let transitionStarted = false;
     try {
       const value = currentInspection.value;
       switch (value.type) {
@@ -84,6 +85,7 @@ export function createOpfsEncryptionStartupGate({
           await storageService.unlockOpfsEncryptionWithPassphrase({ passphrase });
           break;
         case 'converge_transition':
+          transitionStarted = true;
           await storageService.convergeOpfsEncryptionTransitionWithPassphrase({
             passphrase,
             signal: undefined,
@@ -96,6 +98,7 @@ export function createOpfsEncryptionStartupGate({
         await storageService.unlockOpfsEncryptionWithPassphrase({ passphrase });
         break;
       case 'transitioning':
+        transitionStarted = true;
         await storageService.convergeOpfsEncryptionTransitionWithPassphrase({
           passphrase,
           signal: undefined,
@@ -109,6 +112,12 @@ export function createOpfsEncryptionStartupGate({
       }
       }
 
+      if (transitionStarted) {
+        // The central settlement guard reloads this page. Do not prepare or
+        // reveal an application backend from the transition runtime.
+        return;
+      }
+
       /**
        * WHY: Cryptographic unlock is only the first half of the visible
        * transition. Keep the lock presentation in front while Settings,
@@ -119,7 +128,9 @@ export function createOpfsEncryptionStartupGate({
       phase.value = 'preparing_application';
       complete();
     } catch (error) {
-      phase.value = 'locked';
+      if (!transitionStarted) {
+        phase.value = 'locked';
+      }
       throw error;
     }
   }
@@ -169,20 +180,14 @@ export function createOpfsEncryptionStartupGate({
     phase.value = 'unlocking';
     applicationError.value = undefined;
     progress.value = undefined;
-    try {
-      await storageService.returnInterruptedOpfsEncryptionToPlain({
-        passphrase,
-        signal: undefined,
-        onProgress: ({ progress: nextProgress }) => {
-          progress.value = nextProgress;
-        },
-      });
-      phase.value = 'preparing_application';
-      complete();
-    } catch (error) {
-      phase.value = 'locked';
-      throw error;
-    }
+    await storageService.returnInterruptedOpfsEncryptionToPlain({
+      passphrase,
+      signal: undefined,
+      onProgress: ({ progress: nextProgress }) => {
+        progress.value = nextProgress;
+      },
+    });
+    // Settlement reloads the page; keep the startup gate closed until then.
   }
 
   async function retryInspection(): Promise<void> {

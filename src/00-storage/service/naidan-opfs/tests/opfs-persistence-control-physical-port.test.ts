@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS } from "@/00-storage/service/naidan-persistence-control/00-format";
 import { createOpfsPersistenceControlPhysicalPort } from "@/00-storage/service/naidan-opfs/opfs-persistence-control-readable-port";
-import type { NaidanPersistenceControlExclusiveGate } from "@/00-storage/service/naidan-opfs/opfs-transition-progress-physical-port";
+import type { NaidanPersistenceControlExclusiveGate } from "@/00-storage/service/naidan-opfs/persistence-control-exclusive-gate";
 
 function notFound({ message }: { message: string }): Error {
   const error = new Error(message);

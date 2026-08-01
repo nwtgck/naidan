@@ -1514,9 +1514,9 @@ import { opfsEncryption__re_encrypt_opfs_storage } from '@/strings/messages/opfs
 import { opfsEncryption__re_encrypt_storage } from '@/strings/messages/opfsEncryption__re_encrypt_storage/ja';
 import { opfsEncryption__re_encrypt_storage_explanation } from '@/strings/messages/opfsEncryption__re_encrypt_storage_explanation/ja';
 import { opfsEncryption__recovery_source } from '@/strings/messages/opfsEncryption__recovery_source/ja';
-import { opfsEncryption__resume_opfs_decryption } from '@/strings/messages/opfsEncryption__resume_opfs_decryption/ja';
-import { opfsEncryption__resume_opfs_encryption } from '@/strings/messages/opfsEncryption__resume_opfs_encryption/ja';
-import { opfsEncryption__resume_opfs_reencryption } from '@/strings/messages/opfsEncryption__resume_opfs_reencryption/ja';
+import { opfsEncryption__resolve_interrupted_opfs_decryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_decryption/ja';
+import { opfsEncryption__resolve_interrupted_opfs_encryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_encryption/ja';
+import { opfsEncryption__resolve_interrupted_opfs_reencryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_reencryption/ja';
 import { opfsEncryption__retry_after_recovery } from '@/strings/messages/opfsEncryption__retry_after_recovery/ja';
 import { opfsEncryption__save_file } from '@/strings/messages/opfsEncryption__save_file/ja';
 import { opfsEncryption__save_source } from '@/strings/messages/opfsEncryption__save_source/ja';
@@ -1528,7 +1528,7 @@ import { opfsEncryption__storage_unlocked_preparing_application } from '@/string
 import { opfsEncryption__transparently_encrypt_naidan_opfs_data } from '@/strings/messages/opfsEncryption__transparently_encrypt_naidan_opfs_data/ja';
 import { opfsEncryption__turn_off_opfs_encryption } from '@/strings/messages/opfsEncryption__turn_off_opfs_encryption/ja';
 import { opfsEncryption__understand_experimental_storage_risk } from '@/strings/messages/opfsEncryption__understand_experimental_storage_risk/ja';
-import { opfsEncryption__unlock_and_resume } from '@/strings/messages/opfsEncryption__unlock_and_resume/ja';
+import { opfsEncryption__unlock_and_resolve } from '@/strings/messages/opfsEncryption__unlock_and_resolve/ja';
 import { opfsEncryption__unlock_encrypted_storage } from '@/strings/messages/opfsEncryption__unlock_encrypted_storage/ja';
 import { opfsEncryption__unlock_storage } from '@/strings/messages/opfsEncryption__unlock_storage/ja';
 import { opfsEncryption__unlocked } from '@/strings/messages/opfsEncryption__unlocked/ja';
@@ -3162,9 +3162,9 @@ export const ja = {
   opfsEncryption__re_encrypt_storage,
   opfsEncryption__re_encrypt_storage_explanation,
   opfsEncryption__recovery_source,
-  opfsEncryption__resume_opfs_decryption,
-  opfsEncryption__resume_opfs_encryption,
-  opfsEncryption__resume_opfs_reencryption,
+  opfsEncryption__resolve_interrupted_opfs_decryption,
+  opfsEncryption__resolve_interrupted_opfs_encryption,
+  opfsEncryption__resolve_interrupted_opfs_reencryption,
   opfsEncryption__retry_after_recovery,
   opfsEncryption__save_file,
   opfsEncryption__save_source,
@@ -3176,7 +3176,7 @@ export const ja = {
   opfsEncryption__transparently_encrypt_naidan_opfs_data,
   opfsEncryption__turn_off_opfs_encryption,
   opfsEncryption__understand_experimental_storage_risk,
-  opfsEncryption__unlock_and_resume,
+  opfsEncryption__unlock_and_resolve,
   opfsEncryption__unlock_encrypted_storage,
   opfsEncryption__unlock_storage,
   opfsEncryption__unlocked,

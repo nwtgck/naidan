@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { parseTransitionOperationId } from '@/00-storage/service/naidan-persistence-control/00-format';
 import { createNativePlainDisableTransitionDriver } from '@/00-storage/service/naidan-opfs/native-plain-disable-transition-driver';
 import { TEST_ONLY as RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
-import type { NativePlainTransitionProgressBridge } from '@/00-storage/service/naidan-opfs/native-plain-transition-progress-bridge';
+import type { NativePlainTransitionRuntime } from '@/00-storage/service/naidan-opfs/native-plain-transition-runtime-state';
 
 const FILE_SYSTEM_ID = RUNTIME_TEST_ONLY.createEncryptedInspection({
   fileSystemId: '0123456789_ABCDEFGHIJ',
@@ -19,7 +19,7 @@ function fixture({ lifecycle, names = [] }: {
 }) {
   const prepareTarget = vi.fn(async () => 'preparing' as const);
   const currentLifecycle = vi.fn(async () => lifecycle);
-  const bridge = { currentLifecycle, prepareTarget } as unknown as NativePlainTransitionProgressBridge;
+  const runtime = { currentLifecycle, prepareTarget } as unknown as NativePlainTransitionRuntime;
   const storage = {
     keys: async function* () {
       for (const name of names) yield name;
@@ -29,12 +29,11 @@ function fixture({ lifecycle, names = [] }: {
     getDirectoryHandle: vi.fn(async () => storage),
   } as unknown as FileSystemDirectoryHandle;
   return {
-    bridge,
     currentLifecycle,
     driver: createNativePlainDisableTransitionDriver({
       binding: BINDING,
-      bridge,
       nativeNamespaceRoot: root,
+      runtime,
       verificationPageSize: 16,
     }),
     prepareTarget,
@@ -43,7 +42,7 @@ function fixture({ lifecycle, names = [] }: {
 }
 
 describe('native plain disable transition driver', () => {
-  it('creates the authenticated marker only for an empty application namespace', async () => {
+  it('creates the runtime ownership marker only for an empty application namespace', async () => {
     const empty = fixture({ lifecycle: undefined });
     await empty.driver.prepareTarget({ binding: BINDING });
     expect(empty.prepareTarget).toHaveBeenCalledOnce();
@@ -53,7 +52,7 @@ describe('native plain disable transition driver', () => {
     expect(occupied.prepareTarget).not.toHaveBeenCalled();
   });
 
-  it('resumes exact active or sealed markers without clearing application bytes', async () => {
+  it('reuses staged runtime lifecycle across bounded slices without clearing application bytes', async () => {
     for (const lifecycle of ['preparing', 'active', 'sealed'] as const) {
       const { driver, prepareTarget, root } = fixture({ lifecycle, names: ['partial.bin'] });
       await driver.prepareTarget({ binding: BINDING });

@@ -630,24 +630,6 @@ export class StorageService {
     });
   }
 
-  async resumeOpfsEncryptionTransitionWithPassphrase({
-    passphrase,
-    signal,
-    onProgress,
-  }: {
-    passphrase: string,
-    signal: AbortSignal | undefined,
-    onProgress?: OpfsEncryptionTransitionProgressListener,
-  }): Promise<void> {
-    await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().resumeTransitionWithPassphrase({
-        passphrase,
-        signal,
-        onProgress,
-      }),
-    });
-  }
-
   async returnInterruptedOpfsEncryptionToPlain({
     passphrase,
     signal,
