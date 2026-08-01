@@ -1,3 +1,5 @@
+import { HIZOFS_V1_PERSISTED_RECORD_KIND_DIAGNOSTIC_NAMES } from '@/00-storage/service/hizofs/00-format';
+import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from '@/00-storage/service/hizofs/runtime/runtime-diagnostics';
 import { z } from 'zod';
 
 // IMPORTANT: Benchmark configuration and report JSON are ephemeral developer
@@ -175,47 +177,27 @@ const hizoFSRuntimeResourceCounterSchema = z.object({
   maximumOperations: z.number().int().nonnegative(),
 }).strict();
 
-const hizoFSRuntimeDiagnosticsSchema = z.object({
-  phases: z.object({
-    record_encode: hizoFSRuntimePhaseCounterSchema,
-    record_decode: hizoFSRuntimePhaseCounterSchema,
-    object_encrypt: hizoFSRuntimePhaseCounterSchema,
-    object_decrypt: hizoFSRuntimePhaseCounterSchema,
-    envelope_encode: hizoFSRuntimePhaseCounterSchema,
-    envelope_decode: hizoFSRuntimePhaseCounterSchema,
-    backing_resolve_parent: hizoFSRuntimePhaseCounterSchema,
-    backing_get_file_handle: hizoFSRuntimePhaseCounterSchema,
-    backing_get_file: hizoFSRuntimePhaseCounterSchema,
-    backing_array_buffer: hizoFSRuntimePhaseCounterSchema,
-    backing_create_writable: hizoFSRuntimePhaseCounterSchema,
-    backing_write: hizoFSRuntimePhaseCounterSchema,
-    backing_close: hizoFSRuntimePhaseCounterSchema,
-    backing_open_random_access: hizoFSRuntimePhaseCounterSchema,
-    backing_read_at: hizoFSRuntimePhaseCounterSchema,
-    backing_write_at: hizoFSRuntimePhaseCounterSchema,
-    backing_truncate: hizoFSRuntimePhaseCounterSchema,
-    backing_flush: hizoFSRuntimePhaseCounterSchema,
-    backing_close_random_access: hizoFSRuntimePhaseCounterSchema,
-    backing_failure_verification: hizoFSRuntimePhaseCounterSchema,
-    backing_remove: hizoFSRuntimePhaseCounterSchema,
-    backing_list: hizoFSRuntimePhaseCounterSchema,
-    index_build: hizoFSRuntimePhaseCounterSchema,
-    index_update: hizoFSRuntimePhaseCounterSchema,
-    commit_publication: hizoFSRuntimePhaseCounterSchema,
-  }).strict(),
-  records: z.object({
-    subvolume_descriptor: hizoFSRuntimeRecordCounterSchema,
-    commit: hizoFSRuntimeRecordCounterSchema,
-    inode_index_page: hizoFSRuntimeRecordCounterSchema,
-    file_inode: hizoFSRuntimeRecordCounterSchema,
-    directory_inode: hizoFSRuntimeRecordCounterSchema,
-    symlink_inode: hizoFSRuntimeRecordCounterSchema,
-    directory_index_page: hizoFSRuntimeRecordCounterSchema,
-    subvolume_mount_index_page: hizoFSRuntimeRecordCounterSchema,
-    file_extent_page: hizoFSRuntimeRecordCounterSchema,
-    file_chunk: hizoFSRuntimeRecordCounterSchema,
-    superblock: hizoFSRuntimeRecordCounterSchema,
-  }).strict(),
+const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
+  schemaVersion: z.literal(3),
+  type: z.literal('measured'),
+  phases: z.object(Object.fromEntries(
+    HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
+      phase,
+      hizoFSRuntimePhaseCounterSchema,
+    ]),
+  ) as Record<
+    typeof HIZOFS_RUNTIME_DIAGNOSTIC_PHASES[number],
+    typeof hizoFSRuntimePhaseCounterSchema
+  >).strict(),
+  records: z.object(Object.fromEntries(
+    HIZOFS_V1_PERSISTED_RECORD_KIND_DIAGNOSTIC_NAMES.map(name => [
+      name,
+      hizoFSRuntimeRecordCounterSchema,
+    ]),
+  ) as Record<
+    typeof HIZOFS_V1_PERSISTED_RECORD_KIND_DIAGNOSTIC_NAMES[number],
+    typeof hizoFSRuntimeRecordCounterSchema
+  >).strict(),
   caches: z.object({
     metadata: hizoFSRuntimeCacheCounterSchema,
     fileChunk: hizoFSRuntimeCacheCounterSchema,
@@ -237,6 +219,17 @@ const hizoFSRuntimeDiagnosticsSchema = z.object({
     remoteRequests: z.number().int().nonnegative(),
   }).strict(),
 }).strict();
+
+const hizoFSUnavailableRuntimeDiagnosticsSchema = z.object({
+  schemaVersion: z.literal(3),
+  type: z.literal('unavailable'),
+  reason: z.string().min(1),
+}).strict();
+
+const hizoFSRuntimeDiagnosticsSchema = z.discriminatedUnion('type', [
+  hizoFSMeasuredRuntimeDiagnosticsSchema,
+  hizoFSUnavailableRuntimeDiagnosticsSchema,
+]);
 
 const hizoFSBenchmarkDiagnosticsSchema = z.object({
   backingStore: hizoFSBackingStoreCountersSchema,
@@ -416,8 +409,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(18),
-  benchmarkImplementationVersion: z.literal(23),
+  schemaVersion: z.literal(19),
+  benchmarkImplementationVersion: z.literal(24),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

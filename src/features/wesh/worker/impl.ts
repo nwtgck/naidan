@@ -10,9 +10,9 @@ import {
 import { ReadonlyDirectoryHandle } from '@/features/wesh/readonly-directory-handle';
 import type {
   StorageDirectoryHandle,
-  StorageDirectoryWorkerMountSession,
+  StorageDirectoryWorkerMountOpener,
+  StorageFileSystemSession,
 } from '@/00-storage/service/storage-file-system/types';
-import { openStorageDirectoryWorkerMount } from '@/00-storage/service/storage-file-system/worker-mount';
 import {
   LocalStorageDirectoryWeshProvider,
   RemoteStorageDirectoryWeshProvider,
@@ -158,9 +158,11 @@ function createForwardingHandle({
   };
 }
 
-export function createWeshWorker(): IWeshWorker {
+export function createWeshWorker({ openStorageDirectoryWorkerMount }: {
+  openStorageDirectoryWorkerMount: StorageDirectoryWorkerMountOpener;
+}): IWeshWorker {
   let wesh: Wesh | undefined;
-  let localStorageFileSystemSessions = new Map<string, StorageDirectoryWorkerMountSession>();
+  let localStorageFileSystemSessions = new Map<string, StorageFileSystemSession>();
   let nextExecutionId = 1;
   const executions = new Map<string, {
     completion: Promise<WeshWorkerExecutionSummary>,
@@ -232,22 +234,13 @@ export function createWeshWorker(): IWeshWorker {
             });
             break;
           case 'storage_directory': {
-            if (mount.workerSource !== undefined) {
-              let session = localStorageFileSystemSessions.get(
-                mount.workerSource.instanceId,
-              );
-              let root: StorageDirectoryHandle;
+            if (mount.workerGrant !== undefined) {
+              let session = localStorageFileSystemSessions.get(mount.workerGrant.grantId);
               if (session === undefined) {
-                session = await openStorageDirectoryWorkerMount({
-                  source: mount.workerSource,
-                });
-                localStorageFileSystemSessions.set(session.instanceId, session);
-                root = session.root;
-              } else {
-                root = await session.openWorkerMountDirectory({
-                  source: mount.workerSource,
-                });
+                session = await openStorageDirectoryWorkerMount({ grant: mount.workerGrant });
+                localStorageFileSystemSessions.set(mount.workerGrant.grantId, session);
               }
+              const root: StorageDirectoryHandle = session.root;
               wesh.vfs.mountVirtual({
                 path: mount.path,
                 readOnly: mount.readOnly,

@@ -3,11 +3,11 @@ import { computed } from 'vue';
 import {
   createBinaryHexRows,
   formatBinaryRange,
-} from '@/features/debug-hizofs/logic/binary-hex';
+} from '@/features/debug-hizofs/logic/binary-inspection-hex';
 
 const props = defineProps<{
   readonly bytes: Uint8Array;
-  readonly offset: number;
+  readonly offset: number | bigint;
   readonly regionByteLength: number;
   readonly truncatedAfter: boolean;
 }>();
@@ -38,7 +38,7 @@ defineExpose({
     </div>
     <div v-if="rows.length === 0" tw-class="px-3 py-3 text-gray-400">No bytes in this region.</div>
     <div v-else tw-class="overflow-x-auto px-3 py-2">
-      <div v-for="row in rows" :key="row.offset" tw-class="flex min-w-max leading-5">
+      <div v-for="row in rows" :key="row.offsetLabel" tw-class="flex min-w-max leading-5">
         <span tw-class="w-24 shrink-0 select-none text-gray-400">{{ row.offsetLabel }}</span>
         <span tw-class="w-[31rem] shrink-0 whitespace-pre">{{ row.hexGroups.join(' ').padEnd(47, ' ') }}</span>
         <span tw-class="border-l border-gray-200 pl-3 text-gray-500 dark:border-gray-700 dark:text-gray-400">{{ row.ascii }}</span>

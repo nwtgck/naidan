@@ -235,7 +235,6 @@ export class LocalStorageDirectoryWeshProvider implements WeshVirtualMountProvid
         type: 'storage_directory',
         path: mountPath,
         handle: root,
-        workerSource: undefined,
         readOnly,
       }],
     });

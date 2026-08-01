@@ -1,0 +1,27 @@
+[
+  {
+    "byteLength": 368,
+    "path": "segments/metadata/8e/7f808182838485868788898a8b8c8d8e.enc",
+    "sha256": "63e90c5854216a9f057a9db1e17c6ac800ec98753a36786bc3c141e3461006c3"
+  },
+  {
+    "byteLength": 240,
+    "path": "superblock-0.enc",
+    "sha256": "6027c76e015081ed3a291ec84f105ce2fa661db91c989cc5b9fb42601670a7b1"
+  },
+  {
+    "byteLength": 240,
+    "path": "superblock-1.enc",
+    "sha256": "9cb6083ac018b0b52e3917fcc16f286605b29f32bee09c5b4235499af9f991bd"
+  },
+  {
+    "byteLength": 495,
+    "path": "unlock-0.json",
+    "sha256": "7117199ec5ad04e64332f753f39a1ccdd0fbfed3b8235feeee4b455260c3e3eb"
+  },
+  {
+    "byteLength": 495,
+    "path": "unlock-1.json",
+    "sha256": "906c800905ddeadfab9eb1e8aabc8b467a5a5b5dda259ee606c366b8bc8c5dee"
+  }
+]

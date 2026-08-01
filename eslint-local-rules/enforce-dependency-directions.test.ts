@@ -69,6 +69,18 @@ describe('enforce-dependency-directions rule', () => {
     await expectAllowed({ code: `import type { Chat } from '@/01-models/types';`, filePath });
   });
 
+  it('allows only the exact Naidan provider restart composition test to use deep HizoFS owners', async () => {
+    const code = `import { backend } from '@/00-storage/service/hizofs/physical-store/backend';`;
+    await expectAllowed({
+      code,
+      filePath: 'src/00-storage/service/hizofs/worker/tests/naidan-provider-restart.test.ts',
+    });
+    await expectForbidden({
+      code,
+      filePath: 'src/00-storage/service/hizofs/worker/tests/future-provider-restart.test.ts',
+    });
+  });
+
   it('allows application code to depend on storage service', async () => {
     await expectAllowed({
       code: `import { storageService } from '@/00-storage/service';`,
@@ -266,6 +278,20 @@ describe('enforce-dependency-directions rule', () => {
     });
   });
 
+  it('rejects ordinary application access to the HizoFS persisted-format authority', async () => {
+    await expectForbidden({
+      code: `import { MAGIC } from '@/00-storage/service/hizofs/00-format/v1/format-constants';`,
+      filePath: 'src/features/example/example.ts',
+    });
+  });
+
+  it('rejects ordinary application access to the Naidan control persisted-format authority', async () => {
+    await expectForbidden({
+      code: `import { CONTROL_MAGIC } from '@/00-storage/service/naidan-persistence-control/00-format/format-constants';`,
+      filePath: 'src/features/example/example.ts',
+    });
+  });
+
   it('allows one explicitly suppressed existing violation', async () => {
     await expectAllowed({
       code: `\
@@ -281,4 +307,108 @@ import type { Dto } from '@/00-storage/00-dto/dto';`,
       filePath: 'src/01-models/example.ts',
     });
   });
+
+  describe('HizoFS internal dependency graph', () => {
+    it.each([
+      ['src/00-storage/service/hizofs/filesystem/mutate.ts', '@/00-storage/service/hizofs/physical-store/backend'],
+      ['src/00-storage/service/hizofs/filesystem/mutate.ts', '@/00-storage/service/hizofs/crypto/primitives/aes-gcm'],
+      ['src/00-storage/service/hizofs/crypto/primitives/aes-gcm.ts', '@/00-storage/service/hizofs/filesystem/mutate'],
+      ['src/00-storage/service/hizofs/physical-store/backend.ts', '@/00-storage/service/hizofs/00-format/v1/records/file-data'],
+      ['src/00-storage/service/hizofs/maintenance/gc.ts', '@/00-storage/service/hizofs/physical-store/backend'],
+      ['src/00-storage/service/hizofs/indexes/tree.ts', '@/00-storage/service/hizofs/crypto/index'],
+    ])('rejects %s -> %s', async (filePath, importPath) => {
+      await expectForbidden({ code: `import { value } from '${importPath}';`, filePath });
+    });
+
+    it.each([
+      ['src/00-storage/service/hizofs/crypto/key-application/derived-keys.ts', '@/00-storage/service/hizofs/00-format'],
+      ['src/00-storage/service/hizofs/authenticated-store/open.ts', '@/00-storage/service/hizofs/crypto/index'],
+      ['src/00-storage/service/hizofs/authenticated-store/open.ts', '@/00-storage/service/hizofs/physical-store/backend'],
+      ['src/00-storage/service/hizofs/filesystem/read.ts', '@/00-storage/service/hizofs/authenticated-store/index'],
+      ['src/00-storage/service/hizofs/maintenance/gc.ts', '@/00-storage/service/hizofs/authenticated-store/index'],
+      ['src/00-storage/service/hizofs/api/index.ts', '@/00-storage/service/hizofs/filesystem/index'],
+    ])('allows %s -> %s', async (filePath, importPath) => {
+      await expectAllowed({ code: `import { value } from '${importPath}';`, filePath });
+    });
+
+    it('classifies extensionless worker entry imports as the worker boundary', async () => {
+      await expectAllowed({
+        code: `import { createHizoFSWorkerRuntimeHost } from '@/00-storage/service/hizofs/worker-entry';`,
+        filePath: 'src/00-storage/service/hizofs/worker/tests/runtime-host.test.ts',
+      });
+    });
+
+    it('reserves deep authority wiring for the exact worker composition root', async () => {
+      await expectAllowed({
+        code: `import { openEmptyEncryptedContainer } from '@/00-storage/service/hizofs/authenticated-store/empty-container-store';`,
+        filePath: 'src/00-storage/service/hizofs/worker/composition-root.ts',
+      });
+      await expectAllowed({
+        code: `import { OpfsWritableBackend } from '@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend';`,
+        filePath: 'src/00-storage/service/hizofs/worker/composition-root.ts',
+      });
+      await expectAllowed({
+        code: `import { openEmptyEncryptedContainer } from '@/00-storage/service/hizofs/authenticated-store/empty-container-store';`,
+        filePath: 'src/00-storage/service/hizofs/worker/tests/worker-mount-grant.test.ts',
+      });
+      await expectForbidden({
+        code: `import { openEmptyEncryptedContainer } from '@/00-storage/service/hizofs/authenticated-store/empty-container-store';`,
+        filePath: 'src/00-storage/service/hizofs/worker/tests/worker-mount-grant-sibling.test.ts',
+      });
+      await expectForbidden({
+        code: `import { openEmptyEncryptedContainer } from '@/00-storage/service/hizofs/authenticated-store/empty-container-store';`,
+        filePath: 'src/00-storage/service/hizofs/worker/runtime-host.ts',
+      });
+    });
+
+    it('rejects deep format imports from crypto while allowing the public format entry', async () => {
+      await expectForbidden({
+        code: `import { encodeCryptoContext } from '@/00-storage/service/hizofs/00-format/v1/crypto-context-codec';`,
+        filePath: 'src/00-storage/service/hizofs/crypto/key-application/derived-keys.ts',
+      });
+      await expectAllowed({
+        code: `import { encodeCryptoContext } from '@/00-storage/service/hizofs/00-format';`,
+        filePath: 'src/00-storage/service/hizofs/crypto/key-application/derived-keys.ts',
+      });
+    });
+
+    it('reserves worker-entry access for the exact Naidan OPFS composition file', async () => {
+      await expectAllowed({
+        code: `import { openApplicationSession } from '@/00-storage/service/hizofs/worker-entry';`,
+        filePath: 'src/00-storage/service/naidan-opfs/production-persistence-runtime.ts',
+      });
+      await expectForbidden({
+        code: `import { openApplicationSession } from '@/00-storage/service/hizofs/worker-entry';`,
+        filePath: 'src/00-storage/service/naidan-opfs/backend.ts',
+      });
+      await expectForbidden({
+        code: `import { openApplicationSession } from '@/00-storage/service/hizofs/worker/composition-root';`,
+        filePath: 'src/00-storage/service/naidan-opfs/production-persistence-runtime.ts',
+      });
+      await expectForbidden({
+        code: `import { createHizoFSWorkerRuntimeHost } from '@/00-storage/service/hizofs/worker/runtime-host';`,
+        filePath: 'src/00-storage/service/naidan-opfs/production-persistence-runtime.ts',
+      });
+      await expectAllowed({
+        code: `import { openHizoFSWorkerMountGrant } from '@/00-storage/service/hizofs/worker-entry';`,
+        filePath: 'src/00-storage/service/naidan-opfs/worker-mount-runtime.ts',
+      });
+      await expectForbidden({
+        code: `import { openHizoFSWorkerMountGrant } from '@/00-storage/service/hizofs/worker-entry';`,
+        filePath: 'src/00-storage/service/naidan-opfs/worker-mount-runtime-sibling.ts',
+      });
+    });
+
+    it('rejects Naidan Control deep imports while allowing the narrow compatibility surface', async () => {
+      await expectForbidden({
+        code: `import { parseFileSystemId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';`,
+        filePath: 'src/00-storage/service/naidan-persistence-control/00-format/container-path.ts',
+      });
+      await expectAllowed({
+        code: `import { parsePortableFileSystemIdHex } from '@/00-storage/service/hizofs/compatibility';`,
+        filePath: 'src/00-storage/service/naidan-persistence-control/00-format/container-path.ts',
+      });
+    });
+  });
+
 });

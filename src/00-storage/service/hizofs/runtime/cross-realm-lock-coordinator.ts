@@ -1,0 +1,375 @@
+import {
+  decodeBase64UrlUnpadded,
+  decodeRequiredHomeRecordReference,
+  encodeBase64UrlUnpadded,
+  encodeHomeRecordReference,
+  type HomeRecordReference,
+} from "@/00-storage/service/hizofs/00-format";
+import type { ContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
+
+export type CrossRealmLockMode = "exclusive" | "shared";
+
+export type CrossRealmLockLease = Readonly<{
+  release: () => void;
+  released: Promise<void>;
+}>;
+
+export interface CrossRealmLockPort {
+  acquire({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }): Promise<CrossRealmLockLease>;
+  queryHeldLockNames(): Promise<readonly string[]>;
+}
+
+export type CrossRealmCoordinatorErrorCode =
+  | "held_lock_limit_exceeded"
+  | "invalid_held_lock_limit"
+  | "invalid_held_reader_pin"
+  | "lease_released"
+  | "publication_in_progress";
+
+export class CrossRealmCoordinatorError extends Error {
+  readonly code: CrossRealmCoordinatorErrorCode;
+
+  constructor({ code, message }: { code: CrossRealmCoordinatorErrorCode; message: string }) {
+    super(message);
+    this.name = "CrossRealmCoordinatorError";
+    this.code = code;
+  }
+}
+
+export type CrossRealmReaderPin = Readonly<{
+  commitReference: HomeRecordReference;
+  release: () => void;
+  released: Promise<void>;
+}>;
+
+export type CrossRealmMaintenanceLease = Readonly<{
+  pinnedCommitReferences: readonly HomeRecordReference[];
+  release: () => void;
+  released: Promise<void>;
+}>;
+
+export type CrossRealmWriterLease = Readonly<{
+  release: () => void;
+  released: Promise<void>;
+  runPublication: <T>({ operation }: {
+    operation: () => Promise<T>;
+  }) => Promise<T>;
+}>;
+
+const LOCK_PREFIX = "hizofs-v1";
+
+function authorityLockName({ scopeToken }: {
+  scopeToken: ContainerCoordinationScopeToken;
+}): string {
+  return `${LOCK_PREFIX}/authority/${scopeToken}`;
+}
+
+function publicationLockName({ scopeToken }: {
+  scopeToken: ContainerCoordinationScopeToken;
+}): string {
+  return `${LOCK_PREFIX}/publication/${scopeToken}`;
+}
+
+function readerRegistrationLockName({ scopeToken }: {
+  scopeToken: ContainerCoordinationScopeToken;
+}): string {
+  return `${LOCK_PREFIX}/reader-registration/${scopeToken}`;
+}
+
+export function readerPinLockName({ commitReference, scopeToken }: {
+  commitReference: HomeRecordReference;
+  scopeToken: ContainerCoordinationScopeToken;
+}): string {
+  const encodedReference = encodeBase64UrlUnpadded({
+    bytes: encodeHomeRecordReference({ reference: commitReference }),
+  });
+  return `${LOCK_PREFIX}/reader-pin/${scopeToken}/${encodedReference}`;
+}
+
+function readerPinPrefix({ scopeToken }: {
+  scopeToken: ContainerCoordinationScopeToken;
+}): string {
+  return `${LOCK_PREFIX}/reader-pin/${scopeToken}/`;
+}
+
+function decodeHeldReaderPin({ name, scopeToken }: {
+  name: string;
+  scopeToken: ContainerCoordinationScopeToken;
+}): HomeRecordReference | undefined {
+  const prefix = readerPinPrefix({ scopeToken });
+  if (!name.startsWith(prefix)) return undefined;
+  const encodedReference = name.slice(prefix.length);
+  try {
+    const bytes = decodeBase64UrlUnpadded({ maximumDecodedBytes: 32, value: encodedReference });
+    if (bytes.byteLength !== 32) throw new Error("Home Record Reference lock suffix must encode 32 bytes");
+    return decodeRequiredHomeRecordReference({ bytes });
+  } catch (cause: unknown) {
+    throw new CrossRealmCoordinatorError({
+      code: "invalid_held_reader_pin",
+      message: `held reader-pin lock cannot be decoded safely: ${String(cause)}`,
+    });
+  }
+}
+
+function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
+  return encodeBase64UrlUnpadded({ bytes: encodeHomeRecordReference({ reference }) });
+}
+
+function releaseLeasesNow({ leases }: {
+  leases: readonly CrossRealmLockLease[];
+}): void {
+  const failures: unknown[] = [];
+  for (const lease of leases) {
+    try {
+      lease.release();
+    } catch (cause: unknown) {
+      failures.push(cause);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "multiple cross-realm leases failed to release");
+}
+
+async function releaseLeasesAndWait({ leases }: {
+  leases: readonly CrossRealmLockLease[];
+}): Promise<void> {
+  const failures: unknown[] = [];
+  try {
+    releaseLeasesNow({ leases });
+  } catch (cause: unknown) {
+    failures.push(cause);
+  }
+  for (const result of await Promise.allSettled(leases.map(lease => lease.released))) {
+    switch (result.status) {
+    case "fulfilled": break;
+    case "rejected": failures.push(result.reason); break;
+    default: result satisfies never;
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "cross-realm lease cleanup did not complete cleanly");
+}
+
+/**
+ * A cross-realm lease must be released after the protected operation, but a
+ * cleanup failure must not erase the operation failure that explains why the
+ * protected state was rejected.
+ */
+async function runWithCrossRealmLeaseCleanup<T>({ failureMessage, leases, operation }: {
+  failureMessage: string;
+  leases: readonly CrossRealmLockLease[];
+  operation: () => Promise<T>;
+}): Promise<T> {
+  let operationFailure: unknown;
+  let value: T | undefined;
+  try {
+    value = await operation();
+  } catch (cause: unknown) {
+    operationFailure = cause;
+  }
+  try {
+    await releaseLeasesAndWait({ leases });
+  } catch (cleanupFailure: unknown) {
+    if (operationFailure !== undefined) {
+      throw new AggregateError([operationFailure, cleanupFailure], failureMessage);
+    }
+    throw cleanupFailure;
+  }
+  if (operationFailure !== undefined) throw operationFailure;
+  return value as T;
+}
+
+export class CrossRealmLockCoordinator {
+  #lockPort: CrossRealmLockPort;
+  #maxHeldLockNames: number;
+  #scopeToken: ContainerCoordinationScopeToken;
+
+  constructor({ lockPort, maxHeldLockNames, scopeToken }: {
+    lockPort: CrossRealmLockPort;
+    maxHeldLockNames: number;
+    scopeToken: ContainerCoordinationScopeToken;
+  }) {
+    if (!Number.isSafeInteger(maxHeldLockNames) || maxHeldLockNames < 1) {
+      throw new CrossRealmCoordinatorError({
+        code: "invalid_held_lock_limit",
+        message: "cross-realm coordinator requires a positive safe held-lock enumeration limit",
+      });
+    }
+    this.#lockPort = lockPort;
+    this.#maxHeldLockNames = maxHeldLockNames;
+    this.#scopeToken = scopeToken;
+  }
+
+  async runAuthorityRead<T>({ operation }: {
+    operation: () => Promise<T>;
+  }): Promise<T> {
+    const authority = await this.#lockPort.acquire({
+      mode: "shared",
+      name: authorityLockName({ scopeToken: this.#scopeToken }),
+    });
+    return await runWithCrossRealmLeaseCleanup({
+      failureMessage: "authority read and lease cleanup both failed",
+      leases: [authority],
+      operation,
+    });
+  }
+
+  async acquireReaderPin({ commitReference }: {
+    commitReference: HomeRecordReference;
+  }): Promise<CrossRealmReaderPin> {
+    const registration = await this.#lockPort.acquire({
+      mode: "shared",
+      name: readerRegistrationLockName({ scopeToken: this.#scopeToken }),
+    });
+    let pin: CrossRealmLockLease;
+    try {
+      pin = await this.#lockPort.acquire({
+        mode: "shared",
+        name: readerPinLockName({ commitReference, scopeToken: this.#scopeToken }),
+      });
+    } catch (acquisitionFailure: unknown) {
+      try {
+        await releaseLeasesAndWait({ leases: [registration] });
+      } catch (registrationCleanupFailure: unknown) {
+        throw new AggregateError(
+          [acquisitionFailure, registrationCleanupFailure],
+          "reader pin acquisition and registration cleanup both failed",
+        );
+      }
+      throw acquisitionFailure;
+    }
+    try {
+      await releaseLeasesAndWait({ leases: [registration] });
+    } catch (registrationCleanupFailure: unknown) {
+      try {
+        await releaseLeasesAndWait({ leases: [pin] });
+      } catch (pinCleanupFailure: unknown) {
+        throw new AggregateError(
+          [registrationCleanupFailure, pinCleanupFailure],
+          "reader registration and unreturned pin cleanup both failed",
+        );
+      }
+      throw registrationCleanupFailure;
+    }
+    let active = true;
+    return {
+      commitReference: decodeRequiredHomeRecordReference({
+        bytes: encodeHomeRecordReference({ reference: commitReference }),
+      }),
+      release: () => {
+        if (!active) return;
+        active = false;
+        pin.release();
+      },
+      released: pin.released,
+    };
+  }
+
+  async acquireWriter(): Promise<CrossRealmWriterLease> {
+    const authority = await this.#lockPort.acquire({
+      mode: "exclusive",
+      name: authorityLockName({ scopeToken: this.#scopeToken }),
+    });
+    let active = true;
+    let publicationActive = false;
+    return {
+      release: () => {
+        if (!active) return;
+        if (publicationActive) {
+          throw new CrossRealmCoordinatorError({
+            code: "publication_in_progress",
+            message: "cross-realm writer ownership cannot be released during publication",
+          });
+        }
+        active = false;
+        authority.release();
+      },
+      released: authority.released,
+      runPublication: async <T>({ operation }: {
+        operation: () => Promise<T>;
+      }): Promise<T> => {
+        if (!active) {
+          throw new CrossRealmCoordinatorError({
+            code: "lease_released",
+            message: "released cross-realm writer lease cannot publish",
+          });
+        }
+        if (publicationActive) {
+          throw new CrossRealmCoordinatorError({
+            code: "publication_in_progress",
+            message: "one writer lease cannot run overlapping publications",
+          });
+        }
+        publicationActive = true;
+        try {
+          const publication = await this.#lockPort.acquire({
+            mode: "exclusive",
+            name: publicationLockName({ scopeToken: this.#scopeToken }),
+          });
+          return await runWithCrossRealmLeaseCleanup({
+            failureMessage: "publication operation and lease cleanup both failed",
+            leases: [publication],
+            operation,
+          });
+        } finally {
+          publicationActive = false;
+        }
+      },
+    };
+  }
+
+  async beginMaintenance(): Promise<CrossRealmMaintenanceLease> {
+    const authority = await this.#lockPort.acquire({
+      mode: "exclusive",
+      name: authorityLockName({ scopeToken: this.#scopeToken }),
+    });
+    let registration: CrossRealmLockLease | undefined;
+    try {
+      registration = await this.#lockPort.acquire({
+        mode: "exclusive",
+        name: readerRegistrationLockName({ scopeToken: this.#scopeToken }),
+      });
+      const heldNames = await this.#lockPort.queryHeldLockNames();
+      if (heldNames.length > this.#maxHeldLockNames) {
+        throw new CrossRealmCoordinatorError({
+          code: "held_lock_limit_exceeded",
+          message: "held lock enumeration exceeds the explicit runtime memory bound",
+        });
+      }
+      const uniqueReferences = new Map<string, HomeRecordReference>();
+      for (const name of heldNames) {
+        const reference = decodeHeldReaderPin({ name, scopeToken: this.#scopeToken });
+        if (reference === undefined) continue;
+        uniqueReferences.set(referenceIdentity({ reference }), reference);
+      }
+      let active = true;
+      const heldRegistration = registration;
+      const released = Promise.all([heldRegistration.released, authority.released]).then(() => undefined);
+      return {
+        pinnedCommitReferences: [...uniqueReferences.values()],
+        release: () => {
+          if (!active) return;
+          active = false;
+          releaseLeasesNow({ leases: [heldRegistration, authority] });
+        },
+        released,
+      };
+    } catch (cause: unknown) {
+      const leases = registration === undefined ? [authority] : [registration, authority];
+      try {
+        await releaseLeasesAndWait({ leases });
+      } catch (cleanupCause: unknown) {
+        throw new AggregateError([cause, cleanupCause], "maintenance acquisition and cleanup both failed");
+      }
+      throw cause;
+    }
+  }
+}
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {
+};

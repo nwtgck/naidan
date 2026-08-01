@@ -1,0 +1,13 @@
+{
+  "name": "hizofs-v1-independent-node-verifier",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "verify": "node verify-vectors.mjs",
+    "read-empty": "node read-empty-container.mjs",
+    "read-superblocks": "node read-superblocks.mjs",
+    "read-active-commit": "node read-active-commit.mjs",
+    "read-root-inode": "node read-root-inode.mjs"
+  }
+}

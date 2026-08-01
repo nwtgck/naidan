@@ -768,7 +768,7 @@ export function createWeshStorageDirectoryRemoteForMounts({
         case 'worker_local':
           // Worker-reopenable mounts run beside Wesh and must never route
           // primitive I/O back through this UI-owned Comlink remote.
-          return mount.workerSource === undefined;
+          return mount.handle.createWorkerMountGrant === undefined;
         case 'ui_remote':
           // File Explorer still uses the UI-owned handle capability. It must not
           // lose HizoFS-backed mounts merely because Wesh can reopen them locally.

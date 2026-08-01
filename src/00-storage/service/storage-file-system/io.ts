@@ -1,7 +1,5 @@
-import type {
-  StorageFileHandle,
-  StorageWritableFile,
-} from './types';
+import { runWithStorageBinaryObjectReadHandleClose } from '@/00-storage/service/binary-object-io';
+import type { StorageFileHandle } from './types';
 
 const DEFAULT_STREAM_CHUNK_SIZE = 1024 * 1024;
 
@@ -9,15 +7,14 @@ export async function readStorageFileText({ fileHandle }: {
   fileHandle: StorageFileHandle;
 }): Promise<string> {
   const readable = await fileHandle.openReadable({ mimeType: 'text/plain' });
-  try {
-    return await new Response(readable.stream({
+  return await runWithStorageBinaryObjectReadHandleClose({
+    handle: readable,
+    operation: async () => await new Response(readable.stream({
       start: 0,
       end: undefined,
       signal: undefined,
-    })).text();
-  } finally {
-    await readable.close();
-  }
+    })).text(),
+  });
 }
 
 export async function writeStorageFileText({ fileHandle, value }: {
@@ -31,9 +28,15 @@ export async function writeStorageFileText({ fileHandle, value }: {
       data: new TextEncoder().encode(value),
     });
     await writable.close();
-  } catch (error) {
-    await abortAfterWriteFailure({ writable, error });
-    throw error;
+  } catch (error: unknown) {
+    const abortFailure = await captureCleanupFailure({
+      cleanup: async () => await writable.abort({ reason: error }),
+    });
+    throwWithCleanupFailures({
+      cleanupFailures: abortFailure === undefined ? [] : [abortFailure],
+      message: 'Storage text write and writable abort both failed',
+      primaryFailure: error,
+    });
   }
 }
 
@@ -74,28 +77,59 @@ export async function writeStorageReadableStream({
       throw new Error(`Storage file size mismatch: expected ${expectedSize}, wrote ${position}`);
     }
     await writable.close();
-  } catch (error) {
-    try {
-      await reader.cancel(error);
-    } catch {
-      // Preserve the original read or write failure.
-    }
-    await abortAfterWriteFailure({ writable, error });
-    throw error;
+  } catch (error: unknown) {
+    const cancelFailure = await captureCleanupFailure({
+      cleanup: async () => await reader.cancel(error),
+    });
+    const abortFailure = await captureCleanupFailure({
+      cleanup: async () => await writable.abort({ reason: error }),
+    });
+    throwWithCleanupFailures({
+      cleanupFailures: [cancelFailure, abortFailure].filter(isCapturedFailure),
+      message: 'Storage stream write and cleanup encountered multiple failures',
+      primaryFailure: error,
+    });
   } finally {
     reader.releaseLock();
   }
 }
 
-async function abortAfterWriteFailure({ writable, error }: {
-  writable: StorageWritableFile;
-  error: unknown;
-}): Promise<void> {
+type CapturedFailure = {
+  readonly cause: unknown;
+};
+
+async function captureCleanupFailure({ cleanup }: {
+  cleanup: () => Promise<void>;
+}): Promise<CapturedFailure | undefined> {
   try {
-    await writable.abort({ reason: error });
-  } catch {
-    // Preserve the original write failure.
+    await cleanup();
+    return undefined;
+  } catch (cause: unknown) {
+    return { cause };
   }
+}
+
+function isCapturedFailure(
+  failure: CapturedFailure | undefined,
+): failure is CapturedFailure {
+  return failure !== undefined;
+}
+
+/**
+ * A failed write owns every cleanup attempt until settlement. Cleanup must not
+ * replace the write failure, but each additional failure remains necessary to
+ * diagnose whether the reader or writable resource was released.
+ */
+function throwWithCleanupFailures({ cleanupFailures, message, primaryFailure }: {
+  cleanupFailures: readonly CapturedFailure[];
+  message: string;
+  primaryFailure: unknown;
+}): never {
+  if (cleanupFailures.length === 0) throw primaryFailure;
+  throw new AggregateError(
+    [primaryFailure, ...cleanupFailures.map(({ cause }) => cause)],
+    message,
+  );
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

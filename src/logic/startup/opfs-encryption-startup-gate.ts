@@ -1,7 +1,7 @@
 import { shallowRef, type ShallowRef } from 'vue';
 import { storageService } from '@/00-storage/service';
-import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
-import type { OpfsEncryptionTransitionProgress } from '@/00-storage/service/opfs-encryption/transition-progress';
+import type { OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
+import type { OpfsEncryptionTransitionProgress } from '@/00-storage/service/naidan-opfs/transition-progress';
 
 export type OpfsEncryptionStartupPhase =
   | 'locked'
@@ -15,7 +15,7 @@ export interface OpfsEncryptionStartupGate {
   readonly applicationError: ShallowRef<unknown | undefined>,
   readonly progress: ShallowRef<OpfsEncryptionTransitionProgress | undefined>,
   unlockWithPassphrase({ passphrase }: { passphrase: string }): Promise<void>,
-  returnInterruptedEncryptionToPlain({ passphrase }: { passphrase: string | undefined }): Promise<void>,
+  returnInterruptedEncryptionToPlain({ passphrase }: { passphrase: string }): Promise<void>,
   retryInspection(): Promise<void>,
   reportApplicationFailure({ error }: { error: unknown }): void,
   reportUnlockPresentationReady(): void,
@@ -78,16 +78,14 @@ export function createOpfsEncryptionStartupGate({
     try {
       const value = currentInspection.value;
       switch (value.type) {
+      case 'credential_required':
       case 'encrypted':
         await storageService.unlockOpfsEncryptionWithPassphrase({ passphrase });
         break;
       case 'transitioning':
-        await storageService.resumeOpfsEncryptionTransitionWithPassphrase({
+        await storageService.convergeOpfsEncryptionTransitionWithPassphrase({
           passphrase,
           signal: undefined,
-          onProgress: ({ progress: nextProgress }) => {
-            progress.value = nextProgress;
-          },
         });
         break;
       case 'recovery_required':
@@ -116,7 +114,7 @@ export function createOpfsEncryptionStartupGate({
   async function returnInterruptedEncryptionToPlain({
     passphrase,
   }: {
-    passphrase: string | undefined,
+    passphrase: string,
   }): Promise<void> {
     const currentPhase = phase.value;
     switch (currentPhase) {
@@ -135,6 +133,7 @@ export function createOpfsEncryptionStartupGate({
     switch (value.type) {
     case 'transitioning':
       break;
+    case 'credential_required':
     case 'encrypted':
     case 'recovery_required':
       throw new Error('Only interrupted OPFS encryption can return to plain storage');
@@ -143,14 +142,14 @@ export function createOpfsEncryptionStartupGate({
       throw new Error(`Unhandled OPFS encryption inspection: ${((_ex satisfies never) as { readonly type: string }).type}`);
     }
     }
-    switch (value.operation.type) {
-    case 'encrypting':
+    switch (value.mode.operation) {
+    case 'encrypt':
       break;
-    case 'decrypting':
-    case 'reencrypting':
+    case 'decrypt':
+    case 're_encrypt':
       throw new Error('Only interrupted OPFS encryption can return to plain storage');
     default: {
-      const _ex: never = value.operation;
+      const _ex: never = value.mode.operation;
       throw new Error(`Unhandled OPFS encryption operation: ${((_ex satisfies never) as { readonly type: string }).type}`);
     }
     }
@@ -186,6 +185,7 @@ export function createOpfsEncryptionStartupGate({
       reportUnlockPresentationReady();
       complete();
       return;
+    case 'credential_required':
     case 'encrypted':
     case 'transitioning':
     case 'recovery_required':

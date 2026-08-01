@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DeveloperOpfsEncryptionInterruptionPanel from './DeveloperOpfsEncryptionInterruptionPanel.vue';
 import { useConfirm } from '@/composables/useConfirm';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 
 const mocks = vi.hoisted(() => ({
   inspectOpfsEncryption: vi.fn(),
@@ -64,6 +65,25 @@ describe('DeveloperOpfsEncryptionInterruptionPanel', () => {
       signal: undefined,
     });
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('shows credential-required storage without exposing interruption actions', async () => {
+    mocks.inspectOpfsEncryption.mockResolvedValue(
+      PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+        firstSequence: 2,
+        secondSequence: 1,
+      }),
+    );
+    const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
+      props: { storageType: 'opfs' },
+    });
+
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Enter the passphrase for this OPFS storage');
+    });
+
+    expect(wrapper.find('[data-testid="developer-create-interrupted-encryption"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="developer-create-interrupted-decryption"]').exists()).toBe(false);
   });
 
   it('creates a durable interrupted decryption state and reloads from encrypted OPFS', async () => {

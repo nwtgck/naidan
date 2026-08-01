@@ -7,13 +7,14 @@ import { OPFSStorageProvider } from './opfs-storage';
 import { NaidanOpfsStorageBackend } from './naidan-opfs/backend';
 import { HostVolumeDB } from './opfs/host-volume-db';
 import { createNativeOpfsFileSystemSession } from './storage-file-system/native-opfs';
-import type { OpfsEncryptionInspection } from './opfs-encryption/bootstrap';
-import type { OpfsEncryptionDebugSession } from './opfs-encryption/inspection';
-import type { OpfsEncryptionTransitionProgressListener } from './opfs-encryption/transition-progress';
+import type { OpfsEncryptionInspection } from './naidan-opfs/persistence-runtime-contract';
+import type { OpfsEncryptionTransitionProgressListener } from './naidan-opfs/transition-progress';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
 import {
   notifyRegisteredOpfsExternalTransitionSettled,
   notifyRegisteredOpfsExternalTransitionStarting,
+  notifyRegisteredOpfsLocalTransitionSettled,
+  notifyRegisteredOpfsLocalTransitionStarting,
   prepareRegisteredOpfsStorageTransition,
 } from './opfs/opfs-storage-transition-preparation';
 import { MemoryStorageProvider } from './memory-storage';
@@ -28,6 +29,46 @@ import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } fro
 import { idToRaw, toChatId } from '@/01-models/ids';
 
 type OpfsEncryptionChangeEvent = Extract<StorageChangeEvent, { type: 'opfs_encryption' }>;
+
+type TransitionErrorDiagnosticEntry = Readonly<{
+  errorCode: string | undefined;
+  errorMessage: string;
+  errorName: string;
+  errorPath: string | undefined;
+}>;
+
+function transitionErrorDiagnosticEntry({ error }: { error: unknown }): TransitionErrorDiagnosticEntry {
+  if (!(error instanceof Error)) {
+    return {
+      errorCode: undefined,
+      errorMessage: String(error),
+      errorName: typeof error,
+      errorPath: undefined,
+    };
+  }
+  const detailed = error as Error & { code?: unknown; path?: unknown };
+  return {
+    errorCode: typeof detailed.code === 'string' ? detailed.code : undefined,
+    errorMessage: error.message,
+    errorName: error.name,
+    errorPath: typeof detailed.path === 'string' ? detailed.path : undefined,
+  };
+}
+
+function transitionErrorDiagnostics({
+  error,
+}: {
+  error: unknown;
+}): TransitionErrorDiagnosticEntry & {
+  errorCauses: readonly TransitionErrorDiagnosticEntry[];
+} {
+  return {
+    ...transitionErrorDiagnosticEntry({ error }),
+    errorCauses: error instanceof AggregateError
+      ? Array.from(error.errors).slice(0, 8).map(cause => transitionErrorDiagnosticEntry({ error: cause }))
+      : [],
+  };
+}
 
 function createStorageSynchronizationId({ prefix }: { prefix: string }): string {
   const randomId = globalThis.crypto?.randomUUID?.()
@@ -342,6 +383,8 @@ export class StorageService {
           throw new Error('OPFS encryption transition was superseded by another tab');
         }
 
+        notifyRegisteredOpfsLocalTransitionStarting();
+
         // Announce the transition only after holding the global storage lock.
         // A tab that starts concurrently must wait here before it can initialize
         // OPFS and acquire a long-lived shared OPFS session lock. Otherwise it
@@ -378,6 +421,7 @@ export class StorageService {
             operationId,
             tabId: this.synchronizationTabId,
           });
+          notifyRegisteredOpfsLocalTransitionSettled({ settlement: 'completed' });
           return result;
         } catch (error) {
           this.notify({
@@ -394,7 +438,9 @@ export class StorageService {
             operationId,
             tabId: this.synchronizationTabId,
             error,
+            ...transitionErrorDiagnostics({ error }),
           });
+          notifyRegisteredOpfsLocalTransitionSettled({ settlement: 'failed' });
           throw error;
         }
       },
@@ -481,9 +527,6 @@ export class StorageService {
   }
 
 
-  async createOpfsEncryptionDebugSession(): Promise<OpfsEncryptionDebugSession> {
-    return await this.getOpfsProvider().createOpfsEncryptionDebugSession();
-  }
 
   async retryPlainOpfsInitializationAfterEncryptionRecovery(): Promise<void> {
     await this.getOpfsProvider().init();
@@ -537,14 +580,35 @@ export class StorageService {
   }
 
   async reencryptOpfsEncryption({
+    passphrase,
     signal,
     onProgress,
   }: {
+    passphrase: string,
     signal: AbortSignal | undefined,
     onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
     await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().reencrypt({ signal, onProgress }),
+      run: async () => await this.getOpfsProvider().reencrypt({
+        retainedCredentials: [{ passphrase }],
+        signal,
+        onProgress,
+      }),
+    });
+  }
+
+  async convergeOpfsEncryptionTransitionWithPassphrase({
+    passphrase,
+    signal,
+  }: {
+    passphrase: string,
+    signal: AbortSignal | undefined,
+  }): Promise<void> {
+    await this.runOpfsEncryptionTransition({
+      run: async () => await this.getOpfsProvider().convergeTransitionWithPassphrase({
+        passphrase,
+        signal,
+      }),
     });
   }
 
@@ -571,7 +635,7 @@ export class StorageService {
     signal,
     onProgress,
   }: {
-    passphrase: string | undefined,
+    passphrase: string,
     signal: AbortSignal | undefined,
     onProgress?: OpfsEncryptionTransitionProgressListener,
   }): Promise<void> {
@@ -906,13 +970,6 @@ export class StorageService {
     });
   }
 
-  /**
-   * TODO(storage-volume-access): Migrate remaining native-handle-only callers
-   * to openVolume(). HizoFS volumes do not expose a native handle.
-   */
-  async getVolumeDirectoryHandle({ volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle | null> {
-    return await this.getProvider().getVolumeDirectoryHandle({ volumeId });
-  }
 
   async deleteVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
     return this.getProvider().deleteVolume({ volumeId });

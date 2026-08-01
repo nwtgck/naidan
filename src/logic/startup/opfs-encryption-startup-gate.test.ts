@@ -1,61 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
-import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
+import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY, type OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import { createOpfsEncryptionStartupGate } from './opfs-encryption-startup-gate';
 
-function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 'encrypted' }> {
-  return {
-    type: 'encrypted',
-    state: {
-      formatVersion: 1,
-      sequence: 1,
-      state: 'encrypted',
-      keySlots: [{
-        id: 'slot-id',
-        keyDerivation: {
-          type: 'pbkdf2_hmac_sha256',
-          salt: 'salt',
-          iterations: 10,
-        },
-        wrappedStorageUnlockKey: {
-          nonce: 'nonce',
-          ciphertext: 'ciphertext',
-        },
-      }],
-      activeEncryptedStoreId: 'encrypted-store',
-    },
-  };
+function createCredentialRequiredInspection(): Extract<OpfsEncryptionInspection, { type: 'credential_required' }> {
+  return PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+    firstSequence: 2,
+    secondSequence: 1,
+  });
 }
 
 function createTransitioningInspection(): Extract<OpfsEncryptionInspection, { type: 'transitioning' }> {
-  const operation = {
-    type: 'reencrypting' as const,
-    phase: 'building_target' as const,
-    sourceEncryptedStoreId: 'source-store',
-    targetEncryptedStoreId: 'target-store',
-  };
-  return {
-    type: 'transitioning',
-    state: {
-      formatVersion: 1,
-      sequence: 2,
-      state: 'transitioning',
-      keySlots: [{
-        id: 'slot-id',
-        keyDerivation: {
-          type: 'pbkdf2_hmac_sha256',
-          salt: 'salt',
-          iterations: 10,
-        },
-        wrappedStorageUnlockKey: {
-          nonce: 'nonce',
-          ciphertext: 'ciphertext',
-        },
-      }],
-      operation,
-    },
-    operation,
-  };
+  return PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+    operation: 're_encrypt',
+    phase: 'building_target',
+    sourceFileSystemId: 'source-store',
+    targetFileSystemId: 'target-store',
+  });
 }
 
 afterEach(() => {
@@ -63,11 +24,11 @@ afterEach(() => {
 });
 
 describe('createOpfsEncryptionStartupGate', () => {
-  it('unlocks encrypted storage with a passphrase before completing the gate', async () => {
+  it('unlocks credential-required storage with a passphrase before completing the gate', async () => {
     const unlock = vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase')
       .mockResolvedValue(undefined);
     const gate = createOpfsEncryptionStartupGate({
-      inspection: createEncryptedInspection(),
+      inspection: createCredentialRequiredInspection(),
     });
 
     expect(gate.phase.value).toBe('locked');
@@ -91,9 +52,11 @@ describe('createOpfsEncryptionStartupGate', () => {
     expect(presentationReady).toBe(true);
   });
 
-  it('resumes an interrupted transition before completing the gate', async () => {
-    const resume = vi.spyOn(storageService, 'resumeOpfsEncryptionTransitionWithPassphrase')
+  it('converges an interrupted transition without selecting detailed resume progress', async () => {
+    const converge = vi.spyOn(storageService, 'convergeOpfsEncryptionTransitionWithPassphrase')
       .mockResolvedValue(undefined);
+    const resume = vi.spyOn(storageService, 'resumeOpfsEncryptionTransitionWithPassphrase')
+      .mockRejectedValue(new Error('detailed resume must not be selected during startup'));
     const gate = createOpfsEncryptionStartupGate({
       inspection: createTransitioningInspection(),
     });
@@ -101,58 +64,33 @@ describe('createOpfsEncryptionStartupGate', () => {
     await gate.unlockWithPassphrase({ passphrase: 'transition passphrase' });
     await gate.wait();
 
-    expect(resume).toHaveBeenCalledWith({
+    expect(converge).toHaveBeenCalledWith({
       passphrase: 'transition passphrase',
       signal: undefined,
-      onProgress: expect.any(Function),
     });
-    const onProgress = resume.mock.calls[0]?.[0].onProgress;
-    if (onProgress === undefined) {
-      throw new Error('Expected transition progress callback');
-    }
-    onProgress({
-      progress: {
-        operation: 'reencrypting',
-        phase: 'verifying',
-        percent: 75,
-        completedBytes: 3,
-        totalBytes: 4,
-        completedEntries: 3,
-        totalEntries: 4,
-      },
-    });
-    expect(gate.progress.value?.percent).toBe(75);
+    expect(resume).not.toHaveBeenCalled();
+    expect(gate.progress.value).toBeUndefined();
     expect(gate.phase.value).toBe('preparing_application');
   });
 
 
-  it('returns interrupted pre-authority encryption to plain without a passphrase', async () => {
-    const operation = {
-      type: 'encrypting' as const,
-      phase: 'building_target' as const,
-      targetEncryptedStoreId: 'target-store',
-    };
+  it('returns interrupted pre-authority encryption to plain with an authenticated passphrase', async () => {
     const returnToPlain = vi.spyOn(storageService, 'returnInterruptedOpfsEncryptionToPlain')
       .mockResolvedValue(undefined);
     const gate = createOpfsEncryptionStartupGate({
-      inspection: {
-        type: 'transitioning',
-        state: {
-          formatVersion: 1,
-          sequence: 3,
-          state: 'transitioning',
-          keySlots: [],
-          operation,
-        },
-        operation,
-      },
+      inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+        operation: 'encrypt',
+        phase: 'building_target',
+        sourceFileSystemId: undefined,
+        targetFileSystemId: 'target-store',
+      }),
     });
 
-    await gate.returnInterruptedEncryptionToPlain({ passphrase: undefined });
+    await gate.returnInterruptedEncryptionToPlain({ passphrase: 'existing passphrase' });
     await gate.wait();
 
     expect(returnToPlain).toHaveBeenCalledWith({
-      passphrase: undefined,
+      passphrase: 'existing passphrase',
       signal: undefined,
       onProgress: expect.any(Function),
     });
@@ -163,7 +101,7 @@ describe('createOpfsEncryptionStartupGate', () => {
     vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase')
       .mockRejectedValue(new Error('incorrect passphrase'));
     const gate = createOpfsEncryptionStartupGate({
-      inspection: createEncryptedInspection(),
+      inspection: createCredentialRequiredInspection(),
     });
 
     await expect(gate.unlockWithPassphrase({ passphrase: 'wrong' }))
@@ -208,7 +146,7 @@ describe('createOpfsEncryptionStartupGate', () => {
 
   it('keeps the startup gate visible when application preparation fails', () => {
     const gate = createOpfsEncryptionStartupGate({
-      inspection: createEncryptedInspection(),
+      inspection: createCredentialRequiredInspection(),
     });
     const error = new Error('main application failed');
 

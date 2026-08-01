@@ -682,7 +682,6 @@ vi.mock('../features/file-explorer/composables/useFileExplorerModal', () => ({
 
 vi.mock('../00-storage/service', () => ({
   storageService: {
-    getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     subscribeToChanges: vi.fn(),
   },

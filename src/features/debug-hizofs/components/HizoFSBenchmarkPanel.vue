@@ -34,8 +34,8 @@ import {
   type HizoFSBenchmarkStudyReport,
   type HizoFSBenchmarkWorkload,
 } from '@/features/debug-hizofs/benchmark/types';
-import { createHizoFSBenchmarkWorkerClient } from '@/features/debug-hizofs/worker/client';
-import type { HizoFSBenchmarkWorkerClient } from '@/features/debug-hizofs/worker/types';
+import { createHizoFSBenchmarkWorkerClient } from '@/features/debug-hizofs/benchmark/client';
+import type { HizoFSBenchmarkWorkerClient } from '@/features/debug-hizofs/benchmark/worker-client';
 
 type BenchmarkRunMode = 'single' | HizoFSBenchmarkStudyKind;
 

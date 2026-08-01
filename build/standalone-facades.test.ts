@@ -16,20 +16,21 @@ describe('standalone facade aliases', () => {
     expect(missingTargets).toEqual([]);
   });
 
-  it('routes HizoFS inspection through the standalone worker hub facade', () => {
-    const hizoFSFacade = '@/features/debug-hizofs/worker/client';
-    expect(STANDALONE_WORKER_CLIENT_FACADES).toContain(hizoFSFacade);
+  it.each([
+    [
+      '@/features/debug-hizofs/benchmark/client',
+      'src/features/debug-hizofs/benchmark/client-standalone.ts',
+    ],
+  ] as const)('routes %s through the standalone worker hub facade', (facadePath, standalonePath) => {
+    expect(STANDALONE_WORKER_CLIENT_FACADES).toContain(facadePath);
 
     const aliases = createStandaloneFacadeAliases({
       resolvePath: relativePath => resolve(process.cwd(), relativePath),
     });
     const alias = aliases.find(({ find }) => (
-      find instanceof RegExp && find.test(hizoFSFacade)
+      find instanceof RegExp && find.test(facadePath)
     ));
 
-    expect(alias?.replacement).toBe(resolve(
-      process.cwd(),
-      'src/features/debug-hizofs/worker/client-standalone.ts',
-    ));
+    expect(alias?.replacement).toBe(resolve(process.cwd(), standalonePath));
   });
 });

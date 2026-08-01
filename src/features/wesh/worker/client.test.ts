@@ -148,26 +148,23 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
 
     const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');
     const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client');
-    const backingDirectory = new MockFileSystemDirectoryHandle({
-      name: 'hizofs-backing',
-    }) as unknown as FileSystemDirectoryHandle;
-    const rootKey = {} as CryptoKey;
-    const workerSource = {
-      type: 'hizofs' as const,
-      backingDirectory,
-      fileSystemId: 'filesystem-1',
-      instanceId: 'instance-1',
-      rootKey,
-      subvolumeDescriptorObjectId: 'subvolume-descriptor-1',
-      rootDirectoryNodeId: 'directory-1',
+    const workerGrant = {
+      type: 'storage_directory_worker_mount_grant' as const,
+      version: 1 as const,
+      implementation: 'hizofs' as const,
+      grantId: 'grant-1',
+      accessMode: 'read_write' as const,
+      opaquePayload: { cloneable: true },
     };
+    const createWorkerMountGrant = vi.fn().mockResolvedValue(workerGrant);
     const client = await createFileProtocolCompatibleWeshWorkerClient({
       rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
       mounts: [{
         type: 'storage_directory',
         path: '/encrypted',
-        handle: {} as import('@/00-storage/service/storage-file-system/types').StorageDirectoryHandle,
-        workerSource,
+        handle: {
+          createWorkerMountGrant,
+        } as unknown as import('@/00-storage/service/storage-file-system/types').StorageDirectoryHandle,
         readOnly: false,
       }],
       user: 'user',
@@ -175,12 +172,13 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       initialCwd: undefined,
     });
 
+    expect(createWorkerMountGrant).toHaveBeenCalledExactlyOnceWith({ accessMode: 'read_write' });
     expect(init).toHaveBeenCalledWith(
       expect.objectContaining({
         mounts: [{
           type: 'storage_directory',
           path: '/encrypted',
-          workerSource,
+          workerGrant,
           readOnly: false,
         }],
       }),

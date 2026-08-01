@@ -5,7 +5,7 @@ import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } fro
 import { createFileExplorerWorker } from './impl';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
-import { createHizoFS } from '@/00-storage/service/hizofs/api';
+import { createNativeOpfsFileSystemSession } from '@/00-storage/service/storage-file-system/native-opfs';
 import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import type { ChatContent, ChatGroup, ChatMeta } from '@/01-models/types';
 import { renderChatMetadataMarkdown } from '@/features/wesh/naidan-sysfs/render/metadata-markdown';
@@ -18,13 +18,12 @@ describe('file-explorer.worker.impl', () => {
     worker = createFileExplorerWorker();
   });
 
-  it('treats a decrypted StorageDirectoryHandle as the File Explorer root without Wesh mount path leakage', async () => {
+  it('treats a StorageDirectoryHandle session root without Wesh mount path leakage', async () => {
     const backing = new MockFileSystemDirectoryHandle({ name: 'encrypted-backing' });
-    const encryptedSession = await createHizoFS({
-      backingDirectory: backing as unknown as FileSystemDirectoryHandle,
-      fileSystemRootKey: new Uint8Array(32).fill(0x42),
+    const storageSession = createNativeOpfsFileSystemSession({
+      root: backing as unknown as FileSystemDirectoryHandle,
     });
-    const naidanStorage = await encryptedSession.root.getDirectoryHandle({
+    const naidanStorage = await storageSession.root.getDirectoryHandle({
       name: 'naidan-storage',
       create: true,
     });
@@ -43,8 +42,7 @@ describe('file-explorer.worker.impl', () => {
       mounts: [{
         type: 'storage_directory',
         path: '/',
-        handle: encryptedSession.root,
-        workerSource: undefined,
+        handle: storageSession.root,
         readOnly: false,
       }],
       storageDirectoryExecution: 'ui_remote',
@@ -72,7 +70,7 @@ describe('file-explorer.worker.impl', () => {
     expect(storageListing.entries.map(entry => entry.name)).toContain('settings.json');
 
     await worker.disposeSession({ request: { sessionId } });
-    await encryptedSession.close();
+    await storageSession.close();
   });
 
   it('lists native directory entries with metadata', async () => {

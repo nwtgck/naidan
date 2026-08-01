@@ -2,26 +2,30 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type {
   StorageDirectoryHandle,
-  StorageDirectoryWorkerMountSource,
+  StorageDirectoryWorkerMountGrant,
 } from '@/00-storage/service/storage-file-system/types';
 import { createWeshStorageDirectoryRemoteForMounts } from './storage-directory/remote';
-import { mapWeshMountsToWorkerMounts } from './worker/types';
 import { createWeshStorageMount } from './storage-mount';
+import { mapWeshMountsToWorkerMounts } from './worker/types';
+
+function createGrant({ accessMode }: {
+  accessMode: StorageDirectoryWorkerMountGrant['accessMode'];
+}): StorageDirectoryWorkerMountGrant {
+  return {
+    type: 'storage_directory_worker_mount_grant',
+    version: 1,
+    implementation: 'hizofs',
+    grantId: `grant-${accessMode}`,
+    accessMode,
+    opaquePayload: { opaque: true },
+  };
+}
 
 describe('createWeshStorageMount', () => {
-  it('forwards a Worker-reopenable storage directory capability to Wesh', () => {
-    const workerSource: StorageDirectoryWorkerMountSource = {
-      type: 'hizofs',
-      backingDirectory: {} as FileSystemDirectoryHandle,
-      fileSystemId: 'filesystem-1',
-      instanceId: 'instance-1',
-      rootKey: {} as CryptoKey,
-      subvolumeDescriptorObjectId: 'subvolume-descriptor',
-      rootDirectoryNodeId: 'directory-1',
-    };
-    const createWorkerMountSource = vi.fn(() => workerSource);
+  it('retains the storage handle without eagerly issuing a Worker grant', () => {
+    const createWorkerMountGrant = vi.fn(async () => createGrant({ accessMode: 'read_write' }));
     const handle = {
-      createWorkerMountSource,
+      createWorkerMountGrant,
     } as unknown as StorageDirectoryHandle;
 
     expect(createWeshStorageMount({
@@ -35,48 +39,89 @@ describe('createWeshStorageMount', () => {
       type: 'storage_directory',
       path: '/encrypted',
       handle,
-      workerSource,
       readOnly: false,
     });
-    expect(createWorkerMountSource).toHaveBeenCalledTimes(1);
+    expect(createWorkerMountGrant).not.toHaveBeenCalled();
   });
 
-  it('keeps Worker-reopenable mounts remote for File Explorer without forwarding key authority', () => {
-    const workerSource: StorageDirectoryWorkerMountSource = {
-      type: 'hizofs',
-      backingDirectory: {} as FileSystemDirectoryHandle,
-      fileSystemId: 'filesystem-1',
-      instanceId: 'instance-1',
-      rootKey: {} as CryptoKey,
-      subvolumeDescriptorObjectId: 'subvolume-descriptor',
-      rootDirectoryNodeId: 'directory-1',
-    };
-    const handle = {} as StorageDirectoryHandle;
-    const mounts = [{
-      type: 'storage_directory' as const,
+  it.each([
+    { readOnly: false, accessMode: 'read_write' as const },
+    { readOnly: true, accessMode: 'read' as const },
+  ])('issues an opaque $accessMode grant only for Worker-local execution', async ({ readOnly, accessMode }) => {
+    const grant = createGrant({ accessMode });
+    const createWorkerMountGrant = vi.fn(async () => grant);
+    const handle = {
+      createWorkerMountGrant,
+    } as unknown as StorageDirectoryHandle;
+    const mounts = [createWeshStorageMount({
       path: '/encrypted',
-      handle,
-      workerSource,
-      readOnly: false,
-    }];
+      access: {
+        type: 'storage_directory',
+        handle,
+      },
+      readOnly,
+    })];
 
+    await expect(mapWeshMountsToWorkerMounts({
+      mounts,
+      storageDirectoryExecution: 'worker_local',
+    })).resolves.toEqual([{
+      type: 'storage_directory',
+      path: '/encrypted',
+      workerGrant: grant,
+      readOnly,
+    }]);
+    expect(createWorkerMountGrant).toHaveBeenCalledExactlyOnceWith({ accessMode });
     expect(createWeshStorageDirectoryRemoteForMounts({
       mounts,
       storageDirectoryExecution: 'worker_local',
     })).toBeUndefined();
+  });
+
+  it('keeps storage mounts UI-remote without issuing Worker authority', async () => {
+    const createWorkerMountGrant = vi.fn(async () => createGrant({ accessMode: 'read_write' }));
+    const handle = {
+      createWorkerMountGrant,
+    } as unknown as StorageDirectoryHandle;
+    const mounts = [createWeshStorageMount({
+      path: '/encrypted',
+      access: {
+        type: 'storage_directory',
+        handle,
+      },
+      readOnly: false,
+    })];
+
+    await expect(mapWeshMountsToWorkerMounts({
+      mounts,
+      storageDirectoryExecution: 'ui_remote',
+    })).resolves.toEqual([{
+      type: 'storage_directory',
+      path: '/encrypted',
+      workerGrant: undefined,
+      readOnly: false,
+    }]);
+    expect(createWorkerMountGrant).not.toHaveBeenCalled();
     expect(createWeshStorageDirectoryRemoteForMounts({
       mounts,
       storageDirectoryExecution: 'ui_remote',
     })).toBeDefined();
-    expect(mapWeshMountsToWorkerMounts({
-      mounts,
-      storageDirectoryExecution: 'ui_remote',
-    })).toEqual([{
-      type: 'storage_directory',
-      path: '/encrypted',
-      workerSource: undefined,
-      readOnly: false,
-    }]);
   });
 
+  it('falls back to the UI remote when a Worker-local handle cannot issue grants', () => {
+    const handle = {} as StorageDirectoryHandle;
+    const mounts = [createWeshStorageMount({
+      path: '/plain',
+      access: {
+        type: 'storage_directory',
+        handle,
+      },
+      readOnly: false,
+    })];
+
+    expect(createWeshStorageDirectoryRemoteForMounts({
+      mounts,
+      storageDirectoryExecution: 'worker_local',
+    })).toBeDefined();
+  });
 });

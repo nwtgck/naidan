@@ -6,7 +6,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { useDebugHizoFSWorkbench } from '@/features/debug-hizofs/composables/useDebugHizoFSWorkbench';
-import { useDebugOpfsEncryptionInspector } from '@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector';
+import { usePersistenceControlInspector } from '@/features/debug-opfs-encryption/composables/usePersistenceControlInspector';
 import { storageService } from '@/00-storage/service';
 import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon, DatabaseIcon } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
@@ -20,7 +20,7 @@ const { errorCount } = useGlobalEvents();
 const { openFileExplorer } = useFileExplorerModal();
 const { openRecent } = useRecentChats();
 const { openDebugHizoFSWorkbench } = useDebugHizoFSWorkbench();
-const { openDebugOpfsEncryptionInspector } = useDebugOpfsEncryptionInspector();
+const { openPersistenceControlInspector } = usePersistenceControlInspector();
 
 const showOpfsMenu = ref(false);
 const opfsTriggerRef = ref<HTMLElement | null>(null);
@@ -46,7 +46,21 @@ async function toggleOpfsMenu(): Promise<void> {
   try {
     const inspection = await storageService.inspectOpfsEncryption();
     if (showOpfsMenu.value && requestId === encryptionInspectionRequestId) {
-      encryptedInspectorAvailable.value = inspection.type === 'encrypted';
+      switch (inspection.type) {
+      case 'plain':
+        encryptedInspectorAvailable.value = false;
+        break;
+      case 'credential_required':
+      case 'encrypted':
+      case 'transitioning':
+      case 'recovery_required':
+        encryptedInspectorAvailable.value = true;
+        break;
+      default: {
+        const _ex: never = inspection;
+        throw new Error(`Unhandled OPFS encryption inspection: ${String(_ex)}`);
+      }
+      }
     }
   } catch {
     if (requestId === encryptionInspectionRequestId) {
@@ -63,7 +77,7 @@ function handleOpenOpfsEncryptionInspector(): void {
   if (!encryptedInspectorAvailable.value) {
     return;
   }
-  openDebugOpfsEncryptionInspector();
+  openPersistenceControlInspector();
   showOpfsMenu.value = false;
 }
 
@@ -142,7 +156,7 @@ defineExpose({
           </button>
           <button
             :disabled="!encryptedInspectorAvailable"
-            :title="checkingEncryptedInspector ? 'Checking encrypted storage state' : encryptedInspectorAvailable ? 'Inspect Naidan OPFS encryption control state' : 'Available after OPFS encryption is unlocked'"
+            :title="checkingEncryptedInspector ? 'Checking encrypted storage state' : encryptedInspectorAvailable ? 'Inspect Naidan OPFS encryption control state' : 'No Persistence Control state is present'"
             @click="handleOpenOpfsEncryptionInspector"
             tw-class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             data-testid="sidebar-opfs-encryption-inspector-button"

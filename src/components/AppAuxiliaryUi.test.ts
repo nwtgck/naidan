@@ -31,7 +31,7 @@ vi.mock('@/composables/usePrint', () => ({
 const isSearchOpen = ref(false);
 const isRecentOpen = ref(false);
 const isDebugHizoFSWorkbenchOpen = ref(false);
-const isDebugOpfsEncryptionInspectorOpen = ref(false);
+const isPersistenceControlInspectorOpen = ref(false);
 
 vi.mock('@/features/global-search/composables/useGlobalSearch', () => ({
   useGlobalSearch: () => ({
@@ -51,9 +51,9 @@ vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
   }),
 }));
 
-vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector', () => ({
-  useDebugOpfsEncryptionInspector: () => ({
-    isDebugOpfsEncryptionInspectorOpen,
+vi.mock('@/features/debug-opfs-encryption/composables/usePersistenceControlInspector', () => ({
+  usePersistenceControlInspector: () => ({
+    isPersistenceControlInspectorOpen,
   }),
 }));
 
@@ -92,7 +92,7 @@ vi.mock('@/features/debug-hizofs/components/HizoFSWorkbenchModal.vue', () => ({
   __isTeleport: false,
   default: { template: '<div data-testid="hizofs-inspector" />' },
 }));
-vi.mock('@/features/debug-opfs-encryption/components/OpfsEncryptionInspectorModal.vue', () => ({
+vi.mock('@/features/debug-opfs-encryption/components/PersistenceControlInspectorModal.vue', () => ({
   __esModule: true,
   __isTeleport: false,
   default: { template: '<div data-testid="opfs-encryption-inspector" />' },
@@ -134,7 +134,7 @@ describe('AppAuxiliaryUi', () => {
     isSearchOpen.value = false;
     isRecentOpen.value = false;
     isDebugHizoFSWorkbenchOpen.value = false;
-    isDebugOpfsEncryptionInspectorOpen.value = false;
+    isPersistenceControlInspectorOpen.value = false;
     vi.mocked(useRoute).mockReturnValue(route as ReturnType<typeof useRoute>);
     vi.mocked(useRouter).mockReturnValue({ push, isReady } as unknown as ReturnType<typeof useRouter>);
   });

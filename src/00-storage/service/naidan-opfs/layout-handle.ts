@@ -1,4 +1,8 @@
-import { materializeStorageBinaryObjectAsBlob } from '@/00-storage/service/binary-object-io';
+import {
+  materializeStorageBinaryObjectAsBlob,
+  runWithStorageBinaryObjectReadHandleClose,
+} from '@/00-storage/service/binary-object-io';
+import { promiseAllKeyed } from '@/utils/promise';
 import type {
   StorageDirectoryHandle,
   StorageEntryHandle,
@@ -10,38 +14,49 @@ export type NaidanOpfsLayoutEntryHandle =
   | NaidanOpfsLayoutFileHandle
   | NaidanOpfsLayoutDirectoryHandle;
 
+type NaidanOpfsLayoutCreateWritableOptions = {
+  readonly keepExistingData?: boolean;
+};
+
 export class NaidanOpfsLayoutFileHandle {
   constructor({ handle }: {
     handle: StorageFileHandle;
   }) {
     this.handle = handle;
-    this.name = handle.name;
   }
 
   readonly kind = 'file' as const;
-  readonly name: string;
   readonly handle: StorageFileHandle;
+
+  get name(): string {
+    return this.handle.name;
+  }
 
   async getFile(): Promise<File> {
     const readable = await this.handle.openReadable({ mimeType: 'application/octet-stream' });
-    try {
-      const blob = await materializeStorageBinaryObjectAsBlob({ handle: readable });
-      const stat = await this.handle.stat();
-      if (isFileLike(blob) && blob.name === this.name) {
-        return blob;
-      }
-      return new File([await blob.arrayBuffer()], this.name, {
-        type: blob.type,
-        lastModified: stat.modifiedAt ?? Date.now(),
-      });
-    } finally {
-      await readable.close();
-    }
+    return await runWithStorageBinaryObjectReadHandleClose({
+      operation: async () => {
+        const { blob, stat } = await promiseAllKeyed({
+          blob: materializeStorageBinaryObjectAsBlob({ handle: readable }),
+          stat: this.handle.stat(),
+        });
+        if (isFileLike(blob) && blob.name === this.name) {
+          return blob;
+        }
+        return new File([await blob.arrayBuffer()], this.name, {
+          type: blob.type,
+          lastModified: stat.modifiedAt ?? Date.now(),
+        });
+      },
+      handle: readable,
+    });
   }
 
-  async createWritable(): Promise<NaidanOpfsLayoutWritableFile> {
+  async createWritable({ keepExistingData = false }:
+    NaidanOpfsLayoutCreateWritableOptions = {},
+  ): Promise<NaidanOpfsLayoutWritableFile> {
     return new NaidanOpfsLayoutWritableFile({
-      writable: await this.handle.createWritable({ keepExistingData: false }),
+      writable: await this.handle.createWritable({ keepExistingData }),
     });
   }
 }
@@ -55,7 +70,7 @@ export class NaidanOpfsLayoutWritableFile {
 
   private readonly writable: StorageWritableFile;
   private position = 0;
-  private settled = false;
+  private state: 'open' | 'settled' = 'open';
 
   // This compatibility adapter intentionally mirrors FileSystemWritableFileStream.write().
   // eslint-disable-next-line local-rules-named-args/require-named-args
@@ -68,23 +83,37 @@ export class NaidanOpfsLayoutWritableFile {
 
   async close(): Promise<void> {
     this.assertOpen();
-    this.settled = true;
+    this.state = 'settled';
     await this.writable.close();
   }
 
   async abort({ reason }: {
     reason: unknown;
   }): Promise<void> {
-    if (this.settled) {
+    switch (this.state) {
+    case 'open':
+      this.state = 'settled';
+      await this.writable.abort({ reason });
       return;
+    case 'settled':
+      return;
+    default: {
+      const _ex: never = this.state;
+      throw new Error(`Unhandled Naidan OPFS layout writer state: ${String(_ex)}`);
     }
-    this.settled = true;
-    await this.writable.abort({ reason });
+    }
   }
 
   private assertOpen(): void {
-    if (this.settled) {
+    switch (this.state) {
+    case 'open':
+      return;
+    case 'settled':
       throw new Error('Naidan OPFS layout writer is already closed or aborted');
+    default: {
+      const _ex: never = this.state;
+      throw new Error(`Unhandled Naidan OPFS layout writer state: ${String(_ex)}`);
+    }
     }
   }
 }
@@ -94,12 +123,14 @@ export class NaidanOpfsLayoutDirectoryHandle {
     handle: StorageDirectoryHandle;
   }) {
     this.handle = handle;
-    this.name = handle.name;
   }
 
   readonly kind = 'directory' as const;
-  readonly name: string;
   readonly handle: StorageDirectoryHandle;
+
+  get name(): string {
+    return this.handle.name;
+  }
 
   // This compatibility adapter intentionally mirrors FileSystemDirectoryHandle.getFileHandle().
   // eslint-disable-next-line local-rules-named-args/require-named-args
@@ -107,7 +138,7 @@ export class NaidanOpfsLayoutDirectoryHandle {
     name: string,
     options?: { readonly create?: boolean },
   ): Promise<NaidanOpfsLayoutFileHandle> {
-    return new NaidanOpfsLayoutFileHandle({
+    return wrapFile({
       handle: await this.handle.getFileHandle({
         name,
         create: options?.create ?? false,
@@ -121,7 +152,7 @@ export class NaidanOpfsLayoutDirectoryHandle {
     name: string,
     options?: { readonly create?: boolean },
   ): Promise<NaidanOpfsLayoutDirectoryHandle> {
-    return new NaidanOpfsLayoutDirectoryHandle({
+    return wrapDirectory({
       handle: await this.handle.getDirectoryHandle({
         name,
         create: options?.create ?? false,
@@ -129,17 +160,23 @@ export class NaidanOpfsLayoutDirectoryHandle {
     });
   }
 
-  async *values(): AsyncIterable<NaidanOpfsLayoutEntryHandle> {
-    for await (const [, handle] of this.handle.entries()) {
+  async *entries(): AsyncIterable<readonly [string, NaidanOpfsLayoutEntryHandle]> {
+    for await (const [name, handle] of this.handle.entries()) {
       const wrapped = wrapEntry({ handle });
       if (wrapped !== undefined) {
-        yield wrapped;
+        yield [name, wrapped] as const;
       }
     }
   }
 
+  async *values(): AsyncIterable<NaidanOpfsLayoutEntryHandle> {
+    for await (const [, handle] of this.entries()) {
+      yield handle;
+    }
+  }
+
   async *keys(): AsyncIterable<string> {
-    for await (const [name] of this.handle.entries()) {
+    for await (const [name] of this.entries()) {
       yield name;
     }
   }
@@ -157,6 +194,17 @@ export class NaidanOpfsLayoutDirectoryHandle {
   }
 }
 
+function wrapFile({ handle }: {
+  handle: StorageFileHandle;
+}): NaidanOpfsLayoutFileHandle {
+  return new NaidanOpfsLayoutFileHandle({ handle });
+}
+
+function wrapDirectory({ handle }: {
+  handle: StorageDirectoryHandle;
+}): NaidanOpfsLayoutDirectoryHandle {
+  return new NaidanOpfsLayoutDirectoryHandle({ handle });
+}
 
 function isFileLike(value: Blob): value is File {
   const candidate = value as Blob & Partial<Pick<File, 'name' | 'lastModified'>>;
@@ -169,9 +217,9 @@ function wrapEntry({ handle }: {
 }): NaidanOpfsLayoutEntryHandle | undefined {
   switch (handle.kind) {
   case 'file':
-    return new NaidanOpfsLayoutFileHandle({ handle });
+    return wrapFile({ handle });
   case 'directory':
-    return new NaidanOpfsLayoutDirectoryHandle({ handle });
+    return wrapDirectory({ handle });
   case 'symlink':
     return undefined;
   default: {

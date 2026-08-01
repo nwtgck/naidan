@@ -2,11 +2,11 @@
 import {
   formatBinaryRange,
   formatBytesAsHex,
-} from '@/features/debug-hizofs/logic/binary-hex';
-import type { HizoFSDecodedBinaryFieldView } from '@/features/debug-hizofs/worker/types';
+} from '@/features/debug-hizofs/logic/binary-inspection-hex';
+import type { HizoFSDecodedBinaryFieldViewModel } from '@/features/debug-hizofs/logic/binary-inspection-view-model';
 
 defineProps<{
-  readonly fields: readonly HizoFSDecodedBinaryFieldView[];
+  readonly fields: readonly HizoFSDecodedBinaryFieldViewModel[];
 }>();
 
 defineExpose({

@@ -7,7 +7,7 @@ import { useLayout } from '@/composables/useLayout';
 import { usePrint } from '@/composables/usePrint';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { useDebugHizoFSWorkbench } from '@/features/debug-hizofs/composables/useDebugHizoFSWorkbench';
-import { useDebugOpfsEncryptionInspector } from '@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector';
+import { usePersistenceControlInspector } from '@/features/debug-opfs-encryption/composables/usePersistenceControlInspector';
 
 
 type AppAuxiliaryUiMode = 'preparing' | 'active';
@@ -30,7 +30,7 @@ const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-s
 const RecentChatsModal = defineAsyncComponent(() => import('@/components/RecentChatsModal.vue'));
 const FileExplorerModal = defineAsyncComponent(() => import('@/features/file-explorer/components/FileExplorerModal.vue'));
 const HizoFSWorkbenchModal = defineAsyncComponent(() => import('@/features/debug-hizofs/components/HizoFSWorkbenchModal.vue'));
-const OpfsEncryptionInspectorModal = defineAsyncComponent(() => import('@/features/debug-opfs-encryption/components/OpfsEncryptionInspectorModal.vue'));
+const PersistenceControlInspectorModal = defineAsyncComponent(() => import('@/features/debug-opfs-encryption/components/PersistenceControlInspectorModal.vue'));
 const PWAManager = __BUILD_MODE_IS_HOSTED__
   ? defineAsyncComponent(() => import('@/components/PWAManager.vue'))
   : undefined;
@@ -42,7 +42,7 @@ const { isFileExplorerOpen } = useFileExplorerModal();
 const { isSearchOpen } = useGlobalSearch();
 const { isRecentOpen } = useRecentChats();
 const { isDebugHizoFSWorkbenchOpen } = useDebugHizoFSWorkbench();
-const { isDebugOpfsEncryptionInspectorOpen } = useDebugOpfsEncryptionInspector();
+const { isPersistenceControlInspectorOpen } = usePersistenceControlInspector();
 const { activePrintMode } = usePrint();
 const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
 const renderPostStartupAuxiliaryUi = computed(() => {
@@ -170,6 +170,7 @@ defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      // ESLint-required for defineExpose.
       closeSettings,
     },
   }) || {})
@@ -194,7 +195,7 @@ defineExpose({
   <RecentChatsModal v-if="renderPostStartupAuxiliaryUi && isRecentOpen" />
   <PWAManager v-if="renderPostStartupAuxiliaryUi && PWAManager" />
   <FileExplorerModal v-if="renderPostStartupAuxiliaryUi && isFileExplorerOpen" />
-  <OpfsEncryptionInspectorModal v-if="renderPostStartupAuxiliaryUi && isDebugOpfsEncryptionInspectorOpen" />
+  <PersistenceControlInspectorModal v-if="renderPostStartupAuxiliaryUi && isPersistenceControlInspectorOpen" />
   <HizoFSWorkbenchModal v-if="renderPostStartupAuxiliaryUi && isDebugHizoFSWorkbenchOpen" />
 
   <PrintView v-if="renderPostStartupAuxiliaryUi && activePrintMode !== undefined">

@@ -196,6 +196,42 @@ export async function materializeStorageBinaryObjectWriteSourceAsBlob({
   }
 }
 
+/**
+ * A read operation may fail independently from releasing its temporary read
+ * handle. Both failures are required to diagnose the unusable read without
+ * losing the cleanup failure that also occurred.
+ */
+export async function runWithStorageBinaryObjectReadHandleClose<T>({
+  handle,
+  operation,
+}: {
+  handle: StorageBinaryObjectReadHandle;
+  operation: () => Promise<T>;
+}): Promise<T> {
+  let operationFailure: { readonly cause: unknown } | undefined;
+  let value: T | undefined;
+  try {
+    value = await operation();
+  } catch (cause: unknown) {
+    operationFailure = { cause };
+  }
+
+  try {
+    await handle.close();
+  } catch (closeFailure: unknown) {
+    if (operationFailure !== undefined) {
+      throw new AggregateError(
+        [operationFailure.cause, closeFailure],
+        'Storage binary object read and handle cleanup both failed',
+      );
+    }
+    throw closeFailure;
+  }
+
+  if (operationFailure !== undefined) throw operationFailure.cause;
+  return value as T;
+}
+
 export async function materializeStorageBinaryObjectAsBlob({
   handle,
 }: {

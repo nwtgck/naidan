@@ -320,7 +320,6 @@ export interface WeshStorageDirectoryMount {
   type: 'storage_directory',
   path: string,
   handle: import('@/00-storage/service/storage-file-system/types').StorageDirectoryHandle,
-  workerSource: import('@/00-storage/service/storage-file-system/types').StorageDirectoryWorkerMountSource | undefined,
   readOnly: boolean,
 }
 

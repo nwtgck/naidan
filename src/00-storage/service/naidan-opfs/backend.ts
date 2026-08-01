@@ -36,6 +36,7 @@ import {
   volumeToDto,
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from '@/00-storage/service/interface';
+import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
 import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
 import {
   NaidanOpfsLayoutDirectoryHandle,
@@ -54,6 +55,7 @@ import {
   createBlobStorageBinaryObjectReadHandle,
   materializeStorageBinaryObjectAsBlob,
   openStorageBinaryObjectWriteSourceStream,
+  runWithStorageBinaryObjectReadHandleClose,
 } from '@/00-storage/service/binary-object-io';
 import type {
   StorageBinaryObjectReadHandle,
@@ -91,6 +93,27 @@ const ENCRYPTION_CONTROL_ENTRY_NAMES = new Set([
 
 type BinaryShardIndex = BinaryShardIndexDto;
 
+function isNotFoundError({ error }: { error: unknown }): boolean {
+  return error instanceof DOMException
+    ? error.name === 'NotFoundError'
+    : error instanceof Error
+      && (error.name === 'NotFoundError'
+        || error.message.startsWith('NotFoundError')
+        || ('code' in error && error.code === 8));
+}
+
+async function ignoreMissingStorageEntry({ operation }: {
+  operation: () => Promise<void>;
+}): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    if (!isNotFoundError({ error })) {
+      throw error;
+    }
+  }
+}
+
 export class NaidanOpfsStorageBackend extends IStorageProvider {
   constructor({ namespaceRoot, hostVolumeDB }: {
     namespaceRoot: StorageDirectoryHandle;
@@ -126,7 +149,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     if (this.root === undefined) {
       this.root = new NaidanOpfsLayoutDirectoryHandle({
         handle: await this.namespaceRoot.getDirectoryHandle({
-          name: 'naidan-storage',
+          name: NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
           create: true,
         }),
       });
@@ -266,7 +289,10 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
       console.log(`[NaidanOpfsStorageBackend] Migration completed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
     } catch (e) {
       // If uploaded-files doesn't exist, migration is not needed
-      const isNotFound = e instanceof Error && (e.name === 'NotFoundError' || (e as { code?: number }).code === 8);
+      const isNotFound = typeof e === 'object'
+        && e !== null
+        && (('name' in e && e.name === 'NotFoundError')
+          || ('code' in e && e.code === 8));
       if (!isNotFound) {
         console.error(`[NaidanOpfsStorageBackend] Migration failed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`, e);
         throw e;
@@ -533,12 +559,15 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   }
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {
-    try {
+    const fileName = `${idToRaw({ id })}.json`;
+    await ignoreMissingStorageEntry({ operation: async () => {
       const metaDir = await this.getDir({ name: 'chat-metas' });
+      await metaDir.removeEntry(fileName);
+    } });
+    await ignoreMissingStorageEntry({ operation: async () => {
       const contentDir = await this.getDir({ name: 'chat-contents' });
-      await metaDir.removeEntry(`${idToRaw({ id })}.json`);
-      await contentDir.removeEntry(`${idToRaw({ id })}.json`);
-    } catch { /* ignore */ }
+      await contentDir.removeEntry(fileName);
+    } });
   }
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
@@ -571,10 +600,10 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
-    try {
+    await ignoreMissingStorageEntry({ operation: async () => {
       const dir = await this.getDir({ name: 'chat-groups' });
       await dir.removeEntry(`${idToRaw({ id })}.json`);
-    } catch { /* ignore */ }
+    } });
   }
 
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
@@ -732,12 +761,12 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     const fileName = `${idToRaw({ id: binaryObjectId })}.bin`;
     const markerName = `.${fileName}.complete`;
 
-    try {
+    await ignoreMissingStorageEntry({ operation: async () => {
       await dir.removeEntry(fileName);
-    } catch { /* ignore */ }
-    try {
+    } });
+    await ignoreMissingStorageEntry({ operation: async () => {
       await dir.removeEntry(markerName);
-    } catch { /* ignore */ }
+    } });
 
     const index = await this.loadShardIndex({ shard: shard });
     if (index.objects[idToRaw({ id: binaryObjectId })]) {
@@ -830,19 +859,19 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
                 continue;
               }
 
-              try {
-                yield {
-                  type: 'binary_object' as const,
-                  id: bId,
-                  name: meta.name ?? 'file',
-                  mimeType: meta.mimeType,
-                  size: meta.size,
-                  createdAt: meta.createdAt,
-                  blob: await materializeStorageBinaryObjectAsBlob({ handle }),
-                };
-              } finally {
-                await handle.close();
-              }
+              const blob = await runWithStorageBinaryObjectReadHandleClose({
+                handle,
+                operation: async () => await materializeStorageBinaryObjectAsBlob({ handle }),
+              });
+              yield {
+                type: 'binary_object' as const,
+                id: bId,
+                name: meta.name ?? 'file',
+                mimeType: meta.mimeType,
+                size: meta.size,
+                createdAt: meta.createdAt,
+                blob,
+              };
             }
             break;
           }

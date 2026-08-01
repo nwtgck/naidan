@@ -1,0 +1,430 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  createFileOffset,
+  createInodeNumber,
+  createInodeRevision,
+  createSubvolumeId,
+  createTimestampMilliseconds,
+} from "@/00-storage/service/hizofs/00-format";
+import {
+  createRuntimeBoundHizoFSApplicationSessionPort,
+  type HizoFSApplicationMutationPort,
+  type HizoFSApplicationPublicationAuthority,
+  type HizoFSApplicationRuntimeSession,
+  type HizoFSApplicationRuntimeWriter,
+} from "@/00-storage/service/hizofs/api/application-session-port";
+import { ReadOnlyNamespaceError, type ReadOnlyNamespace } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
+import type { SessionOperationAuthority } from "@/00-storage/service/hizofs/runtime/session-lifecycle";
+
+function namespace({ includeSubvolume = false }: {
+  includeSubvolume?: boolean;
+} = {}): ReadOnlyNamespace {
+  const createdAt = createTimestampMilliseconds({ value: 10n });
+  const modifiedAt = createTimestampMilliseconds({ value: 20n });
+  return {
+    list: vi.fn(async () => [
+      {
+        inodeKind: "file" as const,
+        inodeNumber: createInodeNumber({ value: 2n }),
+        name: "file",
+        targetType: "inode" as const,
+      },
+      ...(includeSubvolume ? [{
+        name: "mounted",
+        subvolumeId: createSubvolumeId({ value: 8n }),
+        targetType: "subvolume" as const,
+      }] : []),
+    ]),
+    listBounded: vi.fn(async () => ({ entries: [], truncated: false })),
+    readFile: vi.fn(async ({ length = 4n, offset = 0n }) => {
+      const source = new Uint8Array([1, 2, 3, 4]);
+      return source.slice(Number(offset), Number(offset + length));
+    }),
+    readlink: vi.fn(async () => "../target"),
+    stat: vi.fn(async ({ pathComponents }) => {
+      const name = pathComponents.at(-1) ?? "";
+      if (name === "file") {
+        return {
+          createdAt,
+          fileSize: createFileOffset({ value: 4n }),
+          inodeNumber: createInodeNumber({ value: 2n }),
+          inodeRevision: createInodeRevision({ value: 1n }),
+          kind: "file" as const,
+          modifiedAt,
+        };
+      }
+      if (name === "link") {
+        return {
+          createdAt,
+          inodeNumber: createInodeNumber({ value: 3n }),
+          inodeRevision: createInodeRevision({ value: 1n }),
+          kind: "symlink" as const,
+          modifiedAt,
+        };
+      }
+      return {
+        createdAt,
+        inodeNumber: createInodeNumber({ value: 1n }),
+        inodeRevision: createInodeRevision({ value: 1n }),
+        kind: "directory" as const,
+        modifiedAt,
+      };
+    }),
+  };
+}
+
+function runtime(): Readonly<{
+  calls: string[];
+  session: HizoFSApplicationRuntimeSession;
+  writers: HizoFSApplicationRuntimeWriter[];
+}> {
+  const calls: string[] = [];
+  const writers: HizoFSApplicationRuntimeWriter[] = [];
+  const session: HizoFSApplicationRuntimeSession = {
+    async acquireWriter() {
+      calls.push("acquire-writer");
+      let crossed = false;
+      const writer: HizoFSApplicationRuntimeWriter = {
+        async close() {
+          calls.push("close-writer");
+        },
+        async runPublication<Value>({ operation }: {
+          operation: ({ authority }: { authority: SessionOperationAuthority }) => Promise<Value>;
+        }): Promise<Value> {
+          calls.push("run-publication");
+          return await operation({ authority: {
+            assertCapabilityReturnAllowed: () => undefined,
+            assertPublicationAllowed: () => undefined,
+            commitPointCrossed: () => crossed,
+            markCommitPointCrossed: () => {
+              crossed = true;
+              calls.push("commit-point");
+            },
+          } });
+        },
+      };
+      writers.push(writer);
+      return writer;
+    },
+    async close() {
+      calls.push("close-session");
+    },
+    async runReadOperation<Value>({ operation }: {
+      operation: () => Promise<Value>;
+    }): Promise<Value> {
+      calls.push("read-operation");
+      return await operation();
+    },
+  };
+  return { calls, session, writers };
+}
+
+function mutationPort({ markCommitPoint = true }: {
+  markCommitPoint?: boolean;
+} = {}): Readonly<{
+  calls: Array<readonly [string, unknown]>;
+  port: HizoFSApplicationMutationPort;
+}> {
+  const calls: Array<readonly [string, unknown]> = [];
+  const complete = ({ authority, name, request }: {
+    authority: HizoFSApplicationPublicationAuthority;
+    name: string;
+    request: unknown;
+  }) => {
+    calls.push([name, request]);
+    authority.assertPublicationAllowed();
+    if (markCommitPoint) authority.markCommitPointCrossed();
+  };
+  const port: HizoFSApplicationMutationPort = {
+    async cloneFile(request) {
+      complete({ authority: request.authority, name: "clone", request });
+    },
+    async createDirectory(request) {
+      complete({ authority: request.authority, name: "mkdir", request });
+    },
+    async createFile(request) {
+      complete({ authority: request.authority, name: "create-file", request });
+    },
+    async createSymlink(request) {
+      complete({ authority: request.authority, name: "symlink", request });
+    },
+    async moveEntry(request) {
+      complete({ authority: request.authority, name: "move", request });
+    },
+    async openExplicitBulk(request) {
+      calls.push(["open-explicit-bulk", request]);
+      return {
+        async abort({ reason }) {
+          calls.push(["abort-explicit-bulk", reason]);
+        },
+        async commit({ authority }) {
+          complete({ authority, name: "commit-explicit-bulk", request: undefined });
+        },
+        async createEmptyFile({ name }) {
+          calls.push(["bulk-create-empty-file", name]);
+        },
+      };
+    },
+    async openWritable(request) {
+      calls.push(["open-writable", request]);
+      return {
+        async abort({ reason }) {
+          calls.push(["abort", reason]);
+        },
+        async commit({ authority }) {
+          complete({ authority, name: "commit", request: undefined });
+        },
+        async truncate({ size }) {
+          calls.push(["truncate", size]);
+        },
+        async write({ data, position }) {
+          calls.push(["write", { data: [...data], position }]);
+        },
+      };
+    },
+    async removeEntry(request) {
+      complete({ authority: request.authority, name: "remove", request });
+    },
+  };
+  return { calls, port };
+}
+
+function createPort({ includeSubvolume = false, markCommitPoint = true }: {
+  includeSubvolume?: boolean;
+  markCommitPoint?: boolean;
+} = {}) {
+  const runtimeState = runtime();
+  const mutations = mutationPort({ markCommitPoint });
+  return {
+    mutations,
+    port: createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace({ includeSubvolume }),
+      runtimeSession: runtimeState.session,
+    } }),
+    runtimeState,
+  };
+}
+
+describe("runtime-bound HizoFS application session port", () => {
+  it("projects immutable namespace reads through runtime close linearization", async () => {
+    const { port, runtimeState } = createPort();
+
+    await expect(port.listDirectory({ path: [] })).resolves.toEqual([{ kind: "file", name: "file" }]);
+    await expect(port.stat({ path: ["file"] })).resolves.toEqual({
+      createdAt: 10n,
+      kind: "file",
+      modifiedAt: 20n,
+      size: 4n,
+    });
+    await expect(port.stat({ path: ["link"] })).resolves.toEqual({
+      createdAt: 10n,
+      kind: "symlink",
+      modifiedAt: 20n,
+      size: 9n,
+    });
+    const readable = await port.openReadable({ path: ["file"] });
+    await expect(readable.read({ length: 2n, offset: 1n, signal: undefined }))
+      .resolves.toEqual(new Uint8Array([2, 3]));
+
+    expect(runtimeState.calls.filter(value => value === "read-operation")).toHaveLength(5);
+    await port.close();
+    await expect(port.stat({ path: [] })).rejects.toMatchObject({ code: "session_closed" });
+  });
+
+  it("projects private missing-entry failures into the shared storage boundary", async () => {
+    const runtimeState = runtime();
+    const missingNamespace: ReadOnlyNamespace = {
+      ...namespace(),
+      stat: vi.fn(async () => {
+        throw new ReadOnlyNamespaceError({ code: "not_found", message: "path component does not exist" });
+      }),
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutationPort().port,
+      namespace: missingNamespace,
+      runtimeSession: runtimeState.session,
+    } });
+
+    await expect(port.stat({ path: ["missing"] })).rejects.toMatchObject({
+      name: "NotFoundError",
+      message: "NotFoundError: path component does not exist",
+    });
+    await port.close();
+  });
+
+  it("rejects subvolume mounts until the topology resolver is composed", async () => {
+    const { port } = createPort({ includeSubvolume: true });
+    await expect(port.listDirectory({ path: [] })).rejects.toMatchObject({
+      code: "subvolume_boundary",
+    });
+  });
+
+  it("serializes mutations through the runtime writer and requires a durable commit point", async () => {
+    const { mutations, port, runtimeState } = createPort();
+    await port.createFile({ name: "next", path: ["parent"] });
+
+    expect(runtimeState.calls).toEqual([
+      "acquire-writer",
+      "run-publication",
+      "commit-point",
+      "close-writer",
+    ]);
+    expect(mutations.calls[0]?.[0]).toBe("create-file");
+  });
+
+  it("accepts an explicitly resolved no-change mutation without claiming durable publication", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort({ markCommitPoint: false });
+    mutations.port.moveEntry = async ({ authority, ...request }) => {
+      mutations.calls.push(["move-no-change", request]);
+      authority.markNoChangeResolved();
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+    } });
+
+    await port.moveEntry({
+      destinationPath: ["same"],
+      name: "entry",
+      newName: "entry",
+      path: ["same"],
+      replace: false,
+    });
+
+    expect(runtimeState.calls).toEqual([
+      "acquire-writer",
+      "run-publication",
+      "close-writer",
+    ]);
+    expect(mutations.calls[0]?.[0]).toBe("move-no-change");
+  });
+
+  it("fails closed when a mutation returns before marking the publication commit point", async () => {
+    const { port, runtimeState } = createPort({ markCommitPoint: false });
+    await expect(port.createDirectory({ name: "unsafe", path: [] })).rejects.toEqual(
+      expect.objectContaining({ code: "commit_point_not_crossed" }),
+    );
+    expect(runtimeState.calls.at(-1)).toBe("close-writer");
+  });
+
+  it("holds the cross-realm writer until an explicit bulk commit resolves", async () => {
+    const { mutations, port, runtimeState } = createPort();
+    const openExplicitBulk = port.openExplicitBulk;
+    if (openExplicitBulk === undefined) throw new Error("test mutation port omitted explicit bulk support");
+    const builder = await openExplicitBulk({ path: ["target"] });
+    expect(runtimeState.calls).toEqual(["acquire-writer"]);
+
+    await builder.createEmptyFile({ name: "first" });
+    await builder.commit();
+
+    expect(mutations.calls).toContainEqual(["bulk-create-empty-file", "first"]);
+    expect(runtimeState.calls).toEqual([
+      "acquire-writer",
+      "run-publication",
+      "commit-point",
+      "close-writer",
+    ]);
+    await expect(builder.abort({ reason: "late" })).rejects.toMatchObject({ code: "session_closed" });
+  });
+
+  it("fails closed when an explicit bulk publisher omits its commit point", async () => {
+    const { port, runtimeState } = createPort({ markCommitPoint: false });
+    const openExplicitBulk = port.openExplicitBulk;
+    if (openExplicitBulk === undefined) throw new Error("test mutation port omitted explicit bulk support");
+    const builder = await openExplicitBulk({ path: [] });
+
+    await expect(builder.commit()).rejects.toMatchObject({ code: "commit_point_not_crossed" });
+    expect(runtimeState.calls.at(-1)).toBe("close-writer");
+  });
+
+  it("aborts open explicit bulk builders before closing the runtime session", async () => {
+    const { mutations, port, runtimeState } = createPort();
+    const openExplicitBulk = port.openExplicitBulk;
+    if (openExplicitBulk === undefined) throw new Error("test mutation port omitted explicit bulk support");
+    await openExplicitBulk({ path: [] });
+    await port.close();
+
+    expect(mutations.calls.map(([name]) => name)).toContain("abort-explicit-bulk");
+    expect(runtimeState.calls.slice(-2)).toEqual(["close-writer", "close-session"]);
+  });
+
+  it("holds the cross-realm writer until writable commit or abort", async () => {
+    const { mutations, port, runtimeState } = createPort();
+    const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
+    expect(runtimeState.calls).toEqual(["acquire-writer"]);
+
+    const bytes = new Uint8Array([7, 8]);
+    await writable.write({ data: bytes, position: 2n });
+    bytes.fill(0);
+    await writable.truncate({ size: 9n });
+    await writable.commit();
+
+    expect(mutations.calls).toContainEqual(["write", { data: [7, 8], position: 2n }]);
+    expect(runtimeState.calls).toEqual([
+      "acquire-writer",
+      "run-publication",
+      "commit-point",
+      "close-writer",
+    ]);
+    await expect(writable.abort({ reason: "late" })).rejects.toMatchObject({ code: "session_closed" });
+  });
+
+  it("aborts prepared writables before closing the owned runtime session", async () => {
+    const { mutations, port, runtimeState } = createPort();
+    await port.openWritable({ keepExistingData: false, path: ["file"] });
+    await port.close();
+
+    expect(mutations.calls.map(([name]) => name)).toContain("abort");
+    expect(runtimeState.calls.slice(-2)).toEqual(["close-writer", "close-session"]);
+  });
+
+  it("aborts a prepared writable that resolves after session close begins", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort();
+    let markOpenStarted: (() => void) | undefined;
+    const openStarted = new Promise<void>(resolve => {
+      markOpenStarted = resolve;
+    });
+    let resolvePrepared: ((prepared: Awaited<ReturnType<HizoFSApplicationMutationPort["openWritable"]>>) => void)
+      | undefined;
+    const prepared = new Promise<Awaited<ReturnType<HizoFSApplicationMutationPort["openWritable"]>>>(resolve => {
+      resolvePrepared = resolve;
+    });
+    mutations.port.openWritable = async request => {
+      mutations.calls.push(["open-writable-delayed", request]);
+      markOpenStarted?.();
+      return await prepared;
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+    } });
+
+    const opening = port.openWritable({ keepExistingData: true, path: ["file"] });
+    await openStarted;
+    await port.close();
+    resolvePrepared?.({
+      async abort({ reason }) {
+        mutations.calls.push(["abort-delayed", reason]);
+      },
+      async commit() {
+        throw new Error("delayed prepared writable must not commit");
+      },
+      async truncate() {
+        throw new Error("delayed prepared writable must not truncate");
+      },
+      async write() {
+        throw new Error("delayed prepared writable must not write");
+      },
+    });
+
+    await expect(opening).rejects.toMatchObject({ code: "session_closed" });
+    expect(mutations.calls.map(([name]) => name)).toContain("abort-delayed");
+    expect(runtimeState.calls).toEqual(["acquire-writer", "close-session", "close-writer"]);
+  });
+});

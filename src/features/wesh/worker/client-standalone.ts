@@ -51,7 +51,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts });
   const initRequest = weshWorkerInitRequestSchema.parse({
     rootHandle,
-    mounts: mapWeshMountsToWorkerMounts({
+    mounts: await mapWeshMountsToWorkerMounts({
       mounts,
       storageDirectoryExecution: 'worker_local',
     }),

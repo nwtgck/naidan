@@ -13,6 +13,7 @@ import {
   reportAppStartupFailure,
 } from './logic/startup/app-startup-failure';
 import { startApp } from './logic/startup/app-startup';
+import { createOpfsTransitionReloadGuard } from './logic/opfs-transition-reload-guard';
 import { createInitialNavigationGate } from './logic/startup/initial-navigation-gate';
 import { resolveStartupFailureState } from './logic/startup/startup-failure-state';
 import {
@@ -21,9 +22,39 @@ import {
 import {
   registerOpfsStorageTransitionPreparation,
 } from './00-storage/service/opfs/opfs-storage-transition-preparation';
+import {
+  installNativeOpfsPersistenceControlInspectionSource,
+} from './features/debug-opfs-encryption/logic/native-opfs-persistence-control-inspection-source';
+import {
+  createActiveHizoFSPhysicalInspectionSource,
+} from './features/debug-hizofs/logic/active-physical-inspection-source';
+import {
+  installHizoFSPhysicalInspectionSource,
+} from './features/debug-hizofs/composables/useDebugHizoFSWorkbench';
+import {
+  openActiveAuthenticatedHizoFSContainerLocationLease,
+} from './00-storage/service/naidan-opfs/active-hizofs-container-location';
+import {
+  installDevelopmentUnverifiedOpfsPersistenceRuntime,
+} from './00-storage/service/naidan-opfs/development-persistence-runtime';
+
+installDevelopmentUnverifiedOpfsPersistenceRuntime();
+
+const opfsTransitionReloadGuard = createOpfsTransitionReloadGuard({ document, window });
+
+installNativeOpfsPersistenceControlInspectionSource();
+installHizoFSPhysicalInspectionSource({
+  source: createActiveHizoFSPhysicalInspectionSource({
+    openLease: openActiveAuthenticatedHizoFSContainerLocationLease,
+  }),
+});
 
 registerOpfsStorageTransitionPreparation({
+  localTransitionStarting: () => {
+    opfsTransitionReloadGuard.markTransitionStarted();
+  },
   externalTransitionStarting: async () => {
+    opfsTransitionReloadGuard.markTransitionStarted();
     const transitionPresentation = await import(
       './features/opfs-encryption/composables/useOpfsEncryptionTransition'
     );
@@ -35,18 +66,21 @@ registerOpfsStorageTransitionPreparation({
     );
     await transitionPreparation.prepareForOpfsEncryptionTransition();
   },
+  localTransitionSettled: ({ settlement }) => {
+    console.info('[opfs-encryption]', {
+      event: 'local_transition_settled',
+      settlement,
+      action: 'reload',
+    });
+    opfsTransitionReloadGuard.reloadAfterSettlement();
+  },
   externalTransitionSettled: ({ settlement }) => {
-    // StorageService invokes this callback only for a different tab's
-    // operation. The initiating tab switches its backend in place and must
-    // never take this reload path. A follower has suspended its provider, so
-    // reloading after settlement is the simplest way to install the winner's
-    // stable plain or encrypted backend.
     console.info('[opfs-encryption]', {
       event: 'external_transition_settled',
       settlement,
       action: 'reload',
     });
-    window.location.reload();
+    opfsTransitionReloadGuard.reloadAfterSettlement();
   },
 });
 

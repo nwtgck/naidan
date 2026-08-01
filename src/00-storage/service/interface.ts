@@ -5,8 +5,10 @@ import type {
   StorageBinaryObjectWriteSource,
 } from './binary-object-io';
 import type { StorageVolumeAccess } from './volume-access';
-import { unwrapNativeOpfsDirectoryHandle } from './storage-file-system/native-opfs';
-import { materializeStorageBinaryObjectAsBlob } from './binary-object-io';
+import {
+  materializeStorageBinaryObjectAsBlob,
+  runWithStorageBinaryObjectReadHandleClose,
+} from './binary-object-io';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 
 export type { ChatSummary };
@@ -53,28 +55,6 @@ export abstract class IStorageProvider {
     volumeId: VolumeId,
   }): Promise<StorageVolumeAccess | null>;
 
-  /**
-   * TODO(storage-volume-access): Migrate remaining callers to openVolume().
-   * HizoFS volumes do not expose a native FileSystemDirectoryHandle.
-   */
-  async getVolumeDirectoryHandle({ volumeId }: {
-    volumeId: VolumeId,
-  }): Promise<FileSystemDirectoryHandle | null> {
-    const access = await this.openVolume({ volumeId });
-    if (access === null) {
-      return null;
-    }
-    switch (access.type) {
-    case 'direct_directory':
-      return access.handle;
-    case 'storage_directory':
-      return unwrapNativeOpfsDirectoryHandle({ handle: access.handle }) ?? null;
-    default: {
-      const _ex: never = access;
-      throw new Error(`Unhandled storage volume access: ${String(_ex)}`);
-    }
-    }
-  }
 
   abstract deleteVolume({ volumeId }: {
     volumeId: VolumeId,
@@ -219,11 +199,10 @@ export abstract class IStorageProvider {
       return null;
     }
 
-    try {
-      return await materializeStorageBinaryObjectAsBlob({ handle });
-    } finally {
-      await handle.close();
-    }
+    return await runWithStorageBinaryObjectReadHandleClose({
+      handle,
+      operation: async () => await materializeStorageBinaryObjectAsBlob({ handle }),
+    });
   }
 
   abstract getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null>;

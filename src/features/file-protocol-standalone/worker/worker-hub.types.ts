@@ -1,7 +1,6 @@
 import type { IAdvancedTextEditorV3Worker } from '@/features/advanced-text-editor-v3/worker/types';
 import type * as Comlink from 'comlink';
-import type { IHizoFSInspectionWorker } from '@/features/debug-hizofs/worker/types';
-import type { IOpfsEncryptionWorker } from '@/00-storage/service/opfs-encryption/worker/types';
+import type { IHizoFSBenchmarkWorker } from '@/features/debug-hizofs/benchmark/worker-client';
 import type { IFileExplorerWorker } from '@/features/file-explorer/worker/types';
 import type { IGlobalSearchWorker } from '@/features/global-search/worker/types';
 import type { IHighlightWorker } from '@/features/highlight/worker/types';
@@ -9,8 +8,7 @@ import type { IWeshWorker } from '@/features/wesh/worker/types';
 
 export interface IWorkerHub {
   wesh: IWeshWorker,
-  hizoFSInspection: IHizoFSInspectionWorker,
-  opfsEncryption: IOpfsEncryptionWorker,
+  hizoFSBenchmark: IHizoFSBenchmarkWorker,
   globalSearch: IGlobalSearchWorker,
   fileExplorer: IFileExplorerWorker,
   advancedTextEditorV3: IAdvancedTextEditorV3Worker,

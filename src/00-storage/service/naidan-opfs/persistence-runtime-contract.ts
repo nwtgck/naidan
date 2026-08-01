@@ -1,0 +1,199 @@
+import type { IStorageProvider } from '@/00-storage/service/interface';
+import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
+import type {
+  NaidanPersistenceModeV1,
+  NaidanPersistenceControlV1,
+  PersistenceControlCandidate,
+  PersistenceControlCopy,
+} from '@/00-storage/service/naidan-persistence-control/00-format';
+import type { OpfsEncryptionTransitionProgressListener } from '@/00-storage/service/naidan-opfs/transition-progress';
+
+type HizoFSMode = Extract<NaidanPersistenceModeV1, { readonly type: 'hizofs' }>;
+type FileSystemId = HizoFSMode['activeFileSystemId'];
+
+export type OpfsCredentialRequiredCandidate = {
+  readonly copy: PersistenceControlCopy;
+  readonly sequence: number | undefined;
+  readonly state: PersistenceControlCandidate['state'];
+};
+
+export type OpfsEncryptionInspection =
+  | { readonly type: 'plain' }
+  | {
+      /**
+       * Structurally decoded candidates are deliberately detached from
+       * routing authority. A passphrase-bound runtime operation must prove a
+       * candidate and exact-recheck both copies before exposing a selected
+       * File System ID or registering a session.
+       */
+      readonly blockingReason: 'protection_unresolved';
+      readonly candidates: readonly [OpfsCredentialRequiredCandidate, OpfsCredentialRequiredCandidate];
+      readonly type: 'credential_required';
+    }
+  | {
+      readonly type: 'encrypted';
+      readonly control: NaidanPersistenceControlV1;
+      readonly mode: HizoFSMode;
+    }
+  | {
+      readonly type: 'transitioning';
+      readonly control: NaidanPersistenceControlV1;
+      readonly mode: Extract<NaidanPersistenceModeV1, { readonly type: 'transitioning' }>;
+    }
+  | { readonly type: 'recovery_required'; readonly error: unknown };
+
+export type OpfsPersistenceWritableProfile = 'development-unverified' | 'release-qualified';
+
+export type OpfsPersistenceUnlockedMaintenanceResult =
+  | { readonly state: 'plain_namespace_in_use' }
+  | { readonly remainingEntryCount: number; readonly removedEntryCount: number; readonly state: 'completed' };
+
+export interface OpfsPersistenceUnlockedSession {
+  /** Writable behavior is explicit; release qualification remains a separate gate. */
+  readonly writableProfile: OpfsPersistenceWritableProfile;
+  readonly backend: IStorageProvider;
+  readonly fileSystemId: FileSystemId;
+  readonly fileSystemSession: StorageFileSystemSession;
+  close(): Promise<void>;
+}
+
+export type OpfsPersistenceRetainedCredential = Readonly<{
+  passphrase: string;
+  sourceSlotId?: string;
+}>;
+
+export type OpfsPersistenceTransitionRequest =
+  | { readonly operation: 'enable'; readonly passphrase: string }
+  | { readonly operation: 'disable'; readonly session: OpfsPersistenceUnlockedSession }
+  | {
+      readonly operation: 'reencrypt';
+      readonly retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
+      readonly session: OpfsPersistenceUnlockedSession;
+    }
+  | {
+      readonly operation: 'resume';
+      readonly retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
+    }
+  | {
+      readonly operation: 'converge';
+      readonly retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
+    }
+  | { readonly operation: 'return_to_plain'; readonly passphrase: string }
+  | { readonly operation: 'debug_interrupt_enable'; readonly passphrase: string }
+  | { readonly operation: 'debug_interrupt_disable'; readonly session: OpfsPersistenceUnlockedSession };
+
+export type OpfsPersistenceTransitionResult =
+  | { readonly type: 'plain'; readonly backend: IStorageProvider; readonly fileSystemSession: StorageFileSystemSession }
+  | { readonly type: 'encrypted'; readonly session: OpfsPersistenceUnlockedSession }
+  | { readonly type: 'interrupted' };
+
+/**
+ * Application composition port for Naidan Persistence Control and HizoFS.
+ *
+ * The OPFS provider owns application lifecycle and locking only. This port owns
+ * passphrase unlock, container selection, transition orchestration, and the
+ * secret-bearing capabilities needed by those operations. The provider must
+ * never receive raw root keys, physical writers, or format authority.
+ */
+export interface OpfsPersistenceRuntime {
+  readonly writableProfile: OpfsPersistenceWritableProfile;
+  inspect({ storageRoot }: { storageRoot: FileSystemDirectoryHandle }): Promise<OpfsEncryptionInspection>;
+  runStartupMaintenance({ nativeNamespaceRoot, storageRoot }: {
+    nativeNamespaceRoot: FileSystemDirectoryHandle;
+    storageRoot: FileSystemDirectoryHandle;
+  }): Promise<void>;
+  runUnlockedMaintenance({ nativeNamespaceRoot, session, storageRoot }: {
+    nativeNamespaceRoot: FileSystemDirectoryHandle;
+    session: OpfsPersistenceUnlockedSession;
+    storageRoot: FileSystemDirectoryHandle;
+  }): Promise<OpfsPersistenceUnlockedMaintenanceResult>;
+  unlockWithPassphrase({ passphrase, storageRoot }: {
+    passphrase: string;
+    storageRoot: FileSystemDirectoryHandle;
+  }): Promise<OpfsPersistenceUnlockedSession>;
+  changePassphrase({ passphrase, session, storageRoot }: {
+    passphrase: string;
+    session: OpfsPersistenceUnlockedSession;
+    storageRoot: FileSystemDirectoryHandle;
+  }): Promise<OpfsPersistenceUnlockedSession>;
+  runTransition({ nativeNamespaceRoot, onProgress, request, signal, storageRoot }: {
+    nativeNamespaceRoot: FileSystemDirectoryHandle;
+    onProgress: OpfsEncryptionTransitionProgressListener | undefined;
+    request: OpfsPersistenceTransitionRequest;
+    signal: AbortSignal | undefined;
+    storageRoot: FileSystemDirectoryHandle;
+  }): Promise<OpfsPersistenceTransitionResult>;
+}
+
+export type OpfsPersistenceRuntimeFactory = () => Promise<OpfsPersistenceRuntime>;
+
+function testFileSystemId({ value }: { value: string }): FileSystemId {
+  return value as FileSystemId;
+}
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {
+  createCredentialRequiredInspection({ firstSequence, secondSequence }: {
+    firstSequence: number | undefined;
+    secondSequence: number | undefined;
+  }): Extract<OpfsEncryptionInspection, { type: 'credential_required' }> {
+    return {
+      blockingReason: 'protection_unresolved',
+      candidates: [
+        { copy: 0, sequence: firstSequence, state: 'protection_unresolved' },
+        { copy: 1, sequence: secondSequence, state: 'protection_unresolved' },
+      ],
+      type: 'credential_required',
+    };
+  },
+  createEncryptedInspection({ fileSystemId }: { fileSystemId: string }): Extract<OpfsEncryptionInspection, { type: 'encrypted' }> {
+    const brandedFileSystemId = testFileSystemId({ value: fileSystemId });
+    const mode = { activeFileSystemId: brandedFileSystemId, type: 'hizofs' } as const;
+    return {
+      control: {
+        copy: 0,
+        format: 'naidan-persistence-control',
+        formatVersion: 1,
+        mode,
+        protection: { digest: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', type: 'plain_sha256' },
+        retiredFileSystemIds: [],
+        sequence: 1,
+      },
+      mode,
+      type: 'encrypted',
+    };
+  },
+  createTransitioningInspection({ operation, phase, sourceFileSystemId, targetFileSystemId }: {
+    operation: 'decrypt' | 'encrypt' | 're_encrypt';
+    phase: 'building_target' | 'cleaning_up_source';
+    sourceFileSystemId: string | undefined;
+    targetFileSystemId: string | undefined;
+  }): Extract<OpfsEncryptionInspection, { type: 'transitioning' }> {
+    const source = sourceFileSystemId === undefined
+      ? { type: 'plain' } as const
+      : { fileSystemId: testFileSystemId({ value: sourceFileSystemId }), type: 'hizofs' } as const;
+    const target = targetFileSystemId === undefined
+      ? { type: 'plain' } as const
+      : { fileSystemId: testFileSystemId({ value: targetFileSystemId }), type: 'hizofs' } as const;
+    const mode = {
+      operation,
+      operationId: 'transitionOperation01' as import('@/00-storage/service/naidan-persistence-control/00-format').TransitionOperationId,
+      phase: { source, target, type: phase },
+      type: 'transitioning',
+    } as const;
+    return {
+      control: {
+        copy: 0,
+        format: 'naidan-persistence-control',
+        formatVersion: 1,
+        mode,
+        protection: { digest: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', type: 'plain_sha256' },
+        retiredFileSystemIds: [],
+        sequence: 2,
+      },
+      mode,
+      type: 'transitioning',
+    };
+  },
+};

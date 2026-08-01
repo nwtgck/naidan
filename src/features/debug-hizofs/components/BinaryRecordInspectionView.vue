@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { HizoFSBinaryRecordInspectionView } from '@/features/debug-hizofs/worker/types';
+import type { HizoFSBinaryRecordInspectionViewModel } from '@/features/debug-hizofs/logic/binary-inspection-view-model';
 import { JsonCodeView } from '@/features/json-viewer';
 import BinaryHexView from './BinaryHexView.vue';
 import DecodedBinaryFields from './DecodedBinaryFields.vue';
@@ -7,7 +7,7 @@ import DecodedBinaryFields from './DecodedBinaryFields.vue';
 type BinaryDetailsStatus = 'not_loaded' | 'loading' | 'loaded' | 'error';
 
 const props = defineProps<{
-  readonly binary: HizoFSBinaryRecordInspectionView;
+  readonly binary: HizoFSBinaryRecordInspectionViewModel;
   readonly persistedDto: unknown;
   readonly dtoValidationError: string | undefined;
   readonly binaryDetailsStatus: BinaryDetailsStatus;

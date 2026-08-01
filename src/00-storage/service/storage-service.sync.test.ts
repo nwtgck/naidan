@@ -8,16 +8,20 @@ const {
   mockWithLock,
   mockNotify,
   mockSubscribe,
+  mockLocalTransitionStarting,
   mockExternalTransitionStarting,
   mockPrepareExternalTransition,
+  mockLocalTransitionSettled,
   mockExternalTransitionSettled,
   mockSuspendStorageSession,
 } = vi.hoisted(() => ({
   mockWithLock: vi.fn().mockImplementation(({ fn }) => fn()),
   mockNotify: vi.fn(),
   mockSubscribe: vi.fn(),
+  mockLocalTransitionStarting: vi.fn(),
   mockExternalTransitionStarting: vi.fn(async () => {}),
   mockPrepareExternalTransition: vi.fn(async () => {}),
+  mockLocalTransitionSettled: vi.fn(),
   mockExternalTransitionSettled: vi.fn(),
   mockSuspendStorageSession: vi.fn(async () => {}),
 }));
@@ -43,8 +47,10 @@ vi.mock('./synchronizer', () => {
 });
 
 vi.mock('./opfs/opfs-storage-transition-preparation', () => ({
+  notifyRegisteredOpfsLocalTransitionStarting: mockLocalTransitionStarting,
   notifyRegisteredOpfsExternalTransitionStarting: mockExternalTransitionStarting,
   prepareRegisteredOpfsStorageTransition: mockPrepareExternalTransition,
+  notifyRegisteredOpfsLocalTransitionSettled: mockLocalTransitionSettled,
   notifyRegisteredOpfsExternalTransitionSettled: mockExternalTransitionSettled,
 }));
 
@@ -184,6 +190,8 @@ describe('StorageService Synchronization Wrapper', () => {
 
     expect(result).toBe('completed');
     expect(run).toHaveBeenCalledOnce();
+    expect(mockLocalTransitionStarting).toHaveBeenCalledOnce();
+    expect(mockLocalTransitionSettled).toHaveBeenCalledWith({ settlement: 'completed' });
     expect(mockNotify).toHaveBeenNthCalledWith(1, {
       event: expect.objectContaining({
         type: 'opfs_encryption',
@@ -206,6 +214,86 @@ describe('StorageService Synchronization Wrapper', () => {
       operationId: startedEvent.operationId,
       initiatorTabId: startedEvent.initiatorTabId,
     }));
+  });
+
+
+  it('reports a failed local transition with stable diagnostic fields before propagating its error', async () => {
+    const failure = Object.assign(new Error('transition failed'), {
+      code: 'sync_access_unavailable',
+      name: 'PhysicalStoreError',
+      path: 'segments/segment.enc',
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      await expect((
+        service as unknown as {
+          runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+        }
+      ).runOpfsEncryptionTransition({ run: async () => {
+        throw failure;
+      } })).rejects.toBe(failure);
+
+      expect(consoleError).toHaveBeenCalledWith('[opfs-encryption]', expect.objectContaining({
+        error: failure,
+        errorCauses: [],
+        errorCode: 'sync_access_unavailable',
+        errorMessage: 'transition failed',
+        errorName: 'PhysicalStoreError',
+        errorPath: 'segments/segment.enc',
+        event: 'transition_failed',
+      }));
+      expect(mockLocalTransitionStarting).toHaveBeenCalledOnce();
+      expect(mockLocalTransitionSettled).toHaveBeenCalledWith({ settlement: 'failed' });
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('reports direct AggregateError causes with stable diagnostic fields', async () => {
+    const startFailure = Object.assign(new Error('no Persistence Control authority'), {
+      code: 'no_proof_valid_authority',
+      name: 'PersistenceControlSelectionError',
+    });
+    const cleanupFailure = Object.assign(new Error('cleanup ownership remained unknown'), {
+      code: 'higher_protection_unresolved',
+      name: 'PersistenceControlSelectionError',
+    });
+    const failure = new AggregateError([startFailure, cleanupFailure], 'enable start and cleanup both failed');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      await expect((
+        service as unknown as {
+          runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+        }
+      ).runOpfsEncryptionTransition({ run: async () => {
+        throw failure;
+      } })).rejects.toBe(failure);
+
+      expect(consoleError).toHaveBeenCalledWith('[opfs-encryption]', expect.objectContaining({
+        error: failure,
+        errorCauses: [
+          {
+            errorCode: 'no_proof_valid_authority',
+            errorMessage: 'no Persistence Control authority',
+            errorName: 'PersistenceControlSelectionError',
+            errorPath: undefined,
+          },
+          {
+            errorCode: 'higher_protection_unresolved',
+            errorMessage: 'cleanup ownership remained unknown',
+            errorName: 'PersistenceControlSelectionError',
+            errorPath: undefined,
+          },
+        ],
+        errorMessage: 'enable start and cleanup both failed',
+        errorName: 'AggregateError',
+        event: 'transition_failed',
+      }));
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it('does not start a stale local transition after another tab wins the global lock', async () => {

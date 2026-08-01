@@ -12,6 +12,10 @@ vi.mock('comlink', () => ({
   transfer: <T>(value: T) => value,
 }));
 
+vi.mock('@/00-storage/service/naidan-opfs/worker-mount-runtime', () => ({
+  openNaidanStorageDirectoryWorkerMount: vi.fn(),
+}));
+
 describe('wesh.worker', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -82,67 +86,82 @@ describe('wesh.worker', () => {
     expect(response.exitCode).toBe(0);
   });
 
-  it('runs HizoFS mount I/O inside the Wesh Worker without a UI remote', async () => {
+  it('opens opaque storage grants inside the Wesh Worker without a UI remote', async () => {
     const comlink = await import('comlink');
+    const { openNaidanStorageDirectoryWorkerMount } = await import(
+      '@/00-storage/service/naidan-opfs/worker-mount-runtime'
+    );
+    const { createInMemoryStorageRoot } = await import(
+      '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system'
+    );
     const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');
-    const { createHizoFS } = await import('@/00-storage/service/hizofs/api');
-    const { runWithHizoFSMaintenanceLock } = await import('@/00-storage/service/hizofs/file-system/maintenance-lock');
-    const { createQueuedTestLockManager } = await import('@/00-storage/service/hizofs/test-lock-manager');
-    const originalLocks = navigator.locks;
-    const lockManager = createQueuedTestLockManager({ onRequest: undefined });
-    const lockRequest = vi.spyOn(lockManager, 'request');
-    Object.defineProperty(navigator, 'locks', {
-      configurable: true,
-      value: lockManager,
+    const mountedRoot = createInMemoryStorageRoot({ name: 'mounted' });
+    const secondMountedRoot = createInMemoryStorageRoot({ name: 'second-mounted' });
+    const firstGrant = {
+      type: 'storage_directory_worker_mount_grant' as const,
+      version: 1 as const,
+      implementation: 'hizofs' as const,
+      grantId: 'grant-first',
+      accessMode: 'read_write' as const,
+      opaquePayload: { opaque: 'first' },
+    };
+    const secondGrant = {
+      type: 'storage_directory_worker_mount_grant' as const,
+      version: 1 as const,
+      implementation: 'hizofs' as const,
+      grantId: 'grant-second',
+      accessMode: 'read_write' as const,
+      opaquePayload: { opaque: 'second' },
+    };
+    const closeFirst = vi.fn().mockResolvedValue(undefined);
+    const closeSecond = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(openNaidanStorageDirectoryWorkerMount)
+      .mockResolvedValueOnce({
+        root: mountedRoot,
+        capabilities: {
+          directBlob: 'unsupported',
+          symbolicLink: 'supported',
+          atomicMove: 'supported',
+          wholeFileClone: 'supported',
+        },
+        close: closeFirst,
+      })
+      .mockResolvedValueOnce({
+        root: secondMountedRoot,
+        capabilities: {
+          directBlob: 'unsupported',
+          symbolicLink: 'supported',
+          atomicMove: 'supported',
+          wholeFileClone: 'supported',
+        },
+        close: closeSecond,
+      });
+    await import('./entry');
+
+    const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0];
+    await workerApi.init({
+      request: {
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
+        mounts: [{
+          type: 'storage_directory',
+          path: '/mnt',
+          workerGrant: firstGrant,
+          readOnly: false,
+        }, {
+          type: 'storage_directory',
+          path: '/second',
+          workerGrant: secondGrant,
+          readOnly: false,
+        }],
+        user: 'user',
+        initialEnv: {},
+      },
     });
 
-    try {
-      const backing = new MockFileSystemDirectoryHandle({ name: 'hizofs-backing' });
-      const ownerSession = await createHizoFS({
-        backingDirectory: backing as unknown as FileSystemDirectoryHandle,
-        fileSystemRootKey: new Uint8Array(32).fill(19),
-      });
-      let fileSystemId: string | undefined;
-      try {
-        const mountedDirectory = await ownerSession.root.getDirectoryHandle({
-          name: 'mounted',
-          create: true,
-        });
-        const secondMountedDirectory = await ownerSession.root.getDirectoryHandle({
-          name: 'second-mounted',
-          create: true,
-        });
-        const workerSource = mountedDirectory.createWorkerMountSource?.();
-        const secondWorkerSource = secondMountedDirectory.createWorkerMountSource?.();
-        if (workerSource === undefined || secondWorkerSource === undefined) {
-          throw new Error('HizoFS directory did not expose a Worker mount source');
-        }
-        fileSystemId = workerSource.fileSystemId;
-        await import('./entry');
-
-        const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0];
-        try {
-          await workerApi.init({
-            rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
-            mounts: [{
-              type: 'storage_directory',
-              path: '/mnt',
-              workerSource,
-              readOnly: false,
-            }, {
-              type: 'storage_directory',
-              path: '/second',
-              workerSource: secondWorkerSource,
-              readOnly: false,
-            }],
-            user: 'user',
-            initialEnv: {},
-          });
-
-          const stdoutChunks: string[] = [];
-          const execution = await workerApi.startExecution(
-            { script: `\
-printf 'worker-local HizoFS' > /mnt/result.txt
+    const stdoutChunks: string[] = [];
+    const execution = await workerApi.startExecution(
+      { script: `\
+printf 'worker-local grant' > /mnt/result.txt
 printf 'shared runtime' > /second/second.txt
 mkdir -p /mnt/search
 printf 'needle\n' > /mnt/search/a.txt
@@ -151,64 +170,39 @@ cat /mnt/result.txt
 cat /second/second.txt
 find /mnt/search -type f -exec grep needle {} +
 ` },
-            async (event: import('./types').WeshWorkerRemoteExecutionEvent) => {
-              if (event.type === 'stdout') {
-                stdoutChunks.push(new TextDecoder().decode(event.buffer));
-              }
-            },
-          );
-          expect(await workerApi.awaitExecution({
-            request: { executionId: execution.executionId },
-          })).toEqual({ exitCode: 0 });
-          expect(stdoutChunks.join('')).toBe(`\
-worker-local HizoFSshared runtime/mnt/search/a.txt:needle
-`);
-          const maintenanceRequests = lockRequest.mock.calls.filter(([name]) => (
-            name.endsWith('/maintenance')
-          ));
-          expect(maintenanceRequests.length).toBeGreaterThan(0);
-          expect(maintenanceRequests.every(([, options]) => (
-            options.mode === 'shared'
-          ))).toBe(true);
-
-          const resultFile = await mountedDirectory.getFileHandle({
-            name: 'result.txt',
-            create: false,
-          });
-          const readable = await resultFile.openReadable({ mimeType: 'text/plain' });
-          try {
-            expect(await new Response(readable.stream({
-              start: 0,
-              end: undefined,
-              signal: undefined,
-            })).text()).toBe('worker-local HizoFS');
-          } finally {
-            await readable.close();
-          }
-        } finally {
-          await workerApi.dispose();
+      async (event: import('./types').WeshWorkerRemoteExecutionEvent) => {
+        if (event.type === 'stdout') {
+          stdoutChunks.push(new TextDecoder().decode(event.buffer));
         }
-      } finally {
-        await ownerSession.close();
-      }
-      if (fileSystemId === undefined) {
-        throw new Error('HizoFS Worker mount did not expose its filesystem identity');
-      }
-      await expect(Promise.race([
-        runWithHizoFSMaintenanceLock({
-          instanceId: fileSystemId,
-          operation: async () => 'acquired' as const,
-        }),
-        new Promise<'timed_out'>(resolve => {
-          setTimeout(() => resolve('timed_out'), 100);
-        }),
-      ])).resolves.toBe('acquired');
+      },
+    );
+    expect(await workerApi.awaitExecution({
+      request: { executionId: execution.executionId },
+    })).toEqual({ exitCode: 0 });
+    expect(stdoutChunks.join('')).toBe(`\
+worker-local grantshared runtime/mnt/search/a.txt:needle
+`);
+
+    const resultFile = await mountedRoot.getFileHandle({
+      name: 'result.txt',
+      create: false,
+    });
+    const readable = await resultFile.openReadable({ mimeType: 'text/plain' });
+    try {
+      expect(await new Response(readable.stream({
+        start: 0,
+        end: undefined,
+        signal: undefined,
+      })).text()).toBe('worker-local grant');
     } finally {
-      Object.defineProperty(navigator, 'locks', {
-        configurable: true,
-        value: originalLocks,
-      });
+      await readable.close();
     }
+
+    expect(openNaidanStorageDirectoryWorkerMount).toHaveBeenNthCalledWith(1, { grant: firstGrant });
+    expect(openNaidanStorageDirectoryWorkerMount).toHaveBeenNthCalledWith(2, { grant: secondGrant });
+    await workerApi.dispose();
+    expect(closeFirst).toHaveBeenCalledTimes(1);
+    expect(closeSecond).toHaveBeenCalledTimes(1);
   });
 
   it('can read the naidan sysfs version file', async () => {

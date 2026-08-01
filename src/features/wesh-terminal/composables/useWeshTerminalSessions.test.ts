@@ -62,7 +62,6 @@ describe('createWeshTerminalSessions', () => {
         type: 'storage_directory',
         path: '/',
         handle: decryptedRoot,
-        workerSource: undefined,
         readOnly: false,
       }],
       user: 'user',

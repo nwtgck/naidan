@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 import { idToRaw } from '@/01-models/ids';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
-import type { StorageDirectoryWorkerMountSource } from '@/00-storage/service/storage-file-system/types';
+import type { StorageDirectoryWorkerMountGrant } from '@/00-storage/service/storage-file-system/types';
 import type { WeshStorageDirectoryRemote } from '@/features/wesh/storage-directory/types';
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
@@ -18,20 +18,19 @@ export const weshWorkerDirectoryMountSchema = z.object({
   readOnly: z.boolean(),
 });
 
-export const weshWorkerStorageDirectoryMountSourceSchema = z.object({
-  type: z.literal('hizofs'),
-  backingDirectory: z.custom<FileSystemDirectoryHandle>(),
-  fileSystemId: z.string().min(1),
-  instanceId: z.string().min(1),
-  rootKey: z.custom<CryptoKey>(),
-  subvolumeDescriptorObjectId: z.string().min(1),
-  rootDirectoryNodeId: z.string().min(1),
-}) satisfies z.ZodType<StorageDirectoryWorkerMountSource>;
+export const weshWorkerStorageDirectoryMountGrantSchema = z.object({
+  type: z.literal('storage_directory_worker_mount_grant'),
+  version: z.literal(1),
+  implementation: z.literal('hizofs'),
+  grantId: z.string().min(1),
+  accessMode: z.enum(['read', 'read_write']),
+  opaquePayload: z.unknown(),
+}) satisfies z.ZodType<StorageDirectoryWorkerMountGrant>;
 
 export const weshWorkerStorageDirectoryMountSchema = z.object({
   type: z.literal('storage_directory'),
   path: z.string().min(1),
-  workerSource: missingAsUndefined(weshWorkerStorageDirectoryMountSourceSchema),
+  workerGrant: missingAsUndefined(weshWorkerStorageDirectoryMountGrantSchema),
   readOnly: z.boolean(),
 });
 
@@ -189,11 +188,11 @@ export interface WeshWorkerClient {
   dispose(): Promise<void>,
 }
 
-export function mapWeshMountsToWorkerMounts({ mounts, storageDirectoryExecution }: {
+export async function mapWeshMountsToWorkerMounts({ mounts, storageDirectoryExecution }: {
   mounts: WeshMount[],
   storageDirectoryExecution: WeshStorageDirectoryExecution,
-}): WeshWorkerMount[] {
-  return mounts.map(mount => {
+}): Promise<WeshWorkerMount[]> {
+  return await Promise.all(mounts.map(async mount => {
     switch (mount.type) {
     case 'directory':
       return {
@@ -203,10 +202,12 @@ export function mapWeshMountsToWorkerMounts({ mounts, storageDirectoryExecution 
         readOnly: mount.readOnly,
       };
     case 'storage_directory': {
-      const workerSource = (() => {
+      const workerGrant = await (() => {
         switch (storageDirectoryExecution) {
         case 'worker_local':
-          return mount.workerSource;
+          return mount.handle.createWorkerMountGrant?.({
+            accessMode: mount.readOnly ? 'read' : 'read_write',
+          });
         case 'ui_remote':
           return undefined;
         default: {
@@ -218,7 +219,7 @@ export function mapWeshMountsToWorkerMounts({ mounts, storageDirectoryExecution 
       return {
         type: 'storage_directory',
         path: mount.path,
-        workerSource,
+        workerGrant,
         readOnly: mount.readOnly,
       };
     }
@@ -238,7 +239,7 @@ export function mapWeshMountsToWorkerMounts({ mounts, storageDirectoryExecution 
       throw new Error(`Unhandled Wesh mount type: ${String(_ex)}`);
     }
     }
-  });
+  }));
 }
 
 export function mapRemoteWeshWorkerExecutionEventToClientEvent({ event }: {

@@ -1,7 +1,7 @@
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
-import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
+import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY, type OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import { ensureStrings } from '@/strings';
 import { prepareForOpfsEncryptionTransition } from '@/features/opfs-encryption/prepare-for-storage-transition';
 import OpfsEncryptionSettingsPanel from './OpfsEncryptionSettingsPanel.vue';
@@ -38,27 +38,7 @@ vi.mock('@/features/opfs-encryption/prepare-for-storage-transition', () => ({
 }));
 
 function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 'encrypted' }> {
-  return {
-    type: 'encrypted' as const,
-    state: {
-      formatVersion: 1 as const,
-      sequence: 0,
-      state: 'encrypted' as const,
-      keySlots: [{
-        id: 'slot-id',
-        keyDerivation: {
-          type: 'pbkdf2_hmac_sha256',
-          salt: 'salt',
-          iterations: 10,
-        },
-        wrappedStorageUnlockKey: {
-          nonce: 'nonce',
-          ciphertext: 'ciphertext',
-        },
-      }],
-      activeEncryptedStoreId: 'store-id',
-    },
-  };
+  return PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({ fileSystemId: 'encrypted-store' });
 }
 
 
@@ -75,6 +55,7 @@ async function prepareVisibleStrings(): Promise<void> {
   await ensureStrings.opfsEncryption__select_opfs_as_active_storage_to_enable_encryption();
   await ensureStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase();
   await ensureStrings.opfsEncryption__passphrases_cannot_contain_line_breaks();
+  await ensureStrings.opfsEncryption__enter_passphrase_for_opfs_storage();
 }
 
 async function mountPanel({
@@ -116,6 +97,21 @@ describe('OpfsEncryptionSettingsPanel', () => {
       expect(storageService.inspectOpfsEncryption).not.toHaveBeenCalled();
     },
   );
+
+  it('keeps transition controls disabled while storage requires a credential', async () => {
+    vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
+      PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+        firstSequence: 2,
+        secondSequence: 1,
+      }),
+    );
+
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+
+    expect(wrapper.text()).toContain('Enter the passphrase for this OPFS storage');
+    expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="opfs-encryption-change-passphrase"]').exists()).toBe(false);
+  });
 
   it('teleports the setup dialog and toggles passphrase visibility', async () => {
     const wrapper = await mountPanel({ storageType: 'opfs' });
@@ -311,16 +307,20 @@ line two`,
       createEncryptedInspection(),
     );
     vi.mocked(storageService.reencryptOpfsEncryption).mockResolvedValue(undefined);
-    mockShowConfirm.mockResolvedValue(true);
     const wrapper = await mountPanel({ storageType: 'opfs' });
     vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValueOnce(
       createEncryptedInspection(),
     );
 
     await wrapper.get('[data-testid="opfs-encryption-reencrypt"]').trigger('click');
+    const dialog = getTeleportedElement('[data-testid="opfs-encryption-reencrypt-dialog"]');
+    expect(dialog.text()).toContain('every other key slot will be removed after re-encryption');
+    await dialog.get('[data-testid="opfs-encryption-reencrypt-passphrase"]').setValue('current passphrase');
+    await dialog.get('[data-testid="opfs-encryption-reencrypt-submit"]').trigger('click');
     await flushPromises();
 
     expect(storageService.reencryptOpfsEncryption).toHaveBeenCalledWith({
+      passphrase: 'current passphrase',
       signal: undefined,
     });
     expect(mockFinishLocalOperation).toHaveBeenCalledWith({
@@ -331,7 +331,7 @@ line two`,
     expect(location.reload).not.toHaveBeenCalled();
   });
 
-  it('requires confirmation before decrypting or re-encrypting storage', async () => {
+  it('requires confirmation before decrypting and a current passphrase before re-encrypting storage', async () => {
     vi.mocked(storageService.inspectOpfsEncryption).mockResolvedValue(
       createEncryptedInspection(),
     );
@@ -342,7 +342,8 @@ line two`,
     await wrapper.get('[data-testid="opfs-encryption-reencrypt"]').trigger('click');
     await flushPromises();
 
-    expect(mockShowConfirm).toHaveBeenCalledTimes(2);
+    expect(mockShowConfirm).toHaveBeenCalledOnce();
+    expect(document.body.querySelector('[data-testid="opfs-encryption-reencrypt-dialog"]')).not.toBeNull();
     expect(storageService.disableOpfsEncryption).not.toHaveBeenCalled();
     expect(storageService.reencryptOpfsEncryption).not.toHaveBeenCalled();
     expect(prepareForOpfsEncryptionTransition).not.toHaveBeenCalled();

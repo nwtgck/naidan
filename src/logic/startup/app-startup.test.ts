@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
+import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import type { StartupState } from '@/logic/startup/types';
 import { createInitialNavigationGate } from '@/logic/startup/initial-navigation-gate';
 import { startApp } from './app-startup';
@@ -170,27 +171,10 @@ describe('app startup', () => {
         throw new Error('Expected OPFS encryption startup callback');
       }
       await onOpfsEncryptionAccessRequired({
-        inspection: {
-          type: 'encrypted',
-          state: {
-            formatVersion: 1,
-            sequence: 1,
-            state: 'encrypted',
-            keySlots: [{
-              id: 'slot-id',
-              keyDerivation: {
-                type: 'pbkdf2_hmac_sha256',
-                salt: 'salt',
-                iterations: 10,
-              },
-              wrappedStorageUnlockKey: {
-                nonce: 'nonce',
-                ciphertext: 'ciphertext',
-              },
-            }],
-            activeEncryptedStoreId: 'encrypted-store',
-          },
-        },
+        inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+          firstSequence: 2,
+          secondSequence: 1,
+        }),
       });
     });
 
@@ -261,27 +245,10 @@ describe('app startup', () => {
         throw new Error('Expected OPFS encryption startup callback');
       }
       await onOpfsEncryptionAccessRequired({
-        inspection: {
-          type: 'encrypted',
-          state: {
-            formatVersion: 1,
-            sequence: 1,
-            state: 'encrypted',
-            keySlots: [{
-              id: 'slot-id',
-              keyDerivation: {
-                type: 'pbkdf2_hmac_sha256',
-                salt: 'salt',
-                iterations: 10,
-              },
-              wrappedStorageUnlockKey: {
-                nonce: 'nonce',
-                ciphertext: 'ciphertext',
-              },
-            }],
-            activeEncryptedStoreId: 'encrypted-store',
-          },
-        },
+        inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+          firstSequence: 2,
+          secondSequence: 1,
+        }),
       });
     });
 

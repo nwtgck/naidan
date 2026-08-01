@@ -1,0 +1,217 @@
+import {
+  compareUnsignedBytes,
+  decodeRequiredHomeRecordReference,
+  encodeFilenameComponent,
+  encodeHomeRecordReference,
+  type DirectoryLeafEntry,
+  type HomeRecordReference,
+  type InodeNumber,
+  type InodeRevision,
+  type SubvolumeId,
+} from "@/00-storage/service/hizofs/00-format";
+import type { ReaderPin } from "@/00-storage/service/hizofs/runtime/reader-pin-registry";
+import {
+  SessionLifecycle,
+  type SessionChildRegistration,
+} from "@/00-storage/service/hizofs/runtime/session-lifecycle";
+
+export type CapturedDirectoryIteratorErrorCode =
+  | "capability_closed"
+  | "duplicate_entry"
+  | "entry_limit_exceeded"
+  | "invalid_entry_limit"
+  | "operation_in_progress"
+  | "pin_generation_mismatch";
+
+export class CapturedDirectoryIteratorError extends Error {
+  readonly code: CapturedDirectoryIteratorErrorCode;
+
+  constructor({ code, message }: { code: CapturedDirectoryIteratorErrorCode; message: string }) {
+    super(message);
+    this.name = "CapturedDirectoryIteratorError";
+    this.code = code;
+  }
+}
+
+export type CapturedDirectoryGeneration = Readonly<{
+  commitReference: HomeRecordReference;
+  directoryInodeNumber: InodeNumber;
+  inodeRevision: InodeRevision;
+  subvolumeId: SubvolumeId;
+}>;
+
+function cloneEntry({ entry }: { entry: DirectoryLeafEntry }): DirectoryLeafEntry {
+  switch (entry.targetType) {
+  case "inode": return { ...entry };
+  case "subvolume": return { ...entry };
+  default: return entry satisfies never;
+  }
+}
+
+function cloneGeneration({ generation }: {
+  generation: CapturedDirectoryGeneration;
+}): CapturedDirectoryGeneration {
+  return {
+    ...generation,
+    commitReference: decodeRequiredHomeRecordReference({
+      bytes: encodeHomeRecordReference({ reference: generation.commitReference }),
+    }),
+  };
+}
+
+export class CapturedDirectoryIterator implements AsyncIterableIterator<DirectoryLeafEntry> {
+  #busy = false;
+  #finished = false;
+  #finishPromise: Promise<void> | undefined;
+  #entries: readonly DirectoryLeafEntry[];
+  #generation: CapturedDirectoryGeneration;
+  #index = 0;
+  #pin: ReaderPin;
+  #registration: SessionChildRegistration | undefined;
+  #revoked = false;
+
+  constructor({ entries, generation, maxEntries, pin, session }: {
+    entries: readonly DirectoryLeafEntry[];
+    generation: CapturedDirectoryGeneration;
+    maxEntries: number;
+    pin: ReaderPin;
+    session: SessionLifecycle;
+  }) {
+    if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) {
+      pin.release();
+      throw new CapturedDirectoryIteratorError({
+        code: "invalid_entry_limit",
+        message: "directory iterator requires a positive safe entry limit",
+      });
+    }
+    if (entries.length > maxEntries) {
+      pin.release();
+      throw new CapturedDirectoryIteratorError({
+        code: "entry_limit_exceeded",
+        message: "captured directory exceeds the explicit iterator memory bound",
+      });
+    }
+    let stableEntries: readonly DirectoryLeafEntry[];
+    let stableGeneration: CapturedDirectoryGeneration;
+    try {
+      const generationReferenceBytes = encodeHomeRecordReference({ reference: generation.commitReference });
+      const pinReferenceBytes = encodeHomeRecordReference({ reference: pin.commitReference });
+      if (compareUnsignedBytes({ left: generationReferenceBytes, right: pinReferenceBytes }) !== 0) {
+        throw new CapturedDirectoryIteratorError({
+          code: "pin_generation_mismatch",
+          message: "directory iterator pin does not protect its captured Commit generation",
+        });
+      }
+      const encodedEntries = entries.map(entry => ({
+        entry: cloneEntry({ entry }),
+        nameBytes: encodeFilenameComponent({ value: entry.name }),
+      })).sort((left, right) => compareUnsignedBytes({
+        left: left.nameBytes,
+        right: right.nameBytes,
+      }));
+      for (let index = 1; index < encodedEntries.length; index += 1) {
+        const previous = encodedEntries[index - 1];
+        const current = encodedEntries[index];
+        if (previous === undefined || current === undefined) throw new Error("directory iterator sorting became inconsistent");
+        if (compareUnsignedBytes({ left: previous.nameBytes, right: current.nameBytes }) === 0) {
+          throw new CapturedDirectoryIteratorError({
+            code: "duplicate_entry",
+            message: "captured directory contains a duplicate canonical filename",
+          });
+        }
+      }
+      stableEntries = encodedEntries.map(({ entry }) => entry);
+      stableGeneration = cloneGeneration({ generation });
+    } catch (cause: unknown) {
+      pin.release();
+      throw cause;
+    }
+    this.#entries = stableEntries;
+    this.#generation = stableGeneration;
+    this.#pin = pin;
+    try {
+      this.#registration = session.registerChild({ child: {
+        close: async () => await this.#finish(),
+        revoke: () => {
+          this.#revoked = true;
+        },
+      } });
+    } catch (cause: unknown) {
+      pin.release();
+      throw cause;
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterableIterator<DirectoryLeafEntry> {
+    return this;
+  }
+
+  generation(): CapturedDirectoryGeneration {
+    return cloneGeneration({ generation: this.#generation });
+  }
+
+  #assertUsable(): void {
+    if (this.#revoked) {
+      throw new CapturedDirectoryIteratorError({
+        code: "capability_closed",
+        message: "directory iterator is closed or revoked by its owner session",
+      });
+    }
+    if (this.#busy) {
+      throw new CapturedDirectoryIteratorError({
+        code: "operation_in_progress",
+        message: "directory iterator next operation is already in progress",
+      });
+    }
+  }
+
+  async #finish(): Promise<void> {
+    if (this.#finishPromise !== undefined) return await this.#finishPromise;
+    this.#finished = true;
+    this.#finishPromise = (async () => {
+      const failures: unknown[] = [];
+      try {
+        this.#pin.release();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        await this.#pin.released;
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      this.#registration?.releaseOwnership();
+      this.#registration = undefined;
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, "directory iterator pin release failed");
+    })();
+    return await this.#finishPromise;
+  }
+
+  async next(): Promise<IteratorResult<DirectoryLeafEntry>> {
+    this.#assertUsable();
+    if (this.#finished) return { done: true, value: undefined };
+    this.#busy = true;
+    try {
+      const entry = this.#entries[this.#index];
+      if (entry === undefined) {
+        await this.#finish();
+        return { done: true, value: undefined };
+      }
+      this.#index += 1;
+      return { done: false, value: cloneEntry({ entry }) };
+    } finally {
+      this.#busy = false;
+    }
+  }
+
+  async return(): Promise<IteratorResult<DirectoryLeafEntry>> {
+    await this.#finish();
+    return { done: true, value: undefined };
+  }
+}
+
+// Export internal state and logic used only for testing here. Do not reference these in production logic.
+// ESLint-required for TypeScript modules.
+export const TEST_ONLY = {
+};

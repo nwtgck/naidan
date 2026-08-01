@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   abortAllChatProcessingForStorageTransition: vi.fn(),
   closeDebugHizoFSWorkbench: vi.fn(),
-  closeDebugOpfsEncryptionInspector: vi.fn(),
+  closePersistenceControlInspector: vi.fn(),
   closeFileExplorer: vi.fn(),
   disposeFileExplorerClients: vi.fn<() => Promise<void>>(),
   disposeWeshClients: vi.fn<() => Promise<void>>(),
@@ -20,9 +20,9 @@ vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
   }),
 }));
 
-vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector', () => ({
-  useDebugOpfsEncryptionInspector: () => ({
-    closeDebugOpfsEncryptionInspector: mocks.closeDebugOpfsEncryptionInspector,
+vi.mock('@/features/debug-opfs-encryption/composables/usePersistenceControlInspector', () => ({
+  usePersistenceControlInspector: () => ({
+    closePersistenceControlInspector: mocks.closePersistenceControlInspector,
   }),
 }));
 
@@ -51,7 +51,7 @@ beforeEach(() => {
   mocks.closeDebugHizoFSWorkbench.mockImplementation(() => {
     mocks.calls.push('close-hizofs-inspector');
   });
-  mocks.closeDebugOpfsEncryptionInspector.mockImplementation(() => {
+  mocks.closePersistenceControlInspector.mockImplementation(() => {
     mocks.calls.push('close-opfs-encryption-inspector');
   });
   mocks.closeFileExplorer.mockImplementation(() => {
@@ -71,7 +71,7 @@ describe('prepareForOpfsEncryptionTransition', () => {
 
     expect(mocks.abortAllChatProcessingForStorageTransition).toHaveBeenCalledOnce();
     expect(mocks.closeDebugHizoFSWorkbench).toHaveBeenCalledOnce();
-    expect(mocks.closeDebugOpfsEncryptionInspector).toHaveBeenCalledOnce();
+    expect(mocks.closePersistenceControlInspector).toHaveBeenCalledOnce();
     expect(mocks.closeFileExplorer).toHaveBeenCalledOnce();
     expect(mocks.disposeFileExplorerClients).toHaveBeenCalledOnce();
     expect(mocks.disposeWeshClients).toHaveBeenCalledOnce();

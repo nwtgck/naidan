@@ -15,7 +15,7 @@ import {
   type UiLocale,
 } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
-import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
+import type { OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import { checkOPFSSupport } from '@/utils/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/constants';
 import { loadLmProvider, prefetchLmProvider } from '@/features/lm/providerFactory';
@@ -336,6 +336,7 @@ export function useSettings(): UseSettingsApi {
           switch (inspection.type) {
           case 'plain':
             throw error;
+          case 'credential_required':
           case 'encrypted':
           case 'transitioning':
           case 'recovery_required':

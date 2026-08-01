@@ -8,8 +8,8 @@ import {
   ShieldAlertIcon,
 } from 'lucide-vue-next';
 import { storageService } from '@/00-storage/service';
-import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
-import { validateEncryptionPassphrase } from '@/00-storage/service/opfs-encryption/passphrase';
+import type { OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
+import { validateEncryptionPassphrase } from '@/00-storage/service/naidan-opfs/passphrase';
 import { useConfirm } from '@/composables/useConfirm';
 import { ensureStrings, lazyStrings } from '@/strings';
 
@@ -193,6 +193,10 @@ defineExpose({
 
     <div v-else-if="inspection.type === 'transitioning'" tw-class="rounded-xl border border-amber-200 bg-white/70 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-gray-900/70 dark:text-amber-300">
       {{ lazyStrings.DeveloperOpfsEncryptionInterruptionPanel__already_interrupted() }}
+    </div>
+
+    <div v-else-if="inspection.type === 'credential_required'" tw-class="rounded-xl border border-amber-200 bg-white/70 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-gray-900/70 dark:text-amber-300">
+      {{ lazyStrings.opfsEncryption__enter_passphrase_for_opfs_storage() }}
     </div>
 
     <template v-else>

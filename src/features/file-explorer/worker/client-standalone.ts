@@ -66,7 +66,6 @@ export async function createFileExplorerWorkerClient({
           type: 'storage_directory',
           path: '/',
           handle: root.handle,
-          workerSource: undefined,
           readOnly: root.readOnly,
         }],
         storageDirectoryExecution: 'ui_remote',
@@ -85,7 +84,7 @@ export async function createFileExplorerWorkerClient({
   const worker = await createFileProtocolStandaloneWorkerHub();
   const remote = Comlink.wrap<IWorkerHub>(worker);
   const fileExplorer = await remote.fileExplorer as Comlink.Remote<IFileExplorerWorker>;
-  const requestRoot = (() => {
+  const requestRoot = await (async () => {
     switch (root.kind) {
     case 'native-directory':
     case 'opfs-root':
@@ -100,7 +99,7 @@ export async function createFileExplorerWorkerClient({
       return {
         kind: 'wesh-mounts' as const,
         rootName: root.rootName,
-        mounts: mapWeshMountsToWorkerMounts({
+        mounts: await mapWeshMountsToWorkerMounts({
           mounts: root.mounts,
           storageDirectoryExecution: 'ui_remote',
         }),

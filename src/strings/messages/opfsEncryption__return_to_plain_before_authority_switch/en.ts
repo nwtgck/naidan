@@ -1,1 +1,1 @@
-export const opfsEncryption__return_to_plain_before_authority_switch = (): string => 'The unfinished encrypted target will be deleted. The current plain storage remains authoritative and will not be rewritten.';
+export const opfsEncryption__return_to_plain_before_authority_switch = (): string => 'Enter the passphrase to authenticate the interrupted operation. Naidan will finish the protected transition state, then rebuild and verify plain storage before removing encryption.';

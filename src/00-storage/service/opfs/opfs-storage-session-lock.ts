@@ -1,4 +1,62 @@
 export const OPFS_STORAGE_SESSION_LOCK_KEY = 'naidan:sync:lock:opfs_storage_session';
+export const OPFS_PLAIN_NAMESPACE_SESSION_LOCK_KEY = 'naidan:sync:lock:opfs_plain_namespace_session';
+
+
+export async function runWithExclusiveOpfsStorageSessionFence<T>({
+  lockManager,
+  run,
+  signal,
+}: {
+  lockManager: LockManager | undefined;
+  run: () => Promise<T>;
+  signal: AbortSignal | undefined;
+}): Promise<T> {
+  if (lockManager?.request === undefined) {
+    throw new Error('Web Locks are required for an OPFS persistence transition');
+  }
+  if (signal?.aborted === true) {
+    throw signal.reason;
+  }
+
+  return await lockManager.request(
+    OPFS_STORAGE_SESSION_LOCK_KEY,
+    {
+      mode: 'exclusive',
+      ...(signal === undefined ? {} : { signal }),
+    },
+    async () => await run(),
+  );
+}
+
+export type OpportunisticPlainNamespaceFenceResult<T> =
+  | { readonly state: 'completed'; readonly value: T }
+  | { readonly state: 'unavailable' };
+
+/**
+ * Attempts retired plain-source maintenance without waiting for stale tabs.
+ *
+ * Plain providers hold this key shared for their lifetime. HizoFS providers do
+ * not hold it. `ifAvailable` therefore makes cleanup opportunistic: a sleeping
+ * pre-transition plain tab causes a quick defer instead of delaying unlock,
+ * while the next unlock retries after that tab has reloaded and released its
+ * shared lease.
+ */
+export async function runWithOpportunisticExclusiveOpfsPlainNamespaceFence<T>({
+  lockManager,
+  run,
+}: {
+  lockManager: Pick<LockManager, 'request'> | undefined;
+  run: () => Promise<T>;
+}): Promise<OpportunisticPlainNamespaceFenceResult<T>> {
+  if (lockManager?.request === undefined) return { state: 'unavailable' };
+  return await lockManager.request(
+    OPFS_PLAIN_NAMESPACE_SESSION_LOCK_KEY,
+    { ifAvailable: true, mode: 'exclusive' },
+    async lock => lock === null
+      ? { state: 'unavailable' }
+      : { state: 'completed', value: await run() },
+  );
+}
 
 type SessionState =
   | 'idle'
@@ -15,13 +73,18 @@ type SessionState =
  * then releases the shared lock. This prevents another tab from writing
  * through a stale plain or encrypted backend while a transition is running.
  */
-export class OpfsStorageSessionLock {
+class OpfsNamedSessionLock {
+  private readonly lockKey: string;
   private state: SessionState = 'idle';
   private activeOperationCount = 0;
   private activeOperationsDrained = Promise.withResolvers<void>();
   private acquisitionPromise: Promise<void> | undefined;
   private releaseSharedLock: (() => void) | undefined;
   private sharedLockRequest: Promise<void> | undefined;
+
+  constructor({ lockKey }: { lockKey: string }) {
+    this.lockKey = lockKey;
+  }
 
   async acquire(): Promise<void> {
     const state = this.state;
@@ -55,7 +118,7 @@ export class OpfsStorageSessionLock {
     this.releaseSharedLock = released.resolve;
 
     const sharedLockRequest = navigator.locks.request(
-      OPFS_STORAGE_SESSION_LOCK_KEY,
+      this.lockKey,
       { mode: 'shared' },
       async () => {
         acquired.resolve();
@@ -179,6 +242,18 @@ export class OpfsStorageSessionLock {
       this.activeOperationsDrained.resolve();
       this.activeOperationsDrained = Promise.withResolvers<void>();
     }
+  }
+}
+
+export class OpfsStorageSessionLock extends OpfsNamedSessionLock {
+  constructor() {
+    super({ lockKey: OPFS_STORAGE_SESSION_LOCK_KEY });
+  }
+}
+
+export class OpfsPlainNamespaceSessionLock extends OpfsNamedSessionLock {
+  constructor() {
+    super({ lockKey: OPFS_PLAIN_NAMESPACE_SESSION_LOCK_KEY });
   }
 }
 

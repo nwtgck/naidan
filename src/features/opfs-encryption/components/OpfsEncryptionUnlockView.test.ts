@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick, shallowRef } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
+import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY, type OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import { ensureStrings } from '@/strings';
 import type {
   OpfsEncryptionStartupGate,
@@ -42,28 +42,11 @@ function createGate({
   };
 }
 
-function createEncryptedInspection(): Extract<OpfsEncryptionInspection, { type: 'encrypted' }> {
-  return {
-    type: 'encrypted',
-    state: {
-      formatVersion: 1,
-      sequence: 1,
-      state: 'encrypted',
-      keySlots: [{
-        id: 'slot-id',
-        keyDerivation: {
-          type: 'pbkdf2_hmac_sha256',
-          salt: 'salt',
-          iterations: 10,
-        },
-        wrappedStorageUnlockKey: {
-          nonce: 'nonce',
-          ciphertext: 'ciphertext',
-        },
-      }],
-      activeEncryptedStoreId: 'encrypted-store',
-    },
-  };
+function createCredentialRequiredInspection(): Extract<OpfsEncryptionInspection, { type: 'credential_required' }> {
+  return PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+    firstSequence: 2,
+    secondSequence: 1,
+  });
 }
 
 
@@ -95,7 +78,7 @@ describe('OpfsEncryptionUnlockView', () => {
   it('waits for both authenticated unlock and the minimum still frame before seating', async () => {
     vi.useFakeTimers();
     const unlock = Promise.withResolvers<void>();
-    const gate = createGate({ inspection: createEncryptedInspection() });
+    const gate = createGate({ inspection: createCredentialRequiredInspection() });
     gate.unlockWithPassphrase = vi.fn(async () => await unlock.promise);
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
@@ -139,7 +122,7 @@ describe('OpfsEncryptionUnlockView', () => {
   it('preserves success coordination while reducing motion duration', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
-    const gate = createGate({ inspection: createEncryptedInspection() });
+    const gate = createGate({ inspection: createCredentialRequiredInspection() });
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
@@ -171,7 +154,7 @@ describe('OpfsEncryptionUnlockView', () => {
 
   it('does not seat early when authentication finishes before the minimum still frame', async () => {
     vi.useFakeTimers();
-    const gate = createGate({ inspection: createEncryptedInspection() });
+    const gate = createGate({ inspection: createCredentialRequiredInspection() });
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
@@ -191,7 +174,7 @@ describe('OpfsEncryptionUnlockView', () => {
   });
 
   it('returns the mechanism to ready without showing success when unlock fails', async () => {
-    const gate = createGate({ inspection: createEncryptedInspection() });
+    const gate = createGate({ inspection: createCredentialRequiredInspection() });
     gate.unlockWithPassphrase = vi.fn(async () => {
       throw new Error('incorrect passphrase');
     });
@@ -210,7 +193,7 @@ describe('OpfsEncryptionUnlockView', () => {
     expect(gate.reportUnlockPresentationReady).not.toHaveBeenCalled();
   });
   it('warns without trimming a passphrase with boundary whitespace', async () => {
-    const gate = createGate({ inspection: createEncryptedInspection() });
+    const gate = createGate({ inspection: createCredentialRequiredInspection() });
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
@@ -227,7 +210,7 @@ describe('OpfsEncryptionUnlockView', () => {
   });
 
   it('toggles passphrase visibility without changing its value', async () => {
-    const gate = createGate({ inspection: createEncryptedInspection() });
+    const gate = createGate({ inspection: createCredentialRequiredInspection() });
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
@@ -241,7 +224,7 @@ describe('OpfsEncryptionUnlockView', () => {
   });
 
   it('rejects line breaks before calling the unlock operation', async () => {
-    const gate = createGate({ inspection: createEncryptedInspection() });
+    const gate = createGate({ inspection: createCredentialRequiredInspection() });
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
@@ -270,34 +253,13 @@ second line`,
   });
 
   it('keeps the raw OPFS explorer available while warning during a transition', async () => {
-    const operation = {
-      type: 'encrypting' as const,
-      phase: 'building_target' as const,
-      targetEncryptedStoreId: 'target-store',
-    };
     const gate = createGate({
-      inspection: {
-        type: 'transitioning',
-        state: {
-          formatVersion: 1,
-          sequence: 1,
-          state: 'transitioning',
-          keySlots: [{
-            id: 'slot-id',
-            keyDerivation: {
-              type: 'pbkdf2_hmac_sha256',
-              salt: 'salt',
-              iterations: 10,
-            },
-            wrappedStorageUnlockKey: {
-              nonce: 'nonce',
-              ciphertext: 'ciphertext',
-            },
-          }],
-          operation,
-        },
-        operation,
-      },
+      inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+        operation: 'encrypt',
+        phase: 'building_target',
+        sourceFileSystemId: undefined,
+        targetFileSystemId: 'target-store',
+      }),
     });
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
@@ -320,68 +282,43 @@ second line`,
   });
 
 
-  it('discards an unfinished encrypted target without requiring a passphrase', async () => {
-    const operation = {
-      type: 'encrypting' as const,
-      phase: 'building_target' as const,
-      targetEncryptedStoreId: 'target-store',
-    };
+  it('requires the passphrase before returning a building encrypt operation to plain', async () => {
     const gate = createGate({
-      inspection: {
-        type: 'transitioning',
-        state: {
-          formatVersion: 1,
-          sequence: 1,
-          state: 'transitioning',
-          keySlots: [],
-          operation,
-        },
-        operation,
-      },
+      inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+        operation: 'encrypt',
+        phase: 'building_target',
+        sourceFileSystemId: undefined,
+        targetFileSystemId: 'target-store',
+      }),
     });
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
     });
+    const returnButton = wrapper.get('[data-testid="opfs-encryption-return-to-plain-button"]');
 
-    expect(wrapper.text()).toContain('The unfinished encrypted target will be deleted. The current plain storage remains authoritative and will not be rewritten.');
-    await wrapper.get('[data-testid="opfs-encryption-return-to-plain-button"]').trigger('click');
+    expect(returnButton.attributes('disabled')).toBeDefined();
+    expect(wrapper.text()).toContain('Enter the passphrase to authenticate the interrupted operation. Naidan will finish the protected transition state, then rebuild and verify plain storage before removing encryption.');
+    await wrapper.get('[data-testid="opfs-encryption-unlock-passphrase"]')
+      .setValue('existing passphrase');
+    expect(returnButton.attributes('disabled')).toBeUndefined();
+
+    await returnButton.trigger('click');
     await flushPromises();
 
     expect(gate.returnInterruptedEncryptionToPlain).toHaveBeenCalledWith({
-      passphrase: undefined,
+      passphrase: 'existing passphrase',
     });
     expect(gate.reportUnlockPresentationReady).toHaveBeenCalledOnce();
   });
 
   it('requires the passphrase when encrypted storage is already authoritative', async () => {
-    const operation = {
-      type: 'encrypting' as const,
-      phase: 'cleaning_up_source' as const,
-      targetEncryptedStoreId: 'target-store',
-    };
     const gate = createGate({
-      inspection: {
-        type: 'transitioning',
-        state: {
-          formatVersion: 1,
-          sequence: 2,
-          state: 'transitioning',
-          keySlots: [{
-            id: 'slot-id',
-            keyDerivation: {
-              type: 'pbkdf2_hmac_sha256',
-              salt: 'salt',
-              iterations: 10,
-            },
-            wrappedStorageUnlockKey: {
-              nonce: 'nonce',
-              ciphertext: 'ciphertext',
-            },
-          }],
-          operation,
-        },
-        operation,
-      },
+      inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+        operation: 'encrypt',
+        phase: 'cleaning_up_source',
+        sourceFileSystemId: undefined,
+        targetFileSystemId: 'target-store',
+      }),
     });
     const wrapper = mount(OpfsEncryptionUnlockView, {
       props: { gate },
@@ -404,7 +341,7 @@ second line`,
 
   it('keeps the lock presentation while the unlocked application renders behind it', () => {
     const gate = createGate({
-      inspection: createEncryptedInspection(),
+      inspection: createCredentialRequiredInspection(),
       phase: 'preparing_application',
     });
     const wrapper = mount(OpfsEncryptionUnlockView, {
@@ -420,7 +357,7 @@ second line`,
 
   it('keeps recovery access visible when application preparation fails after unlock', async () => {
     const gate = createGate({
-      inspection: createEncryptedInspection(),
+      inspection: createCredentialRequiredInspection(),
       phase: 'application_failed',
       applicationError: new Error('chat bootstrap failed'),
     });

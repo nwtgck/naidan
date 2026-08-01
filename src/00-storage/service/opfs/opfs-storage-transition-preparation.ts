@@ -1,17 +1,20 @@
 type OpfsStorageTransitionPreparation = () => Promise<void>;
+type OpfsLocalTransitionStarting = () => void;
 type OpfsExternalTransitionStarting = () => Promise<void>;
 export type OpfsExternalTransitionSettlement =
   | 'completed'
   | 'failed'
   | 'preparation_failed';
-type OpfsExternalTransitionSettled = ({ settlement }: {
+type OpfsTransitionSettled = ({ settlement }: {
   settlement: OpfsExternalTransitionSettlement,
 }) => void;
 
 interface OpfsStorageTransitionRegistration {
+  readonly localTransitionStarting: OpfsLocalTransitionStarting,
   readonly externalTransitionStarting: OpfsExternalTransitionStarting,
   readonly prepare: OpfsStorageTransitionPreparation,
-  readonly externalTransitionSettled: OpfsExternalTransitionSettled,
+  readonly localTransitionSettled: OpfsTransitionSettled,
+  readonly externalTransitionSettled: OpfsTransitionSettled,
 }
 
 const registrations = new Set<OpfsStorageTransitionRegistration>();
@@ -22,23 +25,35 @@ const registrations = new Set<OpfsStorageTransitionRegistration>();
  * application owns presentation and cleanup for Chat, Wesh, and File Explorer.
  */
 export function registerOpfsStorageTransitionPreparation({
+  localTransitionStarting,
   externalTransitionStarting,
   prepare,
+  localTransitionSettled,
   externalTransitionSettled,
 }: {
+  localTransitionStarting: OpfsLocalTransitionStarting,
   externalTransitionStarting: OpfsExternalTransitionStarting,
   prepare: OpfsStorageTransitionPreparation,
-  externalTransitionSettled: OpfsExternalTransitionSettled,
+  localTransitionSettled: OpfsTransitionSettled,
+  externalTransitionSettled: OpfsTransitionSettled,
 }): () => void {
   const registration = {
+    localTransitionStarting,
     externalTransitionStarting,
     prepare,
+    localTransitionSettled,
     externalTransitionSettled,
   };
   registrations.add(registration);
   return () => {
     registrations.delete(registration);
   };
+}
+
+export function notifyRegisteredOpfsLocalTransitionStarting(): void {
+  for (const registration of registrations) {
+    registration.localTransitionStarting();
+  }
 }
 
 export async function notifyRegisteredOpfsExternalTransitionStarting(): Promise<void> {
@@ -50,6 +65,16 @@ export async function notifyRegisteredOpfsExternalTransitionStarting(): Promise<
 export async function prepareRegisteredOpfsStorageTransition(): Promise<void> {
   for (const registration of registrations) {
     await registration.prepare();
+  }
+}
+
+export function notifyRegisteredOpfsLocalTransitionSettled({
+  settlement,
+}: {
+  settlement: OpfsExternalTransitionSettlement,
+}): void {
+  for (const registration of registrations) {
+    registration.localTransitionSettled({ settlement });
   }
 }
 

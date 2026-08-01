@@ -22,7 +22,8 @@ export const STORAGE_BOOTSTRAP_KEY = `${STORAGE_KEY_PREFIX}storage_type`;
 
 export const SYNC_SIGNAL_KEY = `${STORAGE_KEY_PREFIX}sync:signal`;
 
-export const SYNC_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock`; // Legacy/Global lock
+// Application-wide lock for storage operations that must not overlap.
+export const SYNC_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock`;
 
 export const LOCK_METADATA = `${STORAGE_KEY_PREFIX}sync:lock:metadata`;
 
@@ -40,7 +41,7 @@ export const FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID = 'file-protocol-standalone-
 export const FILE_PROTOCOL_STANDALONE_WORKER_HUB_NAME = 'file-protocol-standalone-worker-hub';
 
 export const GLOBAL_SEARCH_WORKER_NAME = 'global-search-worker';
-export const HIZOFS_INSPECTION_WORKER_NAME = 'hizofs-inspection-worker';
+export const HIZOFS_BENCHMARK_WORKER_NAME = 'hizofs-benchmark-worker';
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

@@ -13,15 +13,20 @@ export type StorageFileSystemCapabilities = {
 };
 
 
-export type StorageDirectoryWorkerMountSource = {
-  readonly type: 'hizofs';
-  readonly backingDirectory: FileSystemDirectoryHandle;
-  readonly fileSystemId: string;
-  readonly instanceId: string;
-  readonly rootKey: CryptoKey;
-  readonly subvolumeDescriptorObjectId: string;
-  readonly rootDirectoryNodeId: string;
-};
+export type StorageDirectoryWorkerMountAccessMode = "read" | "read_write";
+
+export type StorageDirectoryWorkerMountGrant = Readonly<{
+  accessMode: StorageDirectoryWorkerMountAccessMode;
+  grantId: string;
+  implementation: "hizofs";
+  opaquePayload: unknown;
+  type: "storage_directory_worker_mount_grant";
+  version: 1;
+}>;
+
+export type StorageDirectoryWorkerMountOpener = ({ grant }: {
+  grant: StorageDirectoryWorkerMountGrant;
+}) => Promise<StorageFileSystemSession>;
 
 export type StorageFileStat = {
   readonly size: number;
@@ -132,13 +137,14 @@ export interface StorageDirectoryHandle {
   }): Promise<StorageFileHandle>;
 
   /**
-   * Returns a structured-cloneable capability that lets a trusted Worker reopen
-   * this exact directory without routing filesystem primitives through the UI
-   * realm. The capability may contain cryptographic authority and must not be
-   * exposed outside the application's Worker boundary. Implementations that
-   * cannot be reopened inside a Worker leave it undefined.
+   * Issues a structured-cloneable, scope-bound grant for this exact directory.
+   * The generic storage layer transports but never interprets implementation
+   * payloads. Implementations that cannot reopen inside a Worker leave it
+   * undefined.
    */
-  createWorkerMountSource?(): StorageDirectoryWorkerMountSource;
+  createWorkerMountGrant?({ accessMode }: {
+    accessMode: StorageDirectoryWorkerMountAccessMode;
+  }): Promise<StorageDirectoryWorkerMountGrant>;
 }
 
 export interface StorageFileSystemSession {
@@ -157,14 +163,6 @@ export interface StorageFileSystemSession {
 }
 
 
-export interface StorageDirectoryWorkerMountSession extends StorageFileSystemSession {
-  readonly fileSystemId: string;
-  readonly instanceId: string;
-
-  openWorkerMountDirectory({ source }: {
-    source: StorageDirectoryWorkerMountSource;
-  }): Promise<StorageDirectoryHandle>;
-}
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

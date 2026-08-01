@@ -1,26 +1,44 @@
-import type { StorageDirectoryHandle, StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
-import {
-  createHizoFS,
-  createHizoFSInspectionReader,
-  deriveHizoFSFileSystemIdFromRawRootKey,
-  type HizoFSInspectionReader,
-} from '@/00-storage/service/hizofs';
+import type {
+  StorageDirectoryHandle,
+  StorageFileSystemSession,
+} from '@/00-storage/service/storage-file-system/types';
 
-/**
- * This Naidan-specific backing location belongs to the debug feature rather
- * than the generic HizoFS core. The core still accepts an arbitrary
- * directory handle and must not learn about Naidan paths or workspace policy.
- */
 const DEBUG_WORKSPACE_DIRECTORY_NAME = 'naidan-debug-hizofs';
 const DEBUG_WORKSPACE_DIRECTORY_SUFFIX = '.hizofs';
 const DEBUG_WORKSPACE_NAME_PREFIX = 'runtime-';
 const ROOT_KEY_BYTE_LENGTH = 32;
 
+export type HizoFSDebugWorkspaceProduct = {
+  readonly fileSystemId: string;
+  readonly fileSystemSession: StorageFileSystemSession;
+};
+
+/**
+ * Creates an isolated, disposable HizoFS workspace for low-level inspection.
+ *
+ * The workspace generates its own temporary root key and does not register
+ * credentials, routing authority, or persistence state with Naidan. Developers
+ * can therefore inspect HizoFS independently of the filesystem that stores
+ * Naidan data.
+ *
+ * Construction remains behind an injected authority so this debug feature does
+ * not own persisted-format policy, cryptographic composition, or physical-store
+ * implementation. This module owns the original root-key buffer that it passes
+ * to the authority and clears that buffer when creation fails or the workspace
+ * is destroyed. The authority remains responsible for the lifetime of any
+ * internal key material derived or copied from that input.
+ */
+export interface HizoFSDebugWorkspaceAuthority {
+  create({ backingDirectory, fileSystemRootKey }: {
+    backingDirectory: FileSystemDirectoryHandle;
+    fileSystemRootKey: Uint8Array;
+  }): Promise<HizoFSDebugWorkspaceProduct>;
+}
+
 type LiveHizoFSDebugWorkspace = {
   readonly workspaceId: string;
   readonly createdAt: number;
   readonly fileSystemId: string;
-  readonly backingDirectory: FileSystemDirectoryHandle;
   readonly fileSystemSession: StorageFileSystemSession;
   readonly fileSystemRootKey: Uint8Array;
 };
@@ -38,29 +56,19 @@ export type HizoFSDebugWorkspaceSummary =
   | {
       readonly status: 'stale';
       readonly workspaceId: string;
-      readonly fileSystemId: string | undefined;
+      readonly fileSystemId: undefined;
       readonly physicalPath: readonly string[];
     };
 
 export interface HizoFSDebugWorkspaceSession {
   readonly source: Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'live' }>;
   readonly decryptedRoot: StorageDirectoryHandle;
-  readonly hizoFSReader: HizoFSInspectionReader;
 
   dispose(): Promise<void>;
 }
 
-/**
- * Creates a disposable HizoFS instance whose root key exists only in
- * this module's memory.
- *
- * The workspace is intentionally independent from Naidan OPFS encryption.
- * Its purpose is to let filesystem developers inspect HizoFS behavior
- * before trusting or enabling encryption for Naidan data. Routing this through
- * key slots, a passphrase, or the Naidan store header would mix credential
- * management into a test environment that only needs one temporary root key.
- */
-export async function createHizoFSDebugWorkspace({ nativeOpfsRoot }: {
+export async function createHizoFSDebugWorkspace({ authority, nativeOpfsRoot }: {
+  authority: HizoFSDebugWorkspaceAuthority;
   nativeOpfsRoot: FileSystemDirectoryHandle | undefined;
 }): Promise<Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'live' }>> {
   const opfsRoot = nativeOpfsRoot ?? await navigator.storage.getDirectory();
@@ -70,28 +78,25 @@ export async function createHizoFSDebugWorkspace({ nativeOpfsRoot }: {
   const backingDirectory = await parent.getDirectoryHandle(physicalDirectoryName, { create: true });
   const fileSystemRootKey = crypto.getRandomValues(new Uint8Array(ROOT_KEY_BYTE_LENGTH));
 
-  let fileSystemSession: StorageFileSystemSession | undefined;
+  let product: HizoFSDebugWorkspaceProduct | undefined;
   try {
-    fileSystemSession = await createHizoFS({
-      backingDirectory,
-      fileSystemRootKey,
-    });
-    const fileSystemId = await deriveHizoFSFileSystemIdFromRawRootKey({
-      fileSystemRootKey,
-    });
+    product = await authority.create({ backingDirectory, fileSystemRootKey });
     const createdAt = Date.now();
     liveWorkspaces.set(workspaceId, {
       workspaceId,
       createdAt,
-      fileSystemId,
-      backingDirectory,
-      fileSystemSession,
+      fileSystemId: product.fileSystemId,
+      fileSystemSession: product.fileSystemSession,
       fileSystemRootKey,
     });
-    return createLiveSummary({ workspaceId, createdAt, fileSystemId });
+    return createLiveSummary({
+      workspaceId,
+      createdAt,
+      fileSystemId: product.fileSystemId,
+    });
   } catch (error) {
     fileSystemRootKey.fill(0);
-    await fileSystemSession?.close().catch(() => undefined);
+    await product?.fileSystemSession.close().catch(() => undefined);
     await parent.removeEntry(physicalDirectoryName, { recursive: true }).catch(() => undefined);
     throw error;
   }
@@ -114,9 +119,7 @@ export async function listHizoFSDebugWorkspaces({ nativeOpfsRoot }: {
   try {
     parent = await opfsRoot.getDirectoryHandle(DEBUG_WORKSPACE_DIRECTORY_NAME);
   } catch (error) {
-    if (isNotFoundError({ error })) {
-      return sortWorkspaceSummaries({ summaries: result });
-    }
+    if (isNotFoundError({ error })) return sortWorkspaceSummaries({ summaries: result });
     throw error;
   }
 
@@ -134,27 +137,11 @@ export async function listHizoFSDebugWorkspaces({ nativeOpfsRoot }: {
     }
     }
     const workspaceId = parseWorkspaceId({ physicalDirectoryName: name });
-    if (workspaceId === undefined) {
-      continue;
-    }
-    if (liveWorkspaces.has(workspaceId)) {
-      continue;
-    }
-    // The filesystem identity is derived from the root key. A stale workspace
-    // intentionally does not retain that key across reloads, so only its raw
-    // physical directory remains inspectable.
-    const fileSystemId = undefined;
-    /**
-     * Do not delete a keyless workspace automatically. A crash or reload may
-     * itself be the condition under investigation, and filesystem developers
-     * may still need to inspect the encrypted backing files through Raw OPFS.
-     * The Workbench therefore exposes it as stale and requires explicit
-     * deletion even though it can no longer be decrypted.
-     */
+    if (workspaceId === undefined || liveWorkspaces.has(workspaceId)) continue;
     result.push({
       status: 'stale',
       workspaceId,
-      fileSystemId,
+      fileSystemId: undefined,
       physicalPath: [DEBUG_WORKSPACE_DIRECTORY_NAME, name],
     });
   }
@@ -168,11 +155,6 @@ export async function openHizoFSDebugWorkspace({ workspaceId }: {
   if (workspace === undefined) {
     throw new Error(`HizoFS debug workspace is not live: ${workspaceId}`);
   }
-  const hizoFSReader = await createHizoFSInspectionReader({
-    backingDirectory: workspace.backingDirectory,
-    fileSystemRootKey: workspace.fileSystemRootKey,
-  });
-  let disposed = false;
   return {
     source: createLiveSummary({
       workspaceId: workspace.workspaceId,
@@ -180,12 +162,7 @@ export async function openHizoFSDebugWorkspace({ workspaceId }: {
       fileSystemId: workspace.fileSystemId,
     }),
     decryptedRoot: workspace.fileSystemSession.root,
-    hizoFSReader,
-    async dispose() {
-      if (disposed) return;
-      disposed = true;
-      await hizoFSReader.dispose();
-    },
+    async dispose() {},
   };
 }
 
@@ -206,13 +183,11 @@ export async function destroyHizoFSDebugWorkspace({ workspaceId, nativeOpfsRoot 
   const opfsRoot = nativeOpfsRoot ?? await navigator.storage.getDirectory();
   try {
     const parent = await opfsRoot.getDirectoryHandle(DEBUG_WORKSPACE_DIRECTORY_NAME);
-    const matchingPhysicalDirectoryNames: string[] = [];
+    const matchingNames: string[] = [];
     for await (const [name, handle] of parent.entries()) {
       switch (handle.kind) {
       case 'directory':
-        if (parseWorkspaceId({ physicalDirectoryName: name }) === workspaceId) {
-          matchingPhysicalDirectoryNames.push(name);
-        }
+        if (parseWorkspaceId({ physicalDirectoryName: name }) === workspaceId) matchingNames.push(name);
         break;
       case 'file':
         break;
@@ -224,13 +199,11 @@ export async function destroyHizoFSDebugWorkspace({ workspaceId, nativeOpfsRoot 
       }
       }
     }
-    for (const physicalDirectoryName of matchingPhysicalDirectoryNames) {
+    for (const physicalDirectoryName of matchingNames) {
       await parent.removeEntry(physicalDirectoryName, { recursive: true });
     }
   } catch (error) {
-    if (!isNotFoundError({ error })) {
-      throw error;
-    }
+    if (!isNotFoundError({ error })) throw error;
   }
 }
 
@@ -265,9 +238,7 @@ function getPhysicalDirectoryName({ workspaceId }: { workspaceId: string }): str
 function parseWorkspaceId({ physicalDirectoryName }: {
   physicalDirectoryName: string;
 }): string | undefined {
-  if (!physicalDirectoryName.startsWith(DEBUG_WORKSPACE_NAME_PREFIX)) {
-    return undefined;
-  }
+  if (!physicalDirectoryName.startsWith(DEBUG_WORKSPACE_NAME_PREFIX)) return undefined;
   const nameAfterPrefix = physicalDirectoryName.slice(DEBUG_WORKSPACE_NAME_PREFIX.length);
   const suffixSeparatorIndex = nameAfterPrefix.indexOf('.');
   const workspaceId = suffixSeparatorIndex === -1
@@ -275,7 +246,6 @@ function parseWorkspaceId({ physicalDirectoryName }: {
     : nameAfterPrefix.slice(0, suffixSeparatorIndex);
   return workspaceId.length === 0 ? undefined : workspaceId;
 }
-
 
 function isNotFoundError({ error }: { error: unknown }): boolean {
   return error instanceof DOMException

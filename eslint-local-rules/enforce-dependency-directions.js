@@ -74,98 +74,164 @@ function resolveImportPath({ context, filename, importPath }) {
   };
 }
 
+function hasPathPrefix({ relativePath, prefix }) {
+  return relativePath === prefix || relativePath.startsWith(`${prefix}/`);
+}
+
 function classifyPath({ rootDir, filePath }) {
   const relativePath = normalizePath({ filePath: path.relative(rootDir, filePath) });
   const [firstSegment] = relativePath.split('/');
 
-  if (relativePath === 'constants.ts') {
-    return 'constants';
-  }
-  if (firstSegment === '01-models') {
-    return '01-models';
-  }
-  if (relativePath === '00-storage/service' || relativePath.startsWith('00-storage/service/')) {
-    return 'storage-service';
-  }
-  if (relativePath === '00-storage/mapper' || relativePath.startsWith('00-storage/mapper/')) {
-    return 'storage-mapper';
-  }
-  if (relativePath === '00-storage/00-dto' || relativePath.startsWith('00-storage/00-dto/')) {
-    return 'storage-dto';
-  }
-  if (['features', 'components', 'composables', 'logic', 'pages'].includes(firstSegment)) {
-    return 'application';
-  }
-  if (!relativePath.includes('/') && /\.(?:ts|tsx|vue)$/.test(relativePath)) {
-    return 'application';
-  }
-  if (firstSegment === 'utils') {
-    return 'utils';
-  }
-  if (firstSegment === 'strings') {
-    return 'strings';
-  }
+  if (relativePath === 'constants.ts') return 'constants';
+  if (firstSegment === '01-models') return '01-models';
+  const hizofsRoot = '00-storage/service/hizofs';
+  if (relativePath === `${hizofsRoot}/00-format` || relativePath === `${hizofsRoot}/00-format/index` || relativePath === `${hizofsRoot}/00-format/index.ts`) return 'hizofs-format-public';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/00-format` })) return 'hizofs-format-internal';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/compatibility` })) return 'hizofs-compatibility';
+  if (relativePath === `${hizofsRoot}/crypto` || relativePath === `${hizofsRoot}/crypto/index` || relativePath === `${hizofsRoot}/crypto/index.ts`) return 'hizofs-crypto-public';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/crypto` })) return 'hizofs-crypto-internal';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/authenticated-store` })) return 'hizofs-authenticated-store';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/physical-store` })) return 'hizofs-physical-store';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/indexes` })) return 'hizofs-indexes';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/filesystem` })) return 'hizofs-filesystem';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/runtime` })) return 'hizofs-runtime';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/maintenance` })) return 'hizofs-maintenance';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/inspection` })) return 'hizofs-inspection';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/api` }) || relativePath === `${hizofsRoot}/index.ts`) return 'hizofs-api';
+  if (
+    relativePath === `${hizofsRoot}/worker/composition-root`
+    || relativePath === `${hizofsRoot}/worker/composition-root.ts`
+    || relativePath === `${hizofsRoot}/worker/tests/composition-root.test.ts`
+    // This exact integration test composes real HizoFS authorities with the
+    // ordinary Naidan provider. Keep the exception path explicit so sibling
+    // worker tests cannot acquire the same deep dependency authority.
+    || relativePath === `${hizofsRoot}/worker/tests/naidan-provider-restart.test.ts`
+    // This exact integration test exercises encrypted, scope-bound Worker
+    // grants through the real format, crypto, authenticated-store, and OPFS
+    // composition boundary.
+    || relativePath === `${hizofsRoot}/worker/tests/worker-mount-grant.test.ts`
+  ) return 'hizofs-composition';
+  if (relativePath === `${hizofsRoot}/worker-entry` || relativePath === `${hizofsRoot}/worker-entry.ts`) return 'hizofs-worker-entry';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/worker` })) return 'hizofs-worker';
+  if (hasPathPrefix({ relativePath, prefix: hizofsRoot })) return 'hizofs-root';
+
+  const controlRoot = '00-storage/service/naidan-persistence-control';
+  if (hasPathPrefix({ relativePath, prefix: `${controlRoot}/00-format` })) return 'naidan-control-format';
+  if (hasPathPrefix({ relativePath, prefix: `${controlRoot}/crypto` })) return 'naidan-control-crypto';
+  if (hasPathPrefix({ relativePath, prefix: controlRoot })) return 'naidan-control-service';
+  if ([
+    '00-storage/service/naidan-opfs/production-persistence-runtime.ts',
+    '00-storage/service/naidan-opfs/worker-mount-runtime.ts',
+  ].includes(relativePath)) return 'naidan-opfs-composition';
+  if (hasPathPrefix({ relativePath, prefix: '00-storage/service/naidan-opfs' })) return 'naidan-opfs';
+
+  if (relativePath === '00-storage/service' || relativePath.startsWith('00-storage/service/')) return 'storage-service';
+  if (relativePath === '00-storage/mapper' || relativePath.startsWith('00-storage/mapper/')) return 'storage-mapper';
+  if (relativePath === '00-storage/00-dto' || relativePath.startsWith('00-storage/00-dto/')) return 'storage-dto';
+  if (['features', 'components', 'composables', 'logic', 'pages'].includes(firstSegment)) return 'application';
+  if (!relativePath.includes('/') && /\.(?:ts|tsx|vue)$/.test(relativePath)) return 'application';
+  if (firstSegment === 'utils') return 'utils';
+  if (firstSegment === 'strings') return 'strings';
   return 'other';
 }
 
+const HIZOFS_LOGICAL_CATEGORIES = new Set([
+  'hizofs-indexes',
+  'hizofs-filesystem',
+  'hizofs-runtime',
+  'hizofs-maintenance',
+]);
+
+function isHizoFSCategory({ category }) {
+  return category.startsWith('hizofs-');
+}
+
+function isAllowedHizoFSDependency({ sourceCategory, targetCategory }) {
+  if (!isHizoFSCategory({ category: targetCategory })) return true;
+
+  if (sourceCategory === 'hizofs-format-internal') {
+    return ['hizofs-format-internal', 'hizofs-format-public'].includes(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-format-public') {
+    return ['hizofs-format-internal', 'hizofs-format-public'].includes(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-compatibility') {
+    return ['hizofs-compatibility', 'hizofs-format-public'].includes(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-crypto-internal') {
+    return ['hizofs-crypto-internal', 'hizofs-crypto-public', 'hizofs-format-public'].includes(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-crypto-public') {
+    return ['hizofs-crypto-internal', 'hizofs-crypto-public', 'hizofs-format-public'].includes(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-physical-store') return targetCategory === 'hizofs-physical-store';
+  if (sourceCategory === 'hizofs-authenticated-store') {
+    return ['hizofs-authenticated-store', 'hizofs-format-public', 'hizofs-crypto-public', 'hizofs-physical-store'].includes(targetCategory);
+  }
+  if (HIZOFS_LOGICAL_CATEGORIES.has(sourceCategory)) {
+    return HIZOFS_LOGICAL_CATEGORIES.has(targetCategory)
+      || ['hizofs-authenticated-store', 'hizofs-format-public'].includes(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-inspection') {
+    return ['hizofs-inspection', 'hizofs-api', 'hizofs-authenticated-store', 'hizofs-format-public', 'hizofs-crypto-public'].includes(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-api') {
+    return targetCategory === 'hizofs-api'
+      || targetCategory === 'hizofs-inspection'
+      || targetCategory === 'hizofs-format-public'
+      || HIZOFS_LOGICAL_CATEGORIES.has(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-composition') {
+    return targetCategory === 'hizofs-composition'
+      || targetCategory === 'hizofs-worker'
+      || targetCategory === 'hizofs-api'
+      || targetCategory === 'hizofs-authenticated-store'
+      || targetCategory === 'hizofs-format-public'
+      || targetCategory === 'hizofs-crypto-public'
+      || targetCategory === 'hizofs-physical-store'
+      || HIZOFS_LOGICAL_CATEGORIES.has(targetCategory);
+  }
+  if (sourceCategory === 'hizofs-worker-entry') return ['hizofs-worker-entry', 'hizofs-composition'].includes(targetCategory);
+  if (sourceCategory === 'hizofs-worker') return ['hizofs-worker-entry', 'hizofs-worker', 'hizofs-composition', 'hizofs-api', 'hizofs-runtime'].includes(targetCategory);
+  if (sourceCategory === 'hizofs-root') return ['hizofs-api', 'hizofs-worker-entry', 'hizofs-worker', 'hizofs-composition', 'hizofs-compatibility'].includes(targetCategory);
+
+  if (sourceCategory === 'naidan-control-format') return targetCategory === 'hizofs-compatibility';
+  if (sourceCategory === 'naidan-control-crypto') return ['hizofs-api', 'hizofs-compatibility'].includes(targetCategory);
+  if (sourceCategory === 'naidan-control-service') return ['hizofs-api', 'hizofs-compatibility'].includes(targetCategory);
+  if (sourceCategory === 'naidan-opfs-composition') return ['hizofs-api', 'hizofs-inspection', 'hizofs-worker-entry'].includes(targetCategory);
+  if (sourceCategory === 'naidan-opfs') return ['hizofs-api', 'hizofs-inspection'].includes(targetCategory);
+  if (sourceCategory === 'application') return ['hizofs-api', 'hizofs-inspection'].includes(targetCategory);
+
+  return false;
+}
+
 function isForbiddenDependency({ sourceCategory, targetCategory }) {
-  if (sourceCategory === 'application') {
-    return targetCategory === 'storage-mapper' || targetCategory === 'storage-dto';
+  if (isHizoFSCategory({ category: sourceCategory }) || isHizoFSCategory({ category: targetCategory })) {
+    return !isAllowedHizoFSDependency({ sourceCategory, targetCategory });
   }
 
-  if (sourceCategory === '01-models') {
-    return [
-      'application',
-      'storage-service',
-      'storage-mapper',
-      'storage-dto',
-      'strings',
-    ].includes(targetCategory);
+  if (sourceCategory === 'naidan-control-format' && targetCategory !== 'naidan-control-format') {
+    return targetCategory !== 'hizofs-compatibility' && targetCategory !== 'constants' && targetCategory !== 'utils';
   }
-
-  if (sourceCategory === 'storage-service') {
+  if (sourceCategory === 'naidan-control-crypto') {
+    return ['application', 'strings', 'storage-dto', 'storage-mapper'].includes(targetCategory);
+  }
+  if (['naidan-control-service', 'naidan-opfs-composition', 'naidan-opfs'].includes(sourceCategory)) {
     return targetCategory === 'application' || targetCategory === 'strings';
   }
 
-  if (sourceCategory === 'storage-mapper') {
-    return [
-      'application',
-      'storage-service',
-      'strings',
-    ].includes(targetCategory);
+  if (sourceCategory === 'application') {
+    return ['storage-mapper', 'storage-dto', 'hizofs-format-internal', 'hizofs-format-public', 'naidan-control-format'].includes(targetCategory);
   }
-
-  if (sourceCategory === 'storage-dto') {
-    return [
-      'application',
-      'storage-service',
-      'storage-mapper',
-      'strings',
-    ].includes(targetCategory);
+  if (sourceCategory === '01-models') {
+    return ['application', 'storage-service', 'storage-mapper', 'storage-dto', 'strings'].includes(targetCategory);
   }
-
-  if (sourceCategory === 'constants') {
-    return [
-      'application',
-      '01-models',
-      'storage-service',
-      'storage-mapper',
-      'storage-dto',
-      'strings',
-    ].includes(targetCategory);
+  if (sourceCategory === 'storage-service') return targetCategory === 'application' || targetCategory === 'strings';
+  if (sourceCategory === 'storage-mapper') return ['application', 'storage-service', 'strings'].includes(targetCategory);
+  if (sourceCategory === 'storage-dto') return ['application', 'storage-service', 'storage-mapper', 'strings'].includes(targetCategory);
+  if (sourceCategory === 'constants' || sourceCategory === 'utils') {
+    return ['application', '01-models', 'storage-service', 'storage-mapper', 'storage-dto', 'strings'].includes(targetCategory);
   }
-
-  if (sourceCategory === 'utils') {
-    return [
-      'application',
-      '01-models',
-      'storage-service',
-      'storage-mapper',
-      'storage-dto',
-      'strings',
-    ].includes(targetCategory);
-  }
-
   return false;
 }
 

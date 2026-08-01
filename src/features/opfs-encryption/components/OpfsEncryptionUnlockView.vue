@@ -10,7 +10,7 @@ import {
   RefreshCwIcon,
   ShieldCheckIcon,
 } from 'lucide-vue-next';
-import { validateEncryptionPassphrase } from '@/00-storage/service/opfs-encryption/passphrase';
+import { validateEncryptionPassphrase } from '@/00-storage/service/naidan-opfs/passphrase';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import type {
   OpfsEncryptionStartupGate,
@@ -83,7 +83,8 @@ const transitionPhase = computed(() => {
   const value = inspection.value;
   switch (value.type) {
   case 'transitioning':
-    return value.operation.phase;
+    return value.mode.phase.type;
+  case 'credential_required':
   case 'encrypted':
   case 'recovery_required':
     return undefined;
@@ -97,7 +98,13 @@ const transitionOperation = computed(() => {
   const value = inspection.value;
   switch (value.type) {
   case 'transitioning':
-    return value.operation.type;
+    switch (value.mode.operation) {
+    case 'encrypt': return 'encrypting';
+    case 'decrypt': return 'decrypting';
+    case 're_encrypt': return 'reencrypting';
+    default: return value.mode.operation satisfies never;
+    }
+  case 'credential_required':
   case 'encrypted':
   case 'recovery_required':
     return undefined;
@@ -110,7 +117,7 @@ const transitionOperation = computed(() => {
 const canReturnInterruptedEncryptionToPlain = computed(() => (
   transitionOperation.value === 'encrypting'
 ));
-const returnToPlainRequiresPassphrase = computed(() => (
+const returnToPlainIsAfterAuthoritySwitch = computed(() => (
   canReturnInterruptedEncryptionToPlain.value
   && transitionPhase.value === 'cleaning_up_source'
 ));
@@ -214,7 +221,8 @@ async function returnInterruptedEncryptionToPlain(): Promise<void> {
     working.value
     || gatePhase.value !== 'locked'
     || !canReturnInterruptedEncryptionToPlain.value
-    || (returnToPlainRequiresPassphrase.value && (passphrase.value.length === 0 || hasLineBreak.value))
+    || passphrase.value.length === 0
+    || hasLineBreak.value
   ) {
     return;
   }
@@ -222,7 +230,7 @@ async function returnInterruptedEncryptionToPlain(): Promise<void> {
   errorMessage.value = undefined;
   try {
     await props.gate.returnInterruptedEncryptionToPlain({
-      passphrase: returnToPlainRequiresPassphrase.value ? passphrase.value : undefined,
+      passphrase: passphrase.value,
     });
     unlockButtonState.value = 'unlocked';
     props.gate.reportUnlockPresentationReady();
@@ -398,14 +406,14 @@ defineExpose({
             tw-class="mt-5 space-y-3 rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20 p-4"
           >
             <p tw-class="text-xs leading-relaxed text-amber-900 dark:text-amber-300">
-              {{ returnToPlainRequiresPassphrase
+              {{ returnToPlainIsAfterAuthoritySwitch
                 ? lazyStrings.opfsEncryption__return_to_plain_after_authority_switch()
                 : lazyStrings.opfsEncryption__return_to_plain_before_authority_switch() }}
             </p>
             <button
               type="button"
               data-testid="opfs-encryption-return-to-plain-button"
-              :disabled="working || gatePhase !== 'locked' || (returnToPlainRequiresPassphrase && (passphrase.length === 0 || hasLineBreak))"
+              :disabled="working || gatePhase !== 'locked' || passphrase.length === 0 || hasLineBreak"
               tw-class="w-full rounded-xl border border-amber-300 dark:border-amber-800 bg-white/80 dark:bg-gray-900 px-4 py-3 text-xs font-bold text-amber-900 dark:text-amber-300 hover:bg-white dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               @click="returnInterruptedEncryptionToPlain"
             >

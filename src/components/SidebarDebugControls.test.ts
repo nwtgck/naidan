@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import SidebarDebugControls from './SidebarDebugControls.vue';
 
 const mocks = vi.hoisted(() => ({
@@ -56,9 +57,9 @@ vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
   }),
 }));
 
-vi.mock('@/features/debug-opfs-encryption/composables/useDebugOpfsEncryptionInspector', () => ({
-  useDebugOpfsEncryptionInspector: () => ({
-    openDebugOpfsEncryptionInspector: mocks.openOpfsEncryptionInspector,
+vi.mock('@/features/debug-opfs-encryption/composables/usePersistenceControlInspector', () => ({
+  usePersistenceControlInspector: () => ({
+    openPersistenceControlInspector: mocks.openOpfsEncryptionInspector,
   }),
 }));
 
@@ -95,6 +96,24 @@ describe('SidebarDebugControls encrypted storage quick access', () => {
     await hizoFSWorkbenchButton.trigger('click');
     expect(mocks.openOpfsEncryptionInspector).not.toHaveBeenCalled();
     expect(mocks.openHizoFSWorkbench).toHaveBeenCalledOnce();
+  });
+
+  it('exposes the low-level Naidan inspector while storage is credential-required', async () => {
+    mocks.inspectOpfsEncryption.mockResolvedValue(
+      PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+        firstSequence: 2,
+        secondSequence: 1,
+      }),
+    );
+    const wrapper = mountControls();
+
+    await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
+    await flushPromises();
+
+    const controlInspectorButton = wrapper.get('[data-testid="sidebar-opfs-encryption-inspector-button"]');
+    expect(controlInspectorButton.attributes('disabled')).toBeUndefined();
+    await controlInspectorButton.trigger('click');
+    expect(mocks.openOpfsEncryptionInspector).toHaveBeenCalledOnce();
   });
 
   it('opens the Naidan inspector and the independent HizoFS Workbench for encrypted storage', async () => {

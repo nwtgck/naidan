@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import {
   AlertTriangleIcon,
   EyeIcon,
@@ -11,15 +11,12 @@ import {
   ShieldAlertIcon,
 } from 'lucide-vue-next';
 import { storageService } from '@/00-storage/service';
-import type { OpfsEncryptionInspection } from '@/00-storage/service/opfs-encryption/bootstrap';
-import { validateEncryptionPassphrase } from '@/00-storage/service/opfs-encryption/passphrase';
+import type { OpfsEncryptionInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
+import { validateEncryptionPassphrase } from '@/00-storage/service/naidan-opfs/passphrase';
 import { useConfirm } from '@/composables/useConfirm';
 import { useOpfsEncryptionTransition } from '@/features/opfs-encryption/composables/useOpfsEncryptionTransition';
 import { ensureStrings, lazyStrings } from '@/strings';
 
-const OpfsEncryptionRecoverySourceViewer = defineAsyncComponent(
-  () => import('./OpfsEncryptionRecoverySourceViewer.vue'),
-);
 
 const props = defineProps<{
   storageType: 'local' | 'opfs' | 'memory',
@@ -35,21 +32,26 @@ const inspection = ref<OpfsEncryptionInspection>({ type: 'plain' });
 const loading = ref(false);
 const setupOpen = ref(false);
 const passphraseChangeOpen = ref(false);
-const recoverySourceOpen = ref(false);
+const reencryptOpen = ref(false);
 const passphrase = ref('');
 const confirmPassphrase = ref('');
 const newPassphrase = ref('');
+const reencryptPassphrase = ref('');
 const confirmNewPassphrase = ref('');
 const showPassphrase = ref(false);
 const showConfirmPassphrase = ref(false);
 const showNewPassphrase = ref(false);
+const showReencryptPassphrase = ref(false);
 const showConfirmNewPassphrase = ref(false);
 const errorMessage = ref<string>();
 const experimentalAccepted = ref(false);
 
 const available = computed(() => props.storageType === 'opfs');
 const enabled = computed(() => inspection.value.type === 'encrypted');
-const operationLocked = computed(() => inspection.value.type === 'transitioning');
+const operationLocked = computed(() => (
+  inspection.value.type === 'credential_required'
+  || inspection.value.type === 'transitioning'
+));
 const passphraseValidation = computed(() => validateEncryptionPassphrase({
   passphrase: passphrase.value,
 }));
@@ -58,6 +60,9 @@ const boundaryWhitespaceWarning = computed(() => (
 ));
 const confirmPassphraseValidation = computed(() => validateEncryptionPassphrase({
   passphrase: confirmPassphrase.value,
+}));
+const reencryptPassphraseValidation = computed(() => validateEncryptionPassphrase({
+  passphrase: reencryptPassphrase.value,
 }));
 const newPassphraseValidation = computed(() => validateEncryptionPassphrase({
   passphrase: newPassphrase.value,
@@ -71,6 +76,11 @@ const setupCanSubmit = computed(() => (
   && passphraseValidation.value.type !== 'line_break'
   && confirmPassphraseValidation.value.type !== 'line_break'
   && experimentalAccepted.value
+  && !loading.value
+));
+const reencryptCanSubmit = computed(() => (
+  reencryptPassphrase.value.length > 0
+  && reencryptPassphraseValidation.value.type !== 'line_break'
   && !loading.value
 ));
 const passphraseChangeCanSubmit = computed(() => (
@@ -111,6 +121,13 @@ function resetPassphraseChange(): void {
   passphraseChangeOpen.value = false;
   newPassphrase.value = '';
   confirmNewPassphrase.value = '';
+  errorMessage.value = undefined;
+}
+
+function resetReencrypt(): void {
+  reencryptOpen.value = false;
+  reencryptPassphrase.value = '';
+  showReencryptPassphrase.value = false;
   errorMessage.value = undefined;
 }
 
@@ -186,6 +203,7 @@ function finishFailedLocalOperation({
   const currentInspection = inspection.value;
   switch (currentInspection.type) {
   case 'plain':
+  case 'credential_required':
   case 'encrypted':
     finishLocalOperation({
       outcome: 'rolled_back',
@@ -301,15 +319,7 @@ async function changePassphrase(): Promise<void> {
 }
 
 async function reencrypt(): Promise<void> {
-  if (!enabled.value || loading.value) {
-    return;
-  }
-  const confirmed = await showConfirm({
-    title: await ensureStrings.opfsEncryption__re_encrypt_opfs_storage(),
-    message: await ensureStrings.opfsEncryption__re_encrypt_storage_explanation(),
-    confirmButtonText: await ensureStrings.opfsEncryption__re_encrypt_storage(),
-  });
-  if (!confirmed) {
+  if (!enabled.value || !reencryptCanSubmit.value) {
     return;
   }
   loading.value = true;
@@ -318,10 +328,12 @@ async function reencrypt(): Promise<void> {
   try {
     await prepareForStorageTransition();
     await storageService.reencryptOpfsEncryption({
+      passphrase: reencryptPassphrase.value,
       signal: undefined,
       onProgress: updateProgress,
     });
     await refreshExpectedInspection({ expectedType: 'encrypted' });
+    resetReencrypt();
     finishLocalOperation({ outcome: 'completed', errorMessage: undefined });
   } catch (error) {
     const operationFailure = await refreshInspectionAfterOperationError({ error });
@@ -392,6 +404,11 @@ defineExpose({
       {{ lazyStrings.opfsEncryption__select_opfs_as_active_storage_to_enable_encryption() }}
     </div>
 
+    <div v-else-if="inspection.type === 'credential_required'" tw-class="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+      <KeyRoundIcon tw-class="w-4 h-4 shrink-0" />
+      {{ lazyStrings.opfsEncryption__enter_passphrase_for_opfs_storage() }}
+    </div>
+
     <div v-else-if="inspection.type === 'transitioning'" tw-class="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
       <Loader2Icon tw-class="w-4 h-4 animate-spin" />
       {{ lazyStrings.opfsEncryption__encryption_transition_must_finish_before_changing_this_setting() }}
@@ -424,22 +441,13 @@ defineExpose({
         :disabled="loading"
         tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 px-3.5 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 disabled:opacity-50"
         data-testid="opfs-encryption-reencrypt"
-        @click="reencrypt"
+        @click="reencryptOpen = true"
       >
         <RefreshCwIcon tw-class="w-3.5 h-3.5" />
         {{ lazyStrings.opfsEncryption__re_encrypt() }}
       </button>
-      <button
-        type="button"
-        tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 px-3.5 py-2 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"
-        @click="recoverySourceOpen = !recoverySourceOpen"
-      >
-        <KeyRoundIcon tw-class="w-3.5 h-3.5" />
-        {{ lazyStrings.opfsEncryption__recovery_source() }}
-      </button>
     </div>
 
-    <OpfsEncryptionRecoverySourceViewer v-if="recoverySourceOpen" />
   </div>
 
   <Teleport to="body">
@@ -495,6 +503,45 @@ defineExpose({
           <button type="button" data-testid="opfs-encryption-enable" :disabled="!setupCanSubmit" tw-class="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white flex items-center gap-2" @click="enableEncryption">
             <Loader2Icon v-if="loading" tw-class="w-4 h-4 animate-spin" />
             {{ lazyStrings.opfsEncryption__encrypt_storage() }}
+          </button>
+        </footer>
+      </section>
+    </div>
+
+  </Teleport>
+
+  <Teleport to="body">
+    <div v-if="reencryptOpen" data-testid="opfs-encryption-reencrypt-dialog" tw-class="fixed inset-0 z-[112] overflow-y-auto bg-gray-950/60 backdrop-blur-sm flex items-center justify-center p-4" @click.self="resetReencrypt">
+      <section tw-class="my-auto w-full max-w-lg max-h-[calc(100dvh-2rem)] rounded-[2rem] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden flex flex-col">
+        <header tw-class="shrink-0 px-7 py-6 border-b border-gray-100 dark:border-gray-800">
+          <h2 tw-class="text-lg font-extrabold text-gray-900 dark:text-white">{{ lazyStrings.opfsEncryption__re_encrypt_opfs_storage() }}</h2>
+        </header>
+        <div tw-class="min-h-0 overflow-y-auto px-7 py-6 space-y-4">
+          <div tw-class="rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 p-4 text-xs leading-relaxed text-amber-900 dark:text-amber-300 flex gap-2.5">
+            <AlertTriangleIcon tw-class="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{{ lazyStrings.opfsEncryption__re_encrypt_storage_explanation() }}</span>
+          </div>
+          <label tw-class="block space-y-1.5">
+            <span tw-class="text-xs font-bold text-gray-600 dark:text-gray-300">{{ lazyStrings.opfsEncryption__passphrase() }}</span>
+            <div tw-class="relative">
+              <input v-model="reencryptPassphrase" data-testid="opfs-encryption-reencrypt-passphrase" :type="showReencryptPassphrase ? 'text' : 'password'" autocomplete="current-password" tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950 pl-4 pr-12 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500" @paste="rejectLineBreakPaste({ event: $event })" />
+              <button type="button" data-testid="opfs-encryption-reencrypt-passphrase-visibility" tw-class="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" :title="showReencryptPassphrase ? lazyStrings.opfsEncryption__hide_passphrase() : lazyStrings.opfsEncryption__show_passphrase()" @click="showReencryptPassphrase = !showReencryptPassphrase">
+                <EyeOffIcon v-if="showReencryptPassphrase" tw-class="w-4 h-4" />
+                <EyeIcon v-else tw-class="w-4 h-4" />
+              </button>
+            </div>
+          </label>
+          <p v-if="reencryptPassphraseValidation.type === 'boundary_whitespace'" tw-class="text-xs text-amber-700 dark:text-amber-400">
+            {{ lazyStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase() }}
+          </p>
+          <p v-if="reencryptPassphraseValidation.type === 'line_break'" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.opfsEncryption__passphrases_cannot_contain_line_breaks() }}</p>
+          <p v-if="errorMessage" tw-class="text-xs text-red-600 dark:text-red-400 break-words">{{ errorMessage }}</p>
+        </div>
+        <footer tw-class="shrink-0 px-7 py-5 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3">
+          <button type="button" tw-class="px-4 py-2.5 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" @click="resetReencrypt">{{ lazyStrings.opfsEncryption__cancel() }}</button>
+          <button type="button" data-testid="opfs-encryption-reencrypt-submit" :disabled="!reencryptCanSubmit" tw-class="px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white flex items-center gap-2" @click="reencrypt">
+            <Loader2Icon v-if="loading" tw-class="w-4 h-4 animate-spin" />
+            {{ lazyStrings.opfsEncryption__re_encrypt_storage() }}
           </button>
         </footer>
       </section>
