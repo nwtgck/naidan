@@ -84,6 +84,7 @@ function port({
     runDisableTransition: vi.fn(async () => openedSession),
     runEnableTransition: vi.fn(async () => undefined),
     runReencryptTransition: vi.fn(async () => undefined),
+    runStableHizoFSRetiredContainerCleanup: vi.fn(async () => undefined),
     runStableHizoFSRetiredPlainCleanup: vi.fn(async () => ({
       remainingEntryCount: 0,
       removedEntryCount: 0,
@@ -158,6 +159,43 @@ describe('development-unverified OPFS Persistence runtime', () => {
       storageRoot,
     });
     expect(runtimePort.inspect).not.toHaveBeenCalled();
+  });
+
+  it('removes retired HizoFS containers before cleaning the retired plain namespace', async () => {
+    const runtimePort = port();
+    const subject = runtime({ runtimePort });
+    const session = await subject.unlockWithPassphrase({
+      passphrase: 'correct horse battery staple',
+      storageRoot,
+    });
+
+    await expect(subject.runUnlockedMaintenance({
+      nativeNamespaceRoot,
+      session,
+      storageRoot,
+    })).resolves.toEqual({
+      remainingEntryCount: 0,
+      removedEntryCount: 0,
+      state: 'completed',
+    });
+
+    expect(runtimePort.runStableHizoFSRetiredContainerCleanup).toHaveBeenCalledWith({
+      lockManager,
+      nativeNamespaceRoot,
+      session,
+      storageRoot,
+    });
+    expect(runtimePort.runStableHizoFSRetiredPlainCleanup).toHaveBeenCalledWith({
+      lockManager,
+      nativeNamespaceRoot,
+      session,
+      storageRoot,
+    });
+    const retiredContainerCleanup = vi.mocked(runtimePort.runStableHizoFSRetiredContainerCleanup);
+    const retiredPlainCleanup = vi.mocked(runtimePort.runStableHizoFSRetiredPlainCleanup);
+    expect(
+      retiredContainerCleanup.mock.invocationCallOrder[0],
+    ).toBeLessThan(retiredPlainCleanup.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('maps only credential rejection to the explicit development error', async () => {

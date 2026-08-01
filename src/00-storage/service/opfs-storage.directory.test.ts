@@ -88,6 +88,15 @@ describe('OPFS Persistence Control runtime composition', () => {
     });
   });
 
+  it('does not request the Persistence Control runtime for a plain namespace', async () => {
+    const createRuntime = vi.fn<() => Promise<OpfsPersistenceRuntime>>();
+    installOpfsPersistenceRuntimeFactory({ factory: createRuntime });
+    const provider = new OPFSStorageProvider();
+
+    await expect(provider.inspectEncryption()).resolves.toEqual({ type: 'plain' });
+    expect(createRuntime).not.toHaveBeenCalled();
+  });
+
   it('preserves plain backend initialization failure when session cleanup succeeds', async () => {
     const initializationFailure = new Error('plain backend initialization failed');
     const close = vi.fn(async () => undefined);

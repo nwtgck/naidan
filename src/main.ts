@@ -23,31 +23,13 @@ import {
   registerOpfsStorageTransitionPreparation,
 } from './00-storage/service/opfs/opfs-storage-transition-preparation';
 import {
-  installNativeOpfsPersistenceControlInspectionSource,
-} from './features/debug-opfs-encryption/logic/native-opfs-persistence-control-inspection-source';
-import {
-  createActiveHizoFSPhysicalInspectionSource,
-} from './features/debug-hizofs/logic/active-physical-inspection-source';
-import {
-  installHizoFSPhysicalInspectionSource,
-} from './features/debug-hizofs/composables/useDebugHizoFSWorkbench';
-import {
-  openActiveAuthenticatedHizoFSContainerLocationLease,
-} from './00-storage/service/naidan-opfs/active-hizofs-container-location';
-import {
-  installDevelopmentUnverifiedOpfsPersistenceRuntime,
-} from './00-storage/service/naidan-opfs/development-persistence-runtime';
+  installLazyDevelopmentUnverifiedOpfsPersistenceRuntime,
+} from './00-storage/service/naidan-opfs/development-persistence-runtime-loader';
 
-installDevelopmentUnverifiedOpfsPersistenceRuntime();
+installLazyDevelopmentUnverifiedOpfsPersistenceRuntime();
 
 const opfsTransitionReloadGuard = createOpfsTransitionReloadGuard({ document, window });
 
-installNativeOpfsPersistenceControlInspectionSource();
-installHizoFSPhysicalInspectionSource({
-  source: createActiveHizoFSPhysicalInspectionSource({
-    openLease: openActiveAuthenticatedHizoFSContainerLocationLease,
-  }),
-});
 
 registerOpfsStorageTransitionPreparation({
   localTransitionStarting: () => {

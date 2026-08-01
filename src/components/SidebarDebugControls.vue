@@ -73,16 +73,16 @@ async function toggleOpfsMenu(): Promise<void> {
   }
 }
 
-function handleOpenOpfsEncryptionInspector(): void {
+async function handleOpenOpfsEncryptionInspector(): Promise<void> {
   if (!encryptedInspectorAvailable.value) {
     return;
   }
-  openPersistenceControlInspector();
+  await openPersistenceControlInspector();
   showOpfsMenu.value = false;
 }
 
-function handleOpenHizoFSWorkbench(): void {
-  openDebugHizoFSWorkbench();
+async function handleOpenHizoFSWorkbench(): Promise<void> {
+  await openDebugHizoFSWorkbench();
   showOpfsMenu.value = false;
 }
 

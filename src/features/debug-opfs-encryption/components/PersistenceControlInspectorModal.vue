@@ -73,9 +73,9 @@ function openRawOpfs(): void {
   openFileExplorer({ options: { kind: 'opfs-root' } });
 }
 
-function openHizoFS(): void {
+async function openHizoFS(): Promise<void> {
   closePersistenceControlInspector();
-  openDebugHizoFSWorkbench();
+  await openDebugHizoFSWorkbench();
 }
 
 watch(

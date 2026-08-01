@@ -4177,6 +4177,132 @@ export async function inspectNativeCredentialAwarePersistenceRuntime({
   });
 }
 
+type NativeStableHizoFSRetiredContainerCleanupRuntime = Readonly<{
+  createControlPhysical: typeof createOpfsPersistenceControlPhysicalPort;
+  removeRetiredContainer: typeof removeNaidanOpfsContainerDirectory;
+}>;
+
+const browserNativeStableHizoFSRetiredContainerCleanupRuntime: NativeStableHizoFSRetiredContainerCleanupRuntime = Object.freeze({
+  createControlPhysical: createOpfsPersistenceControlPhysicalPort,
+  removeRetiredContainer: removeNaidanOpfsContainerDirectory,
+});
+
+async function runNativeStableHizoFSRetiredContainerCleanupWith({
+  activeFileSystemId,
+  exclusiveGate,
+  nativeNamespaceRoot,
+  proofAuthority,
+  runtime,
+  storageRoot,
+}: {
+  activeFileSystemId: FileSystemId;
+  exclusiveGate: NaidanPersistenceControlExclusiveGate;
+  nativeNamespaceRoot: FileSystemDirectoryHandle;
+  proofAuthority: PersistenceControlProofAuthority;
+  runtime: NativeStableHizoFSRetiredContainerCleanupRuntime;
+  storageRoot: FileSystemDirectoryHandle;
+}): Promise<void> {
+  for (;;) {
+    let maintenanceProgressed = false;
+    await exclusiveGate.runExclusive({
+      operation: async () => {
+        const alreadyExclusiveGate = alreadyExclusivePersistenceControlGate();
+        const physical = runtime.createControlPhysical({ exclusiveGate: alreadyExclusiveGate, storageRoot });
+        const control = createPersistenceControlTransitionPort({
+          bootstrapAuthorization: undefined,
+          physical,
+          proofAuthority,
+          randomSource: undefined,
+        });
+        const selected = await openPersistenceControl({ physical, proofAuthority });
+        const current = {
+          mode: selected.control.mode,
+          retiredFileSystemIds: selected.control.retiredFileSystemIds,
+        };
+        switch (current.mode.type) {
+        case 'hizofs':
+          if (current.mode.activeFileSystemId !== activeFileSystemId) {
+            throw new TypeError('stable HizoFS retired-container cleanup authority belongs to another File System ID');
+          }
+          break;
+        case 'plain':
+        case 'transitioning': throw new TypeError('stable HizoFS retired-container cleanup requires stable HizoFS authority');
+        default: current.mode satisfies never;
+        }
+        const [fileSystemId, ...remainingRetiredFileSystemIds] = current.retiredFileSystemIds;
+        if (fileSystemId === undefined) {
+          switch (selected.redundancy) {
+          case 'converged': return;
+          case 'degraded':
+            await control.publishState({ state: current });
+            maintenanceProgressed = true;
+            return;
+          default: return selected.redundancy satisfies never;
+          }
+        }
+        if (fileSystemId === activeFileSystemId) {
+          throw new TypeError('stable HizoFS retired-container cleanup cannot remove the active File System ID');
+        }
+        await runtime.removeRetiredContainer({
+          exclusiveGate: alreadyExclusiveGate,
+          fileSystemId,
+          storageRoot: nativeNamespaceRoot,
+        });
+        await control.publishState({
+          state: {
+            mode: current.mode,
+            retiredFileSystemIds: remainingRetiredFileSystemIds,
+          },
+        });
+        maintenanceProgressed = true;
+      },
+    });
+    if (!maintenanceProgressed) return;
+  }
+}
+
+export async function runNativeStableHizoFSRetiredContainerCleanup({
+  lockManager,
+  nativeNamespaceRoot,
+  session,
+  storageRoot,
+}: {
+  lockManager: Pick<LockManager, 'request'>;
+  nativeNamespaceRoot: FileSystemDirectoryHandle;
+  session: OpfsPersistenceUnlockedSession;
+  storageRoot: FileSystemDirectoryHandle;
+}): Promise<void> {
+  await withAuthenticatedDevelopmentWritableSessionRootKeyProof({
+    operation: async ({ fileSystemId, rootKeyProof }) => {
+      if (fileSystemId !== session.fileSystemId) {
+        throw new TypeError('stable HizoFS retired-container cleanup session proof belongs to another File System ID');
+      }
+      const proofAuthority: PersistenceControlProofAuthority = {
+        resolveRootKey: async ({ fileSystemId: requestedFileSystemId }) => requestedFileSystemId === fileSystemId
+          ? { rootKey: rootKeyProof, state: 'resolved' }
+          : { state: 'unresolved' },
+        validateEndpointReadiness: async ({ control }) => {
+          switch (control.mode.type) {
+          case 'hizofs': return control.mode.activeFileSystemId === fileSystemId ? 'valid' : 'invalid';
+          case 'plain':
+          case 'transitioning': return 'invalid';
+          default: return control.mode satisfies never;
+          }
+        },
+      };
+      await runNativeStableHizoFSRetiredContainerCleanupWith({
+        activeFileSystemId: fileSystemId,
+        exclusiveGate: createBrowserNaidanPersistenceControlExclusiveGate({ lockManager }),
+        nativeNamespaceRoot,
+        proofAuthority,
+        runtime: browserNativeStableHizoFSRetiredContainerCleanupRuntime,
+        storageRoot,
+      });
+    },
+    session: session.fileSystemSession,
+  });
+}
+
 export async function runNativeStableHizoFSRetiredPlainCleanup({
   lockManager,
   nativeNamespaceRoot,
@@ -4474,6 +4600,7 @@ export const TEST_ONLY = {
   settleNativeHizoFSReencryptTargetAfterStartFailure,
   snapshotAndReleaseCredentialAuthority,
   runNativeHizoFSReencryptResumeTransitionWith,
+  runNativeStableHizoFSRetiredContainerCleanupWith,
   runNativeStablePlainRetiredCleanupWith,
   runWithCredentialAuthorityRelease,
   targetRetainedCredentialsForResume,

@@ -1,8 +1,23 @@
 import { readonly, ref, shallowReadonly, shallowRef } from 'vue';
 import type { HizoFSPhysicalInspectionSource } from '@/features/debug-hizofs/logic/active-physical-inspection-source';
 
+type ActiveLocationModule = Readonly<{
+  openActiveAuthenticatedHizoFSContainerLocationLease: () => Promise<{
+    readonly physicalPath: readonly string[];
+    assertCurrent(): void;
+    dispose(): Promise<void>;
+  }>;
+}>;
+
+type ActiveInspectionSourceModule = Readonly<{
+  createActiveHizoFSPhysicalInspectionSource: ({ openLease }: {
+    openLease: ActiveLocationModule['openActiveAuthenticatedHizoFSContainerLocationLease'];
+  }) => HizoFSPhysicalInspectionSource;
+}>;
+
 const isOpen = ref(false);
 const physicalInspectionSource = shallowRef<HizoFSPhysicalInspectionSource>();
+let defaultSourceLoad: Promise<void> | undefined;
 
 /**
  * Installs the active provider's read-only physical Inspector source.
@@ -20,8 +35,53 @@ export function installHizoFSPhysicalInspectionSource({ source }: {
   };
 }
 
+async function ensureDefaultHizoFSPhysicalInspectionSourceWith({
+  loadActiveLocation,
+  loadInspectionSource,
+}: {
+  loadActiveLocation: () => Promise<ActiveLocationModule>;
+  loadInspectionSource: () => Promise<ActiveInspectionSourceModule>;
+}): Promise<void> {
+  if (physicalInspectionSource.value !== undefined) return;
+  const inFlight = defaultSourceLoad;
+  if (inFlight !== undefined) {
+    await inFlight;
+    return;
+  }
+
+  const loading = (async () => {
+    const activeLocation = await loadActiveLocation();
+    const inspectionSource = await loadInspectionSource();
+    if (physicalInspectionSource.value === undefined) {
+      installHizoFSPhysicalInspectionSource({
+        source: inspectionSource.createActiveHizoFSPhysicalInspectionSource({
+          openLease: activeLocation.openActiveAuthenticatedHizoFSContainerLocationLease,
+        }),
+      });
+    }
+  })();
+  defaultSourceLoad = loading;
+  try {
+    await loading;
+  } finally {
+    if (defaultSourceLoad === loading) defaultSourceLoad = undefined;
+  }
+}
+
+async function ensureDefaultHizoFSPhysicalInspectionSource(): Promise<void> {
+  await ensureDefaultHizoFSPhysicalInspectionSourceWith({
+    loadActiveLocation: async () => await import(
+      '@/00-storage/service/naidan-opfs/active-hizofs-container-location'
+    ),
+    loadInspectionSource: async () => await import(
+      '@/features/debug-hizofs/logic/active-physical-inspection-source'
+    ),
+  });
+}
+
 export function useDebugHizoFSWorkbench() {
-  function openDebugHizoFSWorkbench(): void {
+  async function openDebugHizoFSWorkbench(): Promise<void> {
+    await ensureDefaultHizoFSPhysicalInspectionSource();
     isOpen.value = true;
   }
 
@@ -46,4 +106,10 @@ export function useDebugHizoFSWorkbench() {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  ensureDefaultHizoFSPhysicalInspectionSourceWith,
+  reset() {
+    defaultSourceLoad = undefined;
+    physicalInspectionSource.value = undefined;
+    isOpen.value = false;
+  },
 };

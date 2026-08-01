@@ -468,9 +468,9 @@ export class OPFSStorageProvider extends IStorageProvider {
         const nativeNamespaceRoot = await navigator.storage.getDirectory();
         void runtime.runUnlockedMaintenance({ nativeNamespaceRoot, session, storageRoot }).catch(error => {
           // WHY: Stable HizoFS is already authoritative and usable. Retired
-          // plain-source deletion is opportunistic maintenance and must never
-          // turn a successful unlock into an application startup failure.
-          console.error('[opfs-encryption] retired plain-source cleanup failed', error);
+          // source deletion is opportunistic maintenance and must never turn
+          // a successful unlock into an application startup failure.
+          console.error('[opfs-encryption] unlocked persistence maintenance failed', error);
         });
       } });
     } catch (error) {

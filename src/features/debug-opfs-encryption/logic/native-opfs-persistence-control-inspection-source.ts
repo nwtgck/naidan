@@ -14,9 +14,6 @@ import {
 import {
   NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
 } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
-import {
-  installPersistenceControlInspectionSource,
-} from '@/features/debug-opfs-encryption/composables/usePersistenceControlInspector';
 import type {
   PersistenceControlInspectionSource,
 } from '@/features/debug-opfs-encryption/logic/persistence-control-inspection-source';
@@ -90,13 +87,6 @@ export function createNativeOpfsPersistenceControlInspectionSource({
       });
     },
   };
-}
-
-/** Installs one lazy, read-only source for the lifetime of this application. */
-export function installNativeOpfsPersistenceControlInspectionSource(): () => void {
-  return installPersistenceControlInspectionSource({
-    source: createNativeOpfsPersistenceControlInspectionSource(),
-  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

@@ -24,6 +24,7 @@ import {
   runNativeHizoFSReencryptTransition,
   runNativeHizoFSResumeTransition,
   runNativeHizoFSReturnToPlainTransition,
+  runNativeStableHizoFSRetiredContainerCleanup,
   runNativeStableHizoFSRetiredPlainCleanup,
   runNativeStablePlainRetiredCleanup,
   type CredentialBoundApplicationSessionOpenResult,
@@ -115,6 +116,12 @@ type DevelopmentRuntimePort = Readonly<{
     session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
     storageRoot: FileSystemDirectoryHandle;
   }) => ReturnType<typeof runNativeStableHizoFSRetiredPlainCleanup>;
+  runStableHizoFSRetiredContainerCleanup: ({ lockManager, nativeNamespaceRoot, session, storageRoot }: {
+    lockManager: DevelopmentLockManager;
+    nativeNamespaceRoot: FileSystemDirectoryHandle;
+    session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
+    storageRoot: FileSystemDirectoryHandle;
+  }) => ReturnType<typeof runNativeStableHizoFSRetiredContainerCleanup>;
   runResumeTransition: ({ lockManager, nativeNamespaceRoot, onProgress, retainedCredentials, runtimePolicy, signal, storageRoot }: {
     lockManager: DevelopmentLockManager;
     nativeNamespaceRoot: FileSystemDirectoryHandle;
@@ -137,6 +144,8 @@ type DevelopmentRuntimePort = Readonly<{
     runtimePolicy: DevelopmentRuntimePolicy;
   }) => Promise<CredentialBoundApplicationSessionOpenResult>;
 }>;
+
+let didWarnAboutDevelopmentProfile = false;
 
 const DEFAULT_DEVELOPMENT_RUNTIME_POLICY: DevelopmentRuntimePolicy = Object.freeze({
   maxDirectoryIteratorEntries: 4_096,
@@ -197,6 +206,7 @@ const browserPort: DevelopmentRuntimePort = Object.freeze({
     })
   ),
   runStableHizoFSRetiredPlainCleanup: runNativeStableHizoFSRetiredPlainCleanup,
+  runStableHizoFSRetiredContainerCleanup: runNativeStableHizoFSRetiredContainerCleanup,
   runStablePlainRetiredCleanup: runNativeStablePlainRetiredCleanup,
   runResumeTransition: async ({ lockManager, nativeNamespaceRoot, onProgress, retainedCredentials, runtimePolicy, signal, storageRoot }) => (
     await runNativeHizoFSResumeTransition({
@@ -342,14 +352,20 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
     runStartupMaintenance: async ({ nativeNamespaceRoot, storageRoot }) => {
       await port.runStablePlainRetiredCleanup({ lockManager, nativeNamespaceRoot, storageRoot });
     },
-    runUnlockedMaintenance: async ({ nativeNamespaceRoot, session, storageRoot }) => (
-      await port.runStableHizoFSRetiredPlainCleanup({
+    runUnlockedMaintenance: async ({ nativeNamespaceRoot, session, storageRoot }) => {
+      await port.runStableHizoFSRetiredContainerCleanup({
         lockManager,
         nativeNamespaceRoot,
         session,
         storageRoot,
-      })
-    ),
+      });
+      return await port.runStableHizoFSRetiredPlainCleanup({
+        lockManager,
+        nativeNamespaceRoot,
+        session,
+        storageRoot,
+      });
+    },
     unlockWithPassphrase: async ({ passphrase, storageRoot }) => {
       reportHizoFSTrialDebug({
         detail: { event: 'unlock', fileSystemId: undefined, stage: 'started' },
@@ -540,20 +556,29 @@ export function createDevelopmentOpfsPersistenceRuntime({ lockManager, runtimePo
   return createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port: browserPort, runtimePolicy });
 }
 
+export function createDevelopmentUnverifiedOpfsPersistenceRuntime({ lockManager }: {
+  lockManager: DevelopmentLockManager;
+}): OpfsPersistenceRuntime {
+  if (!didWarnAboutDevelopmentProfile) {
+    didWarnAboutDevelopmentProfile = true;
+    console.warn('[hizofs-development]', {
+      releaseDurabilityQualification: 'not-demonstrated',
+      writableProfile: 'development-unverified',
+    });
+  }
+  return createDevelopmentOpfsPersistenceRuntime({
+    lockManager,
+    runtimePolicy: DEFAULT_DEVELOPMENT_RUNTIME_POLICY,
+  });
+}
+
 export function installDevelopmentUnverifiedOpfsPersistenceRuntime({
   lockManager = navigator.locks,
 }: {
   lockManager?: DevelopmentLockManager;
 } = {}): () => void {
-  console.warn('[hizofs-development]', {
-    releaseDurabilityQualification: 'not-demonstrated',
-    writableProfile: 'development-unverified',
-  });
   return installOpfsPersistenceRuntimeFactory({
-    factory: async () => createDevelopmentOpfsPersistenceRuntime({
-      lockManager,
-      runtimePolicy: DEFAULT_DEVELOPMENT_RUNTIME_POLICY,
-    }),
+    factory: async () => createDevelopmentUnverifiedOpfsPersistenceRuntime({ lockManager }),
   });
 }
 

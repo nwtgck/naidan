@@ -11,6 +11,12 @@
   "include": [
     "src/env.d.ts",
     "src/utils/virtual-naidan-tailwind.d.ts",
+    "src/components/SidebarDebugControls.vue",
+    "src/features/debug-hizofs/composables/useDebugHizoFSWorkbench.ts",
+    "src/features/debug-hizofs/composables/useDebugHizoFSWorkbench.test.ts",
+    "src/features/debug-opfs-encryption/composables/usePersistenceControlInspector.ts",
+    "src/features/debug-opfs-encryption/composables/usePersistenceControlInspector.test.ts",
+    "src/features/debug-opfs-encryption/components/PersistenceControlInspectorModal.vue",
     "src/00-storage/service/hizofs/**/*.ts",
     "src/00-storage/service/naidan-opfs/**/*.ts",
     "src/00-storage/service/naidan-persistence-control/**/*.ts",

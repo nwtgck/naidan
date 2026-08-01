@@ -12,7 +12,11 @@ import {
   createPlainControlProtection,
   type PersistenceControlRootKeyDerivationCapability,
 } from '@/00-storage/service/naidan-persistence-control/crypto';
-import type { PersistenceControlPhysicalPort, PersistenceControlReadablePhysicalPort } from '@/00-storage/service/naidan-persistence-control/store';
+import type {
+  PersistenceControlPhysicalPort,
+  PersistenceControlProofAuthority,
+  PersistenceControlReadablePhysicalPort,
+} from '@/00-storage/service/naidan-persistence-control/store';
 import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import {
   inspectCredentialAwarePersistenceRuntime,
@@ -100,10 +104,11 @@ function rootKey({ fill }: { fill: number }): PersistenceControlRootKeyDerivatio
   };
 }
 
-async function authenticatedControl({ copy, key, mode, sequence }: {
+async function authenticatedControlWithRetired({ copy, key, mode, retiredFileSystemIds, sequence }: {
   copy: PersistenceControlCopy;
   key: PersistenceControlRootKeyDerivationCapability;
   mode: NaidanPersistenceModeV1;
+  retiredFileSystemIds: readonly FileSystemId[];
   sequence: number;
 }): Promise<NaidanPersistenceControlV1> {
   const authenticationFileSystemId = persistenceControlAuthenticationFileSystemId({ mode });
@@ -115,7 +120,7 @@ async function authenticatedControl({ copy, key, mode, sequence }: {
     format: 'naidan-persistence-control',
     formatVersion: 1,
     mode,
-    retiredFileSystemIds: [],
+    retiredFileSystemIds,
     sequence,
   } as const;
   return {
@@ -127,6 +132,21 @@ async function authenticatedControl({ copy, key, mode, sequence }: {
       rootKey: key,
     }),
   };
+}
+
+async function authenticatedControl({ copy, key, mode, sequence }: {
+  copy: PersistenceControlCopy;
+  key: PersistenceControlRootKeyDerivationCapability;
+  mode: NaidanPersistenceModeV1;
+  sequence: number;
+}): Promise<NaidanPersistenceControlV1> {
+  return await authenticatedControlWithRetired({
+    copy,
+    key,
+    mode,
+    retiredFileSystemIds: [],
+    sequence,
+  });
 }
 
 async function authenticatedProtectedControl({ copy, fileSystemId, key, sequence }: {
@@ -2200,6 +2220,60 @@ describe('registerCredentialBoundApplicationSession', () => {
     expect(removed).toEqual([firstRetired, secondRetired]);
     expect(physical.controls[0]?.retiredFileSystemIds).toEqual([]);
     expect(physical.controls[1]?.retiredFileSystemIds).toEqual([]);
+  });
+
+  it('removes stable HizoFS retired containers one at a time under the active authority proof', async () => {
+    const active = testFileSystemId({ value: '0123456789_ABCDEFGHIJ' });
+    const firstRetired = testFileSystemId({ value: 'ABCDEFGHIJ_0123456789' });
+    const secondRetired = testFileSystemId({ value: 'KLMNOPQRST_UVWXYZ0123' });
+    const key = rootKey({ fill: 25 });
+    const mode = { activeFileSystemId: active, type: 'hizofs' } as const;
+    const mutablePhysical = new MutablePhysical({ controls: [
+      await authenticatedControlWithRetired({
+        copy: 0,
+        key,
+        mode,
+        retiredFileSystemIds: [firstRetired, secondRetired],
+        sequence: 6,
+      }),
+      await authenticatedControlWithRetired({
+        copy: 1,
+        key,
+        mode,
+        retiredFileSystemIds: [firstRetired, secondRetired],
+        sequence: 5,
+      }),
+    ] });
+    const removed: FileSystemId[] = [];
+    const proofAuthority: PersistenceControlProofAuthority = {
+      resolveRootKey: async ({ fileSystemId }) => fileSystemId === active
+        ? { rootKey: key, state: 'resolved' }
+        : { state: 'unresolved' },
+      validateEndpointReadiness: async ({ control }) => control.mode.type === 'hizofs'
+        && control.mode.activeFileSystemId === active
+        ? 'valid'
+        : 'invalid',
+    };
+
+    await PRODUCTION_RUNTIME_TEST_ONLY.runNativeStableHizoFSRetiredContainerCleanupWith({
+      activeFileSystemId: active,
+      exclusiveGate: {
+        runExclusive: async <T>({ operation }: { operation: () => Promise<T> }): Promise<T> => await operation(),
+      },
+      nativeNamespaceRoot: {} as FileSystemDirectoryHandle,
+      proofAuthority,
+      runtime: {
+        createControlPhysical: () => mutablePhysical,
+        removeRetiredContainer: async ({ fileSystemId }) => {
+          removed.push(fileSystemId);
+        },
+      },
+      storageRoot: {} as FileSystemDirectoryHandle,
+    });
+
+    expect(removed).toEqual([firstRetired, secondRetired]);
+    expect(mutablePhysical.controls[0]?.retiredFileSystemIds).toEqual([]);
+    expect(mutablePhysical.controls[1]?.retiredFileSystemIds).toEqual([]);
   });
 
   it('repairs degraded stable plain control after cleanup publication response loss', async () => {
