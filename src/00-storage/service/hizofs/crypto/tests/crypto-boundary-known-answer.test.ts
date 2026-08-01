@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-  createUInt64,
+  createUnlockSequence,
   decodeFileExtentPage,
   decodeFileSystemCommitPayload,
   decodeInodeBranchPage,
@@ -107,7 +107,7 @@ describe('HizoFS purpose-specific crypto boundary and known-answer vectors', () 
     expect(Buffer.from(encodeUnlockAuthenticatorKeyContext({
       copy: Number(vector.inputs.unlockCopy) as 0,
       fileSystemId,
-      unlockSequence: createUInt64({ value: BigInt(Number(vector.inputs.unlockSequence)) }),
+      unlockSequence: createUnlockSequence({ value: BigInt(Number(vector.inputs.unlockSequence)) }),
     })).toString('hex')).toBe(vector.expected.contextsHex.unlockAuthenticatorKey);
   });
 
@@ -156,7 +156,7 @@ describe('HizoFS purpose-specific crypto boundary and known-answer vectors', () 
       fileSystemId,
       nonce: unlockAuthenticatorNonce({ bytes: hex({ value: String(vector.inputs.unlockAuthenticatorNonceHex) }) }),
       rootKey: unwrapped,
-      unlockSequence: createUInt64({ value: 1n }),
+      unlockSequence: createUnlockSequence({ value: 1n }),
     });
     expect(Buffer.from(tag).toString('hex')).toBe(vector.expected.unlockAuthenticatorTagHex);
     await expect(verifyUnlockAuthenticator({
@@ -166,7 +166,7 @@ describe('HizoFS purpose-specific crypto boundary and known-answer vectors', () 
       nonce: unlockAuthenticatorNonce({ bytes: hex({ value: String(vector.inputs.unlockAuthenticatorNonceHex) }) }),
       rootKey: unwrapped,
       tag,
-      unlockSequence: createUInt64({ value: 1n }),
+      unlockSequence: createUnlockSequence({ value: 1n }),
     })).resolves.toBeUndefined();
   });
 

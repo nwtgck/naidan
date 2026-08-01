@@ -19,7 +19,7 @@ function rootKey({ fill }: { fill: number }): PersistenceControlRootKeyDerivatio
     async deriveAesGcmKey({ info }) {
       const material = await crypto.subtle.importKey('raw', new Uint8Array(32).fill(fill), 'HKDF', false, ['deriveKey']);
       return await crypto.subtle.deriveKey(
-        { hash: 'SHA-256', info, name: 'HKDF', salt: new Uint8Array(32) },
+        { hash: 'SHA-256', info: Uint8Array.from(info), name: 'HKDF', salt: new Uint8Array(32) },
         material,
         { length: 256, name: 'AES-GCM' },
         false,

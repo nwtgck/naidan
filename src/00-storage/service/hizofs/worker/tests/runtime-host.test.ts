@@ -7,6 +7,7 @@ import {
 } from "@/00-storage/service/hizofs/worker/runtime-host";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import { InMemoryCrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port";
+import { createTestingHomeRecordReference } from "@/00-storage/service/hizofs/runtime/testing/home-record-reference-fixture";
 
 function host() {
   return new HizoFSWorkerRuntimeHost({
@@ -192,6 +193,75 @@ describe("HizoFS worker runtime host", () => {
     });
     await session.root.createSymlink({ name: "link", target: "target" });
     expect(mutations).toEqual(["symlink"]);
+    await session.close();
+    expect(releaseResources).toHaveBeenCalledOnce();
+  });
+
+  it("pins one immutable generation for a read snapshot and releases it on snapshot close", async () => {
+    const releaseResources = vi.fn(async () => undefined);
+    const mutationPort = {} as HizoFSApplicationMutationPort;
+    const value = host();
+    const session = await value.openApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      createApplicationSessionResources: () => ({
+        createReadSnapshotResources: () => ({
+          commitReference: createTestingHomeRecordReference(),
+          mutationPort,
+          namespace: {
+            list: async () => [],
+            listBounded: async () => ({ entries: [], truncated: false }),
+            readFile: async () => new Uint8Array([7]),
+            readlink: async () => "snapshot-target",
+            stat: async () => ({
+              createdAt: null,
+              inodeNumber: 1n as never,
+              inodeRevision: 1n as never,
+              kind: "directory" as const,
+              modifiedAt: null,
+            }),
+          },
+        }),
+        mutationPort,
+        namespace: {
+          list: async () => [],
+          listBounded: async () => ({ entries: [], truncated: false }),
+          readFile: async () => new Uint8Array([9]),
+          readlink: async () => "live-target",
+          stat: async () => ({
+            createdAt: null,
+            inodeNumber: 1n as never,
+            inodeRevision: 1n as never,
+            kind: "directory" as const,
+            modifiedAt: null,
+          }),
+        },
+        releaseResources,
+      }),
+      recheckAuthority: async () => undefined,
+      rootName: "application-root",
+      verifyCapturedAuthority: async () => "verified",
+    });
+
+    const snapshot = await session.createReadSnapshot?.();
+    expect(snapshot).toBeDefined();
+    if (snapshot === undefined) throw new Error("read snapshot was not created");
+    const whilePinned = await value.beginMaintenanceRootCapture();
+    expect(whilePinned.readerPinnedRoots).toHaveLength(1);
+    whilePinned.release();
+    await whilePinned.released;
+    await expect(snapshot.root.stat()).resolves.toEqual({
+      createdAt: undefined,
+      modifiedAt: undefined,
+      size: 0,
+    });
+    await expect(snapshot.root.removeEntry({ name: "blocked", recursive: false }))
+      .rejects.toThrow("HizoFS read snapshot cannot acquire a writer");
+
+    await snapshot.close();
+    const afterSnapshotClose = await value.beginMaintenanceRootCapture();
+    expect(afterSnapshotClose.readerPinnedRoots).toEqual([]);
+    afterSnapshotClose.release();
+    await afterSnapshotClose.released;
     await session.close();
     expect(releaseResources).toHaveBeenCalledOnce();
   });

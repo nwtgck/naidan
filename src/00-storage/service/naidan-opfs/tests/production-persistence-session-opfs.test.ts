@@ -162,6 +162,7 @@ const lockManager = {
 const runtimePolicy: NativeOpenOptions['runtimePolicy'] = {
   maxDirectoryIteratorEntries: 32,
   maxHeldLockNames: 64,
+  maxMaintenanceRootRegistrations: 32,
   maxReaderPins: 16,
   maxSegmentReferences: 16,
 };

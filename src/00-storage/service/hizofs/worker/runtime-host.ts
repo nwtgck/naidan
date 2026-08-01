@@ -3,7 +3,10 @@ import {
   createHizoFSStorageFileSystemSession,
   createRuntimeBoundHizoFSApplicationSessionPort,
   type HizoFSApplicationMutationPort,
+  type HizoFSApplicationRuntimeSession,
+  type HizoFSApplicationRuntimeWriter,
   type HizoFSApplicationSessionNamespace,
+  type HizoFSApplicationSessionPort,
   type HizoFSReadApi,
   type HizoFSReadApiNamespace,
   type HizoFSWorkerMountGrantIssuer,
@@ -56,6 +59,103 @@ async function closeRuntimeSessionAfterFailure({ cause, message, session }: {
   throw cause;
 }
 
+
+class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSession {
+  #closePromise: Promise<void> | undefined;
+  #idleWaiters = new Set<() => void>();
+  #inFlightOperations = 0;
+  #parent: ContainerRuntimeSession;
+  #pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
+  #state: "closed" | "closing" | "open" = "open";
+
+  constructor({ parent, pin }: {
+    parent: ContainerRuntimeSession;
+    pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
+  }) {
+    this.#parent = parent;
+    this.#pin = pin;
+  }
+
+  async acquireWriter(): Promise<HizoFSApplicationRuntimeWriter> {
+    throw new Error("HizoFS read snapshot cannot acquire a writer");
+  }
+
+  async close(): Promise<void> {
+    this.#closePromise ??= this.#close();
+    await this.#closePromise;
+  }
+
+  async runReadOperation<Value>({ operation }: {
+    operation: () => Promise<Value>;
+  }): Promise<Value> {
+    switch (this.#state) {
+    case "open": break;
+    case "closing":
+    case "closed": throw new Error("HizoFS read snapshot is closing or closed");
+    default: this.#state satisfies never;
+    }
+    this.#inFlightOperations += 1;
+    try {
+      return await this.#parent.runReadOperation({ operation });
+    } finally {
+      this.#inFlightOperations -= 1;
+      if (this.#inFlightOperations === 0) {
+        for (const resolve of this.#idleWaiters) resolve();
+        this.#idleWaiters.clear();
+      }
+    }
+  }
+
+  async #close(): Promise<void> {
+    switch (this.#state) {
+    case "closed": return;
+    case "closing": return;
+    case "open": break;
+    default: this.#state satisfies never;
+    }
+    this.#state = "closing";
+    if (this.#inFlightOperations > 0) {
+      await new Promise<void>(resolve => this.#idleWaiters.add(resolve));
+    }
+    this.#pin.release();
+    await this.#pin.released;
+    this.#state = "closed";
+  }
+}
+
+async function createPinnedReadSnapshotPort({
+  createResources,
+  parent,
+}: {
+  createResources: () => Readonly<{
+    commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
+    mutationPort: HizoFSApplicationMutationPort;
+    namespace: HizoFSApplicationSessionNamespace;
+  }>;
+  parent: ContainerRuntimeSession;
+}): Promise<HizoFSApplicationSessionPort> {
+  const resources = createResources();
+  const pin = await parent.acquireReaderPin({ commitReference: resources.commitReference });
+  try {
+    return createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: resources.mutationPort,
+      namespace: resources.namespace,
+      runtimeSession: new PinnedReadSnapshotRuntimeSession({ parent, pin }),
+    } });
+  } catch (cause: unknown) {
+    try {
+      pin.release();
+      await pin.released;
+    } catch (cleanupCause: unknown) {
+      throw new AggregateError(
+        [cause, cleanupCause],
+        "HizoFS read snapshot construction and reader-pin cleanup both failed",
+      );
+    }
+    throw cause;
+  }
+}
+
 export class HizoFSWorkerRuntimeHost {
   #runtime: ContainerRuntime;
 
@@ -106,6 +206,11 @@ export class HizoFSWorkerRuntimeHost {
       captured: Captured;
       verified: Verified;
     }) => Readonly<{
+      createReadSnapshotResources?: () => Readonly<{
+        commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
+        mutationPort: HizoFSApplicationMutationPort;
+        namespace: HizoFSApplicationSessionNamespace;
+      }>;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
       releaseResources: () => Promise<void>;
@@ -117,6 +222,11 @@ export class HizoFSWorkerRuntimeHost {
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
   }): Promise<StorageFileSystemSession> {
     let applicationResources: Readonly<{
+      createReadSnapshotResources: (() => Readonly<{
+        commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
+        mutationPort: HizoFSApplicationMutationPort;
+        namespace: HizoFSApplicationSessionNamespace;
+      }>) | undefined;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
       workerMountGrantIssuer: HizoFSWorkerMountGrantIssuer | undefined;
@@ -126,6 +236,7 @@ export class HizoFSWorkerRuntimeHost {
       createSessionResources: ({ captured, verified }) => {
         const resources = createApplicationSessionResources({ captured, verified });
         const {
+          createReadSnapshotResources,
           mutationPort,
           namespace,
           releaseResources,
@@ -133,7 +244,12 @@ export class HizoFSWorkerRuntimeHost {
           ...unhandledResources
         } = resources;
         unhandledResources satisfies Record<PropertyKey, never>;
-        applicationResources = { mutationPort, namespace, workerMountGrantIssuer };
+        applicationResources = {
+          createReadSnapshotResources,
+          mutationPort,
+          namespace,
+          workerMountGrantIssuer,
+        };
         return { releaseResources };
       },
       recheckAuthority,
@@ -146,9 +262,16 @@ export class HizoFSWorkerRuntimeHost {
         session,
       });
     }
+    const createReadSnapshotResources = applicationResources.createReadSnapshotResources;
     try {
       return createHizoFSStorageFileSystemSession({
         port: createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+          ...(createReadSnapshotResources === undefined ? {} : {
+            createReadSnapshot: async () => await createPinnedReadSnapshotPort({
+              createResources: createReadSnapshotResources,
+              parent: session,
+            }),
+          }),
           mutationPort: applicationResources.mutationPort,
           namespace: applicationResources.namespace,
           runtimeSession: session,

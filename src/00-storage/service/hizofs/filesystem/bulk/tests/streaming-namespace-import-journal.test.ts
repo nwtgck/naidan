@@ -12,7 +12,6 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import {
   StreamingNamespaceImportJournal,
-  StreamingNamespaceImportJournalError,
   type StreamingNamespaceImportJournalBinding,
   type StreamingNamespaceImportJournalPort,
   type StreamingNamespaceImportJournalRecord,
@@ -159,7 +158,7 @@ describe("StreamingNamespaceImportJournal", () => {
     await expect(StreamingNamespaceImportJournal.open({
       binding: { ...binding(), targetAuthorityIdentity: "other-authority" },
       port,
-    })).rejects.toMatchObject<Partial<StreamingNamespaceImportJournalError>>({ code: "binding_conflict" });
+    })).rejects.toMatchObject({ code: "binding_conflict" });
   });
 
   it("prevents stale owners from overwriting or clearing a newer checkpoint", async () => {
@@ -191,7 +190,7 @@ describe("StreamingNamespaceImportJournal", () => {
       schemaVersion: 1,
     });
     await expect(StreamingNamespaceImportJournal.open({ binding: binding(), port }))
-      .rejects.toMatchObject<Partial<StreamingNamespaceImportJournalError>>({ code: "invalid_record" });
+      .rejects.toMatchObject({ code: "invalid_record" });
   });
 
   it("rejects empty binding identities before reading storage", async () => {
@@ -199,7 +198,7 @@ describe("StreamingNamespaceImportJournal", () => {
     await expect(StreamingNamespaceImportJournal.open({
       binding: { ...binding(), operationIdentity: "" },
       port,
-    })).rejects.toMatchObject<Partial<StreamingNamespaceImportJournalError>>({ code: "invalid_binding" });
+    })).rejects.toMatchObject({ code: "invalid_binding" });
     expect(port.records.size).toBe(0);
   });
 });

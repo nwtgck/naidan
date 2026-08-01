@@ -103,6 +103,7 @@ import {
   NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
 } from './native-plain-disable-transition-driver';
 import { NativePlainTransitionProgressBridge } from './native-plain-transition-progress-bridge';
+import { projectNativePlainTransitionSource } from './native-plain-transition-namespace';
 import {
   createNativePlainEnableTransitionDriver,
   NATIVE_PLAIN_ENABLE_AUTHORITY_IDENTITY,
@@ -116,6 +117,7 @@ import {
   reportHizoFSTrialDebug,
   reportHizoFSTrialFailure,
   reportRetiredPlainCleanupFailure,
+  type NativeDisableTrialStage,
   type NativeEnableTrialStage,
 } from './trial-debug';
 import type { OpfsEncryptionTransitionProgressListener } from './transition-progress';
@@ -560,7 +562,9 @@ function createNativeHizoFSSourceTransitionDriver({ authorityIdentity, binding, 
         return {
           authorityIdentity,
           close: async () => await snapshot.close(),
-          source: createStorageFileSystemTransitionSource({ session: snapshot }),
+          source: projectNativePlainTransitionSource({
+            source: createStorageFileSystemTransitionSource({ session: snapshot }),
+          }),
         };
       },
       openTargetEndpoint: async ({ binding: actual }) => {
@@ -2209,6 +2213,11 @@ export async function runNativeHizoFSDisableTransition({
   };
   const sourceAuthorityIdentity = nativeDisableSourceAuthorityIdentity({ fileSystemId });
   let closeSessionAfterFailure = false;
+  let trialStage: NativeDisableTrialStage = 'authenticate_source';
+  reportHizoFSTrialDebug({
+    detail: { event: 'native_disable', fileSystemId, operationId, stage: 'started' },
+    level: 'info',
+  });
 
   const transitionAttempt = await withAuthenticatedDevelopmentWritableSessionRootKeyProof({
     operation: async ({ fileSystemId: provenFileSystemId, rootKeyProof }) => {
@@ -2278,9 +2287,14 @@ export async function runNativeHizoFSDisableTransition({
         },
         readState: async () => await baseControl.readState(),
       };
+      trialStage = 'start_persistence_transition';
       try {
         await startPersistenceTransition({ control, operationId, source: binding.source, target: binding.target });
         closeSessionAfterFailure = true;
+        reportHizoFSTrialDebug({
+          detail: { event: 'native_disable', fileSystemId, operationId, stage: 'persistence_transition_started' },
+          level: 'info',
+        });
       } catch (cause: unknown) {
         try {
           const authenticated = await baseControl.readState();
@@ -2297,6 +2311,7 @@ export async function runNativeHizoFSDisableTransition({
         }
         throw cause;
       }
+      trialStage = 'prepare_transition_runtime';
       const companionBinding = {
         operationId,
         providerCheckpointCodec: 'naidan-opfs-plain-target-v1',
@@ -2321,6 +2336,12 @@ export async function runNativeHizoFSDisableTransition({
           verificationPageSize: NATIVE_ENABLE_TRANSITION_POLICY.verification.maximumDirectoryEntriesPerRead,
         }),
       });
+      reportHizoFSTrialDebug({
+        detail: { event: 'native_disable', fileSystemId, operationId, stage: 'runtime_prepared' },
+        level: 'info',
+      });
+      trialStage = 'advance_transition';
+      let lastReportedState: TransitionAdvanceResult['state'] | undefined;
       for (;;) {
         signal?.throwIfAborted();
         const result = await advancePersistenceTransition({
@@ -2331,6 +2352,13 @@ export async function runNativeHizoFSDisableTransition({
           signal,
         });
         reportNativeDisableProgress({ onProgress, result });
+        if (result.state !== lastReportedState) {
+          lastReportedState = result.state;
+          reportHizoFSTrialDebug({
+            detail: { event: 'native_disable', fileSystemId, operationId, stage: result.state },
+            level: 'info',
+          });
+        }
         switch (result.state) {
         case 'retired_cleanup': {
           const stable = await control.readState();
@@ -2347,6 +2375,10 @@ export async function runNativeHizoFSDisableTransition({
           default: plainReadiness satisfies never;
           }
           await bridge.progressPort.clear({ operationId });
+          reportHizoFSTrialDebug({
+            detail: { event: 'native_disable', fileSystemId, operationId, stage: 'stable' },
+            level: 'info',
+          });
           return;
         }
         case 'authority_switched':
@@ -2364,21 +2396,48 @@ export async function runNativeHizoFSDisableTransition({
   );
   switch (transitionAttempt.type) {
   case 'completed': break;
-  case 'failed':
-    if (!closeSessionAfterFailure) throw transitionAttempt.cause;
+  case 'failed': {
+    if (!closeSessionAfterFailure) {
+      reportHizoFSTrialFailure({
+        cause: transitionAttempt.cause,
+        detail: { event: 'native_disable_failure', fileSystemId, operationId, stage: trialStage },
+      });
+      throw transitionAttempt.cause;
+    }
+    const transitionFailureStage = trialStage;
     try {
+      trialStage = 'settle_source_session';
       await session.close();
     } catch (closeCause: unknown) {
-      throw new AggregateError(
+      const failure = new AggregateError(
         [transitionAttempt.cause, closeCause],
         'native disable transition failed after authority may have changed and source-session cleanup also failed',
       );
+      reportHizoFSTrialFailure({
+        cause: failure,
+        detail: { event: 'native_disable_failure', fileSystemId, operationId, stage: trialStage },
+      });
+      throw failure;
     }
+    reportHizoFSTrialFailure({
+      cause: transitionAttempt.cause,
+      detail: { event: 'native_disable_failure', fileSystemId, operationId, stage: transitionFailureStage },
+    });
     throw transitionAttempt.cause;
+  }
   default: transitionAttempt satisfies never;
   }
 
-  await session.close();
+  trialStage = 'settle_source_session';
+  try {
+    await session.close();
+  } catch (cause: unknown) {
+    reportHizoFSTrialFailure({
+      cause,
+      detail: { event: 'native_disable_failure', fileSystemId, operationId, stage: trialStage },
+    });
+    throw cause;
+  }
   // WHY: source deletion is not part of the user-visible authority switch.
   // The stable plain control record retains the source File System ID so
   // detached maintenance can retry cleanup without blocking Naidan.

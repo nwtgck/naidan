@@ -1,0 +1,23 @@
+{
+  // TODO(hizofs-v1): Remove this temporary HizoFS-scoped TypeScript
+  // configuration before final integration. Do not promote it to a permanent
+  // project reference without an explicit user decision and a Design update.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tmp-tsconfig.hizofs.tsbuildinfo"
+  },
+  "include": [
+    "src/env.d.ts",
+    "src/utils/virtual-naidan-tailwind.d.ts",
+    "src/00-storage/service/hizofs/**/*.ts",
+    "src/00-storage/service/naidan-opfs/**/*.ts",
+    "src/00-storage/service/naidan-persistence-control/**/*.ts",
+    "src/features/opfs-encryption/**/*.ts",
+    "src/features/opfs-encryption/**/*.vue"
+  ],
+  "exclude": [
+    "src/test-tmp/**"
+  ]
+}

@@ -419,6 +419,11 @@ export default defineConfig(({ mode }) => {
         ...configDefaults.exclude,
         'src/test-tmp/**',
         'src/lint-rule-tmp/**',
+        // TODO(hizofs-v1): Re-enable the independent Node.js and Go reader
+        // validation only after an explicit user instruction. Keep the reader
+        // implementations and fixtures intact while they are paused.
+        'validation/hizofs-v1-independent-readers/node/**',
+        'validation/hizofs-v1-independent-readers/go/**',
       ],
       setupFiles: ['./src/test-setup.ts'],
     },

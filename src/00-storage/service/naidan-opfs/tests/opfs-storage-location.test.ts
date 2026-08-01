@@ -10,6 +10,26 @@ import {
   reserveNaidanOpfsContainerDirectory,
 } from "@/00-storage/service/naidan-opfs/opfs-storage-location";
 
+type CountedExclusiveGate = Readonly<{
+  callCount: () => number;
+  gate: Readonly<{
+    runExclusive: <T>({ operation }: { operation: () => Promise<T> }) => Promise<T>;
+  }>;
+}>;
+
+function createCountedExclusiveGate(): CountedExclusiveGate {
+  let calls = 0;
+  return {
+    callCount: () => calls,
+    gate: {
+      runExclusive: async <T>({ operation }: { operation: () => Promise<T> }): Promise<T> => {
+        calls += 1;
+        return await operation();
+      },
+    },
+  };
+}
+
 describe("Naidan OPFS storage location", () => {
   it("derives the runtime backing path from the canonical container token", () => {
     const inspection = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
@@ -83,15 +103,15 @@ describe("Naidan OPFS storage location", () => {
     const storageRoot = {
       getDirectoryHandle: vi.fn(async () => nativeStorageRoot),
     } as unknown as FileSystemDirectoryHandle;
-    const runExclusive = vi.fn(async <T>({ operation }: { operation: () => Promise<T> }) => await operation());
+    const exclusive = createCountedExclusiveGate();
 
     await removeNaidanOpfsContainerDirectory({
-      exclusiveGate: { runExclusive },
+      exclusiveGate: exclusive.gate,
       fileSystemId,
       storageRoot,
     });
 
-    expect(runExclusive).toHaveBeenCalledTimes(1);
+    expect(exclusive.callCount()).toBe(1);
     expect(removeEntry).toHaveBeenCalledWith(
       fileSystemIdToNaidanContainerToken({ id: fileSystemId }),
       { recursive: true },
@@ -141,10 +161,10 @@ describe("Naidan OPFS storage location", () => {
         throw new DOMException("missing", "NotFoundError");
       }),
     } as unknown as FileSystemDirectoryHandle;
-    const runExclusive = vi.fn(async <T>({ operation }: { operation: () => Promise<T> }) => await operation());
+    const exclusive = createCountedExclusiveGate();
 
     await expect(removeNaidanOpfsContainerDirectory({
-      exclusiveGate: { runExclusive },
+      exclusiveGate: exclusive.gate,
       fileSystemId,
       storageRoot,
     })).resolves.toBeUndefined();
@@ -164,14 +184,14 @@ describe("Naidan OPFS storage location", () => {
     const storageRoot = {
       getDirectoryHandle: vi.fn(async () => nativeStorageRoot),
     } as unknown as FileSystemDirectoryHandle;
-    const runExclusive = vi.fn(async <T>({ operation }: { operation: () => Promise<T> }) => await operation());
+    const exclusive = createCountedExclusiveGate();
 
     await expect(reserveNaidanOpfsContainerDirectory({
-      exclusiveGate: { runExclusive },
+      exclusiveGate: exclusive.gate,
       fileSystemId,
       storageRoot,
     })).resolves.toEqual({ type: "collision" });
-    expect(runExclusive).toHaveBeenCalledTimes(1);
+    expect(exclusive.callCount()).toBe(1);
     expect(getContainerDirectory).toHaveBeenCalledWith(
       fileSystemIdToNaidanContainerToken({ id: fileSystemId }),
       { create: false },
@@ -212,10 +232,10 @@ describe("Naidan OPFS storage location", () => {
     const storageRoot = {
       getDirectoryHandle: vi.fn(async () => nativeStorageRoot),
     } as unknown as FileSystemDirectoryHandle;
-    const runExclusive = vi.fn(async <T>({ operation }: { operation: () => Promise<T> }) => await operation());
+    const exclusive = createCountedExclusiveGate();
 
     const reservation = await reserveNaidanOpfsContainerDirectory({
-      exclusiveGate: { runExclusive },
+      exclusiveGate: exclusive.gate,
       fileSystemId,
       storageRoot,
     });
@@ -228,7 +248,7 @@ describe("Naidan OPFS storage location", () => {
     expect(removeEntry).toHaveBeenCalledTimes(2);
     expect(removeEntry).toHaveBeenNthCalledWith(1, token, { recursive: true });
     expect(removeEntry).toHaveBeenNthCalledWith(2, token, { recursive: true });
-    expect(runExclusive).toHaveBeenCalledTimes(3);
+    expect(exclusive.callCount()).toBe(3);
   });
 
   it("reserves and idempotently cleans only its exact container directory", async () => {
@@ -249,10 +269,10 @@ describe("Naidan OPFS storage location", () => {
     const storageRoot = {
       getDirectoryHandle: vi.fn(async () => nativeStorageRoot),
     } as unknown as FileSystemDirectoryHandle;
-    const runExclusive = vi.fn(async <T>({ operation }: { operation: () => Promise<T> }) => await operation());
+    const exclusive = createCountedExclusiveGate();
 
     const reservation = await reserveNaidanOpfsContainerDirectory({
-      exclusiveGate: { runExclusive },
+      exclusiveGate: exclusive.gate,
       fileSystemId,
       storageRoot,
     });
@@ -263,7 +283,7 @@ describe("Naidan OPFS storage location", () => {
     await reservation.cleanup();
     await reservation.cleanup();
 
-    expect(runExclusive).toHaveBeenCalledTimes(2);
+    expect(exclusive.callCount()).toBe(2);
     expect(removeEntry).toHaveBeenCalledTimes(1);
     expect(removeEntry).toHaveBeenCalledWith(
       fileSystemIdToNaidanContainerToken({ id: fileSystemId }),

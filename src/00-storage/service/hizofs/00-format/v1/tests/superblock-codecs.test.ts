@@ -12,7 +12,13 @@ import {
 } from '@/00-storage/service/hizofs/00-format/v1/binary/superblock';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseFileSystemId, parseMutationId, parsePublicationId, parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
-import { createUInt64 } from '@/00-storage/service/hizofs/00-format/v1/scalars';
+import {
+  createCommitSequence,
+  createFeatureBits,
+  createPublicationSequence,
+  createUInt64,
+  createUnlockSequence,
+} from '@/00-storage/service/hizofs/00-format/v1/scalars';
 
 const segmentId = () => parseSegmentId({ bytes: Uint8Array.from({ length: 16 }, (_, index) => index + 1) });
 const homeCommit = (offset: bigint) => createHomeRecordReference({ fields: {
@@ -27,12 +33,12 @@ describe('Superblock codecs', () => {
     const flags = HIZOFS_V1_FORMAT_CONSTANTS.flags.superblockFallbackCommitPresent
       | HIZOFS_V1_FORMAT_CONSTANTS.flags.superblockRelocationIndexRootPresent;
     const header = createSuperblockHeader({
-      activeCommitSequence: createUInt64({ value: 7n }),
+      activeCommitSequence: createCommitSequence({ value: 7n }),
       copy: 1,
       fileSystemId: parseFileSystemId({ value: '0123456789_ABCDEFGHIJ' }),
       flags,
       nonce: Uint8Array.from({ length: 12 }, (_, index) => index + 1),
-      publicationSequence: createUInt64({ value: 9n }),
+      publicationSequence: createPublicationSequence({ value: 9n }),
     });
     expect(decodeSuperblockHeader({ bytes: encodeSuperblockHeader({ header }) })).toEqual(header);
 
@@ -40,7 +46,7 @@ describe('Superblock codecs', () => {
       activeCommitHomeRef: homeCommit(64n),
       activeMutationId: parseMutationId({ bytes: new Uint8Array(16).fill(3) }),
       fallbackCommitHomeRef: homeCommit(160n),
-      minimumUnlockSequence: createUInt64({ value: 2n }),
+      minimumUnlockSequence: createUnlockSequence({ value: 2n }),
       publicationId: parsePublicationId({ bytes: new Uint8Array(16).fill(4) }),
       relocationIndexRootPhysicalRef: createPhysicalRecordReference({ fields: {
         byteOffset: createUInt64({ value: 256n }),
@@ -48,7 +54,7 @@ describe('Superblock codecs', () => {
         recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page,
         segmentId: segmentId(),
       } }),
-      requiredFeatureBits: createUInt64({ value: 0n }),
+      requiredFeatureBits: createFeatureBits({ value: 0n }),
     };
     expect(decodeSuperblockPlaintext({ bytes: encodeSuperblockPlaintext({ flags, plaintext }), flags })).toEqual(plaintext);
   });
@@ -60,10 +66,10 @@ describe('Superblock codecs', () => {
         activeCommitHomeRef: homeCommit(64n),
         activeMutationId: new Uint8Array(16) as never,
         fallbackCommitHomeRef: null,
-        minimumUnlockSequence: createUInt64({ value: 1n }),
+        minimumUnlockSequence: createUnlockSequence({ value: 1n }),
         publicationId: parsePublicationId({ bytes: new Uint8Array(16).fill(4) }),
         relocationIndexRootPhysicalRef: null,
-        requiredFeatureBits: createUInt64({ value: 0n }),
+        requiredFeatureBits: createFeatureBits({ value: 0n }),
       },
     })).toThrow('all-zero'); // runtime-cast all-zero Mutation ID
   });
@@ -73,10 +79,10 @@ describe('Superblock codecs', () => {
       activeCommitHomeRef: homeCommit(64n),
       activeMutationId: parseMutationId({ bytes: new Uint8Array(16).fill(3) }),
       fallbackCommitHomeRef: null,
-      minimumUnlockSequence: createUInt64({ value: 1n }),
+      minimumUnlockSequence: createUnlockSequence({ value: 1n }),
       publicationId: parsePublicationId({ bytes: new Uint8Array(16).fill(4) }),
       relocationIndexRootPhysicalRef: null,
-      requiredFeatureBits: createUInt64({ value: 0n }),
+      requiredFeatureBits: createFeatureBits({ value: 0n }),
     };
     expect(() => encodeSuperblockPlaintext({
       flags: HIZOFS_V1_FORMAT_CONSTANTS.flags.superblockFallbackCommitPresent,
@@ -84,12 +90,12 @@ describe('Superblock codecs', () => {
     })).toThrow('fallback flag');
 
     const header = createSuperblockHeader({
-      activeCommitSequence: createUInt64({ value: 1n }),
+      activeCommitSequence: createCommitSequence({ value: 1n }),
       copy: 0,
       fileSystemId: parseFileSystemId({ value: '0123456789_ABCDEFGHIJ' }),
       flags: 0,
       nonce: new Uint8Array(12),
-      publicationSequence: createUInt64({ value: 1n }),
+      publicationSequence: createPublicationSequence({ value: 1n }),
     });
     const bytes = encodeSuperblockHeader({ header });
     bytes[79] = 1;

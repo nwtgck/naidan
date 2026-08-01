@@ -1459,6 +1459,11 @@ type AuthenticatedWritableApplicationGeneration = Readonly<{
 }>;
 
 export type AuthenticatedApplicationReadWriteSessionResources = Readonly<{
+  createReadSnapshotResources: () => Readonly<{
+    commitReference: HomeRecordReference;
+    mutationPort: import("@/00-storage/service/hizofs/api").HizoFSApplicationMutationPort;
+    namespace: HizoFSApplicationSessionNamespace;
+  }>;
   mutationPort: import("@/00-storage/service/hizofs/api").HizoFSApplicationMutationPort;
   namespace: HizoFSApplicationSessionNamespace;
   releaseResources: () => Promise<void>;
@@ -2736,6 +2741,14 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
 
   const namespace = stableGenerationNamespace({ current: () => generation });
   return {
+    createReadSnapshotResources: () => {
+      const captured = generation;
+      return {
+        commitReference: captured.superblock.logicalState.activeCommitHomeRef,
+        mutationPort: readOnlyMutationPort(),
+        namespace: stableGenerationNamespace({ current: () => captured }),
+      };
+    },
     mutationPort,
     namespace,
     releaseResources: async () => {

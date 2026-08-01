@@ -8,7 +8,11 @@ import {
 } from '@/00-storage/service/hizofs/00-format/v1/pages/variable-pages';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
-import { createUInt64 } from '@/00-storage/service/hizofs/00-format/v1/scalars';
+import {
+  createInodeNumber,
+  createSubvolumeId,
+  createUInt64,
+} from '@/00-storage/service/hizofs/00-format/v1/scalars';
 
 const KINDS = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
 const segmentId = ({ seed }: { seed: number }) => parseSegmentId({
@@ -29,19 +33,19 @@ describe('variable page codecs', () => {
         access: 'read_write' as const,
         entryName: 'alpha',
         inodeTableRootHomeRef: homeRef({ kind: KINDS.inode_table_page, seed: 2 }),
-        parentDirectoryInodeNumber: createUInt64({ value: 1n }),
-        parentSubvolumeId: createUInt64({ value: 1n }),
-        rootDirectoryInodeNumber: createUInt64({ value: 7n }),
-        subvolumeId: createUInt64({ value: 2n }),
+        parentDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+        parentSubvolumeId: createSubvolumeId({ value: 1n }),
+        rootDirectoryInodeNumber: createInodeNumber({ value: 7n }),
+        subvolumeId: createSubvolumeId({ value: 2n }),
       },
       {
         access: 'read' as const,
         entryName: 'βeta',
         inodeTableRootHomeRef: homeRef({ kind: KINDS.inode_table_page, offset: 160n, seed: 3 }),
-        parentDirectoryInodeNumber: createUInt64({ value: 8n }),
-        parentSubvolumeId: createUInt64({ value: 2n }),
-        rootDirectoryInodeNumber: createUInt64({ value: 9n }),
-        subvolumeId: createUInt64({ value: 3n }),
+        parentDirectoryInodeNumber: createInodeNumber({ value: 8n }),
+        parentSubvolumeId: createSubvolumeId({ value: 2n }),
+        rootDirectoryInodeNumber: createInodeNumber({ value: 9n }),
+        subvolumeId: createSubvolumeId({ value: 3n }),
       },
     ];
     const encoded = encodeNestedSubvolumeLeafPage({ entries, isRoot: true });
@@ -53,14 +57,14 @@ describe('variable page codecs', () => {
       access: 'read_write' as const,
       entryName: 'alpha',
       inodeTableRootHomeRef: homeRef({ kind: KINDS.inode_table_page }),
-      parentDirectoryInodeNumber: createUInt64({ value: 1n }),
-      parentSubvolumeId: createUInt64({ value: 1n }),
-      rootDirectoryInodeNumber: createUInt64({ value: 1n }),
-      subvolumeId: createUInt64({ value: 2n }),
+      parentDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      parentSubvolumeId: createSubvolumeId({ value: 1n }),
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      subvolumeId: createSubvolumeId({ value: 2n }),
     };
     expect(() => encodeNestedSubvolumeLeafPage({ entries: [base, base], isRoot: true })).toThrow('strictly ascending');
     expect(() => encodeNestedSubvolumeLeafPage({
-      entries: [{ ...base, parentSubvolumeId: createUInt64({ value: 2n }) }],
+      entries: [{ ...base, parentSubvolumeId: createSubvolumeId({ value: 2n }) }],
       isRoot: true,
     })).toThrow('mount into itself');
     const bytes = encodeNestedSubvolumeLeafPage({ entries: [base], isRoot: true });
@@ -71,9 +75,9 @@ describe('variable page codecs', () => {
   it('round-trips directory inode and Subvolume targets in UTF-8 order', () => {
     const page = {
       entries: [
-        { inodeKind: 'file' as const, inodeNumber: createUInt64({ value: 4n }), name: 'a', targetType: 'inode' as const },
-        { inodeKind: 'directory' as const, inodeNumber: createUInt64({ value: 5n }), name: 'b', targetType: 'inode' as const },
-        { name: 'é', subvolumeId: createUInt64({ value: 2n }), targetType: 'subvolume' as const },
+        { inodeKind: 'file' as const, inodeNumber: createInodeNumber({ value: 4n }), name: 'a', targetType: 'inode' as const },
+        { inodeKind: 'directory' as const, inodeNumber: createInodeNumber({ value: 5n }), name: 'b', targetType: 'inode' as const },
+        { name: 'é', subvolumeId: createSubvolumeId({ value: 2n }), targetType: 'subvolume' as const },
       ],
       level: 0 as const,
       type: 'leaf' as const,
@@ -93,7 +97,7 @@ describe('variable page codecs', () => {
     expect(decodeDirectoryPage({ bytes: encodeDirectoryPage({ isRoot: true, page }), isRoot: true })).toEqual(page);
     expect(() => encodeDirectoryPage({
       isRoot: true,
-      page: { ...page, entries: [page.entries[0], page.entries[0]] },
+      page: { ...page, entries: [page.entries[0]!, page.entries[0]!] },
     })).toThrow('strictly ascending');
     expect(() => encodeDirectoryPage({
       isRoot: true,
@@ -106,7 +110,7 @@ describe('variable page codecs', () => {
 
   it('rejects malformed directory target tags and trailing bytes', () => {
     const page = {
-      entries: [{ inodeKind: 'file' as const, inodeNumber: createUInt64({ value: 4n }), name: 'a', targetType: 'inode' as const }],
+      entries: [{ inodeKind: 'file' as const, inodeNumber: createInodeNumber({ value: 4n }), name: 'a', targetType: 'inode' as const }],
       level: 0 as const,
       type: 'leaf' as const,
     };

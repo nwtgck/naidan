@@ -34,7 +34,7 @@ describe('HizoFS V1 fixed headers', () => {
     expect(decodeSegmentHeader({ bytes })).toEqual(header);
     for (const offset of [0, 8, 10, 12, 13, 14, 32, 47]) {
       const damaged = Uint8Array.from(bytes);
-      damaged[offset] ^= 1;
+      damaged[offset] = (damaged[offset] ?? 0) ^ 1;
       expect(() => decodeSegmentHeader({ bytes: damaged })).toThrow();
     }
   });
@@ -85,10 +85,10 @@ describe('HizoFS V1 fixed headers', () => {
       recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
     });
     const bytes = encodeRecordFrameHeader({ header });
-    bytes[51] ^= 1;
+    bytes[51] = (bytes[51] ?? 0) ^ 1;
     expect(() => decodeRecordFrameHeader({ bytes })).toThrow('length');
     const magic = encodeRecordFrameHeader({ header });
-    magic[0] ^= 1;
+    magic[0] = (magic[0] ?? 0) ^ 1;
     expect(() => decodeRecordFrameHeader({ bytes: magic })).toThrow('magic');
   });
 });

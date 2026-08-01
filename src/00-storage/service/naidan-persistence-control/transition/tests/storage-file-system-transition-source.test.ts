@@ -19,7 +19,7 @@ function entry({ bytes, kind, name, target }: {
     kind,
     name,
     stat,
-    openReadable: vi.fn(async ({ mimeType }) => createBlobStorageBinaryObjectReadHandle({ blob: new Blob([bytes ?? new Uint8Array(0)]), mimeType })),
+    openReadable: vi.fn(async ({ mimeType }) => createBlobStorageBinaryObjectReadHandle({ blob: new Blob([Uint8Array.from(bytes ?? new Uint8Array(0))]), mimeType })),
     createWritable: vi.fn(),
   };
   case 'symlink': return { kind, name, stat, readTarget: vi.fn(async () => target ?? '') };

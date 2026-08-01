@@ -14,8 +14,6 @@ import {
   clearTransitionProgress,
   openTransitionProgress,
   publishTransitionProgress,
-  TransitionProgressPublicationError,
-  TransitionProgressSelectionError,
   type TransitionProgressPhysicalPort,
   type TransitionProgressProofAuthority,
 } from '@/00-storage/service/naidan-persistence-control/store';
@@ -31,7 +29,7 @@ function rootKey({ fill }: { fill: number }): PersistenceControlRootKeyDerivatio
     async deriveAesGcmKey({ info }) {
       const material = await crypto.subtle.importKey('raw', new Uint8Array(32).fill(fill), 'HKDF', false, ['deriveKey']);
       return await crypto.subtle.deriveKey(
-        { hash: 'SHA-256', info, name: 'HKDF', salt: new Uint8Array(32) },
+        { hash: 'SHA-256', info: Uint8Array.from(info), name: 'HKDF', salt: new Uint8Array(32) },
         material,
         { length: 256, name: 'AES-GCM' },
         false,
@@ -137,7 +135,7 @@ describe('authenticated transition-progress A/B store', () => {
     const updated = await openTransitionProgress({ operationId: OPERATION_ID, physical, proofAuthority: proofAuthority() });
     expect(updated?.payload.journalGeneration).toBe(1n);
     expect(updated?.envelope.sequence).toBe(4);
-    await expect(publish({ expected: 0n, generation: 1n, physical })).rejects.toMatchObject<Partial<TransitionProgressPublicationError>>({
+    await expect(publish({ expected: 0n, generation: 1n, physical })).rejects.toMatchObject({
       code: 'generation_conflict',
     });
   });
@@ -151,7 +149,7 @@ describe('authenticated transition-progress A/B store', () => {
   it('reports convergence failure without losing the committed authority', async () => {
     const physical = new MemoryPhysical();
     physical.failPublishBeforeWriteAt = 2;
-    await expect(publish({ expected: undefined, generation: 0n, physical })).rejects.toMatchObject<Partial<TransitionProgressPublicationError>>({
+    await expect(publish({ expected: undefined, generation: 0n, physical })).rejects.toMatchObject({
       code: 'convergence_failed',
       committedAuthority: expect.objectContaining({ payload: expect.objectContaining({ journalGeneration: 0n }) }),
     });
@@ -173,14 +171,14 @@ describe('authenticated transition-progress A/B store', () => {
     });
     physical.copies[0] = encodeTransitionProgressEnvelope({ envelope: higher });
     await expect(openTransitionProgress({ operationId: OPERATION_ID, physical, proofAuthority: proofAuthority() }))
-      .rejects.toMatchObject<Partial<TransitionProgressSelectionError>>({ code: 'higher_protection_unresolved' });
+      .rejects.toMatchObject({ code: 'higher_protection_unresolved' });
   });
 
   it('never adopts a fixed-path companion belonging to another operation', async () => {
     const physical = new MemoryPhysical();
     await publish({ expected: undefined, generation: 0n, operationId: OTHER_OPERATION_ID, physical });
     await expect(openTransitionProgress({ operationId: OPERATION_ID, physical, proofAuthority: proofAuthority() }))
-      .rejects.toMatchObject<Partial<TransitionProgressSelectionError>>({ code: 'operation_mismatch' });
+      .rejects.toMatchObject({ code: 'operation_mismatch' });
   });
 
   it('resolves clear response loss after both fixed copies are physically absent', async () => {
@@ -206,7 +204,7 @@ describe('authenticated transition-progress A/B store', () => {
       operationId: OPERATION_ID,
       physical,
       proofAuthority: proofAuthority(),
-    })).rejects.toMatchObject<Partial<TransitionProgressPublicationError>>({ code: 'generation_conflict' });
+    })).rejects.toMatchObject({ code: 'generation_conflict' });
 
     physical.failRemoveCopy = 1;
     await expect(clearTransitionProgress({

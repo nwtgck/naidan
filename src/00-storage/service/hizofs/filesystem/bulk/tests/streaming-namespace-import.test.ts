@@ -35,7 +35,7 @@ function identity({ reference }: { reference: HomeRecordReference }): string {
 
 class MemoryImportPort {
   readonly fileData: Uint8Array[] = [];
-  readonly #directoryPages = new Map<string, ImmutableBTreePage<Uint8Array, DirectoryLeafEntry, HomeRecordReference>>();
+  readonly #directoryPages = new Map<string, ImmutableBTreePage<string, DirectoryLeafEntry, HomeRecordReference>>();
   readonly #extentPages = new Map<string, FileExtentPage>();
   readonly #inodePages = new Map<string, ImmutableBTreePage<InodeNumber, InodeLeafEntry, HomeRecordReference>>();
   readonly directoryPageStore: DirectoryPageTreePageStore = {

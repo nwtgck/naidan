@@ -26,6 +26,7 @@ const operationId = parseTransitionOperationId({ value: "operation000000000001" 
 const targetFileSystemId = parseFileSystemId({ value: "abcdefghijklmnopqrstu" });
 const binding: AuthenticatedTransitionProgressBinding = {
   operationId,
+  providerCheckpointCodec: "hizofs-streaming-namespace-import-v1",
   sourceAuthorityIdentity: "plain-authority-1",
   sourceEndpoint: { type: "plain" },
   targetAuthorityIdentity: "hizofs-candidate-1",

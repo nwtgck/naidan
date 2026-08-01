@@ -84,6 +84,11 @@ function port({
     runDisableTransition: vi.fn(async () => openedSession),
     runEnableTransition: vi.fn(async () => undefined),
     runReencryptTransition: vi.fn(async () => undefined),
+    runStableHizoFSRetiredPlainCleanup: vi.fn(async () => ({
+      remainingEntryCount: 0,
+      removedEntryCount: 0,
+      state: 'completed' as const,
+    })),
     runStablePlainRetiredCleanup: vi.fn(async () => undefined),
     runReturnToPlainTransition: vi.fn(async () => ({ fileSystemSession: openedSession, type: 'returned_plain' as const })),
     runResumeTransition: vi.fn(async () => ({

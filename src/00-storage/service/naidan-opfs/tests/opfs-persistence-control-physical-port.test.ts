@@ -29,7 +29,7 @@ class MemoryFileHandle {
       close: async () => {
         this.bytes = staged;
       },
-      write: async value => {
+      write: async (value: FileSystemWriteChunkType) => {
         if (this.failWrite !== undefined) throw this.failWrite;
         if (!(value instanceof Uint8Array)) throw new TypeError("test writable accepts only Uint8Array");
         staged = Uint8Array.from(value);

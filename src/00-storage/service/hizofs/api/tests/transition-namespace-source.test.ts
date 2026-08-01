@@ -7,6 +7,7 @@ import {
   type DirectoryLeafEntry,
   type FileInodeEntry,
   type InodeLeafEntry,
+  type InodeNumber,
   type SymlinkInodeEntry,
 } from "@/00-storage/service/hizofs/00-format";
 import { createHizoFSTransitionNamespaceSource } from "@/00-storage/service/hizofs/api/transition-namespace-source";
@@ -82,7 +83,7 @@ function fixture(): Readonly<{
   listDirectoryEntriesAfterBounded: ReturnType<typeof vi.fn>;
   resolver: ReadOnlyNamespaceResolver;
 }> {
-  const byNumber = new Map([[rootNumber, root], [fileNumber, file], [symlinkNumber, symlink]] as const);
+  const byNumber = new Map<InodeNumber, InodeLeafEntry>([[rootNumber, root], [fileNumber, file], [symlinkNumber, symlink]]);
   const byPath = new Map<string, InodeLeafEntry>([
     ["", root],
     ["data.bin", file],
@@ -110,7 +111,10 @@ function fixture(): Readonly<{
     listDirectoryEntriesAfterBounded,
     listDirectoryEntriesBounded: async () => ({ entries: [fileEntry, symlinkEntry], truncated: false }),
     lookupDirectoryEntry: async ({ name }) => [fileEntry, symlinkEntry].find(entry => entry.name === name),
-    readFile: async ({ length = 4n, offset = 0n }) => file.content.bytes.slice(Number(offset), Number(offset + length)),
+    readFile: async ({ length = 4n, offset = 0n }) => {
+      if (file.content.type !== "inline") throw new Error("test file fixture must remain inline");
+      return file.content.bytes.slice(Number(offset), Number(offset + length));
+    },
     readlink: async () => symlink.target,
     resolveInode,
     resolveInodeByNumber,

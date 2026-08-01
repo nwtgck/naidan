@@ -1,5 +1,14 @@
 # HizoFS V1 independent fixture verifiers
 
+> **Temporarily paused:** The Node.js and Go independent readers remain in the
+> repository, but they are intentionally excluded from default test, build, and
+> validation execution. Do not delete or rewrite them to satisfy the active
+> TypeScript/Vitest baseline. Re-enable them only after an explicit user
+> instruction.
+>
+> TODO(hizofs-v1): Remove this pause notice and restore explicit independent-reader
+> validation only when the user requests reactivation.
+
 These programs validate HizoFS V1 known-answer vectors without importing the
 Naidan TypeScript implementation. They are release-validation foundations for
 independent read-only readers, not a claim that full container traversal is

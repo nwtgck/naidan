@@ -7,6 +7,7 @@ import {
   createInodeRevision,
   createSubvolumeId,
   createTimestampMilliseconds,
+  createFileOffset,
   createUInt64,
   parseMutationId,
   parseSegmentId,
@@ -89,7 +90,7 @@ class MemoryInodePageStore implements RootInodeTablePageStore {
 function fileInode({ inodeNumber }: { inodeNumber: bigint }): InodeLeafEntry {
   return {
     content: { bytes: new Uint8Array(), type: "inline" },
-    fileSize: createUInt64({ value: 0n }),
+    fileSize: createFileOffset({ value: 0n }),
     inodeKind: "file",
     inodeNumber: createInodeNumber({ value: inodeNumber }),
     inodeRevision: createInodeRevision({ value: 1n }),

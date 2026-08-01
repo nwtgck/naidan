@@ -167,17 +167,26 @@ async function createTestRuntimePort({
       firstSequence: 1,
       secondSequence: 1,
     }),
+    runConvergeTransition: async () => {
+      throw new Error('converge transition is not used by the restart fixture');
+    },
     runDisableTransition: async () => {
       throw new Error('disable transition is not used by the restart fixture');
     },
     runEnableTransition: async () => {
       throw new Error('enable transition is not used by the restart fixture');
     },
+    runReencryptTransition: async () => {
+      throw new Error('re-encrypt transition is not used by the restart fixture');
+    },
     runReturnToPlainTransition: async () => {
       throw new Error('return-to-plain transition is not used by the restart fixture');
     },
     runResumeTransition: async () => {
       throw new Error('resume transition is not used by the restart fixture');
+    },
+    runStableHizoFSRetiredPlainCleanup: async () => {
+      throw new Error('stable-HizoFS cleanup is not used by the restart fixture');
     },
     runStablePlainRetiredCleanup: async () => {
       throw new Error('stable-plain cleanup is not used by the restart fixture');

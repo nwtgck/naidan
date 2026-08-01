@@ -22,7 +22,13 @@ import {
 } from '@/00-storage/service/hizofs/00-format/v1/records/file-system-commit';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseMutationId, parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
-import { createUInt64 } from '@/00-storage/service/hizofs/00-format/v1/scalars';
+import {
+  createCommitSequence,
+  createFileOffset,
+  createInodeNumber,
+  createSubvolumeId,
+  createUInt64,
+} from '@/00-storage/service/hizofs/00-format/v1/scalars';
 
 const KINDS = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
 
@@ -80,12 +86,12 @@ describe('record payload foundations', () => {
 
   it('round-trips a File System Commit and validates reference kinds', () => {
     const payload = createFileSystemCommitPayload({ payload: {
-      commitSequence: createUInt64({ value: 5n }),
+      commitSequence: createCommitSequence({ value: 5n }),
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
       nestedSubvolumeTableRootHomeRef: homeRef({ kind: KINDS.nested_subvolume_table_page, offset: 160n }),
-      nextInodeNumber: createUInt64({ value: 9n }),
-      nextSubvolumeId: createUInt64({ value: 4n }),
-      rootDirectoryInodeNumber: createUInt64({ value: 1n }),
+      nextInodeNumber: createInodeNumber({ value: 9n }),
+      nextSubvolumeId: createSubvolumeId({ value: 4n }),
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
       rootInodeTableRootHomeRef: homeRef({ kind: KINDS.inode_table_page }),
     } });
     expect(decodeFileSystemCommitPayload({ bytes: encodeFileSystemCommitPayload({ payload }) })).toEqual(payload);
@@ -111,8 +117,8 @@ describe('record payload foundations', () => {
   it('round-trips fixed UInt64 branch pages and rejects unordered bounds', () => {
     const nested = {
       entries: [
-        { childPageHomeRef: homeRef({ kind: KINDS.nested_subvolume_table_page, seed: 2 }), upperBound: createUInt64({ value: 3n }) },
-        { childPageHomeRef: homeRef({ kind: KINDS.nested_subvolume_table_page, offset: 160n, seed: 3 }), upperBound: createUInt64({ value: 9n }) },
+        { childPageHomeRef: homeRef({ kind: KINDS.nested_subvolume_table_page, seed: 2 }), upperBound: createSubvolumeId({ value: 3n }) },
+        { childPageHomeRef: homeRef({ kind: KINDS.nested_subvolume_table_page, offset: 160n, seed: 3 }), upperBound: createSubvolumeId({ value: 9n }) },
       ],
       level: 1,
     };
@@ -122,7 +128,7 @@ describe('record payload foundations', () => {
     })).toEqual(nested);
 
     const inode = {
-      entries: [{ childPageHomeRef: homeRef({ kind: KINDS.inode_table_page }), upperBound: createUInt64({ value: 8n }) }],
+      entries: [{ childPageHomeRef: homeRef({ kind: KINDS.inode_table_page }), upperBound: createInodeNumber({ value: 8n }) }],
       level: 2,
     };
     expect(decodeInodeBranchPage({ bytes: encodeInodeBranchPage({ isRoot: true, page: inode }), isRoot: true })).toEqual(inode);
@@ -139,13 +145,13 @@ describe('record payload foundations', () => {
           byteLength: 4,
           dataOffset: 0,
           fileDataHomeRef: homeRef({ kind: KINDS.file_data, seed: 4 }),
-          fileOffset: createUInt64({ value: 0n }),
+          fileOffset: createFileOffset({ value: 0n }),
         },
         {
           byteLength: 8,
           dataOffset: 16,
           fileDataHomeRef: homeRef({ kind: KINDS.file_data, offset: 160n, seed: 5 }),
-          fileOffset: createUInt64({ value: 20n }),
+          fileOffset: createFileOffset({ value: 20n }),
         },
       ],
       level: 0 as const,
@@ -156,14 +162,14 @@ describe('record payload foundations', () => {
       isRoot: true,
       page: {
         ...leaf,
-        entries: [leaf.entries[0], { ...leaf.entries[1], fileOffset: createUInt64({ value: 2n }) }],
+        entries: [leaf.entries[0]!, { ...leaf.entries[1]!, fileOffset: createFileOffset({ value: 2n }) }],
       },
     })).toThrow('overlap');
     expect(() => encodeFileExtentPage({
       isRoot: true,
       page: {
         ...leaf,
-        entries: [{ ...leaf.entries[0], fileDataHomeRef: homeRef({ kind: KINDS.directory_page }) }],
+        entries: [{ ...leaf.entries[0]!, fileDataHomeRef: homeRef({ kind: KINDS.directory_page }) }],
       },
     })).toThrow('wrong record kind');
   });
@@ -207,7 +213,7 @@ describe('record payload foundations', () => {
       page: {
         ...leaf,
         entries: [{
-          ...leaf.entries[0],
+          ...leaf.entries[0]!,
           currentPhysicalRecordRef: physicalRef({ kind: KINDS.relocation_index_page }),
         }],
       },

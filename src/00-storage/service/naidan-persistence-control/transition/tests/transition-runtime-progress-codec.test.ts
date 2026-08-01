@@ -79,12 +79,13 @@ describe('transition runtime progress codec', () => {
   it('rejects active file offsets beyond captured size', () => {
     const progress = copying();
     if (progress.stage !== 'copying' || progress.copyCursor.activeFile === undefined) throw new Error('test fixture changed');
+    const activeFile = progress.copyCursor.activeFile;
     expect(() => encodeTransitionRuntimeProgress({
       progress: {
         ...progress,
         copyCursor: {
           ...progress.copyCursor,
-          activeFile: { ...progress.copyCursor.activeFile, offset: progress.copyCursor.activeFile.size + 1n },
+          activeFile: { ...activeFile, offset: activeFile.size + 1n },
         },
       },
     })).toThrow(/offset|size/u);

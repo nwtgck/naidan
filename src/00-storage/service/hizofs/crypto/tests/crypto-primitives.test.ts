@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeCryptoContext, parseCredentialSlotId, parseFileSystemId, parseSegmentId } from '@/00-storage/service/hizofs/00-format';
+import { createPublicationSequence, encodeCryptoContext, parseCredentialSlotId, parseFileSystemId, parseSegmentId, type PublicationSequence } from '@/00-storage/service/hizofs/00-format';
 import { deriveRecordKey, deriveSuperblockKey } from '@/00-storage/service/hizofs/crypto/key-application/derived-keys';
 import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/crypto/primitives/aes-gcm';
 import { deriveCredentialWrappingKey } from '@/00-storage/service/hizofs/crypto/primitives/pbkdf2';
@@ -38,7 +38,7 @@ describe('HizoFS crypto primitives', () => {
     const key = await deriveSuperblockKey({
       copy: 0,
       fileSystemId: parseFileSystemId({ value: 'abcdefghijklmnopqrstu' }),
-      publicationSequence: 1n,
+      publicationSequence: createPublicationSequence({ value: 1n }),
       rootKey,
     });
     const nonce = Uint8Array.from({ length: 12 }, (_, index) => index + 1);
@@ -51,7 +51,7 @@ describe('HizoFS crypto primitives', () => {
     await expect(deriveSuperblockKey({
       copy: 0,
       fileSystemId: parseFileSystemId({ value: 'abcdefghijklmnopqrstu' }),
-      publicationSequence: 1n,
+      publicationSequence: createPublicationSequence({ value: 1n }),
       rootKey,
     })).rejects.toThrow('destroyed');
   });
@@ -78,10 +78,10 @@ describe('HizoFS crypto primitives', () => {
     const fileSystemId = parseFileSystemId({ value: 'abcdefghijklmnopqrstu' });
     const rootKey = FileSystemRootKey.create({ bytes: new Uint8Array(32).fill(5) });
     await expect(deriveSuperblockKey({
-      copy: 2 as never, fileSystemId, publicationSequence: 1n, rootKey,
+      copy: 2 as never, fileSystemId, publicationSequence: createPublicationSequence({ value: 1n }), rootKey,
     })).rejects.toThrow('copy');
     await expect(deriveSuperblockKey({
-      copy: 0, fileSystemId, publicationSequence: 0n, rootKey,
+      copy: 0, fileSystemId, publicationSequence: 0n as PublicationSequence, rootKey,
     })).rejects.toThrow('at least 1');
     const firstKey = await deriveRecordKey({
       fileSystemId, homeSegmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(1) }), rootKey,

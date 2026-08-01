@@ -1,4 +1,5 @@
-// TODO(hizofs-v1:I0005): Remove HIZOFS_TRIAL_DEBUG_001 after the user manual enable trial converges.
+// TODO(hizofs-v1:I0005): Retain HIZOFS_TRIAL_DEBUG_001 until the user explicitly
+// declares HizoFS complete or requests its removal.
 export const HIZOFS_TRIAL_DEBUG_MARKER = 'HIZOFS_TRIAL_DEBUG_001';
 
 type TrialError = Readonly<{
@@ -9,6 +10,13 @@ type TrialError = Readonly<{
 }>;
 
 export type NativeEnableTrialStage = 'advance_transition' | 'prepare_transition_runtime' | 'start_persistence_transition';
+
+export type NativeDisableTrialStage =
+  | 'authenticate_source'
+  | 'start_persistence_transition'
+  | 'prepare_transition_runtime'
+  | 'advance_transition'
+  | 'settle_source_session';
 
 export type HizoFSTrialDebugEvent =
   | Readonly<{
@@ -31,6 +39,27 @@ export type HizoFSTrialDebugEvent =
       fileSystemId: string;
       operationId: string;
       stage: NativeEnableTrialStage;
+    }>
+  | Readonly<{
+      event: 'native_disable';
+      fileSystemId: string;
+      operationId: string;
+      stage:
+        | 'started'
+        | 'persistence_transition_started'
+        | 'runtime_prepared'
+        | 'copying'
+        | 'verifying'
+        | 'authority_switched'
+        | 'retired_cleanup'
+        | 'stable';
+    }>
+  | Readonly<{
+      event: 'native_disable_failure';
+      failure: TrialError;
+      fileSystemId: string;
+      operationId: string;
+      stage: NativeDisableTrialStage;
     }>
   | Readonly<{
       event: 'unlock';
@@ -87,12 +116,20 @@ export function reportHizoFSTrialDebug({ detail, level }: {
 
 export function reportHizoFSTrialFailure({ cause, detail }: {
   cause: unknown;
-  detail: Omit<Extract<HizoFSTrialDebugEvent, { event: 'native_enable_failure' }>, 'failure'>;
+  detail:
+    | Omit<Extract<HizoFSTrialDebugEvent, { event: 'native_enable_failure' }>, 'failure'>
+    | Omit<Extract<HizoFSTrialDebugEvent, { event: 'native_disable_failure' }>, 'failure'>;
 }): void {
-  reportHizoFSTrialDebug({
-    detail: { ...detail, failure: projectTrialError({ cause }) },
-    level: 'warn',
-  });
+  const failure = projectTrialError({ cause });
+  switch (detail.event) {
+  case 'native_enable_failure':
+    reportHizoFSTrialDebug({ detail: { ...detail, failure }, level: 'warn' });
+    return;
+  case 'native_disable_failure':
+    reportHizoFSTrialDebug({ detail: { ...detail, failure }, level: 'warn' });
+    return;
+  default: return detail satisfies never;
+  }
 }
 
 export function reportRetiredPlainCleanupFailure({ cause, fileSystemId, remainingEntryCount }: {

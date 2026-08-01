@@ -1,0 +1,181 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Settings } from "@/01-models/types";
+import {
+  installDevelopmentUnverifiedOpfsPersistenceRuntime,
+} from "@/00-storage/service/naidan-opfs/development-persistence-runtime";
+import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from "@/00-storage/service/naidan-opfs/opfs-storage-location";
+import { HIZOFS_TRIAL_DEBUG_MARKER } from "@/00-storage/service/naidan-opfs/trial-debug";
+import { listNativePlainApplicationNamespaceEntryNames } from "@/00-storage/service/naidan-opfs/native-plain-application-namespace";
+import {
+  NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
+} from "@/00-storage/service/naidan-persistence-control/00-format";
+import { OPFSStorageProvider } from "@/00-storage/service/opfs-storage";
+import {
+  createInMemoryOpfsStorageManager,
+  InMemoryOpfsDirectoryHandle,
+} from "@/00-storage/service/test-support/in-memory-opfs";
+import { InMemoryWebLockManager } from "@/00-storage/service/test-support/in-memory-web-locks";
+
+const PASSPHRASE = "correct horse battery staple";
+
+function settings({ endpointUrl }: { endpointUrl: string }): Settings {
+  return {
+    endpoint: { type: "openai", url: endpointUrl },
+    mounts: [],
+    providerProfiles: [],
+    storageType: "opfs",
+    titleGeneration: {
+      endpoint: "same_scope",
+      lmParameters: {
+        frequencyPenalty: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        reasoning: { effort: undefined },
+        stop: undefined,
+        temperature: undefined,
+        topP: undefined,
+      },
+      model: "same_scope",
+    },
+  };
+}
+
+async function listEntryNames({ directory }: {
+  directory: FileSystemDirectoryHandle;
+}): Promise<readonly string[]> {
+  const names: string[] = [];
+  for await (const [name] of directory.entries()) names.push(name);
+  return names.toSorted();
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("browserless production HizoFS disable system", () => {
+  it("disables, reloads into plain storage, writes, reopens, and removes the retired HizoFS container", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      name: "opfs-root",
+    });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", {
+      locks,
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+      lockManager: locks,
+    });
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const plainBeforeEnable = new OPFSStorageProvider();
+      await plainBeforeEnable.init();
+      await plainBeforeEnable.saveSettings({
+        settings: settings({ endpointUrl: "http://plain-before-enable" }),
+      });
+      await plainBeforeEnable.enableEncryption({
+        onProgress: undefined,
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const encryptedAfterReload = new OPFSStorageProvider();
+      await encryptedAfterReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await vi.waitFor(async () => {
+        await expect(listNativePlainApplicationNamespaceEntryNames({
+          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+        })).resolves.toEqual([]);
+      });
+      expect(await encryptedAfterReload.loadSettings()).toMatchObject({
+        endpoint: { url: "http://plain-before-enable" },
+      });
+      await encryptedAfterReload.saveSettings({
+        settings: settings({ endpointUrl: "http://encrypted-before-disable" }),
+      });
+      const storageRoot = await root.getDirectoryHandle(
+        NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+        { create: false },
+      );
+      const encryptedStorageEntries = await listEntryNames({
+        directory: storageRoot as unknown as FileSystemDirectoryHandle,
+      });
+      const persistenceControlDirectoryName =
+        NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName;
+      const [retiredHizoFSContainerName, ...unexpectedEncryptedEntries] =
+        encryptedStorageEntries.filter(name => name !== persistenceControlDirectoryName);
+      expect(retiredHizoFSContainerName).toBeDefined();
+      expect(unexpectedEncryptedEntries).toEqual([]);
+
+      await encryptedAfterReload.disableEncryption({
+        onProgress: undefined,
+        signal: undefined,
+      });
+
+      // The initiating encrypted provider is settled for reload. A fresh
+      // provider must discover stable plain authority without a credential.
+      const plainAfterReload = new OPFSStorageProvider();
+      await expect(plainAfterReload.inspectEncryption()).resolves.toMatchObject({ type: "plain" });
+      await plainAfterReload.init();
+      expect(await plainAfterReload.loadSettings()).toMatchObject({
+        endpoint: { url: "http://encrypted-before-disable" },
+      });
+      await plainAfterReload.saveSettings({
+        settings: settings({ endpointUrl: "http://plain-after-disable" }),
+      });
+
+      await vi.waitFor(async () => {
+        const plainStorageEntries = await listEntryNames({
+          directory: storageRoot as unknown as FileSystemDirectoryHandle,
+        });
+        expect(plainStorageEntries).toContain(persistenceControlDirectoryName);
+        expect(plainStorageEntries).toContain("settings.json");
+        expect(plainStorageEntries).not.toContain(retiredHizoFSContainerName);
+      });
+      await plainAfterReload.dispose();
+
+      const plainSecondReload = new OPFSStorageProvider();
+      await plainSecondReload.init();
+      await expect(plainSecondReload.inspectEncryption()).resolves.toMatchObject({ type: "plain" });
+      expect(await plainSecondReload.loadSettings()).toMatchObject({
+        endpoint: { url: "http://plain-after-disable" },
+      });
+      await plainSecondReload.dispose();
+
+      const disableStages = info.mock.calls.flatMap(([marker, detail]) => {
+        if (marker !== `[${HIZOFS_TRIAL_DEBUG_MARKER}]`
+          || typeof detail !== "object"
+          || detail === null
+          || !("event" in detail)
+          || detail.event !== "native_disable"
+          || !("stage" in detail)
+          || typeof detail.stage !== "string") return [];
+        return [detail.stage];
+      });
+      expect(disableStages[0]).toBe("started");
+      expect(disableStages).toContain("persistence_transition_started");
+      expect(disableStages).toContain("runtime_prepared");
+      expect(disableStages).toContain("verifying");
+      expect(disableStages).toContain("authority_switched");
+      expect(disableStages).toContain("retired_cleanup");
+      expect(disableStages.at(-1)).toBe("stable");
+      expect(disableStages.every(stage => [
+        "started",
+        "persistence_transition_started",
+        "runtime_prepared",
+        "copying",
+        "verifying",
+        "authority_switched",
+        "retired_cleanup",
+        "stable",
+      ].includes(stage))).toBe(true);
+      expect(warn.mock.calls.some(([, detail]) => typeof detail === "object"
+        && detail !== null
+        && "event" in detail
+        && detail.event === "native_disable_failure")).toBe(false);
+    } finally {
+      uninstallRuntime();
+    }
+  }, 60_000);
+});

@@ -11,7 +11,13 @@ import {
   validatePhysicalOnlyRecordIdentity,
   validateRelocationMapping,
 } from '@/00-storage/service/hizofs/00-format/v1/semantic-validation/record-payloads';
-import { createUInt64 } from '@/00-storage/service/hizofs/00-format/v1/scalars';
+import {
+  createCommitSequence,
+  createFileOffset,
+  createInodeNumber,
+  createSubvolumeId,
+  createUInt64,
+} from '@/00-storage/service/hizofs/00-format/v1/scalars';
 
 const KINDS = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
 const segmentId = ({ seed }: { seed: number }) => parseSegmentId({
@@ -28,33 +34,33 @@ const homeRef = ({ kind, offset = 64n, seed = 1 }: { kind: number; offset?: bigi
 
 const commit = ({ sequence = 3n, mutationSeed = 7 }: { mutationSeed?: number; sequence?: bigint } = {}) =>
   createFileSystemCommitPayload({ payload: {
-    commitSequence: createUInt64({ value: sequence }),
+    commitSequence: createCommitSequence({ value: sequence }),
     mutationId: mutationId({ seed: mutationSeed }),
     nestedSubvolumeTableRootHomeRef: null,
-    nextInodeNumber: createUInt64({ value: 2n }),
-    nextSubvolumeId: createUInt64({ value: 2n }),
-    rootDirectoryInodeNumber: createUInt64({ value: 1n }),
+    nextInodeNumber: createInodeNumber({ value: 2n }),
+    nextSubvolumeId: createSubvolumeId({ value: 2n }),
+    rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
     rootInodeTableRootHomeRef: homeRef({ kind: KINDS.inode_table_page }),
   } });
 
 describe('record payload semantic validation', () => {
   it('binds active and fallback Commit authority exactly', () => {
     validateActiveCommitAuthority({
-      activeCommitSequence: createUInt64({ value: 3n }),
+      activeCommitSequence: createCommitSequence({ value: 3n }),
       activeMutationId: mutationId({ seed: 7 }),
       commit: commit(),
     });
     validateFallbackCommitAuthority({
-      activeCommitSequence: createUInt64({ value: 4n }),
+      activeCommitSequence: createCommitSequence({ value: 4n }),
       commit: commit(),
     });
     expect(() => validateActiveCommitAuthority({
-      activeCommitSequence: createUInt64({ value: 3n }),
+      activeCommitSequence: createCommitSequence({ value: 3n }),
       activeMutationId: mutationId({ seed: 8 }),
       commit: commit(),
     })).toThrow('Mutation ID');
     expect(() => validateFallbackCommitAuthority({
-      activeCommitSequence: createUInt64({ value: 5n }),
+      activeCommitSequence: createCommitSequence({ value: 5n }),
       commit: commit(),
     })).toThrow('active minus one');
   });
@@ -64,22 +70,22 @@ describe('record payload semantic validation', () => {
       byteLength: 8,
       dataOffset: 4,
       fileDataHomeRef: homeRef({ kind: KINDS.file_data }),
-      fileOffset: createUInt64({ value: 10n }),
+      fileOffset: createFileOffset({ value: 10n }),
     };
     validateExtentAgainstReferencedData({
       entry,
       fileDataPlaintextLength: 12,
-      inodeFileSize: createUInt64({ value: 18n }),
+      inodeFileSize: createFileOffset({ value: 18n }),
     });
     expect(() => validateExtentAgainstReferencedData({
       entry,
       fileDataPlaintextLength: 11,
-      inodeFileSize: createUInt64({ value: 18n }),
+      inodeFileSize: createFileOffset({ value: 18n }),
     })).toThrow('authenticated File Data');
     expect(() => validateExtentAgainstReferencedData({
       entry,
       fileDataPlaintextLength: 12,
-      inodeFileSize: createUInt64({ value: 17n }),
+      inodeFileSize: createFileOffset({ value: 17n }),
     })).toThrow('fileSize');
   });
 

@@ -87,11 +87,11 @@ describe('native plain transition namespace', () => {
       listDirectory: async ({ path }) => {
         reads += 1;
         return path.length === 0
-          ? { entries: [{ kind: 'directory', metadata: {}, name: 'directory' }], state: 'complete' }
-          : { entries: [{ kind: 'symlink', metadata: {}, name: 'link' }], state: 'complete' };
+          ? { entries: [{ kind: 'directory', metadata: { createdAt: undefined, modifiedAt: undefined }, name: 'directory' }], state: 'complete' }
+          : { entries: [{ kind: 'symlink', metadata: { createdAt: undefined, modifiedAt: undefined }, name: 'link' }], state: 'complete' };
       },
       readFileChunk: async () => ({ bytes: new Uint8Array(), state: 'complete' }),
-      readRootMetadata: async () => ({}),
+      readRootMetadata: async () => ({ createdAt: undefined, modifiedAt: undefined }),
       readSymlink: async () => 'target',
     };
     await expect(assertNativePlainTransitionSourceCompatible({ maximumDirectoryEntriesPerRead: 1, source }))

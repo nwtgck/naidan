@@ -1,6 +1,5 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
-  createFileOffset,
   createHomeRecordReference,
   createInodeNumber,
   createInodeRevision,
@@ -12,7 +11,6 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import {
   StreamingNamespaceImportTargetSession,
-  StreamingNamespaceImportTargetSessionError,
 } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-target-session";
 import type {
   SealedStreamingNamespaceImport,
@@ -202,7 +200,7 @@ describe("StreamingNamespaceImportTargetSession", () => {
     await expect(reopened.target.ensureDirectory({
       metadata: { createdAt: undefined, modifiedAt: undefined },
       path: ["late"],
-    })).rejects.toMatchObject<Partial<StreamingNamespaceImportTargetSessionError>>({ code: "candidate_already_sealed" });
+    })).rejects.toMatchObject({ code: "candidate_already_sealed" });
   });
 
 
@@ -257,7 +255,7 @@ describe("StreamingNamespaceImportTargetSession", () => {
     await expect(session.target.ensureDirectory({
       metadata: { createdAt: undefined, modifiedAt: undefined },
       path: ["early"],
-    })).rejects.toMatchObject<Partial<StreamingNamespaceImportTargetSessionError>>({ code: "root_metadata_required" });
+    })).rejects.toMatchObject({ code: "root_metadata_required" });
 
     await session.target.setRootMetadata({ metadata: { createdAt: 10n, modifiedAt: undefined } });
     await session.target.setRootMetadata({ metadata: { createdAt: 10n, modifiedAt: undefined } });
@@ -266,7 +264,7 @@ describe("StreamingNamespaceImportTargetSession", () => {
 
     await expect(session.target.setRootMetadata({
       metadata: { createdAt: 11n, modifiedAt: undefined },
-    })).rejects.toMatchObject<Partial<StreamingNamespaceImportTargetSessionError>>({ code: "root_metadata_conflict" });
+    })).rejects.toMatchObject({ code: "root_metadata_conflict" });
   });
 
   it("revokes an active session only after its checkpoint is durable", async () => {
@@ -287,7 +285,7 @@ describe("StreamingNamespaceImportTargetSession", () => {
       bytes: Uint8Array.of(1),
       offset: 0n,
       path: ["late"],
-    })).rejects.toMatchObject<Partial<StreamingNamespaceImportTargetSessionError>>({ code: "already_closed" });
+    })).rejects.toMatchObject({ code: "already_closed" });
     expect(firstActor.checkpoint).toHaveBeenCalledTimes(1);
   });
 });
