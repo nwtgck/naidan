@@ -612,7 +612,23 @@ export class OPFSStorageProvider extends IStorageProvider {
     passphrase: string;
     signal: AbortSignal | undefined;
   }): Promise<void> {
-    requireTransitioningInspection({ inspection: await this.inspectEncryption() });
+    const inspection = await this.inspectEncryption();
+    switch (inspection.type) {
+    case 'transitioning': break;
+    case 'credential_required':
+      switch (inspection.requiredAction) {
+      case 'converge_transition': break;
+      case 'unlock':
+        throw new Error('OPFS transition cannot be converged from a stable credential-required state');
+      default: inspection.requiredAction satisfies never;
+      }
+      break;
+    case 'plain':
+    case 'encrypted':
+    case 'recovery_required':
+      throw new Error(`OPFS transition cannot be converged from state: ${inspection.type}`);
+    default: inspection satisfies never;
+    }
     await this.runPersistenceTransition({
       onProgress: undefined,
       request: { operation: 'converge', retainedCredentials: [{ passphrase }] },

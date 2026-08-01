@@ -11,6 +11,8 @@ import type { OpfsEncryptionTransitionProgressListener } from '@/00-storage/serv
 type HizoFSMode = Extract<NaidanPersistenceModeV1, { readonly type: 'hizofs' }>;
 type FileSystemId = HizoFSMode['activeFileSystemId'];
 
+export type OpfsCredentialRequiredAction = 'converge_transition' | 'unlock';
+
 export type OpfsCredentialRequiredCandidate = {
   readonly copy: PersistenceControlCopy;
   readonly sequence: number | undefined;
@@ -27,6 +29,11 @@ export type OpfsEncryptionInspection =
        * File System ID or registering a session.
        */
       readonly blockingReason: 'protection_unresolved';
+      /**
+       * Structurally derived UI action only. The selected operation must still
+       * authenticate and exact-recheck Persistence Control before it can act.
+       */
+      readonly requiredAction: OpfsCredentialRequiredAction;
       readonly candidates: readonly [OpfsCredentialRequiredCandidate, OpfsCredentialRequiredCandidate];
       readonly type: 'credential_required';
     }
@@ -147,6 +154,21 @@ export const TEST_ONLY = {
   }): Extract<OpfsEncryptionInspection, { type: 'credential_required' }> {
     return {
       blockingReason: 'protection_unresolved',
+      requiredAction: 'unlock',
+      candidates: [
+        { copy: 0, sequence: firstSequence, state: 'protection_unresolved' },
+        { copy: 1, sequence: secondSequence, state: 'protection_unresolved' },
+      ],
+      type: 'credential_required',
+    };
+  },
+  createTransitionCredentialRequiredInspection({ firstSequence, secondSequence }: {
+    firstSequence: number | undefined;
+    secondSequence: number | undefined;
+  }): Extract<OpfsEncryptionInspection, { type: 'credential_required' }> {
+    return {
+      blockingReason: 'protection_unresolved',
+      requiredAction: 'converge_transition',
       candidates: [
         { copy: 0, sequence: firstSequence, state: 'protection_unresolved' },
         { copy: 1, sequence: secondSequence, state: 'protection_unresolved' },

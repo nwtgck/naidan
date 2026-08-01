@@ -856,6 +856,7 @@ describe('inspectCredentialAwarePersistenceRuntime', () => {
         { copy: 0, sequence: 2, state: 'protection_unresolved' },
         { copy: 1, sequence: 1, state: 'protection_unresolved' },
       ],
+      requiredAction: 'unlock',
       type: 'credential_required',
     });
     expect(validateEndpointReadiness).not.toHaveBeenCalled();

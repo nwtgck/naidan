@@ -7,6 +7,10 @@ import {
   TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY,
   type OpfsEncryptionInspection,
 } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
+import {
+  persistenceControlAuthenticationFileSystemId,
+  type NaidanPersistenceControlV1,
+} from '@/00-storage/service/naidan-persistence-control/00-format';
 import { projectPersistenceRuntimeInspection } from '@/00-storage/service/naidan-opfs/persistence-runtime-inspection';
 
 function encryptedControl() {
@@ -27,14 +31,16 @@ function copy({
   sequence = undefined,
   state,
 }: {
-  control?: ReturnType<typeof encryptedControl>;
+  control?: NaidanPersistenceControlV1;
   copy: 0 | 1;
   selected?: boolean;
   sequence?: number;
   state: PersistenceControlCopyInspection['state'];
 }): PersistenceControlCopyInspection {
   return {
-    authenticationFileSystemId: control?.mode.activeFileSystemId,
+    authenticationFileSystemId: control === undefined
+      ? undefined
+      : persistenceControlAuthenticationFileSystemId({ mode: control.mode }),
     control,
     copy: copyIdentity,
     mode: control?.mode,
@@ -68,10 +74,11 @@ describe('projectPersistenceRuntimeInspection', () => {
 
     expect(projected.type).toBe('credential_required');
     if (projected.type !== 'credential_required') throw new Error('Expected credential-required inspection');
-    const { blockingReason, candidates, type, ...unhandledProjected } = projected;
+    const { blockingReason, candidates, requiredAction, type, ...unhandledProjected } = projected;
     unhandledProjected satisfies Record<PropertyKey, never>;
-    expect({ blockingReason, candidates, type }).toEqual({
+    expect({ blockingReason, candidates, requiredAction, type }).toEqual({
       blockingReason: 'protection_unresolved',
+      requiredAction: 'unlock',
       candidates: [
         { copy: 0, sequence: 2, state: 'protection_unresolved' },
         { copy: 1, sequence: undefined, state: 'structurally_invalid' },
@@ -79,6 +86,33 @@ describe('projectPersistenceRuntimeInspection', () => {
       type: 'credential_required',
     });
     expect('mode' in projected).toBe(false);
+  });
+
+  it('projects an unresolved transition as a proof-bound convergence action', () => {
+    const transition = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+      operation: 'decrypt',
+      phase: 'building_target',
+      sourceFileSystemId: 'selected-file-system',
+      targetFileSystemId: undefined,
+    });
+    const control = transition.control;
+    const inspection: PersistenceControlInspection = {
+      copies: [
+        copy({ control, copy: 0, sequence: 3, state: 'protection_unresolved' }),
+        copy({ copy: 1, state: 'structurally_invalid' }),
+      ],
+      observedSequences: [3, undefined],
+      selection: {
+        code: 'higher_protection_unresolved',
+        message: 'credential required',
+        state: 'rejected',
+      },
+    };
+
+    expect(projectPersistenceRuntimeInspection({ inspection })).toMatchObject({
+      requiredAction: 'converge_transition',
+      type: 'credential_required',
+    });
   });
 
   it('projects only a proof-valid selected HizoFS authority as encrypted', () => {

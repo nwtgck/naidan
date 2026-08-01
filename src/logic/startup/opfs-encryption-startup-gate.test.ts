@@ -52,6 +52,29 @@ describe('createOpfsEncryptionStartupGate', () => {
     expect(presentationReady).toBe(true);
   });
 
+  it('uses the structural credential action only to enter proof-bound transition convergence', async () => {
+    const unlock = vi.spyOn(storageService, 'unlockOpfsEncryptionWithPassphrase')
+      .mockRejectedValue(new Error('transition credentials must not enter stable unlock'));
+    const converge = vi.spyOn(storageService, 'convergeOpfsEncryptionTransitionWithPassphrase')
+      .mockResolvedValue(undefined);
+    const gate = createOpfsEncryptionStartupGate({
+      inspection: PERSISTENCE_RUNTIME_TEST_ONLY.createTransitionCredentialRequiredInspection({
+        firstSequence: 3,
+        secondSequence: 2,
+      }),
+    });
+
+    await gate.unlockWithPassphrase({ passphrase: 'transition passphrase' });
+    await gate.wait();
+
+    expect(converge).toHaveBeenCalledWith({
+      passphrase: 'transition passphrase',
+      signal: undefined,
+    });
+    expect(unlock).not.toHaveBeenCalled();
+    expect(gate.phase.value).toBe('preparing_application');
+  });
+
   it('converges an interrupted transition without selecting detailed resume progress', async () => {
     const converge = vi.spyOn(storageService, 'convergeOpfsEncryptionTransitionWithPassphrase')
       .mockResolvedValue(undefined);

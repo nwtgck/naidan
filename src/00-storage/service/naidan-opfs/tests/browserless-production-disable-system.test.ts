@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SettingsSchemaDto } from "@/00-storage/00-dto/dto";
 import type { Settings } from "@/01-models/types";
 import {
   installDevelopmentUnverifiedOpfsPersistenceRuntime,
@@ -144,6 +145,9 @@ describe("browserless production HizoFS disable system", () => {
         expect(plainStorageEntries).toContain("settings.json");
         expect(plainStorageEntries).not.toContain(retiredHizoFSContainerName);
       });
+      const rawSettingsFile = await (await storageRoot.getFileHandle("settings.json")).getFile();
+      const rawSettings = SettingsSchemaDto.parse(JSON.parse(await rawSettingsFile.text()));
+      expect(rawSettings.endpoint).toMatchObject({ url: "http://plain-after-disable" });
       await plainAfterReload.dispose();
 
       const plainSecondReload = new OPFSStorageProvider();
@@ -189,4 +193,184 @@ describe("browserless production HizoFS disable system", () => {
       uninstallRuntime();
     }
   }, 60_000);
+
+  it("keeps HizoFS authoritative and retries disable from scratch after restart when verification is interrupted", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      name: "opfs-root",
+    });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", {
+      locks,
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+      lockManager: locks,
+    });
+    const controller = new AbortController();
+    let abortedDuringVerification = false;
+
+    try {
+      const plainBeforeEnable = new OPFSStorageProvider();
+      await plainBeforeEnable.init();
+      await plainBeforeEnable.saveSettings({
+        settings: settings({ endpointUrl: "http://before-interrupted-disable" }),
+      });
+      await plainBeforeEnable.enableEncryption({
+        onProgress: undefined,
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const encrypted = new OPFSStorageProvider();
+      await encrypted.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await encrypted.saveSettings({
+        settings: settings({ endpointUrl: "http://encrypted-before-interruption" }),
+      });
+
+      await expect(encrypted.disableEncryption({
+        onProgress: ({ progress }) => {
+          if (progress.phase !== "verifying" || abortedDuringVerification) return;
+          abortedDuringVerification = true;
+          controller.abort();
+        },
+        signal: controller.signal,
+      })).rejects.toMatchObject({ name: "AbortError" });
+      expect(abortedDuringVerification).toBe(true);
+      await encrypted.dispose();
+
+      const afterRestart = new OPFSStorageProvider();
+      await expect(afterRestart.inspectEncryption()).resolves.toMatchObject({
+        requiredAction: "converge_transition",
+        type: "credential_required",
+      });
+      await expect(afterRestart.init()).rejects.toThrow(/encryption|transition/i);
+      await afterRestart.convergeTransitionWithPassphrase({
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+      await afterRestart.dispose();
+
+      const encryptedAfterConvergence = new OPFSStorageProvider();
+      await expect(encryptedAfterConvergence.inspectEncryption()).resolves.toMatchObject({
+        requiredAction: "unlock",
+        type: "credential_required",
+      });
+      await encryptedAfterConvergence.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      expect(await encryptedAfterConvergence.loadSettings()).toMatchObject({
+        endpoint: { url: "http://encrypted-before-interruption" },
+      });
+      await encryptedAfterConvergence.disableEncryption({
+        onProgress: undefined,
+        signal: undefined,
+      });
+      await encryptedAfterConvergence.dispose();
+
+      const plainAfterRetry = new OPFSStorageProvider();
+      await plainAfterRetry.init();
+      await expect(plainAfterRetry.inspectEncryptionSettings()).resolves.toEqual({ type: "plain" });
+      expect(await plainAfterRetry.loadSettings()).toMatchObject({
+        endpoint: { url: "http://encrypted-before-interruption" },
+      });
+      await plainAfterRetry.dispose();
+    } finally {
+      uninstallRuntime();
+    }
+  }, 60_000);
+  it("keeps stable plain storage usable when retired HizoFS cleanup fails and retries after restart", async () => {
+    let cleanupFaultCount = 0;
+    let failRetiredCleanup = false;
+    let retiredHizoFSContainerName: string | undefined;
+    const cleanupFailure = new DOMException("retired HizoFS cleanup fault", "NoModificationAllowedError");
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      faultHooks: {
+        beforeRemoveEntry: async ({ name }) => {
+          if (!failRetiredCleanup || name !== retiredHizoFSContainerName) return;
+          cleanupFaultCount += 1;
+          throw cleanupFailure;
+        },
+      },
+      name: "opfs-root",
+    });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", {
+      locks,
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+      lockManager: locks,
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const plainBeforeEnable = new OPFSStorageProvider();
+      await plainBeforeEnable.init();
+      await plainBeforeEnable.saveSettings({
+        settings: settings({ endpointUrl: "http://before-cleanup-failure" }),
+      });
+      await plainBeforeEnable.enableEncryption({
+        onProgress: undefined,
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const encrypted = new OPFSStorageProvider();
+      await encrypted.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await encrypted.saveSettings({
+        settings: settings({ endpointUrl: "http://plain-authority-after-cleanup-failure" }),
+      });
+      const storageRoot = await root.getDirectoryHandle(
+        NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+        { create: false },
+      );
+      const persistenceControlDirectoryName =
+        NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName;
+      [retiredHizoFSContainerName] = (await listEntryNames({
+        directory: storageRoot as unknown as FileSystemDirectoryHandle,
+      })).filter(name => name !== persistenceControlDirectoryName);
+      expect(retiredHizoFSContainerName).toBeDefined();
+
+      failRetiredCleanup = true;
+      await expect(encrypted.disableEncryption({
+        onProgress: undefined,
+        signal: undefined,
+      })).resolves.toBeUndefined();
+
+      const plainAfterCleanupFailure = new OPFSStorageProvider();
+      await plainAfterCleanupFailure.init();
+      await expect(plainAfterCleanupFailure.inspectEncryption()).resolves.toMatchObject({ type: "plain" });
+      expect(await plainAfterCleanupFailure.loadSettings()).toMatchObject({
+        endpoint: { url: "http://plain-authority-after-cleanup-failure" },
+      });
+      expect(await listEntryNames({
+        directory: storageRoot as unknown as FileSystemDirectoryHandle,
+      })).toContain(retiredHizoFSContainerName);
+      await plainAfterCleanupFailure.dispose();
+
+      failRetiredCleanup = false;
+      const plainAfterCleanupRetry = new OPFSStorageProvider();
+      await plainAfterCleanupRetry.init();
+      await vi.waitFor(async () => {
+        expect(await listEntryNames({
+          directory: storageRoot as unknown as FileSystemDirectoryHandle,
+        })).not.toContain(retiredHizoFSContainerName);
+      });
+      expect(await plainAfterCleanupRetry.loadSettings()).toMatchObject({
+        endpoint: { url: "http://plain-authority-after-cleanup-failure" },
+      });
+      await plainAfterCleanupRetry.dispose();
+      expect(cleanupFaultCount).toBeGreaterThan(0);
+      expect(error).toHaveBeenCalledWith(
+        '[opfs-encryption] deferred startup maintenance failed',
+        cleanupFailure,
+      );
+    } finally {
+      error.mockRestore();
+      warning.mockRestore();
+      uninstallRuntime();
+    }
+  }, 60_000);
+
 });

@@ -79,6 +79,19 @@ export function createOpfsEncryptionStartupGate({
       const value = currentInspection.value;
       switch (value.type) {
       case 'credential_required':
+        switch (value.requiredAction) {
+        case 'unlock':
+          await storageService.unlockOpfsEncryptionWithPassphrase({ passphrase });
+          break;
+        case 'converge_transition':
+          await storageService.convergeOpfsEncryptionTransitionWithPassphrase({
+            passphrase,
+            signal: undefined,
+          });
+          break;
+        default: value.requiredAction satisfies never;
+        }
+        break;
       case 'encrypted':
         await storageService.unlockOpfsEncryptionWithPassphrase({ passphrase });
         break;

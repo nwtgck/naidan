@@ -1,6 +1,7 @@
 import type { PersistenceControlInspection } from '@/00-storage/service/naidan-persistence-control/inspection';
 import { exactObject } from '@/utils/exact-object';
 import type {
+  OpfsCredentialRequiredAction,
   OpfsCredentialRequiredCandidate,
   OpfsEncryptionInspection,
 } from './persistence-runtime-contract';
@@ -24,6 +25,23 @@ function credentialCandidate({ candidate }: {
   } = candidate;
   unhandledCandidate satisfies Record<PropertyKey, never>;
   return exactObject<OpfsCredentialRequiredCandidate>()({ copy, sequence, state });
+}
+
+
+function credentialRequiredAction({ copies }: {
+  copies: PersistenceControlInspection['copies'];
+}): OpfsCredentialRequiredAction | undefined {
+  const unresolved = copies
+    .filter(copy => copy.state === 'protection_unresolved')
+    .toSorted((left, right) => (right.sequence ?? -1) - (left.sequence ?? -1))[0];
+  if (unresolved === undefined) return undefined;
+  switch (unresolved.mode?.type) {
+  case 'hizofs': return 'unlock';
+  case 'transitioning': return 'converge_transition';
+  case 'plain':
+  case undefined: return undefined;
+  default: return unresolved.mode satisfies never;
+  }
 }
 
 function recoveryRequired({ cause, message }: {
@@ -52,20 +70,28 @@ export function projectPersistenceRuntimeInspection({ inspection }: {
     const { code, message, state: _state, ...unhandledSelection } = selection;
     unhandledSelection satisfies Record<PropertyKey, never>;
     switch (code) {
-    case 'higher_protection_unresolved':
+    case 'higher_protection_unresolved': {
       if (!copies.some(copy => copy.state === 'protection_unresolved')) {
         return recoveryRequired({
           message: 'Persistence Control reported unresolved protection without an unresolved candidate',
         });
       }
+      const requiredAction = credentialRequiredAction({ copies });
+      if (requiredAction === undefined) {
+        return recoveryRequired({
+          message: 'Persistence Control unresolved protection lacks a safe credential action',
+        });
+      }
       return exactObject<Extract<OpfsEncryptionInspection, { type: 'credential_required' }>>()({
         blockingReason: 'protection_unresolved',
+        requiredAction,
         candidates: [
           credentialCandidate({ candidate: copies[0] }),
           credentialCandidate({ candidate: copies[1] }),
         ],
         type: 'credential_required',
       });
+    }
     case 'copy_identity_mismatch':
     case 'no_proof_valid_authority':
     case 'sequence_reuse_corruption':

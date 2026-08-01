@@ -58,6 +58,7 @@ import {
   type TransitionAdvanceResult,
   type TransitionControlPort,
   type TransitionCoordinatorPolicy,
+  type TransitionProgressPort,
   type TransitionSemanticState,
 } from '@/00-storage/service/naidan-persistence-control/transition/transition-coordinator';
 import { createPersistenceControlTransitionPort } from '@/00-storage/service/naidan-persistence-control/transition/persistence-control-transition-port';
@@ -1851,6 +1852,54 @@ async function runNativeHizoFSReencryptResumeTransition({
   });
 }
 
+function createNativeDecryptConvergenceProgressPort({
+  authority,
+  exclusiveGate,
+  nativeNamespaceRoot,
+  passphrase,
+  storageRoot,
+}: {
+  authority: Extract<NativeHizoFSResumeAuthority, { readonly operation: 'decrypt' }>;
+  exclusiveGate: NaidanPersistenceControlExclusiveGate;
+  nativeNamespaceRoot: FileSystemDirectoryHandle;
+  passphrase: string;
+  storageRoot: FileSystemDirectoryHandle;
+}): TransitionProgressPort {
+  const binding = {
+    operationId: authority.binding.operationId,
+    providerCheckpointCodec: 'naidan-opfs-plain-target-v1',
+    sourceAuthorityIdentity: nativeDisableSourceAuthorityIdentity({ fileSystemId: authority.fileSystemId }),
+    sourceEndpoint: authority.binding.source,
+    targetAuthorityIdentity: NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
+    targetEndpoint: authority.binding.target,
+  } as const;
+  const companion = new AuthenticatedTransitionProgressCompanion({
+    binding,
+    physical: createOpfsTransitionProgressPhysicalPort({ exclusiveGate, storageRoot }),
+    proofScope: createNativeHizoFSRootKeyProofScope({
+      fileSystemId: authority.fileSystemId,
+      nativeNamespaceRoot,
+      openProfile: 'root_key_proof',
+      passphrase,
+    }),
+    randomSource: undefined,
+  });
+  const progressPort = new NativePlainTransitionProgressBridge({ binding, companion }).progressPort;
+  return {
+    clear: async ({ operationId }) => {
+      // Native plain target ownership deliberately advances through
+      // sealed -> published -> absent. Startup convergence has already
+      // published the stable authority, so drain both authenticated steps to
+      // prevent a later from-scratch disable from colliding with this retired
+      // operation ID.
+      await progressPort.clear({ operationId });
+      await progressPort.clear({ operationId });
+    },
+    load: progressPort.load,
+    save: progressPort.save,
+  };
+}
+
 export async function runNativeHizoFSConvergeTransition({
   lockManager,
   nativeNamespaceRoot,
@@ -1954,11 +2003,26 @@ export async function runNativeHizoFSConvergeTransition({
         || !sameTransitionEndpoint({ actual: current.mode.phase.target, expected: authority.binding.target })) {
         throw new TypeError('Persistence Control transition changed after convergence credential proof');
       }
+      const progressPort = (() => {
+        switch (authority.operation) {
+        case 'decrypt': return createNativeDecryptConvergenceProgressPort({
+          authority,
+          exclusiveGate,
+          nativeNamespaceRoot,
+          passphrase,
+          storageRoot,
+        });
+        case 'encrypt':
+        case 're_encrypt': return undefined;
+        default: return authority satisfies never;
+        }
+      })();
       return await convergeInterruptedPersistenceTransition({
         control,
-        // Detailed progress is deliberately ignored by normal startup. The
-        // post-connection cleanup phase removes obsolete companion state.
-        progressPort: undefined,
+        // Startup convergence deliberately discards detailed resume state.
+        // Decrypt progress must still be authenticated and cleared so a later
+        // from-scratch disable cannot collide with the retired operation ID.
+        progressPort,
       });
     },
   });
