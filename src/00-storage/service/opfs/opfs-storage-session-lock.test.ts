@@ -5,6 +5,7 @@ import {
   OpfsPlainNamespaceSessionLock,
   OpfsStorageSessionLock,
   TEST_ONLY,
+  runWithExclusiveOpfsPlainNamespaceFence,
   runWithExclusiveOpfsStorageSessionFence,
   runWithOpportunisticExclusiveOpfsPlainNamespaceFence,
 } from './opfs-storage-session-lock';
@@ -385,5 +386,87 @@ describe('runWithOpportunisticExclusiveOpfsPlainNamespaceFence', () => {
       { ifAvailable: true, mode: 'exclusive' },
       expect.any(Function),
     );
+  });
+});
+
+describe('runWithExclusiveOpfsPlainNamespaceFence', () => {
+  it('waits for every shared plain session before mutating the namespace', async () => {
+    const lockManager = createQueuedLockManager();
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: lockManager,
+    });
+    const plainSessionLock = new OpfsPlainNamespaceSessionLock();
+    await plainSessionLock.acquire();
+    const run = vi.fn(async () => 'mutated');
+
+    const mutation = runWithExclusiveOpfsPlainNamespaceFence({
+      lockManager,
+      run,
+      signal: undefined,
+    });
+    await Promise.resolve();
+    expect(run).not.toHaveBeenCalled();
+
+    await plainSessionLock.suspend();
+    await expect(mutation).resolves.toBe('mutated');
+    expect(run).toHaveBeenCalledOnce();
+    expect(lockManager.request).toHaveBeenCalledWith(
+      OPFS_PLAIN_NAMESPACE_SESSION_LOCK_KEY,
+      { mode: 'exclusive', signal: expect.any(AbortSignal) },
+      expect.any(Function),
+    );
+  });
+
+  it('times out before mutation when a stale plain session keeps its lease', async () => {
+    vi.useFakeTimers();
+    const run = vi.fn(async () => undefined);
+    const mutation = runWithExclusiveOpfsPlainNamespaceFence({
+      lockManager: createPendingSignalAwareLockManager(),
+      run,
+      signal: undefined,
+    });
+    const rejection = expect(mutation).rejects.toMatchObject({
+      message: 'Timed out waiting for the exclusive OPFS plain-namespace fence',
+      name: 'TimeoutError',
+    });
+
+    await vi.advanceTimersByTimeAsync(TEST_ONLY.exclusiveFenceTimeoutMilliseconds);
+
+    await rejection;
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('never overlaps two required plain namespace mutations', async () => {
+    const lockManager = createQueuedLockManager();
+    const firstRelease = Promise.withResolvers<void>();
+    const events: string[] = [];
+    const first = runWithExclusiveOpfsPlainNamespaceFence({
+      lockManager,
+      run: async () => {
+        events.push('first-started');
+        await firstRelease.promise;
+        events.push('first-finished');
+      },
+      signal: undefined,
+    });
+    await vi.waitFor(() => {
+      expect(events).toEqual(['first-started']);
+    });
+
+    const second = runWithExclusiveOpfsPlainNamespaceFence({
+      lockManager,
+      run: async () => {
+        events.push('second-started');
+      },
+      signal: undefined,
+    });
+    await Promise.resolve();
+    expect(events).toEqual(['first-started']);
+
+    firstRelease.resolve();
+    await first;
+    await second;
+    expect(events).toEqual(['first-started', 'first-finished', 'second-started']);
   });
 });

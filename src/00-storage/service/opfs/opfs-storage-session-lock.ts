@@ -7,8 +7,9 @@ type FenceAcquisitionSignal = Readonly<{
   signal: AbortSignal;
 }>;
 
-function createFenceAcquisitionSignal({ signal, timeoutMilliseconds }: {
+function createFenceAcquisitionSignal({ signal, timeoutMessage, timeoutMilliseconds }: {
   signal: AbortSignal | undefined;
+  timeoutMessage: string;
   timeoutMilliseconds: number;
 }): FenceAcquisitionSignal {
   if (!Number.isSafeInteger(timeoutMilliseconds) || timeoutMilliseconds <= 0) {
@@ -24,7 +25,7 @@ function createFenceAcquisitionSignal({ signal, timeoutMilliseconds }: {
     signal?.addEventListener('abort', forwardAbort, { once: true });
   }
   const timeout = setTimeout(() => {
-    const timeoutError = new Error('Timed out waiting for the exclusive OPFS storage-session fence');
+    const timeoutError = new Error(timeoutMessage);
     timeoutError.name = 'TimeoutError';
     controller.abort(timeoutError);
   }, timeoutMilliseconds);
@@ -40,29 +41,35 @@ function createFenceAcquisitionSignal({ signal, timeoutMilliseconds }: {
   };
 }
 
-
-export async function runWithExclusiveOpfsStorageSessionFence<T>({
+async function runWithExclusiveOpfsNamedSessionFence<T>({
+  lockKey,
   lockManager,
+  missingLocksMessage,
   run,
   signal,
+  timeoutMessage,
 }: {
-  lockManager: LockManager | undefined;
+  lockKey: string;
+  lockManager: Pick<LockManager, 'request'> | undefined;
+  missingLocksMessage: string;
   run: () => Promise<T>;
   signal: AbortSignal | undefined;
+  timeoutMessage: string;
 }): Promise<T> {
   if (lockManager?.request === undefined) {
-    throw new Error('Web Locks are required for an OPFS persistence transition');
+    throw new Error(missingLocksMessage);
   }
   if (signal?.aborted === true) {
     throw signal.reason;
   }
   const acquisition = createFenceAcquisitionSignal({
     signal,
+    timeoutMessage,
     timeoutMilliseconds: OPFS_STORAGE_SESSION_EXCLUSIVE_FENCE_TIMEOUT_MILLISECONDS,
   });
   try {
     return await lockManager.request(
-      OPFS_STORAGE_SESSION_LOCK_KEY,
+      lockKey,
       { mode: 'exclusive', signal: acquisition.signal },
       async lock => {
         acquisition.dispose();
@@ -74,6 +81,50 @@ export async function runWithExclusiveOpfsStorageSessionFence<T>({
   } finally {
     acquisition.dispose();
   }
+}
+
+export async function runWithExclusiveOpfsStorageSessionFence<T>({
+  lockManager,
+  run,
+  signal,
+}: {
+  lockManager: LockManager | undefined;
+  run: () => Promise<T>;
+  signal: AbortSignal | undefined;
+}): Promise<T> {
+  return await runWithExclusiveOpfsNamedSessionFence({
+    lockKey: OPFS_STORAGE_SESSION_LOCK_KEY,
+    lockManager,
+    missingLocksMessage: 'Web Locks are required for an OPFS persistence transition',
+    run,
+    signal,
+    timeoutMessage: 'Timed out waiting for the exclusive OPFS storage-session fence',
+  });
+}
+
+/**
+ * Serializes every correctness-critical mutation of the native plain namespace.
+ *
+ * Unlike retired-source maintenance, transition convergence and fresh target
+ * construction must wait for stale plain sessions and fail on a bounded timeout.
+ */
+export async function runWithExclusiveOpfsPlainNamespaceFence<T>({
+  lockManager,
+  run,
+  signal,
+}: {
+  lockManager: Pick<LockManager, 'request'> | undefined;
+  run: () => Promise<T>;
+  signal: AbortSignal | undefined;
+}): Promise<T> {
+  return await runWithExclusiveOpfsNamedSessionFence({
+    lockKey: OPFS_PLAIN_NAMESPACE_SESSION_LOCK_KEY,
+    lockManager,
+    missingLocksMessage: 'Web Locks are required for a native plain namespace transition',
+    run,
+    signal,
+    timeoutMessage: 'Timed out waiting for the exclusive OPFS plain-namespace fence',
+  });
 }
 
 export type OpportunisticPlainNamespaceFenceResult<T> =

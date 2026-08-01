@@ -74,6 +74,18 @@ describe('native plain transition runtime state', () => {
     await expect(state.progressPort.load({ operationId })).resolves.toBeUndefined();
   });
 
+  it('drops every invocation-local marker when a target is abandoned', async () => {
+    const state = runtime();
+    await state.prepareTarget();
+    await state.stageLifecycle({ lifecycle: 'sealed' });
+    await state.progressPort.save({ progress: verifyingProgress() });
+
+    await state.abandonTarget({ operationId });
+
+    await expect(state.currentLifecycle()).resolves.toBeUndefined();
+    await expect(state.progressPort.load({ operationId })).resolves.toBeUndefined();
+  });
+
   it('rejects lifecycle regression, another operation, and another binding', async () => {
     const state = runtime();
     await state.prepareTarget();

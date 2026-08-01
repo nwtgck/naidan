@@ -277,6 +277,11 @@ export class InMemoryOpfsFileHandle {
 }
 
 export type InMemoryOpfsFaultHooks = Readonly<{
+  afterRemoveEntry?: ({ directoryName, name, recursive }: {
+    directoryName: string;
+    name: string;
+    recursive: boolean;
+  }) => Promise<void> | void;
   beforeRemoveEntry?: ({ directoryName, name, recursive }: {
     directoryName: string;
     name: string;
@@ -386,6 +391,11 @@ export class InMemoryOpfsDirectoryHandle {
     default: return entry satisfies never;
     }
     this.#entries.delete(name);
+    await this.faultHooks?.afterRemoveEntry?.({
+      directoryName: this.name,
+      name,
+      recursive: options?.recursive ?? false,
+    });
   }
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- File System Access API interface requires positional arguments.

@@ -262,10 +262,16 @@ describe("browserless production HizoFS disable system", () => {
         type: "credential_required",
       });
       await expect(afterRestart.init()).rejects.toThrow(/encryption|transition/i);
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.toContain("settings.json");
       await afterRestart.convergeTransitionWithPassphrase({
         passphrase: PASSPHRASE,
         signal: undefined,
       });
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.toEqual([]);
       await afterRestart.dispose();
 
       const encryptedAfterConvergence = new OPFSStorageProvider();
@@ -294,6 +300,176 @@ describe("browserless production HizoFS disable system", () => {
       uninstallRuntime();
     }
   }, 60_000);
+
+  it("keeps recovery required and preserves HizoFS when abandoned plaintext cleanup fails", async () => {
+    let failAbandonedPlainCleanup = false;
+    const cleanupFailure = new DOMException("abandoned plaintext cleanup fault", "NoModificationAllowedError");
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      faultHooks: {
+        beforeRemoveEntry: async ({ name }) => {
+          if (failAbandonedPlainCleanup && name === "settings.json") throw cleanupFailure;
+        },
+      },
+      name: "opfs-root",
+    });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", {
+      locks,
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+      lockManager: locks,
+    });
+    const controller = new AbortController();
+
+    try {
+      const plain = new OPFSStorageProvider();
+      await plain.init();
+      await plain.saveSettings({
+        settings: settings({ endpointUrl: "http://source-survives-cleanup-fault" }),
+      });
+      await plain.enableEncryption({
+        onProgress: undefined,
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const encrypted = new OPFSStorageProvider();
+      await encrypted.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await vi.waitFor(async () => {
+        await expect(listNativePlainApplicationNamespaceEntryNames({
+          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+        })).resolves.toEqual([]);
+      });
+      await expect(encrypted.disableEncryption({
+        onProgress: ({ progress }) => {
+          if (progress.phase === "verifying") controller.abort();
+        },
+        signal: controller.signal,
+      })).rejects.toMatchObject({ name: "AbortError" });
+
+      failAbandonedPlainCleanup = true;
+      const failedRecovery = new OPFSStorageProvider();
+      await expect(failedRecovery.convergeTransitionWithPassphrase({
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      })).rejects.toBe(cleanupFailure);
+      await expect(failedRecovery.inspectEncryption()).resolves.toMatchObject({
+        requiredAction: "converge_transition",
+        type: "credential_required",
+      });
+      await expect(failedRecovery.init()).rejects.toThrow(/encryption|transition/i);
+      await expect(failedRecovery.loadSettings()).rejects.toThrow(/suspended|not initialized or unlocked/);
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.toContain("settings.json");
+
+      failAbandonedPlainCleanup = false;
+      const retriedRecovery = new OPFSStorageProvider();
+      await retriedRecovery.convergeTransitionWithPassphrase({
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.toEqual([]);
+
+      const encryptedAfterRetry = new OPFSStorageProvider();
+      await encryptedAfterRetry.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await expect(encryptedAfterRetry.loadSettings()).resolves.toMatchObject({
+        endpoint: { url: "http://source-survives-cleanup-fault" },
+      });
+      await encryptedAfterRetry.dispose();
+    } finally {
+      uninstallRuntime();
+    }
+  }, 60_000);
+
+  it("retries convergence after abandoned plaintext deletion loses its response", async () => {
+    let loseDeleteResponse = false;
+    let lostDeleteResponse = false;
+    const responseLoss = new DOMException("remove response lost", "UnknownError");
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      faultHooks: {
+        afterRemoveEntry: async ({ name }) => {
+          if (!loseDeleteResponse || lostDeleteResponse || name !== "settings.json") return;
+          lostDeleteResponse = true;
+          throw responseLoss;
+        },
+      },
+      name: "opfs-root",
+    });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", {
+      locks,
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+      lockManager: locks,
+    });
+    const controller = new AbortController();
+
+    try {
+      const plain = new OPFSStorageProvider();
+      await plain.init();
+      await plain.saveSettings({
+        settings: settings({ endpointUrl: "http://source-after-delete-response-loss" }),
+      });
+      await plain.enableEncryption({
+        onProgress: undefined,
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const encrypted = new OPFSStorageProvider();
+      await encrypted.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await vi.waitFor(async () => {
+        await expect(listNativePlainApplicationNamespaceEntryNames({
+          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+        })).resolves.toEqual([]);
+      });
+      await expect(encrypted.disableEncryption({
+        onProgress: ({ progress }) => {
+          if (progress.phase === "verifying") controller.abort();
+        },
+        signal: controller.signal,
+      })).rejects.toMatchObject({ name: "AbortError" });
+
+      loseDeleteResponse = true;
+      const firstRecovery = new OPFSStorageProvider();
+      await expect(firstRecovery.convergeTransitionWithPassphrase({
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      })).rejects.toBe(responseLoss);
+      expect(lostDeleteResponse).toBe(true);
+      await expect(firstRecovery.inspectEncryption()).resolves.toMatchObject({
+        requiredAction: "converge_transition",
+        type: "credential_required",
+      });
+
+      loseDeleteResponse = false;
+      const retriedRecovery = new OPFSStorageProvider();
+      await retriedRecovery.convergeTransitionWithPassphrase({
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.toEqual([]);
+
+      const encryptedAfterRetry = new OPFSStorageProvider();
+      await encryptedAfterRetry.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await expect(encryptedAfterRetry.loadSettings()).resolves.toMatchObject({
+        endpoint: { url: "http://source-after-delete-response-loss" },
+      });
+      await encryptedAfterRetry.dispose();
+    } finally {
+      uninstallRuntime();
+    }
+  }, 60_000);
+
   it("keeps stable plain storage usable when retired HizoFS cleanup fails and retries after restart", async () => {
     let cleanupFaultCount = 0;
     let failRetiredCleanup = false;

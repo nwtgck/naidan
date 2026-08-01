@@ -2464,6 +2464,54 @@ describe('registerCredentialBoundApplicationSession', () => {
     })).toBe(false);
   });
 
+  it('does not delete plain bytes when the authenticated convergence binding changed', async () => {
+    const authenticated = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+      operation: 'decrypt',
+      phase: 'building_target',
+      sourceFileSystemId: 'disableSource0000001',
+      targetFileSystemId: undefined,
+    }).control;
+    const changed = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+      operation: 'decrypt',
+      phase: 'building_target',
+      sourceFileSystemId: 'disableSource0000002',
+      targetFileSystemId: undefined,
+    }).control;
+    const authority = PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
+      control: authenticated,
+      fileSystemId: testFileSystemId({ value: 'disableSource0000001' }),
+    });
+    const removeEntry = vi.fn(async () => undefined);
+    const getDirectoryHandle = vi.fn(async () => ({
+      keys: async function* () {
+        yield 'settings.json';
+      },
+      removeEntry,
+    }) as unknown as FileSystemDirectoryHandle);
+    const lockManager = {
+      request: async <T>(name: string, _options: LockOptions, callback: LockGrantedCallback<T>): Promise<T> => (
+        await callback({ mode: 'exclusive', name } as Lock)
+      ),
+    } as LockManager;
+
+    await expect(PRODUCTION_RUNTIME_TEST_ONLY.convergeNativePersistenceTransition({
+      authority,
+      control: {
+        publishState: vi.fn(async () => undefined),
+        readState: async () => ({
+          mode: changed.mode,
+          retiredFileSystemIds: changed.retiredFileSystemIds,
+        }),
+      },
+      expectedPhase: 'building_target',
+      lockManager,
+      nativeNamespaceRoot: { getDirectoryHandle } as unknown as FileSystemDirectoryHandle,
+      signal: undefined,
+    })).rejects.toThrow('changed after convergence credential proof');
+    expect(getDirectoryHandle).not.toHaveBeenCalled();
+    expect(removeEntry).not.toHaveBeenCalled();
+  });
+
   it('rejects a convergence credential proven by the wrong decrypt endpoint', () => {
     const control = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
       operation: 'decrypt',

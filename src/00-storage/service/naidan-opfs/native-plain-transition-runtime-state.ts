@@ -95,6 +95,15 @@ export class NativePlainTransitionRuntimeState implements NativePlainTransitionR
     return this.#stagedLifecycle ?? this.#lifecycle;
   }
 
+  public async abandonTarget({ operationId }: {
+    operationId: TransitionOperationId;
+  }): Promise<void> {
+    this.#requireOperation({ operationId });
+    this.#lifecycle = undefined;
+    this.#progress = undefined;
+    this.#stagedLifecycle = undefined;
+  }
+
   readonly progressPort: TransitionProgressPort = {
     clear: async ({ operationId }) => {
       this.#requireOperation({ operationId });

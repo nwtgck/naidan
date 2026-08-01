@@ -56,6 +56,7 @@ import {
   convergeInterruptedPersistenceTransition,
   startPersistenceTransition,
   type TransitionAdvanceResult,
+  type TransitionConvergenceResult,
   type TransitionControlPort,
   type TransitionCoordinatorPolicy,
   type TransitionSemanticState,
@@ -106,9 +107,13 @@ import {
 } from './native-plain-enable-transition-driver';
 import {
   cleanupNativePlainApplicationNamespaceWithReport,
+  isNativePlainApplicationNamespaceEmpty,
   listNativePlainApplicationNamespaceEntryNames,
 } from './native-plain-application-namespace';
-import { runWithOpportunisticExclusiveOpfsPlainNamespaceFence } from '@/00-storage/service/opfs/opfs-storage-session-lock';
+import {
+  runWithExclusiveOpfsPlainNamespaceFence,
+  runWithOpportunisticExclusiveOpfsPlainNamespaceFence,
+} from '@/00-storage/service/opfs/opfs-storage-session-lock';
 import {
   reportHizoFSTrialDebug,
   reportHizoFSTrialFailure,
@@ -1388,15 +1393,105 @@ async function runWithCredentialAuthorityRelease<T>({ failureMessage, operation,
   return value as T;
 }
 
+function requireCurrentNativeConvergenceTransition({
+  actual,
+  authority,
+  expectedPhase,
+}: {
+  actual: TransitionSemanticState;
+  authority: NativeHizoFSConvergenceAuthority;
+  expectedPhase: 'building_target' | 'cleaning_up_source';
+}): void {
+  const mode = actual.mode;
+  if (mode.type !== 'transitioning'
+    || mode.operation !== authority.operation
+    || mode.operationId !== authority.binding.operationId
+    || mode.phase.type !== expectedPhase
+    || !sameTransitionEndpoint({ actual: mode.phase.source, expected: authority.binding.source })
+    || !sameTransitionEndpoint({ actual: mode.phase.target, expected: authority.binding.target })) {
+    throw new TypeError('Persistence Control transition changed after convergence credential proof');
+  }
+}
+
+async function convergeNativePersistenceTransition({
+  authority,
+  control,
+  expectedPhase,
+  lockManager,
+  nativeNamespaceRoot,
+  signal,
+}: {
+  authority: NativeHizoFSConvergenceAuthority;
+  control: TransitionControlPort;
+  expectedPhase: 'building_target' | 'cleaning_up_source';
+  lockManager: BrowserHizoFSRuntimeHostOptions['lockManager'];
+  nativeNamespaceRoot: FileSystemDirectoryHandle;
+  signal: AbortSignal | undefined;
+}): Promise<TransitionConvergenceResult> {
+  const runConvergence = async ({ plainTargetDisposition }: {
+    plainTargetDisposition: 'preserve' | 'remove_before_source_recovery';
+  }): Promise<TransitionConvergenceResult> => {
+    requireCurrentNativeConvergenceTransition({
+      actual: await control.readState(),
+      authority,
+      expectedPhase,
+    });
+    switch (plainTargetDisposition) {
+    case 'preserve': break;
+    case 'remove_before_source_recovery': {
+      await cleanupNativePlainApplicationNamespaceWithReport({ nativeNamespaceRoot });
+      if (!await isNativePlainApplicationNamespaceEmpty({ nativeNamespaceRoot })) {
+        throw new TypeError('abandoned native plain transition target remained after cleanup');
+      }
+      requireCurrentNativeConvergenceTransition({
+        actual: await control.readState(),
+        authority,
+        expectedPhase,
+      });
+      break;
+    }
+    default: plainTargetDisposition satisfies never;
+    }
+    return await convergeInterruptedPersistenceTransition({
+      control,
+      progressPort: undefined,
+    });
+  };
+
+  switch (authority.operation) {
+  case 'decrypt':
+    switch (authority.phase) {
+    case 'building_target':
+      return await runWithExclusiveOpfsPlainNamespaceFence({
+        lockManager,
+        run: async () => await runConvergence({
+          plainTargetDisposition: 'remove_before_source_recovery',
+        }),
+        signal,
+      });
+    case 'cleaning_up_source':
+      return await runConvergence({ plainTargetDisposition: 'preserve' });
+    default: return authority.phase satisfies never;
+    }
+  case 'encrypt':
+    return await runConvergence({ plainTargetDisposition: 'preserve' });
+  case 're_encrypt':
+    return await runConvergence({ plainTargetDisposition: 'preserve' });
+  default: return authority satisfies never;
+  }
+}
+
 export async function runNativeHizoFSConvergeTransition({
   lockManager,
   nativeNamespaceRoot,
   passphrase,
+  signal,
   storageRoot,
 }: {
   lockManager: BrowserHizoFSRuntimeHostOptions['lockManager'];
   nativeNamespaceRoot: FileSystemDirectoryHandle;
   passphrase: string;
+  signal: AbortSignal | undefined;
   storageRoot: FileSystemDirectoryHandle;
 }): Promise<NativeHizoFSConvergenceResult> {
   const exclusiveGate = createBrowserNaidanPersistenceControlExclusiveGate({ lockManager });
@@ -1497,17 +1592,13 @@ export async function runNativeHizoFSConvergeTransition({
         proofAuthority,
         randomSource: undefined,
       });
-      const current = await control.readState();
-      if (current.mode.type !== 'transitioning'
-        || current.mode.operationId !== authority.binding.operationId
-        || current.mode.phase.type !== expectedPhase
-        || !sameTransitionEndpoint({ actual: current.mode.phase.source, expected: authority.binding.source })
-        || !sameTransitionEndpoint({ actual: current.mode.phase.target, expected: authority.binding.target })) {
-        throw new TypeError('Persistence Control transition changed after convergence credential proof');
-      }
-      return await convergeInterruptedPersistenceTransition({
+      return await convergeNativePersistenceTransition({
+        authority,
         control,
-        progressPort: undefined,
+        expectedPhase,
+        lockManager,
+        nativeNamespaceRoot,
+        signal,
       });
     },
   });
@@ -1530,6 +1621,15 @@ type NativeHizoFSDisableTransitionSession = Readonly<{
   close(): Promise<void>;
 }>;
 
+type NativeHizoFSDisableTransitionOptions = Readonly<{
+  lockManager: Pick<LockManager, 'request'>;
+  nativeNamespaceRoot: FileSystemDirectoryHandle;
+  onProgress: OpfsEncryptionTransitionProgressListener | undefined;
+  session: NativeHizoFSDisableTransitionSession;
+  signal: AbortSignal | undefined;
+  storageRoot: FileSystemDirectoryHandle;
+}>;
+
 export async function runNativeHizoFSDisableTransition({
   lockManager,
   nativeNamespaceRoot,
@@ -1537,14 +1637,29 @@ export async function runNativeHizoFSDisableTransition({
   session,
   signal,
   storageRoot,
-}: {
-  lockManager: Pick<LockManager, 'request'>;
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  onProgress: OpfsEncryptionTransitionProgressListener | undefined;
-  session: NativeHizoFSDisableTransitionSession;
-  signal: AbortSignal | undefined;
-  storageRoot: FileSystemDirectoryHandle;
-}): Promise<void> {
+}: NativeHizoFSDisableTransitionOptions): Promise<void> {
+  return await runWithExclusiveOpfsPlainNamespaceFence({
+    lockManager,
+    run: async () => await runNativeHizoFSDisableTransitionWithPlainNamespaceFence({
+      lockManager,
+      nativeNamespaceRoot,
+      onProgress,
+      session,
+      signal,
+      storageRoot,
+    }),
+    signal,
+  });
+}
+
+async function runNativeHizoFSDisableTransitionWithPlainNamespaceFence({
+  lockManager,
+  nativeNamespaceRoot,
+  onProgress,
+  session,
+  signal,
+  storageRoot,
+}: NativeHizoFSDisableTransitionOptions): Promise<void> {
   const exclusiveGate = createBrowserNaidanPersistenceControlExclusiveGate({ lockManager });
   const operationId: TransitionOperationId = parseTransitionOperationId({ value: nanoid() });
   const fileSystemId = session.fileSystemId;
@@ -1555,6 +1670,7 @@ export async function runNativeHizoFSDisableTransition({
   };
   const sourceAuthorityIdentity = nativeDisableSourceAuthorityIdentity({ fileSystemId });
   let closeSessionAfterFailure = false;
+  let transitionRuntime: NativePlainTransitionRuntimeState | undefined;
   let trialStage: NativeDisableTrialStage = 'authenticate_source';
   reportHizoFSTrialDebug({
     detail: { event: 'native_disable', fileSystemId, operationId, stage: 'started' },
@@ -1649,6 +1765,7 @@ export async function runNativeHizoFSDisableTransition({
         targetEndpoint: binding.target,
       } as const;
       const runtime = new NativePlainTransitionRuntimeState({ binding: runtimeBinding });
+      transitionRuntime = runtime;
       const provider = new TransitionProviderAdapter({
         hizofs: sourceDriver.driver,
         plain: createNativePlainDisableTransitionDriver({
@@ -1720,12 +1837,21 @@ export async function runNativeHizoFSDisableTransition({
   switch (transitionAttempt.type) {
   case 'completed': break;
   case 'failed': {
+    let transitionFailure = transitionAttempt.cause;
+    try {
+      await transitionRuntime?.abandonTarget({ operationId });
+    } catch (markerCleanupCause: unknown) {
+      transitionFailure = new AggregateError(
+        [transitionFailure, markerCleanupCause],
+        'native disable transition and runtime ownership-marker cleanup both failed',
+      );
+    }
     if (!closeSessionAfterFailure) {
       reportHizoFSTrialFailure({
-        cause: transitionAttempt.cause,
+        cause: transitionFailure,
         detail: { event: 'native_disable_failure', fileSystemId, operationId, stage: trialStage },
       });
-      throw transitionAttempt.cause;
+      throw transitionFailure;
     }
     const transitionFailureStage = trialStage;
     try {
@@ -1733,7 +1859,7 @@ export async function runNativeHizoFSDisableTransition({
       await session.close();
     } catch (closeCause: unknown) {
       const failure = new AggregateError(
-        [transitionAttempt.cause, closeCause],
+        [transitionFailure, closeCause],
         'native disable transition failed after authority may have changed and source-session cleanup also failed',
       );
       reportHizoFSTrialFailure({
@@ -1743,10 +1869,10 @@ export async function runNativeHizoFSDisableTransition({
       throw failure;
     }
     reportHizoFSTrialFailure({
-      cause: transitionAttempt.cause,
+      cause: transitionFailure,
       detail: { event: 'native_disable_failure', fileSystemId, operationId, stage: transitionFailureStage },
     });
-    throw transitionAttempt.cause;
+    throw transitionFailure;
   }
   default: transitionAttempt satisfies never;
   }
@@ -1843,6 +1969,7 @@ export async function runNativeHizoFSReturnToPlainTransition({
     lockManager,
     nativeNamespaceRoot,
     passphrase,
+    signal,
     storageRoot,
   });
   switch (converged.type) {
@@ -3724,6 +3851,7 @@ export const TEST_ONLY = {
   createNativeHizoFSEnableTransitionDriverWith,
   createNativeHizoFSEnableTransitionTargetWith,
   createNativePhaseSpecificEndpointInspectionPort,
+  convergeNativePersistenceTransition,
   openNativeCredentialRequiredApplicationSessionWith,
   credentialBoundAuthoritativeEndpoint,
   credentialCandidateOpenProfile,

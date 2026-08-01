@@ -63,10 +63,11 @@ type DevelopmentRuntimePort = Readonly<{
     storageRoot: FileSystemDirectoryHandle;
   }) => PersistenceControlReadablePhysicalPort;
   getNativeNamespaceRoot: () => Promise<FileSystemDirectoryHandle>;
-  runConvergeTransition: ({ lockManager, nativeNamespaceRoot, passphrase, storageRoot }: {
+  runConvergeTransition: ({ lockManager, nativeNamespaceRoot, passphrase, signal, storageRoot }: {
     lockManager: DevelopmentLockManager;
     nativeNamespaceRoot: FileSystemDirectoryHandle;
     passphrase: string;
+    signal: AbortSignal | undefined;
     storageRoot: FileSystemDirectoryHandle;
   }) => ReturnType<typeof runNativeHizoFSConvergeTransition>;
   runDisableTransition: ({ lockManager, nativeNamespaceRoot, onProgress, session, signal, storageRoot }: {
@@ -163,8 +164,8 @@ const browserPort: DevelopmentRuntimePort = Object.freeze({
   },
   createPhysical: createOpfsPersistenceControlReadablePhysicalPort,
   getNativeNamespaceRoot: async () => await navigator.storage.getDirectory(),
-  runConvergeTransition: async ({ lockManager, nativeNamespaceRoot, passphrase, storageRoot }) => (
-    await runNativeHizoFSConvergeTransition({ lockManager, nativeNamespaceRoot, passphrase, storageRoot })
+  runConvergeTransition: async ({ lockManager, nativeNamespaceRoot, passphrase, signal, storageRoot }) => (
+    await runNativeHizoFSConvergeTransition({ lockManager, nativeNamespaceRoot, passphrase, signal, storageRoot })
   ),
   runDisableTransition: async ({ lockManager, nativeNamespaceRoot, onProgress, session, signal, storageRoot }) => (
     await runNativeHizoFSDisableTransition({ lockManager, nativeNamespaceRoot, onProgress, session, signal, storageRoot })
@@ -364,6 +365,7 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
           lockManager,
           nativeNamespaceRoot,
           passphrase: credential.passphrase,
+          signal,
           storageRoot,
         });
         switch (converged.type) {
