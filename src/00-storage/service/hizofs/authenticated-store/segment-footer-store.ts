@@ -25,6 +25,7 @@ import {
   decryptAuthenticatedSegmentFooter,
   encryptSegmentFooter,
   generateSegmentFooterNonce,
+  isHizoFSCryptoAuthenticationError,
   plaintextSegmentFooterBytes,
   segmentFooterNonce,
   type FileSystemRootKey,
@@ -157,8 +158,8 @@ async function tryReadAuthenticatedFooter({
       }),
     });
   } catch (cause: unknown) {
-    if (rootKey.isDestroyed()) throw cause;
-    return undefined;
+    if (isHizoFSCryptoAuthenticationError({ cause })) return undefined;
+    throw cause;
   }
   if (plaintextIndex.byteLength !== header.plaintextIndexLength) return undefined;
 

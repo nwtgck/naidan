@@ -20,6 +20,7 @@ import {
   authenticatedSegmentHeaderBytes,
   decryptAuthenticatedRecord,
   decryptAuthenticatedSegmentHeader,
+  isHizoFSCryptoAuthenticationError,
   recordNonce,
   type FileSystemRootKey,
 } from "@/00-storage/service/hizofs/01-crypto";
@@ -79,8 +80,9 @@ export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics,
       message: "Segment Header structure or path binding is invalid",
     });
   }
+  let plaintext: Uint8Array;
   try {
-    const plaintext = await measureAuthenticatedCryptoOperation({
+    plaintext = await measureAuthenticatedCryptoOperation({
       diagnostics,
       operation: "decrypt",
       run: async () => await decryptAuthenticatedSegmentHeader({
@@ -92,10 +94,16 @@ export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics,
         segmentHeaderPrefix: segmentHeaderAuthenticatedPrefix({ bytes }),
       }),
     });
-    if (plaintext.byteLength !== 0) throw new TypeError("Segment Header plaintext must be empty");
   } catch (cause: unknown) {
-    if (rootKey.isDestroyed()) throw cause;
+    if (!isHizoFSCryptoAuthenticationError({ cause })) throw cause;
     throw authenticatedStoreError({ cause, code: "control_plane_corrupt", message: "Segment Header authentication failed" });
+  }
+  if (plaintext.byteLength !== 0) {
+    throw authenticatedStoreError({
+      cause: new TypeError("Segment Header plaintext must be empty"),
+      code: "control_plane_corrupt",
+      message: "Segment Header authentication failed",
+    });
   }
   return { fileSize, path };
 }
@@ -168,8 +176,10 @@ export async function scanAuthenticatedSegmentPrefix({ backend, diagnostics, fil
         }),
       });
     } catch (cause: unknown) {
-      if (rootKey.isDestroyed()) throw cause;
-      return { frames, nextOffset: offset, state: "abandoned_unsealed" };
+      if (isHizoFSCryptoAuthenticationError({ cause })) {
+        return { frames, nextOffset: offset, state: "abandoned_unsealed" };
+      }
+      throw cause;
     }
     frames.push({ header, physicalOffset: offset });
     offset += BigInt(header.frameLength);
