@@ -54,7 +54,7 @@ beforeEach(async () => {
   await ensureStrings.opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase();
   await ensureStrings.opfsEncryption__passphrases_cannot_contain_line_breaks();
   await ensureStrings.opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery();
-  await ensureStrings.opfsEncryption__resume_opfs_encryption();
+  await ensureStrings.opfsEncryption__resolve_interrupted_opfs_encryption();
   await ensureStrings.opfsEncryption__open_raw_opfs_explorer();
   await ensureStrings.opfsEncryption__naidan_could_not_finish_loading();
   await ensureStrings.opfsEncryption__preparing_naidan();
@@ -265,7 +265,7 @@ second line`,
       props: { gate },
     });
 
-    expect(wrapper.text()).toContain('Resume OPFS encryption');
+    expect(wrapper.text()).toContain('Resolve interrupted OPFS encryption');
     expect(wrapper.text()).toContain(
       'Changing raw OPFS data while the interrupted operation is active can make recovery impossible. Back it up before making destructive changes.',
     );

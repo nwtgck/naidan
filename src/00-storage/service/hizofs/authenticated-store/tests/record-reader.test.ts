@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   decodeFileSystemCommitPayload,
@@ -11,7 +11,8 @@ import {
   type AuthenticatedHizoFSPhysicalBytes,
 } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { readAuthenticatedHomeRecord } from "@/00-storage/service/hizofs/authenticated-store/record-reader";
-import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
+import * as HizoFSCrypto from "@/00-storage/service/hizofs/01-crypto";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import type {
@@ -111,6 +112,55 @@ describe("authenticated Record Frame reader", () => {
       rootKey,
     })).rejects.toMatchObject({ code: "control_plane_corrupt" });
     rootKey.destroy();
+  });
+
+  it("normalizes authenticated Record Frame tampering as corruption", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+    const path = canonicalContainerPath({ value: segmentIdToRelativePath({
+      id: created.activeCommitHomeRef.segmentId,
+      segmentClass: "metadata",
+    }) });
+    const ciphertextOffset = created.activeCommitHomeRef.byteOffset
+      + BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader);
+    const tampered = await backend.readExact({ length: 1, offset: ciphertextOffset, path });
+    tampered[0] = (tampered[0] ?? 0) ^ 0xff;
+    const file = await backend.openFileForUpdate({ path });
+    await backend.writeAt({ bytes: authenticatedHizoFSPhysicalBytes({ bytes: tampered }), file, offset: ciphertextOffset });
+    await backend.syncFileData({ file });
+    await backend.closeFile({ file });
+
+    await expect(readAuthenticatedHomeRecord({
+      backend,
+      fileSystemId,
+      homeReference: created.activeCommitHomeRef,
+      rootKey,
+    })).rejects.toMatchObject({ code: "control_plane_corrupt" });
+    rootKey.destroy();
+  });
+
+  it("rethrows a non-authentication crypto failure without classifying healthy bytes as corrupt", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+    const failure = new DOMException("crypto runtime unavailable", "InvalidStateError");
+    const decrypt = vi.spyOn(HizoFSCrypto, "decryptAuthenticatedRecord").mockRejectedValue(failure);
+    try {
+      await expect(readAuthenticatedHomeRecord({
+        backend,
+        fileSystemId,
+        homeReference: created.activeCommitHomeRef,
+        rootKey,
+      })).rejects.toBe(failure);
+    } finally {
+      decrypt.mockRestore();
+      rootKey.destroy();
+    }
   });
 
   it("does not convert destroyed secret capability misuse into corruption", async () => {

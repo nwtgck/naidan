@@ -6,7 +6,7 @@ import {
   TEST_ONLY,
 } from "@/00-storage/service/hizofs/authenticated-store/maintenance-record-read-port";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
-import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
 

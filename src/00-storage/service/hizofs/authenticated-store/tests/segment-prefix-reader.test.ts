@@ -1,12 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { parseFileSystemId, segmentIdToRelativePath } from "@/00-storage/service/hizofs/00-format";
+import { describe, expect, it, vi } from "vitest";
+import { HIZOFS_V1_FORMAT_CONSTANTS, parseFileSystemId, segmentIdToRelativePath } from "@/00-storage/service/hizofs/00-format";
 import { createInitialBootstrapSegment } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
 import {
   authenticatedHizoFSPhysicalBytes,
   type AuthenticatedHizoFSPhysicalBytes,
 } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { scanAuthenticatedSegmentPrefix } from "@/00-storage/service/hizofs/authenticated-store/segment-prefix-reader";
-import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
+import * as HizoFSCrypto from "@/00-storage/service/hizofs/01-crypto";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 
@@ -74,6 +75,107 @@ describe("authenticated Segment valid-prefix scan", () => {
       rootKey,
       segmentClass: "metadata",
     })).rejects.toThrow("File System Root Key has been destroyed");
+  });
+
+  it("normalizes Segment Header authentication tampering as corruption", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+    const path = canonicalContainerPath({ value: segmentIdToRelativePath({
+      id: created.activeCommitHomeRef.segmentId,
+      segmentClass: "metadata",
+    }) });
+    const tagOffset = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader - 1);
+    const tampered = await backend.readExact({ length: 1, offset: tagOffset, path });
+    tampered[0] = (tampered[0] ?? 0) ^ 0xff;
+    const file = await backend.openFileForUpdate({ path });
+    await backend.writeAt({ bytes: authenticatedHizoFSPhysicalBytes({ bytes: tampered }), file, offset: tagOffset });
+    await backend.syncFileData({ file });
+    await backend.closeFile({ file });
+
+    await expect(scanAuthenticatedSegmentPrefix({
+      backend,
+      fileSystemId,
+      physicalSegmentId: created.activeCommitHomeRef.segmentId,
+      rootKey,
+      segmentClass: "metadata",
+    })).rejects.toMatchObject({ code: "control_plane_corrupt" });
+    rootKey.destroy();
+  });
+
+  it("rethrows a non-authentication Segment Header crypto failure", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+    const failure = new Error("segment header crypto runtime failure");
+    const decrypt = vi.spyOn(HizoFSCrypto, "decryptAuthenticatedSegmentHeader").mockRejectedValue(failure);
+    try {
+      await expect(scanAuthenticatedSegmentPrefix({
+        backend,
+        fileSystemId,
+        physicalSegmentId: created.activeCommitHomeRef.segmentId,
+        rootKey,
+        segmentClass: "metadata",
+      })).rejects.toBe(failure);
+    } finally {
+      decrypt.mockRestore();
+      rootKey.destroy();
+    }
+  });
+
+  it("returns an abandoned prefix only for authenticated Record Frame tampering", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+    const path = canonicalContainerPath({ value: segmentIdToRelativePath({
+      id: created.activeCommitHomeRef.segmentId,
+      segmentClass: "metadata",
+    }) });
+    const frameOffset = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
+    const ciphertextOffset = frameOffset + BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader);
+    const tampered = await backend.readExact({ length: 1, offset: ciphertextOffset, path });
+    tampered[0] = (tampered[0] ?? 0) ^ 0xff;
+    const file = await backend.openFileForUpdate({ path });
+    await backend.writeAt({ bytes: authenticatedHizoFSPhysicalBytes({ bytes: tampered }), file, offset: ciphertextOffset });
+    await backend.syncFileData({ file });
+    await backend.closeFile({ file });
+
+    await expect(scanAuthenticatedSegmentPrefix({
+      backend,
+      fileSystemId,
+      physicalSegmentId: created.activeCommitHomeRef.segmentId,
+      rootKey,
+      segmentClass: "metadata",
+    })).resolves.toMatchObject({ frames: [], nextOffset: frameOffset, state: "abandoned_unsealed" });
+    rootKey.destroy();
+  });
+
+  it("rethrows a non-authentication Record Frame crypto failure instead of abandoning healthy bytes", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+    const failure = new DOMException("record crypto unavailable", "NotSupportedError");
+    const decrypt = vi.spyOn(HizoFSCrypto, "decryptAuthenticatedRecord").mockRejectedValue(failure);
+    try {
+      await expect(scanAuthenticatedSegmentPrefix({
+        backend,
+        fileSystemId,
+        physicalSegmentId: created.activeCommitHomeRef.segmentId,
+        rootKey,
+        segmentClass: "metadata",
+      })).rejects.toBe(failure);
+    } finally {
+      decrypt.mockRestore();
+      rootKey.destroy();
+    }
   });
 
   it("propagates backend read failure instead of treating it as a corrupt tail", async () => {

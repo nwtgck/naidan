@@ -137,11 +137,11 @@ const title = computed(() => {
   case undefined:
     return lazyStrings.opfsEncryption__unlock_encrypted_storage();
   case 'encrypting':
-    return lazyStrings.opfsEncryption__resume_opfs_encryption();
+    return lazyStrings.opfsEncryption__resolve_interrupted_opfs_encryption();
   case 'decrypting':
-    return lazyStrings.opfsEncryption__resume_opfs_decryption();
+    return lazyStrings.opfsEncryption__resolve_interrupted_opfs_decryption();
   case 'reencrypting':
-    return lazyStrings.opfsEncryption__resume_opfs_reencryption();
+    return lazyStrings.opfsEncryption__resolve_interrupted_opfs_reencryption();
   default: {
     const _ex: never = operation;
     throw new Error(`Unhandled OPFS encryption operation: ${String(_ex)}`);
@@ -391,7 +391,7 @@ defineExpose({
           <OpfsEncryptionUnlockButton
             :state="unlockButtonState"
             :disabled="working || gatePhase !== 'locked' || passphrase.length === 0 || hasLineBreak"
-            :label="isTransitioning ? lazyStrings.opfsEncryption__unlock_and_resume() : lazyStrings.opfsEncryption__unlock_storage()"
+            :label="isTransitioning ? lazyStrings.opfsEncryption__unlock_and_resolve() : lazyStrings.opfsEncryption__unlock_storage()"
             :result-label="lazyStrings.opfsEncryption__unlocked()"
           />
 

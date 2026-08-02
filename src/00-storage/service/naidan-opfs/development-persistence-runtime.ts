@@ -6,10 +6,10 @@ import type { CapturedPersistenceControlAuthority } from '@/00-storage/service/n
 import type { PersistenceControlReadablePhysicalPort } from '@/00-storage/service/naidan-persistence-control/store';
 import { NaidanOpfsStorageBackend } from '@/00-storage/service/naidan-opfs/backend';
 import { createOpfsPersistenceControlReadablePhysicalPort } from '@/00-storage/service/naidan-opfs/opfs-persistence-control-readable-port';
+import { listNativePlainApplicationNamespaceEntryNames } from '@/00-storage/service/naidan-opfs/native-plain-application-namespace';
 import { installOpfsPersistenceRuntimeFactory } from '@/00-storage/service/naidan-opfs/persistence-runtime-registry';
 import type {
   OpfsEncryptionInspection,
-  OpfsPersistenceRetainedCredential,
   OpfsPersistenceRuntime,
   OpfsPersistenceTransitionRequest,
 } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
@@ -22,10 +22,8 @@ import {
   runNativeHizoFSDisableTransition,
   runNativeHizoFSEnableTransition,
   runNativeHizoFSReencryptTransition,
-  runNativeHizoFSResumeTransition,
   runNativeHizoFSReturnToPlainTransition,
   runNativeStableHizoFSRetiredContainerCleanup,
-  runNativeStableHizoFSRetiredPlainCleanup,
   runNativeStablePlainRetiredCleanup,
   type CredentialBoundApplicationSessionOpenResult,
 } from '@/00-storage/service/naidan-opfs/production-persistence-runtime';
@@ -39,13 +37,6 @@ export class OpfsDevelopmentCredentialRejectedError extends Error {
   constructor() {
     super('HizoFS credential was rejected');
     this.name = 'OpfsDevelopmentCredentialRejectedError';
-  }
-}
-
-export class OpfsDevelopmentPersistenceOperationUnavailableError extends Error {
-  constructor({ operation }: { operation: string }) {
-    super(`${operation} is not connected in the development HizoFS runtime`);
-    this.name = 'OpfsDevelopmentPersistenceOperationUnavailableError';
   }
 }
 
@@ -65,10 +56,11 @@ type DevelopmentRuntimePort = Readonly<{
     storageRoot: FileSystemDirectoryHandle;
   }) => PersistenceControlReadablePhysicalPort;
   getNativeNamespaceRoot: () => Promise<FileSystemDirectoryHandle>;
-  runConvergeTransition: ({ lockManager, nativeNamespaceRoot, passphrase, storageRoot }: {
+  runConvergeTransition: ({ lockManager, nativeNamespaceRoot, passphrase, signal, storageRoot }: {
     lockManager: DevelopmentLockManager;
     nativeNamespaceRoot: FileSystemDirectoryHandle;
     passphrase: string;
+    signal: AbortSignal | undefined;
     storageRoot: FileSystemDirectoryHandle;
   }) => ReturnType<typeof runNativeHizoFSConvergeTransition>;
   runDisableTransition: ({ lockManager, nativeNamespaceRoot, onProgress, session, signal, storageRoot }: {
@@ -78,7 +70,7 @@ type DevelopmentRuntimePort = Readonly<{
     session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
     signal: AbortSignal | undefined;
     storageRoot: FileSystemDirectoryHandle;
-  }) => Promise<StorageFileSystemSession>;
+  }) => Promise<void>;
   runEnableTransition: ({ lockManager, nativeNamespaceRoot, onProgress, passphrase, signal, storageRoot }: {
     lockManager: DevelopmentLockManager;
     nativeNamespaceRoot: FileSystemDirectoryHandle;
@@ -110,27 +102,12 @@ type DevelopmentRuntimePort = Readonly<{
     nativeNamespaceRoot: FileSystemDirectoryHandle;
     storageRoot: FileSystemDirectoryHandle;
   }) => Promise<void>;
-  runStableHizoFSRetiredPlainCleanup: ({ lockManager, nativeNamespaceRoot, session, storageRoot }: {
-    lockManager: DevelopmentLockManager;
-    nativeNamespaceRoot: FileSystemDirectoryHandle;
-    session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
-    storageRoot: FileSystemDirectoryHandle;
-  }) => ReturnType<typeof runNativeStableHizoFSRetiredPlainCleanup>;
   runStableHizoFSRetiredContainerCleanup: ({ lockManager, nativeNamespaceRoot, session, storageRoot }: {
     lockManager: DevelopmentLockManager;
     nativeNamespaceRoot: FileSystemDirectoryHandle;
     session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
     storageRoot: FileSystemDirectoryHandle;
   }) => ReturnType<typeof runNativeStableHizoFSRetiredContainerCleanup>;
-  runResumeTransition: ({ lockManager, nativeNamespaceRoot, onProgress, retainedCredentials, runtimePolicy, signal, storageRoot }: {
-    lockManager: DevelopmentLockManager;
-    nativeNamespaceRoot: FileSystemDirectoryHandle;
-    onProgress: Parameters<OpfsPersistenceRuntime['runTransition']>[0]['onProgress'];
-    retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-    runtimePolicy: DevelopmentRuntimePolicy;
-    signal: AbortSignal | undefined;
-    storageRoot: FileSystemDirectoryHandle;
-  }) => ReturnType<typeof runNativeHizoFSResumeTransition>;
   inspect: ({ nativeNamespaceRoot, physical }: {
     nativeNamespaceRoot: FileSystemDirectoryHandle;
     physical: PersistenceControlReadablePhysicalPort;
@@ -174,8 +151,8 @@ const browserPort: DevelopmentRuntimePort = Object.freeze({
   },
   createPhysical: createOpfsPersistenceControlReadablePhysicalPort,
   getNativeNamespaceRoot: async () => await navigator.storage.getDirectory(),
-  runConvergeTransition: async ({ lockManager, nativeNamespaceRoot, passphrase, storageRoot }) => (
-    await runNativeHizoFSConvergeTransition({ lockManager, nativeNamespaceRoot, passphrase, storageRoot })
+  runConvergeTransition: async ({ lockManager, nativeNamespaceRoot, passphrase, signal, storageRoot }) => (
+    await runNativeHizoFSConvergeTransition({ lockManager, nativeNamespaceRoot, passphrase, signal, storageRoot })
   ),
   runDisableTransition: async ({ lockManager, nativeNamespaceRoot, onProgress, session, signal, storageRoot }) => (
     await runNativeHizoFSDisableTransition({ lockManager, nativeNamespaceRoot, onProgress, session, signal, storageRoot })
@@ -205,20 +182,8 @@ const browserPort: DevelopmentRuntimePort = Object.freeze({
       storageRoot,
     })
   ),
-  runStableHizoFSRetiredPlainCleanup: runNativeStableHizoFSRetiredPlainCleanup,
   runStableHizoFSRetiredContainerCleanup: runNativeStableHizoFSRetiredContainerCleanup,
   runStablePlainRetiredCleanup: runNativeStablePlainRetiredCleanup,
-  runResumeTransition: async ({ lockManager, nativeNamespaceRoot, onProgress, retainedCredentials, runtimePolicy, signal, storageRoot }) => (
-    await runNativeHizoFSResumeTransition({
-      lockManager,
-      nativeNamespaceRoot,
-      onProgress,
-      retainedCredentials,
-      runtimePolicy,
-      signal,
-      storageRoot,
-    })
-  ),
   inspect: inspectNativeCredentialAwarePersistenceRuntime,
   openApplicationSession: openNativeCredentialRequiredApplicationSession,
 });
@@ -274,68 +239,17 @@ async function createDevelopmentUnlockedSession({ opened, port }: {
   };
 }
 
-async function openEncryptedTransitionResult({ lockManager, nativeNamespaceRoot, passphrase, port, runtimePolicy, storageRoot }: {
-  lockManager: DevelopmentLockManager;
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  passphrase: string;
-  port: DevelopmentRuntimePort;
-  runtimePolicy: DevelopmentRuntimePolicy;
-  storageRoot: FileSystemDirectoryHandle;
-}): Promise<Extract<Awaited<ReturnType<OpfsPersistenceRuntime['runTransition']>>, { type: 'encrypted' }>> {
-  const physical = port.createPhysical({ storageRoot });
-  const captured = await port.captureAuthority({ physical });
-  const opened = await port.openApplicationSession({
-    captured,
-    lockManager,
-    nativeNamespaceRoot,
-    passphrase,
-    physical,
-    runtimePolicy,
-  });
-  switch (opened.type) {
-  case 'credential_rejected': throw new OpfsDevelopmentCredentialRejectedError();
-  case 'opened': return { session: await createDevelopmentUnlockedSession({ opened, port }), type: 'encrypted' };
-  default: return opened satisfies never;
-  }
-}
-
-async function openPlainTransitionResult({ fileSystemSession, port }: {
-  fileSystemSession: StorageFileSystemSession;
-  port: DevelopmentRuntimePort;
-}): Promise<Extract<Awaited<ReturnType<OpfsPersistenceRuntime['runTransition']>>, { type: 'plain' }>> {
-  let backend: IStorageProvider;
-  try {
-    backend = await port.createBackend({ fileSystemSession });
-  } catch (cause: unknown) {
-    try {
-      await fileSystemSession.close();
-    } catch (closeCause: unknown) {
-      throw new AggregateError([cause, closeCause], 'development plain backend initialization and cleanup failed');
-    }
-    throw cause;
-  }
-  return { backend, fileSystemSession, type: 'plain' };
-}
-
-function unavailableTransition({ request }: {
-  request: OpfsPersistenceTransitionRequest;
-}): never {
-  throw new OpfsDevelopmentPersistenceOperationUnavailableError({
-    operation: `OPFS ${request.operation} transition`,
-  });
-}
-
 /**
  * Connects unreleased writable HizoFS to Naidan's ordinary provider path.
  *
  * This composition deliberately preserves the `development-unverified` label:
  * it executes the real mutation/publication protocol but cannot satisfy a
  * public release durability gate. Native enable and disable use the
- * authenticated transition coordinator. Interrupted enable, disable, and
- * re-encrypt resume from operation-bound progress without replacing the persisted
- * Operation ID or endpoint identities. Explicit interrupted-encrypt return-to-plain
- * is connected. Native re-encrypt rotates the Root Key while retaining only the
- * explicitly proven credential set supplied by the caller.
+ * authenticated transition coordinator. Transition work progress is scoped to
+ * one runtime invocation; startup converges interrupted coarse authority before
+ * a later user operation starts again from the selected source. Explicit
+ * interrupted-encrypt return-to-plain is connected. Native re-encrypt rotates
+ * the Root Key while retaining only the explicitly proven credential set.
  */
 function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtimePolicy }: {
   lockManager: DevelopmentLockManager;
@@ -359,12 +273,11 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
         session,
         storageRoot,
       });
-      return await port.runStableHizoFSRetiredPlainCleanup({
-        lockManager,
-        nativeNamespaceRoot,
-        session,
-        storageRoot,
-      });
+      return {
+        remainingEntryCount: (await listNativePlainApplicationNamespaceEntryNames({ nativeNamespaceRoot })).length,
+        removedEntryCount: 0,
+        state: 'completed',
+      };
     },
     unlockWithPassphrase: async ({ passphrase, storageRoot }) => {
       reportHizoFSTrialDebug({
@@ -418,14 +331,7 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
           signal,
           storageRoot,
         });
-        return await openEncryptedTransitionResult({
-          lockManager,
-          nativeNamespaceRoot,
-          passphrase: request.passphrase,
-          port,
-          runtimePolicy,
-          storageRoot,
-        });
+        return { type: 'completed' };
       }
       case 'converge': {
         const credential = request.retainedCredentials[0];
@@ -436,60 +342,18 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
           lockManager,
           nativeNamespaceRoot,
           passphrase: credential.passphrase,
+          signal,
           storageRoot,
         });
         switch (converged.type) {
         case 'credential_rejected': throw new OpfsDevelopmentCredentialRejectedError();
-        case 'converged_encrypted': return await openEncryptedTransitionResult({
-          lockManager,
-          nativeNamespaceRoot,
-          passphrase: credential.passphrase,
-          port,
-          runtimePolicy,
-          storageRoot,
-        });
-        case 'converged_plain': return await openPlainTransitionResult({
-          fileSystemSession: converged.fileSystemSession,
-          port,
-        });
+        case 'converged_encrypted':
+        case 'converged_plain': return { type: 'completed' };
         default: return converged satisfies never;
         }
       }
-      case 'resume': {
-        const resumed = await port.runResumeTransition({
-          lockManager,
-          nativeNamespaceRoot,
-          onProgress,
-          retainedCredentials: request.retainedCredentials,
-          runtimePolicy,
-          signal,
-          storageRoot,
-        });
-        switch (resumed.type) {
-        case 'credential_rejected': throw new OpfsDevelopmentCredentialRejectedError();
-        case 'resumed_encrypted': {
-          const credential = request.retainedCredentials[0];
-          if (credential === undefined) {
-            throw new RangeError('OPFS transition resume requires at least one credential');
-          }
-          return await openEncryptedTransitionResult({
-            lockManager,
-            nativeNamespaceRoot,
-            passphrase: credential.passphrase,
-            port,
-            runtimePolicy,
-            storageRoot,
-          });
-        }
-        case 'resumed_plain': return await openPlainTransitionResult({
-          fileSystemSession: resumed.fileSystemSession,
-          port,
-        });
-        default: return resumed satisfies never;
-        }
-      }
       case 'disable': {
-        const fileSystemSession = await port.runDisableTransition({
+        await port.runDisableTransition({
           lockManager,
           nativeNamespaceRoot,
           onProgress,
@@ -497,7 +361,7 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
           signal,
           storageRoot,
         });
-        return await openPlainTransitionResult({ fileSystemSession, port });
+        return { type: 'completed' };
       }
       case 'return_to_plain': {
         const returned = await port.runReturnToPlainTransition({
@@ -511,16 +375,12 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
         });
         switch (returned.type) {
         case 'credential_rejected': throw new OpfsDevelopmentCredentialRejectedError();
-        case 'returned_plain': return await openPlainTransitionResult({
-          fileSystemSession: returned.fileSystemSession,
-          port,
-        });
+        case 'returned_plain': return { type: 'completed' };
         default: return returned satisfies never;
         }
       }
       case 'reencrypt': {
-        const firstRetainedCredential = request.retainedCredentials[0];
-        if (firstRetainedCredential === undefined) {
+        if (request.retainedCredentials[0] === undefined) {
           throw new RangeError('OPFS re-encrypt requires at least one retained credential');
         }
         await port.runReencryptTransition({
@@ -532,17 +392,8 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
           signal,
           storageRoot,
         });
-        return await openEncryptedTransitionResult({
-          lockManager,
-          nativeNamespaceRoot,
-          passphrase: firstRetainedCredential.passphrase,
-          port,
-          runtimePolicy,
-          storageRoot,
-        });
+        return { type: 'completed' };
       }
-      case 'debug_interrupt_disable':
-      case 'debug_interrupt_enable': return unavailableTransition({ request });
       default: return request satisfies never;
       }
     },

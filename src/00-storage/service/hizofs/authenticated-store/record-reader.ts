@@ -13,9 +13,10 @@ import {
 import {
   authenticatedRecordBytes,
   decryptAuthenticatedRecord,
+  isHizoFSCryptoAuthenticationError,
   recordNonce,
   type FileSystemRootKey,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { authenticatedStoreError } from "./errors";
 import {
@@ -142,12 +143,17 @@ export async function readAuthenticatedPhysicalRecord({
     offset: physicalReference.byteOffset + BigInt(frameHeaderSize),
     path: descriptor.path,
   });
+  const ciphertext = body.subarray(0, header.sealedLength);
+  if (body.subarray(header.sealedLength).some(byte => byte !== 0)) {
+    throw authenticatedStoreError({
+      cause: new TypeError("Record Frame padding must be canonical zero"),
+      code: "control_plane_corrupt",
+      message: "Record Frame authentication failed",
+    });
+  }
+  let plaintext: Uint8Array;
   try {
-    const ciphertext = body.subarray(0, header.sealedLength);
-    if (body.subarray(header.sealedLength).some(byte => byte !== 0)) {
-      throw new TypeError("Record Frame padding must be canonical zero");
-    }
-    const plaintext = await measureAuthenticatedCryptoOperation({
+    plaintext = await measureAuthenticatedCryptoOperation({
       diagnostics,
       operation: "decrypt",
       run: async () => await decryptAuthenticatedRecord({
@@ -159,21 +165,21 @@ export async function readAuthenticatedPhysicalRecord({
         rootKey,
       }),
     });
-    diagnostics?.recordPersistedRecord({
-      operation: "read",
-      physicalBytes: header.frameLength,
-      plaintextBytes: plaintext.byteLength,
-      recordKind: header.recordKind,
-    });
-    return { header, physicalReference, plaintext };
   } catch (cause: unknown) {
-    if (rootKey.isDestroyed()) throw cause;
+    if (!isHizoFSCryptoAuthenticationError({ cause })) throw cause;
     throw authenticatedStoreError({
       cause,
       code: "control_plane_corrupt",
       message: "Record Frame authentication failed",
     });
   }
+  diagnostics?.recordPersistedRecord({
+    operation: "read",
+    physicalBytes: header.frameLength,
+    plaintextBytes: plaintext.byteLength,
+    recordKind: header.recordKind,
+  });
+  return { header, physicalReference, plaintext };
 }
 
 export async function readAuthenticatedHomeRecord({

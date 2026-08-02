@@ -88,8 +88,8 @@ function classifyPath({ rootDir, filePath }) {
   if (relativePath === `${hizofsRoot}/00-format` || relativePath === `${hizofsRoot}/00-format/index` || relativePath === `${hizofsRoot}/00-format/index.ts`) return 'hizofs-format-public';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/00-format` })) return 'hizofs-format-internal';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/compatibility` })) return 'hizofs-compatibility';
-  if (relativePath === `${hizofsRoot}/crypto` || relativePath === `${hizofsRoot}/crypto/index` || relativePath === `${hizofsRoot}/crypto/index.ts`) return 'hizofs-crypto-public';
-  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/crypto` })) return 'hizofs-crypto-internal';
+  if (relativePath === `${hizofsRoot}/01-crypto` || relativePath === `${hizofsRoot}/01-crypto/index` || relativePath === `${hizofsRoot}/01-crypto/index.ts`) return 'hizofs-crypto-public';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/01-crypto` })) return 'hizofs-crypto-internal';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/authenticated-store` })) return 'hizofs-authenticated-store';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/physical-store` })) return 'hizofs-physical-store';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/indexes` })) return 'hizofs-indexes';

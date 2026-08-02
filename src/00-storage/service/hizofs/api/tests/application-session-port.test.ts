@@ -373,6 +373,38 @@ describe("runtime-bound HizoFS application session port", () => {
     await expect(writable.abort({ reason: "late" })).rejects.toMatchObject({ code: "session_closed" });
   });
 
+  it("rejects previously acquired I/O handles after the operation gate closes while allowing release", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort();
+    const readNamespace = namespace();
+    const rejection = new Error("application session requires recovery");
+    let allowed = true;
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      assertOperationAllowed: () => {
+        if (!allowed) throw rejection;
+      },
+      mutationPort: mutations.port,
+      namespace: readNamespace,
+      runtimeSession: runtimeState.session,
+    } });
+    const readable = await port.openReadable({ path: ["file"] });
+    const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
+    const namespaceCallsBeforeRejection = vi.mocked(readNamespace.stat).mock.calls.length;
+
+    allowed = false;
+    await expect(port.stat({ path: ["file"] })).rejects.toBe(rejection);
+    await expect(readable.read({ length: 1n, offset: 0n, signal: undefined })).rejects.toBe(rejection);
+    await expect(writable.write({ data: new Uint8Array([1]), position: 0n })).rejects.toBe(rejection);
+    expect(vi.mocked(readNamespace.stat)).toHaveBeenCalledTimes(namespaceCallsBeforeRejection);
+    expect(mutations.calls.map(([name]) => name)).not.toContain("write");
+
+    await readable.close();
+    await writable.abort({ reason: rejection });
+    await port.close();
+    expect(mutations.calls.map(([name]) => name)).toContain("abort");
+    expect(runtimeState.calls.slice(-2)).toEqual(["close-writer", "close-session"]);
+  });
+
   it("aborts prepared writables before closing the owned runtime session", async () => {
     const { mutations, port, runtimeState } = createPort();
     await port.openWritable({ keepExistingData: false, path: ["file"] });

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFeatureBits, createSubvolumeId, createTimestampMilliseconds } from '@/00-storage/service/hizofs/00-format';
 import { createEmptyEncryptedContainer, openEmptyEncryptedContainer } from '@/00-storage/service/hizofs/authenticated-store/empty-container-store';
 import type { AuthenticatedHizoFSPhysicalBytes } from '@/00-storage/service/hizofs/authenticated-store/physical-bytes';
-import type { RandomByteSource } from '@/00-storage/service/hizofs/crypto';
+import type { RandomByteSource } from '@/00-storage/service/hizofs/01-crypto';
 import type {
   HizoFSDevelopmentWritableBackend,
   HizoFSPhysicalWriteBackend,
@@ -182,14 +182,8 @@ async function createTestRuntimePort({
     runReturnToPlainTransition: async () => {
       throw new Error('return-to-plain transition is not used by the restart fixture');
     },
-    runResumeTransition: async () => {
-      throw new Error('resume transition is not used by the restart fixture');
-    },
     runStableHizoFSRetiredContainerCleanup: async () => {
       throw new Error('stable-HizoFS retired-container cleanup is not used by the restart fixture');
-    },
-    runStableHizoFSRetiredPlainCleanup: async () => {
-      throw new Error('stable-HizoFS cleanup is not used by the restart fixture');
     },
     runStablePlainRetiredCleanup: async () => {
       throw new Error('stable-plain cleanup is not used by the restart fixture');

@@ -3,7 +3,7 @@ import { createFeatureBits } from "@/00-storage/service/hizofs/00-format";
 import { createEmptyEncryptedContainer } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { createAuthenticatedHizoFSInspectionPort } from "@/00-storage/service/hizofs/authenticated-store/inspection-port";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
-import type { RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import type { RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import { inspectHizoFSNamespacePath } from "@/00-storage/service/hizofs/inspection";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 

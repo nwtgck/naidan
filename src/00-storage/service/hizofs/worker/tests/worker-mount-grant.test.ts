@@ -3,7 +3,10 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import { createEmptyEncryptedContainer } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
-import type { RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import {
+  HizoFSCryptoAuthenticationError,
+  type RandomByteSource,
+} from "@/00-storage/service/hizofs/01-crypto";
 import { OpfsWritableBackend } from "@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend";
 import { InMemoryOpfsDirectoryHandle } from "@/00-storage/service/test-support/in-memory-opfs";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
@@ -203,10 +206,15 @@ describe("HizoFS Worker mount grants", () => {
     const grant = await requireGrant({ accessMode: "read_write", directory: mounted });
     await fixture.session.close();
 
-    await expect(openHizoFSWorkerMountGrant({
+    const failure = await openHizoFSWorkerMountGrant({
       grant: mutate(grant),
       resolveBackingDirectory: async () => fixture.backingDirectory as unknown as FileSystemDirectoryHandle,
-    })).rejects.toThrow();
+    }).catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(HizoFSCryptoAuthenticationError);
+    expect(failure).toMatchObject({
+      cause: { name: "OperationError" },
+      code: "authentication_failed",
+    });
   });
 
   it("keeps independently scoped grants usable across independent session lifetimes", async () => {
@@ -293,7 +301,20 @@ describe("HizoFS Worker mount grants", () => {
     try {
       const metadataLength = new DataView(cleartext.buffer, cleartext.byteOffset, 4).getUint32(0, false);
       const metadata = new TextDecoder("utf-8", { fatal: true }).decode(cleartext.subarray(4, 4 + metadataLength));
-      expect(JSON.parse(metadata)).not.toHaveProperty("rootKey");
+      const parsedMetadata = JSON.parse(metadata) as Record<string, unknown>;
+      expect(Object.keys(parsedMetadata)).toEqual([
+        "accessMode",
+        "canonicalBackingLocation",
+        "fileSystemId",
+        "grantId",
+        "inodeNumber",
+        "scopePath",
+        "type",
+        "unlockingSlotId",
+        "unlockSequence",
+        "version",
+      ]);
+      expect(parsedMetadata).not.toHaveProperty("rootKey");
       expect(cleartext.byteLength - 4 - metadataLength).toBe(32);
     } finally {
       aad.fill(0);

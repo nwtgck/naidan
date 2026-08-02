@@ -1,18 +1,21 @@
 import type { FileSystemId } from '@/00-storage/service/hizofs/compatibility';
 import {
-  decodePersistenceControl,
+  classifyPersistenceControlStructure,
+  createPersistenceControlCore,
   encodePersistenceControl,
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
+  persistenceControlCandidatesAreBootstrapAbsent,
   persistenceControlAuthenticationFileSystemId,
-  persistenceControlSemanticallyEquals,
+  persistenceControlPublicationOutcome,
+  persistenceControlReadbackMatches,
   planPersistenceControlPublication,
   selectPersistenceControlAuthority,
-  type NaidanPersistenceControlCoreV1,
-  type NaidanPersistenceModeV1,
   type NaidanPersistenceControlV1,
   type PersistenceControlCandidate,
   type PersistenceControlCopy,
+  type PersistenceControlSemanticState,
   type SelectedPersistenceControlAuthority,
+  structurallyObservedPersistenceControlSequence,
 } from '@/00-storage/service/naidan-persistence-control/00-format';
 import {
   createHizoFSControlProtection,
@@ -23,10 +26,7 @@ import {
   type PersistenceControlRootKeyDerivationCapability,
 } from '@/00-storage/service/naidan-persistence-control/crypto';
 
-export type PersistenceControlSemanticState = {
-  readonly mode: NaidanPersistenceModeV1;
-  readonly retiredFileSystemIds: readonly FileSystemId[];
-};
+export type { PersistenceControlSemanticState } from '@/00-storage/service/naidan-persistence-control/00-format';
 
 export interface PersistenceControlReadablePhysicalPort {
   readFileBounded({ copy, maximumByteLength }: { copy: PersistenceControlCopy; maximumByteLength: number }): Promise<Uint8Array | undefined>;
@@ -68,22 +68,18 @@ export class PersistenceControlPublicationError extends Error {
   public readonly committedAuthority: SelectedPersistenceControlAuthority | undefined;
 }
 
-function reason({ cause }: { cause: unknown }): string {
-  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
-}
-
 async function classifyControl({ bytes, copy, proofAuthority }: {
   bytes: Uint8Array | undefined;
   copy: PersistenceControlCopy;
   proofAuthority: PersistenceControlProofAuthority;
 }): Promise<PersistenceControlCandidate> {
-  if (bytes === undefined) return { copy, reason: 'missing', state: 'structurally_invalid' };
-  let control: NaidanPersistenceControlV1;
-  try {
-    control = decodePersistenceControl({ bytes });
-  } catch (cause: unknown) {
-    return { copy, reason: reason({ cause }), state: 'structurally_invalid' };
+  const structural = classifyPersistenceControlStructure({ bytes, copy });
+  switch (structural.state) {
+  case 'structurally_invalid': return structural;
+  case 'structurally_valid': break;
+  default: return structural satisfies never;
   }
+  const { control } = structural;
   if (control.copy !== copy) return { control, copy, reason: 'persisted copy does not match filename', state: 'proof_invalid' };
 
   // Protection must be resolved before endpoint identity is treated as
@@ -126,18 +122,6 @@ async function classifyControl({ bytes, copy, proofAuthority }: {
   }
 }
 
-function structurallyObservedSequence({ candidate }: {
-  candidate: PersistenceControlCandidate;
-}): number | undefined {
-  switch (candidate.state) {
-  case 'structurally_invalid': return undefined;
-  case 'proof_invalid':
-  case 'proof_valid':
-  case 'protection_unresolved': return candidate.control.sequence;
-  default: return candidate satisfies never;
-  }
-}
-
 export async function readPersistenceControlCandidates({ physical, proofAuthority }: {
   physical: PersistenceControlReadablePhysicalPort;
   proofAuthority: PersistenceControlProofAuthority;
@@ -148,8 +132,8 @@ export async function readPersistenceControlCandidates({ physical, proofAuthorit
   const candidate0 = await classifyControl({ bytes: bytes0, copy: 0, proofAuthority });
   const candidate1 = await classifyControl({ bytes: bytes1, copy: 1, proofAuthority });
   const observedSequences = [
-    structurallyObservedSequence({ candidate: candidate0 }),
-    structurallyObservedSequence({ candidate: candidate1 }),
+    structurallyObservedPersistenceControlSequence({ candidate: candidate0 }),
+    structurallyObservedPersistenceControlSequence({ candidate: candidate1 }),
   ] as const;
   return { candidates: [candidate0, candidate1], observedSequences };
 }
@@ -168,14 +152,7 @@ async function createProtectedControl({ copy, proofAuthority, randomSource, sema
   semanticState: PersistenceControlSemanticState;
   sequence: number;
 }): Promise<NaidanPersistenceControlV1> {
-  const core: NaidanPersistenceControlCoreV1 = {
-    copy,
-    format: 'naidan-persistence-control',
-    formatVersion: 1,
-    mode: semanticState.mode,
-    retiredFileSystemIds: semanticState.retiredFileSystemIds,
-    sequence,
-  };
+  const core = createPersistenceControlCore({ copy, semanticState, sequence });
   const authenticationFileSystemId = persistenceControlAuthenticationFileSystemId({ mode: semanticState.mode });
   if (authenticationFileSystemId === undefined) return { ...core, protection: await createPlainControlProtection({ core }) };
   const resolution = await proofAuthority.resolveRootKey({ fileSystemId: authenticationFileSystemId });
@@ -212,12 +189,11 @@ async function verifyPublishedCopy({ control, copy, physical, proofAuthority }: 
     maximumByteLength: NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.limits.persistenceControlJsonBytes,
   });
   const candidate = await classifyControl({ bytes, copy, proofAuthority });
-  if (candidate.state !== 'proof_valid'
-    || candidate.control.sequence !== control.sequence
-    || !persistenceControlSemanticallyEquals({ left: candidate.control, right: control })) {
+  const readback = { actual: candidate, expected: control, physicalCopy: copy };
+  if (!persistenceControlReadbackMatches(readback)) {
     throw new Error(`Persistence Control copy ${copy} failed proof-valid exact semantic read-back`);
   }
-  return { control: candidate.control, copy, redundancy: 'degraded' };
+  return { control: readback.actual.control, copy, redundancy: 'degraded' };
 }
 
 export async function publishPersistenceControl({
@@ -240,8 +216,8 @@ export async function publishPersistenceControl({
       try {
         selected = selectPersistenceControlAuthority({ candidates: before.candidates });
       } catch (cause: unknown) {
-        const bothMissing = before.candidates.every(candidate => candidate.state === 'structurally_invalid' && candidate.reason === 'missing');
-        if (bootstrapAuthorization !== 'verified_plain_namespace' || !bothMissing) throw cause;
+        const bootstrapAbsent = persistenceControlCandidatesAreBootstrapAbsent({ candidates: before.candidates });
+        if (bootstrapAuthorization !== 'verified_plain_namespace' || !bootstrapAbsent) throw cause;
       }
       const plan = planPersistenceControlPublication({
         observedSequences: before.observedSequences,
@@ -300,17 +276,7 @@ export async function resolvePersistenceControlPublicationOutcome({ desiredState
   } catch {
     return 'not_committed';
   }
-  const desiredControl: NaidanPersistenceControlV1 = {
-    ...selected.control,
-    mode: desiredState.mode,
-    retiredFileSystemIds: desiredState.retiredFileSystemIds,
-  };
-  if (!persistenceControlSemanticallyEquals({ left: selected.control, right: desiredControl })) return 'not_committed';
-  switch (selected.redundancy) {
-  case 'converged': return 'committed_converged';
-  case 'degraded': return 'committed_degraded';
-  default: return selected.redundancy satisfies never;
-  }
+  return persistenceControlPublicationOutcome({ desiredState, selectedAuthority: selected });
 }
 
 export const TEST_ONLY = {

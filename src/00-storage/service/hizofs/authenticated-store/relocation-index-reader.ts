@@ -8,7 +8,7 @@ import {
   type RelocationIndexPage,
   type RelocationKey,
 } from "@/00-storage/service/hizofs/00-format";
-import type { FileSystemRootKey } from "@/00-storage/service/hizofs/crypto";
+import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { authenticatedStoreError } from "./errors";
 import {

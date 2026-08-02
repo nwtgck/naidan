@@ -7,7 +7,7 @@ import {
   type FileSystemId,
   type UnlockSequence,
 } from "@/00-storage/service/hizofs/00-format";
-import type { FileSystemRootKey, RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import type { FileSystemRootKey, RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import {
   createInitialBootstrapSegment,

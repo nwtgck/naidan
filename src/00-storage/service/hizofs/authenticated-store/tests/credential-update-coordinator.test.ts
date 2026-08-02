@@ -13,7 +13,7 @@ import {
   parseSegmentId,
 } from "@/00-storage/service/hizofs/00-format";
 import type { SuperblockLogicalState } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
-import type { RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import type { RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,

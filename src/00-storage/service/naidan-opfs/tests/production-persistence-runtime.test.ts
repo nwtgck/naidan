@@ -27,6 +27,10 @@ import {
 import { capturePersistenceControlAuthority } from '@/00-storage/service/naidan-persistence-control/store/persistence-control-authority-handshake';
 import type { StorageDirectoryHandle, StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
 import type { TransitionEndpointDriver } from '@/00-storage/service/naidan-persistence-control/transition/transition-provider-adapter';
+import {
+  convergeInterruptedPersistenceTransition,
+  type TransitionSemanticState,
+} from '@/00-storage/service/naidan-persistence-control/transition/transition-coordinator';
 
 function physical({ controls }: {
   controls: readonly [NaidanPersistenceControlV1 | undefined, NaidanPersistenceControlV1 | undefined];
@@ -341,7 +345,7 @@ describe('native disable source driver', () => {
     await expect(source.driver.inspectEndpoint({ endpoint: binding.source })).resolves.toBe('root_key_ready');
   });
 
-  it('keeps cleanup-only resume proof scoped without reopening the source namespace', async () => {
+  it('keeps post-switch cleanup proof scoped without reopening the source namespace', async () => {
     const fileSystemId = testFileSystemId({ value: 'disableCleanup000001' });
     const binding = {
       operationId: 'disableCleanupOp001' as import('@/00-storage/service/naidan-persistence-control/00-format').TransitionOperationId,
@@ -403,9 +407,8 @@ describe('native re-encrypt endpoint helpers', () => {
       binding,
       exclusiveGate: { runExclusive: async ({ operation }) => await operation() },
       initialOpenProfile: 'root_key_proof',
+      importStatePort: {} as never,
       inspectTarget: async () => 'root_key_ready',
-      journalBinding: {} as never,
-      journalPort: {} as never,
       limits: {
         directory: { maximumEntryMutationsPerBatch: 2 },
         file: { maximumExtentMutationsPerBatch: 2 },
@@ -449,9 +452,8 @@ describe('native re-encrypt endpoint helpers', () => {
       binding,
       exclusiveGate: { runExclusive: async ({ operation }) => await operation() },
       initialOpenProfile: 'root_key_proof',
+      importStatePort: {} as never,
       inspectTarget: async () => 'root_key_ready',
-      journalBinding: {} as never,
-      journalPort: {} as never,
       limits: {
         directory: { maximumEntryMutationsPerBatch: 2 },
         file: { maximumExtentMutationsPerBatch: 2 },
@@ -474,80 +476,83 @@ describe('native re-encrypt endpoint helpers', () => {
       .rejects.toThrow('Credential Slot set does not exactly match the retained credentials');
   });
 
-  it('removes source Slot IDs before proving fresh target credentials', () => {
+  it('preserves the explicit Credential Slot binding for a fresh re-encrypt operation', () => {
     const retainedCredentials = [
       { passphrase: 'primary passphrase', sourceSlotId: 'source-slot-primary' },
       { passphrase: 'automation passphrase', sourceSlotId: 'source-slot-automation' },
     ] as const;
 
-    expect(PRODUCTION_RUNTIME_TEST_ONLY.targetRetainedCredentialsForResume({ retainedCredentials })).toEqual([
-      { passphrase: 'primary passphrase' },
-      { passphrase: 'automation passphrase' },
-    ]);
-    expect(retainedCredentials[0].sourceSlotId).toBe('source-slot-primary');
+    expect(PRODUCTION_RUNTIME_TEST_ONLY.normalizeNativeRetainedCredentials({ retainedCredentials })).toEqual(
+      retainedCredentials,
+    );
   });
 
-  it('completes re-encrypt at stable publication without deleting the retired source', async () => {
+  it('converges pre-switch re-encrypt interruption to the source without work-progress state', async () => {
     const sourceFileSystemId = testFileSystemId({ value: 'reencryptFinishSrc001' });
     const targetFileSystemId = testFileSystemId({ value: 'reencryptFinishDst001' });
-    const binding = {
-      operationId: 'reencryptFinishOp0001' as import('@/00-storage/service/naidan-persistence-control/00-format').TransitionOperationId,
-      source: { fileSystemId: sourceFileSystemId, type: 'hizofs' as const },
-      target: { fileSystemId: targetFileSystemId, type: 'hizofs' as const },
-    };
-    const clearProgress = vi.fn(async () => undefined);
-    const advance = vi.fn()
-      .mockResolvedValueOnce({ remainingRetiredFileSystemIds: 1, state: 'retired_cleanup' as const });
-
-    await expect(PRODUCTION_RUNTIME_TEST_ONLY.completeNativeHizoFSReencryptCleanupWith({
-      binding,
-      onProgress: undefined,
-      runtime: {
-        advance,
-        clearProgress,
-        readState: async () => ({
-          mode: {
-            operation: 're_encrypt' as const,
-            operationId: binding.operationId,
-            phase: { source: binding.source, target: binding.target, type: 'cleaning_up_source' as const },
-            type: 'transitioning' as const,
-          },
-          retiredFileSystemIds: [],
-        }),
+    let state: TransitionSemanticState = {
+      mode: {
+        operation: 're_encrypt' as const,
+        operationId: 'reencryptFinishOp0001' as import('@/00-storage/service/naidan-persistence-control/00-format').TransitionOperationId,
+        phase: {
+          source: { fileSystemId: sourceFileSystemId, type: 'hizofs' as const },
+          target: { fileSystemId: targetFileSystemId, type: 'hizofs' as const },
+          type: 'building_target' as const,
+        },
+        type: 'transitioning' as const,
       },
-    })).resolves.toBe(targetFileSystemId);
-    expect(advance).toHaveBeenCalledOnce();
-    expect(clearProgress).toHaveBeenCalledOnce();
+      retiredFileSystemIds: [],
+    };
+
+    const result = await convergeInterruptedPersistenceTransition({
+      control: {
+        publishState: async ({ state: nextState }) => {
+          state = nextState;
+        },
+        readState: async () => state,
+      },
+      progressPort: undefined,
+    });
+
+    expect(result.authoritativeEndpoint).toBe('source');
+    expect(result.stableState).toEqual({
+      mode: { activeFileSystemId: sourceFileSystemId, type: 'hizofs' },
+      retiredFileSystemIds: [targetFileSystemId],
+    });
   });
 
-  it('settles stale transition progress without deleting a retired re-encrypt source', async () => {
+  it('converges post-switch re-encrypt interruption to the target and defers source cleanup', async () => {
     const sourceFileSystemId = testFileSystemId({ value: 'reencryptStaleSrc0001' });
     const targetFileSystemId = testFileSystemId({ value: 'reencryptStaleDst0001' });
-    const binding = {
-      operationId: 'reencryptStaleOp00001' as import('@/00-storage/service/naidan-persistence-control/00-format').TransitionOperationId,
-      source: { fileSystemId: sourceFileSystemId, type: 'hizofs' as const },
-      target: { fileSystemId: targetFileSystemId, type: 'hizofs' as const },
-    };
-    const events: string[] = [];
-
-    await expect(PRODUCTION_RUNTIME_TEST_ONLY.completeNativeHizoFSReencryptCleanupWith({
-      binding,
-      onProgress: undefined,
-      runtime: {
-        advance: async () => {
-          events.push('unexpected-physical-cleanup');
-          return { state: 'stable' };
+    let state: TransitionSemanticState = {
+      mode: {
+        operation: 're_encrypt' as const,
+        operationId: 'reencryptStaleOp00001' as import('@/00-storage/service/naidan-persistence-control/00-format').TransitionOperationId,
+        phase: {
+          source: { fileSystemId: sourceFileSystemId, type: 'hizofs' as const },
+          target: { fileSystemId: targetFileSystemId, type: 'hizofs' as const },
+          type: 'cleaning_up_source' as const,
         },
-        clearProgress: async () => {
-          events.push('clear-progress');
-        },
-        readState: async () => ({
-          mode: { activeFileSystemId: targetFileSystemId, type: 'hizofs' as const },
-          retiredFileSystemIds: [sourceFileSystemId],
-        }),
+        type: 'transitioning' as const,
       },
-    })).resolves.toBe(targetFileSystemId);
-    expect(events).toEqual(['clear-progress']);
+      retiredFileSystemIds: [],
+    };
+
+    const result = await convergeInterruptedPersistenceTransition({
+      control: {
+        publishState: async ({ state: nextState }) => {
+          state = nextState;
+        },
+        readState: async () => state,
+      },
+      progressPort: undefined,
+    });
+
+    expect(result.authoritativeEndpoint).toBe('target');
+    expect(result.stableState).toEqual({
+      mode: { activeFileSystemId: targetFileSystemId, type: 'hizofs' },
+      retiredFileSystemIds: [sourceFileSystemId],
+    });
   });
 
   it('recovers target authority after first-copy response loss during re-encrypt switch', async () => {
@@ -1160,19 +1165,19 @@ describe('credential candidate open profiles', () => {
   });
 });
 
-describe('native transition resume authority', () => {
+describe('native transition convergence authority', () => {
   it('reconstructs one operation binding across building and cleanup phases', () => {
     const building = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
       operation: 'encrypt',
       phase: 'building_target',
       sourceFileSystemId: undefined,
-      targetFileSystemId: 'resumeTarget000000001',
+      targetFileSystemId: 'convergeTarget0000001',
     }).control;
     const cleaning = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
       operation: 'encrypt',
       phase: 'cleaning_up_source',
       sourceFileSystemId: undefined,
-      targetFileSystemId: 'resumeTarget000000001',
+      targetFileSystemId: 'convergeTarget0000001',
     }).control;
     if (building.mode.type !== 'transitioning' || cleaning.mode.type !== 'transitioning') {
       throw new Error('expected transitioning controls');
@@ -1212,11 +1217,11 @@ describe('native transition resume authority', () => {
     };
     const binding = PRODUCTION_RUNTIME_TEST_ONLY.nativeDecryptTransitionBinding({ control: building });
 
-    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeResumeAuthority({
+    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
       control: building,
       fileSystemId: 'disableSource0000001' as FileSystemId,
     })).toMatchObject({ binding, openProfile: 'normal_read', operation: 'decrypt', phase: 'building_target' });
-    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeResumeAuthority({
+    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
       control: cleaningForSameOperation,
       fileSystemId: 'disableSource0000001' as FileSystemId,
     })).toMatchObject({ binding, openProfile: 'root_key_proof', operation: 'decrypt', phase: 'cleaning_up_source' });
@@ -1248,199 +1253,113 @@ describe('native transition resume authority', () => {
     };
     const binding = PRODUCTION_RUNTIME_TEST_ONLY.nativeReencryptTransitionBinding({ control: building });
 
-    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeResumeAuthority({
+    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
       control: building,
       fileSystemId: 'reencryptSource00001' as FileSystemId,
     })).toMatchObject({ binding, openProfile: 'normal_read', operation: 're_encrypt', phase: 'building_target' });
-    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeResumeAuthority({
+    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
       control: cleaningForSameOperation,
       fileSystemId: 'reencryptTarget00001' as FileSystemId,
     })).toMatchObject({ binding, openProfile: 'normal_read', operation: 're_encrypt', phase: 'cleaning_up_source' });
-    expect(() => PRODUCTION_RUNTIME_TEST_ONLY.nativeResumeAuthority({
+    expect(() => PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
       control: building,
       fileSystemId: 'reencryptTarget00001' as FileSystemId,
     })).toThrow('another native re-encrypt authentication endpoint');
   });
 
-  it('resumes target construction with the exact persisted re-encrypt binding', async () => {
-    const sourceFileSystemId = testFileSystemId({ value: 'resumeBuildSource001' });
-    const targetFileSystemId = testFileSystemId({ value: 'resumeBuildTarget001' });
+  it('converges interrupted enable before authority switch to stable plain', async () => {
     const control = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
-      operation: 're_encrypt',
+      operation: 'encrypt',
       phase: 'building_target',
-      sourceFileSystemId,
-      targetFileSystemId,
+      sourceFileSystemId: undefined,
+      targetFileSystemId: 'enableConvergeTarget01',
     }).control;
-    const authority = PRODUCTION_RUNTIME_TEST_ONLY.nativeResumeAuthority({ control, fileSystemId: sourceFileSystemId });
-    if (authority.operation !== 're_encrypt') throw new Error('expected re-encrypt resume authority');
+    let state: TransitionSemanticState = {
+      mode: control.mode,
+      retiredFileSystemIds: control.retiredFileSystemIds,
+    };
 
-    const order: string[] = [];
-    const close = vi.fn(async () => {
-      order.push('close_source_session');
-    });
-    const sourceSession = testFileSystemSession({ close });
-    const retainedCredentials = [{ passphrase: 'primary passphrase', sourceSlotId: 'source-slot-primary' }] as const;
-    const proveCleanupCredentials = vi.fn();
-    const resumeBuilding = vi.fn(async ({
-      binding,
-      retainedCredentials: actualCredentials,
-      sourceSession: actualSession,
-    }: {
-      binding: typeof authority.binding;
-      retainedCredentials: typeof retainedCredentials;
-      sourceSession: StorageFileSystemSession;
-    }) => {
-      order.push('resume_building');
-      expect(binding).toEqual(authority.binding);
-      expect(binding.operationId).toBe(authority.binding.operationId);
-      expect(binding.target).toEqual({ fileSystemId: targetFileSystemId, type: 'hizofs' });
-      expect(actualCredentials).toBe(retainedCredentials);
-      expect(actualSession).toBe(sourceSession);
-      return 'primary passphrase';
-    });
-    const completeCleanup = vi.fn(async ({ binding, operationPassphrase }: {
-      binding: typeof authority.binding;
-      operationPassphrase: string;
-    }) => {
-      order.push('complete_cleanup');
-      expect(binding).toEqual(authority.binding);
-      expect(operationPassphrase).toBe('primary passphrase');
-      return targetFileSystemId;
-    });
-
-    await expect(PRODUCTION_RUNTIME_TEST_ONLY.runNativeHizoFSReencryptResumeTransitionWith({
-      authority,
-      retainedCredentials,
-      runtime: {
-        completeCleanup,
-        proveCleanupCredentials,
-        registerApplicationSession: async () => ({
-          authoritativeEndpoint: authority.binding.source,
-          fileSystemId: sourceFileSystemId,
-          fileSystemSession: sourceSession,
-          selected: {} as never,
-          type: 'opened' as const,
-        }),
-        resumeBuilding,
+    const result = await convergeInterruptedPersistenceTransition({
+      control: {
+        publishState: async ({ state: nextState }) => {
+          state = nextState;
+        },
+        readState: async () => state,
       },
-    })).resolves.toEqual({ fileSystemId: targetFileSystemId, type: 'resumed_encrypted' });
+      progressPort: undefined,
+    });
 
-    expect(resumeBuilding).toHaveBeenCalledOnce();
-    expect(proveCleanupCredentials).not.toHaveBeenCalled();
-    expect(close).toHaveBeenCalledOnce();
-    expect(completeCleanup).toHaveBeenCalledOnce();
-    expect(order).toEqual(['resume_building', 'close_source_session', 'complete_cleanup']);
+    expect(result).toEqual({
+      authoritativeEndpoint: 'source',
+      stableState: { mode: { type: 'plain' }, retiredFileSystemIds: [
+        testFileSystemId({ value: 'enableConvergeTarget01' }),
+      ] },
+    });
   });
 
-  it('does not begin retired-source cleanup until the resumed source session settles', async () => {
-    const sourceFileSystemId = testFileSystemId({ value: 'resumeCloseSource001' });
-    const targetFileSystemId = testFileSystemId({ value: 'resumeCloseTarget001' });
+  it('converges interrupted disable before authority switch to its encrypted source', async () => {
+    const sourceFileSystemId = testFileSystemId({ value: 'disableConvergeSrc01' });
     const control = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
-      operation: 're_encrypt',
+      operation: 'decrypt',
       phase: 'building_target',
       sourceFileSystemId,
-      targetFileSystemId,
+      targetFileSystemId: undefined,
     }).control;
-    const authority = PRODUCTION_RUNTIME_TEST_ONLY.nativeResumeAuthority({ control, fileSystemId: sourceFileSystemId });
-    if (authority.operation !== 're_encrypt') throw new Error('expected re-encrypt resume authority');
+    let state: TransitionSemanticState = {
+      mode: control.mode,
+      retiredFileSystemIds: control.retiredFileSystemIds,
+    };
 
-    const closeFailure = new Error('source session close failed');
-    const close = vi.fn(async () => {
-      throw closeFailure;
-    });
-    const completeCleanup = vi.fn();
-
-    await expect(PRODUCTION_RUNTIME_TEST_ONLY.runNativeHizoFSReencryptResumeTransitionWith({
-      authority,
-      retainedCredentials: [{ passphrase: 'primary passphrase' }],
-      runtime: {
-        completeCleanup,
-        proveCleanupCredentials: vi.fn(),
-        registerApplicationSession: async () => ({
-          authoritativeEndpoint: authority.binding.source,
-          fileSystemId: sourceFileSystemId,
-          fileSystemSession: testFileSystemSession({ close }),
-          selected: {} as never,
-          type: 'opened' as const,
-        }),
-        resumeBuilding: async () => 'primary passphrase',
+    const result = await convergeInterruptedPersistenceTransition({
+      control: {
+        publishState: async ({ state: nextState }) => {
+          state = nextState;
+        },
+        readState: async () => state,
       },
-    })).rejects.toBe(closeFailure);
+      progressPort: undefined,
+    });
 
-    expect(close).toHaveBeenCalledOnce();
-    expect(completeCleanup).not.toHaveBeenCalled();
+    expect(result.stableState).toEqual({
+      mode: { activeFileSystemId: sourceFileSystemId, type: 'hizofs' },
+      retiredFileSystemIds: [],
+    });
   });
 
-  it('resumes only retired-source cleanup after target authority switch', async () => {
-    const sourceFileSystemId = testFileSystemId({ value: 'resumeCleanSource001' });
-    const targetFileSystemId = testFileSystemId({ value: 'resumeCleanTarget001' });
+  it('converges interrupted enable after authority switch to its encrypted target', async () => {
+    const targetFileSystemId = testFileSystemId({ value: 'enableConvergeTarget02' });
     const control = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
-      operation: 're_encrypt',
+      operation: 'encrypt',
       phase: 'cleaning_up_source',
-      sourceFileSystemId,
+      sourceFileSystemId: undefined,
       targetFileSystemId,
     }).control;
-    const authority = PRODUCTION_RUNTIME_TEST_ONLY.nativeResumeAuthority({ control, fileSystemId: targetFileSystemId });
-    if (authority.operation !== 're_encrypt') throw new Error('expected re-encrypt resume authority');
+    let state: TransitionSemanticState = {
+      mode: control.mode,
+      retiredFileSystemIds: control.retiredFileSystemIds,
+    };
 
-    const order: string[] = [];
-    const close = vi.fn(async () => {
-      order.push('close_target_session');
-    });
-    const targetSession = testFileSystemSession({ close });
-    const retainedCredentials = [{ passphrase: 'target passphrase', sourceSlotId: 'old-source-slot' }] as const;
-    const resumeBuilding = vi.fn();
-    const proveCleanupCredentials = vi.fn(async ({
-      binding,
-      retainedCredentials: actualCredentials,
-      targetSession: actualSession,
-    }: {
-      binding: typeof authority.binding;
-      retainedCredentials: typeof retainedCredentials;
-      targetSession: StorageFileSystemSession;
-    }) => {
-      order.push('prove_target_credentials');
-      expect(binding).toEqual(authority.binding);
-      expect(actualCredentials).toBe(retainedCredentials);
-      expect(actualSession).toBe(targetSession);
-      return 'target passphrase';
-    });
-    const completeCleanup = vi.fn(async ({ binding, operationPassphrase }: {
-      binding: typeof authority.binding;
-      operationPassphrase: string;
-    }) => {
-      order.push('complete_cleanup');
-      expect(binding).toEqual(authority.binding);
-      expect(operationPassphrase).toBe('target passphrase');
-      return targetFileSystemId;
-    });
-
-    await expect(PRODUCTION_RUNTIME_TEST_ONLY.runNativeHizoFSReencryptResumeTransitionWith({
-      authority,
-      retainedCredentials,
-      runtime: {
-        completeCleanup,
-        proveCleanupCredentials,
-        registerApplicationSession: async () => ({
-          authoritativeEndpoint: authority.binding.target,
-          fileSystemId: targetFileSystemId,
-          fileSystemSession: targetSession,
-          selected: {} as never,
-          type: 'opened' as const,
-        }),
-        resumeBuilding,
+    const result = await convergeInterruptedPersistenceTransition({
+      control: {
+        publishState: async ({ state: nextState }) => {
+          state = nextState;
+        },
+        readState: async () => state,
       },
-    })).resolves.toEqual({ fileSystemId: targetFileSystemId, type: 'resumed_encrypted' });
+      progressPort: undefined,
+    });
 
-    expect(resumeBuilding).not.toHaveBeenCalled();
-    expect(proveCleanupCredentials).toHaveBeenCalledOnce();
-    expect(close).toHaveBeenCalledOnce();
-    expect(completeCleanup).toHaveBeenCalledOnce();
-    expect(order).toEqual(['prove_target_credentials', 'close_target_session', 'complete_cleanup']);
+    expect(result).toEqual({
+      authoritativeEndpoint: 'target',
+      stableState: {
+        mode: { activeFileSystemId: targetFileSystemId, type: 'hizofs' },
+        retiredFileSystemIds: [],
+      },
+    });
   });
 
-  it('rejects stable mode instead of inventing a resume binding', () => {
-    const stable = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({ fileSystemId: 'stableResume00000001' }).control;
+  it('rejects stable mode instead of inventing a convergence binding', () => {
+    const stable = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({ fileSystemId: 'stableConverge000001' }).control;
     expect(() => PRODUCTION_RUNTIME_TEST_ONLY.nativeEncryptTransitionBinding({ control: stable })).toThrow('active Persistence Control transition');
     expect(() => PRODUCTION_RUNTIME_TEST_ONLY.nativeReencryptTransitionBinding({ control: stable })).toThrow('active Persistence Control transition');
   });
@@ -1652,14 +1571,15 @@ describe('native transition resume authority', () => {
     expect(openedProfiles).toEqual(['root_key_proof', 'normal_read', 'normal_read', 'normal_read', 'normal_read']);
   });
 
-  it('releases the opened authority even when resume binding validation fails', async () => {
+  it('releases the opened authority even when convergence binding validation fails', async () => {
     const releaseResources = vi.fn(async () => undefined);
-    await expect(PRODUCTION_RUNTIME_TEST_ONLY.snapshotAndReleaseCredentialAuthority({
-      operation: () => {
-        throw new TypeError('invalid resume binding');
+    await expect(PRODUCTION_RUNTIME_TEST_ONLY.runWithCredentialAuthorityRelease({
+      failureMessage: 'convergence validation and release both failed',
+      operation: async () => {
+        throw new TypeError('invalid convergence binding');
       },
       releaseResources,
-    })).rejects.toThrow('invalid resume binding');
+    })).rejects.toThrow('invalid convergence binding');
     expect(releaseResources).toHaveBeenCalledOnce();
   });
 
@@ -2418,8 +2338,8 @@ describe('registerCredentialBoundApplicationSession', () => {
     expect(physical.controls[1]?.retiredFileSystemIds).toEqual([]);
   });
 
-  it('closes a reopened session that does not match the resumed encrypted authority', async () => {
-    const resumedFileSystemId = testFileSystemId({ value: 'DEFGHIJKLM_NOPQRSTUVW' });
+  it('closes a transient session that does not match the converged encrypted authority', async () => {
+    const convergedFileSystemId = testFileSystemId({ value: 'DEFGHIJKLM_NOPQRSTUVW' });
     const reopenedFileSystemId = testFileSystemId({ value: 'EFGHIJKLMN_OPQRSTUVWX' });
     const close = vi.fn(async () => undefined);
     const runDisable = vi.fn();
@@ -2430,7 +2350,7 @@ describe('registerCredentialBoundApplicationSession', () => {
         fileSystemId: reopenedFileSystemId,
         fileSystemSession: testFileSystemSession({ close }),
       },
-      resumedFileSystemId,
+      convergedFileSystemId,
       runDisable,
     })).rejects.toThrow('return-to-plain reopened a different encrypted authority');
 
@@ -2439,7 +2359,7 @@ describe('registerCredentialBoundApplicationSession', () => {
   });
 
   it('preserves authority rejection when closing a mismatched reopened session also fails', async () => {
-    const resumedFileSystemId = testFileSystemId({ value: 'FGHIJKLMNO_PQRSTUVWXY' });
+    const convergedFileSystemId = testFileSystemId({ value: 'FGHIJKLMNO_PQRSTUVWXY' });
     const reopenedFileSystemId = testFileSystemId({ value: 'GHIJKLMNOP_QRSTUVWXYZ' });
     const closeFailure = new Error('close failed');
 
@@ -2453,7 +2373,7 @@ describe('registerCredentialBoundApplicationSession', () => {
           },
         }),
       },
-      resumedFileSystemId,
+      convergedFileSystemId,
       runDisable: vi.fn(),
     });
 
@@ -2472,7 +2392,7 @@ describe('registerCredentialBoundApplicationSession', () => {
         fileSystemId,
         fileSystemSession: testFileSystemSession({ close }),
       },
-      resumedFileSystemId: fileSystemId,
+      convergedFileSystemId: fileSystemId,
       runDisable: async ({ session }) => {
         await session.close();
         throw disableFailure;
@@ -2496,7 +2416,7 @@ describe('registerCredentialBoundApplicationSession', () => {
           },
         }),
       },
-      resumedFileSystemId: fileSystemId,
+      convergedFileSystemId: fileSystemId,
       runDisable: async () => {
         throw disableFailure;
       },
@@ -2506,26 +2426,24 @@ describe('registerCredentialBoundApplicationSession', () => {
     await expect(result).rejects.toMatchObject({ errors: [disableFailure, closeFailure] });
   });
 
-  it('returns the plain session without independently closing after successful disable', async () => {
+  it('does not construct a post-transition application session after successful disable', async () => {
     const fileSystemId = testFileSystemId({ value: 'JKLMNOPQR_STUVWXYZ012' });
     const close = vi.fn(async () => undefined);
-    const plainSession = testFileSystemSession();
-
     await expect(PRODUCTION_RUNTIME_TEST_ONLY.completeNativeHizoFSReturnToPlainWith({
       opened: {
         authoritativeEndpoint: { fileSystemId, type: 'hizofs' },
         fileSystemId,
         fileSystemSession: testFileSystemSession({ close }),
       },
-      resumedFileSystemId: fileSystemId,
-      runDisable: async () => plainSession,
-    })).resolves.toBe(plainSession);
+      convergedFileSystemId: fileSystemId,
+      runDisable: async ({ session }) => await session.close(),
+    })).resolves.toBeUndefined();
 
-    expect(close).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
   });
 
 
-  it('closes a reopened native disable source when the authenticated transition changed', async () => {
+  it('rejects changed decrypt bindings without reopening a source session', () => {
     const building = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
       operation: 'decrypt',
       phase: 'building_target',
@@ -2539,70 +2457,91 @@ describe('registerCredentialBoundApplicationSession', () => {
       targetFileSystemId: undefined,
     }).control;
     const binding = PRODUCTION_RUNTIME_TEST_ONLY.nativeDecryptTransitionBinding({ control: building });
-    const close = vi.fn(async () => undefined);
 
-    await expect(PRODUCTION_RUNTIME_TEST_ONLY.acceptNativeDecryptResumeSource({
+    expect(PRODUCTION_RUNTIME_TEST_ONLY.sameNativeDecryptTransition({
+      actual: { mode: changed.mode, retiredFileSystemIds: changed.retiredFileSystemIds },
       binding,
-      opened: {
-        authoritativeEndpoint: binding.source,
-        fileSystemSession: testFileSystemSession({ close }),
-        selected: { control: changed },
-      },
-    })).rejects.toThrow('Persistence Control transition changed while reopening the native disable source');
-
-    expect(close).toHaveBeenCalledOnce();
+    })).toBe(false);
   });
 
-  it('preserves endpoint rejection when rejected native disable source cleanup also fails', async () => {
-    const building = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+  it('does not delete plain bytes when the authenticated convergence binding changed', async () => {
+    const authenticated = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
       operation: 'decrypt',
       phase: 'building_target',
       sourceFileSystemId: 'disableSource0000001',
       targetFileSystemId: undefined,
     }).control;
-    const binding = PRODUCTION_RUNTIME_TEST_ONLY.nativeDecryptTransitionBinding({ control: building });
-    const closeFailure = new Error('close failed');
-    const result = PRODUCTION_RUNTIME_TEST_ONLY.acceptNativeDecryptResumeSource({
-      binding,
-      opened: {
-        authoritativeEndpoint: {
-          fileSystemId: testFileSystemId({ value: 'disableSource0000002' }),
-          type: 'hizofs',
-        },
-        fileSystemSession: testFileSystemSession({
-          close: async () => {
-            throw closeFailure;
-          },
-        }),
-        selected: { control: building },
-      },
+    const changed = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+      operation: 'decrypt',
+      phase: 'building_target',
+      sourceFileSystemId: 'disableSource0000002',
+      targetFileSystemId: undefined,
+    }).control;
+    const authority = PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
+      control: authenticated,
+      fileSystemId: testFileSystemId({ value: 'disableSource0000001' }),
     });
+    const removeEntry = vi.fn(async () => undefined);
+    const getDirectoryHandle = vi.fn(async () => ({
+      keys: async function* () {
+        yield 'settings.json';
+      },
+      removeEntry,
+    }) as unknown as FileSystemDirectoryHandle);
+    const lockManager = {
+      request: async <T>(name: string, _options: LockOptions, callback: LockGrantedCallback<T>): Promise<T> => (
+        await callback({ mode: 'exclusive', name } as Lock)
+      ),
+    } as LockManager;
 
-    await expect(result).rejects.toBeInstanceOf(AggregateError);
-    await expect(result).rejects.toMatchObject({ errors: [expect.any(TypeError), closeFailure] });
+    await expect(PRODUCTION_RUNTIME_TEST_ONLY.convergeNativePersistenceTransition({
+      authority,
+      control: {
+        publishState: vi.fn(async () => undefined),
+        readState: async () => ({
+          mode: changed.mode,
+          retiredFileSystemIds: changed.retiredFileSystemIds,
+        }),
+      },
+      expectedPhase: 'building_target',
+      lockManager,
+      nativeNamespaceRoot: { getDirectoryHandle } as unknown as FileSystemDirectoryHandle,
+      signal: undefined,
+    })).rejects.toThrow('changed after convergence credential proof');
+    expect(getDirectoryHandle).not.toHaveBeenCalled();
+    expect(removeEntry).not.toHaveBeenCalled();
   });
 
-  it('transfers ownership of the matching reopened native disable source without closing it', async () => {
-    const building = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+  it('rejects a convergence credential proven by the wrong decrypt endpoint', () => {
+    const control = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
       operation: 'decrypt',
       phase: 'building_target',
       sourceFileSystemId: 'disableSource0000001',
       targetFileSystemId: undefined,
     }).control;
-    const binding = PRODUCTION_RUNTIME_TEST_ONLY.nativeDecryptTransitionBinding({ control: building });
-    const close = vi.fn(async () => undefined);
-    const fileSystemSession = testFileSystemSession({ close });
 
-    await expect(PRODUCTION_RUNTIME_TEST_ONLY.acceptNativeDecryptResumeSource({
-      binding,
-      opened: {
-        authoritativeEndpoint: binding.source,
-        fileSystemSession,
-        selected: { control: building },
-      },
-    })).resolves.toBe(fileSystemSession);
-
-    expect(close).not.toHaveBeenCalled();
+    expect(() => PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
+      control,
+      fileSystemId: testFileSystemId({ value: 'disableSource0000002' }),
+    })).toThrow('another native disable source');
   });
 
+  it('derives decrypt convergence from Persistence Control without work-progress input', () => {
+    const sourceFileSystemId = testFileSystemId({ value: 'disableSource0000001' });
+    const control = PERSISTENCE_RUNTIME_TEST_ONLY.createTransitioningInspection({
+      operation: 'decrypt',
+      phase: 'cleaning_up_source',
+      sourceFileSystemId,
+      targetFileSystemId: undefined,
+    }).control;
+
+    expect(PRODUCTION_RUNTIME_TEST_ONLY.nativeConvergenceAuthority({
+      control,
+      fileSystemId: sourceFileSystemId,
+    })).toMatchObject({
+      fileSystemId: sourceFileSystemId,
+      operation: 'decrypt',
+      phase: 'cleaning_up_source',
+    });
+  });
 });

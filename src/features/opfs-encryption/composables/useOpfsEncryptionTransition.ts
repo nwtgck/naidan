@@ -11,13 +11,10 @@ const OpfsEncryptionTransitionView = defineAsyncComponent(
 );
 
 export type OpfsEncryptionTransitionOutcome =
-  | 'completed'
-  | 'rolled_back'
-  | 'recovery_required';
+  | 'preparation_failed'
+  | 'settled_for_reload';
 
 const active = ref(false);
-const failed = ref(false);
-const failureMessage = ref<string>();
 const progress = ref<OpfsEncryptionTransitionProgress>();
 let closeOverlay: (() => void) | undefined;
 let operationOwner: 'local' | 'external' | undefined;
@@ -28,8 +25,6 @@ function closeLocalOverlay(): void {
   operationOwner = undefined;
   close?.();
   active.value = false;
-  failed.value = false;
-  failureMessage.value = undefined;
   progress.value = undefined;
 }
 
@@ -39,8 +34,6 @@ export function useOpfsEncryptionTransition() {
       throw new Error('An OPFS encryption transition is already active');
     }
     active.value = true;
-    failed.value = false;
-    failureMessage.value = undefined;
     progress.value = undefined;
     closeOverlay = showGlobalBlockingOverlay({
       operation: 'storage_transition',
@@ -61,8 +54,6 @@ export function useOpfsEncryptionTransition() {
       // presentation so external preparation can continue and release the
       // shared OPFS session lock instead of failing into a cross-tab deadlock.
       active.value = true;
-      failed.value = false;
-      failureMessage.value = undefined;
       progress.value = undefined;
       operationOwner = 'external';
       return;
@@ -82,10 +73,8 @@ export function useOpfsEncryptionTransition() {
 
   function finishLocalOperation({
     outcome,
-    errorMessage,
   }: {
     outcome: OpfsEncryptionTransitionOutcome,
-    errorMessage: string | undefined,
   }): void {
     const owner = operationOwner;
     switch (owner) {
@@ -103,17 +92,13 @@ export function useOpfsEncryptionTransition() {
     }
     }
     switch (outcome) {
-    case 'completed':
-    case 'rolled_back':
+    case 'preparation_failed':
       closeLocalOverlay();
       return;
-    case 'recovery_required':
-      // The provider could not prove that a normal backend is safe to expose.
-      // Keep the application inert and preserve the raw OPFS recovery path
-      // instead of reloading into an equally uncertain startup state.
+    case 'settled_for_reload':
+      // StorageService has notified the central reload guard. Keep the page
+      // inert until navigation replaces this runtime, regardless of outcome.
       active.value = true;
-      failed.value = true;
-      failureMessage.value = errorMessage;
       return;
     default: {
       const _ex: never = outcome;
@@ -124,8 +109,6 @@ export function useOpfsEncryptionTransition() {
 
   return {
     active: readonly(active),
-    failed: readonly(failed),
-    failureMessage: readonly(failureMessage),
     progress: readonly(progress),
     beginLocalOperation,
     beginExternalOperation,

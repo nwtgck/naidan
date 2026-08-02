@@ -6,7 +6,9 @@ import {
   installDevelopmentUnverifiedOpfsPersistenceRuntime,
 } from "@/00-storage/service/naidan-opfs/development-persistence-runtime";
 import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from "@/00-storage/service/naidan-opfs/opfs-storage-location";
+import { NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS } from "@/00-storage/service/naidan-persistence-control/00-format";
 import { listNativePlainApplicationNamespaceEntryNames } from "@/00-storage/service/naidan-opfs/native-plain-application-namespace";
+import { TEST_ONLY as RETIRED_PROGRESS_TEST_ONLY } from "@/00-storage/service/naidan-opfs/retired-local-transition-progress-cleanup";
 import { OPFSStorageProvider } from "@/00-storage/service/opfs-storage";
 import { OPFS_PLAIN_NAMESPACE_SESSION_LOCK_KEY } from "@/00-storage/service/opfs/opfs-storage-session-lock";
 import { HostVolumeDB } from "@/00-storage/service/opfs/host-volume-db";
@@ -72,6 +74,19 @@ function runtime() {
   });
 }
 
+async function expectNoPersistentTransitionProgress({ storageRoot }: {
+  storageRoot: FileSystemDirectoryHandle;
+}): Promise<void> {
+  const collection = await storageRoot.getDirectoryHandle(
+    NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName,
+    { create: false },
+  );
+  await expect(collection.getDirectoryHandle(
+    RETIRED_PROGRESS_TEST_ONLY.directoryName,
+    { create: false },
+  )).rejects.toMatchObject({ name: "NotFoundError" });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -102,14 +117,10 @@ describe("browserless production HizoFS enable system", () => {
       signal: undefined,
       storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
     });
-    expect(transition.type).toBe("encrypted");
-    if (transition.type !== "encrypted") {
-      throw new Error(`Expected encrypted transition result, received: ${transition.type}`);
-    }
-
-    // Same-page transition results are deliberately discarded. A new
-    // application instance must discover and unlock the persisted authority.
-    await transition.session.close();
+    expect(transition).toEqual({ type: "completed" });
+    await expectNoPersistentTransitionProgress({
+      storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
+    });
 
     const secondRuntime = runtime();
     await expect(secondRuntime.inspect({
@@ -144,6 +155,64 @@ describe("browserless production HizoFS enable system", () => {
       endpoint: { url: "http://after-transition" },
     });
     await thirdSession.close();
+  }, 60_000);
+
+  it("ignores malformed retired progress files and removes only their fixed names", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      name: "opfs-root",
+    });
+    vi.stubGlobal("navigator", {
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const storageRoot = await root.getDirectoryHandle(
+      NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+      { create: true },
+    );
+    const collection = await storageRoot.getDirectoryHandle(
+      NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName,
+      { create: true },
+    );
+    const retiredProgress = await collection.getDirectoryHandle(
+      RETIRED_PROGRESS_TEST_ONLY.directoryName,
+      { create: true },
+    );
+    for (const [index, fileName] of RETIRED_PROGRESS_TEST_ONLY.fileNames.entries()) {
+      const writable = await (await retiredProgress.getFileHandle(fileName, { create: true }))
+        .createWritable({ keepExistingData: false });
+      await writable.write(index === 0
+        ? Uint8Array.of(0xff, 0x00)
+        : new TextEncoder().encode("wrong key and stale operation"));
+      await writable.close();
+    }
+    const unknown = await retiredProgress.getFileHandle("unrelated.json", { create: true });
+    await (await unknown.createWritable({ keepExistingData: false })).close();
+
+    const before = await plainBackend({ root });
+    await before.saveSettings({ settings: settings({ endpointUrl: "http://malformed-progress" }) });
+    await before.dispose();
+    await expect(runtime().runTransition({
+      nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      onProgress: undefined,
+      request: { operation: "enable", passphrase: PASSPHRASE },
+      signal: undefined,
+      storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
+    })).resolves.toEqual({ type: "completed" });
+
+    for (const fileName of RETIRED_PROGRESS_TEST_ONLY.fileNames) {
+      await expect(retiredProgress.getFileHandle(fileName, { create: false }))
+        .rejects.toMatchObject({ name: "NotFoundError" });
+    }
+    await expect(retiredProgress.getFileHandle("unrelated.json", { create: false })).resolves.toBeDefined();
+    const afterReload = runtime();
+    const session = await afterReload.unlockWithPassphrase({
+      passphrase: PASSPHRASE,
+      storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
+    });
+    expect(await session.backend.loadSettings()).toMatchObject({
+      endpoint: { url: "http://malformed-progress" },
+    });
+    await session.close();
   }, 60_000);
 
   it("enables and reopens through the public OPFS provider lifecycle", async () => {
@@ -201,7 +270,7 @@ describe("browserless production HizoFS enable system", () => {
     }
   }, 60_000);
 
-  it("defers retired plain cleanup until a stale plain namespace lease is released", async () => {
+  it("does not infer plain cleanup ownership from stable HizoFS after a stale lease is released", async () => {
     const root = new InMemoryOpfsDirectoryHandle({
       capabilityProfile: "window",
       name: "opfs-root",
@@ -224,6 +293,14 @@ describe("browserless production HizoFS enable system", () => {
         passphrase: PASSPHRASE,
         signal: undefined,
       });
+      const storageRoot = await root.getDirectoryHandle(
+        NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+        { create: false },
+      );
+      const unownedFile = await storageRoot.getFileHandle("unowned-after-stable.bin", { create: true });
+      const unownedWritable = await unownedFile.createWritable();
+      await unownedWritable.write(new Uint8Array([1, 3, 3, 7]));
+      await unownedWritable.close();
 
       const releaseStalePlainLease = Promise.withResolvers<void>();
       const stalePlainLease = locks.request(
@@ -238,18 +315,16 @@ describe("browserless production HizoFS enable system", () => {
         });
       });
 
-      const trace = vi.spyOn(console, "info");
       const firstReload = new OPFSStorageProvider();
       await firstReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
-      await vi.waitFor(() => {
-        expect(trace).toHaveBeenCalledWith("[HIZOFS_TRIAL_DEBUG_001]", expect.objectContaining({
-          event: "retired_plain_cleanup",
-          stage: "plain_namespace_in_use",
-        }));
-      });
       await expect(listNativePlainApplicationNamespaceEntryNames({
         nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
-      })).resolves.not.toEqual([]);
+      })).resolves.toEqual(["unowned-after-stable.bin"]);
+      await vi.waitFor(async () => {
+        await expect(firstReload.loadSettings()).resolves.toMatchObject({
+          endpoint: { url: "http://cleanup-before" },
+        });
+      });
       await firstReload.dispose();
 
       releaseStalePlainLease.resolve();
@@ -257,23 +332,20 @@ describe("browserless production HizoFS enable system", () => {
 
       const secondReload = new OPFSStorageProvider();
       await secondReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
-      await vi.waitFor(async () => {
-        await expect(listNativePlainApplicationNamespaceEntryNames({
-          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
-        })).resolves.toEqual([]);
-      });
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.toEqual(["unowned-after-stable.bin"]);
       expect(await secondReload.loadSettings()).toMatchObject({
         endpoint: { url: "http://cleanup-before" },
       });
       await secondReload.dispose();
-      trace.mockRestore();
     } finally {
       uninstallRuntime();
     }
   }, 60_000);
 
 
-  it("keeps stable HizoFS usable when retired plain cleanup fails and retries on the next unlock", async () => {
+  it("keeps stable HizoFS usable without retrying unproven plain cleanup after failure", async () => {
     let failCleanup = false;
     const cleanupFailure = new DOMException("cleanup fault", "NoModificationAllowedError");
     const root = new InMemoryOpfsDirectoryHandle({
@@ -299,13 +371,13 @@ describe("browserless production HizoFS enable system", () => {
       const before = new OPFSStorageProvider();
       await before.init();
       await before.saveSettings({ settings: settings({ endpointUrl: "http://cleanup-fault" }) });
+      failCleanup = true;
       await before.enableEncryption({
         onProgress: undefined,
         passphrase: PASSPHRASE,
         signal: undefined,
       });
 
-      failCleanup = true;
       const firstReload = new OPFSStorageProvider();
       await expect(firstReload.unlockWithPassphrase({ passphrase: PASSPHRASE })).resolves.toBeUndefined();
       await vi.waitFor(() => {
@@ -329,11 +401,9 @@ describe("browserless production HizoFS enable system", () => {
       failCleanup = false;
       const secondReload = new OPFSStorageProvider();
       await secondReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
-      await vi.waitFor(async () => {
-        await expect(listNativePlainApplicationNamespaceEntryNames({
-          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
-        })).resolves.toEqual([]);
-      });
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.not.toEqual([]);
       expect(await secondReload.loadSettings()).toMatchObject({
         endpoint: { url: "http://cleanup-fault" },
       });
@@ -343,5 +413,104 @@ describe("browserless production HizoFS enable system", () => {
       uninstallRuntime();
     }
   }, 60_000);
+
+  it.each([
+    { interruption: "before authority switch", phase: "verifying" },
+    { interruption: "after authority switch", phase: "cleaning_source" },
+  ] as const)(
+    "converges an enable interruption $interruption at the coarse authority boundary",
+    async ({ phase }) => {
+      const root = new InMemoryOpfsDirectoryHandle({
+        capabilityProfile: "window",
+        name: "opfs-root",
+      });
+      const locks = lockManager();
+      vi.stubGlobal("navigator", {
+        locks,
+        storage: createInMemoryOpfsStorageManager({ root }),
+      });
+      const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+        lockManager: locks,
+      });
+      const controller = new AbortController();
+      let interrupted = false;
+
+      try {
+        const plain = new OPFSStorageProvider();
+        await plain.init();
+        await plain.saveSettings({
+          settings: settings({ endpointUrl: `http://return-${phase}` }),
+        });
+
+        await expect(plain.enableEncryption({
+          onProgress: ({ progress }) => {
+            if (interrupted || progress.phase !== phase) return;
+            interrupted = true;
+            controller.abort(new DOMException("planned interruption", "AbortError"));
+          },
+          passphrase: PASSPHRASE,
+          signal: controller.signal,
+        })).rejects.toMatchObject({ name: "AbortError" });
+        expect(interrupted).toBe(true);
+
+        const recovery = new OPFSStorageProvider();
+        await expect(recovery.inspectEncryption()).resolves.toMatchObject({
+          requiredAction: "converge_transition",
+          type: "credential_required",
+        });
+        switch (phase) {
+        case "verifying": {
+          await recovery.returnInterruptedEncryptionToPlain({
+            onProgress: undefined,
+            passphrase: PASSPHRASE,
+            signal: undefined,
+          });
+          const sourceAfterReload = new OPFSStorageProvider();
+          await sourceAfterReload.init();
+          await expect(sourceAfterReload.inspectEncryption()).resolves.toMatchObject({ type: "plain" });
+          await expect(sourceAfterReload.loadSettings()).resolves.toMatchObject({
+            endpoint: { url: `http://return-${phase}` },
+          });
+          await sourceAfterReload.enableEncryption({
+            onProgress: undefined,
+            passphrase: PASSPHRASE,
+            signal: undefined,
+          });
+          const freshTarget = new OPFSStorageProvider();
+          await freshTarget.unlockWithPassphrase({ passphrase: PASSPHRASE });
+          await expect(freshTarget.loadSettings()).resolves.toMatchObject({
+            endpoint: { url: `http://return-${phase}` },
+          });
+          await freshTarget.dispose();
+          break;
+        }
+        case "cleaning_source": {
+          await recovery.convergeTransitionWithPassphrase({
+            passphrase: PASSPHRASE,
+            signal: undefined,
+          });
+          const targetAfterReload = new OPFSStorageProvider();
+          await targetAfterReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
+          await expect(targetAfterReload.loadSettings()).resolves.toMatchObject({
+            endpoint: { url: `http://return-${phase}` },
+          });
+          await targetAfterReload.dispose();
+          break;
+        }
+        default: phase satisfies never;
+        }
+        const storageRoot = await root.getDirectoryHandle(
+          NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+          { create: false },
+        );
+        await expectNoPersistentTransitionProgress({
+          storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
+        });
+      } finally {
+        uninstallRuntime();
+      }
+    },
+    60_000,
+  );
 
 });

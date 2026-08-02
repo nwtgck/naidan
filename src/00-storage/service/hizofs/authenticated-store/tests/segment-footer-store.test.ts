@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   parseFileSystemId,
@@ -13,7 +13,8 @@ import {
   authenticatedHizoFSPhysicalBytes,
   type AuthenticatedHizoFSPhysicalBytes,
 } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
-import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
+import * as HizoFSCrypto from "@/00-storage/service/hizofs/01-crypto";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { DeterministicPhysicalStoreFaultInjector } from "@/00-storage/service/hizofs/physical-store/testing/deterministic-fault-injector";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
@@ -165,6 +166,32 @@ describe("authenticated Segment Footer store", () => {
     expect(reopened.state).toBe("footer_unusable");
     expect(reopened.frames).toHaveLength(2);
     fixture.rootKey.destroy();
+  });
+
+  it("rethrows a non-authentication Footer crypto failure instead of falling back from healthy bytes", async () => {
+    const fixture = await createBootstrap();
+    await SEGMENT_FOOTER_TEST_ONLY.sealAuthenticatedSegmentForTesting({
+      backend: fixture.backend,
+      fileSystemId: fixture.fileSystemId,
+      physicalSegmentId: fixture.physicalSegmentId,
+      randomSource: fixture.randomSource,
+      rootKey: fixture.rootKey,
+      segmentClass: "metadata",
+    });
+    const failure = new DOMException("footer crypto unavailable", "InvalidStateError");
+    const decrypt = vi.spyOn(HizoFSCrypto, "decryptAuthenticatedSegmentFooter").mockRejectedValue(failure);
+    try {
+      await expect(readAuthenticatedSegmentIndex({
+        backend: fixture.backend,
+        fileSystemId: fixture.fileSystemId,
+        physicalSegmentId: fixture.physicalSegmentId,
+        rootKey: fixture.rootKey,
+        segmentClass: "metadata",
+      })).rejects.toBe(failure);
+    } finally {
+      decrypt.mockRestore();
+      fixture.rootKey.destroy();
+    }
   });
 
   it("re-flushes an already visible footer before succeeding after an outcome-unknown write", async () => {

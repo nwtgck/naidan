@@ -15,7 +15,7 @@ import {
   authenticatedHizoFSPhysicalBytes,
   type AuthenticatedHizoFSPhysicalBytes,
 } from '@/00-storage/service/hizofs/authenticated-store/physical-bytes';
-import type { RandomByteSource } from '@/00-storage/service/hizofs/crypto';
+import type { RandomByteSource } from '@/00-storage/service/hizofs/01-crypto';
 import { canonicalContainerPath } from '@/00-storage/service/hizofs/physical-store/paths';
 import { InMemoryCrashDurabilityBackend } from '@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend';
 import {

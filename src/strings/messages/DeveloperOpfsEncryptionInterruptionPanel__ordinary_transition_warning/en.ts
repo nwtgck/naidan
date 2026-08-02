@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning = (): string => 'The ordinary storage transition will stop at the selected boundary and settle its current provider for reload.';

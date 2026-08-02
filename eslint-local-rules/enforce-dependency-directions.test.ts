@@ -311,18 +311,18 @@ import type { Dto } from '@/00-storage/00-dto/dto';`,
   describe('HizoFS internal dependency graph', () => {
     it.each([
       ['src/00-storage/service/hizofs/filesystem/mutate.ts', '@/00-storage/service/hizofs/physical-store/backend'],
-      ['src/00-storage/service/hizofs/filesystem/mutate.ts', '@/00-storage/service/hizofs/crypto/primitives/aes-gcm'],
-      ['src/00-storage/service/hizofs/crypto/primitives/aes-gcm.ts', '@/00-storage/service/hizofs/filesystem/mutate'],
+      ['src/00-storage/service/hizofs/filesystem/mutate.ts', '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm'],
+      ['src/00-storage/service/hizofs/01-crypto/primitives/aes-gcm.ts', '@/00-storage/service/hizofs/filesystem/mutate'],
       ['src/00-storage/service/hizofs/physical-store/backend.ts', '@/00-storage/service/hizofs/00-format/v1/records/file-data'],
       ['src/00-storage/service/hizofs/maintenance/gc.ts', '@/00-storage/service/hizofs/physical-store/backend'],
-      ['src/00-storage/service/hizofs/indexes/tree.ts', '@/00-storage/service/hizofs/crypto/index'],
+      ['src/00-storage/service/hizofs/indexes/tree.ts', '@/00-storage/service/hizofs/01-crypto/index'],
     ])('rejects %s -> %s', async (filePath, importPath) => {
       await expectForbidden({ code: `import { value } from '${importPath}';`, filePath });
     });
 
     it.each([
-      ['src/00-storage/service/hizofs/crypto/key-application/derived-keys.ts', '@/00-storage/service/hizofs/00-format'],
-      ['src/00-storage/service/hizofs/authenticated-store/open.ts', '@/00-storage/service/hizofs/crypto/index'],
+      ['src/00-storage/service/hizofs/01-crypto/key-application/derived-keys.ts', '@/00-storage/service/hizofs/00-format'],
+      ['src/00-storage/service/hizofs/authenticated-store/open.ts', '@/00-storage/service/hizofs/01-crypto/index'],
       ['src/00-storage/service/hizofs/authenticated-store/open.ts', '@/00-storage/service/hizofs/physical-store/backend'],
       ['src/00-storage/service/hizofs/filesystem/read.ts', '@/00-storage/service/hizofs/authenticated-store/index'],
       ['src/00-storage/service/hizofs/maintenance/gc.ts', '@/00-storage/service/hizofs/authenticated-store/index'],
@@ -364,11 +364,11 @@ import type { Dto } from '@/00-storage/00-dto/dto';`,
     it('rejects deep format imports from crypto while allowing the public format entry', async () => {
       await expectForbidden({
         code: `import { encodeCryptoContext } from '@/00-storage/service/hizofs/00-format/v1/crypto-context-codec';`,
-        filePath: 'src/00-storage/service/hizofs/crypto/key-application/derived-keys.ts',
+        filePath: 'src/00-storage/service/hizofs/01-crypto/key-application/derived-keys.ts',
       });
       await expectAllowed({
         code: `import { encodeCryptoContext } from '@/00-storage/service/hizofs/00-format';`,
-        filePath: 'src/00-storage/service/hizofs/crypto/key-application/derived-keys.ts',
+        filePath: 'src/00-storage/service/hizofs/01-crypto/key-application/derived-keys.ts',
       });
     });
 

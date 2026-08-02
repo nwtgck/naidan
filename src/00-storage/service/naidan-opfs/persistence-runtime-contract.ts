@@ -85,21 +85,12 @@ export type OpfsPersistenceTransitionRequest =
       readonly session: OpfsPersistenceUnlockedSession;
     }
   | {
-      readonly operation: 'resume';
-      readonly retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
-    }
-  | {
       readonly operation: 'converge';
       readonly retainedCredentials: readonly OpfsPersistenceRetainedCredential[];
     }
-  | { readonly operation: 'return_to_plain'; readonly passphrase: string }
-  | { readonly operation: 'debug_interrupt_enable'; readonly passphrase: string }
-  | { readonly operation: 'debug_interrupt_disable'; readonly session: OpfsPersistenceUnlockedSession };
+  | { readonly operation: 'return_to_plain'; readonly passphrase: string };
 
-export type OpfsPersistenceTransitionResult =
-  | { readonly type: 'plain'; readonly backend: IStorageProvider; readonly fileSystemSession: StorageFileSystemSession }
-  | { readonly type: 'encrypted'; readonly session: OpfsPersistenceUnlockedSession }
-  | { readonly type: 'interrupted' };
+export type OpfsPersistenceTransitionResult = { readonly type: 'completed' };
 
 /**
  * Application composition port for Naidan Persistence Control and HizoFS.

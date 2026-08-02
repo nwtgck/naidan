@@ -79,6 +79,18 @@ function createStorageSynchronizationId({ prefix }: { prefix: string }): string 
   return `${prefix}-${randomId}`;
 }
 
+function throwOpfsTransitionFailures({ failures, message }: {
+  failures: readonly unknown[];
+  message: string;
+}): never {
+  const [failure] = failures;
+  if (failure === undefined && failures.length === 0) {
+    throw new TypeError('OPFS transition failure aggregation requires at least one failure');
+  }
+  if (failures.length === 1) throw failure;
+  throw new AggregateError(failures, message);
+}
+
 
 /**
  * StorageService
@@ -100,6 +112,7 @@ export class StorageService {
   private readonly settledExternalTransitionOperationIds = new Set<string>();
   private readonly ignoredExternalTransitionOperationIds = new Set<string>();
   private externalOpfsTransitionEpoch = 0;
+  private externalOpfsTransitionReloadRequired = false;
 
   constructor() {
     this.synchronizer = new StorageSynchronizer();
@@ -155,6 +168,7 @@ export class StorageService {
       ) {
         return;
       }
+      this.externalOpfsTransitionReloadRequired = true;
       this.externalOpfsTransitionEpoch += 1;
       const preparation = await this.suspendOpfsStorageForExternalTransition({
         operationId: event.operationId,
@@ -184,6 +198,7 @@ export class StorageService {
       if (this.settledExternalTransitionOperationIds.has(event.operationId)) {
         return;
       }
+      this.externalOpfsTransitionReloadRequired = true;
       this.externalOpfsTransitionEpoch += 1;
       if (this.pendingExternalTransitionOperationId !== event.operationId) {
         const preparation = await this.suspendOpfsStorageForExternalTransition({
@@ -215,6 +230,7 @@ export class StorageService {
       if (this.settledExternalTransitionOperationIds.has(event.operationId)) {
         return;
       }
+      this.externalOpfsTransitionReloadRequired = true;
       this.externalOpfsTransitionEpoch += 1;
       if (this.pendingExternalTransitionOperationId !== event.operationId) {
         const preparation = await this.suspendOpfsStorageForExternalTransition({
@@ -300,39 +316,70 @@ export class StorageService {
       throw new Error('A different external OPFS encryption transition is already pending');
     }
 
-    let preparationError: unknown;
+    const presentationFailures: unknown[] = [];
     try {
       await notifyRegisteredOpfsExternalTransitionStarting();
+    } catch (error: unknown) {
+      presentationFailures.push(error);
+    }
+
+    const safetyPreparationFailures: unknown[] = [];
+    try {
       await prepareRegisteredOpfsStorageTransition();
-    } catch (error) {
-      preparationError = error;
+    } catch (error: unknown) {
+      safetyPreparationFailures.push(error);
+    }
+
+    if (safetyPreparationFailures.length > 0) {
+      // A failed native-capability cleanup keeps this tab's shared lease.
+      // The initiator must time out before touching Persistence Control.
+      const failures = [...presentationFailures, ...safetyPreparationFailures];
+      try {
+        notifyRegisteredOpfsExternalTransitionSettled({
+          settlement: 'preparation_failed',
+        });
+      } catch (settlementError: unknown) {
+        failures.push(settlementError);
+      }
+      this.rememberSettledExternalTransition({ operationId });
+      throwOpfsTransitionFailures({
+        failures,
+        message: 'External OPFS transition presentation and safety preparation failed',
+      });
     }
 
     try {
-      // Releasing the shared session lock is the safety-critical part of an
-      // external preflight. Even if UI or worker cleanup fails, attempt this
-      // release so the initiator's exclusive transition cannot deadlock while
-      // this tab moves to its recovery reload path.
       await this.provider.suspendStorageSession();
       this.pendingExternalTransitionOperationId = operationId;
-    } catch (suspensionError) {
-      notifyRegisteredOpfsExternalTransitionSettled({
-        settlement: 'preparation_failed',
-      });
-      if (preparationError === undefined) {
-        throw suspensionError;
+    } catch (suspensionError: unknown) {
+      const failures = [...presentationFailures, suspensionError];
+      try {
+        notifyRegisteredOpfsExternalTransitionSettled({
+          settlement: 'preparation_failed',
+        });
+      } catch (settlementError: unknown) {
+        failures.push(settlementError);
       }
-      throw new AggregateError(
-        [preparationError, suspensionError],
-        'External OPFS transition preparation and session suspension both failed',
-      );
+      this.rememberSettledExternalTransition({ operationId });
+      throwOpfsTransitionFailures({
+        failures,
+        message: 'External OPFS transition presentation and session suspension failed',
+      });
     }
 
-    if (preparationError !== undefined) {
-      notifyRegisteredOpfsExternalTransitionSettled({
-        settlement: 'preparation_failed',
+    if (presentationFailures.length > 0) {
+      this.pendingExternalTransitionOperationId = undefined;
+      const failures = [...presentationFailures];
+      try {
+        notifyRegisteredOpfsExternalTransitionSettled({ settlement: 'preparation_failed' });
+      } catch (settlementError: unknown) {
+        failures.push(settlementError);
+      }
+      this.rememberSettledExternalTransition({ operationId });
+      throwOpfsTransitionFailures({
+        failures,
+        message: 'External OPFS transition presentation failed after safe session suspension',
       });
-      throw preparationError;
     }
     return 'suspended';
   }
@@ -385,8 +432,32 @@ export class StorageService {
           // winner settles; the caller will re-inspect the stable backend.
           throw new Error('OPFS encryption transition was superseded by another tab');
         }
+        if (this.externalOpfsTransitionReloadRequired) {
+          throw new Error('OPFS encryption transition requires this page to reload');
+        }
 
-        notifyRegisteredOpfsLocalTransitionStarting();
+        const preflightFailures: unknown[] = [];
+        try {
+          notifyRegisteredOpfsLocalTransitionStarting();
+        } catch (error: unknown) {
+          preflightFailures.push(error);
+        }
+        try {
+          await prepareRegisteredOpfsStorageTransition();
+        } catch (error: unknown) {
+          preflightFailures.push(error);
+        }
+        if (preflightFailures.length > 0) {
+          try {
+            notifyRegisteredOpfsLocalTransitionSettled({ settlement: 'preparation_failed' });
+          } catch (settlementError: unknown) {
+            preflightFailures.push(settlementError);
+          }
+          throwOpfsTransitionFailures({
+            failures: preflightFailures,
+            message: 'Local OPFS transition preflight failed',
+          });
+        }
 
         // Announce the transition only after holding the global storage lock.
         // A tab that starts concurrently must wait here before it can initialize
@@ -408,8 +479,44 @@ export class StorageService {
           tabId: this.synchronizationTabId,
         });
 
+        let result: T;
         try {
-          const result = await run();
+          result = await run();
+        } catch (error: unknown) {
+          const failures = [error];
+          try {
+            this.notify({
+              event: {
+                type: 'opfs_encryption',
+                status: 'transition_failed',
+                operationId,
+                initiatorTabId: this.synchronizationTabId,
+                timestamp: Date.now(),
+              },
+            });
+          } catch (notificationError: unknown) {
+            failures.push(notificationError);
+          }
+          console.error('[opfs-encryption]', {
+            event: 'transition_failed',
+            operationId,
+            tabId: this.synchronizationTabId,
+            error,
+            ...transitionErrorDiagnostics({ error }),
+          });
+          try {
+            notifyRegisteredOpfsLocalTransitionSettled({ settlement: 'failed' });
+          } catch (settlementError: unknown) {
+            failures.push(settlementError);
+          }
+          throwOpfsTransitionFailures({
+            failures,
+            message: 'OPFS transition and failure settlement failed',
+          });
+        }
+
+        const completionFailures: unknown[] = [];
+        try {
           this.notify({
             event: {
               type: 'opfs_encryption',
@@ -419,33 +526,26 @@ export class StorageService {
               timestamp: Date.now(),
             },
           });
-          console.info('[opfs-encryption]', {
-            event: 'transition_completed',
-            operationId,
-            tabId: this.synchronizationTabId,
-          });
-          notifyRegisteredOpfsLocalTransitionSettled({ settlement: 'completed' });
-          return result;
-        } catch (error) {
-          this.notify({
-            event: {
-              type: 'opfs_encryption',
-              status: 'transition_failed',
-              operationId,
-              initiatorTabId: this.synchronizationTabId,
-              timestamp: Date.now(),
-            },
-          });
-          console.error('[opfs-encryption]', {
-            event: 'transition_failed',
-            operationId,
-            tabId: this.synchronizationTabId,
-            error,
-            ...transitionErrorDiagnostics({ error }),
-          });
-          notifyRegisteredOpfsLocalTransitionSettled({ settlement: 'failed' });
-          throw error;
+        } catch (notificationError: unknown) {
+          completionFailures.push(notificationError);
         }
+        console.info('[opfs-encryption]', {
+          event: 'transition_completed',
+          operationId,
+          tabId: this.synchronizationTabId,
+        });
+        try {
+          notifyRegisteredOpfsLocalTransitionSettled({ settlement: 'completed' });
+        } catch (settlementError: unknown) {
+          completionFailures.push(settlementError);
+        }
+        if (completionFailures.length > 0) {
+          throwOpfsTransitionFailures({
+            failures: completionFailures,
+            message: 'OPFS transition completion settlement failed',
+          });
+        }
+        return result;
       },
       lockKey: SYNC_LOCK_KEY,
       ...this.getLockOptions({
@@ -630,24 +730,6 @@ export class StorageService {
     });
   }
 
-  async resumeOpfsEncryptionTransitionWithPassphrase({
-    passphrase,
-    signal,
-    onProgress,
-  }: {
-    passphrase: string,
-    signal: AbortSignal | undefined,
-    onProgress?: OpfsEncryptionTransitionProgressListener,
-  }): Promise<void> {
-    await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().resumeTransitionWithPassphrase({
-        passphrase,
-        signal,
-        onProgress,
-      }),
-    });
-  }
-
   async returnInterruptedOpfsEncryptionToPlain({
     passphrase,
     signal,
@@ -665,32 +747,6 @@ export class StorageService {
       }),
     });
   }
-
-  async createInterruptedOpfsEncryptionForDebug({
-    passphrase,
-    signal,
-  }: {
-    passphrase: string,
-    signal: AbortSignal | undefined,
-  }): Promise<void> {
-    await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().createInterruptedEncryptionForDebug({
-        passphrase,
-        signal,
-      }),
-    });
-  }
-
-  async createInterruptedOpfsDecryptionForDebug({
-    signal,
-  }: {
-    signal: AbortSignal | undefined,
-  }): Promise<void> {
-    await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().createInterruptedDecryptionForDebug({ signal }),
-    });
-  }
-
 
   // --- Hierarchy Management (Atomic) ---
 

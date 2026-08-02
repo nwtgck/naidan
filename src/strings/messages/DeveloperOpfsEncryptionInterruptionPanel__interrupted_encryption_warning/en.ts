@@ -1,1 +1,0 @@
-export const DeveloperOpfsEncryptionInterruptionPanel__interrupted_encryption_warning = (): string => 'This creates an unfinished encrypted target and a durable interrupted transition for the current OPFS storage, then reloads the page. Use the entered passphrase to resume encryption.';

@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition = (): string => 'Interrupts the ordinary storage transition at a selected authority boundary, then reloads through the normal recovery path.';

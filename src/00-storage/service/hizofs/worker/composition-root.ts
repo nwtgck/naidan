@@ -1,6 +1,5 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
-  encodeBase64UrlUnpadded,
   parseCredentialSlotId,
   parseFileSystemId,
 } from "@/00-storage/service/hizofs/00-format";
@@ -11,13 +10,12 @@ import {
 } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import {
   HizoFSStorageFileSystemSession,
-  HizoFSTransitionImportJournal,
   type HizoFSApplicationPreparedExplicitBulk,
   type HizoFSApplicationPreparedWritable,
+  type HizoFSApplicationRuntimeSession,
   type HizoFSApplicationSessionNamespace,
+  type HizoFSTransitionImportStatePort,
   type HizoFSWorkerMountGrantIssuer,
-  type HizoFSTransitionImportJournalBinding,
-  type HizoFSTransitionImportJournalPort,
 } from "@/00-storage/service/hizofs/api";
 import { createHizoFSTransitionNamespaceSource } from "@/00-storage/service/hizofs/api/transition-namespace-source";
 import {
@@ -27,6 +25,7 @@ import {
   createTimestampMilliseconds,
   createUnlockSequence,
   encodeFileSystemCommitPayload,
+  sameSuperblockLogicalStateExceptMinimumUnlockSequence,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
   type FileSystemCommitPayload,
@@ -36,6 +35,7 @@ import {
   type HomeRecordReference,
   type InodeNumber,
   type MutationId,
+  type OpenedSuperblockCopies,
   type PhysicalRecordReference,
   type SubvolumeId,
   type TimestampMilliseconds,
@@ -66,10 +66,7 @@ import {
   type AuthenticatedMetadataMutationAuthority,
 } from "@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority";
 import { createAuthenticatedNamespaceRecordSource } from "@/00-storage/service/hizofs/authenticated-store/namespace-record-source";
-import {
-  openSuperblockCopies,
-  type OpenedSuperblockCopies,
-} from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
+import { openSuperblockCopies } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
 import { readBootstrapRoot } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
 import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
 import {
@@ -80,6 +77,7 @@ import {
   StreamingNamespaceImport,
   type SealedStreamingNamespaceImport,
   type StreamingNamespaceImportLimits,
+  validateSealedStreamingNamespaceImport,
 } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import";
 import { ExplicitBulkBuilder } from "@/00-storage/service/hizofs/filesystem/bulk/explicit-bulk-builder";
 import { prepareExplicitBulkCommit } from "@/00-storage/service/hizofs/filesystem/bulk/explicit-bulk-commit";
@@ -140,13 +138,16 @@ import type {
 } from "@/00-storage/service/hizofs/filesystem/reflink/whole-file-reflink-plan";
 import {
   FileSystemRootKey,
+  deriveContainerCoordinationScopeTokenValue,
   generateFileSystemId,
+  generateBenchmarkSecret,
   generateMutationId,
-  withFileSystemRootKeyBytes,
+  issueHizoFSWorkerMountGrantPayload,
+  openHizoFSWorkerMountGrantPayload,
   withFileSystemRootKeyProofDerivationCapability,
   type FileSystemRootKeyProofDerivationCapability,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type {
   ReadOnlyNamespace,
   ReadOnlyNamespaceResolver,
@@ -165,6 +166,7 @@ import {
 import { OpfsWritableBackend } from "@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend";
 import { HizoFSRuntimeDiagnosticsAccumulator, type HizoFSRuntimeDiagnosticPhase, type HizoFSRuntimeDiagnosticsSnapshot } from "@/00-storage/service/hizofs/runtime/runtime-diagnostics";
 import type { ContainerRuntimeMaintenanceRootCapture } from "@/00-storage/service/hizofs/runtime/container-runtime";
+import type { SessionOperationAuthority } from "@/00-storage/service/hizofs/runtime/session-lifecycle";
 import {
   captureCompleteMaintenanceRoots,
   type CompleteMaintenanceRootCapture,
@@ -199,27 +201,6 @@ export type AuthenticatedApplicationReadSessionResources = Readonly<{
 }>;
 
 
-type HizoFSWorkerMountGrantPayloadV1 = Readonly<{
-  ciphertext: Uint8Array;
-  nonce: Uint8Array;
-  type: "hizofs_worker_mount_grant_payload";
-  version: 1;
-  wrappingKey: CryptoKey;
-}>;
-
-type HizoFSWorkerMountGrantMetadataV1 = Readonly<{
-  accessMode: StorageDirectoryWorkerMountAccessMode;
-  canonicalBackingLocation: string;
-  fileSystemId: string;
-  grantId: string;
-  inodeNumber: string;
-  scopePath: readonly string[];
-  type: "hizofs_worker_mount_grant";
-  unlockingSlotId: string;
-  unlockSequence: string;
-  version: 1;
-}>;
-
 const WORKER_MOUNT_GRANT_POLICY: HizoFSRuntimePolicy = Object.freeze({
   maxDirectoryIteratorEntries: 4_096,
   maxHeldLockNames: 1_024,
@@ -228,114 +209,24 @@ const WORKER_MOUNT_GRANT_POLICY: HizoFSRuntimePolicy = Object.freeze({
   maxSegmentReferences: 4_096,
 });
 
-function workerMountGrantAad({ accessMode, grantId }: {
-  accessMode: StorageDirectoryWorkerMountAccessMode;
-  grantId: string;
-}): Uint8Array {
-  return new TextEncoder().encode(`hizofs-worker-mount-grant-v1\u0000${grantId}\u0000${accessMode}`);
-}
-
-function randomWorkerMountGrantId(): string {
-  return encodeBase64UrlUnpadded({ bytes: crypto.getRandomValues(new Uint8Array(16)) });
-}
-
-function requireHizoFSWorkerMountGrantPayload({ value }: { value: unknown }): HizoFSWorkerMountGrantPayloadV1 {
-  if (typeof value !== "object" || value === null) {
-    throw new TypeError("HizoFS Worker mount grant payload must be an object");
-  }
-  const payload = value as Partial<HizoFSWorkerMountGrantPayloadV1>;
-  if (payload.type !== "hizofs_worker_mount_grant_payload" || payload.version !== 1) {
-    throw new TypeError("unsupported HizoFS Worker mount grant payload");
-  }
-  if (payload.wrappingKey === undefined
-    || !(payload.ciphertext instanceof Uint8Array)
-    || !(payload.nonce instanceof Uint8Array)
-    || payload.nonce.byteLength !== 12) {
-    throw new TypeError("invalid HizoFS Worker mount grant payload");
-  }
-  return payload as HizoFSWorkerMountGrantPayloadV1;
-}
-
-function requireWorkerMountGrantMetadata({ value }: { value: unknown }): HizoFSWorkerMountGrantMetadataV1 {
-  if (typeof value !== "object" || value === null) throw new TypeError("invalid HizoFS Worker mount grant plaintext");
-  const row = value as Partial<HizoFSWorkerMountGrantMetadataV1>;
-  if (row.type !== "hizofs_worker_mount_grant" || row.version !== 1
-    || (row.accessMode !== "read" && row.accessMode !== "read_write")
-    || typeof row.canonicalBackingLocation !== "string" || row.canonicalBackingLocation.length === 0
-    || typeof row.fileSystemId !== "string" || typeof row.grantId !== "string"
-    || typeof row.inodeNumber !== "string"
-    || !Array.isArray(row.scopePath) || row.scopePath.some(component => typeof component !== "string")
-    || typeof row.unlockingSlotId !== "string" || typeof row.unlockSequence !== "string") {
-    throw new TypeError("invalid HizoFS Worker mount grant plaintext");
-  }
-  return row as HizoFSWorkerMountGrantMetadataV1;
-}
-
-const WORKER_MOUNT_GRANT_ROOT_KEY_BYTES = 32;
-const WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES = 4;
-
-function encodeWorkerMountGrantCleartext({ metadata, rootKeyBytes }: {
-  metadata: HizoFSWorkerMountGrantMetadataV1;
-  rootKeyBytes: Uint8Array;
-}): Uint8Array {
-  if (rootKeyBytes.byteLength !== WORKER_MOUNT_GRANT_ROOT_KEY_BYTES) {
-    throw new RangeError("HizoFS Worker mount grant root key has invalid length");
-  }
-  const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
-  try {
-    const cleartext = new Uint8Array(
-      WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES
-      + metadataBytes.byteLength
-      + WORKER_MOUNT_GRANT_ROOT_KEY_BYTES,
-    );
-    new DataView(cleartext.buffer).setUint32(0, metadataBytes.byteLength, false);
-    cleartext.set(metadataBytes, WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES);
-    cleartext.set(rootKeyBytes, WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES + metadataBytes.byteLength);
-    return cleartext;
-  } finally {
-    metadataBytes.fill(0);
-  }
-}
-
-function decodeWorkerMountGrantCleartext({ cleartext }: { cleartext: Uint8Array }): Readonly<{
-  metadata: HizoFSWorkerMountGrantMetadataV1;
-  rootKeyBytes: Uint8Array;
-}> {
-  if (cleartext.byteLength < WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES + WORKER_MOUNT_GRANT_ROOT_KEY_BYTES) {
-    throw new TypeError("HizoFS Worker mount grant cleartext is truncated");
-  }
-  const metadataLength = new DataView(
-    cleartext.buffer,
-    cleartext.byteOffset,
-    WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES,
-  ).getUint32(0, false);
-  const rootKeyOffset = WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES + metadataLength;
-  if (rootKeyOffset + WORKER_MOUNT_GRANT_ROOT_KEY_BYTES !== cleartext.byteLength) {
-    throw new TypeError("HizoFS Worker mount grant cleartext framing is invalid");
-  }
-  const metadata = requireWorkerMountGrantMetadata({
-    value: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(
-      cleartext.subarray(WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES, rootKeyOffset),
-    )),
-  });
-  return {
-    metadata,
-    rootKeyBytes: Uint8Array.from(cleartext.subarray(rootKeyOffset)),
-  };
-}
-
 async function issueHizoFSWorkerMountGrant({
   accessMode,
   canonicalBackingLocation,
   currentResolver,
-  opened,
+  fileSystemId,
   path,
+  rootKey,
+  unlockingSlotId,
+  unlockSequence,
 }: {
   accessMode: StorageDirectoryWorkerMountAccessMode;
   canonicalBackingLocation: string;
   currentResolver: () => ReadOnlyNamespaceResolver;
-  opened: OpenedEmptyEncryptedContainer;
+  fileSystemId: FileSystemId;
   path: readonly string[];
+  rootKey: FileSystemRootKey;
+  unlockingSlotId: import("@/00-storage/service/hizofs/00-format").CredentialSlotId;
+  unlockSequence: import("@/00-storage/service/hizofs/00-format").UnlockSequence;
 }): Promise<StorageDirectoryWorkerMountGrant> {
   const stat = await currentResolver().stat({ pathComponents: [...path] });
   switch (stat.kind) {
@@ -347,62 +238,24 @@ async function issueHizoFSWorkerMountGrant({
     throw new Error(`Unhandled Worker mount scope: ${String(_ex)}`);
   }
   }
-  const grantId = randomWorkerMountGrantId();
-  const wrappingKey = await crypto.subtle.generateKey(
-    { length: 256, name: "AES-GCM" },
-    false,
-    ["decrypt", "encrypt"],
-  );
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const aad = workerMountGrantAad({ accessMode, grantId });
-  let plaintextBytes: Uint8Array | undefined;
-  try {
-    plaintextBytes = await withFileSystemRootKeyBytes({
-      rootKey: opened.rootKey,
-      useBytes: ({ bytes }) => encodeWorkerMountGrantCleartext({
-        metadata: {
-          accessMode,
-          canonicalBackingLocation,
-          fileSystemId: opened.fileSystemId,
-          grantId,
-          inodeNumber: stat.inodeNumber.toString(),
-          scopePath: [...path],
-          type: "hizofs_worker_mount_grant",
-          unlockingSlotId: opened.unlockingSlotId,
-          unlockSequence: opened.unlockSequence.toString(),
-          version: 1,
-        },
-        rootKeyBytes: bytes,
-      }),
-    });
-    const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
-      {
-        additionalData: new Uint8Array(aad).buffer,
-        iv: new Uint8Array(nonce).buffer,
-        name: "AES-GCM",
-      },
-      wrappingKey,
-      new Uint8Array(plaintextBytes).buffer,
-    ));
-    const opaquePayload: HizoFSWorkerMountGrantPayloadV1 = {
-      ciphertext,
-      nonce,
-      type: "hizofs_worker_mount_grant_payload",
-      version: 1,
-      wrappingKey,
-    };
-    return {
-      accessMode,
-      grantId,
-      implementation: "hizofs",
-      opaquePayload,
-      type: "storage_directory_worker_mount_grant",
-      version: 1,
-    };
-  } finally {
-    aad.fill(0);
-    plaintextBytes?.fill(0);
-  }
+  const issued = await issueHizoFSWorkerMountGrantPayload({
+    accessMode,
+    canonicalBackingLocation,
+    fileSystemId,
+    inodeNumber: stat.inodeNumber,
+    rootKey,
+    scopePath: path,
+    unlockingSlotId,
+    unlockSequence,
+  });
+  return {
+    accessMode,
+    grantId: issued.grantId,
+    implementation: "hizofs",
+    opaquePayload: issued.opaquePayload,
+    type: "storage_directory_worker_mount_grant",
+    version: 1,
+  };
 }
 
 /**
@@ -417,17 +270,11 @@ export async function createBrowserContainerCoordinationScope({
 }: {
   canonicalBackingLocation: string;
 }): Promise<ContainerCoordinationScope> {
-  const encodedLocation = new TextEncoder().encode(canonicalBackingLocation);
-  try {
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", encodedLocation));
-    return createContainerCoordinationScope({
-      token: parseContainerCoordinationScopeToken({
-        value: encodeBase64UrlUnpadded({ bytes: digest }),
-      }),
-    });
-  } finally {
-    encodedLocation.fill(0);
-  }
+  return createContainerCoordinationScope({
+    token: parseContainerCoordinationScopeToken({
+      value: await deriveContainerCoordinationScopeTokenValue({ canonicalBackingLocation }),
+    }),
+  });
 }
 
 export async function openAuthenticatedReadOnlyContainerAuthority({
@@ -487,7 +334,7 @@ export type AuthenticatedReadOnlyContainerCapabilityOpenResult =
 
 type PrivateReadOnlyContainerAuthority =
   | { readonly authority: AuthenticatedOpenedApplicationAuthority; readonly type: "normal_read" }
-  | { readonly rootKey: import("@/00-storage/service/hizofs/crypto").FileSystemRootKey; readonly type: "root_key_proof" };
+  | { readonly rootKey: import("@/00-storage/service/hizofs/01-crypto").FileSystemRootKey; readonly type: "root_key_proof" };
 
 type PrivateReadOnlyContainerCapabilityState =
   | { readonly state: "owned"; readonly value: PrivateReadOnlyContainerAuthority }
@@ -660,9 +507,12 @@ type PrivateDevelopmentWritableCapabilityState =
 const openedDevelopmentWritableAuthorityByCapability = new WeakMap<object, PrivateDevelopmentWritableCapabilityState>();
 
 type DevelopmentWritableCredentialSessionState = {
+  readonly credentialAuthorityUpdater: AuthenticatedCredentialAuthorityUpdater;
   readonly backend: HizoFSDevelopmentWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  readonly operationGate: DevelopmentWritableCredentialOperationGate;
   readonly opened: OpenedEmptyEncryptedContainer;
   readonly recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
+  readonly runtimeSession: HizoFSApplicationRuntimeSession;
   readonly underlyingSession: StorageFileSystemSession;
   closePromise?: Promise<void>;
   lifecycle: "closed" | "closing" | "open" | "proving" | "recovery_required" | "reencrypting" | "updating";
@@ -672,10 +522,74 @@ type DevelopmentWritableCredentialSessionState = {
 const developmentWritableCredentialStateBySession = new WeakMap<StorageFileSystemSession, DevelopmentWritableCredentialSessionState>();
 
 export class HizoFSCredentialUpdateRecoveryRequiredError extends Error {
+  readonly code = "recovery_required";
+
   public constructor({ cause, outcome }: { cause: unknown; outcome: string }) {
     super(`HizoFS credential update requires recovery: ${outcome}`, { cause });
     this.name = "HizoFSCredentialUpdateRecoveryRequiredError";
   }
+}
+
+type DevelopmentWritableCredentialOperationGate = {
+  cause: unknown;
+  outcome: string;
+  recoveryRequired: boolean;
+};
+
+function assertCredentialSessionOperationAllowed({ gate }: {
+  gate: DevelopmentWritableCredentialOperationGate;
+}): void {
+  if (!gate.recoveryRequired) return;
+  throw new HizoFSCredentialUpdateRecoveryRequiredError({
+    cause: gate.cause,
+    outcome: gate.outcome,
+  });
+}
+
+function requireCredentialSessionRecovery({ cause, outcome, state }: {
+  cause: unknown;
+  outcome: string;
+  state: DevelopmentWritableCredentialSessionState;
+}): void {
+  state.lifecycle = "recovery_required";
+  state.operationGate.cause = cause;
+  state.operationGate.outcome = outcome;
+  state.operationGate.recoveryRequired = true;
+}
+
+function restoreCredentialSessionOperation({ state }: {
+  state: DevelopmentWritableCredentialSessionState;
+}): void {
+  state.operationGate.cause = undefined;
+  state.operationGate.outcome = "session_reopen_required";
+  state.operationGate.recoveryRequired = false;
+  state.lifecycle = "open";
+}
+
+async function runCredentialPublicationOperation<Value>({ operation, runtimeSession }: {
+  operation: ({ authority }: { authority: SessionOperationAuthority }) => Promise<Value>;
+  runtimeSession: HizoFSApplicationRuntimeSession;
+}): Promise<Value> {
+  const writer = await runtimeSession.acquireWriter();
+  let failed = false;
+  let failure: unknown | undefined;
+  let value: Value | undefined;
+  try {
+    value = await writer.runPublication({ operation });
+  } catch (cause: unknown) {
+    failed = true;
+    failure = cause;
+  }
+  try {
+    await writer.close();
+  } catch (closeCause: unknown) {
+    if (failed) {
+      throw new AggregateError([failure, closeCause], "credential publication and writer cleanup both failed");
+    }
+    throw closeCause;
+  }
+  if (failed) throw failure;
+  return value as Value;
 }
 
 function wrapDevelopmentWritableCredentialSession({ state }: {
@@ -853,68 +767,108 @@ export async function replaceAuthenticatedDevelopmentWritableSessionPassphrase({
 
   const supportedFeatureBits = createFeatureBits({ value: 0n });
   try {
-    await recheckAuthority();
-    const superblock = await openSuperblockCopies({
-      backend: state.backend,
-      diagnostics: state.recordDiagnostics,
-      fileSystemId: state.opened.fileSystemId,
-      rootKey: state.opened.rootKey,
-      supportedFeatureBits,
+    return await runCredentialPublicationOperation({
+      operation: async ({ authority }) => {
+        try {
+          await recheckAuthority();
+          const superblock = await openSuperblockCopies({
+            backend: state.backend,
+            diagnostics: state.recordDiagnostics,
+            fileSystemId: state.opened.fileSystemId,
+            rootKey: state.opened.rootKey,
+            supportedFeatureBits,
+          });
+          const credentialAuthority = await openAuthenticatedUnlockEnvelopeAuthority({
+            backend: state.backend,
+            diagnostics: state.recordDiagnostics,
+            fileSystemId: state.opened.fileSystemId,
+            minimumUnlockSequence: superblock.logicalState.minimumUnlockSequence,
+            rootKey: state.opened.rootKey,
+          });
+          const previousSlotIds = new Set(credentialAuthority.credentialSlots.map(slot => slot.slotId));
+          try {
+            const published = await replaceUnlockingCredentialPassphrase({
+              backend: state.backend,
+              beforeFirstAuthorityWrite: authority.markCommitPointCrossed,
+              credentialAuthority,
+              diagnostics: state.recordDiagnostics,
+              replacementPassphrase,
+              rootKey: state.opened.rootKey,
+              superblock,
+              supportedFeatureBits,
+              unlockingSlotId: state.unlockingSlotId,
+            });
+            requireCredentialSessionRecovery({
+              cause: new Error("credential publication requires authority recheck"),
+              outcome: "post_publication_authority_recheck",
+              state,
+            });
+            await recheckAuthority();
+            state.credentialAuthorityUpdater({
+              update: {
+                superblock: published.superblock,
+                unlockingSlotId: published.unlockingSlotId,
+                unlockSequence: published.credentialAuthority.unlockSequence,
+              },
+            });
+            state.unlockingSlotId = published.unlockingSlotId;
+            restoreCredentialSessionOperation({ state });
+            return session;
+          } catch (cause: unknown) {
+            if (!(cause instanceof CredentialUpdatePublicationError)) throw cause;
+            requireCredentialSessionRecovery({
+              cause,
+              outcome: "publication_outcome_resolution",
+              state,
+            });
+            const resolution = await resolveCredentialUpdatePublication({
+              backend: state.backend,
+              diagnostics: state.recordDiagnostics,
+              failure: cause,
+              rootKey: state.opened.rootKey,
+              supportedFeatureBits,
+            });
+            switch (resolution.type) {
+            case "not_published":
+              restoreCredentialSessionOperation({ state });
+              throw cause;
+            case "published": {
+              const unlockingSlotId = replacementSlotId({
+                previousSlotIds,
+                slots: resolution.credentialAuthority.credentialSlots,
+              });
+              await recheckAuthority();
+              state.credentialAuthorityUpdater({
+                update: {
+                  superblock: resolution.superblock,
+                  unlockingSlotId,
+                  unlockSequence: resolution.credentialAuthority.unlockSequence,
+                },
+              });
+              state.unlockingSlotId = unlockingSlotId;
+              restoreCredentialSessionOperation({ state });
+              return session;
+            }
+            case "credential_published_floor_pending":
+            case "publication_conflict":
+            case "published_redundancy_degraded":
+              requireCredentialSessionRecovery({ cause, outcome: resolution.type, state });
+              throw new HizoFSCredentialUpdateRecoveryRequiredError({ cause, outcome: resolution.type });
+            default: return resolution satisfies never;
+            }
+          }
+        } catch (cause: unknown) {
+          if (authority.commitPointCrossed() && state.lifecycle === "updating") {
+            requireCredentialSessionRecovery({ cause, outcome: "publication_outcome_unknown", state });
+          }
+          throw cause;
+        }
+      },
+      runtimeSession: state.runtimeSession,
     });
-    const credentialAuthority = await openAuthenticatedUnlockEnvelopeAuthority({
-      backend: state.backend,
-      diagnostics: state.recordDiagnostics,
-      fileSystemId: state.opened.fileSystemId,
-      minimumUnlockSequence: superblock.logicalState.minimumUnlockSequence,
-      rootKey: state.opened.rootKey,
-    });
-    const previousSlotIds = new Set(credentialAuthority.credentialSlots.map(slot => slot.slotId));
-    try {
-      const published = await replaceUnlockingCredentialPassphrase({
-        backend: state.backend,
-        credentialAuthority,
-        diagnostics: state.recordDiagnostics,
-        replacementPassphrase,
-        rootKey: state.opened.rootKey,
-        superblock,
-        supportedFeatureBits,
-        unlockingSlotId: state.unlockingSlotId,
-      });
-      state.unlockingSlotId = published.unlockingSlotId;
-      state.lifecycle = "recovery_required";
-      await recheckAuthority();
-      state.lifecycle = "open";
-      return session;
-    } catch (cause: unknown) {
-      if (!(cause instanceof CredentialUpdatePublicationError)) throw cause;
-      const resolution = await resolveCredentialUpdatePublication({
-        backend: state.backend,
-        diagnostics: state.recordDiagnostics,
-        failure: cause,
-        rootKey: state.opened.rootKey,
-        supportedFeatureBits,
-      });
-      switch (resolution.type) {
-      case "not_published": throw cause;
-      case "published":
-        state.unlockingSlotId = replacementSlotId({
-          previousSlotIds,
-          slots: resolution.credentialAuthority.credentialSlots,
-        });
-        state.lifecycle = "recovery_required";
-        await recheckAuthority();
-        state.lifecycle = "open";
-        return session;
-      case "credential_published_floor_pending":
-      case "publication_conflict":
-      case "published_redundancy_degraded":
-        state.lifecycle = "recovery_required";
-        throw new HizoFSCredentialUpdateRecoveryRequiredError({ cause, outcome: resolution.type });
-      default: return resolution satisfies never;
-      }
-    }
   } catch (cause: unknown) {
     if (state.lifecycle === "updating") state.lifecycle = "open";
+    if (state.operationGate.recoveryRequired) state.operationGate.cause = cause;
     throw cause;
   }
 }
@@ -1458,6 +1412,16 @@ type AuthenticatedWritableApplicationGeneration = Readonly<{
   superblock: OpenedSuperblockCopies;
 }>;
 
+type AuthenticatedCredentialAuthorityUpdate = Readonly<{
+  superblock: OpenedSuperblockCopies;
+  unlockingSlotId: import("@/00-storage/service/hizofs/00-format").CredentialSlotId;
+  unlockSequence: import("@/00-storage/service/hizofs/00-format").UnlockSequence;
+}>;
+
+type AuthenticatedCredentialAuthorityUpdater = ({ update }: {
+  update: AuthenticatedCredentialAuthorityUpdate;
+}) => void;
+
 export type AuthenticatedApplicationReadWriteSessionResources = Readonly<{
   createReadSnapshotResources: () => Readonly<{
     commitReference: HomeRecordReference;
@@ -1634,6 +1598,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   operationTimestamp,
   randomSource,
   recordDiagnostics,
+  registerCredentialAuthorityUpdater,
   removalLimits,
   recheckGenerationAuthority,
   rootSubvolumeId,
@@ -1641,6 +1606,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   supportedFeatureBits,
   writableProfile,
 }: AuthenticatedOpenedWritableApplicationAuthority & Readonly<{
+  registerCredentialAuthorityUpdater?: ({ updater }: {
+    updater: AuthenticatedCredentialAuthorityUpdater;
+  }) => void;
   runtimeHost: Pick<
     import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost,
     "acquireWriterDependencyRoot"
@@ -1683,6 +1651,39 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     recordDiagnostics,
     rootKey: opened.rootKey,
     superblock: opened.superblock,
+  });
+  let activeUnlockingSlotId = opened.unlockingSlotId;
+  let activeUnlockSequence = opened.unlockSequence;
+  registerCredentialAuthorityUpdater?.({
+    updater: ({ update }) => {
+      if (released) throw new TypeError("cannot update credential authority for a released application session");
+      switch (update.superblock.copyState) {
+      case "normal": break;
+      case "superblock_redundancy_degraded":
+        throw new TypeError("application session credential authority update requires converged Superblock copies");
+      default: return update.superblock.copyState satisfies never;
+      }
+      if (!sameSuperblockLogicalStateExceptMinimumUnlockSequence({
+        left: generation.superblock.logicalState,
+        right: update.superblock.logicalState,
+      })) {
+        throw new TypeError("credential authority update changed filesystem generation state");
+      }
+      if (update.unlockSequence !== update.superblock.logicalState.minimumUnlockSequence
+        || update.unlockSequence <= activeUnlockSequence) {
+        throw new TypeError("credential authority update did not advance the active Unlock Sequence");
+      }
+      generation = writableGeneration({
+        backend,
+        commit: generation.commit,
+        fileSystemId: opened.fileSystemId,
+        recordDiagnostics,
+        rootKey: opened.rootKey,
+        superblock: update.superblock,
+      });
+      activeUnlockingSlotId = update.unlockingSlotId;
+      activeUnlockSequence = update.unlockSequence;
+    },
   });
   const usedMutationIds = new Set<string>([
     mutationIdentity({ mutationId: generation.commit.mutationId }),
@@ -2760,33 +2761,52 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       accessMode,
       canonicalBackingLocation,
       currentResolver: () => generation.resolver,
-      opened,
+      fileSystemId: opened.fileSystemId,
       path,
+      rootKey: opened.rootKey,
+      unlockingSlotId: activeUnlockingSlotId,
+      unlockSequence: activeUnlockSequence,
     }),
   };
 }
 
 export async function openAuthenticatedReadWriteApplicationSession<Captured>({
+  assertOperationAllowed,
   captureAuthority,
   recheckAuthority,
+  registerCredentialAuthorityUpdater,
+  registerRuntimeSession,
   rootName,
   rootPath,
   runtimeHost,
   verifyCapturedAuthority,
 }: {
+  assertOperationAllowed?: () => void;
   captureAuthority: () => Promise<Captured>;
   recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
+  registerCredentialAuthorityUpdater?: ({ updater }: {
+    updater: AuthenticatedCredentialAuthorityUpdater;
+  }) => void;
+  registerRuntimeSession?: ({ runtimeSession }: {
+    runtimeSession: HizoFSApplicationRuntimeSession;
+  }) => void;
   rootName?: string;
   rootPath?: readonly string[];
   runtimeHost: import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost;
   verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<AuthenticatedOpenedWritableApplicationAuthority>;
 }): Promise<import("@/00-storage/service/storage-file-system/types").StorageFileSystemSession> {
   return await runtimeHost.openApplicationSession({
+    ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
     captureAuthority,
     createApplicationSessionResources: ({ verified }) => (
-      createAuthenticatedApplicationReadWriteSessionResources({ ...verified, runtimeHost })
+      createAuthenticatedApplicationReadWriteSessionResources({
+        ...verified,
+        registerCredentialAuthorityUpdater,
+        runtimeHost,
+      })
     ),
     recheckAuthority,
+    ...(registerRuntimeSession === undefined ? {} : { registerRuntimeSession }),
     rootName,
     rootPath,
     verifyCapturedAuthority,
@@ -2857,11 +2877,31 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
   const { authority: openedAuthority, backend } = lifecycle;
   const supportedFeatureBits = createFeatureBits({ value: 0n });
   try {
+    let credentialAuthorityUpdater: AuthenticatedCredentialAuthorityUpdater | undefined;
+    let runtimeSession: HizoFSApplicationRuntimeSession | undefined;
+    const operationGate: DevelopmentWritableCredentialOperationGate = {
+      cause: undefined,
+      outcome: "session_reopen_required",
+      recoveryRequired: false,
+    };
     const underlyingSession = await openAuthenticatedReadWriteApplicationSession({
+      assertOperationAllowed: () => assertCredentialSessionOperationAllowed({ gate: operationGate }),
       captureAuthority: async () => authority,
       recheckAuthority: async ({ captured }) => {
         if (captured !== authority) throw new TypeError("runtime authority capture does not match the transferred capability");
         await recheckAuthority();
+      },
+      registerCredentialAuthorityUpdater: ({ updater }) => {
+        if (credentialAuthorityUpdater !== undefined) {
+          throw new TypeError("application session registered more than one credential authority updater");
+        }
+        credentialAuthorityUpdater = updater;
+      },
+      registerRuntimeSession: ({ runtimeSession: registered }) => {
+        if (runtimeSession !== undefined) {
+          throw new TypeError("application session registered more than one runtime session");
+        }
+        runtimeSession = registered;
       },
       rootName,
       runtimeHost,
@@ -2900,12 +2940,23 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
         };
       },
     });
+    if (credentialAuthorityUpdater === undefined) {
+      await underlyingSession.close();
+      throw new Error("writable application session did not register its credential authority updater");
+    }
+    if (runtimeSession === undefined) {
+      await underlyingSession.close();
+      throw new Error("writable application session did not register its runtime session");
+    }
     return wrapDevelopmentWritableCredentialSession({
       state: {
         backend,
+        credentialAuthorityUpdater,
         lifecycle: "open",
+        operationGate,
         opened: openedAuthority.opened,
         recordDiagnostics: openedAuthority.recordDiagnostics,
+        runtimeSession,
         underlyingSession,
         unlockingSlotId: openedAuthority.opened.unlockingSlotId,
       },
@@ -3015,32 +3066,18 @@ export async function openHizoFSWorkerMountGrant({ grant, resolveBackingDirector
     || grant.implementation !== "hizofs") {
     throw new TypeError("unsupported HizoFS Worker mount grant envelope");
   }
-  const payload = requireHizoFSWorkerMountGrantPayload({ value: grant.opaquePayload });
-  const aad = workerMountGrantAad({ accessMode: grant.accessMode, grantId: grant.grantId });
-  let cleartext: Uint8Array | undefined;
-  let rootKeyBytes: Uint8Array | undefined;
-  let rootKeyToDestroy: FileSystemRootKey | undefined;
+  const openedGrant = await openHizoFSWorkerMountGrantPayload({
+    accessMode: grant.accessMode,
+    grantId: grant.grantId,
+    opaquePayload: grant.opaquePayload,
+  });
+  const plaintext = openedGrant.metadata;
+  const rootKey = openedGrant.rootKey;
+  let rootKeyToDestroy: FileSystemRootKey | undefined = rootKey;
   try {
-    cleartext = new Uint8Array(await crypto.subtle.decrypt(
-      {
-        additionalData: new Uint8Array(aad).buffer,
-        iv: new Uint8Array(payload.nonce).buffer,
-        name: "AES-GCM",
-      },
-      payload.wrappingKey,
-      new Uint8Array(payload.ciphertext).buffer,
-    ));
-    const decoded = decodeWorkerMountGrantCleartext({ cleartext });
-    const plaintext = decoded.metadata;
-    rootKeyBytes = decoded.rootKeyBytes;
-    if (plaintext.grantId !== grant.grantId || plaintext.accessMode !== grant.accessMode) {
-      throw new TypeError("HizoFS Worker mount grant envelope disagrees with its authenticated payload");
-    }
     const fileSystemId = parseFileSystemId({ value: plaintext.fileSystemId });
     const unlockingSlotId = parseCredentialSlotId({ value: plaintext.unlockingSlotId });
     const expectedUnlockSequence = createUnlockSequence({ value: BigInt(plaintext.unlockSequence) });
-    const rootKey = FileSystemRootKey.create({ bytes: rootKeyBytes });
-    rootKeyToDestroy = rootKey;
     const backingDirectory = await resolveBackingDirectory({
       canonicalBackingLocation: plaintext.canonicalBackingLocation,
       fileSystemId,
@@ -3160,9 +3197,6 @@ export async function openHizoFSWorkerMountGrant({ grant, resolveBackingDirector
     return session;
   } finally {
     rootKeyToDestroy?.destroy();
-    aad.fill(0);
-    cleartext?.fill(0);
-    rootKeyBytes?.fill(0);
   }
 }
 
@@ -3279,19 +3313,19 @@ const BROWSER_BENCHMARK_RUNTIME_POLICY: HizoFSRuntimePolicy = Object.freeze({
 
 export async function openBrowserHizoFSTransitionTargetEndpointSession({
   authorityIdentity,
-  binding,
   containerRoot,
-  journalPort,
   limits,
+  operationIdentity,
   passphrase,
+  runtimeStatePort,
   verifyProofAuthority,
 }: {
   authorityIdentity: string;
-  binding: HizoFSTransitionImportJournalBinding;
   containerRoot: FileSystemDirectoryHandle;
-  journalPort: HizoFSTransitionImportJournalPort;
   limits: StreamingNamespaceImportLimits;
+  operationIdentity: string;
   passphrase: string;
+  runtimeStatePort: HizoFSTransitionImportStatePort;
   verifyProofAuthority: ({ fileSystemId, rootKeyProof }: {
     fileSystemId: FileSystemId;
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
@@ -3338,7 +3372,6 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
       } }),
     };
     const targetSession = await StreamingNamespaceImportTargetSession.open({
-      binding,
       createImport: ({ rootMetadata }) => new StreamingNamespaceImport({
         limits,
         nextInodeNumber: opened.commit.nextInodeNumber,
@@ -3356,8 +3389,9 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
         },
         rootInodeTableRootHomeRef: opened.commit.rootInodeTableRootHomeRef,
       }),
-      journalPort,
+      operationIdentity,
       restoreImport: ({ checkpoint }) => StreamingNamespaceImport.restore({ checkpoint, limits, port }),
+      runtimeStatePort,
     });
     let privateSource: ReturnType<typeof createHizoFSTransitionNamespaceSource> | undefined;
     const source = (): ReturnType<typeof createHizoFSTransitionNamespaceSource> => {
@@ -3500,25 +3534,26 @@ export type PublishedBrowserHizoFSTransitionTarget = Readonly<{
 /**
  * Publishes one verified private namespace as the target's only active Commit.
  *
- * The sealed journal remains present until Naidan Persistence Control switches
- * authority. A retry first compares the authenticated active Commit with the
- * sealed root, so a lost success response cannot append a second Commit.
+ * The sealed runtime candidate remains available until Naidan Persistence
+ * Control switches authority. A same-invocation retry first compares the
+ * authenticated active Commit with the sealed root, so a lost publication
+ * response cannot append a second Commit.
  */
 export async function publishBrowserHizoFSTransitionTargetCandidate({
   assertPublicationAllowed,
-  binding,
   containerRoot,
-  journalPort,
+  operationIdentity,
   passphrase,
   randomSource,
+  runtimeStatePort,
   verifyProofAuthority,
 }: {
   assertPublicationAllowed: () => void;
-  binding: HizoFSTransitionImportJournalBinding;
   containerRoot: FileSystemDirectoryHandle;
-  journalPort: HizoFSTransitionImportJournalPort;
+  operationIdentity: string;
   passphrase: string;
   randomSource?: RandomByteSource;
+  runtimeStatePort: HizoFSTransitionImportStatePort;
   verifyProofAuthority: ({ fileSystemId, rootKeyProof }: {
     fileSystemId: FileSystemId;
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
@@ -3546,15 +3581,16 @@ export async function publishBrowserHizoFSTransitionTargetCandidate({
         rootKeyProof: capability,
       }),
     });
-    const journal = await HizoFSTransitionImportJournal.open({ binding, port: journalPort });
+    const candidate = await runtimeStatePort.loadCandidate({ operationIdentity });
     const sealed = (() => {
-      switch (journal.candidate?.type) {
-      case "sealed": return journal.candidate.sealed;
+      switch (candidate?.type) {
+      case "sealed": return candidate.sealed;
       case "active": throw new TypeError("transition target cannot publish an active import checkpoint");
       case undefined: throw new TypeError("transition target has no sealed import checkpoint");
-      default: return journal.candidate satisfies never;
+      default: return candidate satisfies never;
       }
     })();
+    validateSealedStreamingNamespaceImport({ sealed });
     if (commitMatchesSealedTransitionImport({ commit: opened.commit, sealed })) {
       return { commitSequence: opened.commit.commitSequence, fileSystemId: opened.fileSystemId };
     }
@@ -3802,15 +3838,6 @@ export type BrowserHizoFSBenchmarkApplicationRuntime = Readonly<{
   snapshotRuntimeDiagnostics(): HizoFSRuntimeDiagnosticsSnapshot;
 }>;
 
-function randomBenchmarkSecret({ byteLength }: { readonly byteLength: number }): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
-  try {
-    return Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
-  } finally {
-    bytes.fill(0);
-  }
-}
-
 async function releaseBenchmarkCapabilityAfterSessionOpenFailure({ cause, releaseResources }: {
   cause: unknown;
   releaseResources: () => Promise<void>;
@@ -3887,8 +3914,8 @@ export async function createBrowserHizoFSBenchmarkApplicationRuntime({
     }),
     diagnostics: runtimeDiagnostics,
   });
-  let passphrase: string | undefined = randomBenchmarkSecret({ byteLength: 32 });
-  const canonicalBackingLocation = `hizofs-benchmark:${randomBenchmarkSecret({ byteLength: 16 })}`;
+  let passphrase: string | undefined = generateBenchmarkSecret({ byteLength: 32 });
+  const canonicalBackingLocation = `hizofs-benchmark:${generateBenchmarkSecret({ byteLength: 16 })}`;
   const supportedFeatureBits = createFeatureBits({ value: 0n });
   const created = await createEmptyEncryptedContainer({
     backend,

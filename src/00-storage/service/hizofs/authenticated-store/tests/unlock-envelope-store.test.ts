@@ -8,7 +8,7 @@ import {
   HIZOFS_UNLOCK_ENVELOPE_FILES,
   parseCredentialSlotId,
 } from "@/00-storage/service/hizofs/00-format";
-import type { RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import type { RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import type {
   AuthenticatedCodecDiagnosticsObservation,
   AuthenticatedCryptoDiagnosticsObservation,

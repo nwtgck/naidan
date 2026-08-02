@@ -4,7 +4,7 @@ import type {
   PhysicalRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
 import { resolveAuthenticatedHomeRecord } from "@/00-storage/service/hizofs/authenticated-store/relocation-index-reader";
-import type { FileSystemRootKey } from "@/00-storage/service/hizofs/crypto";
+import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import {
   measureAuthenticatedCodecOperation,

@@ -10,8 +10,10 @@ import {
   encodeSegmentFooterHeader,
   encodeSegmentFooterIndexEntry,
   encodeSegmentFooterTrailer,
-  segmentClassForRecordKind,
-  validatePhysicalOnlyRecordIdentity,
+  segmentFooterCandidateStructureIsValid,
+  segmentFooterIndexEntryFromFrame,
+  segmentFooterIndexEntryMatchesFrame,
+  segmentFooterTrailerIsReaderCandidate,
   type FileSystemId,
   type SegmentClass,
   type SegmentFooterHeaderV1,
@@ -23,11 +25,12 @@ import {
   decryptAuthenticatedSegmentFooter,
   encryptSegmentFooter,
   generateSegmentFooterNonce,
+  isHizoFSCryptoAuthenticationError,
   plaintextSegmentFooterBytes,
   segmentFooterNonce,
   type FileSystemRootKey,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import type { ActiveSegmentWriterCapability } from "./record-appender";
 import { authenticatedStoreError } from "./errors";
@@ -58,11 +61,6 @@ export type AuthenticatedSegmentIndex = Readonly<{
   state: "abandoned_unsealed" | "complete_unsealed" | "footer_unusable" | "sealed";
 }>;
 
-function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
-  if (left.byteLength !== right.byteLength) return false;
-  return left.every((value, index) => value === right[index]);
-}
-
 function concatenate({ chunks, totalLength }: {
   chunks: readonly Uint8Array[];
   totalLength: number;
@@ -75,61 +73,6 @@ function concatenate({ chunks, totalLength }: {
   }
   if (offset !== totalLength) throw new Error("Segment Footer concatenation length invariant failed");
   return bytes;
-}
-
-function footerMaximumBytes({ segmentClass }: { segmentClass: SegmentClass }): number {
-  switch (segmentClass) {
-  case "data": return HIZOFS_V1_FORMAT_CONSTANTS.limits.dataSegmentFooterMaximumBytes;
-  case "metadata": return HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataSegmentFooterMaximumBytes;
-  default: return segmentClass satisfies never;
-  }
-}
-
-function frameMaximumCount({ segmentClass }: { segmentClass: SegmentClass }): number {
-  switch (segmentClass) {
-  case "data": return HIZOFS_V1_FORMAT_CONSTANTS.limits.dataFramesPerSegment;
-  case "metadata": return HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataFramesPerSegment;
-  default: return segmentClass satisfies never;
-  }
-}
-
-function entryFromFrame({ frame }: { frame: AuthenticatedSegmentFrame }): SegmentFooterIndexEntryV1 {
-  return {
-    flags: frame.header.flags,
-    frameLength: frame.header.frameLength,
-    homeOffset: frame.header.homeOffset,
-    homeSegmentId: frame.header.homeSegmentId,
-    physicalOffset: createUInt64({ value: frame.physicalOffset }),
-    plaintextLength: frame.header.plaintextLength,
-    recordCodecVersion: frame.header.recordCodecVersion,
-    recordKind: frame.header.recordKind,
-  };
-}
-
-
-function frameMatchesEntry({ entry, frameHeader, physicalOffset, physicalSegmentId, segmentClass }: {
-  entry: SegmentFooterIndexEntryV1;
-  frameHeader: ReturnType<typeof decodeRecordFrameHeader>;
-  physicalOffset: bigint;
-  physicalSegmentId: SegmentId;
-  segmentClass: SegmentClass;
-}): boolean {
-  if (frameHeader.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page) {
-    validatePhysicalOnlyRecordIdentity({
-      authenticatedHeader: frameHeader,
-      physicalOffset,
-      physicalSegmentId,
-    });
-  }
-  return entry.physicalOffset === physicalOffset
-    && entry.frameLength === frameHeader.frameLength
-    && entry.plaintextLength === frameHeader.plaintextLength
-    && entry.recordKind === frameHeader.recordKind
-    && entry.flags === frameHeader.flags
-    && entry.recordCodecVersion === frameHeader.recordCodecVersion
-    && bytesEqual({ left: entry.homeSegmentId, right: frameHeader.homeSegmentId })
-    && entry.homeOffset === frameHeader.homeOffset
-    && segmentClassForRecordKind({ recordKind: frameHeader.recordKind }) === segmentClass;
 }
 
 async function tryReadAuthenticatedFooter({
@@ -169,9 +112,7 @@ async function tryReadAuthenticatedFooter({
   } catch {
     return undefined;
   }
-  if (!bytesEqual({ left: trailer.physicalSegmentId, right: physicalSegmentId })
-    || trailer.footerTotalLength > footerMaximumBytes({ segmentClass })
-    || BigInt(trailer.footerTotalLength) > fileSize - BigInt(headerSize)) {
+  if (!segmentFooterTrailerIsReaderCandidate({ fileSize, physicalSegmentId, segmentClass, trailer })) {
     return undefined;
   }
 
@@ -187,15 +128,16 @@ async function tryReadAuthenticatedFooter({
   } catch {
     return undefined;
   }
-  const expectedFooterLength = calculateSegmentFooterTotalLength({ entryCount: header.entryCount });
-  const expectedFooterOffset = BigInt(headerSize) + header.segmentDataLength;
-  if (header.segmentClass !== segmentClass
-    || !bytesEqual({ left: header.physicalSegmentId, right: physicalSegmentId })
-    || !bytesEqual({ left: decodedTrailer.physicalSegmentId, right: physicalSegmentId })
-    || decodedTrailer.footerTotalLength !== trailer.footerTotalLength
-    || expectedFooterLength !== trailer.footerTotalLength
-    || expectedFooterOffset !== footerOffset
-    || header.entryCount > frameMaximumCount({ segmentClass })) {
+  if (!segmentFooterCandidateStructureIsValid({
+    candidateByteLength: candidate.byteLength,
+    fileSize,
+    footerOffset,
+    header,
+    observedFooterTotalLength: trailer.footerTotalLength,
+    physicalSegmentId,
+    segmentClass,
+    trailer: decodedTrailer,
+  })) {
     return undefined;
   }
 
@@ -216,8 +158,8 @@ async function tryReadAuthenticatedFooter({
       }),
     });
   } catch (cause: unknown) {
-    if (rootKey.isDestroyed()) throw cause;
-    return undefined;
+    if (isHizoFSCryptoAuthenticationError({ cause })) return undefined;
+    throw cause;
   }
   if (plaintextIndex.byteLength !== header.plaintextIndexLength) return undefined;
 
@@ -242,7 +184,7 @@ async function tryReadAuthenticatedFooter({
     let frameHeader: ReturnType<typeof decodeRecordFrameHeader>;
     try {
       frameHeader = decodeRecordFrameHeader({ bytes: frameHeaderBytes });
-      if (!frameMatchesEntry({
+      if (!segmentFooterIndexEntryMatchesFrame({
         entry,
         frameHeader,
         physicalOffset: expectedPhysicalOffset,
@@ -408,7 +350,7 @@ async function sealAuthenticatedSegmentInternal({
     throw authenticatedStoreError({ code: "control_plane_corrupt", message: "Segment changed while preparing its footer" });
   }
 
-  const entries = current.frames.map(frame => entryFromFrame({ frame }));
+  const entries = current.frames.map(frame => segmentFooterIndexEntryFromFrame({ frame }));
   const entryBytes = entries.map(entry => encodeSegmentFooterIndexEntry({ entry }));
   const plaintextIndexLength = entryBytes.reduce((total, bytes) => total + bytes.byteLength, 0);
   const plaintextIndex = concatenate({ chunks: entryBytes, totalLength: plaintextIndexLength });

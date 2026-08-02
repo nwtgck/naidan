@@ -1,6 +1,21 @@
-import { persistenceControlSemanticallyEquals, type NaidanPersistenceControlV1 } from './canonical-json/persistence-control';
+import {
+  decodePersistenceControl,
+  persistenceControlSemanticallyEquals,
+  type NaidanPersistenceControlCoreV1,
+  type NaidanPersistenceControlV1,
+  type NaidanPersistenceModeV1,
+} from './canonical-json/persistence-control';
 
 export type PersistenceControlCopy = 0 | 1;
+
+export type PersistenceControlSemanticState = {
+  readonly mode: NaidanPersistenceModeV1;
+  readonly retiredFileSystemIds: NaidanPersistenceControlCoreV1['retiredFileSystemIds'];
+};
+
+export type StructurallyClassifiedPersistenceControl =
+  | { readonly copy: PersistenceControlCopy; readonly reason: string; readonly state: 'structurally_invalid' }
+  | { readonly control: NaidanPersistenceControlV1; readonly copy: PersistenceControlCopy; readonly state: 'structurally_valid' };
 
 export type PersistenceControlCandidate =
   | { readonly copy: PersistenceControlCopy; readonly reason: string; readonly state: 'structurally_invalid' }
@@ -30,7 +45,9 @@ export type PersistenceControlSelectionErrorCode =
   | 'no_proof_valid_authority'
   | 'sequence_reuse_corruption';
 
-function structuralSequence({ candidate }: { candidate: PersistenceControlCandidate }): number | undefined {
+export function structurallyObservedPersistenceControlSequence({ candidate }: {
+  candidate: PersistenceControlCandidate;
+}): number | undefined {
   switch (candidate.state) {
   case 'structurally_invalid': return undefined;
   case 'protection_unresolved':
@@ -40,6 +57,82 @@ function structuralSequence({ candidate }: { candidate: PersistenceControlCandid
     const unhandled: never = candidate;
     throw new Error(`unhandled Persistence Control candidate: ${String(unhandled)}`);
   }
+  }
+}
+
+function structuralFailureReason({ cause }: { cause: unknown }): string {
+  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+}
+
+export function classifyPersistenceControlStructure({ bytes, copy }: {
+  bytes: Uint8Array | undefined;
+  copy: PersistenceControlCopy;
+}): StructurallyClassifiedPersistenceControl {
+  if (bytes === undefined) return { copy, reason: 'missing', state: 'structurally_invalid' };
+  try {
+    return { control: decodePersistenceControl({ bytes }), copy, state: 'structurally_valid' };
+  } catch (cause: unknown) {
+    return { copy, reason: structuralFailureReason({ cause }), state: 'structurally_invalid' };
+  }
+}
+
+export function persistenceControlCandidatesAreBootstrapAbsent({ candidates }: {
+  candidates: readonly [PersistenceControlCandidate, PersistenceControlCandidate];
+}): boolean {
+  return candidates.every(candidate => (
+    candidate.state === 'structurally_invalid' && candidate.reason === 'missing'
+  ));
+}
+
+export function createPersistenceControlCore({ copy, semanticState, sequence }: {
+  copy: PersistenceControlCopy;
+  semanticState: PersistenceControlSemanticState;
+  sequence: number;
+}): NaidanPersistenceControlCoreV1 {
+  return {
+    copy,
+    format: 'naidan-persistence-control',
+    formatVersion: 1,
+    mode: semanticState.mode,
+    retiredFileSystemIds: semanticState.retiredFileSystemIds,
+    sequence,
+  };
+}
+
+export function persistenceControlReadbackMatches(args: {
+  actual: PersistenceControlCandidate;
+  expected: NaidanPersistenceControlV1;
+  physicalCopy: PersistenceControlCopy;
+}): args is {
+  actual: Extract<PersistenceControlCandidate, { state: 'proof_valid' }>;
+  expected: NaidanPersistenceControlV1;
+  physicalCopy: PersistenceControlCopy;
+} {
+  const { actual, expected, physicalCopy } = args;
+  return actual.state === 'proof_valid'
+    && actual.copy === physicalCopy
+    && actual.control.copy === physicalCopy
+    && actual.control.sequence === expected.sequence
+    && persistenceControlSemanticallyEquals({ left: actual.control, right: expected });
+}
+
+export function persistenceControlPublicationOutcome({ desiredState, selectedAuthority }: {
+  desiredState: PersistenceControlSemanticState;
+  selectedAuthority: SelectedPersistenceControlAuthority;
+}): 'committed_degraded' | 'committed_converged' | 'not_committed' {
+  const desiredControl: NaidanPersistenceControlV1 = {
+    ...selectedAuthority.control,
+    mode: desiredState.mode,
+    retiredFileSystemIds: desiredState.retiredFileSystemIds,
+  };
+  if (!persistenceControlSemanticallyEquals({
+    left: selectedAuthority.control,
+    right: desiredControl,
+  })) return 'not_committed';
+  switch (selectedAuthority.redundancy) {
+  case 'converged': return 'committed_converged';
+  case 'degraded': return 'committed_degraded';
+  default: return selectedAuthority.redundancy satisfies never;
   }
 }
 
@@ -73,8 +166,8 @@ export function selectPersistenceControlAuthority({
   }
   for (const candidate of candidates) assertCopyIdentity({ candidate });
 
-  const firstStructuralSequence = structuralSequence({ candidate: candidates[0] });
-  const secondStructuralSequence = structuralSequence({ candidate: candidates[1] });
+  const firstStructuralSequence = structurallyObservedPersistenceControlSequence({ candidate: candidates[0] });
+  const secondStructuralSequence = structurallyObservedPersistenceControlSequence({ candidate: candidates[1] });
   if (firstStructuralSequence !== undefined && firstStructuralSequence === secondStructuralSequence) {
     throw new PersistenceControlSelectionError({
       code: 'sequence_reuse_corruption',
@@ -84,7 +177,9 @@ export function selectPersistenceControlAuthority({
 
   const proofValid = candidates.filter((candidate): candidate is Extract<PersistenceControlCandidate, { state: 'proof_valid' }> => candidate.state === 'proof_valid');
   const selected = proofValid.toSorted((left, right) => right.control.sequence - left.control.sequence)[0];
-  const highestObservedSequence = Math.max(...candidates.map(candidate => structuralSequence({ candidate }) ?? 0));
+  const highestObservedSequence = Math.max(...candidates.map(candidate => (
+    structurallyObservedPersistenceControlSequence({ candidate }) ?? 0
+  )));
   const unresolvedAtHighest = candidates.some(candidate => candidate.state === 'protection_unresolved' && candidate.control.sequence === highestObservedSequence);
   if (unresolvedAtHighest && (selected === undefined || highestObservedSequence >= selected.control.sequence)) {
     throw new PersistenceControlSelectionError({

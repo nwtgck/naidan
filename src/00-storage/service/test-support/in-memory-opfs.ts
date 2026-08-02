@@ -2,6 +2,27 @@ type InMemoryOpfsEntry = InMemoryOpfsDirectoryHandle | InMemoryOpfsFileHandle;
 
 export type InMemoryOpfsCapabilityProfile = "window" | "worker";
 
+export type InMemoryOpfsFaultHooks = Readonly<{
+  afterRemoveEntry?: ({ directoryName, name, recursive }: {
+    directoryName: string;
+    name: string;
+    recursive: boolean;
+  }) => Promise<void> | void;
+  afterSyncAccessHandleFlush?: ({ directoryName, name }: {
+    directoryName: string;
+    name: string;
+  }) => void;
+  afterWritableStreamClose?: ({ directoryName, name }: {
+    directoryName: string;
+    name: string;
+  }) => Promise<void> | void;
+  beforeRemoveEntry?: ({ directoryName, name, recursive }: {
+    directoryName: string;
+    name: string;
+    recursive: boolean;
+  }) => Promise<void> | void;
+}>;
+
 function requireNonNegativeSafeInteger({ fieldName, value }: {
   fieldName: string;
   value: number;
@@ -67,6 +88,7 @@ export class InMemoryOpfsSyncAccessHandle {
   public flush(): void {
     this.requireOpen();
     this.flushCount += 1;
+    this.file.afterSyncAccessHandleFlush();
   }
 
   public getSize(): number {
@@ -140,6 +162,7 @@ class InMemoryOpfsWritableStream {
     this.settled = true;
     this.file.commit({ bytes: this.draft });
     this.file.writableOpen = false;
+    await this.file.afterWritableStreamClose();
   }
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors FileSystemWritableFileStream.seek.
@@ -222,17 +245,37 @@ export class InMemoryOpfsFileHandle {
   public writableOpen = false;
   public readonly sync = new InMemoryOpfsSyncAccessHandle({ file: this });
 
-  public constructor({ capabilityProfile, name }: {
+  public constructor({ capabilityProfile, faultHooks, name, parentDirectoryName }: {
     capabilityProfile: InMemoryOpfsCapabilityProfile;
+    faultHooks: InMemoryOpfsFaultHooks | undefined;
     name: string;
+    parentDirectoryName: string;
   }) {
     this.capabilityProfile = capabilityProfile;
+    this.faultHooks = faultHooks;
     this.name = name;
+    this.parentDirectoryName = parentDirectoryName;
   }
 
   public readonly name: string;
   private readonly capabilityProfile: InMemoryOpfsCapabilityProfile;
+  private readonly faultHooks: InMemoryOpfsFaultHooks | undefined;
   private modifiedAt = 0;
+  private readonly parentDirectoryName: string;
+
+  public afterSyncAccessHandleFlush(): void {
+    this.faultHooks?.afterSyncAccessHandleFlush?.({
+      directoryName: this.parentDirectoryName,
+      name: this.name,
+    });
+  }
+
+  public async afterWritableStreamClose(): Promise<void> {
+    await this.faultHooks?.afterWritableStreamClose?.({
+      directoryName: this.parentDirectoryName,
+      name: this.name,
+    });
+  }
 
   public commit({ bytes }: { bytes: Uint8Array }): void {
     this.bytes = Uint8Array.from(bytes);
@@ -275,14 +318,6 @@ export class InMemoryOpfsFileHandle {
     return other === this;
   }
 }
-
-export type InMemoryOpfsFaultHooks = Readonly<{
-  beforeRemoveEntry?: ({ directoryName, name, recursive }: {
-    directoryName: string;
-    name: string;
-    recursive: boolean;
-  }) => Promise<void> | void;
-}>;
 
 export class InMemoryOpfsDirectoryHandle {
   public readonly kind = "directory" as const;
@@ -334,7 +369,12 @@ export class InMemoryOpfsDirectoryHandle {
       }
     }
     if (options?.create !== true) throw new DOMException("missing", "NotFoundError");
-    const created = new InMemoryOpfsFileHandle({ capabilityProfile: this.capabilityProfile, name });
+    const created = new InMemoryOpfsFileHandle({
+      capabilityProfile: this.capabilityProfile,
+      faultHooks: this.faultHooks,
+      name,
+      parentDirectoryName: this.name,
+    });
     this.#entries.set(name, created);
     return created;
   }
@@ -386,6 +426,11 @@ export class InMemoryOpfsDirectoryHandle {
     default: return entry satisfies never;
     }
     this.#entries.delete(name);
+    await this.faultHooks?.afterRemoveEntry?.({
+      directoryName: this.name,
+      name,
+      recursive: options?.recursive ?? false,
+    });
   }
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- File System Access API interface requires positional arguments.

@@ -11,6 +11,9 @@
   "include": [
     "src/env.d.ts",
     "src/utils/virtual-naidan-tailwind.d.ts",
+    "src/components/DeveloperOpfsEncryptionInterruptionPanel.vue",
+    "src/components/DeveloperOpfsEncryptionInterruptionPanel.test.ts",
+    "src/components/developer-opfs-encryption-transition-interruption.receiving.test.ts",
     "src/components/SidebarDebugControls.vue",
     "src/features/debug-hizofs/composables/useDebugHizoFSWorkbench.ts",
     "src/features/debug-hizofs/composables/useDebugHizoFSWorkbench.test.ts",
@@ -18,6 +21,7 @@
     "src/features/debug-opfs-encryption/composables/usePersistenceControlInspector.test.ts",
     "src/features/debug-opfs-encryption/components/PersistenceControlInspectorModal.vue",
     "src/00-storage/service/hizofs/**/*.ts",
+    "src/00-storage/service/storage-service.sync.test.ts",
     "src/00-storage/service/naidan-opfs/**/*.ts",
     "src/00-storage/service/naidan-persistence-control/**/*.ts",
     "src/features/opfs-encryption/**/*.ts",

@@ -2,7 +2,7 @@ import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   parseFileSystemId,
 } from "@/00-storage/service/hizofs/00-format";
-import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import { DeterministicPhysicalStoreFaultInjector } from "@/00-storage/service/hizofs/physical-store/testing/deterministic-fault-injector";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import { describe, expect, it } from "vitest";

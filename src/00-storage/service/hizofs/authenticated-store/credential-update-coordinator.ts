@@ -10,7 +10,7 @@ import {
 import type {
   FileSystemRootKey,
   RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import type { AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-port";

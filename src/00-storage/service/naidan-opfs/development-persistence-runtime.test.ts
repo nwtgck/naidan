@@ -33,7 +33,11 @@ const runtimePolicy: RuntimeOptions['runtimePolicy'] = {
 
 const lockManager = {} as RuntimeOptions['lockManager'];
 const storageRoot = {} as FileSystemDirectoryHandle;
-const nativeNamespaceRoot = {} as FileSystemDirectoryHandle;
+const nativeNamespaceRoot = {
+  getDirectoryHandle: vi.fn(async () => {
+    throw new DOMException('missing test storage root', 'NotFoundError');
+  }),
+} as unknown as FileSystemDirectoryHandle;
 const physical = {} as PersistenceControlReadablePhysicalPort;
 const captured = {} as CapturedPersistenceControlAuthority;
 
@@ -81,21 +85,12 @@ function port({
       fileSystemId: 'abcdefghijklmnopqrstu' as FileSystemId,
       type: 'converged_encrypted' as const,
     })),
-    runDisableTransition: vi.fn(async () => openedSession),
+    runDisableTransition: vi.fn(async () => undefined),
     runEnableTransition: vi.fn(async () => undefined),
     runReencryptTransition: vi.fn(async () => undefined),
     runStableHizoFSRetiredContainerCleanup: vi.fn(async () => undefined),
-    runStableHizoFSRetiredPlainCleanup: vi.fn(async () => ({
-      remainingEntryCount: 0,
-      removedEntryCount: 0,
-      state: 'completed' as const,
-    })),
     runStablePlainRetiredCleanup: vi.fn(async () => undefined),
-    runReturnToPlainTransition: vi.fn(async () => ({ fileSystemSession: openedSession, type: 'returned_plain' as const })),
-    runResumeTransition: vi.fn(async () => ({
-      fileSystemId: 'abcdefghijklmnopqrstu' as FileSystemId,
-      type: 'resumed_encrypted' as const,
-    })),
+    runReturnToPlainTransition: vi.fn(async () => ({ type: 'returned_plain' as const })),
     openApplicationSession: vi.fn(async () => {
       if (openType === 'credential_rejected') return { type: 'credential_rejected' } as const;
       const fileSystemId = 'abcdefghijklmnopqrstu' as FileSystemId;
@@ -161,7 +156,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
     expect(runtimePort.inspect).not.toHaveBeenCalled();
   });
 
-  it('removes retired HizoFS containers before cleaning the retired plain namespace', async () => {
+  it('removes retired HizoFS containers without deleting an unowned plain namespace', async () => {
     const runtimePort = port();
     const subject = runtime({ runtimePort });
     const session = await subject.unlockWithPassphrase({
@@ -185,17 +180,6 @@ describe('development-unverified OPFS Persistence runtime', () => {
       session,
       storageRoot,
     });
-    expect(runtimePort.runStableHizoFSRetiredPlainCleanup).toHaveBeenCalledWith({
-      lockManager,
-      nativeNamespaceRoot,
-      session,
-      storageRoot,
-    });
-    const retiredContainerCleanup = vi.mocked(runtimePort.runStableHizoFSRetiredContainerCleanup);
-    const retiredPlainCleanup = vi.mocked(runtimePort.runStableHizoFSRetiredPlainCleanup);
-    expect(
-      retiredContainerCleanup.mock.invocationCallOrder[0],
-    ).toBeLessThan(retiredPlainCleanup.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('maps only credential rejection to the explicit development error', async () => {
@@ -246,7 +230,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
     expect(openedSession.close).toHaveBeenCalledTimes(1);
   });
 
-  it('runs native enable and returns the normally opened encrypted session', async () => {
+  it('runs native enable and returns a reload-only completion result', async () => {
     const runtimePort = port();
     const subject = runtime({ runtimePort });
 
@@ -256,7 +240,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       request: { operation: 'enable', passphrase: 'passphrase' },
       signal: undefined,
       storageRoot,
-    })).resolves.toMatchObject({ type: 'encrypted' });
+    })).resolves.toEqual({ type: 'completed' });
     expect(runtimePort.runEnableTransition).toHaveBeenCalledWith({
       lockManager,
       nativeNamespaceRoot,
@@ -265,64 +249,59 @@ describe('development-unverified OPFS Persistence runtime', () => {
       signal: undefined,
       storageRoot,
     });
+    expect(runtimePort.openApplicationSession).not.toHaveBeenCalled();
   });
 
-  it('resumes an interrupted native enable and opens the selected encrypted session', async () => {
+  it('converges an interrupted native enable without opening an application session', async () => {
     const runtimePort = port();
     const subject = runtime({ runtimePort });
 
     await expect(subject.runTransition({
       nativeNamespaceRoot,
       onProgress: undefined,
-      request: { operation: 'resume', retainedCredentials: [{ passphrase: 'passphrase' }] },
+      request: { operation: 'converge', retainedCredentials: [{ passphrase: 'passphrase' }] },
       signal: undefined,
       storageRoot,
-    })).resolves.toMatchObject({ type: 'encrypted' });
-    expect(runtimePort.runResumeTransition).toHaveBeenCalledWith({
+    })).resolves.toEqual({ type: 'completed' });
+    expect(runtimePort.runConvergeTransition).toHaveBeenCalledWith({
       lockManager,
       nativeNamespaceRoot,
-      onProgress: undefined,
-      retainedCredentials: [{ passphrase: 'passphrase' }],
-      runtimePolicy,
-      signal: undefined,
+      passphrase: 'passphrase',
       storageRoot,
     });
+    expect(runtimePort.openApplicationSession).not.toHaveBeenCalled();
   });
 
-  it('resumes an interrupted native disable and returns the selected plain session', async () => {
-    const resumedSession = fileSystemSession();
+  it('converges an interrupted native disable without constructing a plain backend', async () => {
     const runtimePort = port();
-    vi.mocked(runtimePort.runResumeTransition).mockResolvedValue({
-      fileSystemSession: resumedSession,
-      type: 'resumed_plain',
-    });
+    vi.mocked(runtimePort.runConvergeTransition).mockResolvedValue({ type: 'converged_plain' });
     const subject = runtime({ runtimePort });
 
     await expect(subject.runTransition({
       nativeNamespaceRoot,
       onProgress: undefined,
-      request: { operation: 'resume', retainedCredentials: [{ passphrase: 'passphrase' }] },
+      request: { operation: 'converge', retainedCredentials: [{ passphrase: 'passphrase' }] },
       signal: undefined,
       storageRoot,
-    })).resolves.toMatchObject({ fileSystemSession: resumedSession, type: 'plain' });
-    expect(runtimePort.createBackend).toHaveBeenCalledWith({ fileSystemSession: resumedSession });
+    })).resolves.toEqual({ type: 'completed' });
+    expect(runtimePort.createBackend).not.toHaveBeenCalled();
   });
 
-  it('maps a rejected resume credential to the explicit development error', async () => {
+  it('maps a rejected convergence credential to the explicit development error', async () => {
     const runtimePort = port();
-    vi.mocked(runtimePort.runResumeTransition).mockResolvedValue({ type: 'credential_rejected' });
+    vi.mocked(runtimePort.runConvergeTransition).mockResolvedValue({ type: 'credential_rejected' });
 
     await expect(runtime({ runtimePort }).runTransition({
       nativeNamespaceRoot,
       onProgress: undefined,
-      request: { operation: 'resume', retainedCredentials: [{ passphrase: 'wrong' }] },
+      request: { operation: 'converge', retainedCredentials: [{ passphrase: 'wrong' }] },
       signal: undefined,
       storageRoot,
     })).rejects.toBeInstanceOf(OpfsDevelopmentCredentialRejectedError);
     expect(runtimePort.openApplicationSession).not.toHaveBeenCalled();
   });
 
-  it('runs native disable and returns the plain application session', async () => {
+  it('runs native disable without constructing a plain application session', async () => {
     const runtimePort = port();
     const subject = runtime({ runtimePort });
     const opened = await subject.unlockWithPassphrase({ passphrase: 'passphrase', storageRoot });
@@ -333,7 +312,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       request: { operation: 'disable', session: opened },
       signal: undefined,
       storageRoot,
-    })).resolves.toMatchObject({ type: 'plain' });
+    })).resolves.toEqual({ type: 'completed' });
     expect(runtimePort.runDisableTransition).toHaveBeenCalledWith({
       lockManager,
       nativeNamespaceRoot,
@@ -342,9 +321,10 @@ describe('development-unverified OPFS Persistence runtime', () => {
       signal: undefined,
       storageRoot,
     });
+    expect(runtimePort.createBackend).toHaveBeenCalledTimes(1);
   });
 
-  it('forwards the complete retained credential set and reopens with its first passphrase', async () => {
+  it('forwards the complete retained credential set without reopening after re-encryption', async () => {
     const runtimePort = port();
     const subject = runtime({ runtimePort });
     const opened = await subject.unlockWithPassphrase({ passphrase: 'current passphrase', storageRoot });
@@ -362,7 +342,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       },
       signal: undefined,
       storageRoot,
-    })).resolves.toMatchObject({ type: 'encrypted' });
+    })).resolves.toEqual({ type: 'completed' });
 
     expect(runtimePort.runReencryptTransition).toHaveBeenCalledWith({
       lockManager,
@@ -376,9 +356,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       signal: undefined,
       storageRoot,
     });
-    expect(runtimePort.openApplicationSession).toHaveBeenLastCalledWith(expect.objectContaining({
-      passphrase: 'current passphrase',
-    }));
+    expect(runtimePort.openApplicationSession).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an empty retained credential set before invoking production re-encrypt', async () => {
@@ -397,13 +375,8 @@ describe('development-unverified OPFS Persistence runtime', () => {
     await opened.close();
   });
 
-  it('returns an interrupted encrypt operation to the plain application session', async () => {
-    const returnedSession = fileSystemSession();
-    const runtimePort = port({ openedSession: returnedSession });
-    vi.mocked(runtimePort.runReturnToPlainTransition).mockResolvedValue({
-      fileSystemSession: returnedSession,
-      type: 'returned_plain',
-    });
+  it('returns an interrupted encrypt operation to plain without constructing a backend', async () => {
+    const runtimePort = port();
 
     await expect(runtime({ runtimePort }).runTransition({
       nativeNamespaceRoot,
@@ -411,7 +384,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       request: { operation: 'return_to_plain', passphrase: 'existing passphrase' },
       signal: undefined,
       storageRoot,
-    })).resolves.toMatchObject({ type: 'plain' });
+    })).resolves.toEqual({ type: 'completed' });
     expect(runtimePort.runReturnToPlainTransition).toHaveBeenCalledWith({
       lockManager,
       nativeNamespaceRoot,
@@ -421,6 +394,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       signal: undefined,
       storageRoot,
     });
+    expect(runtimePort.createBackend).not.toHaveBeenCalled();
   });
 
   it('maps rejected return-to-plain credentials to the explicit development error', async () => {
@@ -456,7 +430,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
     expect(runtimePort.captureAuthority).toHaveBeenCalledTimes(2);
   });
 
-  it('converges an interrupted transition without invoking detailed resume', async () => {
+  it('converges an interrupted transition without restoring work progress', async () => {
     const runtimePort = port();
     const subject = runtime({ runtimePort });
 
@@ -466,7 +440,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       request: { operation: 'converge', retainedCredentials: [{ passphrase: 'passphrase' }] },
       signal: undefined,
       storageRoot,
-    })).resolves.toMatchObject({ type: 'encrypted' });
+    })).resolves.toEqual({ type: 'completed' });
 
     expect(runtimePort.runConvergeTransition).toHaveBeenCalledWith({
       lockManager,
@@ -474,16 +448,12 @@ describe('development-unverified OPFS Persistence runtime', () => {
       passphrase: 'passphrase',
       storageRoot,
     });
-    expect(runtimePort.runResumeTransition).not.toHaveBeenCalled();
+    expect(runtimePort.openApplicationSession).not.toHaveBeenCalled();
   });
 
   it('returns stable plain after pre-switch phase convergence', async () => {
-    const convergedSession = fileSystemSession();
     const runtimePort = port();
-    vi.mocked(runtimePort.runConvergeTransition).mockResolvedValue({
-      fileSystemSession: convergedSession,
-      type: 'converged_plain',
-    });
+    vi.mocked(runtimePort.runConvergeTransition).mockResolvedValue({ type: 'converged_plain' });
 
     await expect(runtime({ runtimePort }).runTransition({
       nativeNamespaceRoot,
@@ -491,7 +461,8 @@ describe('development-unverified OPFS Persistence runtime', () => {
       request: { operation: 'converge', retainedCredentials: [{ passphrase: 'passphrase' }] },
       signal: undefined,
       storageRoot,
-    })).resolves.toMatchObject({ fileSystemSession: convergedSession, type: 'plain' });
+    })).resolves.toEqual({ type: 'completed' });
+    expect(runtimePort.createBackend).not.toHaveBeenCalled();
   });
 
   it('rejects convergence credential collections that are empty or ambiguous', async () => {

@@ -3,7 +3,7 @@ import { HIZOFS_V1_FORMAT_CONSTANTS, createCommitSequence, parseFileSystemId } f
 import {
   generateFileSystemRootKey,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import {
   createInitialBootstrapSegment,
   readBootstrapRoot,

@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { encodeBase64UrlUnpadded } from '@/00-storage/service/hizofs/00-format/v1/encoding/base64-url';
 import { parseCredentialSlotId, parseFileSystemId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
 import { decodeUnlockEnvelope, encodeUnlockEnvelope, type UnlockEnvelopeV1 } from '@/00-storage/service/hizofs/00-format/v1/canonical-json/unlock-envelope';
+import {
+  HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
+  decodePassphraseCredentialParametersV1,
+  encodePassphraseCredentialParametersV1,
+} from '@/00-storage/service/hizofs/00-format/v1/credential/passphrase-credential';
 
 function knownParameters({ iterations }: { iterations: number }): string {
   const bytes = new Uint8Array(32);
@@ -38,6 +43,20 @@ function replaceAscii({ bytes, from, to }: { bytes: Uint8Array; from: string; to
 }
 
 describe('HizoFS V1 Unlock Envelope canonical JSON', () => {
+  it('owns the exact passphrase credential parameter bytes', () => {
+    const parameters = {
+      iterations: 600_000,
+      nonce: Uint8Array.from({ length: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.nonceBytes }, (_, index) => index + 17),
+      salt: Uint8Array.from({ length: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.saltBytes }, (_, index) => index + 1),
+    };
+    const encoded = encodePassphraseCredentialParametersV1({ parameters });
+    expect(encoded.byteLength).toBe(HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.parametersBytes);
+    expect(encoded.subarray(0, 16)).toEqual(parameters.salt);
+    expect(new DataView(encoded.buffer, encoded.byteOffset + 16, 4).getUint32(0, false)).toBe(600_000);
+    expect(encoded.subarray(20)).toEqual(parameters.nonce);
+    expect(decodePassphraseCredentialParametersV1({ bytes: encoded })).toEqual(parameters);
+  });
+
   it('roundtrips one exact canonical fixture', () => {
     const envelope = createEnvelope();
     const encoded = encodeUnlockEnvelope({ envelope });

@@ -84,6 +84,11 @@ const mockProvider = {
   dump: vi.fn(),
   restore: vi.fn(),
   dispose: vi.fn().mockResolvedValue(undefined),
+  enableEncryption: vi.fn().mockResolvedValue(undefined),
+  disableEncryption: vi.fn().mockResolvedValue(undefined),
+  reencrypt: vi.fn().mockResolvedValue(undefined),
+  convergeTransitionWithPassphrase: vi.fn().mockResolvedValue(undefined),
+  returnInterruptedEncryptionToPlain: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('./local-storage', () => ({
@@ -125,6 +130,11 @@ describe('StorageService Synchronization Wrapper', () => {
     mockProvider.saveFile.mockResolvedValue(undefined);
     mockProvider.init.mockResolvedValue(undefined);
     mockProvider.loadSettings.mockResolvedValue(null);
+    mockProvider.enableEncryption.mockResolvedValue(undefined);
+    mockProvider.disableEncryption.mockResolvedValue(undefined);
+    mockProvider.reencrypt.mockResolvedValue(undefined);
+    mockProvider.convergeTransitionWithPassphrase.mockResolvedValue(undefined);
+    mockProvider.returnInterruptedEncryptionToPlain.mockResolvedValue(undefined);
     mockExternalTransitionStarting.mockResolvedValue(undefined);
     mockPrepareExternalTransition.mockResolvedValue(undefined);
     mockSuspendStorageSession.mockResolvedValue(undefined);
@@ -214,6 +224,129 @@ describe('StorageService Synchronization Wrapper', () => {
       operationId: startedEvent.operationId,
       initiatorTabId: startedEvent.initiatorTabId,
     }));
+  });
+
+  it('does not broadcast or mutate when local application preflight fails', async () => {
+    const failure = new Error('local worker cleanup failed');
+    mockPrepareExternalTransition.mockRejectedValueOnce(failure);
+    const run = vi.fn(async () => undefined);
+
+    await expect((
+      service as unknown as {
+        runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+      }
+    ).runOpfsEncryptionTransition({ run })).rejects.toBe(failure);
+
+    expect(mockLocalTransitionStarting).toHaveBeenCalledOnce();
+    expect(mockPrepareExternalTransition).toHaveBeenCalledOnce();
+    expect(run).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalledWith({
+      event: expect.objectContaining({ type: 'opfs_encryption' }),
+    });
+    expect(mockLocalTransitionSettled).toHaveBeenCalledOnce();
+    expect(mockLocalTransitionSettled).toHaveBeenCalledWith({ settlement: 'preparation_failed' });
+  });
+
+  it('runs local safety preparation after a local start callback fails', async () => {
+    const failure = new Error('local transition presentation failed');
+    mockLocalTransitionStarting.mockImplementationOnce(() => {
+      throw failure;
+    });
+    const run = vi.fn(async () => undefined);
+
+    await expect((
+      service as unknown as {
+        runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+      }
+    ).runOpfsEncryptionTransition({ run })).rejects.toBe(failure);
+
+    expect(mockPrepareExternalTransition).toHaveBeenCalledOnce();
+    expect(run).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalledWith({
+      event: expect.objectContaining({ type: 'opfs_encryption' }),
+    });
+    expect(mockLocalTransitionSettled).toHaveBeenCalledWith({ settlement: 'preparation_failed' });
+  });
+
+  it.each([
+    {
+      invoke: async ({ service }: { service: StorageService }) => await service.enableOpfsEncryption({
+        onProgress: undefined,
+        passphrase: 'passphrase',
+        signal: undefined,
+      }),
+      name: 'enable',
+      providerMethod: mockProvider.enableEncryption,
+    },
+    {
+      invoke: async ({ service }: { service: StorageService }) => await service.disableOpfsEncryption({
+        onProgress: undefined,
+        signal: undefined,
+      }),
+      name: 'disable',
+      providerMethod: mockProvider.disableEncryption,
+    },
+    {
+      invoke: async ({ service }: { service: StorageService }) => await service.reencryptOpfsEncryption({
+        onProgress: undefined,
+        passphrase: 'passphrase',
+        signal: undefined,
+      }),
+      name: 're-encrypt',
+      providerMethod: mockProvider.reencrypt,
+    },
+    {
+      invoke: async ({ service }: { service: StorageService }) => (
+        await service.convergeOpfsEncryptionTransitionWithPassphrase({
+          passphrase: 'passphrase',
+          signal: undefined,
+        })
+      ),
+      name: 'converge',
+      providerMethod: mockProvider.convergeTransitionWithPassphrase,
+    },
+    {
+      invoke: async ({ service }: { service: StorageService }) => (
+        await service.returnInterruptedOpfsEncryptionToPlain({
+          onProgress: undefined,
+          passphrase: 'passphrase',
+          signal: undefined,
+        })
+      ),
+      name: 'return-to-plain',
+      providerMethod: mockProvider.returnInterruptedEncryptionToPlain,
+    },
+  ])('runs registered preflight for the public $name transition API', async ({ invoke, providerMethod }) => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+
+    await invoke({ service });
+
+    expect(mockLocalTransitionStarting).toHaveBeenCalledOnce();
+    expect(mockPrepareExternalTransition).toHaveBeenCalledOnce();
+    expect(providerMethod).toHaveBeenCalledOnce();
+    expect(mockLocalTransitionSettled).toHaveBeenCalledWith({ settlement: 'completed' });
+  });
+
+  it('does not report a completed transition as failed when reload settlement throws', async () => {
+    const settlementFailure = new Error('reload settlement failed');
+    mockLocalTransitionSettled.mockImplementationOnce(() => {
+      throw settlementFailure;
+    });
+
+    await expect((
+      service as unknown as {
+        runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+      }
+    ).runOpfsEncryptionTransition({ run: async () => 'completed' })).rejects.toBe(settlementFailure);
+
+    expect(mockLocalTransitionSettled).toHaveBeenCalledOnce();
+    expect(mockNotify).toHaveBeenCalledWith({
+      event: expect.objectContaining({ status: 'transition_completed', type: 'opfs_encryption' }),
+    });
+    expect(mockNotify).not.toHaveBeenCalledWith({
+      event: expect.objectContaining({ status: 'transition_failed', type: 'opfs_encryption' }),
+    });
   });
 
 
@@ -361,6 +494,83 @@ describe('StorageService Synchronization Wrapper', () => {
     });
   });
 
+  it('rejects a local transition created after successful external safety preparation', async () => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+    const listener = mockSubscribe.mock.calls.at(-1)?.[0]?.listener as ((args: {
+      event: {
+        type: 'opfs_encryption',
+        status: 'transition_started',
+        operationId: string,
+        initiatorTabId: string,
+        timestamp: number,
+      },
+    }) => void) | undefined;
+    if (listener === undefined) throw new Error('Expected storage synchronization listener');
+
+    listener({ event: {
+      type: 'opfs_encryption',
+      status: 'transition_started',
+      operationId: 'external-before-new-local-request',
+      initiatorTabId: 'external-tab',
+      timestamp: 1,
+    } });
+    await vi.waitFor(() => {
+      expect(mockSuspendStorageSession).toHaveBeenCalledOnce();
+    });
+
+    const run = vi.fn(async () => undefined);
+    await expect((
+      service as unknown as {
+        runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+      }
+    ).runOpfsEncryptionTransition({ run })).rejects.toThrow(
+      'OPFS encryption transition requires this page to reload',
+    );
+    expect(run).not.toHaveBeenCalled();
+    expect(mockLocalTransitionStarting).not.toHaveBeenCalled();
+  });
+
+  it('keeps the reload-required latch when external safety preparation fails', async () => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+    mockPrepareExternalTransition.mockRejectedValueOnce(new Error('worker cleanup failed'));
+    const listener = mockSubscribe.mock.calls.at(-1)?.[0]?.listener as ((args: {
+      event: {
+        type: 'opfs_encryption',
+        status: 'transition_started',
+        operationId: string,
+        initiatorTabId: string,
+        timestamp: number,
+      },
+    }) => void) | undefined;
+    if (listener === undefined) throw new Error('Expected storage synchronization listener');
+
+    listener({ event: {
+      type: 'opfs_encryption',
+      status: 'transition_started',
+      operationId: 'external-failed-before-new-local-request',
+      initiatorTabId: 'external-tab',
+      timestamp: 1,
+    } });
+    await vi.waitFor(() => {
+      expect(mockExternalTransitionSettled).toHaveBeenCalledWith({ settlement: 'preparation_failed' });
+    });
+
+    const run = vi.fn(async () => undefined);
+    await expect((
+      service as unknown as {
+        runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+      }
+    ).runOpfsEncryptionTransition({ run })).rejects.toThrow(
+      'OPFS encryption transition requires this page to reload',
+    );
+    expect(run).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalledWith({
+      event: expect.objectContaining({ type: 'opfs_encryption' }),
+    });
+  });
+
   it('ignores OPFS transition events emitted by the same tab', async () => {
     const listener = mockSubscribe.mock.calls[0]?.[0]?.listener as ((args: {
       event: {
@@ -438,6 +648,39 @@ describe('StorageService Synchronization Wrapper', () => {
       expect(mockExternalTransitionSettled).toHaveBeenCalledWith({
         settlement: 'completed',
       });
+    });
+  });
+
+  it('settles a follower for reload after an external transition failure', async () => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+    const listener = mockSubscribe.mock.calls.at(-1)?.[0]?.listener as ((args: {
+      event: {
+        type: 'opfs_encryption',
+        status: 'transition_started' | 'transition_failed',
+        operationId: string,
+        initiatorTabId: string,
+        timestamp: number,
+      },
+    }) => void) | undefined;
+    if (listener === undefined) {
+      throw new Error('Expected storage synchronization listener');
+    }
+    const baseEvent = {
+      type: 'opfs_encryption' as const,
+      operationId: 'external-failed-operation',
+      initiatorTabId: 'external-tab',
+      timestamp: 1,
+    };
+
+    listener({ event: { ...baseEvent, status: 'transition_started' } });
+    await vi.waitFor(() => {
+      expect(mockSuspendStorageSession).toHaveBeenCalledOnce();
+    });
+    listener({ event: { ...baseEvent, status: 'transition_failed' } });
+
+    await vi.waitFor(() => {
+      expect(mockExternalTransitionSettled).toHaveBeenCalledWith({ settlement: 'failed' });
     });
   });
 
@@ -558,9 +801,19 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(mockPrepareExternalTransition).not.toHaveBeenCalled();
     expect(mockSuspendStorageSession).not.toHaveBeenCalled();
     expect(mockExternalTransitionSettled).not.toHaveBeenCalled();
+
+    const run = vi.fn(async () => undefined);
+    await expect((
+      service as unknown as {
+        runOpfsEncryptionTransition<T>({ run }: { run: () => Promise<T> }): Promise<T>,
+      }
+    ).runOpfsEncryptionTransition({ run })).rejects.toThrow(
+      'OPFS encryption transition requires this page to reload',
+    );
+    expect(run).not.toHaveBeenCalled();
   });
 
-  it('releases the external OPFS session even when application preflight fails', async () => {
+  it('keeps the external OPFS shared session when application safety preflight fails', async () => {
     service = new StorageService();
     await service.init({ type: 'opfs' });
     mockPrepareExternalTransition.mockRejectedValueOnce(new Error('worker cleanup failed'));
@@ -588,6 +841,42 @@ describe('StorageService Synchronization Wrapper', () => {
     });
 
     await vi.waitFor(() => {
+      expect(mockExternalTransitionSettled).toHaveBeenCalledWith({
+        settlement: 'preparation_failed',
+      });
+    });
+    expect(mockSuspendStorageSession).not.toHaveBeenCalled();
+  });
+
+  it('runs external safety preparation and suspends after a presentation-only failure', async () => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+    mockExternalTransitionStarting.mockRejectedValueOnce(new Error('overlay import failed'));
+    const listener = mockSubscribe.mock.calls.at(-1)?.[0]?.listener as ((args: {
+      event: {
+        type: 'opfs_encryption',
+        status: 'transition_started',
+        operationId: string,
+        initiatorTabId: string,
+        timestamp: number,
+      },
+    }) => void) | undefined;
+    if (listener === undefined) {
+      throw new Error('Expected storage synchronization listener');
+    }
+
+    listener({
+      event: {
+        type: 'opfs_encryption',
+        status: 'transition_started',
+        operationId: 'external-presentation-failure',
+        initiatorTabId: 'external-tab',
+        timestamp: 1,
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(mockPrepareExternalTransition).toHaveBeenCalledOnce();
       expect(mockSuspendStorageSession).toHaveBeenCalledOnce();
       expect(mockExternalTransitionSettled).toHaveBeenCalledWith({
         settlement: 'preparation_failed',

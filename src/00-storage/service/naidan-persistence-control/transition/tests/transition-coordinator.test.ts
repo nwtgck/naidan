@@ -198,15 +198,15 @@ describe('persisted transition coordinator', () => {
     expect(p.get()).toBeUndefined();
   });
 
-  it('resumes from persisted copy progress after a process restart', async () => {
+  it('continues bounded copy slices with invocation-local progress', async () => {
     const state = control({ initial: { mode: { activeFileSystemId: SOURCE_ID, type: 'hizofs' }, retiredFileSystemIds: [] } });
     const p = progressPort();
     const endpoints = provider();
     await startPersistenceTransition({ control: state.port, operationId: OPERATION, source: sourceEndpoint, target: targetEndpoint });
     const first = await advancePersistenceTransition({ control: state.port, policy, progressPort: p, provider: endpoints.adapter, signal: undefined });
     expect(first.state).toBe('copying');
-    const persisted = p.get();
-    expect(persisted?.stage).toBe('copying');
+    const runtimeProgress = p.get();
+    expect(runtimeProgress?.stage).toBe('copying');
     await runUntil({ controlPort: state.port, progress: p, providerAdapter: endpoints.adapter, stop: value => value === 'authority_switched' });
     expect(endpoints.ports.written).toEqual([1, 2, 3]);
   });
@@ -261,7 +261,7 @@ describe('persisted transition coordinator', () => {
     expect(endpoints.cleanup).toHaveBeenCalledWith({ endpoint: sourceEndpoint });
   });
 
-  it('publishes stable plain authority before clearing the authenticated plain-target marker', async () => {
+  it('publishes stable plain authority before releasing its runtime target marker', async () => {
     const plain = { type: 'plain' } as const;
     const cleaning = {
       operation: 'decrypt',
@@ -330,7 +330,7 @@ describe('persisted transition coordinator', () => {
 
 
 describe('interrupted transition phase convergence', () => {
-  it('publishes stable source and clears detailed progress before the authority switch', async () => {
+  it('publishes stable source and clears invocation-local progress before returning', async () => {
     const building = {
       mode: {
         operation: 're_encrypt',

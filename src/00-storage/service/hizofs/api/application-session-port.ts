@@ -108,6 +108,7 @@ export type HizoFSApplicationRuntimeWriter = Pick<
 >;
 
 export type HizoFSApplicationSessionComposition = Readonly<{
+  assertOperationAllowed?: () => void;
   createReadSnapshot?: () => Promise<HizoFSApplicationSessionPort>;
   mutationPort: HizoFSApplicationMutationPort;
   namespace: HizoFSApplicationSessionNamespace;
@@ -216,15 +217,18 @@ async function closeWithPrimaryFailure({ close, primary }: {
 
 class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
   #active = true;
+  #assertOperationAllowed: () => void;
   #onClosed: () => void;
   #prepared: HizoFSApplicationPreparedExplicitBulk;
   #writer: HizoFSApplicationRuntimeWriter;
 
-  constructor({ onClosed, prepared, writer }: {
+  constructor({ assertOperationAllowed, onClosed, prepared, writer }: {
+    assertOperationAllowed: () => void;
     onClosed: () => void;
     prepared: HizoFSApplicationPreparedExplicitBulk;
     writer: HizoFSApplicationRuntimeWriter;
   }) {
+    this.#assertOperationAllowed = assertOperationAllowed;
     this.#onClosed = onClosed;
     this.#prepared = prepared;
     this.#writer = writer;
@@ -259,8 +263,10 @@ class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
   }
 
   async commit(): Promise<void> {
+    this.#assertOperationAllowed();
     await this.#finish({ operation: async () => {
       await this.#writer.runPublication({ operation: async ({ authority }) => {
+        this.#assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
         await this.#prepared.commit({ authority: mutationAuthority });
         requireMutationResolution({ authority: mutationAuthority, operation: "explicit bulk commit" });
@@ -270,21 +276,25 @@ class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
 
   async createEmptyFile({ name }: { name: string }): Promise<void> {
     this.#assertOpen();
+    this.#assertOperationAllowed();
     await this.#prepared.createEmptyFile({ name });
   }
 }
 
 class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
   #active = true;
+  #assertOperationAllowed: () => void;
   #onClosed: () => void;
   #prepared: HizoFSApplicationPreparedWritable;
   #writer: HizoFSApplicationRuntimeWriter;
 
-  constructor({ onClosed, prepared, writer }: {
+  constructor({ assertOperationAllowed, onClosed, prepared, writer }: {
+    assertOperationAllowed: () => void;
     onClosed: () => void;
     prepared: HizoFSApplicationPreparedWritable;
     writer: HizoFSApplicationRuntimeWriter;
   }) {
+    this.#assertOperationAllowed = assertOperationAllowed;
     this.#onClosed = onClosed;
     this.#prepared = prepared;
     this.#writer = writer;
@@ -321,8 +331,10 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
   }
 
   async commit(): Promise<void> {
+    this.#assertOperationAllowed();
     await this.#finish({ operation: async () => {
       await this.#writer.runPublication({ operation: async ({ authority }) => {
+        this.#assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
         await this.#prepared.commit({ authority: mutationAuthority });
         requireMutationResolution({ authority: mutationAuthority, operation: "file commit" });
@@ -332,11 +344,13 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
 
   async truncate({ size }: { size: bigint }): Promise<void> {
     this.#assertOpen();
+    this.#assertOperationAllowed();
     await this.#prepared.truncate({ size });
   }
 
   async write({ data, position }: { data: Uint8Array; position: bigint }): Promise<void> {
     this.#assertOpen();
+    this.#assertOperationAllowed();
     await this.#prepared.write({ data: data.slice(), position });
   }
 }
@@ -345,19 +359,22 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
   readonly createReadSnapshot?: () => Promise<HizoFSApplicationSessionPort>;
   readonly openExplicitBulk?: ({ path }: { path: readonly string[] }) => Promise<HizoFSApplicationExplicitBulkBuilder>;
   #closePromise: Promise<void> | undefined;
+  #assertOperationAllowed: () => void;
   #mutationPort: HizoFSApplicationMutationPort;
   #namespace: ReadOnlyNamespace;
   #openPreparedMutations = new Set<Readonly<{ abort({ reason }: { reason: unknown }): Promise<void> }>>();
   #runtimeSession: HizoFSApplicationRuntimeSession;
   #state: "closed" | "closing" | "open" = "open";
 
-  constructor({ createReadSnapshot, mutationPort, namespace, runtimeSession }: HizoFSApplicationSessionComposition) {
+  constructor({ assertOperationAllowed = () => undefined, createReadSnapshot, mutationPort, namespace, runtimeSession }: HizoFSApplicationSessionComposition) {
+    this.#assertOperationAllowed = assertOperationAllowed;
     this.#mutationPort = mutationPort;
     this.#namespace = namespace;
     this.#runtimeSession = runtimeSession;
     if (createReadSnapshot !== undefined) {
       this.createReadSnapshot = async () => {
         this.#assertOpen();
+        this.#assertOperationAllowed();
         return await createReadSnapshot();
       };
     }
@@ -381,8 +398,12 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
 
   async #read<Value>({ operation }: { operation: () => Promise<Value> }): Promise<Value> {
     this.#assertOpen();
+    this.#assertOperationAllowed();
     try {
-      return await this.#runtimeSession.runReadOperation({ operation });
+      return await this.#runtimeSession.runReadOperation({ operation: async () => {
+        this.#assertOperationAllowed();
+        return await operation();
+      } });
     } catch (cause: unknown) {
       throw applicationBoundaryError({ cause });
     }
@@ -393,10 +414,12 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     run: ({ authority }: { authority: HizoFSApplicationPublicationAuthority }) => Promise<void>;
   }): Promise<void> {
     this.#assertOpen();
+    this.#assertOperationAllowed();
     const writer = await this.#runtimeSession.acquireWriter();
     let primary: unknown | undefined;
     try {
       await writer.runPublication({ operation: async ({ authority }) => {
+        this.#assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
         await run({ authority: mutationAuthority });
         requireMutationResolution({ authority: mutationAuthority, operation });
@@ -587,10 +610,12 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     path: readonly string[];
   }): Promise<HizoFSApplicationExplicitBulkBuilder> {
     this.#assertOpen();
+    this.#assertOperationAllowed();
     const capturedPath = [...path];
     const writer = await this.#runtimeSession.acquireWriter();
     let prepared: HizoFSApplicationPreparedExplicitBulk | undefined;
     try {
+      this.#assertOperationAllowed();
       prepared = await openExplicitBulk({ path: capturedPath });
       this.#assertOpen();
     } catch (cause: unknown) {
@@ -610,6 +635,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
       throw boundaryCause;
     }
     const builder = new RuntimeBoundExplicitBulk({
+      assertOperationAllowed: this.#assertOperationAllowed,
       onClosed: () => {
         this.#openPreparedMutations.delete(builder);
       },
@@ -625,10 +651,12 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     path: readonly string[];
   }): Promise<HizoFSApplicationWritableFile> {
     this.#assertOpen();
+    this.#assertOperationAllowed();
     const capturedPath = [...path];
     const writer = await this.#runtimeSession.acquireWriter();
     let prepared: HizoFSApplicationPreparedWritable | undefined;
     try {
+      this.#assertOperationAllowed();
       prepared = await this.#mutationPort.openWritable({ keepExistingData, path: capturedPath });
       this.#assertOpen();
     } catch (cause: unknown) {
@@ -648,6 +676,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
       throw boundaryCause;
     }
     const writable = new RuntimeBoundWritable({
+      assertOperationAllowed: this.#assertOperationAllowed,
       onClosed: () => {
         this.#openPreparedMutations.delete(writable);
       },

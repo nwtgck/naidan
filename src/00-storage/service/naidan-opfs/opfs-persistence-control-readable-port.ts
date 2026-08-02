@@ -8,7 +8,7 @@ import type {
 } from "@/00-storage/service/naidan-persistence-control/store";
 import type {
   NaidanPersistenceControlExclusiveGate,
-} from "@/00-storage/service/naidan-opfs/opfs-transition-progress-physical-port";
+} from "@/00-storage/service/naidan-opfs/persistence-control-exclusive-gate";
 
 function isNotFoundError({ cause }: { cause: unknown }): boolean {
   return cause instanceof DOMException

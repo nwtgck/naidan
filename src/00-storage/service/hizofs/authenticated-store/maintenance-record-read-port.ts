@@ -15,7 +15,7 @@ import type {
   AuthenticatedRecordDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
-import type { FileSystemRootKey } from "@/00-storage/service/hizofs/crypto";
+import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 
 export type AuthenticatedMaintenanceRecordRead = Readonly<{
